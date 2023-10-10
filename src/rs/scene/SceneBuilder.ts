@@ -98,6 +98,19 @@ export class SceneBuilder {
     }
 
     buildScene(
+        mapX: number,
+        mapY: number,
+        borderSize: number = Scene.MAP_BORDER_SIZE,
+        landscapeLoadType: LandscapeLoadType = LandscapeLoadType.MODELS,
+        light: boolean = true,
+    ): Scene {
+        const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
+        const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
+        const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
+        return this.buildSceneInUnits(baseX, baseY, mapSize, mapSize, borderSize, landscapeLoadType, light)
+    }
+
+    buildSceneInUnits(
         baseX: number,
         baseY: number,
         sizeX: number,
