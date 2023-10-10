@@ -49,8 +49,8 @@ export class MapManager<T extends MapSquare> {
 
     init(mapFileIndex: MapFileIndex): void {
         this.cleanup();
-        for (let x = 0; x < 100; x++) {
-            for (let y = 0; y < 200; y++) {
+        for (let x = 0; x < MapManager.MAX_MAP_X; x++) {
+            for (let y = 0; y < MapManager.MAX_MAP_Y; y++) {
                 if (mapFileIndex.getTerrainArchiveId(x, y) === -1) {
                     this.invalidMapIds.add(getMapSquareId(x, y));
                 }
