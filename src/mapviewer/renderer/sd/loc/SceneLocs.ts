@@ -133,12 +133,12 @@ export function createSceneLocEntity(
 export function getSceneLocs(
     locTypeLoader: LocTypeLoader,
     scene: Scene,
-    borderSize: number,
     maxLevel: number,
 ): SceneLocs {
     const locs: SceneModel[] = [];
     const locEntities: SceneLocEntity[] = [];
 
+    const borderSize = scene.borderSize;
     const startX = borderSize;
     const startY = borderSize;
     const endX = borderSize + Scene.MAP_SQUARE_SIZE;

@@ -210,7 +210,7 @@ const worker = {
             throw new Error("Worker not initialized");
         }
 
-        const borderSize = 5;
+        const borderSize = Scene.MAP_BORDER_SIZE;
 
         const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
@@ -221,6 +221,7 @@ const worker = {
             baseY,
             mapSize,
             mapSize,
+            borderSize,
             LandscapeLoadType.NO_MODELS,
             false,
         );
@@ -229,7 +230,6 @@ const worker = {
             workerState.mapImageRenderer,
             scene,
             level,
-            borderSize,
         );
 
         return {

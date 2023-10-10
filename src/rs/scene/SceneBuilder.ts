@@ -102,10 +102,11 @@ export class SceneBuilder {
         baseY: number,
         sizeX: number,
         sizeY: number,
+        borderSize: number = Scene.MAP_BORDER_SIZE,
         landscapeLoadType: LandscapeLoadType = LandscapeLoadType.MODELS,
         light: boolean = true,
     ): Scene {
-        const scene = new Scene(Scene.MAX_LEVELS, sizeX, sizeY);
+        const scene = new Scene(Scene.MAX_LEVELS, sizeX, sizeY, borderSize);
 
         const mapStartX = Math.floor(baseX / Scene.MAP_SQUARE_SIZE);
         const mapStartY = Math.floor(baseY / Scene.MAP_SQUARE_SIZE);
@@ -1284,7 +1285,6 @@ export class SceneBuilder {
 
     decodeNpcSpawns(
         scene: Scene,
-        borderSize: number,
         mapX: number,
         mapY: number,
     ): NpcSpawn[] | undefined {
@@ -1299,6 +1299,7 @@ export class SceneBuilder {
         const baseX = mapX * 64;
         const baseY = mapY * 64;
 
+        const borderSize = scene.borderSize;
         while (buffer.remaining > 0) {
             const positionPacked = buffer.readUnsignedShort();
             let level = positionPacked >> 14;

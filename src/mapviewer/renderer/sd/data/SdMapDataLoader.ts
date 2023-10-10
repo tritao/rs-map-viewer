@@ -56,11 +56,10 @@ function createObjSceneModels(
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
     scene: Scene,
-    borderSize: number,
     spawns: ObjSpawn[],
 ): void {
     for (const spawn of spawns) {
-        createObjSceneModel(objModelLoader, sceneModels, scene, borderSize, spawn);
+        createObjSceneModel(objModelLoader, sceneModels, scene, spawn);
     }
 }
 
@@ -68,7 +67,6 @@ function createObjSceneModel(
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
     scene: Scene,
-    borderSize: number,
     spawn: ObjSpawn,
 ): void {
     const objType = objModelLoader.objTypeLoader.load(spawn.id);
@@ -79,6 +77,7 @@ function createObjSceneModel(
     const localX = spawn.x % 64;
     const localY = spawn.y % 64;
 
+    const borderSize = scene.borderSize;
     const tileX = localX + borderSize;
     const tileY = localY + borderSize;
 
@@ -574,20 +573,20 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             textureIdIndexMap.set(textureIds[i], i);
         }
 
-        const borderSize = 5;
+        const borderSize = Scene.MAP_BORDER_SIZE;
 
         const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
         console.time(`build scene ${mapX},${mapY}`);
-        const scene = state.sceneBuilder.buildScene(baseX, baseY, mapSize, mapSize);
+        const scene = state.sceneBuilder.buildScene(baseX, baseY, mapSize, mapSize, borderSize);
         console.timeEnd(`build scene ${mapX},${mapY}`);
 
         const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
-        sceneBuf.addTerrain(scene, borderSize, maxLevel);
+        sceneBuf.addTerrain(scene, maxLevel);
 
-        const sceneLocs = getSceneLocs(locTypeLoader, scene, borderSize, maxLevel);
+        const sceneLocs = getSceneLocs(locTypeLoader, scene, maxLevel);
         const sceneModels = sceneLocs.locs;
 
         // Create loc animated groups and add transformed locs
@@ -602,7 +601,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         if (loadObjs) {
             const objSpawns = getMapObjSpawns(state.objSpawns, maxLevel, mapX, mapY);
-            createObjSceneModels(objModelLoader, sceneModels, scene, borderSize, objSpawns);
+            createObjSceneModels(objModelLoader, sceneModels, scene, objSpawns);
         }
 
         addSceneModels(this.modelHashBuf!, textureLoader, sceneBuf, sceneModels, minimizeDrawCalls);
@@ -617,7 +616,6 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         if (loadNpcs) {
             const cacheNpcSpawns = state.sceneBuilder.decodeNpcSpawns(
                 scene,
-                borderSize,
                 mapX,
                 mapY,
             );
@@ -713,7 +711,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const vertices = sceneBuf.vertexBuf.byteArray();
         const indices = new Int32Array(sceneBuf.indices);
 
-        const minimapBlob = await loadMinimapBlob(state.mapImageRenderer, scene, 0, borderSize);
+        const minimapBlob = await loadMinimapBlob(state.mapImageRenderer, scene, 0);
 
         console.timeEnd(`load map ${mapX},${mapY}`);
 
@@ -753,7 +751,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
                 loadObjs,
                 loadNpcs,
 
-                borderSize,
+                borderSize: scene.borderSize,
                 tileRenderFlags: scene.tileRenderFlags,
                 collisionDatas: scene.collisionMaps,
 

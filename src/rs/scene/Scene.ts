@@ -13,6 +13,7 @@ import { EntityTag, EntityType, getEntityTypeFromTag } from "./entity/EntityTag"
 export class Scene {
     static readonly MAX_LEVELS = 4;
     static readonly MAP_SQUARE_SIZE = 64;
+    static readonly MAP_BORDER_SIZE = 5;
 
     static readonly UNITS_LEVEL_HEIGHT = 240;
     static readonly UNITS_TILE_HEIGHT_BASIS = 8;
@@ -38,6 +39,7 @@ export class Scene {
         readonly levels: number,
         readonly sizeX: number,
         readonly sizeY: number,
+        readonly borderSize: number,
     ) {
         this.tiles = new Array(levels);
         this.collisionMaps = new Array(levels);

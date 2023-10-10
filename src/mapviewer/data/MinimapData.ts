@@ -15,7 +15,6 @@ export async function loadMinimapBlob(
     mapImageRenderer: MapImageRenderer,
     scene: Scene,
     level: number,
-    borderSize: number,
 ): Promise<Blob> {
     const minimapPixels = mapImageRenderer.renderMinimapHd(scene, level);
 
@@ -24,6 +23,7 @@ export async function loadMinimapBlob(
         minimapView.setUint32(i * 4, (minimapPixels[i] << 8) | 0xff);
     }
 
+    const borderSize = scene.borderSize;
     const widthExclBorder = (scene.sizeX - borderSize * 2) * 4;
     const heightExclBorder = (scene.sizeY - borderSize * 2) * 4;
     const canvas = new OffscreenCanvas(widthExclBorder, heightExclBorder);
