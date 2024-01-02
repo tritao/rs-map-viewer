@@ -1,4 +1,4 @@
-import { vec2 } from "gl-matrix";
+import { vec2, vec4 } from "gl-matrix";
 import PicoGL, {
     DrawCall,
     Framebuffer,
@@ -7,13 +7,15 @@ import PicoGL, {
     Renderbuffer,
     Texture,
     UniformBuffer,
+    VertexArray,
+    VertexBuffer,
 } from "picogl";
 
 import { newDrawRange } from "../../renderer/DrawRange";
 import { createTextureArray } from "../../renderer/webgl/PicoTexture";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { WebGLEditorMapSquare } from "./WebGLEditorMapSquare";
-import { HIGHLIGHT_PROGRAM, TERRAIN_PROGRAM, TILE_PICKING_PROGRAM } from "./shaders/Shaders";
+import { GRID_PROGRAM, HIGHLIGHT_PROGRAM, TERRAIN_PROGRAM, TILE_PICKING_PROGRAM } from "./shaders/Shaders";
 import { getMaxAnisotropy, MapRenderer, RendererMapSquare, TextureFilterMode } from "../../renderer/MapRenderer";
 import { Camera } from "../../renderer/Camera";
 import { FrameStats } from "../../renderer/Renderer";
@@ -38,6 +40,7 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
     terrainProgram?: Program;
     tilePickingProgram?: Program;
     highlightTileProgram?: Program;
+    gridProgram?: Program;
 
     // Uniforms
     sceneUniformBuffer?: UniformBuffer;
@@ -57,9 +60,19 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
     textureIds: number[] = [];
     loadedTextureIds: Set<number> = new Set();
 
+    // Geometry
+    gridVertexBuffer?: VertexBuffer;
+    gridVertexArray?: VertexArray;
+
+    chunkGridVertexBuffer?: VertexBuffer;
+    chunkGridVertexArray?: VertexArray;
+
     // Draw calls
     tilePickingDrawCall!: DrawCall;
     highlightTileDrawCall!: DrawCall;
+
+    gridDrawCall!: DrawCall;
+    chunkGridDrawCall!: DrawCall;
 
     // State
     tilePickingBuffer = new Uint8Array(4);
@@ -73,6 +86,12 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
     lastTimeTerrainUpdated: number = 0;
     updatedTerrainMapIds: Set<number> = new Set();
     loadingTerrainMapIds: Set<number> = new Set();
+
+    drawGrid: boolean = false;
+    drawChunkGrid: boolean = false;
+
+    mapSquareGridColor: vec4 = vec4.fromValues(1.0, 0.0, 0.0, 1.0);
+    mapChunkGridColor: vec4 = vec4.fromValues(0.0, 1.0, 0.0, 1.0);
 
     constructor(
         readonly cacheLoaders: CacheLoaders,
@@ -120,6 +139,7 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
 
         this.initFramebuffers();
         this.initTextures();
+        this.initGrid();
 
         this.tilePickingDrawCall.uniformBlock("SceneUniforms", this.sceneUniformBuffer);
         // 6 vertices/2 triangles per tile
@@ -135,17 +155,81 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
             TERRAIN_PROGRAM,
             TILE_PICKING_PROGRAM,
             HIGHLIGHT_PROGRAM,
+            GRID_PROGRAM,
         );
 
-        const [terrainProgram, tilePickingProgram, highlightTileProgram] = programs;
+        const [terrainProgram, tilePickingProgram, highlightTileProgram, gridProgram] = programs;
         this.terrainProgram = terrainProgram;
         this.tilePickingProgram = tilePickingProgram;
         this.highlightTileProgram = highlightTileProgram;
+        this.gridProgram = gridProgram;
 
         this.tilePickingDrawCall = this.app.createDrawCall(this.tilePickingProgram);
         this.highlightTileDrawCall = this.app.createDrawCall(this.highlightTileProgram);
 
         return programs;
+    }
+
+    createGridPoints(chunkGrid: boolean): Uint16Array {
+        const lineCount = chunkGrid ? 9 : 2;
+
+        const points = new Uint16Array(64 * lineCount * 2 * 2 * 2);
+        let offset = 0;
+        // Horizontal lines
+        for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 64; x++) {
+                if (y !== 0 && y !== 8 && !chunkGrid) {
+                    continue;
+                }
+                points[offset++] = x * 128;
+                points[offset++] = y * 8 * 128;
+                points[offset++] = (x + 1) * 128;
+                points[offset++] = y * 8 * 128;
+            }
+        }
+        // Vertical lines
+        for (let x = 0; x < 9; x++) {
+            for (let y = 0; y < 64; y++) {
+                if (x !== 0 && x !== 8 && !chunkGrid) {
+                    continue;
+                }
+                points[offset++] = x * 8 * 128;
+                points[offset++] = y * 128;
+                points[offset++] = x * 8 * 128;
+                points[offset++] = (y + 1) * 128;
+            }
+        }
+
+        return points;
+    }
+
+    initGrid(): void {
+        const points = this.createGridPoints(false);
+
+        this.gridVertexBuffer = this.app.createVertexBuffer(PicoGL.UNSIGNED_SHORT, 2, points);
+        this.gridVertexArray = this.app
+            .createVertexArray()
+            .vertexAttributeBuffer(0, this.gridVertexBuffer);
+
+        this.gridDrawCall = this.app
+            .createDrawCall(this.gridProgram!, this.gridVertexArray)
+            .uniformBlock("SceneUniforms", this.sceneUniformBuffer!)
+            .primitive(PicoGL.LINES);
+
+        const chunkPoints = this.createGridPoints(true);
+        this.chunkGridVertexBuffer = this.app.createVertexBuffer(
+            PicoGL.UNSIGNED_SHORT,
+            2,
+            chunkPoints,
+        );
+        this.chunkGridVertexArray = this.app
+            .createVertexArray()
+            .vertexAttributeBuffer(0, this.chunkGridVertexBuffer);
+
+        this.chunkGridDrawCall = this.app
+            .createDrawCall(this.gridProgram!, this.chunkGridVertexArray)
+            .uniformBlock("SceneUniforms", this.sceneUniformBuffer!)
+            .primitive(PicoGL.LINES);
     }
 
     initFramebuffers(): void {
@@ -450,6 +534,36 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
 
             map.terrainDrawCall.drawRanges(map.terrainDrawRanges[0]);
             map.terrainDrawCall.draw();
+        }
+
+        // this.app.disable(PicoGL.DEPTH_TEST);
+
+        if (this.drawGrid || this.drawChunkGrid) {
+            for (let i = 0; i < this.visibleMapCount; i++) {
+                const mapInfo = this.visibleMaps[i];
+                const map = this.loadedMaps.get(mapInfo.mapId)!;
+                if (!map || !map.canRender(this.stats.frameCount)) {
+                    continue;
+                }
+
+                if (this.drawChunkGrid) {
+                    this.chunkGridDrawCall.uniform("u_mapX", map.mapX);
+                    this.chunkGridDrawCall.uniform("u_mapY", map.mapY);
+                    this.chunkGridDrawCall.uniform("u_color", this.mapChunkGridColor);
+                    this.chunkGridDrawCall.texture("u_heightMap", map.heightMapTexture);
+
+                    this.chunkGridDrawCall.draw();
+                }
+
+                if (this.drawGrid) {
+                    this.gridDrawCall.uniform("u_mapX", map.mapX);
+                    this.gridDrawCall.uniform("u_mapY", map.mapY);
+                    this.gridDrawCall.uniform("u_color", this.mapSquareGridColor);
+                    this.gridDrawCall.texture("u_heightMap", map.heightMapTexture);
+
+                    this.gridDrawCall.draw();
+                }
+            }
         }
 
         if (this.hoverWorldX !== -1 && this.hoverWorldY !== -1) {
