@@ -3,6 +3,13 @@
 #include "./includes/multi-draw.glsl";
 
 #define SCENE_BORDER_SIZE 6.0
+const int TILE_MAX_FACES = 6;
+const int TILE_MAX_VERTICES = 6;
+
+const int TOTAL_TILE_VERTICES = TILE_MAX_FACES * TILE_MAX_VERTICES;
+
+const int LEVEL_TILE_VERTICES =
+    64 * 64 * TOTAL_TILE_VERTICES;
 
 // Per frame
 uniform SceneUniforms {
@@ -35,8 +42,10 @@ float getHeightInterp(vec2 pos, uint level) {
 }
 
 void main() {
+    uint level = uint(gl_VertexID / LEVEL_TILE_VERTICES);
+
     vec2 tilePos = vec2(a_vert.xy) / 128.0;
-    float height = -getHeightInterp(tilePos, uint(u_level)) / 128.0;
+    float height = -getHeightInterp(tilePos, uint(level)) / 128.0;
 
     v_color = vec4(hslToRgb(int(a_vert.z), 1.0), 1.0);
 
