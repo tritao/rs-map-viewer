@@ -739,11 +739,14 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
     handleTileManipulation(time: number): void {
         const inputManager = this.inputManager;
 
-        if (this.hoverWorldX === -1 || this.hoverWorldY === -1 || !inputManager.isHolding()) {
+        if (this.hoverWorldX === -1 || this.hoverWorldY === -1) {
             return;
         }
 
         const isCtrlDown = inputManager.isControlDown();
+        if (!inputManager.isHolding() && !isCtrlDown) {
+            return;
+        }
 
         const borderSize = 6;
 
