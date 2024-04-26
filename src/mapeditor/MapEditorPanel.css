@@ -9,6 +9,32 @@
     /* margin-left: 10px; */
 }
 
+.shapes-container {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    overflow: auto;
+    margin: 5px;
+}
+
+.shape-preview {
+    display: flex;
+    width: 48px;
+    height: 48px;
+    align-items: center;
+    justify-content: center;
+    margin: 4px;
+    cursor: pointer;
+    border: 4px solid black;
+    border-radius: 5%;
+}
+
+.shape-preview.selected {
+    outline: 2px solid white;
+    outline-offset: -2px;
+    border: 4px solid black;
+}
+
 .underlays-container {
     display: flex;
     flex-direction: row;

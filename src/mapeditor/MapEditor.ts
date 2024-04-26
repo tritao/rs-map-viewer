@@ -41,6 +41,7 @@ export class MapEditor {
 
     selectedLevel: number = 0;
 
+    selectedShapeId: number = 0;
     selectedUnderlayId: number = 0;
 
     constructor(
