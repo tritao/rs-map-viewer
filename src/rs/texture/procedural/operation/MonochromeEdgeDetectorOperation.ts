@@ -43,7 +43,7 @@ export class MonochromeEdgeDetectorOperation extends TextureOperation {
                 const dySquared = (dy0 * dy0) >> 12;
                 const dxSquared = (dx0 * dx0) >> 12;
                 const local117 = (Math.sqrt((dySquared + dxSquared + 4096) / 4096.0) * 4096.0) | 0;
-                const local128 = local117 == 0 ? 0 : (16777216 / local117) | 0;
+                const local128 = local117 === 0 ? 0 : (16777216 / local117) | 0;
                 output[x] = 4096 - local128;
             }
         }

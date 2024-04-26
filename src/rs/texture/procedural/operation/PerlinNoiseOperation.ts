@@ -272,29 +272,29 @@ export class PerlinNoiseOperation extends TextureOperation {
         let i_13_ = PerlinNoiseOperation.noise[hGrad];
         let i_14_;
         if (i_12_ > 1) {
-            i_14_ = i_12_ == 2 ? -noiseIndex + hGrad : -noiseIndex + -hGrad;
+            i_14_ = i_12_ === 2 ? -noiseIndex + hGrad : -noiseIndex + -hGrad;
         } else {
-            i_14_ = i_12_ == 0 ? noiseIndex + hGrad : -hGrad + noiseIndex;
+            i_14_ = i_12_ === 0 ? noiseIndex + hGrad : -hGrad + noiseIndex;
         }
         i_12_ = this.permutations[perm0 + i_9_] & 0x3;
         let i_15_: number;
         if (i_12_ <= 1) {
-            i_15_ = i_12_ == 0 ? noiseIndex + i_11_ : noiseIndex - i_11_;
+            i_15_ = i_12_ === 0 ? noiseIndex + i_11_ : noiseIndex - i_11_;
         } else {
-            i_15_ = i_12_ == 2 ? i_11_ - noiseIndex : -i_11_ + -noiseIndex;
+            i_15_ = i_12_ === 2 ? i_11_ - noiseIndex : -i_11_ + -noiseIndex;
         }
         i_12_ = this.permutations[perm1 + i_8_] & 0x3;
         const i_16_ = ((i_13_ * (i_15_ - i_14_)) >> 12) + i_14_;
         if (i_12_ <= 1) {
-            i_14_ = i_12_ != 0 ? i_10_ - hGrad : hGrad + i_10_;
+            i_14_ = i_12_ !== 0 ? i_10_ - hGrad : hGrad + i_10_;
         } else {
-            i_14_ = i_12_ != 2 ? -i_10_ + -hGrad : hGrad - i_10_;
+            i_14_ = i_12_ !== 2 ? -i_10_ + -hGrad : hGrad - i_10_;
         }
         i_12_ = this.permutations[i_9_ + perm1] & 0x3;
         if (i_12_ <= 1) {
-            i_15_ = i_12_ == 0 ? i_11_ + i_10_ : i_10_ - i_11_;
+            i_15_ = i_12_ === 0 ? i_11_ + i_10_ : i_10_ - i_11_;
         } else {
-            i_15_ = i_12_ == 2 ? -i_10_ + i_11_ : -i_10_ + -i_11_;
+            i_15_ = i_12_ === 2 ? -i_10_ + i_11_ : -i_10_ + -i_11_;
         }
         const i_17_ = i_14_ + ((i_13_ * (i_15_ - i_14_)) >> 12);
         return i_16_ + ((noise * (i_17_ - i_16_)) >> 12);

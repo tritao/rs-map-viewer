@@ -40,7 +40,7 @@ export class HerringboneOperation extends TextureOperation {
                     while (local40 > 3) {
                         local40 -= 4;
                     }
-                    if (local40 != 1) {
+                    if (local40 !== 1) {
                         output[x] = 0;
                         continue;
                     }

@@ -244,7 +244,7 @@ export class IrregularBricksOperation extends TextureOperation {
                                         if (local238 < local171) {
                                             local320 = Math.max(local238, local310);
                                             local322 = Math.min(local171, local306);
-                                        } else if (local310 == 0) {
+                                        } else if (local310 === 0) {
                                             local322 = Math.min(local171, local306);
                                             local320 = 0;
                                         } else {
