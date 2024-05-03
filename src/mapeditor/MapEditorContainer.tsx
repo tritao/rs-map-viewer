@@ -1,3 +1,4 @@
+import { DockviewApi, DockviewGroupPanelApi, DockviewPanelApi, DockviewReact, DockviewReadyEvent, IDockviewPanelProps } from "dockview";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -43,6 +44,34 @@ export function MapEditorContainer({ mapEditor }: MapEditorContainerProps): JSX.
         return () => cancelAnimationFrame(requestRef.current!);
     }, [searchParams]);
 
+    let onReady = (event: DockviewReadyEvent) => {
+        const api: DockviewApi = event.api;
+        api.addPanel({
+            id: 'terrain_editor',
+            component: 'terrain_editor',
+        });
+        api.addPanel({
+            id: 'map_editor_panel',
+            component: 'map_editor_panel',
+            position: {
+                direction: 'right',
+                referencePanel: 'terrain_editor',
+            },
+        });
+    };
+
+    const dockComponents = {
+        terrain_editor: (props: IDockviewPanelProps) => {
+            return <RendererCanvas renderer={mapEditor.renderer} />
+        },
+        map_editor_panel: (props: IDockviewPanelProps) => {
+            return <MapEditorPanel mapEditor={mapEditor} />
+        },
+        map_viewer: (props: IDockviewPanelProps) => {
+            return <div>{/** logic */}</div>
+        },
+    };
+
     return (
         <div className="map-editor-container">
             <div className="hud left-top">
@@ -50,9 +79,7 @@ export function MapEditorContainer({ mapEditor }: MapEditorContainerProps): JSX.
                 <div className="fps-counter content-text">{debugText}</div>
             </div>
 
-            <RendererCanvas renderer={mapEditor.renderer} />
-
-            <MapEditorPanel mapEditor={mapEditor} />
+            <DockviewReact className={'dockview-theme-abyss'} debug={true} onReady={onReady} components={dockComponents} />
         </div>
     );
 }

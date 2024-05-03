@@ -4505,6 +4505,18 @@ dns-packet@^5.2.2:
   dependencies:
     "@leichtgewicht/ip-codec" "^2.0.1"
 
+dockview-core@^1.13.0:
+  version "1.13.0"
+  resolved "https://registry.yarnpkg.com/dockview-core/-/dockview-core-1.13.0.tgz#2b4f04aa92fe02be1afb70ea8ae255d6694e92d7"
+  integrity sha512-u9dA3ARJAflb3Np0Wj7jgaBBrzFWTNgpiNMTgK/OsO/C2Dl9k6spM0F4Z4kkW7bh+mCjXBOsdt8l+mUlxmPO9w==
+
+dockview@1.13.0:
+  version "1.13.0"
+  resolved "https://registry.yarnpkg.com/dockview/-/dockview-1.13.0.tgz#2e0e95fafb3812b2297e263ecb3f3e5c8d72d8ae"
+  integrity sha512-Fgk2HtuD0gDTmUlwHcj35hd3mvVM5yy3wcBtPbxfZ9VbwaQsQ71bL7mP+SlKUzOJRHC/EwBgzDkB4V0RJznhew==
+  dependencies:
+    dockview-core "^1.13.0"
+
 doctrine@^2.1.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/doctrine/-/doctrine-2.1.0.tgz#5cd01fc101621b42c4cd7f5d1a66243716d3f39d"

@@ -8,6 +8,7 @@ import { formatBytes } from "../util/BytesUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapEditor } from "./MapEditor";
 import { MapEditorContainer } from "./MapEditorContainer";
+import 'dockview/dist/styles/dockview.css';
 
 export function MapEditorApp(): JSX.Element {
     const [searchParams, setSearchParams] = useSearchParams();
