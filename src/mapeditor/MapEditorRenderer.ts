@@ -32,7 +32,8 @@ export class MapEditorRenderer extends RendererMainLoop {
         this.renderer = new WebGLMapEditorRenderer(
             this.cacheLoaders, this.workerPool, this.inputManager, mapEditor.renderDistance,
             mapEditor.unloadDistance, mapEditor.lodDistance, this.camera,
-            () => { return this.mapEditor.selectedUnderlayId  })
+            () => { return this.mapEditor.selectedUnderlayId  },
+            () => { return this.mapEditor.selectedLevel  })
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
             this.queueLoadMap.bind(this),

@@ -39,6 +39,8 @@ export class MapEditor {
 
     debugText?: string;
 
+    selectedLevel: number = 0;
+
     selectedUnderlayId: number = 0;
 
     constructor(
