@@ -128,6 +128,11 @@ export class MapManager {
         const mapId = getMapSquareId(mapX, mapY);
         this.loadingMapIds.delete(mapId);
         this.invalidMapIds.delete(mapId);
+        const oldMap = this.mapSquares.get(mapId);
+        if (oldMap) {
+            this.removeMapFunction(oldMap);
+            this.mapSquares.delete(mapId);
+        }
         this.mapSquares.set(mapId, new MapSquareInfo(mapX, mapY));
     }
 

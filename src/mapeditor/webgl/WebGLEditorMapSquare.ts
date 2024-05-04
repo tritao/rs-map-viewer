@@ -17,6 +17,28 @@ import { Npc } from "../../renderer/npc/Npc";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 
+export function createHeightMapTexture(
+    app: PicoApp,
+    borderSize: number,
+    heightMapTextureData: Float32Array,
+): Texture {
+    const heightMapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
+    return app.createTextureArray(
+        heightMapTextureData,
+        heightMapSize,
+        heightMapSize,
+        Scene.MAX_LEVELS,
+        {
+            internalFormat: PicoGL.R32F,
+            minFilter: PicoGL.LINEAR,
+            magFilter: PicoGL.LINEAR,
+            type: PicoGL.FLOAT,
+            wrapS: PicoGL.CLAMP_TO_EDGE,
+            wrapT: PicoGL.CLAMP_TO_EDGE,
+        },
+    );
+}
+
 export class WebGLEditorMapSquare implements RendererMapSquare {
     readonly id: number;
 
@@ -44,20 +66,10 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
                 integer: true as any,
             });
 
-        const heightMapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
-        const heightMapTexture = app.createTextureArray(
+        const heightMapTexture = createHeightMapTexture(
+            app,
+            borderSize,
             mapData.heightMapTextureData,
-            heightMapSize,
-            heightMapSize,
-            Scene.MAX_LEVELS,
-            {
-                internalFormat: PicoGL.R32F,
-                minFilter: PicoGL.LINEAR,
-                magFilter: PicoGL.LINEAR,
-                type: PicoGL.FLOAT,
-                wrapS: PicoGL.CLAMP_TO_EDGE,
-                wrapT: PicoGL.CLAMP_TO_EDGE,
-            },
         );
 
         const terrainDrawCall = app
@@ -78,6 +90,7 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
             terrainDrawCall,
             mapData.terrainDrawRanges,
             heightMapTexture,
+            mapData.heightMapTextureData,
         );
     }
 
@@ -94,16 +107,25 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
     constructor(
         readonly mapX: number,
         readonly mapY: number,
-
         readonly borderSize: number,
-
         readonly terrainVertexBuffer: VertexBuffer,
         readonly terrainVertexArray: VertexArray,
         readonly terrainDrawCall: DrawCall,
         readonly terrainDrawRanges: DrawRange[],
-        readonly heightMapTexture: Texture,
+        public heightMapTexture: Texture,
+        public heightMapTextureData: Float32Array,
     ) {
         this.id = getMapSquareId(mapX, mapY);
     }
 
+    updateHeightMapTexture(app: PicoApp): void {
+        this.heightMapTexture.delete();
+
+        this.heightMapTexture = createHeightMapTexture(
+            app,
+            this.borderSize,
+            this.heightMapTextureData,
+        );
+        this.terrainDrawCall.texture("u_heightMap", this.heightMapTexture);
+    }
 }

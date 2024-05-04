@@ -36,8 +36,9 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
-import { loadEditorMapData } from "../mapeditor/webgl/loader/EditorMapDataLoader";
+import { loadEditorMapData, loadEditorMapTerrainData } from "../mapeditor/webgl/loader/EditorMapDataLoader";
 import { EditorMapData } from "../mapeditor/webgl/loader/EditorMapData";
+import { EditorMapTerrainData } from "../mapeditor/webgl/loader/EditorMapTerrainData";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -231,6 +232,18 @@ const worker = {
 
         return loadEditorMapData(workerState, mapX, mapY);
     },
+    async loadEditorMapTerrainData(
+        mapX: number,
+        mapY: number,
+        heightMapTextureData: Float32Array,
+    ): Promise<EditorMapTerrainData | undefined> {
+        const workerState = await workerStatePromise;
+        if (!workerState) {
+            throw new Error("Worker not initialized");
+        }
+
+        return loadEditorMapTerrainData(workerState, mapX, mapY, heightMapTextureData);
+    },
     async loadTexture(
         id: number,
         size: number,
@@ -268,6 +281,7 @@ const worker = {
             baseY,
             mapSize,
             mapSize,
+            true,
             false,
             LocLoadType.NO_MODELS,
         );

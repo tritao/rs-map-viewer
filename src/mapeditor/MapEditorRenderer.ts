@@ -111,7 +111,7 @@ export class MapEditorRenderer extends RendererMainLoop {
     handleInput(deltaTime: number) {
         if (this.inputManager.scrollY !== 0) {
             const newBrushSize = this.renderer.brushSize - Math.sign(this.inputManager.scrollY);
-            this.renderer.brushSize = clamp(newBrushSize, 0, 8);
+            this.renderer.brushSize = clamp(newBrushSize, 0, 16);
         }
 
         this.handleKeyInput(deltaTime);
