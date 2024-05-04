@@ -4,9 +4,11 @@ import { URLSearchParamsInit } from "react-router-dom";
 import { CacheList, LoadedCache } from "../util/Caches";
 import { Camera, ProjectionType } from "../renderer/Camera";
 import { InputManager } from "../util/InputManager";
+import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapEditorRenderer } from "./MapEditorRenderer";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
+import { LocModelLoader } from "../rs/config/loctype/LocModelLoader";
 
 const DEFAULT_RENDER_DISTANCE = 128;
 
@@ -19,6 +21,8 @@ export class MapEditor {
     // Cache
     loadedCache: LoadedCache;
     cacheLoaders: CacheLoaders;
+
+    sceneBuilder!: SceneBuilder;
 
     // Settings
 
@@ -52,6 +56,27 @@ export class MapEditor {
         this.renderer.initCache();
 
         this.updateSearchParams();
+
+        const locModelLoader = new LocModelLoader(
+            this.cacheLoaders.locTypeLoader,
+            this.cacheLoaders.loaderFactory.getModelLoader(),
+            this.cacheLoaders.textureLoader,
+            this.cacheLoaders.seqTypeLoader,
+            this.cacheLoaders.seqFrameLoader,
+            this.cacheLoaders.loaderFactory.getSkeletalSeqLoader(),
+        );
+
+        this.sceneBuilder = new SceneBuilder(
+            cache.info,
+            this.cacheLoaders.loaderFactory.getMapFileLoader(),
+            this.cacheLoaders.loaderFactory.getUnderlayTypeLoader(),
+            this.cacheLoaders.loaderFactory.getOverlayTypeLoader(),
+            this.cacheLoaders.locTypeLoader,
+            locModelLoader,
+            cache.xteas,
+        );
+
+        this.renderer.renderer.sceneBuilder = this.sceneBuilder;
     }
 
     getSearchParams(): URLSearchParamsInit {

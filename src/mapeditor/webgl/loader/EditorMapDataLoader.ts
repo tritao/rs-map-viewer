@@ -1,3 +1,4 @@
+import { TransferDescriptor, Transfer } from "threads";
 import { DrawRange, newDrawRange } from "../../../renderer/DrawRange";
 import { Scene } from "../../../rs/scene/Scene";
 import { LocLoadType } from "../../../rs/scene/SceneBuilder";
@@ -8,7 +9,7 @@ import {
     TerrainVertexBuffer,
     getTileOffset,
 } from "../buffer/TerrainVertexBuffer";
-import { EditorMapData } from "./EditorMapData";
+import { EditorMapData, SceneData } from "./EditorMapData";
 import { EditorMapTerrainData } from "./EditorMapTerrainData";
 
 // TODO: Unify with the Int16 loader from Scene.
@@ -42,7 +43,7 @@ export function loadEditorMapData(
     workerState: WorkerState,
     mapX: number,
     mapY: number,
-): EditorMapData | undefined {
+): TransferDescriptor<EditorMapData | undefined> {
     const textureLoader = workerState.textureLoader;
     const textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
     const textureIndexMap = new Map<number, number>();
@@ -83,18 +84,51 @@ export function loadEditorMapData(
     const vertices = terrainVertexBuffer.bytes;
     const indices = new Int32Array();
 
-    return new EditorMapData(
-        mapX,
-        mapY,
-        borderSize,
-        cacheName,
-        scene.levels,
-        scene.tileRenderFlags,
-        scene.collisionMaps,
-        vertices,
-        indices,
-        terrainDrawRanges,
-        heightMapTextureData,
+    const transferables: Transferable[] = [
+        terrainVertexBuffer.bytes.buffer,
+        heightMapTextureData.buffer,
+        ...scene.tileHeights.flat().map((a) => a.buffer),
+        ...scene.tileRenderFlags.flat().map((a) => a.buffer),
+        ...scene.tileUnderlays.flat().map((a) => a.buffer),
+        ...scene.tileOverlays.flat().map((a) => a.buffer),
+        ...scene.tileShapes.flat().map((a) => a.buffer),
+        ...scene.tileRotations.flat().map((a) => a.buffer),
+        ...scene.tileLightOcclusions.flat().map((a) => a.buffer),
+        ...scene.tileLights.flat().map((a) => a.buffer),
+        ...scene.tileBlendedColors.flat().map((a) => a.buffer),
+    ];
+
+    const sceneData: SceneData = {
+        levels: scene.levels,
+        sizeX: scene.sizeX,
+        sizeY: scene.sizeY,
+
+        tileHeights: scene.tileHeights,
+        tileRenderFlags: scene.tileRenderFlags,
+        tileUnderlays: scene.tileUnderlays,
+        tileOverlays: scene.tileOverlays,
+        tileShapes: scene.tileShapes,
+        tileRotations: scene.tileRotations,
+
+        tileLightOcclusions: scene.tileLightOcclusions,
+        tileLights: scene.tileLights,
+
+        tileBlendedColors: scene.tileBlendedColors,
+    };
+
+    return Transfer<EditorMapData>(
+        new EditorMapData(
+            mapX,
+            mapY,
+            borderSize,
+            cacheName,
+            sceneData,
+            vertices,
+            indices,
+            terrainDrawRanges,
+            heightMapTextureData,
+        ),
+        transferables,
     );
 }
 

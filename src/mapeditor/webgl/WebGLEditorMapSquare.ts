@@ -45,6 +45,8 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
     readonly collisionMaps: CollisionMap[] = [];
     readonly locsAnimated: LocAnimated[] = [];
     readonly npcs: Npc[] = [];
+    heightUpdated: boolean = false;
+    underlayUpdated: boolean = false;
 
     static create(
         app: PicoApp,
@@ -55,6 +57,17 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
         terrainProgram: Program,
     ): WebGLEditorMapSquare {
         const { mapX, mapY, borderSize } = mapData;
+
+        const scene = new Scene(mapData.scene.levels, mapData.scene.sizeX, mapData.scene.sizeY);
+        scene.tileHeights = mapData.scene.tileHeights;
+        scene.tileRenderFlags = mapData.scene.tileRenderFlags;
+        scene.tileUnderlays = mapData.scene.tileUnderlays;
+        scene.tileOverlays = mapData.scene.tileOverlays;
+        scene.tileShapes = mapData.scene.tileShapes;
+        scene.tileRotations = mapData.scene.tileRotations;
+        scene.tileLightOcclusions = mapData.scene.tileLightOcclusions;
+        scene.tileLights = mapData.scene.tileLights;
+        scene.tileBlendedColors = mapData.scene.tileBlendedColors;
 
         const terrainVertexBuffer = app.createInterleavedBuffer(8, mapData.vertices);
         const terrainVertexArray = app
@@ -85,6 +98,7 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
             mapX,
             mapY,
             borderSize,
+            scene,
             terrainVertexBuffer,
             terrainVertexArray,
             terrainDrawCall,
@@ -108,6 +122,7 @@ export class WebGLEditorMapSquare implements RendererMapSquare {
         readonly mapX: number,
         readonly mapY: number,
         readonly borderSize: number,
+        readonly scene: Scene,
         readonly terrainVertexBuffer: VertexBuffer,
         readonly terrainVertexArray: VertexArray,
         readonly terrainDrawCall: DrawCall,
