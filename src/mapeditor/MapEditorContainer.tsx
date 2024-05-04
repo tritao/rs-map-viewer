@@ -46,15 +46,19 @@ export function MapEditorContainer({ mapEditor }: MapEditorContainerProps): JSX.
 
     let onReady = (event: DockviewReadyEvent) => {
         const api: DockviewApi = event.api;
-        api.addPanel({
+        let terrainEditorPanel = api.addPanel({
             id: 'terrain_editor',
             component: 'terrain_editor',
+        });
+        let mapViewerPanel = api.addPanel({
+            id: 'map_viewer',
+            component: 'map_viewer',
         });
         api.addPanel({
             id: 'map_editor_panel',
             component: 'map_editor_panel',
             position: {
-                direction: 'right',
+                direction: 'below',
                 referencePanel: 'terrain_editor',
             },
         });
@@ -64,11 +68,11 @@ export function MapEditorContainer({ mapEditor }: MapEditorContainerProps): JSX.
         terrain_editor: (props: IDockviewPanelProps) => {
             return <RendererCanvas renderer={mapEditor.renderer} />
         },
+        map_viewer: (props: IDockviewPanelProps) => {
+            return <div>{"map viewer"}</div>
+        },
         map_editor_panel: (props: IDockviewPanelProps) => {
             return <MapEditorPanel mapEditor={mapEditor} />
-        },
-        map_viewer: (props: IDockviewPanelProps) => {
-            return <div>{/** logic */}</div>
         },
     };
 
