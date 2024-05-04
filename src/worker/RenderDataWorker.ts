@@ -37,6 +37,7 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { loadEditorMapData, loadEditorMapTerrainData } from "../mapeditor/webgl/loader/EditorMapDataLoader";
+import { ModelLoader } from "../rs/model/ModelLoader";
 import { EditorMapData } from "../mapeditor/webgl/loader/EditorMapData";
 import { EditorMapTerrainData } from "../mapeditor/webgl/loader/EditorMapTerrainData";
 
@@ -61,6 +62,7 @@ export type WorkerState = {
     seqFrameLoader: SeqFrameLoader;
     skeletalSeqLoader: SkeletalSeqLoader | undefined;
 
+    modelLoader: ModelLoader;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
     npcModelLoader: NpcModelLoader;
@@ -171,6 +173,7 @@ async function initWorker(
         seqFrameLoader,
         skeletalSeqLoader,
 
+        modelLoader,
         locModelLoader,
         objModelLoader,
         npcModelLoader,

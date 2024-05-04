@@ -1,6 +1,7 @@
 import { SerializerImplementation } from "threads";
 
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
+import { SdModelDataLoader } from "../renderer/loader/SdModelDataLoader";
 import { WorkerState } from "./RenderDataWorker";
 
 export type RenderDataResult<T> = {
@@ -21,6 +22,7 @@ export interface RenderDataLoader<I, D> {
 
 const loaders = {
     sdMapDataLoader: new SdMapDataLoader(),
+    sdModelDataLoader: new SdModelDataLoader(),
 };
 
 type RenderDataLoaders = typeof loaders;
