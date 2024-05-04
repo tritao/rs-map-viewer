@@ -5,6 +5,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./index.css";
 import { MapEditorApp } from "./mapeditor/MapEditorApp";
 import MapViewerApp from "./mapviewer/MapViewerApp";
+import { CacheViewerApp } from "./cacheviewer/CacheViewerApp";
 import reportWebVitals from "./reportWebVitals";
 import { Bzip2 } from "./rs/compression/Bzip2";
 import { Gzip } from "./rs/compression/Gzip";
@@ -27,6 +28,7 @@ root.render(
         <Routes>
             <Route path="/" element={<MapViewerApp />} />
             <Route path="/editor" element={<MapEditorApp />} />
+            <Route path="/cache" element={<CacheViewerApp />} />
         </Routes>
     </BrowserRouter>,
     // </React.StrictMode>,
