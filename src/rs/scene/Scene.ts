@@ -10,6 +10,8 @@ import { WallDecoration } from "./WallDecoration";
 import { Entity } from "./entity/Entity";
 import { EntityTag, EntityType, getEntityTypeFromTag } from "./entity/EntityTag";
 
+const MAX_LOC_PER_TILE = 5;
+
 export class Scene {
     static readonly MAX_LEVELS = 4;
     static readonly MAP_SQUARE_SIZE = 64;
@@ -173,7 +175,7 @@ export class Scene {
                     return false;
                 }
                 const tile = this.tiles[level][sx][sy];
-                if (tile && tile.locs.length >= 5) {
+                if (tile && tile.locs.length >= MAX_LOC_PER_TILE) {
                     return false;
                 }
             }
