@@ -10,6 +10,7 @@ import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker } from "./RenderDataWorker";
 import { EditorMapData } from "../mapeditor/webgl/loader/EditorMapData";
+import { EditorMapTerrainData } from "../mapeditor/webgl/loader/EditorMapTerrainData";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -62,6 +63,19 @@ export class RenderDataWorkerPool {
     ): QueuedTask<RenderDataWorkerThread, EditorMapData | undefined> {
         return this.pool.queue(
             (w) => w.loadEditorMapData(mapX, mapY) as ObservablePromise<EditorMapData | undefined>,
+        );
+    }
+
+    queueLoadEditorMapTerrainData(
+        mapX: number,
+        mapY: number,
+        heightMapTextureData: Float32Array,
+    ): QueuedTask<RenderDataWorkerThread, EditorMapTerrainData | undefined> {
+        return this.pool.queue(
+            (w) =>
+                w.loadEditorMapTerrainData(mapX, mapY, heightMapTextureData) as ObservablePromise<
+                    EditorMapTerrainData | undefined
+                >,
         );
     }
 
