@@ -36,6 +36,8 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
+import { loadEditorMapData } from "../mapeditor/webgl/loader/EditorMapDataLoader";
+import { EditorMapData } from "../mapeditor/webgl/loader/EditorMapData";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -220,6 +222,14 @@ const worker = {
             return undefined;
         }
         return Transfer<D>(data, transferables);
+    },
+    async loadEditorMapData(mapX: number, mapY: number): Promise<EditorMapData | undefined> {
+        const workerState = await workerStatePromise;
+        if (!workerState) {
+            throw new Error("Worker not initialized");
+        }
+
+        return loadEditorMapData(workerState, mapX, mapY);
     },
     async loadTexture(
         id: number,

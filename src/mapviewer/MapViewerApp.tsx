@@ -23,10 +23,6 @@ WebFont.load({
     },
 });
 
-const cachesPromise = fetchCacheList();
-
-const workerPool = RenderDataWorkerPool.create(isWallpaperEngine ? 1 : 4);
-
 function MapViewerApp() {
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -37,10 +33,16 @@ function MapViewerApp() {
     useEffect(() => {
         const abortController = new AbortController();
 
+        let workerPool: RenderDataWorkerPool | undefined;
+
         const load = async () => {
+            workerPool = RenderDataWorkerPool.create(
+                isWallpaperEngine ? 1 : Math.min(4, navigator.hardwareConcurrency),
+            );
+
             const objSpawnsPromise = fetchObjSpawns();
 
-            const cacheList = await cachesPromise;
+            const cacheList = await fetchCacheList();
             if (!cacheList) {
                 setErrorMessage("Failed to load cache list");
                 throw new Error("No caches found");
@@ -74,8 +76,8 @@ function MapViewerApp() {
             mapViewer.applySearchParams(searchParams);
             mapViewer.init();
 
-            setDownloadProgress(undefined);
             setMapViewer(mapViewer);
+            setDownloadProgress(undefined);
         };
 
         if (isIos) {
@@ -86,6 +88,9 @@ function MapViewerApp() {
 
         return () => {
             abortController.abort();
+            if (workerPool) {
+                workerPool.terminate();
+            }
         };
     }, []);
 
