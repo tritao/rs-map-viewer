@@ -9,6 +9,7 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker } from "./RenderDataWorker";
+import { EditorMapData } from "../mapeditor/webgl/loader/EditorMapData";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -53,6 +54,15 @@ export class RenderDataWorkerPool {
         input: I,
     ): QueuedTask<RenderDataWorkerThread, D> {
         return this.pool.queue((w) => w.load(loader, input) as ObservablePromise<D>);
+    }
+
+    queueLoadEditorMapData(
+        mapX: number,
+        mapY: number,
+    ): QueuedTask<RenderDataWorkerThread, EditorMapData | undefined> {
+        return this.pool.queue(
+            (w) => w.loadEditorMapData(mapX, mapY) as ObservablePromise<EditorMapData | undefined>,
+        );
     }
 
     queueLoadTexture(
