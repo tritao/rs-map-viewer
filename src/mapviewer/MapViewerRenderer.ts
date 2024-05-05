@@ -1,45 +1,36 @@
 import { Schema } from "leva/dist/declarations/src/types";
 
-import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { clamp } from "../util/MathUtil";
-import { MapManager } from "../renderer/MapManager";
 import { MapViewer } from "./MapViewer";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import { InteractType } from "../renderer/InteractType";
 import { INTERACTION_RADIUS } from "../renderer/Interactions";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { isTouchDevice } from "../util/DeviceUtil";
-import { InputManager } from "../util/InputManager";
-import { WebGLMapSquare } from "../renderer/webgl/WebGLMapSquare";
 import { SdMapData } from "../renderer/loader/SdMapData";
-import { RendererStats } from "../renderer/webgl/RendererStats";
+import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 
-export abstract class MapViewerRenderer extends RendererMainLoop {
-    inputManager: InputManager;
-
-    // Temporary, will be cleaned up in the following commits.
-    abstract getMapManager(): MapManager<WebGLMapSquare>;
-    abstract getMapManagerTime(): number;
-    abstract getRendererStats(): RendererStats;
+export class MapViewerRenderer extends WebGLMapRenderer {
 
     constructor(public mapViewer: MapViewer) {
-        super();
-        this.inputManager = mapViewer.inputManager;
+        super(mapViewer.cacheLoaders, mapViewer.inputManager, mapViewer.workerPool,
+            mapViewer.renderDistance, mapViewer.unloadDistance, mapViewer.lodDistance,
+            mapViewer.camera, mapViewer.pathfinder);
     }
 
     override async init() {
         this.inputManager.init(this.canvas);
+        super.init();
     }
 
-    override cleanUp(): void {
+    override async cleanUp(): Promise<void> {
         this.inputManager.cleanUp();
+        super.cleanUp();
     }
 
-    abstract rendererUpdate(): void;
-
-    update(time: number, deltaTime: number) {
+    override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
-        this.rendererUpdate();
+        super.update(time, deltaTime);
     }
 
     initCache(): void { }
@@ -47,8 +38,6 @@ export abstract class MapViewerRenderer extends RendererMainLoop {
     getControls(): Schema {
         return {};
     }
-
-    queueLoadMap(mapX: number, mapY: number): void { }
 
     handleInput(deltaTime: number) {
         this.handleKeyInput(deltaTime);
@@ -234,7 +223,7 @@ export abstract class MapViewerRenderer extends RendererMainLoop {
         // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
     }
 
-    onMapLoad(mapData: SdMapData) {
+    override onMapLoad(mapData: SdMapData) {
         this.mapViewer.setMapImageUrl(
             mapData.mapX,
             mapData.mapY,
@@ -244,7 +233,7 @@ export abstract class MapViewerRenderer extends RendererMainLoop {
         );
     }
 
-    checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
+    override checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
         closestInteractIndices: Map<number, number[]>): void {
         const frameCount = this.stats.frameCount;
 
