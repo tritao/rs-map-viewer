@@ -48,7 +48,7 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
         }
 
         if (!hideUi) {
-            setFps(Math.round(renderer.stats.frameTimeFps));
+            setFps(Math.round(renderer.renderer.stats.frameTimeFps));
             setCameraYaw(mapViewer.camera.getYaw());
         }
 

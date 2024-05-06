@@ -15,7 +15,6 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
-import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -24,12 +23,11 @@ const CACHED_MAP_IMAGE_PREFIX = "/map-images/";
 export class MapViewer {
     inputManager: InputManager = new InputManager();
     camera: Camera = new Camera(3242, -26, 3202, -245, 1862);
-
     pathfinder: Pathfinder = new Pathfinder();
 
     renderer: MapViewerRenderer;
 
-    loadedCache!: LoadedCache;
+    loadedCache: LoadedCache;
     cacheLoaders: CacheLoaders;
 
     // Settings

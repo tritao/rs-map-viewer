@@ -32,11 +32,10 @@ import {
 import { CacheLoaders } from "../../rs/cache/CacheLoaders";
 import { InputManager } from "../../util/InputManager";
 import { Camera } from "../Camera";
-import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { RendererStats } from "./RendererStats";
-import { RendererMainLoop } from "../../components/renderer/RendererMainLoop";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { MapSquareInfo } from "../MapManager";
+import { FrameStats, Renderer } from "../Renderer";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -73,8 +72,10 @@ function getMaxAnisotropy(mode: TextureFilterMode): number {
     }
 }
 
-export class WebGLMapRenderer extends RendererMainLoop {
+export class WebGLMapRenderer implements Renderer {
     inputManager: InputManager;
+    camera: Camera;
+
     dataLoader = new SdMapDataLoader();
     cacheLoaders: CacheLoaders;
 
@@ -82,9 +83,7 @@ export class WebGLMapRenderer extends RendererMainLoop {
     unloadDistance: number;
     lodDistance: number;
 
-    camera: Camera;
-    pathfinder: Pathfinder;
-
+    stats: FrameStats;
     rendererStats: RendererStats;
 
     app!: PicoApp;
@@ -157,10 +156,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
     loadObjs: boolean = true;
     loadNpcs: boolean = true;
 
-    // State
-    lastClientTick: number = 0;
-    lastTick: number = 0;
-
     interactions: Interactions[];
     hoveredMapIds: Set<number> = new Set();
     closestInteractIndices: Map<number, number[]> = new Map();
@@ -176,11 +171,9 @@ export class WebGLMapRenderer extends RendererMainLoop {
 
     isNewTextureAnim: boolean = false;
 
-    constructor(cacheLoaders: CacheLoaders,
-        inputManager: InputManager,
+    constructor(cacheLoaders: CacheLoaders, inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
-        camera: Camera, pathfinder: Pathfinder) {
-        super();
+        camera: Camera) {
         this.cacheLoaders = cacheLoaders;
         this.inputManager = inputManager;
         this.renderDistance = renderDistance;
@@ -188,7 +181,7 @@ export class WebGLMapRenderer extends RendererMainLoop {
         this.lodDistance = lodDistance;
 
         this.camera = camera;
-        this.pathfinder = pathfinder;
+        this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
         this.interactions = new Array(INTERACT_BUFFER_COUNT);
         for (let i = 0; i < INTERACT_BUFFER_COUNT; i++) {
@@ -200,8 +193,8 @@ export class WebGLMapRenderer extends RendererMainLoop {
         return isWebGL2Supported;
     }
 
-    async init(): Promise<void> {
-        this.app = PicoGL.createApp(this.canvas);
+    async init(canvas: HTMLCanvasElement): Promise<void> {
+        this.app = PicoGL.createApp(canvas);
         this.gl = this.app.gl as WebGL2RenderingContext;
 
         // hack to get the right multi draw extension for picogl
@@ -745,13 +738,13 @@ export class WebGLMapRenderer extends RendererMainLoop {
         }
     }
 
-    override onResize(width: number, height: number): void {
+    onResize(width: number, height: number): void {
         this.app.resize(width, height);
     }
 
-    override update(time: number, deltaTime: number) { }
+    update(time: number, deltaTime: number) { }
 
-    override render(time: number, deltaTime: number, resized: boolean): void {
+    render(time: number, deltaTime: number, resized: boolean): void {
         this.rendererStats.frameStart = performance.now();
         const timeSec = time / 1000;
 
@@ -911,6 +904,10 @@ export class WebGLMapRenderer extends RendererMainLoop {
                 timeSec,
             );
         }
+    }
+
+    onFrameEnd(): void {
+        this.stats.onFrameEnd();
     }
 
     addNpcRenderData(map: WebGLMapSquare) {
@@ -1173,7 +1170,7 @@ export class WebGLMapRenderer extends RendererMainLoop {
         this.checkInteractions(interactReady, this.interactBuffer, this.closestInteractIndices)
     }
 
-    override async cleanUp(): Promise<void> {
+    async cleanUp(): Promise<void> {
         this.quadArray?.delete();
         this.quadArray = undefined;
 

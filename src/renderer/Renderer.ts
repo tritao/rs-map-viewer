@@ -1,3 +1,22 @@
+export interface Renderer {
+    stats: FrameStats;
+
+    init(canvas: HTMLCanvasElement): Promise<void>;
+    initCache(): void;
+
+    cleanUp(): void;
+
+    render(
+        time: DOMHighResTimeStamp,
+        deltaTime: DOMHighResTimeStamp,
+        resized: boolean,
+    ): void;
+
+    onResize(width: number, height: number): void;
+
+    onFrameEnd(): void;
+}
+
 export class FrameStats {
     frameCount: number = 0;
 

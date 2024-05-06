@@ -28,13 +28,13 @@ enum VarType {
 
 export const MapViewerControls = memo(
     ({
-        renderer,
+        renderer: rendererMainLoop,
         hideUi: hidden,
         setRenderer,
         setHideUi,
         setDownloadProgress,
     }: MapViewerControlsProps): JSX.Element => {
-        const mapViewer = renderer.mapViewer;
+        const mapViewer = rendererMainLoop.mapViewer;
 
         const [projectionType, setProjectionType] = useState<ProjectionType>(
             mapViewer.camera.projectionType,
@@ -309,14 +309,14 @@ export const MapViewerControls = memo(
                 Render: folder(
                     {
                         "Fps Limit": {
-                            value: renderer.fpsLimit,
+                            value: rendererMainLoop.fpsLimit,
                             min: 1,
                             max: 999,
                             onChange: (v: number) => {
-                                renderer.fpsLimit = v;
+                                rendererMainLoop.fpsLimit = v;
                             },
                         },
-                        ...renderer.getControls(),
+                        ...rendererMainLoop.renderer.getControls(),
                     },
                     { collapsed: true },
                 ),
@@ -426,7 +426,7 @@ export const MapViewerControls = memo(
                 ),
             },
             [
-                renderer,
+                rendererMainLoop,
                 projectionType,
                 varType,
                 varId,

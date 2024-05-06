@@ -14,17 +14,39 @@ import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
+import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
+import { InputManager } from "../util/InputManager";
+import { CacheLoaders } from "../rs/cache/CacheLoaders";
+import { Camera } from "../renderer/Camera";
+import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 
-export class MapViewerRenderer extends WebGLMapRenderer {
+export class MapViewerRenderer extends RendererMainLoop {
+    inputManager: InputManager;
+    cacheLoaders: CacheLoaders;
     workerPool: RenderDataWorkerPool;
+
+    camera: Camera;
+    pathfinder: Pathfinder;
+
     mapManager: MapManager;
     mapManagerTime: number = 0;
 
+    renderer: WebGLMapRenderer;
+
+    // State
+    lastClientTick: number = 0;
+    lastTick: number = 0;
+
     constructor(public mapViewer: MapViewer) {
-        super(mapViewer.cacheLoaders, mapViewer.inputManager,
-            mapViewer.renderDistance, mapViewer.unloadDistance, mapViewer.lodDistance,
-            mapViewer.camera, mapViewer.pathfinder);
+        super();
+        this.inputManager = mapViewer.inputManager;
+        this.cacheLoaders = mapViewer.cacheLoaders;
         this.workerPool = mapViewer.workerPool;
+        this.camera = mapViewer.camera;
+        this.pathfinder = mapViewer.pathfinder;
+        this.renderer = new WebGLMapRenderer(
+            this.cacheLoaders, this.inputManager, mapViewer.renderDistance,
+            mapViewer.unloadDistance, mapViewer.lodDistance, this.camera)
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
             this.queueLoadMap.bind(this),
@@ -37,21 +59,21 @@ export class MapViewerRenderer extends WebGLMapRenderer {
             SdMapLoaderInput,
             SdMapData | undefined,
             SdMapDataLoader
-        >(this.dataLoader, {
+        >(this.renderer.dataLoader, {
             mapX,
             mapY,
-            maxLevel: this.maxLevel,
-            loadObjs: this.loadObjs,
-            loadNpcs: this.loadNpcs,
-            smoothTerrain: this.smoothTerrain,
-            minimizeDrawCalls: !this.hasMultiDraw,
-            loadedTextureIds: this.loadedTextureIds,
+            maxLevel: this.renderer.maxLevel,
+            loadObjs: this.renderer.loadObjs,
+            loadNpcs: this.renderer.loadNpcs,
+            smoothTerrain: this.renderer.smoothTerrain,
+            minimizeDrawCalls: !this.renderer.hasMultiDraw,
+            loadedTextureIds: this.renderer.loadedTextureIds,
         });
 
         if (mapData) {
-            if (this.isValidMapData(mapData)) {
+            if (this.renderer.isValidMapData(mapData)) {
                 this.mapManager.addMap(mapX, mapY);
-                this.mapsToLoad.push(mapData);
+                this.renderer.mapsToLoad.push(mapData);
 
                 this.mapViewer.setMapImageUrl(
                     mapData.mapX,
@@ -66,31 +88,30 @@ export class MapViewerRenderer extends WebGLMapRenderer {
         }
     }
 
-
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
-        let map = this.loadedMaps.get(mapInfo.mapId);
+        let map = this.renderer.loadedMaps.get(mapInfo.mapId);
         if (map) {
             map.delete();
-            this.loadedMaps.delete(mapInfo.mapId);
+            this.renderer.loadedMaps.delete(mapInfo.mapId);
         }
     }
 
     override async init() {
-        this.inputManager.init(this.canvas);
         super.init();
+        this.inputManager.init(this.canvas);
     }
 
-    override initCache(): void {
-        super.initCache();
+    initCache(): void {
+        this.renderer.initCache();
         this.mapManager.init(
-            this.cacheLoaders.mapFileIndex,
-            SceneBuilder.fillEmptyTerrain(this.cacheLoaders.cache.info),
+            this.renderer.cacheLoaders.mapFileIndex,
+            SceneBuilder.fillEmptyTerrain(this.renderer.cacheLoaders.cache.info),
         );
         this.mapManager.update(
-            this.camera,
-            this.stats.frameCount,
-            this.renderDistance,
-            this.unloadDistance,
+            this.renderer.camera,
+            this.renderer.stats.frameCount,
+            this.renderer.renderDistance,
+            this.renderer.unloadDistance,
         );
     }
 
@@ -102,17 +123,19 @@ export class MapViewerRenderer extends WebGLMapRenderer {
 
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
-        this.camera.update(this.app.width, this.app.height);
+        const app = this.renderer.app;
+        this.camera.update(app.width, app.height);
 
-        const renderDistance = this.renderDistance;
-        const frameCount = this.stats.frameCount;
+        const renderDistance = this.renderer.renderDistance;
+        const frameCount = this.renderer.stats.frameCount;
 
         const mapManagerStart = performance.now();
-        this.mapManager.update(this.camera, frameCount, renderDistance, this.unloadDistance);
+        this.mapManager.update(this.camera, frameCount, renderDistance,
+            this.renderer.unloadDistance);
         this.mapManagerTime = performance.now() - mapManagerStart;
 
-        this.visibleMapCount = this.mapManager.visibleMapCount;
-        this.visibleMaps = this.mapManager.visibleMaps;
+        this.renderer.visibleMapCount = this.mapManager.visibleMapCount;
+        this.renderer.visibleMaps = this.mapManager.visibleMaps;
 
         const timeSec = time / 1000;
 
@@ -130,9 +153,8 @@ export class MapViewerRenderer extends WebGLMapRenderer {
 
         const tickStart = performance.now();
         this.tickPass(timeSec, ticksElapsed, clientTicksElapsed);
-        this.rendererStats.tickTime = performance.now() - tickStart;
+        this.renderer.rendererStats.tickTime = performance.now() - tickStart;
     }
-
 
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
@@ -140,11 +162,11 @@ export class MapViewerRenderer extends WebGLMapRenderer {
         const seqFrameLoader = this.cacheLoaders.seqFrameLoader;
         const seqTypeLoader = this.cacheLoaders.seqTypeLoader;
 
-        this.npcRenderCount = 0;
-        for (let i = 0; i < this.visibleMapCount; i++) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.stats.frameCount)) {
+        this.renderer.npcRenderCount = 0;
+        for (let i = 0; i < this.renderer.visibleMapCount; i++) {
+            const mapInfo = this.renderer.visibleMaps[i];
+            const map = this.renderer.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.renderer.stats.frameCount)) {
                 continue;
             }
 
@@ -164,8 +186,12 @@ export class MapViewerRenderer extends WebGLMapRenderer {
                 }
             }
 
-            this.addNpcRenderData(map);
+            this.renderer.addNpcRenderData(map);
         }
+    }
+
+    override render(time: number, deltaTime: number, resized: boolean) {
+        super.render(time, deltaTime, resized);
     }
 
     handleInput(deltaTime: number) {
@@ -306,28 +332,30 @@ export class MapViewerRenderer extends WebGLMapRenderer {
     override onFrameEnd(): void {
         super.onFrameEnd();
 
-        const frameTime = performance.now() - this.rendererStats.frameStart;
+        const frameStats = this.renderer.stats;
+        const rendererStats = this.renderer.rendererStats;
+        const frameTime = performance.now() - rendererStats.frameStart;
 
         if (this.inputManager.isKeyDown("KeyH")) {
             this.mapViewer.debugText = `MapManager: ${this.mapManagerTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyJ")) {
-            this.mapViewer.debugText = `Interactions: ${this.rendererStats.interactionsTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Interactions: ${rendererStats.interactionsTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyK")) {
-            this.mapViewer.debugText = `Tick: ${this.rendererStats.tickTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Tick: ${rendererStats.tickTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyL")) {
-            this.mapViewer.debugText = `Opaque Pass: ${this.rendererStats.opaquePassTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Opaque Pass: ${rendererStats.opaquePassTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyB")) {
-            this.mapViewer.debugText = `Opaque Npc Pass: ${this.rendererStats.opaqueNpcPassTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Opaque Npc Pass: ${rendererStats.opaqueNpcPassTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyN")) {
-            this.mapViewer.debugText = `Transparent Pass: ${this.rendererStats.transparentPassTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Transparent Pass: ${rendererStats.transparentPassTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyM")) {
-            this.mapViewer.debugText = `Transparent Npc Pass: ${this.rendererStats.transparentNpcPassTime.toFixed(
+            this.mapViewer.debugText = `Transparent Npc Pass: ${rendererStats.transparentNpcPassTime.toFixed(
                 2,
             )}ms`;
         }
@@ -335,7 +363,7 @@ export class MapViewerRenderer extends WebGLMapRenderer {
             this.mapViewer.debugText = `Frame Time: ${frameTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyU")) {
-            this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Frame Time Js: ${frameStats.frameTimeJs.toFixed(2)}ms`;
         }
 
         if (window.wallpaperFpsLimit !== undefined) {
@@ -352,9 +380,9 @@ export class MapViewerRenderer extends WebGLMapRenderer {
         // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
     }
 
-    override checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
+    checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
         closestInteractIndices: Map<number, number[]>): void {
-        const frameCount = this.stats.frameCount;
+        const frameCount = this.renderer.stats.frameCount;
 
         const isMouseDown = this.inputManager.dragX !== -1 || this.inputManager.dragY !== -1;
         const picked = this.inputManager.pickX !== -1 && this.inputManager.pickY !== -1;
