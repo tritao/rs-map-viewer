@@ -22,7 +22,6 @@ import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
 import { INTERACTION_RADIUS, INTERACT_BUFFER_COUNT, Interactions } from "../Interactions";
 import { WebGLMapSquare } from "./WebGLMapSquare";
 import { SdMapData } from "../loader/SdMapData";
-import { SdMapDataLoader } from "../loader/SdMapDataLoader";
 import {
     FRAME_FXAA_PROGRAM,
     FRAME_PROGRAM,
@@ -73,11 +72,9 @@ function getMaxAnisotropy(mode: TextureFilterMode): number {
 }
 
 export class WebGLMapRenderer implements Renderer {
+    cacheLoaders: CacheLoaders;
     inputManager: InputManager;
     camera: Camera;
-
-    dataLoader = new SdMapDataLoader();
-    cacheLoaders: CacheLoaders;
 
     renderDistance: number;
     unloadDistance: number;

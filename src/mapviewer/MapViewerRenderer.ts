@@ -30,6 +30,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     mapManager: MapManager;
     mapManagerTime: number = 0;
+    dataLoader: SdMapDataLoader;
 
     renderer: WebGLMapRenderer;
 
@@ -52,6 +53,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.queueLoadMap.bind(this),
             this.removeLoadedMap.bind(this),
         );
+        this.dataLoader = new SdMapDataLoader();
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
@@ -59,7 +61,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             SdMapLoaderInput,
             SdMapData | undefined,
             SdMapDataLoader
-        >(this.renderer.dataLoader, {
+        >(this.dataLoader, {
             mapX,
             mapY,
             maxLevel: this.renderer.maxLevel,
