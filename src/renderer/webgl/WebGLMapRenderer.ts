@@ -749,28 +749,11 @@ export class WebGLMapRenderer extends RendererMainLoop {
         this.app.resize(width, height);
     }
 
-    override update(time: number, deltaTime: number) {
-        this.camera.update(this.app.width, this.app.height);
-    }
+    override update(time: number, deltaTime: number) { }
 
     override render(time: number, deltaTime: number, resized: boolean): void {
         this.rendererStats.frameStart = performance.now();
-
-        const frameCount = this.stats.frameCount;
-
         const timeSec = time / 1000;
-
-        const tick = Math.floor(timeSec / 0.6);
-        const ticksElapsed = Math.min(tick - this.lastTick, 1);
-        if (ticksElapsed > 0) {
-            this.lastTick = tick;
-        }
-
-        const clientTick = Math.floor(timeSec / 0.02);
-        const clientTicksElapsed = Math.min(clientTick - this.lastClientTick, 50);
-        if (clientTicksElapsed > 0) {
-            this.lastClientTick = clientTick;
-        }
 
         if (this.needsFramebufferUpdate) {
             this.initFramebuffer();
@@ -817,7 +800,7 @@ export class WebGLMapRenderer extends RendererMainLoop {
             .set(10, this.isNewTextureAnim as any)
             .update();
 
-        const currInteractions = this.interactions[frameCount % this.interactions.length];
+        const currInteractions = this.interactions[this.stats.frameCount % this.interactions.length];
 
         const interactionsStart = performance.now();
         if (!this.inputManager.isPointerLock()) {
@@ -841,10 +824,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
         this.app.clearColor(0.0, 0.0, 0.0, 1.0);
         this.app.clear();
         this.gl.clearBufferfv(PicoGL.COLOR, 0, this.skyColor);
-
-        const tickStart = performance.now();
-        this.tickPass(timeSec, ticksElapsed, clientTicksElapsed);
-        this.rendererStats.tickTime = performance.now() - tickStart;
 
         const npcDataTextureIndex = this.updateNpcDataTexture();
         const npcDataTexture = this.npcDataTextureBuffer[npcDataTextureIndex];
@@ -931,40 +910,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
                 mapData,
                 timeSec,
             );
-        }
-    }
-
-    tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
-        const cycle = time / 0.02;
-
-        const seqFrameLoader = this.cacheLoaders.seqFrameLoader;
-        const seqTypeLoader = this.cacheLoaders.seqTypeLoader;
-
-        this.npcRenderCount = 0;
-        for (let i = 0; i < this.visibleMapCount; i++) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.stats.frameCount)) {
-                continue;
-            }
-
-            for (const loc of map.locsAnimated) {
-                loc.update(seqFrameLoader, cycle);
-            }
-
-            for (let t = 0; t < ticksElapsed; t++) {
-                for (const npc of map.npcs) {
-                    npc.updateServerMovement(this.pathfinder, map.borderSize, map.collisionMaps);
-                }
-            }
-
-            for (let t = 0; t < clientTicksElapsed; t++) {
-                for (const npc of map.npcs) {
-                    npc.updateMovement(seqTypeLoader, seqFrameLoader);
-                }
-            }
-
-            this.addNpcRenderData(map);
         }
     }
 
