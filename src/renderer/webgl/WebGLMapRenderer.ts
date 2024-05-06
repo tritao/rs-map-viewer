@@ -1,7 +1,4 @@
-import Denque from "denque";
-import { vec2, vec4 } from "gl-matrix";
-import { folder } from "leva";
-import { Schema } from "leva/dist/declarations/src/types";
+import { vec2 } from "gl-matrix";
 import {
     DrawCall,
     Framebuffer,
@@ -16,7 +13,6 @@ import {
 } from "picogl";
 
 import { createTextureArray } from "./PicoTexture";
-import { Scene } from "../../rs/scene/Scene";
 import { isWebGL2Supported, pixelRatio } from "../../util/DeviceUtil";
 import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
 import { INTERACTION_RADIUS, INTERACT_BUFFER_COUNT, Interactions } from "../Interactions";
@@ -33,60 +29,19 @@ import { InputManager } from "../../util/InputManager";
 import { Camera } from "../Camera";
 import { RendererStats } from "./RendererStats";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { MapSquareInfo } from "../MapManager";
-import { FrameStats, Renderer } from "../Renderer";
+import { FrameStats } from "../Renderer";
+import { getMaxAnisotropy, MapRenderer, TextureFilterMode } from "../MapRenderer";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
 
-
-interface ColorRgb {
-    r: number;
-    g: number;
-    b: number;
-}
-
-enum TextureFilterMode {
-    DISABLED,
-    BILINEAR,
-    TRILINEAR,
-    ANISOTROPIC_2X,
-    ANISOTROPIC_4X,
-    ANISOTROPIC_8X,
-    ANISOTROPIC_16X,
-}
-
-function getMaxAnisotropy(mode: TextureFilterMode): number {
-    switch (mode) {
-        case TextureFilterMode.ANISOTROPIC_2X:
-            return 2;
-        case TextureFilterMode.ANISOTROPIC_4X:
-            return 4;
-        case TextureFilterMode.ANISOTROPIC_8X:
-            return 8;
-        case TextureFilterMode.ANISOTROPIC_16X:
-            return 16;
-        default:
-            return 1;
-    }
-}
-
-export class WebGLMapRenderer implements Renderer {
+export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare> {
     cacheLoaders: CacheLoaders;
     inputManager: InputManager;
     camera: Camera;
 
-    renderDistance: number;
-    unloadDistance: number;
-    lodDistance: number;
-
-    stats: FrameStats;
-    rendererStats: RendererStats;
-
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
-
-    hasMultiDraw: boolean = false;
 
     quadPositions?: VertexBuffer;
     quadArray?: VertexArray;
@@ -105,9 +60,6 @@ export class WebGLMapRenderer implements Renderer {
     cameraPosUni: vec2 = vec2.fromValues(0, 0);
     resolutionUni: vec2 = vec2.fromValues(0, 0);
 
-    // Framebuffers
-    needsFramebufferUpdate: boolean = false;
-
     colorTarget?: Renderbuffer;
     interactTarget?: Renderbuffer;
     depthTarget?: Renderbuffer;
@@ -120,48 +72,19 @@ export class WebGLMapRenderer implements Renderer {
     interactFramebuffer?: Framebuffer;
 
     // Textures
-    textureFilterMode: TextureFilterMode = TextureFilterMode.ANISOTROPIC_16X;
-
     textureArray?: Texture;
     textureMaterials?: Texture;
 
     textureIds: number[] = [];
-    loadedTextureIds: Set<number> = new Set();
-
-    mapsToLoad: Denque<SdMapData> = new Denque();
-    loadedMaps: Map<number, WebGLMapSquare> = new Map();
 
     frameDrawCall?: DrawCall;
     frameFxaaDrawCall?: DrawCall;
-
-    // Settings
-    maxLevel: number = Scene.MAX_LEVELS - 1;
-
-    skyColor: vec4 = vec4.fromValues(0, 0, 0, 1);
-    fogDepth: number = 16;
-
-    brightness: number = 1.0;
-    colorBanding: number = 255;
-
-    smoothTerrain: boolean = false;
-
-    cullBackFace: boolean = true;
-
-    msaaEnabled: boolean = false;
-    fxaaEnabled: boolean = false;
-
-    loadObjs: boolean = true;
-    loadNpcs: boolean = true;
 
     interactions: Interactions[];
     hoveredMapIds: Set<number> = new Set();
     closestInteractIndices: Map<number, number[]> = new Map();
     interactBuffer?: Float32Array;
 
-    visibleMapCount: number = 0;
-    visibleMaps: MapSquareInfo[] = []
-
-    npcRenderCount: number = 0;
     npcRenderData: Uint16Array = new Uint16Array(16 * 4);
 
     npcDataTextureBuffer: (Texture | undefined)[] = new Array(5);
@@ -171,12 +94,9 @@ export class WebGLMapRenderer implements Renderer {
     constructor(cacheLoaders: CacheLoaders, inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
         camera: Camera) {
+        super(cacheLoaders.cache, renderDistance, unloadDistance, lodDistance);
         this.cacheLoaders = cacheLoaders;
         this.inputManager = inputManager;
-        this.renderDistance = renderDistance;
-        this.unloadDistance = unloadDistance;
-        this.lodDistance = lodDistance;
-
         this.camera = camera;
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
@@ -188,6 +108,10 @@ export class WebGLMapRenderer implements Renderer {
 
     static isSupported(): boolean {
         return isWebGL2Supported;
+    }
+
+    getViewportDimensions(): { width: number; height: number; } {
+        return { width: this.app.width, height: this.app.height };
     }
 
     async init(canvas: HTMLCanvasElement): Promise<void> {
@@ -524,120 +448,6 @@ export class WebGLMapRenderer implements Renderer {
         });
     }
 
-    getControls(): Schema {
-        return {
-            "Max Level": {
-                value: this.maxLevel,
-                min: 0,
-                max: 3,
-                step: 1,
-                onChange: (v: number) => {
-                    this.setMaxLevel(v);
-                },
-            },
-            Sky: {
-                r: this.skyColor[0] * 255,
-                g: this.skyColor[1] * 255,
-                b: this.skyColor[2] * 255,
-                onChange: (v: ColorRgb) => {
-                    this.setSkyColor(v.r, v.g, v.b);
-                },
-            },
-            "Fog Depth": {
-                value: this.fogDepth,
-                min: 0,
-                max: 256,
-                step: 8,
-                onChange: (v: number) => {
-                    this.fogDepth = v;
-                },
-            },
-            Brightness: {
-                value: 1,
-                min: 0,
-                max: 4,
-                step: 1,
-                onChange: (v: number) => {
-                    this.brightness = 1.0 - v * 0.1;
-                },
-            },
-            "Color Banding": {
-                value: 50,
-                min: 0,
-                max: 100,
-                step: 1,
-                onChange: (v: number) => {
-                    this.colorBanding = 255 - v * 2;
-                },
-            },
-            "Texture Filtering": {
-                value: this.textureFilterMode,
-                options: {
-                    Disabled: TextureFilterMode.DISABLED,
-                    Bilinear: TextureFilterMode.BILINEAR,
-                    Trilinear: TextureFilterMode.TRILINEAR,
-                    "Anisotropic 2x": TextureFilterMode.ANISOTROPIC_2X,
-                    "Anisotropic 4x": TextureFilterMode.ANISOTROPIC_4X,
-                    "Anisotropic 8x": TextureFilterMode.ANISOTROPIC_8X,
-                    "Anisotropic 16x": TextureFilterMode.ANISOTROPIC_16X,
-                },
-                onChange: (v: TextureFilterMode) => {
-                    if (v === this.textureFilterMode) {
-                        return;
-                    }
-                    this.textureFilterMode = v;
-                    this.updateTextureFiltering();
-                },
-            },
-            "Smooth Terrain": {
-                value: this.smoothTerrain,
-                onChange: (v: boolean) => {
-                    this.setSmoothTerrain(v);
-                },
-            },
-            "Cull Back-faces": {
-                value: this.cullBackFace,
-                onChange: (v: boolean) => {
-                    this.cullBackFace = v;
-                },
-            },
-            "Anti-Aliasing": folder(
-                {
-                    MSAA: {
-                        value: this.msaaEnabled,
-                        onChange: (v: boolean) => {
-                            this.setMsaa(v);
-                        },
-                    },
-                    FXAA: {
-                        value: this.fxaaEnabled,
-                        onChange: (v: boolean) => {
-                            this.setFxaa(v);
-                        },
-                    },
-                },
-                { collapsed: true },
-            ),
-            Entity: folder(
-                {
-                    Items: {
-                        value: this.loadObjs,
-                        onChange: (v: boolean) => {
-                            this.setLoadObjs(v);
-                        },
-                    },
-                    Npcs: {
-                        value: this.loadNpcs,
-                        onChange: (v: boolean) => {
-                            this.setLoadNpcs(v);
-                        },
-                    },
-                },
-                { collapsed: true },
-            ),
-        };
-    }
-
     loadMap(
         mainProgram: Program,
         mainAlphaProgram: Program,
@@ -669,70 +479,6 @@ export class WebGLMapRenderer implements Renderer {
         );
 
         this.updateTextureArray(mapData.loadedTextures);
-    }
-
-    isValidMapData(mapData: SdMapData): boolean {
-        return (
-            mapData.cacheName === this.cacheLoaders.cache.info.name &&
-            mapData.maxLevel === this.maxLevel &&
-            mapData.loadObjs === this.loadObjs &&
-            mapData.loadNpcs === this.loadNpcs &&
-            mapData.smoothTerrain === this.smoothTerrain
-        );
-    }
-
-    clearMaps(): void {
-        this.mapsToLoad.clear();
-    }
-
-    setMaxLevel(maxLevel: number): void {
-        const updated = this.maxLevel !== maxLevel;
-        this.maxLevel = maxLevel;
-        if (updated) {
-            this.clearMaps();
-        }
-    }
-
-    setSkyColor(r: number, g: number, b: number) {
-        this.skyColor[0] = r / 255;
-        this.skyColor[1] = g / 255;
-        this.skyColor[2] = b / 255;
-    }
-
-    setSmoothTerrain(enabled: boolean): void {
-        const updated = this.smoothTerrain !== enabled;
-        this.smoothTerrain = enabled;
-        if (updated) {
-            this.clearMaps();
-        }
-    }
-
-    setMsaa(enabled: boolean): void {
-        const updated = this.msaaEnabled !== enabled;
-        this.msaaEnabled = enabled;
-        if (updated) {
-            this.needsFramebufferUpdate = true;
-        }
-    }
-
-    setFxaa(enabled: boolean): void {
-        this.fxaaEnabled = enabled;
-    }
-
-    setLoadObjs(enabled: boolean): void {
-        const updated = this.loadObjs !== enabled;
-        this.loadObjs = enabled;
-        if (updated) {
-            this.clearMaps();
-        }
-    }
-
-    setLoadNpcs(enabled: boolean): void {
-        const updated = this.loadNpcs !== enabled;
-        this.loadNpcs = enabled;
-        if (updated) {
-            this.clearMaps();
-        }
     }
 
     onResize(width: number, height: number): void {

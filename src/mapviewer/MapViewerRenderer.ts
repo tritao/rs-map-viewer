@@ -19,6 +19,7 @@ import { InputManager } from "../util/InputManager";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
+import { MapRenderer } from "../renderer/MapRenderer";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -32,7 +33,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManagerTime: number = 0;
     dataLoader: SdMapDataLoader;
 
-    renderer: WebGLMapRenderer;
+    renderer: MapRenderer;
 
     // State
     lastClientTick: number = 0;
@@ -75,7 +76,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (mapData) {
             if (this.renderer.isValidMapData(mapData)) {
                 this.mapManager.addMap(mapX, mapY);
-                this.renderer.mapsToLoad.push(mapData);
+                this.renderer.addMap(mapData);
 
                 this.mapViewer.setMapImageUrl(
                     mapData.mapX,
@@ -91,11 +92,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
-        let map = this.renderer.loadedMaps.get(mapInfo.mapId);
-        if (map) {
-            map.delete();
-            this.renderer.loadedMaps.delete(mapInfo.mapId);
-        }
+        this.renderer.removeMap(mapInfo);
     }
 
     override async init() {
@@ -106,11 +103,11 @@ export class MapViewerRenderer extends RendererMainLoop {
     initCache(): void {
         this.renderer.initCache();
         this.mapManager.init(
-            this.renderer.cacheLoaders.mapFileIndex,
-            SceneBuilder.fillEmptyTerrain(this.renderer.cacheLoaders.cache.info),
+            this.cacheLoaders.mapFileIndex,
+            SceneBuilder.fillEmptyTerrain(this.cacheLoaders.cache.info),
         );
         this.mapManager.update(
-            this.renderer.camera,
+            this.camera,
             this.renderer.stats.frameCount,
             this.renderer.renderDistance,
             this.renderer.unloadDistance,
@@ -125,8 +122,9 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
-        const app = this.renderer.app;
-        this.camera.update(app.width, app.height);
+
+        const { width, height } = this.renderer.getViewportDimensions();
+        this.camera.update(width, height);
 
         const renderDistance = this.renderer.renderDistance;
         const frameCount = this.renderer.stats.frameCount;
@@ -167,7 +165,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderer.npcRenderCount = 0;
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
-            const map = this.renderer.loadedMaps.get(mapInfo.mapId)!;
+            const map = this.renderer.getMap(mapInfo.mapId)!;
             if (!map || !map.canRender(this.renderer.stats.frameCount)) {
                 continue;
             }
