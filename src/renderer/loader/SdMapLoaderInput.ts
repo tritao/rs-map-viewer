@@ -7,6 +7,8 @@ export type SdMapLoaderInput = {
     loadNpcs: boolean;
     loadLocs: boolean;
 
+    modelId: number|null;
+
     smoothTerrain: boolean;
 
     minimizeDrawCalls: boolean;

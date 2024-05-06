@@ -555,6 +555,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         {
             mapX,
             mapY,
+            modelId,
             maxLevel,
             loadObjs,
             loadNpcs,
@@ -630,6 +631,47 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             // Animated locs
             locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
             console.log(`animated locs: ${locsAnimated.length}`);
+        } else if(modelId) {
+            const modelData = objModelLoader.modelLoader.getModel(modelId);
+            if (modelData != null) {
+                console.log('cannot load model data for model id', modelId);
+            }
+            const model = modelData!.light(
+                objModelLoader.textureLoader,
+                0 + 64,
+                0 + 768,
+                -50,
+                -10,
+                -50,
+            );
+
+            const borderSize = 6;
+            const sceneOffset = borderSize * -128;
+
+            const sceneLocX = 832;
+            const sceneLocY = 832;
+
+            const sceneX = sceneLocX + sceneOffset;
+            const sceneZ = sceneLocY + sceneOffset;
+            const sceneHeight = -176;
+
+            const sceneModels: SceneModel[] = [
+                {
+                    sceneX: sceneX,
+                    sceneZ: sceneZ,
+                    heightOffset: 0,
+                    level: 0,
+                    contourGround: ContourGroundType.NONE,
+                    priority: 0,
+                    interactType: InteractType.NONE,
+                    interactId: 0,
+                    model: model,
+                    sceneHeight: sceneHeight,
+                    lowDetail: false,
+                    forceMerge: false
+                }];
+
+            addSceneModels(this.modelHashBuf!, textureLoader, sceneBuf, sceneModels, minimizeDrawCalls);
         }
 
         // Npcs
@@ -674,11 +716,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(
-            `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
-            mapX,
-            mapY,
-        );
+        //console.log(
+        //    `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
+        //    mapX,
+        //    mapY,
+        //);
 
         // Lod (merged)
         const drawRangesLod = sceneBuf.drawCommandsLod.map((cmd) =>
@@ -688,11 +730,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(
-            `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
-            mapX,
-            mapY,
-        );
+        //console.log(
+        //    `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
+        //    mapX,
+        //    mapY,
+        //);
 
         // Interact (non merged)
         const drawRangesInteract = sceneBuf.drawCommandsInteract.map((cmd) =>
@@ -702,7 +744,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
+        //console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
 
         // Interact Lod (non merged)
         const drawRangesInteractLod = sceneBuf.drawCommandsInteractLod.map((cmd) =>
@@ -780,11 +822,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         const totalBytes = transferables.reduce((sum, buf) => sum + buf.byteLength, 0);
 
-        console.log(
-            `total bytes: ${totalBytes} ${mapX},${mapY}`,
-            sceneBuf.usedTextureIds,
-            loadedTextures.size,
-        );
+        //console.log(
+        //    `total bytes: ${totalBytes} ${mapX},${mapY}`,
+        //    sceneBuf.usedTextureIds,
+        //    loadedTextures.size,
+        //);
 
         return {
             data: {
