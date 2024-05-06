@@ -10,10 +10,12 @@ export function RendererCanvas({ renderer }: RendererCanvasProps): JSX.Element {
     const divRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!divRef.current) {
+        const current = divRef.current;
+
+        if (!current) {
             return;
         }
-        divRef.current.appendChild(renderer.canvas);
+        current.appendChild(renderer.canvas);
 
         renderer.init().then(() => {
             renderer.start();
@@ -21,7 +23,7 @@ export function RendererCanvas({ renderer }: RendererCanvasProps): JSX.Element {
 
         return () => {
             renderer.stop();
-            divRef.current?.removeChild(renderer.canvas);
+            current?.removeChild(renderer.canvas);
         };
     }, [renderer]);
 
