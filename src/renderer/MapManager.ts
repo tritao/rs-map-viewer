@@ -13,6 +13,7 @@ function getMapDistance(x: number, z: number, mapX: number, mapY: number): numbe
 }
 
 type LoadMapFunction = (mapX: number, mapY: number) => void;
+type RemoveMapFunction = (mapInfo: MapSquareInfo) => void;
 
 export interface MapSquare {
     mapX: number;
@@ -23,7 +24,15 @@ export interface MapSquare {
     delete(): void;
 }
 
-export class MapManager<T extends MapSquare> {
+export class MapSquareInfo {
+    mapId: number;
+
+    constructor(readonly mapX: number, readonly mapY: number) {
+        this.mapId = getMapSquareId(mapX, mapY);
+    }
+}
+
+export class MapManager {
     static readonly MAX_MAP_X = 100;
     static readonly MAX_MAP_Y = 200;
 
@@ -41,13 +50,14 @@ export class MapManager<T extends MapSquare> {
     renderDistMapIds: number[] = [];
 
     visibleMapCount: number = 0;
-    visibleMaps: T[] = [];
+    visibleMaps: MapSquareInfo[] = [];
 
-    mapSquares: Map<number, T> = new Map();
+    mapSquares: Map<number, MapSquareInfo> = new Map();
 
     constructor(
         readonly maxQueuedTasks: number,
         readonly loadMapFunction: LoadMapFunction,
+        readonly removeMapFunction: RemoveMapFunction,
     ) {}
 
     init(mapFileIndex: MapFileIndex, fillEmptyTerrain: boolean): void {
@@ -98,27 +108,27 @@ export class MapManager<T extends MapSquare> {
         this.invalidMapIds.clear();
         this.loadingMapIds.clear();
         for (const map of this.mapSquares.values()) {
-            map.delete();
+            this.removeMapFunction(map);
         }
         this.mapSquares.clear();
     }
 
-    getMap(mapX: number, mapY: number): T | undefined {
+    getMap(mapX: number, mapY: number): MapSquareInfo | undefined {
         return this.mapSquares.get(getMapSquareId(mapX, mapY));
     }
 
-    addMap(mapX: number, mapY: number, mapSquare: T): void {
+    addMap(mapX: number, mapY: number): void {
         const mapId = getMapSquareId(mapX, mapY);
         this.loadingMapIds.delete(mapId);
         this.invalidMapIds.delete(mapId);
-        this.mapSquares.set(mapId, mapSquare);
+        this.mapSquares.set(mapId, new MapSquareInfo(mapX, mapY));
     }
 
     removeMap(mapX: number, mapY: number): void {
         const mapId = getMapSquareId(mapX, mapY);
         const map = this.mapSquares.get(mapId);
         if (map) {
-            map.delete();
+            this.removeMapFunction(map);
             this.mapSquares.delete(mapId);
         }
     }
@@ -230,9 +240,7 @@ export class MapManager<T extends MapSquare> {
             }
             const mapSquare = this.mapSquares.get(mapId);
             if (mapSquare) {
-                if (mapSquare.canRender(frameCount)) {
-                    this.visibleMaps[this.visibleMapCount++] = mapSquare;
-                }
+                this.visibleMaps[this.visibleMapCount++] = mapSquare;
             } else {
                 this.loadMap(mapX, mapY);
             }

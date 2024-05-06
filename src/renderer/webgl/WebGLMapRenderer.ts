@@ -23,7 +23,6 @@ import { INTERACTION_RADIUS, INTERACT_BUFFER_COUNT, Interactions } from "../Inte
 import { WebGLMapSquare } from "./WebGLMapSquare";
 import { SdMapData } from "../loader/SdMapData";
 import { SdMapDataLoader } from "../loader/SdMapDataLoader";
-import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
 import {
     FRAME_FXAA_PROGRAM,
     FRAME_PROGRAM,
@@ -32,13 +31,12 @@ import {
 } from "./shaders/Shaders";
 import { CacheLoaders } from "../../rs/cache/CacheLoaders";
 import { InputManager } from "../../util/InputManager";
-import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
-import { MapManager } from "../MapManager";
-import { SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { Camera } from "../Camera";
 import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { RendererStats } from "./RendererStats";
 import { RendererMainLoop } from "../../components/renderer/RendererMainLoop";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import { MapSquareInfo } from "../MapManager";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -77,10 +75,8 @@ function getMaxAnisotropy(mode: TextureFilterMode): number {
 
 export class WebGLMapRenderer extends RendererMainLoop {
     inputManager: InputManager;
-    workerPool: RenderDataWorkerPool;
     dataLoader = new SdMapDataLoader();
     cacheLoaders: CacheLoaders;
-    mapManager: MapManager<WebGLMapSquare>;
 
     renderDistance: number;
     unloadDistance: number;
@@ -137,6 +133,7 @@ export class WebGLMapRenderer extends RendererMainLoop {
     loadedTextureIds: Set<number> = new Set();
 
     mapsToLoad: Denque<SdMapData> = new Denque();
+    loadedMaps: Map<number, WebGLMapSquare> = new Map();
 
     frameDrawCall?: DrawCall;
     frameFxaaDrawCall?: DrawCall;
@@ -169,6 +166,9 @@ export class WebGLMapRenderer extends RendererMainLoop {
     closestInteractIndices: Map<number, number[]> = new Map();
     interactBuffer?: Float32Array;
 
+    visibleMapCount: number = 0;
+    visibleMaps: MapSquareInfo[] = []
+
     npcRenderCount: number = 0;
     npcRenderData: Uint16Array = new Uint16Array(16 * 4);
 
@@ -177,20 +177,16 @@ export class WebGLMapRenderer extends RendererMainLoop {
     isNewTextureAnim: boolean = false;
 
     constructor(cacheLoaders: CacheLoaders,
-        inputManager: InputManager, workerPool: RenderDataWorkerPool,
+        inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
         camera: Camera, pathfinder: Pathfinder) {
         super();
         this.cacheLoaders = cacheLoaders;
         this.inputManager = inputManager;
-        this.workerPool = workerPool;
         this.renderDistance = renderDistance;
         this.unloadDistance = unloadDistance;
         this.lodDistance = lodDistance;
-        this.mapManager = new MapManager(
-            workerPool.size * 2,
-            this.queueLoadMap.bind(this),
-        );
+
         this.camera = camera;
         this.pathfinder = pathfinder;
         this.rendererStats = new RendererStats();
@@ -344,17 +340,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
     initCache(): void {
         const cache = this.cacheLoaders.cache;
         this.isNewTextureAnim = cache.info.game === "runescape" && cache.info.revision >= 681;
-
-        this.mapManager.init(
-            this.cacheLoaders.mapFileIndex,
-            SceneBuilder.fillEmptyTerrain(this.cacheLoaders.cache.info),
-        );
-        this.mapManager.update(
-            this.camera,
-            this.stats.frameCount,
-            this.renderDistance,
-            this.unloadDistance,
-        );
 
         if (this.app) {
             this.initTextures();
@@ -663,33 +648,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
         };
     }
 
-    async queueLoadMap(mapX: number, mapY: number): Promise<void> {
-        const mapData = await this.workerPool.queueLoad<
-            SdMapLoaderInput,
-            SdMapData | undefined,
-            SdMapDataLoader
-        >(this.dataLoader, {
-            mapX,
-            mapY,
-            maxLevel: this.maxLevel,
-            loadObjs: this.loadObjs,
-            loadNpcs: this.loadNpcs,
-            smoothTerrain: this.smoothTerrain,
-            minimizeDrawCalls: !this.hasMultiDraw,
-            loadedTextureIds: this.loadedTextureIds,
-        });
-
-        if (mapData) {
-            if (this.isValidMapData(mapData)) {
-                this.mapsToLoad.push(mapData);
-            }
-        } else {
-            this.mapManager.addInvalidMap(mapX, mapY);
-        }
-    }
-
-    onMapLoad(mapData: SdMapData) {}
-
     loadMap(
         mainProgram: Program,
         mainAlphaProgram: Program,
@@ -701,13 +659,8 @@ export class WebGLMapRenderer extends RendererMainLoop {
         time: number,
     ): void {
         const { mapX, mapY } = mapData;
-
-        this.onMapLoad(mapData);
-
-        const frameCount = this.stats.frameCount;
-        this.mapManager.addMap(
-            mapX,
-            mapY,
+        this.loadedMaps.set(
+            getMapSquareId(mapX, mapY),
             WebGLMapSquare.load(
                 this.cacheLoaders.seqTypeLoader,
                 this.cacheLoaders.npcTypeLoader,
@@ -721,7 +674,7 @@ export class WebGLMapRenderer extends RendererMainLoop {
                 sceneUniformBuffer,
                 mapData,
                 time,
-                frameCount,
+                this.stats.frameCount,
             ),
         );
 
@@ -739,7 +692,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
     }
 
     clearMaps(): void {
-        this.mapManager.cleanUp();
         this.mapsToLoad.clear();
     }
 
@@ -799,13 +751,6 @@ export class WebGLMapRenderer extends RendererMainLoop {
 
     override update(time: number, deltaTime: number) {
         this.camera.update(this.app.width, this.app.height);
-
-        const renderDistance = this.renderDistance;
-        const frameCount = this.stats.frameCount;
-
-        const mapManagerStart = performance.now();
-        this.mapManager.update(this.camera, frameCount, renderDistance, this.unloadDistance);
-        this.rendererStats.mapManagerTime = performance.now() - mapManagerStart;
     }
 
     override render(time: number, deltaTime: number, resized: boolean): void {
@@ -996,8 +941,12 @@ export class WebGLMapRenderer extends RendererMainLoop {
         const seqTypeLoader = this.cacheLoaders.seqTypeLoader;
 
         this.npcRenderCount = 0;
-        for (let i = 0; i < this.mapManager.visibleMapCount; i++) {
-            const map = this.mapManager.visibleMaps[i];
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
 
             for (const loc of map.locsAnimated) {
                 loc.update(seqFrameLoader, cycle);
@@ -1095,8 +1044,13 @@ export class WebGLMapRenderer extends RendererMainLoop {
         const cameraMapX = this.camera.getMapX();
         const cameraMapY = this.camera.getMapY();
 
-        for (let i = 0; i < this.mapManager.visibleMapCount; i++) {
-            const map = this.mapManager.visibleMaps[i];
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
             const dist = map.getMapDistance(cameraMapX, cameraMapY);
 
             const isInteract = this.hoveredMapIds.has(map.id);
@@ -1126,8 +1080,13 @@ export class WebGLMapRenderer extends RendererMainLoop {
             return;
         }
 
-        for (let i = 0; i < this.mapManager.visibleMapCount; i++) {
-            const map = this.mapManager.visibleMaps[i];
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
             const npcs = map.npcs;
 
             if (npcs.length === 0) {
@@ -1165,8 +1124,13 @@ export class WebGLMapRenderer extends RendererMainLoop {
         const cameraMapX = this.camera.getMapX();
         const cameraMapY = this.camera.getMapY();
 
-        for (let i = this.mapManager.visibleMapCount - 1; i >= 0; i--) {
-            const map = this.mapManager.visibleMaps[i];
+        for (let i = this.visibleMapCount - 1; i >= 0; i--) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
             const dist = map.getMapDistance(cameraMapX, cameraMapY);
 
             const isInteract = this.hoveredMapIds.has(map.id);
@@ -1201,8 +1165,13 @@ export class WebGLMapRenderer extends RendererMainLoop {
             return;
         }
 
-        for (let i = this.mapManager.visibleMapCount - 1; i >= 0; i--) {
-            const map = this.mapManager.visibleMaps[i];
+        for (let i = this.visibleMapCount - 1; i >= 0; i--) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
             const npcs = map.npcs;
 
             if (npcs.length === 0) {

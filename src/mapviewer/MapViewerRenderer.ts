@@ -9,13 +9,70 @@ import { MenuTargetType } from "../rs/MenuEntry";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { SdMapData } from "../renderer/loader/SdMapData";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
+import { MapManager, MapSquareInfo } from "../renderer/MapManager";
+import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
+import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
+import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { SceneBuilder } from "../rs/scene/SceneBuilder";
 
 export class MapViewerRenderer extends WebGLMapRenderer {
+    workerPool: RenderDataWorkerPool;
+    mapManager: MapManager;
+    mapManagerTime: number = 0;
 
     constructor(public mapViewer: MapViewer) {
-        super(mapViewer.cacheLoaders, mapViewer.inputManager, mapViewer.workerPool,
+        super(mapViewer.cacheLoaders, mapViewer.inputManager,
             mapViewer.renderDistance, mapViewer.unloadDistance, mapViewer.lodDistance,
             mapViewer.camera, mapViewer.pathfinder);
+        this.workerPool = mapViewer.workerPool;
+        this.mapManager = new MapManager(
+            this.workerPool.size * 2,
+            this.queueLoadMap.bind(this),
+            this.removeLoadedMap.bind(this),
+        );
+    }
+
+    async queueLoadMap(mapX: number, mapY: number): Promise<void> {
+        const mapData = await this.workerPool.queueLoad<
+            SdMapLoaderInput,
+            SdMapData | undefined,
+            SdMapDataLoader
+        >(this.dataLoader, {
+            mapX,
+            mapY,
+            maxLevel: this.maxLevel,
+            loadObjs: this.loadObjs,
+            loadNpcs: this.loadNpcs,
+            smoothTerrain: this.smoothTerrain,
+            minimizeDrawCalls: !this.hasMultiDraw,
+            loadedTextureIds: this.loadedTextureIds,
+        });
+
+        if (mapData) {
+            if (this.isValidMapData(mapData)) {
+                this.mapManager.addMap(mapX, mapY);
+                this.mapsToLoad.push(mapData);
+
+                this.mapViewer.setMapImageUrl(
+                    mapData.mapX,
+                    mapData.mapY,
+                    URL.createObjectURL(mapData.minimapBlob),
+                    true,
+                    false,
+                );
+            }
+        } else {
+            this.mapManager.addInvalidMap(mapX, mapY);
+        }
+    }
+
+
+    async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
+        let map = this.loadedMaps.get(mapInfo.mapId);
+        if (map) {
+            map.delete();
+            this.loadedMaps.delete(mapInfo.mapId);
+        }
     }
 
     override async init() {
@@ -23,14 +80,39 @@ export class MapViewerRenderer extends WebGLMapRenderer {
         super.init();
     }
 
+    override initCache(): void {
+        super.initCache();
+        this.mapManager.init(
+            this.cacheLoaders.mapFileIndex,
+            SceneBuilder.fillEmptyTerrain(this.cacheLoaders.cache.info),
+        );
+        this.mapManager.update(
+            this.camera,
+            this.stats.frameCount,
+            this.renderDistance,
+            this.unloadDistance,
+        );
+    }
+
     override async cleanUp(): Promise<void> {
-        this.inputManager.cleanUp();
         super.cleanUp();
+        this.inputManager.cleanUp();
+        this.mapManager.cleanUp();
     }
 
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
         super.update(time, deltaTime);
+
+        const renderDistance = this.renderDistance;
+        const frameCount = this.stats.frameCount;
+
+        const mapManagerStart = performance.now();
+        this.mapManager.update(this.camera, frameCount, renderDistance, this.unloadDistance);
+        this.mapManagerTime = performance.now() - mapManagerStart;
+
+        this.visibleMapCount = this.mapManager.visibleMapCount;
+        this.visibleMaps = this.mapManager.visibleMaps;
     }
 
     handleInput(deltaTime: number) {
@@ -174,7 +256,7 @@ export class MapViewerRenderer extends WebGLMapRenderer {
         const frameTime = performance.now() - this.rendererStats.frameStart;
 
         if (this.inputManager.isKeyDown("KeyH")) {
-            this.mapViewer.debugText = `MapManager: ${this.rendererStats.mapManagerTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `MapManager: ${this.mapManagerTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyJ")) {
             this.mapViewer.debugText = `Interactions: ${this.rendererStats.interactionsTime.toFixed(2)}ms`;
@@ -215,16 +297,6 @@ export class MapViewerRenderer extends WebGLMapRenderer {
         this.mapViewer.camera.onFrameEnd();
 
         // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
-    }
-
-    override onMapLoad(mapData: SdMapData) {
-        this.mapViewer.setMapImageUrl(
-            mapData.mapX,
-            mapData.mapY,
-            URL.createObjectURL(mapData.minimapBlob),
-            true,
-            false,
-        );
     }
 
     override checkInteractions(interactReady: boolean, interactBuffer: Float32Array,

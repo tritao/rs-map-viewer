@@ -1,7 +1,6 @@
 export class RendererStats {
     frameStart: number;
     tickTime: number;
-    mapManagerTime: number = 0;
     interactionsTime: number;
 
     opaquePassTime: number;
@@ -12,7 +11,6 @@ export class RendererStats {
     constructor() {
         this.frameStart = 0;
         this.tickTime = 0;
-        this.mapManagerTime = 0;
         this.interactionsTime = 0;
         this.opaquePassTime = 0;
         this.opaqueNpcPassTime = 0;
