@@ -19,6 +19,7 @@ import { Scene } from "../../rs/scene/Scene";
 import { DrawRange, newDrawRange } from "../DrawRange";
 import { SdMapData } from "../loader/SdMapData";
 import { LocAnimated } from "../loc/LocAnimated";
+import { RendererMapSquare } from "../MapRenderer";
 import { Npc } from "../npc/Npc";
 
 const FRAME_RENDER_DELAY = 3;
@@ -38,7 +39,7 @@ export type DrawCallRange = {
     drawRanges: DrawRange[];
 };
 
-export class WebGLMapSquare {
+export class WebGLMapSquare implements RendererMapSquare {
     readonly id: number;
 
     npcDataTextureOffsets: number[];
