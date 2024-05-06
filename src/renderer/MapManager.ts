@@ -32,6 +32,11 @@ export class MapSquareInfo {
     }
 }
 
+export enum MapManagerUpdateMode {
+    RenderDistance,
+    Loaded
+}
+
 export class MapManager {
     static readonly MAX_MAP_X = 100;
     static readonly MAX_MAP_Y = 200;
@@ -53,6 +58,8 @@ export class MapManager {
     visibleMaps: MapSquareInfo[] = [];
 
     mapSquares: Map<number, MapSquareInfo> = new Map();
+
+    mode: MapManagerUpdateMode = MapManagerUpdateMode.RenderDistance;
 
     constructor(
         readonly maxQueuedTasks: number,
@@ -163,50 +170,20 @@ export class MapManager {
         const cameraX = camera.getPosX();
         const cameraZ = camera.getPosZ();
 
-        // Calculate which map square id to start and end on based on camera location and render distance (in tiles).
-        const mapStartX = Math.floor((cameraX - renderDistance) / Scene.MAP_SQUARE_SIZE);
-        const mapStartY = Math.floor((cameraZ - renderDistance) / Scene.MAP_SQUARE_SIZE);
+        const { mapStartX, mapEndX, mapStartY, mapEndY } = this.getRenderBounds(camera, renderDistance);
 
-        const mapEndX = Math.ceil((cameraX + renderDistance) / Scene.MAP_SQUARE_SIZE);
-        const mapEndY = Math.ceil((cameraZ + renderDistance) / Scene.MAP_SQUARE_SIZE);
-
-        const renderBoundsChanged =
-            this.renderBounds[0] !== mapStartX ||
+        const renderBoundsChanged = this.renderBounds[0] !== mapStartX ||
             this.renderBounds[1] !== mapStartY ||
             this.renderBounds[2] !== mapEndX ||
             this.renderBounds[3] !== mapEndY;
 
         if (renderBoundsChanged) {
-            this.renderDistMapCount = 0;
-
-            for (let x = mapStartX; x < mapEndX; x++) {
-                for (let y = mapStartY; y < mapEndY; y++) {
-                    if (x < 0 || y < 0 || x >= MapManager.MAX_MAP_X || y >= MapManager.MAX_MAP_Y) {
-                        continue;
-                    }
-                    const mapId = getMapSquareId(x, y);
-                    if (this.invalidMapIds.has(mapId)) {
-                        continue;
-                    }
-
-                    this.renderDistMapIds[this.renderDistMapCount++] = mapId;
-                }
-            }
+            this.updateRenderDistMaps(mapStartX, mapEndX, mapStartY, mapEndY);
 
             // Calculate which map squares to unload based on the unload distance and remove them.
             // Unload distance is the distance in number of map squares.
 
-            for (const map of this.mapSquares.values()) {
-                const { mapX, mapY } = map;
-                if (
-                    mapX < mapStartX - unloadDistance ||
-                    mapX > mapEndX + unloadDistance ||
-                    mapY < mapStartY - unloadDistance ||
-                    mapY > mapEndY + unloadDistance
-                ) {
-                    this.removeMap(mapX, mapY);
-                }
-            }
+            this.unloadMaps(mapStartX, unloadDistance, mapEndX, mapStartY, mapEndY);
         }
 
         // Sort the maps to render based on a front to back distance.
@@ -229,6 +206,68 @@ export class MapManager {
         this.renderBounds[3] = mapEndY;
     }
 
+    private unloadMaps(mapStartX: number, unloadDistance: number, mapEndX: number, mapStartY: number, mapEndY: number) {
+        for (const map of this.mapSquares.values()) {
+            const { mapX, mapY } = map;
+            if (mapX < mapStartX - unloadDistance ||
+                mapX > mapEndX + unloadDistance ||
+                mapY < mapStartY - unloadDistance ||
+                mapY > mapEndY + unloadDistance) {
+                this.removeMap(mapX, mapY);
+            }
+        }
+    }
+
+    private updateRenderDistMaps(mapStartX: number, mapEndX: number, mapStartY: number, mapEndY: number) {
+        this.renderDistMapCount = 0;
+
+        for (let x = mapStartX; x <= mapEndX; x++) {
+            for (let y = mapStartY; y <= mapEndY; y++) {
+                if (x < 0 || y < 0 || x >= MapManager.MAX_MAP_X || y >= MapManager.MAX_MAP_Y) {
+                    continue;
+                }
+                const mapId = getMapSquareId(x, y);
+                if (this.invalidMapIds.has(mapId)) {
+                    continue;
+                }
+
+                this.renderDistMapIds[this.renderDistMapCount++] = mapId;
+            }
+        }
+    }
+
+    private getRenderBounds(camera: Camera, renderDistance: number = 0) {
+        const cameraX = camera.getPosX();
+        const cameraZ = camera.getPosZ();
+
+        if (this.mode == MapManagerUpdateMode.Loaded) {
+            // Go through all loaded maps and calculate max/min.
+            let mapStartX = MapManager.MAX_MAP_X, mapEndX = 0;
+            let mapStartY = MapManager.MAX_MAP_Y, mapEndY = 0;
+
+            for (const map of this.mapSquares.values()) {
+                const { mapX, mapY } = map;
+
+                mapStartX = Math.min(mapStartX, mapX);
+                mapEndX = Math.max(mapEndX, mapX);
+
+                mapStartY = Math.min(mapStartY, mapY);
+                mapEndY = Math.max(mapEndY, mapY);
+            }
+
+            return { mapStartX, mapEndX, mapStartY, mapEndY };
+        } else {
+            // Calculate which map square id to start and end on based on camera location and render distance (in tiles).
+            const mapStartX = Math.floor((cameraX - renderDistance) / Scene.MAP_SQUARE_SIZE);
+            const mapStartY = Math.floor((cameraZ - renderDistance) / Scene.MAP_SQUARE_SIZE);
+
+            const mapEndX = Math.ceil((cameraX + renderDistance) / Scene.MAP_SQUARE_SIZE);
+            const mapEndY = Math.ceil((cameraZ + renderDistance) / Scene.MAP_SQUARE_SIZE);
+
+            return { mapStartX, mapEndX, mapStartY, mapEndY };
+        }
+    }
+
     private updateVisible(camera: Camera, frameCount: number) {
         this.visibleMapCount = 0;
         for (let i = 0; i < this.renderDistMapCount; i++) {
@@ -242,7 +281,9 @@ export class MapManager {
             if (mapSquare) {
                 this.visibleMaps[this.visibleMapCount++] = mapSquare;
             } else {
-                this.loadMap(mapX, mapY);
+                if (this.mode == MapManagerUpdateMode.RenderDistance) {
+                    this.loadMap(mapX, mapY);
+                }
             }
         }
 
