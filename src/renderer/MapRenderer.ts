@@ -66,8 +66,6 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
     stats = new FrameStats();
     rendererStats = new RendererStats();
 
-    cache: LoadedCache;
-
     hasMultiDraw: boolean = false;
 
     // Textures
@@ -109,9 +107,8 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
 
     npcRenderCount: number = 0;
 
-    constructor(cache: LoadedCache, renderDistance: number,
-        unloadDistance: number, lodDistance: number) {
-        this.cache = cache;
+    constructor(readonly cache: LoadedCache,
+        renderDistance: number, unloadDistance: number, lodDistance: number) {
         this.renderDistance = renderDistance;
         this.unloadDistance = unloadDistance;
         this.lodDistance = lodDistance;
