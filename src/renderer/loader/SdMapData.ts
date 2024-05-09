@@ -2,57 +2,62 @@ import { CollisionData } from "../../rs/scene/CollisionMap";
 import { DrawRange } from "../DrawRange";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
+import { MapData } from "./MapData";
 
-export type SdMapData = {
-    mapX: number;
-    mapY: number;
+export class SdMapData implements MapData {
 
-    cacheName: string;
+    constructor(
+        readonly mapX: number,
+        readonly mapY: number,
 
-    maxLevel: number;
-    loadObjs: boolean;
-    loadNpcs: boolean;
+        readonly cacheName: string,
 
-    smoothTerrain: boolean;
+        readonly maxLevel: number,
+        readonly loadObjs: boolean,
+        readonly loadNpcs: boolean,
 
-    borderSize: number;
+        readonly smoothTerrain: boolean,
 
-    tileRenderFlags: Uint8Array[][];
-    collisionDatas: CollisionData[];
+        readonly borderSize: number,
 
-    minimapBlob: Blob;
+        readonly tileRenderFlags: Uint8Array[][],
+        readonly collisionDatas: CollisionData[],
 
-    vertices: Uint8Array;
-    indices: Int32Array;
+        readonly minimapBlob: Blob,
 
-    modelTextureData: Uint16Array;
-    modelTextureDataAlpha: Uint16Array;
+        readonly vertices: Uint8Array,
+        readonly indices: Int32Array,
 
-    modelTextureDataLod: Uint16Array;
-    modelTextureDataLodAlpha: Uint16Array;
+        readonly modelTextureData: Uint16Array,
+        readonly modelTextureDataAlpha: Uint16Array,
 
-    modelTextureDataInteract: Uint16Array;
-    modelTextureDataInteractAlpha: Uint16Array;
+        readonly modelTextureDataLod: Uint16Array,
+        readonly modelTextureDataLodAlpha: Uint16Array,
 
-    modelTextureDataInteractLod: Uint16Array;
-    modelTextureDataInteractLodAlpha: Uint16Array;
+        readonly modelTextureDataInteract: Uint16Array,
+        readonly modelTextureDataInteractAlpha: Uint16Array,
 
-    heightMapTextureData: Int16Array;
+        readonly modelTextureDataInteractLod: Uint16Array,
+        readonly modelTextureDataInteractLodAlpha: Uint16Array,
 
-    drawRanges: DrawRange[];
-    drawRangesAlpha: DrawRange[];
+        readonly heightMapTextureData: Int16Array,
 
-    drawRangesLod: DrawRange[];
-    drawRangesLodAlpha: DrawRange[];
+        readonly drawRanges: DrawRange[],
+        readonly drawRangesAlpha: DrawRange[],
 
-    drawRangesInteract: DrawRange[];
-    drawRangesInteractAlpha: DrawRange[];
+        readonly drawRangesLod: DrawRange[],
+        readonly drawRangesLodAlpha: DrawRange[],
 
-    drawRangesInteractLod: DrawRange[];
-    drawRangesInteractLodAlpha: DrawRange[];
+        readonly drawRangesInteract: DrawRange[],
+        readonly drawRangesInteractAlpha: DrawRange[],
 
-    locsAnimated: LocAnimatedData[];
-    npcs: NpcData[];
+        readonly drawRangesInteractLod: DrawRange[],
+        readonly drawRangesInteractLodAlpha: DrawRange[],
 
-    loadedTextures: Map<number, Int32Array>;
+        readonly locsAnimated: LocAnimatedData[],
+        readonly npcs: NpcData[],
+
+        readonly loadedTextures: Map<number, Int32Array>,
+    ) {
+    }
 };

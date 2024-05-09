@@ -7,11 +7,8 @@ import { InteractType } from "../renderer/InteractType";
 import { INTERACTION_RADIUS } from "../renderer/Interactions";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { isTouchDevice } from "../util/DeviceUtil";
-import { SdMapData } from "../renderer/loader/SdMapData";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MapManager, MapSquareInfo } from "../renderer/MapManager";
-import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
-import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
@@ -19,7 +16,8 @@ import { InputManager } from "../util/InputManager";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { MapRenderer } from "../renderer/MapRenderer";
+import { MapRenderer, RendererMapSquare } from "../renderer/MapRenderer";
+import { MapData } from "../renderer/loader/MapData";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -31,9 +29,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     mapManager: MapManager;
     mapManagerTime: number = 0;
-    dataLoader: SdMapDataLoader;
 
-    renderer: MapRenderer;
+    renderer: MapRenderer<RendererMapSquare, MapData>;
 
     // State
     lastClientTick: number = 0;
@@ -47,32 +44,17 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.camera = mapViewer.camera;
         this.pathfinder = mapViewer.pathfinder;
         this.renderer = new WebGLMapRenderer(
-            this.cacheLoaders, this.inputManager, mapViewer.renderDistance,
+            this.cacheLoaders, this.workerPool, this.inputManager, mapViewer.renderDistance,
             mapViewer.unloadDistance, mapViewer.lodDistance, this.camera)
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
             this.queueLoadMap.bind(this),
             this.removeLoadedMap.bind(this),
         );
-        this.dataLoader = new SdMapDataLoader();
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
-        const mapData = await this.workerPool.queueLoad<
-            SdMapLoaderInput,
-            SdMapData | undefined,
-            SdMapDataLoader
-        >(this.dataLoader, {
-            mapX,
-            mapY,
-            maxLevel: this.renderer.maxLevel,
-            loadObjs: this.renderer.loadObjs,
-            loadNpcs: this.renderer.loadNpcs,
-            smoothTerrain: this.renderer.smoothTerrain,
-            minimizeDrawCalls: !this.renderer.hasMultiDraw,
-            loadedTextureIds: this.renderer.loadedTextureIds,
-        });
-
+        const mapData = await this.renderer.loadMapData(mapX, mapY);
         if (mapData) {
             if (this.renderer.isValidMapData(mapData)) {
                 this.mapManager.addMap(mapX, mapY);

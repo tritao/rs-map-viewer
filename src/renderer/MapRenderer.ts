@@ -5,7 +5,7 @@ import { Schema } from "leva/dist/declarations/src/types";
 import { CollisionMap } from "../rs/scene/CollisionMap";
 import { Scene } from "../rs/scene/Scene";
 import { LoadedCache } from "../util/Caches";
-import { SdMapData } from "./loader/SdMapData";
+import { MapData } from "./loader/MapData";
 import { LocAnimated } from "./loc/LocAnimated";
 import { MapSquareInfo } from "./MapManager";
 import { Npc } from "./npc/Npc";
@@ -62,7 +62,7 @@ export interface RendererMapSquare {
     delete(): void;
 }
 
-export abstract class MapRenderer<T extends RendererMapSquare = RendererMapSquare> implements Renderer {
+export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData> implements Renderer {
     stats = new FrameStats();
     rendererStats = new RendererStats();
 
@@ -78,7 +78,7 @@ export abstract class MapRenderer<T extends RendererMapSquare = RendererMapSquar
     needsFramebufferUpdate: boolean = false;
 
     // Maps
-    mapsToLoad: Denque<SdMapData> = new Denque();
+    mapsToLoad: Denque<U> = new Denque();
     loadedMaps: Map<number, T> = new Map();
 
     // Settings
@@ -136,7 +136,7 @@ export abstract class MapRenderer<T extends RendererMapSquare = RendererMapSquar
         return this.loadedMaps.get(mapId)
     }
 
-    addMap(mapData: SdMapData): void {
+    addMap(mapData: U): void {
         this.mapsToLoad.push(mapData);
     }
 
@@ -152,7 +152,10 @@ export abstract class MapRenderer<T extends RendererMapSquare = RendererMapSquar
         this.mapsToLoad.clear();
     }
 
-    isValidMapData(mapData: SdMapData): boolean {
+    // Maps data
+    abstract loadMapData(mapX: number, mapY: number): Promise<U | undefined>;
+
+    isValidMapData(mapData: U): boolean {
         return (
             mapData.cacheName === this.cache.info.name &&
             mapData.maxLevel === this.maxLevel &&

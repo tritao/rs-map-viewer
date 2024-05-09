@@ -31,14 +31,19 @@ import { RendererStats } from "./RendererStats";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { FrameStats } from "../Renderer";
 import { getMaxAnisotropy, MapRenderer, TextureFilterMode } from "../MapRenderer";
+import { SdMapDataLoader } from "../loader/SdMapDataLoader";
+import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
+import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
 
-export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare> {
+export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     cacheLoaders: CacheLoaders;
+    workerPool: RenderDataWorkerPool;
     inputManager: InputManager;
     camera: Camera;
+    dataLoader: SdMapDataLoader;
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -91,13 +96,16 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare> {
 
     isNewTextureAnim: boolean = false;
 
-    constructor(cacheLoaders: CacheLoaders, inputManager: InputManager,
+    constructor(cacheLoaders: CacheLoaders, workerPool: RenderDataWorkerPool,
+        inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
         camera: Camera) {
         super(cacheLoaders.cache, renderDistance, unloadDistance, lodDistance);
+        this.workerPool = workerPool;
         this.cacheLoaders = cacheLoaders;
         this.inputManager = inputManager;
         this.camera = camera;
+        this.dataLoader = new SdMapDataLoader();
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
         this.interactions = new Array(INTERACT_BUFFER_COUNT);
@@ -446,6 +454,25 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare> {
             magFilter: PicoGL.NEAREST,
             internalFormat: PicoGL.RGBA8I,
         });
+    }
+
+    override async loadMapData(mapX: number, mapY: number): Promise<SdMapData | undefined> {
+        const mapData = await this.workerPool.queueLoad<
+            SdMapLoaderInput,
+            SdMapData | undefined,
+            SdMapDataLoader
+        >(this.dataLoader, {
+            mapX,
+            mapY,
+            maxLevel: this.maxLevel,
+            loadObjs: this.loadObjs,
+            loadNpcs: this.loadNpcs,
+            smoothTerrain: this.smoothTerrain,
+            minimizeDrawCalls: !this.hasMultiDraw,
+            loadedTextureIds: this.loadedTextureIds,
+        });
+
+        return mapData;
     }
 
     loadMap(
