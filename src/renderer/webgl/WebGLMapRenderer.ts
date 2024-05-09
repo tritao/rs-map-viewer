@@ -39,10 +39,6 @@ const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
 
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
-    cacheLoaders: CacheLoaders;
-    workerPool: RenderDataWorkerPool;
-    inputManager: InputManager;
-    camera: Camera;
     dataLoader: SdMapDataLoader;
 
     app!: PicoApp;
@@ -96,15 +92,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     isNewTextureAnim: boolean = false;
 
-    constructor(cacheLoaders: CacheLoaders, workerPool: RenderDataWorkerPool,
-        inputManager: InputManager,
+    constructor(
+        readonly cacheLoaders: CacheLoaders, readonly workerPool: RenderDataWorkerPool,
+        readonly inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
-        camera: Camera) {
+        readonly camera: Camera) {
         super(cacheLoaders.cache, renderDistance, unloadDistance, lodDistance);
-        this.workerPool = workerPool;
-        this.cacheLoaders = cacheLoaders;
-        this.inputManager = inputManager;
-        this.camera = camera;
         this.dataLoader = new SdMapDataLoader();
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
@@ -476,12 +469,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     loadMap(
-        mainProgram: Program,
-        mainAlphaProgram: Program,
-        npcProgram: Program,
-        textureArray: Texture,
-        textureMaterials: Texture,
-        sceneUniformBuffer: UniformBuffer,
         mapData: SdMapData,
         time: number,
     ): void {
@@ -493,12 +480,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 this.cacheLoaders.npcTypeLoader,
                 this.cacheLoaders.basTypeLoader,
                 this.app,
-                mainProgram,
-                mainAlphaProgram,
-                npcProgram,
-                textureArray,
-                textureMaterials,
-                sceneUniformBuffer,
+                this.mainProgram!,
+                this.mainAlphaProgram!,
+                this.npcProgram!,
+                this.textureArray!,
+                this.textureMaterials!,
+                this.sceneUniformBuffer!,
                 mapData,
                 time,
                 this.stats.frameCount,
@@ -663,16 +650,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         // Load new map squares
         const mapData = this.mapsToLoad.shift();
         if (mapData && this.isValidMapData(mapData)) {
-            this.loadMap(
-                this.mainProgram!,
-                this.mainAlphaProgram!,
-                this.npcProgram!,
-                this.textureArray!,
-                this.textureMaterials!,
-                this.sceneUniformBuffer!,
-                mapData,
-                timeSec,
-            );
+            this.loadMap(mapData, timeSec);
         }
     }
 
