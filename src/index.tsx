@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import ClientApp from "./client/ClientApp";
 
 import "./index.css";
 import MapViewerApp from "./mapviewer/MapViewerApp";
@@ -23,7 +24,10 @@ const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement)
 root.render(
     // <React.StrictMode>
     <BrowserRouter>
-        <MapViewerApp />
+        <Routes>
+            <Route path="/" element={<MapViewerApp />} />
+            <Route path="/client" element={<ClientApp />} />
+        </Routes>
     </BrowserRouter>,
     // </React.StrictMode>,
 );
