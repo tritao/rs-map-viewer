@@ -42,7 +42,7 @@ async function downloadCaches(count) {
     const caches = json.filter(
         (cache) =>
             cache.scope === "runescape" &&
-            cache.game === "oldschool" &&
+            cache.game === "rs2" &&
             cache.language === "en" &&
             cache.builds.length > 0 &&
             cache.timestamp,
@@ -57,7 +57,7 @@ async function downloadCaches(count) {
                 cache.language === "en" &&
                 cache.builds.length > 0 &&
                 cache.builds[0].major >= 194 &&
-                cache.builds[0].major <= 736 &&
+                cache.builds[0].major <= 377 &&
                 cache.timestamp,
         ),
     );
