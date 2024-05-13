@@ -1,10 +1,9 @@
-import WebSocket from 'ws';
 
 export class WebSocketClient {
 
     _socket!: WebSocket;
 
-    _closeEvent: WebSocket.CloseEvent | null = null;
+    _closeEvent: CloseEvent | null = null;
 
     _receiveCallbacksQueue!: Array<{ resolve: (data: any) => void, reject: (reason: any) => void }>;
 
@@ -97,7 +96,7 @@ export class WebSocketClient {
      * Returns a promise that will never reject.
      * The promise resolves once the WebSocket connection is closed.
      */
-    disconnect(code?: number, reason?: string): Promise<WebSocket.CloseEvent | null> {
+    disconnect(code?: number, reason?: string): Promise<CloseEvent | null> {
         if (!this.connected) {
             return Promise.resolve(this._closeEvent);
         }
@@ -130,7 +129,7 @@ export class WebSocketClient {
 
         return new Promise((resolve, reject) => {
 
-            const handleMessage = (event: WebSocket.MessageEvent) => {
+            const handleMessage = (event: MessageEvent) => {
 
                 if (this._receiveCallbacksQueue.length !== 0) {
                     this._receiveCallbacksQueue.shift()!.resolve(event.data);
@@ -142,7 +141,7 @@ export class WebSocketClient {
                 }
             };
 
-            const handleOpen = (event: WebSocket.Event) => {
+            const handleOpen = (event: Event) => {
                 socket.addEventListener('message', handleMessage);
                 socket.addEventListener('close', event => {
                     this._closeEvent = event;

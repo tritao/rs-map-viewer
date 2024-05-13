@@ -5,8 +5,8 @@ export enum IncomingPacket {
     UPDATE_GROUND_ITEM_AMOUNT = 121,
     SET_GROUND_ITEM = 107,
     SET_PLAYER_GROUND_ITEM = 106,
-    UPDATE_GROUND_ITEMS_AND_LANDSCAPE_OBJECTS = 183,
-    CLEAR_GROUND_ITEMS_AND_LANDSCAPE_OBJECTS = 40,
+    UPDATE_REGION = 183,
+    CLEAR_REGION = 40,
 
     SHOW_STILL_GRAPHICS = 59,
     SHOW_PROJECTILE = 181,
@@ -79,66 +79,133 @@ export enum IncomingPacket {
     CAMERA_SHAKE = 67
 }
 
+export enum RegionUpdateOpcode {
+    UNKNOWN1 = 203,
+    REMOVE_OBJECT = IncomingPacket.REMOVE_LANDSCAPE_OBJECT,
+    SEND_OBJECT = IncomingPacket.SET_LANDSCAPE_OBJECT,
+    SEND_PROJECTILE = IncomingPacket.SHOW_PROJECTILE,
+    ADD_PUBLIC_TILE_ITEM = IncomingPacket.SET_PLAYER_GROUND_ITEM,
+    ADD_TILE_ITEM = IncomingPacket.SET_GROUND_ITEM,
+    UPDATE_TILE_ITEM = IncomingPacket.UPDATE_GROUND_ITEM_AMOUNT,
+    REMOVE_TILE_ITEM = IncomingPacket.REMOVE_GROUND_ITEM,
+    PLAY_POSITION_SOUND = IncomingPacket.PLAY_POSITION_SOUND,
+    SHOW_STILL_GRAPHICS = IncomingPacket.SHOW_STILL_GRAPHICS
+}
+
+export enum LoginType {
+    CREATE_SESSION = 16,
+    CLAIM_EXISTING_SESSION = 18,
+}
+
+export enum OutgoingPacket {
+    KEEP_ALIVE = 40
+}
+
+export enum NpcUpdateMask {
+    TRANSFORM = 0x1,
+    ANIMATION = 0x2,
+    GRAPHIC = 0x4,
+    TURN_TO_POSITION = 0x8,
+    SECONDARY_HIT_UPDATE = 0x10,
+    FORCE_CHAT = 0x20,
+    INTERACTING_MOB = 0x40,
+    HIT_UPDATE = 0x80,
+}
+
+export enum PlayerUpdateMask {
+    INTERACTING_MOB = 0x1,
+    TURN_TO_POSITION = 0x2,
+    APPEARANCE = 0x4,
+    ANIMATION = 0x8,
+    FORCE_CHAT = 0x10,
+    HAS_MORE_DATA = 0x20,
+    CHAT = 0x40,
+    HIT_UPDATE = 0x80,
+    FORCE_MOVEMENT = 0x100,
+    GRAPHIC = 0x200,
+    SECONDARY_HIT_UPDATE = 0x400,
+}
+
+export enum MovementType {
+    NONE = 0,
+    WALK = 1,
+    RUN = 2,
+    TELEPORT = 3
+}
+
 export enum LoginStatus {
     /** Exchange data login status */
-    STATUS_EXCHANGE_DATA = 0,
+    EXCHANGE_DATA = 0,
 
     /** Delay for 2 seconds login status */
-    STATUS_DELAY = 1,
+    DELAY = 1,
 
     /** OK login status */
-    STATUS_OK = 2,
+    OK = 2,
 
     /** Invalid credentials login status */
-    STATUS_INVALID_CREDENTIALS = 3,
+    INVALID_CREDENTIALS = 3,
 
     /** Account disabled login status */
-    STATUS_ACCOUNT_DISABLED = 4,
+    ACCOUNT_DISABLED = 4,
 
     /** Account online login status */
-    STATUS_ACCOUNT_ONLINE = 5,
+    ACCOUNT_ONLINE = 5,
 
     /** Game updated login status */
-    STATUS_GAME_UPDATED = 6,
+    GAME_UPDATED = 6,
 
     /** Server full login status */
-    STATUS_SERVER_FULL = 7,
+    SERVER_FULL = 7,
 
     /** Login server offline login status */
-    STATUS_LOGIN_SERVER_OFFLINE = 8,
+    LOGIN_SERVER_OFFLINE = 8,
 
     /** Too many connections login status */
-    STATUS_TOO_MANY_CONNECTIONS = 9,
+    TOO_MANY_CONNECTIONS = 9,
 
     /** Bad session id login status */
-    STATUS_BAD_SESSION_ID = 10,
+    BAD_SESSION_ID = 10,
 
     /** Login server rejected session login status */
-    STATUS_LOGIN_SERVER_REJECTED_SESSION = 11,
+    LOGIN_SERVER_REJECTED_SESSION = 11,
 
     /** Members account required login status */
-    STATUS_MEMBERS_ACCOUNT_REQUIRED = 12,
+    MEMBERS_ACCOUNT_REQUIRED = 12,
 
     /** Could not complete login status */
-    STATUS_COULD_NOT_COMPLETE = 13,
+    COULD_NOT_COMPLETE = 13,
 
     /** Server updating login status */
-    STATUS_UPDATING = 14,
+    UPDATING = 14,
 
     /** Reconnection OK login status */
-    STATUS_RECONNECTION_OK = 15,
+    RECONNECTION_OK = 15,
 
     /** Too many login attempts login status */
-    STATUS_TOO_MANY_LOGINS = 16,
+    TOO_MANY_LOGINS = 16,
 
     /** Standing in members area on free world status */
-    STATUS_IN_MEMBERS_AREA = 17,
+    IN_MEMBERS_AREA = 17,
+
+    /** Locked login status */
+    LOCKED = 18,
 
     /** Invalid login server status */
-    STATUS_INVALID_LOGIN_SERVER = 20,
+    INVALID_LOGIN_SERVER = 20,
 
     /** Profile transfer login status */
-    STATUS_PROFILE_TRANSFER = 21
+    PROFILE_TRANSFER = 21,
+
+    MALFORMED_PACKET = 22,
+
+    NO_REPLY = 23,
+
+    LOADING_ERROR = 24,
+
+    UNEXPECTED_RESPONSE = 25,
+
+    ADDRESS_BLOCKED = 26
 }
 
 export class PacketConstants {
@@ -153,20 +220,3 @@ export class PacketConstants {
         -2, 0, 0, 0, 0, 0, -2, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 5, 0, 1, 1, 4, 0, 2, 0
     ];
 }
-
-export class Packet {
-    packetId: number;
-
-    constructor(packetId: number) {
-        this.packetId = packetId;
-    }
-
-    getId(): number {
-        return this.packetId;
-    }
-
-    equals(opcode: number): boolean {
-        return opcode === this.packetId;
-    }
-}
-

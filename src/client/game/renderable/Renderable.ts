@@ -1,4 +1,4 @@
-import { VertexNormal } from "../../rs/model/VertexNormal";
+import { VertexNormal } from "../../../rs/model/VertexNormal";
 import { CacheableNode } from "../collection/CacheableNode";
 
 export class Renderable extends CacheableNode {

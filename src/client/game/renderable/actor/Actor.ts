@@ -1,40 +1,29 @@
 import { Renderable } from "../Renderable";
 
 export abstract class Actor extends Renderable {
-    public forcedChat: string|null;
-    public textCycle: number = 100;
-    public textColour: number;
-
-    public nextStepOrientation: number;
     public pulseCycle: number;
-
-    public pathX: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    public pathY: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-
-    public movementAnimation: number = -1;
-    public displayedMovementFrames: number;
-    public movementCycle: number;
-
-    public runningQueue: boolean[] = [false, false, false, false, false, false, false, false, false, false];
-
     public dynamic: boolean = false;
+    public size: number = 1;
 
-    public textEffect: number;
-
+    // Position-related data
+    public worldX: number;
+    public worldY: number;
     public modelHeight: number = 200;
 
+    public currentRotation: number;
+    public stillPathPosition: number;
+    public nextStepOrientation: number;
+    public degreesToTurn: number = 32;
+
+    // Movement-related data
+    public pathX: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    public pathY: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    public pathLength: number;
+
+    public runningQueue: boolean[] = [false, false, false, false, false, false, false, false, false, false];
+    public movementCycle: number;
     public endCycle: number = -1000;
-
-    public anInt1596: number;
-
-    public anInt1597: number;
-
-    public faceX: number;
-    public faceY: number;
-
-    public turnSpeed: number = 32;
-
-    public boundaryDimension: number = 1;
+    public resyncWalkCycle: number;
 
     public movementStartX: number;
     public movementEndX: number;
@@ -44,52 +33,50 @@ export abstract class Actor extends Renderable {
     public moveCycleStart: number;
     public moveDirection: number;
 
+    public movementAnimation: number = -1;
+    public displayedMovementFrames: number;
+
+    public faceX: number;
+    public faceY: number;
     public faceActor: number = -1;
 
-    public worldX: number;
-    public worldY: number;
-
-    public currentRotation: number;
-    public stillPathPosition: number;
-
+    // Graphics-related data
     public graphic: number = -1;
+    public spotGraphicHeight: number;
+    public spotGraphicDelay: number;
 
+    // Animation-related data
     public currentAnimation: number;
+    public animationSequence: number;
+    public animationDelay: number;
+    public animationCycle: number;
+    public animationResetCycle: number;
 
-    public anInt1616: number;
+    public emoteAnimation: number = -1;
+    public displayedEmoteFrames: number;
 
-    public anInt1617: number;
-
-    public spotAnimationDelay: number;
-
+    public idleAnimation: number = -1;
+    public runAnimationId: number = -1;
     public walkAnimationId: number = -1;
-
     public turnAroundAnimationId: number = -1;
     public turnRightAnimationId: number = -1;
     public turnLeftAnimationId: number = -1;
+    public standTurnAnimationId: number = -1;
 
-    public resyncWalkCycle: number;
+    // Chat-related data
+    public forcedChat: string|null;
+    public textCycle: number = 100;
+    public textColour: number;
+    public textEffect: number;
 
-    public emoteAnimation: number = -1;
-
-    public displayedEmoteFrames: number;
-
-    public animationSequence: number;
-
-    public animationDelay: number;
-
-    public animationResetCycle: number;
-
-    public runAnimationId: number = -1;
-
+    // Hit-related data
     public hitDamages: number[] = [0, 0, 0, 0];
     public hitTypes: number[] = [0, 0, 0, 0];
     public hitCycles: number[] = [0, 0, 0, 0];
 
-    public pathLength: number;
-
-    public idleAnimation: number = -1;
-    public standTurnAnimationId: number = -1;
+    // Health-related data
+    public health: number;
+    public maximumHealth: number;
 
     constructor() {
         super();
@@ -100,8 +87,8 @@ export abstract class Actor extends Renderable {
         this.displayedMovementFrames = 0;
         this.movementCycle = 0;
         this.textEffect = 0;
-        this.anInt1596 = 0;
-        this.anInt1597 = 0;
+        this.health = 0;
+        this.maximumHealth = 0;
         this.faceX = 0;
         this.faceY = 0;
         this.movementStartX = 0;
@@ -116,9 +103,9 @@ export abstract class Actor extends Renderable {
         this.currentRotation = 0;
         this.stillPathPosition = 0;
         this.currentAnimation = 0;
-        this.anInt1616 = 0;
-        this.anInt1617 = 0;
-        this.spotAnimationDelay = 0;
+        this.animationCycle = 0;
+        this.spotGraphicDelay = 0;
+        this.spotGraphicHeight = 0;
         this.resyncWalkCycle = 0;
         this.displayedEmoteFrames = 0;
         this.animationSequence = 0;
@@ -171,26 +158,17 @@ export abstract class Actor extends Renderable {
         this.runningQueue[0] = running;
     }
 
-    public updateHits(hitType: number, hitDamage: number, hitCycle: number) {
-        for (let hit: number = 0; hit < 4; hit++) {if (this.hitCycles[hit] <= hitCycle) {
-            this.hitDamages[hit] = hitDamage;
-            this.hitTypes[hit] = hitType;
-            this.hitCycles[hit] = hitCycle + 70;
-            return;
-        }}
-    }
-
     public setPosition(x: number, y: number, discard: boolean) {
         //if (this.emoteAnimation !== -1 && AnimationSequence.animations[this.emoteAnimation].priority === 1) { this.emoteAnimation = -1; }
         if (!discard) {
-            const k: number = x - this.pathX[0];
-            const i1: number = y - this.pathY[0];
-            if (k >= -8 && k <= 8 && i1 >= -8 && i1 <= 8) {
+            const distX: number = x - this.pathX[0];
+            const distY: number = y - this.pathY[0];
+            if (distX >= -8 && distX <= 8 && distY >= -8 && distY <= 8) {
                 if (this.pathLength < 9) { this.pathLength++; }
-                for (let j1: number = this.pathLength; j1 > 0; j1--) {{
-                    this.pathX[j1] = this.pathX[j1 - 1];
-                    this.pathY[j1] = this.pathY[j1 - 1];
-                    this.runningQueue[j1] = this.runningQueue[j1 - 1];
+                for (let i = this.pathLength; i > 0; i--) {{
+                    this.pathX[i] = this.pathX[i - 1];
+                    this.pathY[i] = this.pathY[i - 1];
+                    this.runningQueue[i] = this.runningQueue[i - 1];
                 }}
                 this.pathX[0] = x;
                 this.pathY[0] = y;
@@ -203,7 +181,16 @@ export abstract class Actor extends Renderable {
         this.resyncWalkCycle = 0;
         this.pathX[0] = x;
         this.pathY[0] = y;
-        this.worldX = this.pathX[0] * 128 + this.boundaryDimension * 64;
-        this.worldY = this.pathY[0] * 128 + this.boundaryDimension * 64;
+        this.worldX = this.pathX[0] * 128 + this.size * 64;
+        this.worldY = this.pathY[0] * 128 + this.size * 64;
+    }
+
+    public updateHits(hitType: number, hitDamage: number, hitCycle: number) {
+        for (let hit: number = 0; hit < 4; hit++) {if (this.hitCycles[hit] <= hitCycle) {
+            this.hitDamages[hit] = hitDamage;
+            this.hitTypes[hit] = hitType;
+            this.hitCycles[hit] = hitCycle + 70;
+            return;
+        }}
     }
 }

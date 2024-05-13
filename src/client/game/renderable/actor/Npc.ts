@@ -1,11 +1,12 @@
+import { NpcType } from "../../../../rs/config/npctype/NpcType";
 import { Actor } from "./Actor";
 
 export class Npc extends Actor {
-    //public npcDefinition: ActorDefinition;
+    public npcDefinition: NpcType | null;
 
     constructor() {
         super();
-        //if (this.npcDefinition === undefined) { this.npcDefinition = null; }
+        this.npcDefinition = null;
     }
 
     //public getChildModel(): Model {
@@ -50,11 +51,7 @@ export class Npc extends Actor {
     //    return model;
     //}
 
-    /**
-     *
-     * @return {boolean}
-     */
-    //public isVisible(): boolean {
-    //    return this.npcDefinition != null;
-    //}
+    public isVisible(): boolean {
+        return this.npcDefinition != null;
+    }
 }

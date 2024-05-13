@@ -30,7 +30,7 @@ export class Player extends Actor {
 
     public gender: number;
 
-    public skullIconId: number = -1;
+    public isSkulled: number = -1;
 
     //public npcDefinition: ActorDefinition;
 
@@ -40,7 +40,7 @@ export class Player extends Actor {
 
     public appearanceColors: number[] = [0, 0, 0, 0, 0];
 
-    public aBoolean1763: boolean = false;
+    public preventRotation: boolean = false;
 
     public objectAppearanceStartTick: number;
 
@@ -247,7 +247,7 @@ export class Player extends Actor {
         //    Player.modelCache.put(model, hash);
         //    this.cachedModel = hash;
         //}
-        //if (this.aBoolean1763) {
+        //if (this.preventRotation) {
         //    return model;
         //}
         //const empty: Model = Model.EMPTY_MODEL;
@@ -286,7 +286,7 @@ export class Player extends Actor {
         //}
         //this.modelHeight = appearanceModel.modelHeight;
         //appearanceModel.oneSquareModel = true;
-        //if (this.aBoolean1763) {
+        //if (this.preventRotation) {
         //    return appearanceModel;
         //}
         //if (this.graphic !== -1 && this.currentAnimation !== -1) {
@@ -353,7 +353,7 @@ export class Player extends Actor {
     public updateAppearance(buffer: Buffer) {
         buffer.currentPosition = 0;
         this.gender = buffer.getUnsignedByte();
-        this.skullIconId = buffer.getByte();
+        this.isSkulled = buffer.getByte();
         this.prayerIconId = buffer.getByte();
         //this.npcDefinition = null;
         this.teamId = 0;
