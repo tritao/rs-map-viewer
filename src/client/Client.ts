@@ -15,7 +15,7 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
-import { Game } from "./Game";
+import { Game } from "./game/Game";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 

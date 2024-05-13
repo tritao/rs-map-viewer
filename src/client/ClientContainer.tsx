@@ -27,7 +27,7 @@ export function ClientContainer({ client: Client }: ClientContainerProps): JSX.E
 
     const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>();
 
-    const [hideUi, setHideUi] = useState(false);
+    const [hideUi, setHideUi] = useState(true);
     const [fps, setFps] = useState(0);
     const [cameraYaw, setCameraYaw] = useState(Client.camera.getYaw());
     const [isWorldMapOpen, setWorldMapOpen] = useState<boolean>(false);

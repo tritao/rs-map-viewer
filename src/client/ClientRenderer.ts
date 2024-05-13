@@ -1,5 +1,3 @@
-import { Schema } from "leva/dist/declarations/src/types";
-
 import { clamp } from "../util/MathUtil";
 import { Client } from "./Client";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
@@ -8,7 +6,7 @@ import { INTERACTION_RADIUS } from "../renderer/Interactions";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
-import { MapManager, MapSquareInfo } from "../renderer/MapManager";
+import { MapManager, MapManagerUpdateMode, MapSquareInfo } from "../renderer/MapManager";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
@@ -18,9 +16,9 @@ import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, RendererMapSquare } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
-import { Game } from "./Game";
+import { Game, GameEvents } from "./game/Game";
 
-export class ClientRenderer extends RendererMainLoop {
+export class ClientRenderer extends RendererMainLoop implements GameEvents {
     inputManager: InputManager;
     cacheLoaders: CacheLoaders;
     workerPool: RenderDataWorkerPool;
@@ -40,7 +38,6 @@ export class ClientRenderer extends RendererMainLoop {
 
     constructor(public client: Client) {
         super();
-        this.game = client.game;
         this.inputManager = client.inputManager;
         this.cacheLoaders = client.cacheLoaders;
         this.workerPool = client.workerPool;
@@ -54,6 +51,22 @@ export class ClientRenderer extends RendererMainLoop {
             this.queueLoadMap.bind(this),
             this.removeLoadedMap.bind(this),
         );
+        this.mapManager.mode = MapManagerUpdateMode.Loaded;
+
+        this.game = client.game;
+        this.game.events = this;
+        this.game.cacheLoaders = this.cacheLoaders;
+    }
+
+    onChatboxMessage(message: string): void {
+        console.log(message);
+    }
+
+    onMapRegionLoad(mapX: number, mapY: number): void {
+        let regionX = Math.floor(mapX / 8);
+        let regionY = Math.floor(mapY / 8);
+
+        this.mapManager.loadMap(regionX, regionY);
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
@@ -83,6 +96,9 @@ export class ClientRenderer extends RendererMainLoop {
     override async init() {
         super.init();
         this.inputManager.init(this.canvas);
+
+        let username = "Wildy" + Math.floor(Math.random() * 1000);
+        await this.game.login(username, "test123");
     }
 
     initCache(): void {
@@ -106,6 +122,8 @@ export class ClientRenderer extends RendererMainLoop {
     }
 
     override update(time: number, deltaTime: number) {
+        this.game.processGameLoop();
+
         this.handleInput(deltaTime);
 
         const { width, height } = this.renderer.getViewportDimensions();
@@ -349,10 +367,6 @@ export class ClientRenderer extends RendererMainLoop {
         }
         if (this.inputManager.isKeyDown("KeyU")) {
             this.client.debugText = `Frame Time Js: ${frameStats.frameTimeJs.toFixed(2)}ms`;
-        }
-
-        if (window.wallpaperFpsLimit !== undefined) {
-            this.fpsLimit = window.wallpaperFpsLimit;
         }
 
         if (this.client.camera.updated) {
