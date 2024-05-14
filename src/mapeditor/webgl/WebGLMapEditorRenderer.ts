@@ -110,7 +110,8 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
         readonly workerPool: RenderDataWorkerPool,
         readonly inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
-        readonly camera: Camera) {
+        readonly camera: Camera,
+        readonly getSelectedUnderlayId: () => number) {
         super(cacheLoaders.cache, renderDistance, unloadDistance, lodDistance);
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
@@ -865,7 +866,7 @@ export class WebGLMapEditorRenderer extends MapRenderer<WebGLEditorMapSquare, Ed
                 // scene.tileRotations[0][sceneX][sceneY] = randomTileRotation;
                 // scene.tileOverlays[0][sceneX][sceneY] = randomOverlayId;
                 // scene.tileOverlays[0][sceneX][sceneY] = 0;
-                scene.tileUnderlays[0][sceneX][sceneY] = 2;
+                scene.tileUnderlays[0][sceneX][sceneY] = this.getSelectedUnderlayId() + 1;
 
                 map.underlayUpdated = true;
 

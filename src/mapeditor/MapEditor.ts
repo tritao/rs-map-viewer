@@ -39,6 +39,8 @@ export class MapEditor {
 
     debugText?: string;
 
+    selectedUnderlayId: number = 0;
+
     constructor(
         readonly workerPool: RenderDataWorkerPool,
         readonly cacheList: CacheList,
