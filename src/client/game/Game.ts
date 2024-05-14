@@ -14,6 +14,7 @@ import { SpawnObjectClassType, SpawnObjectNode } from "./SpawnObjectNode";
 import { LinkedList } from "./util/LinkedList";
 import { Actor } from "./renderable/actor/Actor";
 import { CacheLoaders } from "../../rs/cache/CacheLoaders";
+import { GameScene } from "./GameScene";
 
 export interface GameEvents {
     onMapRegionLoad(mapX: number, mapY: number): void;
@@ -21,6 +22,12 @@ export interface GameEvents {
 }
 
 export class Game {
+    static MAX_LEVELS = 4;
+    static MAX_TILES = 104;
+
+    static MAX_PLAYERS = 2048;
+    static MAX_NPCS = 16384;
+
     events!: GameEvents;
     gameConnection!: BufferedConnection;
     incomingRandom: ISAACCipher | null = null;
@@ -46,11 +53,7 @@ export class Game {
     chunkY: number = 0;
     plane: number = 0;
 
-    static MAX_LEVELS = 4;
-    static MAX_TILES = 104;
-
-    static MAX_PLAYERS = 2048;
-    static MAX_NPCS = 16384;
+    currentScene!: GameScene;
 
     localPlayer!: Player;
     players: (Player | null)[] = Array(Game.MAX_PLAYERS).fill(null);
@@ -92,10 +95,8 @@ export class Game {
     currentSong: number = 0;
     previousSong: number = 0;
 
-    public async openSocket(port: number): Promise<Socket> {
-        const socket = new Socket(Configuration.SERVER_ADDRESS, port);
-        await socket.connect();
-        return socket;
+    public async init() {
+        this.currentScene = new GameScene(Game.MAX_LEVELS, Game.MAX_TILES, Game.MAX_TILES);
     }
 
     public async processGameLoop() {
@@ -1079,7 +1080,6 @@ export class Game {
             player.moveCycleEnd = buffer.getUnsignedShortBE() + this.pulseCycle;
             player.moveCycleStart = buffer.getUnsignedNegativeOffsetShortBE() + this.pulseCycle;
             player.moveDirection = buffer.getUnsignedByte();
-
             player.resetPath();
         }
         else if ((mask & PlayerUpdateMask.INTERACTING_MOB) !== 0) {
@@ -1448,7 +1448,7 @@ export class Game {
             return;
         }
 
-        else if (opcode === RegionUpdateOpcode.UNKNOWN1) {
+        else if (opcode === RegionUpdateOpcode.TRANSFORM_PLAYER_TO_OBJECT) {
             const locObjectId: number = buf.getUnsignedShortBE();
             const locObjectData: number = buf.getUnsignedByte();
             const typeIndex: number = locObjectData >> 2;
@@ -1616,6 +1616,14 @@ export class Game {
         spawnObjectNode.rotation = rotation;
     }
 
+    // Network-related code
+
+    public async openSocket(port: number): Promise<Socket> {
+        const socket = new Socket(Configuration.SERVER_ADDRESS, port);
+        await socket.connect();
+        return socket;
+    }
+
     public async login(username: string, password: string, reconnecting: boolean = false) {
         let socket = await this.openSocket(Configuration.GAME_PORT);
         this.gameConnection = new BufferedConnection(socket);
@@ -1649,37 +1657,41 @@ export class Game {
             let playerRights = await this.gameConnection.read$();
             let accountFlagged = (await this.gameConnection.read$()) === 1;
 
-            this.loggedIn = true;
-            this.outBuffer.currentPosition = 0;
-            this.buffer.currentPosition = 0;
-            this.opcode = -1;
-            this.packetSize = 0;
-            //this.timeoutCounter = 0;
-            //this.systemUpdateTime = 0;
-            //this.idleTime = 0;
-            this.localPlayerCount = 0;
-            this.npcCount = 0;
-            for (let i = 0; i < Game.MAX_PLAYERS; i++) {
-                this.players[i] = null;
-                this.cachedAppearances[i] = null;
-            }
-            for (let i = 0; i < Game.MAX_NPCS; i++) {
-                this.npcs[i] = null;
-            }
-            this.localPlayer = this.players[this.thisPlayerId] = new Player();
-
-            this.projectileQueue.clear();
-            this.gameAnimableObjectQueue.clear();
-
-            for (let level = 0; level < Game.MAX_LEVELS; level++) {
-                for (let x: number = 0; x < Game.MAX_TILES; x++) {
-                    for (let y: number = 0; y < Game.MAX_TILES; y++) {
-                        this.groundItems[level][x][y] = null;
-                    }
-                }
-            }
+            this.initStateAfterLogin();
         } else {
             this.handleLoginResponseCode(responseCode);
+        }
+    }
+
+    private initStateAfterLogin() {
+        this.loggedIn = true;
+        this.outBuffer.currentPosition = 0;
+        this.buffer.currentPosition = 0;
+        this.opcode = -1;
+        this.packetSize = 0;
+        //this.timeoutCounter = 0;
+        //this.systemUpdateTime = 0;
+        //this.idleTime = 0;
+        this.localPlayerCount = 0;
+        this.npcCount = 0;
+        for (let i = 0; i < Game.MAX_PLAYERS; i++) {
+            this.players[i] = null;
+            this.cachedAppearances[i] = null;
+        }
+        for (let i = 0; i < Game.MAX_NPCS; i++) {
+            this.npcs[i] = null;
+        }
+        this.localPlayer = this.players[this.thisPlayerId] = new Player();
+
+        this.projectileQueue.clear();
+        this.gameAnimableObjectQueue.clear();
+
+        for (let level = 0; level < Game.MAX_LEVELS; level++) {
+            for (let x: number = 0; x < Game.MAX_TILES; x++) {
+                for (let y: number = 0; y < Game.MAX_TILES; y++) {
+                    this.groundItems[level][x][y] = null;
+                }
+            }
         }
     }
 

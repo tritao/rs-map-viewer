@@ -48,13 +48,13 @@ export class Player extends Actor {
 
     public teamId: number;
 
-    public anInt1768: number;
+    public minX: number;
 
-    public anInt1769: number;
+    public minY: number;
 
-    public anInt1770: number;
+    public tileHeight: number;
 
-    public anInt1771: number;
+    public tileWidth: number;
 
     constructor() {
         super();
@@ -72,10 +72,10 @@ export class Player extends Actor {
         this.objectAppearanceStartTick = 0;
         this.objectAppearanceEndTick = 0;
         this.teamId = 0;
-        this.anInt1768 = 0;
-        this.anInt1769 = 0;
-        this.anInt1770 = 0;
-        this.anInt1771 = 0;
+        this.minX = 0;
+        this.minY = 0;
+        this.tileHeight = 0;
+        this.tileWidth = 0;
     }
 
     public getHeadModel(): Model | null {

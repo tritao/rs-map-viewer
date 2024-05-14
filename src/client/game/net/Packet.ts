@@ -80,7 +80,7 @@ export enum IncomingPacket {
 }
 
 export enum RegionUpdateOpcode {
-    UNKNOWN1 = 203,
+    TRANSFORM_PLAYER_TO_OBJECT = 203,
     REMOVE_OBJECT = IncomingPacket.REMOVE_LANDSCAPE_OBJECT,
     SEND_OBJECT = IncomingPacket.SET_LANDSCAPE_OBJECT,
     SEND_PROJECTILE = IncomingPacket.SHOW_PROJECTILE,

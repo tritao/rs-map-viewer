@@ -17,6 +17,8 @@ import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, RendererMapSquare } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { Game, GameEvents } from "./game/Game";
+import { renderGameView } from "./game/GameRenderer";
+import { GameScene } from "./game/GameScene";
 
 export class ClientRenderer extends RendererMainLoop implements GameEvents {
     inputManager: InputManager;
@@ -24,6 +26,7 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
     workerPool: RenderDataWorkerPool;
 
     game: Game;
+
     camera: Camera;
     pathfinder: Pathfinder;
 
@@ -96,6 +99,8 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
     override async init() {
         super.init();
         this.inputManager.init(this.canvas);
+
+        this.game.init();
 
         let username = "Wildy" + Math.floor(Math.random() * 1000);
         await this.game.login(username, "test123");
@@ -194,6 +199,18 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
     }
 
     override render(time: number, deltaTime: number, resized: boolean) {
+        renderGameView(this.game);
+
+        const scene = this.game.currentScene;
+        for (let i = 0; i < scene.sceneSpawnRequestsCacheCurrentPos; i++) {
+            const interactiveObject = scene.sceneSpawnRequests[i];
+            console.log(interactiveObject);
+        }
+
+        // Render interactive objects
+
+        scene.clearInteractiveObjectCache();
+
         super.render(time, deltaTime, resized);
     }
 
