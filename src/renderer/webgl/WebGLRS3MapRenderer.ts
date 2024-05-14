@@ -86,6 +86,7 @@ export class WebGLRS3MapRenderer extends MapRenderer<WebGLRS3MapSquare, RS3MapDa
             maxLevel: this.maxLevel,
             loadObjs: this.loadObjs,
             loadNpcs: this.loadNpcs,
+            loadLocs: this.loadLocs,
             smoothTerrain: this.smoothTerrain,
             minimizeDrawCalls: !this.hasMultiDraw,
             loadedTextureIds: this.loadedTextureIds,

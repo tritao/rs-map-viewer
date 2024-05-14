@@ -15,6 +15,7 @@ export class SdMapData implements MapData {
         readonly maxLevel: number,
         readonly loadObjs: boolean,
         readonly loadNpcs: boolean,
+        readonly loadLocs: boolean,
 
         readonly smoothTerrain: boolean,
 
