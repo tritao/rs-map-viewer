@@ -12,7 +12,7 @@ import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
 import { generateHeight } from "../util/HeightCalc";
 import { CollisionMap } from "./CollisionMap";
-import { Scene } from "./Scene";
+import { Scene, TILE_FLAGS_BRIDGE } from "./Scene";
 import { SceneTileModel } from "./SceneTileModel";
 import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
@@ -261,7 +261,7 @@ export class SceneBuilder {
                     }
                     if ((scene.tileRenderFlags[level][x][y] & 0x1) === 1) {
                         let realLevel = level;
-                        if ((scene.tileRenderFlags[1][x][y] & 0x2) === 2) {
+                        if ((scene.tileRenderFlags[1][x][y] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
                             realLevel = level - 1;
                         }
 
@@ -1307,7 +1307,7 @@ export class SceneBuilder {
             const id = buffer.readUnsignedShort();
             if (
                 level > 0 &&
-                (scene.tileRenderFlags[1][x + borderSize][y + borderSize] & 0x2) === 2
+                (scene.tileRenderFlags[1][x + borderSize][y + borderSize] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE
             ) {
                 level--;
             }

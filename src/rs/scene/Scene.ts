@@ -11,6 +11,7 @@ import { Entity } from "./entity/Entity";
 import { EntityTag, EntityType, getEntityTypeFromTag } from "./entity/EntityTag";
 
 const MAX_LOC_PER_TILE = 5;
+export const TILE_FLAGS_BRIDGE = 0x2;
 
 export class Scene {
     static readonly MAX_LEVELS = 4;
@@ -410,7 +411,7 @@ export class Scene {
     getTileMinLevel(level: number, tileX: number, tileY: number): number {
         if ((this.tileRenderFlags[level][tileX][tileY] & 0x8) !== 0) {
             return 0;
-        } else if (level > 0 && (this.tileRenderFlags[level][tileX][tileY] & 0x2) !== 0) {
+        } else if (level > 0 && (this.tileRenderFlags[level][tileX][tileY] & TILE_FLAGS_BRIDGE) !== 0) {
             return level - 1;
         } else {
             return level;
@@ -439,7 +440,7 @@ export class Scene {
     }
 
     isPlayerLevel(level: number, tileX: number, tileY: number, playerLevel: number): boolean {
-        if ((this.tileRenderFlags[0][tileX][tileY] & 0x2) !== 0) {
+        if ((this.tileRenderFlags[0][tileX][tileY] & TILE_FLAGS_BRIDGE) !== 0) {
             return true;
         }
         if ((this.tileRenderFlags[level][tileX][tileY] & 0x10) !== 0) {

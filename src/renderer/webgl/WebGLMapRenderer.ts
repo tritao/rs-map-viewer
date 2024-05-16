@@ -34,6 +34,7 @@ import { getMaxAnisotropy, MapRenderer, TextureFilterMode } from "../MapRenderer
 import { SdMapDataLoader } from "../loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
+import { TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -685,7 +686,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const tileY = npc.y >> 7;
 
             let renderPlane = npc.level;
-            if (renderPlane < 3 && (map.getTileRenderFlag(1, tileX, tileY) & 0x2) === 2) {
+            if (renderPlane < 3 && (map.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
                 renderPlane++;
             }
 

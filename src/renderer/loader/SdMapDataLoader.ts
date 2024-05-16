@@ -6,7 +6,7 @@ import { NpcType } from "../../rs/config/npctype/NpcType";
 import { ObjModelLoader } from "../../rs/config/objtype/ObjModelLoader";
 import { VarManager } from "../../rs/config/vartype/VarManager";
 import { Model } from "../../rs/model/Model";
-import { Scene } from "../../rs/scene/Scene";
+import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { loadMinimapBlob } from "../../worker/MinimapData";
@@ -88,7 +88,7 @@ function createObjSceneModel(
     }
 
     let renderLevel = spawn.plane;
-    if (renderLevel < 3 && (scene.tileRenderFlags[1][tileX][tileY] & 0x2) === 2) {
+    if (renderLevel < 3 && (scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
         renderLevel = spawn.plane + 1;
     }
 

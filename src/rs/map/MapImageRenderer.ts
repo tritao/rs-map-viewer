@@ -27,7 +27,7 @@
 import { LocModelType } from "../config/loctype/LocModelType";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { Rasterizer3D } from "../graphics/Rasterizer3D";
-import { Scene } from "../scene/Scene";
+import { Scene, TILE_FLAGS_BRIDGE } from "../scene/Scene";
 import { getIdFromTag, isEntityInteractive } from "../scene/entity/EntityTag";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpritePixels } from "../sprite/SpritePixels";
@@ -79,7 +79,7 @@ export class MapImageRenderer {
 
             for (let tileX = 0; tileX < scene.sizeX; tileX++) {
                 let realLevel = level;
-                if ((scene.tileRenderFlags[1][tileX][tileY] & 0x2) === 2) {
+                if ((scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
                     realLevel++;
                 }
                 if ((scene.tileRenderFlags[level][tileX][tileY] & 0x18) === 0) {
@@ -106,7 +106,7 @@ export class MapImageRenderer {
         for (let tileX = 0; tileX < scene.sizeX; tileX++) {
             for (let tileY = 0; tileY < scene.sizeY; tileY++) {
                 let realLevel = level;
-                if ((scene.tileRenderFlags[1][tileX][tileY] & 0x2) === 2) {
+                if ((scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
                     realLevel++;
                 }
                 if ((scene.tileRenderFlags[level][tileX][tileY] & 0x18) === 0) {
