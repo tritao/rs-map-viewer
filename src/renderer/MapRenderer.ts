@@ -105,8 +105,6 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
     visibleMapCount: number = 0;
     visibleMaps: MapSquareInfo[] = []
 
-    npcRenderCount: number = 0;
-
     constructor(readonly cache: LoadedCache,
         renderDistance: number, unloadDistance: number, lodDistance: number) {
         this.renderDistance = renderDistance;

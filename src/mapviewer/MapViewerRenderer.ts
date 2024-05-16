@@ -144,7 +144,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         const seqFrameLoader = this.cacheLoaders.seqFrameLoader;
         const seqTypeLoader = this.cacheLoaders.seqTypeLoader;
 
-        this.renderer.npcRenderCount = 0;
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
             const map = this.renderer.getMap(mapInfo.mapId)!;
@@ -167,8 +166,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                     npc.updateMovement(seqTypeLoader, seqFrameLoader);
                 }
             }
-
-            this.renderer.addNpcRenderData(map);
         }
     }
 

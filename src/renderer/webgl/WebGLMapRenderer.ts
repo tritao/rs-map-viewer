@@ -87,6 +87,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     closestInteractIndices: Map<number, number[]> = new Map();
     interactBuffer?: Float32Array;
 
+    npcRenderCount: number = 0;
     npcRenderData: Uint16Array = new Uint16Array(16 * 4);
 
     npcDataTextureBuffer: (Texture | undefined)[] = new Array(5);
@@ -503,6 +504,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     update(time: number, deltaTime: number) { }
 
     render(time: number, deltaTime: number, resized: boolean): void {
+        this.npcRenderCount = 0;
         this.rendererStats.frameStart = performance.now();
         const timeSec = time / 1000;
 
@@ -575,6 +577,16 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.app.clearColor(0.0, 0.0, 0.0, 1.0);
         this.app.clear();
         this.gl.clearBufferfv(PicoGL.COLOR, 0, this.skyColor);
+
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
+            this.addNpcRenderData(map);
+        }
 
         const npcDataTextureIndex = this.updateNpcDataTexture();
         const npcDataTexture = this.npcDataTextureBuffer[npcDataTextureIndex];
