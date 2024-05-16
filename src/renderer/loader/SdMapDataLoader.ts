@@ -37,6 +37,7 @@ import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
+import { addNpcAnimationFrames, SdRenderableDataLoader } from "./SdRenderableDataLoader";
 
 function loadHeightMapTextureData(scene: Scene): Int16Array {
     const heightMapTextureData = new Int16Array(Scene.MAX_LEVELS * scene.sizeX * scene.sizeY);
@@ -446,51 +447,6 @@ function addLocEntities(
     return locAnimatedGroupMap.values();
 }
 
-function addNpcAnimationFrames(
-    npcModelLoader: NpcModelLoader,
-    sceneBuf: SceneBuffer,
-    npcType: NpcType,
-    seqId: number,
-): AnimationFrames | undefined {
-    const seqType = npcModelLoader.seqTypeLoader.load(seqId);
-    if (!seqType) {
-        return undefined;
-    }
-    let frameCount: number;
-    if (seqType.isSkeletalSeq()) {
-        frameCount = seqType.getSkeletalDuration();
-    } else {
-        if (!seqType.frameIds) {
-            return undefined;
-        }
-        frameCount = seqType.frameIds.length;
-    }
-    if (frameCount === 0) {
-        return undefined;
-    }
-    const frames = new Array<DrawRange>(frameCount);
-    const framesAlpha = new Array<DrawRange>(frameCount);
-    let alphaFrameCount = 0;
-    for (let i = 0; i < frameCount; i++) {
-        const model = npcModelLoader.getModel(npcType, seqId, i);
-        if (model) {
-            frames[i] = sceneBuf.addModelAnimFrame(model, false);
-            framesAlpha[i] = sceneBuf.addModelAnimFrame(model, true);
-            if (framesAlpha[i][1] > 0) {
-                alphaFrameCount++;
-            }
-        } else {
-            frames[i] = NULL_DRAW_RANGE;
-            framesAlpha[i] = NULL_DRAW_RANGE;
-        }
-    }
-
-    return {
-        frames,
-        framesAlpha: alphaFrameCount > 0 ? framesAlpha : undefined,
-    };
-}
-
 function createNpcSpawnGroups(
     npcModelLoader: NpcModelLoader,
     basTypeLoader: BasTypeLoader,
@@ -657,73 +613,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         );
         const npcs = createNpcDatas(npcSpawnGroups);
 
-        // Draw ranges
+        const drawRanges = SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY);
 
-        // Normal (merged)
-        const drawRanges = sceneBuf.drawCommands.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesAlpha = sceneBuf.drawCommandsAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        //console.log(
-        //    `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
-        //    mapX,
-        //    mapY,
-        //);
-
-        // Lod (merged)
-        const drawRangesLod = sceneBuf.drawCommandsLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesLodAlpha = sceneBuf.drawCommandsLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        //console.log(
-        //    `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
-        //    mapX,
-        //    mapY,
-        //);
-
-        // Interact (non merged)
-        const drawRangesInteract = sceneBuf.drawCommandsInteract.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesInteractAlpha = sceneBuf.drawCommandsInteractAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        //console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
-
-        // Interact Lod (non merged)
-        const drawRangesInteractLod = sceneBuf.drawCommandsInteractLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const drawRangesInteractLodAlpha = sceneBuf.drawCommandsInteractLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        // Model info textures
-        const modelTextureData = createModelInfoTextureData(sceneBuf.drawCommands);
-        const modelTextureDataAlpha = createModelInfoTextureData(sceneBuf.drawCommandsAlpha);
-
-        const modelTextureDataLod = createModelInfoTextureData(sceneBuf.drawCommandsLod);
-        const modelTextureDataLodAlpha = createModelInfoTextureData(sceneBuf.drawCommandsLodAlpha);
-
-        const modelTextureDataInteract = createModelInfoTextureData(sceneBuf.drawCommandsInteract);
-        const modelTextureDataInteractAlpha = createModelInfoTextureData(
-            sceneBuf.drawCommandsInteractAlpha,
-        );
-
-        const modelTextureDataInteractLod = createModelInfoTextureData(
-            sceneBuf.drawCommandsInteractLod,
-        );
-        const modelTextureDataInteractLodAlpha = createModelInfoTextureData(
-            sceneBuf.drawCommandsInteractLodAlpha,
-        );
-
+        const modelInfoTextures = SdRenderableDataLoader.getModelInfoTextures(sceneBuf);
+ 
         const heightMapTextureData = loadHeightMapTextureData(scene);
 
         const vertices = sceneBuf.vertexBuf.byteArray();
@@ -758,17 +651,17 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             indices.buffer,
             heightMapTextureData.buffer,
 
-            modelTextureData.buffer,
-            modelTextureDataAlpha.buffer,
+            modelInfoTextures.base.buffer,
+            modelInfoTextures.alpha.buffer,
 
-            modelTextureDataLod.buffer,
-            modelTextureDataLodAlpha.buffer,
+            modelInfoTextures.lod.buffer,
+            modelInfoTextures.lodAlpha.buffer,
 
-            modelTextureDataInteract.buffer,
-            modelTextureDataInteractAlpha.buffer,
+            modelInfoTextures.interact.buffer,
+            modelInfoTextures.interactAlpha.buffer,
 
-            modelTextureDataInteractLod.buffer,
-            modelTextureDataInteractLodAlpha.buffer,
+            modelInfoTextures.interactLod.buffer,
+            modelInfoTextures.interactLodAlpha.buffer,
         ];
 
         const totalBytes = transferables.reduce((sum, buf) => sum + buf.byteLength, 0);
@@ -779,12 +672,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         //    loadedTextures.size,
         //);
 
-        return {
-            data: {
+        const data = new SdMapData(
                 mapX,
                 mapY,
 
-                cacheName: state.cache.info.name,
+                state.cache.info.name,
 
                 maxLevel,
                 loadObjs,
@@ -794,45 +686,28 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
                 smoothTerrain,
 
                 borderSize,
-                tileRenderFlags: scene.tileRenderFlags,
-                collisionDatas: scene.collisionMaps,
+                scene.tileRenderFlags,
+                scene.collisionMaps,
 
                 minimapBlob,
 
                 vertices,
                 indices,
 
-                modelTextureData,
-                modelTextureDataAlpha,
-
-                modelTextureDataLod,
-                modelTextureDataLodAlpha,
-
-                modelTextureDataInteract,
-                modelTextureDataInteractAlpha,
-
-                modelTextureDataInteractLod,
-                modelTextureDataInteractLodAlpha,
+                modelInfoTextures,
 
                 heightMapTextureData,
 
                 drawRanges,
-                drawRangesAlpha,
-
-                drawRangesLod,
-                drawRangesLodAlpha,
-
-                drawRangesInteract,
-                drawRangesInteractAlpha,
-
-                drawRangesInteractLod,
-                drawRangesInteractLodAlpha,
 
                 locsAnimated,
                 npcs,
 
                 loadedTextures,
-            },
+        );
+
+        return {
+            data,
             transferables,
         };
     }

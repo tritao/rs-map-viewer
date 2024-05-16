@@ -1,10 +1,10 @@
 import { CollisionData } from "../../rs/scene/CollisionMap";
-import { DrawRange } from "../DrawRange";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
 import { MapData } from "./MapData";
+import { SdRenderableData, SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
 
-export class SdMapData implements MapData {
+export class SdMapData extends SdRenderableData implements MapData {
 
     constructor(
         readonly mapX: number,
@@ -29,36 +29,20 @@ export class SdMapData implements MapData {
         readonly vertices: Uint8Array,
         readonly indices: Int32Array,
 
-        readonly modelTextureData: Uint16Array,
-        readonly modelTextureDataAlpha: Uint16Array,
-
-        readonly modelTextureDataLod: Uint16Array,
-        readonly modelTextureDataLodAlpha: Uint16Array,
-
-        readonly modelTextureDataInteract: Uint16Array,
-        readonly modelTextureDataInteractAlpha: Uint16Array,
-
-        readonly modelTextureDataInteractLod: Uint16Array,
-        readonly modelTextureDataInteractLodAlpha: Uint16Array,
+        readonly modelInfoTextures: SdRenderableModelInfoTextures,
 
         readonly heightMapTextureData: Int16Array,
 
-        readonly drawRanges: DrawRange[],
-        readonly drawRangesAlpha: DrawRange[],
-
-        readonly drawRangesLod: DrawRange[],
-        readonly drawRangesLodAlpha: DrawRange[],
-
-        readonly drawRangesInteract: DrawRange[],
-        readonly drawRangesInteractAlpha: DrawRange[],
-
-        readonly drawRangesInteractLod: DrawRange[],
-        readonly drawRangesInteractLodAlpha: DrawRange[],
+        readonly drawRanges: SdRenderableDrawRanges,
 
         readonly locsAnimated: LocAnimatedData[],
         readonly npcs: NpcData[],
 
         readonly loadedTextures: Map<number, Int32Array>,
     ) {
+        super(0, cacheName, tileRenderFlags,
+            collisionDatas, vertices, indices,
+            modelInfoTextures, drawRanges, locsAnimated, npcs,
+            loadedTextures);
     }
 };

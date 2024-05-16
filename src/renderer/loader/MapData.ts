@@ -12,10 +12,5 @@ export interface MapData {
 
     smoothTerrain: boolean;
 
-    borderSize: number;
-
-    tileRenderFlags: Uint8Array[][];
-    collisionDatas: CollisionData[];
-
     minimapBlob: Blob;
 };

@@ -79,31 +79,31 @@ export class WebGLMapSquare implements RendererMapSquare {
             })
             .indexBuffer(indexBuffer);
 
-        const modelInfoTexture = createModelInfoTexture(app, mapData.modelTextureData);
-        const modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelTextureDataAlpha);
+        const modelInfoTexture = createModelInfoTexture(app, mapData.modelInfoTextures.base);
+        const modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelInfoTextures.alpha);
 
-        const modelInfoTextureLod = createModelInfoTexture(app, mapData.modelTextureDataLod);
+        const modelInfoTextureLod = createModelInfoTexture(app, mapData.modelInfoTextures.lod);
         const modelInfoTextureLodAlpha = createModelInfoTexture(
             app,
-            mapData.modelTextureDataLodAlpha,
+            mapData.modelInfoTextures.lodAlpha,
         );
 
         const modelInfoTextureInteract = createModelInfoTexture(
             app,
-            mapData.modelTextureDataInteract,
+            mapData.modelInfoTextures.interact,
         );
         const modelInfoTextureInteractAlpha = createModelInfoTexture(
             app,
-            mapData.modelTextureDataInteractAlpha,
+            mapData.modelInfoTextures.interactAlpha,
         );
 
         const modelInfoTextureInteractLod = createModelInfoTexture(
             app,
-            mapData.modelTextureDataInteractLod,
+            mapData.modelInfoTextures.interactLod,
         );
         const modelInfoTextureInteractLodAlpha = createModelInfoTexture(
             app,
-            mapData.modelTextureDataInteractLodAlpha,
+            mapData.modelInfoTextures.interactLodAlpha,
         );
 
         const heightMapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
@@ -149,40 +149,40 @@ export class WebGLMapSquare implements RendererMapSquare {
             };
         };
 
-        const drawCall = createDrawCall(mainProgram, modelInfoTexture, mapData.drawRanges);
+        const drawCall = createDrawCall(mainProgram, modelInfoTexture, mapData.drawRanges.base);
         const drawCallAlpha = createDrawCall(
             mainAlphaProgram,
             modelInfoTextureAlpha,
-            mapData.drawRangesAlpha,
+            mapData.drawRanges.alpha,
         );
 
-        const drawCallLod = createDrawCall(mainProgram, modelInfoTextureLod, mapData.drawRangesLod);
+        const drawCallLod = createDrawCall(mainProgram, modelInfoTextureLod, mapData.drawRanges.lod);
         const drawCallLodAlpha = createDrawCall(
             mainAlphaProgram,
             modelInfoTextureLodAlpha,
-            mapData.drawRangesLodAlpha,
+            mapData.drawRanges.lodAlpha,
         );
 
         const drawCallInteract = createDrawCall(
             mainProgram,
             modelInfoTextureInteract,
-            mapData.drawRangesInteract,
+            mapData.drawRanges.interact,
         );
         const drawCallInteractAlpha = createDrawCall(
             mainAlphaProgram,
             modelInfoTextureInteractAlpha,
-            mapData.drawRangesInteractAlpha,
+            mapData.drawRanges.interactAlpha,
         );
 
         const drawCallInteractLod = createDrawCall(
             mainProgram,
             modelInfoTextureInteractLod,
-            mapData.drawRangesInteractLod,
+            mapData.drawRanges.interactLod,
         );
         const drawCallInteractLodAlpha = createDrawCall(
             mainAlphaProgram,
             modelInfoTextureInteractLodAlpha,
-            mapData.drawRangesInteractLodAlpha,
+            mapData.drawRanges.interactLodAlpha,
         );
 
         const cycle = time / 0.02;
