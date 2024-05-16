@@ -156,7 +156,7 @@ export class MapManager {
         ) {
             return;
         }
-        console.log("Loading map", mapX, mapY);
+        //console.log("MapManager: Loading map", mapX, mapY);
         this.loadingMapIds.add(mapId);
         this.loadMapFunction(mapX, mapY);
     }

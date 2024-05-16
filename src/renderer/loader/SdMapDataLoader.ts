@@ -662,11 +662,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(
-            `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
-            mapX,
-            mapY,
-        );
+        //console.log(
+        //    `draw ranges: ${drawRanges.length}, alpha: ${drawRangesAlpha.length}`,
+        //    mapX,
+        //    mapY,
+        //);
 
         // Lod (merged)
         const drawRangesLod = sceneBuf.drawCommandsLod.map((cmd) =>
@@ -676,11 +676,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(
-            `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
-            mapX,
-            mapY,
-        );
+        //console.log(
+        //    `draw ranges lod: ${drawRangesLod.length}, alpha: ${drawRangesLodAlpha.length}`,
+        //    mapX,
+        //    mapY,
+        //);
 
         // Interact (non merged)
         const drawRangesInteract = sceneBuf.drawCommandsInteract.map((cmd) =>
@@ -690,7 +690,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
+        //console.log(`draw ranges interact: ${drawRangesInteract.length}`, mapX, mapY);
 
         // Interact Lod (non merged)
         const drawRangesInteractLod = sceneBuf.drawCommandsInteractLod.map((cmd) =>
@@ -768,11 +768,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         const totalBytes = transferables.reduce((sum, buf) => sum + buf.byteLength, 0);
 
-        console.log(
-            `total bytes: ${totalBytes} ${mapX},${mapY}`,
-            sceneBuf.usedTextureIds,
-            loadedTextures.size,
-        );
+        //console.log(
+        //    `total bytes: ${totalBytes} ${mapX},${mapY}`,
+        //    sceneBuf.usedTextureIds,
+        //    loadedTextures.size,
+        //);
 
         return {
             data: {
