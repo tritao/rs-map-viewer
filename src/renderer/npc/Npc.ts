@@ -45,7 +45,7 @@ export class Npc {
         readonly spawnX: number,
         readonly spawnY: number,
         readonly level: number,
-        readonly idleAnim: AnimationFrames,
+        readonly idleAnim: AnimationFrames | undefined,
         readonly walkAnim: AnimationFrames | undefined,
         readonly npcType: NpcType,
         readonly idleSeqId: number,
@@ -453,7 +453,7 @@ export class Npc {
         }
     }
 
-    getAnimationFrames(): AnimationFrames {
+    getAnimationFrames(): AnimationFrames | undefined {
         return this.walkAnim && this.movementSeqId === this.walkSeqId
             ? this.walkAnim
             : this.idleAnim;

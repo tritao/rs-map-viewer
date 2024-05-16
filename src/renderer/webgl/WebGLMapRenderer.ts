@@ -810,13 +810,16 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 const npc = npcs[i];
                 const anim = npc.getAnimationFrames();
 
-                const frameId = npc.movementFrame;
-                const frame = anim.frames[frameId];
+                if (anim) {
 
-                (drawCall as any).offsets[i] = frame[0];
-                (drawCall as any).numElements[i] = frame[1];
+                    const frameId = npc.movementFrame;
+                    const frame = anim.frames[frameId];
 
-                drawRanges[i] = frame;
+                    (drawCall as any).offsets[i] = frame[0];
+                    (drawCall as any).numElements[i] = frame[1];
+
+                    drawRanges[i] = frame;
+                }
             }
 
             this.draw(drawCall, drawRanges);
@@ -897,7 +900,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
                 const frameId = npc.movementFrame;
                 let frame: DrawRange = NULL_DRAW_RANGE;
-                if (anim.framesAlpha) {
+                if (anim && anim.framesAlpha) {
                     frame = anim.framesAlpha[frameId];
                 }
 

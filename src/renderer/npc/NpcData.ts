@@ -7,7 +7,7 @@ export type NpcData = {
     tileX: number;
     tileY: number;
     level: number;
-    idleAnim: AnimationFrames;
+    idleAnim: AnimationFrames | undefined;
     walkAnim: AnimationFrames | undefined;
 };
 
