@@ -1,12 +1,9 @@
 import { vec2 } from "gl-matrix";
-import PicoGL, {
-    DrawCall,
+import {
     App as PicoApp,
     Program,
     Texture,
     UniformBuffer,
-    VertexArray,
-    VertexBuffer,
 } from "picogl";
 
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
@@ -16,34 +13,13 @@ import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { Scene } from "../../rs/scene/Scene";
-import { DrawRange, newDrawRange } from "../DrawRange";
+import { DrawRange } from "../DrawRange";
 import { SdMapData } from "../loader/SdMapData";
-import { LocAnimated } from "../loc/LocAnimated";
 import { MapSquareRenderable } from "../MapRenderer";
-import { Npc } from "../npc/Npc";
+import { RenderableType } from "../Renderer";
+import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
-const FRAME_RENDER_DELAY = 3;
-
-const NPC_DATA_TEXTURE_BUFFER_SIZE = 5;
-
-function createModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
-    return app.createTexture2D(data, 16, Math.max(Math.ceil(data.length / 16 / 4), 1), {
-        internalFormat: PicoGL.RGBA16UI,
-        minFilter: PicoGL.NEAREST,
-        magFilter: PicoGL.NEAREST,
-    });
-}
-
-export type DrawCallRange = {
-    drawCall: DrawCall;
-    drawRanges: DrawRange[];
-};
-
-export class WebGLMapSquare implements MapSquareRenderable {
-    readonly id: number;
-
-    npcDataTextureOffsets: number[];
-
+export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
     static load(
         seqTypeLoader: SeqTypeLoader,
         npcTypeLoader: NpcTypeLoader,
@@ -55,250 +31,54 @@ export class WebGLMapSquare implements MapSquareRenderable {
         textureArray: Texture,
         textureMaterials: Texture,
         sceneUniformBuffer: UniformBuffer,
-        mapData: SdMapData,
+        data: SdMapData,
         time: number,
         frame: number,
     ): WebGLMapSquare {
-        const { mapX, mapY, borderSize, tileRenderFlags } = mapData;
-
-        const collisionMaps = mapData.collisionDatas.map(CollisionMap.fromData);
+        const { mapX, mapY, borderSize } = data;
 
         const mapPos = vec2.fromValues(mapX, mapY);
-
-        const interleavedBuffer = app.createInterleavedBuffer(12, mapData.vertices);
-        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, mapData.indices);
-
-        const vertexArray = app
-            .createVertexArray()
-            // v0, v1, v2
-            .vertexAttributeBuffer(0, interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
-                integer: true as any,
-            })
-            .indexBuffer(indexBuffer);
-
-        const modelInfoTexture = createModelInfoTexture(app, mapData.modelInfoTextures.base);
-        const modelInfoTextureAlpha = createModelInfoTexture(app, mapData.modelInfoTextures.alpha);
-
-        const modelInfoTextureLod = createModelInfoTexture(app, mapData.modelInfoTextures.lod);
-        const modelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelInfoTextures.lodAlpha,
-        );
-
-        const modelInfoTextureInteract = createModelInfoTexture(
-            app,
-            mapData.modelInfoTextures.interact,
-        );
-        const modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            mapData.modelInfoTextures.interactAlpha,
-        );
-
-        const modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            mapData.modelInfoTextures.interactLod,
-        );
-        const modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            mapData.modelInfoTextures.interactLodAlpha,
-        );
-
         const heightMapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
-        const heightMapTexture = app.createTextureArray(
-            mapData.heightMapTextureData,
-            heightMapSize,
-            heightMapSize,
-            Scene.MAX_LEVELS,
-            {
-                internalFormat: PicoGL.R16I,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-                type: PicoGL.SHORT,
-                wrapS: PicoGL.CLAMP_TO_EDGE,
-                wrapT: PicoGL.CLAMP_TO_EDGE,
-            },
-        );
 
-        // const time = performance.now() * 0.001;
-
-        const createDrawCall = (
+        const createDrawCall: CreateDrawCallFunction = (
             program: Program,
             modelInfoTexture: Texture | undefined,
             drawRanges: DrawRange[],
         ): DrawCallRange => {
             const drawCall = app
-                .createDrawCall(program, vertexArray)
+                .createDrawCall(program, renderable.vertexArray)
                 .uniformBlock("SceneUniforms", sceneUniformBuffer)
                 .uniform("u_timeLoaded", time)
                 .uniform("u_mapPos", mapPos)
                 // .uniform("u_drawIdOffset", drawIdOffset)
                 .texture("u_textures", textureArray)
                 .texture("u_textureMaterials", textureMaterials)
-                .texture("u_heightMap", heightMapTexture)
-                // .texture("u_modelInfoTexture", modelInfoTexture)
+                .texture("u_heightMap", renderable.heightMapTexture)
                 .drawRanges(...drawRanges);
+
             if (modelInfoTexture) {
                 drawCall.texture("u_modelInfoTexture", modelInfoTexture);
             }
+
             return {
                 drawCall,
                 drawRanges,
             };
         };
 
-        const drawCall = createDrawCall(mainProgram, modelInfoTexture, mapData.drawRanges.base);
-        const drawCallAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureAlpha,
-            mapData.drawRanges.alpha,
-        );
+        const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
 
-        const drawCallLod = createDrawCall(mainProgram, modelInfoTextureLod, mapData.drawRanges.lod);
-        const drawCallLodAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureLodAlpha,
-            mapData.drawRanges.lodAlpha,
-        );
+        const renderable = new WebGLMapSquare(mapX, mapY, borderSize, data.tileRenderFlags,
+            collisionMaps, time, frame);
+        renderable.createBuffers(app, data);
+        renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
+        renderable.createModelInfoTextures(app, data);
+        renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
+        renderable.createAnimatedLocs(time, data, seqTypeLoader);
+        renderable.createNpcs(data, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
+        renderable.processNpcsCollisions();
 
-        const drawCallInteract = createDrawCall(
-            mainProgram,
-            modelInfoTextureInteract,
-            mapData.drawRanges.interact,
-        );
-        const drawCallInteractAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureInteractAlpha,
-            mapData.drawRanges.interactAlpha,
-        );
-
-        const drawCallInteractLod = createDrawCall(
-            mainProgram,
-            modelInfoTextureInteractLod,
-            mapData.drawRanges.interactLod,
-        );
-        const drawCallInteractLodAlpha = createDrawCall(
-            mainAlphaProgram,
-            modelInfoTextureInteractLodAlpha,
-            mapData.drawRanges.interactLodAlpha,
-        );
-
-        const cycle = time / 0.02;
-
-        const locsAnimated: LocAnimated[] = [];
-        for (const loc of mapData.locsAnimated) {
-            const seqType = seqTypeLoader.load(loc.seqId);
-            locsAnimated.push(
-                new LocAnimated(
-                    loc.drawRangeIndex,
-                    loc.drawRangeAlphaIndex,
-
-                    loc.drawRangeLodIndex,
-                    loc.drawRangeLodAlphaIndex,
-
-                    loc.drawRangeInteractIndex,
-                    loc.drawRangeInteractAlphaIndex,
-
-                    loc.drawRangeInteractLodIndex,
-                    loc.drawRangeInteractLodAlphaIndex,
-
-                    loc.anim,
-                    seqType,
-                    cycle,
-                    loc.randomStart,
-                ),
-            );
-        }
-
-        const npcs: Npc[] = [];
-        for (const npc of mapData.npcs) {
-            const npcType = npcTypeLoader.load(npc.id);
-
-            npcs.push(
-                new Npc(
-                    npc.tileX,
-                    npc.tileY,
-                    npc.level,
-                    npc.idleAnim,
-                    npc.walkAnim,
-                    npcType,
-                    npcType.getIdleSeqId(basTypeLoader),
-                    npcType.getWalkSeqId(basTypeLoader),
-                ),
-            );
-        }
-
-        for (const npc of npcs) {
-            const collisionMap = collisionMaps[npc.level];
-
-            const currentX = npc.pathX[0];
-            const currentY = npc.pathY[0];
-
-            const size = npc.getSize();
-
-            for (let flagX = currentX; flagX < currentX + size; flagX++) {
-                for (let flagY = currentY; flagY < currentY + size; flagY++) {
-                    collisionMap.flag(
-                        flagX + borderSize,
-                        flagY + borderSize,
-                        CollisionFlag.BLOCK_NPCS,
-                    );
-                }
-            }
-        }
-
-        const drawRangesNpc = npcs.map((_npc) => newDrawRange(0, 0, 1));
-
-        const drawCallNpc = createDrawCall(npcProgram, undefined, drawRangesNpc);
-
-        return new WebGLMapSquare(
-            mapX,
-            mapY,
-
-            borderSize,
-            tileRenderFlags,
-            collisionMaps,
-
-            time,
-            frame,
-
-            interleavedBuffer,
-            indexBuffer,
-            vertexArray,
-
-            heightMapTexture,
-
-            modelInfoTexture,
-            modelInfoTextureAlpha,
-
-            modelInfoTextureLod,
-            modelInfoTextureLodAlpha,
-
-            modelInfoTextureInteract,
-            modelInfoTextureInteractAlpha,
-
-            modelInfoTextureInteractLod,
-            modelInfoTextureInteractLodAlpha,
-
-            drawCall,
-            drawCallAlpha,
-
-            drawCallLod,
-            drawCallLodAlpha,
-
-            drawCallInteract,
-            drawCallInteractAlpha,
-
-            drawCallInteractLod,
-            drawCallInteractLodAlpha,
-
-            drawCallNpc,
-
-            locsAnimated,
-            npcs,
-        );
+        return renderable;
     }
 
     constructor(
@@ -311,53 +91,29 @@ export class WebGLMapSquare implements MapSquareRenderable {
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
-
-        readonly interleavedBuffer: VertexBuffer,
-        readonly indexBuffer: VertexBuffer,
-        readonly vertexArray: VertexArray,
-
-        readonly heightMapTexture: Texture,
-
-        // Model info
-        readonly modelInfoTexture: Texture,
-        readonly modelInfoTextureAlpha: Texture,
-
-        readonly modelInfoTextureLod: Texture,
-        readonly modelInfoTextureLodAlpha: Texture,
-
-        readonly modelInfoTextureInteract: Texture,
-        readonly modelInfoTextureInteractAlpha: Texture,
-
-        readonly modelInfoTextureInteractLod: Texture,
-        readonly modelInfoTextureInteractLodAlpha: Texture,
-
-        // Draw calls
-        readonly drawCall: DrawCallRange,
-        readonly drawCallAlpha: DrawCallRange,
-
-        readonly drawCallLod: DrawCallRange,
-        readonly drawCallLodAlpha: DrawCallRange,
-
-        readonly drawCallInteract: DrawCallRange,
-        readonly drawCallInteractAlpha: DrawCallRange,
-
-        readonly drawCallInteractLod: DrawCallRange,
-        readonly drawCallInteractLodAlpha: DrawCallRange,
-
-        readonly drawCallNpc: DrawCallRange,
-
-        // Animated locs
-        readonly locsAnimated: LocAnimated[],
-
-        // Npcs
-        readonly npcs: Npc[],
     ) {
-        this.id = getMapSquareId(mapX, mapY);
-        this.npcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_BUFFER_SIZE).fill(-1);
+        super(RenderableType.Map, getMapSquareId(mapX, mapY), timeLoaded, frameLoaded);
     }
 
-    canRender(frameCount: number): boolean {
-        return frameCount - this.frameLoaded > FRAME_RENDER_DELAY;
+    processNpcsCollisions() {
+        for (const npc of this.npcs) {
+            const collisionMap = this.collisionMaps[npc.level];
+
+            const currentX = npc.pathX[0];
+            const currentY = npc.pathY[0];
+
+            const size = npc.getSize();
+
+            for (let flagX = currentX; flagX < currentX + size; flagX++) {
+                for (let flagY = currentY; flagY < currentY + size; flagY++) {
+                    collisionMap.flag(
+                        flagX + this.borderSize,
+                        flagY + this.borderSize,
+                        CollisionFlag.BLOCK_NPCS,
+                    );
+                }
+            }
+        }
     }
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
@@ -366,42 +122,5 @@ export class WebGLMapSquare implements MapSquareRenderable {
 
     getMapDistance(mapX: number, mapY: number): number {
         return Math.max(Math.abs(mapX - this.mapX), Math.abs(mapY - this.mapY));
-    }
-
-    getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
-        if (isInteract) {
-            if (isLod) {
-                return isAlpha ? this.drawCallInteractLodAlpha : this.drawCallInteractLod;
-            } else {
-                return isAlpha ? this.drawCallInteractAlpha : this.drawCallInteract;
-            }
-        } else {
-            if (isLod) {
-                return isAlpha ? this.drawCallLodAlpha : this.drawCallLod;
-            } else {
-                return isAlpha ? this.drawCallAlpha : this.drawCall;
-            }
-        }
-    }
-
-    delete() {
-        this.vertexArray.delete();
-        this.interleavedBuffer.delete();
-        this.indexBuffer.delete();
-
-        this.heightMapTexture.delete();
-
-        // Model info
-        this.modelInfoTexture.delete();
-        this.modelInfoTextureAlpha.delete();
-
-        this.modelInfoTextureLod.delete();
-        this.modelInfoTextureLodAlpha.delete();
-
-        this.modelInfoTextureInteract.delete();
-        this.modelInfoTextureInteractAlpha.delete();
-
-        this.modelInfoTextureInteractLod.delete();
-        this.modelInfoTextureInteractLodAlpha.delete();
     }
 }
