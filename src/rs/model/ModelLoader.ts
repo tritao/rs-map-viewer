@@ -5,6 +5,7 @@ import { ModelData } from "./ModelData";
 
 export interface ModelLoader {
     getModel(id: number): ModelData | undefined;
+    getCount(): number;
 }
 
 export class IndexModelLoader implements ModelLoader {
@@ -12,6 +13,10 @@ export class IndexModelLoader implements ModelLoader {
 
     constructor(modelIndex: CacheIndex) {
         this.modelIndex = modelIndex;
+    }
+
+    getCount(): number {
+        return this.modelIndex.getArchiveCount()
     }
 
     getModel(id: number): ModelData | undefined {
@@ -170,6 +175,10 @@ export class LegacyModelLoader implements ModelLoader {
             meta.faceTextureAxisOffset = vertexTextureDataOffset;
             vertexTextureDataOffset += meta.texturedTriangleCount;
         }
+    }
+
+    getCount(): number {
+        throw new Error("Method not implemented.");
     }
 
     getModel(id: number): ModelData | undefined {

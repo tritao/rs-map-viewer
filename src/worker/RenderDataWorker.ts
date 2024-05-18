@@ -36,6 +36,7 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
+import { ModelLoader } from "../rs/model/ModelLoader";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -58,6 +59,7 @@ export type WorkerState = {
     seqFrameLoader: SeqFrameLoader;
     skeletalSeqLoader: SkeletalSeqLoader | undefined;
 
+    modelLoader: ModelLoader;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
     npcModelLoader: NpcModelLoader;
@@ -168,6 +170,7 @@ async function initWorker(
         seqFrameLoader,
         skeletalSeqLoader,
 
+        modelLoader,
         locModelLoader,
         objModelLoader,
         npcModelLoader,

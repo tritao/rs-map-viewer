@@ -1,6 +1,8 @@
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CollisionData } from "../../rs/scene/CollisionMap";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
+import { RenderableType } from "../Renderer";
 import { MapData } from "./MapData";
 import { SdRenderableData, SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
 
@@ -40,7 +42,7 @@ export class SdMapData extends SdRenderableData implements MapData {
 
         readonly loadedTextures: Map<number, Int32Array>,
     ) {
-        super(0, cacheName, tileRenderFlags,
+        super(RenderableType.Map, getMapSquareId(mapX, mapY), cacheName, tileRenderFlags,
             collisionDatas, vertices, indices,
             modelInfoTextures, drawRanges, locsAnimated, npcs,
             loadedTextures);

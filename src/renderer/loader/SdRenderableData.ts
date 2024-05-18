@@ -34,6 +34,7 @@ export type SdRenderableDrawRanges = {
 
 export class SdRenderableData {
     constructor(
+        readonly type: RenderableType,
         readonly ids: number,
 
         readonly cacheName: string,
