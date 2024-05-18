@@ -39,6 +39,7 @@ export class SdRenderableData {
 
         readonly cacheName: string,
 
+        readonly borderSize: number,
         readonly tileRenderFlags: Uint8Array[][],
         readonly collisionDatas: CollisionData[],
 

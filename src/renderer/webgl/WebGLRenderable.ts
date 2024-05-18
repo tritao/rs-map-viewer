@@ -12,6 +12,7 @@ import PicoGL, {
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
+import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { Scene } from "../../rs/scene/Scene";
 import { DrawRange, newDrawRange } from "../DrawRange";
 import { SdRenderableData } from "../loader/SdRenderableData";
@@ -127,7 +128,10 @@ export class WebGLRenderable {
             };
         };
 
-        const renderable = new WebGLRenderable(type, ids, time, frame);
+        const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
+
+        const renderable = new WebGLRenderable(type, ids, data.borderSize,
+            data.tileRenderFlags, collisionMaps, time, frame);
         renderable.createBuffers(app, data);
         renderable.createHeightMapTexture(app, new Int16Array(), heightMapSize);
         renderable.createModelInfoTextures(app, data);
@@ -142,10 +146,18 @@ export class WebGLRenderable {
         readonly type: RenderableType,
         readonly id: number,
 
+        readonly borderSize: number,
+        readonly tileRenderFlags: Uint8Array[][],
+        readonly collisionMaps: CollisionMap[],
+
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {
         this.npcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_BUFFER_SIZE).fill(-1);
+    }
+
+    getTileRenderFlag(level: number, tileX: number, tileY: number): number {
+        return this.tileRenderFlags[level][tileX + this.borderSize][tileY + this.borderSize];
     }
 
     createHeightMapTexture(app: PicoApp, data: Int16Array, heightMapSize: number) {

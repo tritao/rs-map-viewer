@@ -42,8 +42,8 @@ export class SdMapData extends SdRenderableData implements MapData {
 
         readonly loadedTextures: Map<number, Int32Array>,
     ) {
-        super(RenderableType.Map, getMapSquareId(mapX, mapY), cacheName, tileRenderFlags,
-            collisionDatas, vertices, indices,
+        super(RenderableType.Map, getMapSquareId(mapX, mapY), cacheName,
+            borderSize, tileRenderFlags, collisionDatas, vertices, indices,
             modelInfoTextures, drawRanges, locsAnimated, npcs,
             loadedTextures);
     }

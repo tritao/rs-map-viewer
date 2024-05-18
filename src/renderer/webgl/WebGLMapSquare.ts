@@ -92,7 +92,8 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {
-        super(RenderableType.Map, getMapSquareId(mapX, mapY), timeLoaded, frameLoaded);
+        super(RenderableType.Map, getMapSquareId(mapX, mapY), borderSize,
+            tileRenderFlags, collisionMaps, timeLoaded, frameLoaded);
     }
 
     processNpcsCollisions() {
@@ -114,10 +115,6 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
                 }
             }
         }
-    }
-
-    getTileRenderFlag(level: number, tileX: number, tileY: number): number {
-        return this.tileRenderFlags[level][tileX + this.borderSize][tileY + this.borderSize];
     }
 
     getMapDistance(mapX: number, mapY: number): number {

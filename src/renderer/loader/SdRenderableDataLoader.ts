@@ -440,6 +440,7 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
 
                 cacheName: state.cache.info.name,
 
+                borderSize: 0,
                 tileRenderFlags: scene.tileRenderFlags,
                 collisionDatas: scene.collisionMaps,
 
