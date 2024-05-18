@@ -11,6 +11,7 @@ import { MapSquareInfo } from "./MapManager";
 import { Npc } from "./npc/Npc";
 import { FrameStats, Renderer } from "./Renderer";
 import { RendererStats } from "./webgl/RendererStats";
+import { WebGLRenderable } from "./webgl/WebGLRenderable";
 
 interface ColorRgb {
     r: number;
@@ -161,7 +162,7 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
         );
     }
 
-    abstract addNpcRenderData(map: MapSquareRenderable): void;
+    abstract addNpcRenderData(map: WebGLRenderable): void;
 
     // Textures
     abstract updateTextureFiltering(): void;

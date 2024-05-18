@@ -35,6 +35,7 @@ import { SdMapDataLoader } from "../loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
+import { WebGLRenderable } from "./WebGLRenderable";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -672,8 +673,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.stats.onFrameEnd();
     }
 
-    addNpcRenderData(map: WebGLMapSquare) {
-        const npcs = map.npcs;
+    addNpcRenderData(renderable: WebGLRenderable) {
+        const npcs = renderable.npcs;
 
         if (npcs.length === 0) {
             return;
@@ -681,7 +682,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         const frameCount = this.stats.frameCount;
 
-        map.npcDataTextureOffsets[frameCount % map.npcDataTextureOffsets.length] =
+        renderable.npcDataTextureOffsets[frameCount % renderable.npcDataTextureOffsets.length] =
             this.npcRenderCount;
 
         const newCount = this.npcRenderCount + npcs.length;
@@ -699,8 +700,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const tileY = npc.y >> 7;
 
             let renderPlane = npc.level;
-            if (renderPlane < 3 && (map.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
-                renderPlane++;
+            if (renderPlane < 3 && (renderable.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+                renderPlane ++;
             }
 
             this.npcRenderData[offset++] = npc.x;
