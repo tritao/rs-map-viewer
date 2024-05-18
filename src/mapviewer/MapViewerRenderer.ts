@@ -16,7 +16,7 @@ import { InputManager } from "../util/InputManager";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { MapRenderer, RendererMapSquare } from "../renderer/MapRenderer";
+import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 
 export class MapViewerRenderer extends RendererMainLoop {
@@ -30,7 +30,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManager: MapManager;
     mapManagerTime: number = 0;
 
-    renderer: MapRenderer<RendererMapSquare, MapData>;
+    renderer: MapRenderer<MapSquareRenderable, MapData>;
 
     // State
     lastClientTick: number = 0;

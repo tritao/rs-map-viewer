@@ -43,7 +43,7 @@ export function getMaxAnisotropy(mode: TextureFilterMode): number {
     }
 }
 
-export interface RendererMapSquare {
+export interface MapSquareRenderable {
     readonly id: number;
 
     readonly mapX: number;
@@ -62,7 +62,7 @@ export interface RendererMapSquare {
     delete(): void;
 }
 
-export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData> implements Renderer {
+export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapData> implements Renderer {
     stats = new FrameStats();
     rendererStats = new RendererStats();
 
@@ -128,7 +128,7 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
     abstract onFrameEnd(): void;
 
     // Maps
-    getMap(mapId: number): RendererMapSquare|undefined {
+    getMap(mapId: number): MapSquareRenderable|undefined {
         return this.loadedMaps.get(mapId)
     }
 
@@ -161,7 +161,7 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
         );
     }
 
-    abstract addNpcRenderData(map: RendererMapSquare): void;
+    abstract addNpcRenderData(map: MapSquareRenderable): void;
 
     // Textures
     abstract updateTextureFiltering(): void;
