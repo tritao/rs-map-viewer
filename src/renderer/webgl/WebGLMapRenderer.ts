@@ -462,6 +462,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             maxLevel: this.maxLevel,
             loadObjs: this.loadObjs,
             loadNpcs: this.loadNpcs,
+            loadLocs: this.loadLocs,
             smoothTerrain: this.smoothTerrain,
             minimizeDrawCalls: !this.hasMultiDraw,
             loadedTextureIds: this.loadedTextureIds,

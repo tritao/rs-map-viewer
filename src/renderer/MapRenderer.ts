@@ -97,6 +97,7 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
 
     loadObjs: boolean = true;
     loadNpcs: boolean = true;
+    loadLocs: boolean = true;
 
     renderDistance: number;
     unloadDistance: number;
@@ -273,6 +274,12 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
                             this.setLoadNpcs(v);
                         },
                     },
+                    Locs: {
+                        value: this.loadLocs,
+                        onChange: (v: boolean) => {
+                            this.setLoadLocs(v);
+                        },
+                    },
                 },
                 { collapsed: true },
             ),
@@ -325,6 +332,14 @@ export abstract class MapRenderer<T extends RendererMapSquare, U extends MapData
     setLoadNpcs(enabled: boolean): void {
         const updated = this.loadNpcs !== enabled;
         this.loadNpcs = enabled;
+        if (updated) {
+            this.clearMaps();
+        }
+    }
+
+    setLoadLocs(enabled: boolean): void {
+        const updated = this.loadLocs !== enabled;
+        this.loadLocs = enabled;
         if (updated) {
             this.clearMaps();
         }
