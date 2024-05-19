@@ -18,6 +18,7 @@ import { DrawRange, newDrawRange } from "../DrawRange";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { LocAnimated } from "../loc/LocAnimated";
 import { Npc } from "../npc/Npc";
+import { NpcData } from "../npc/NpcData";
 import { RenderableType } from "../Renderer";
 
 const FRAME_RENDER_DELAY = 3;
@@ -72,12 +73,15 @@ export class WebGLRenderable {
     drawCallInteractLodAlpha!: DrawCallRange;
 
     drawCallNpc!: DrawCallRange;
+    drawCallDynamicNpc!: DrawCallRange;
 
     // Animated locs
     locsAnimated!: LocAnimated[];
 
     // Npcs
     npcs!: Npc[];
+    dynamicNpcs!: Npc[];
+
     npcDataTextureOffsets!: number[];
 
     static load(
@@ -137,7 +141,8 @@ export class WebGLRenderable {
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
         renderable.createAnimatedLocs(time, data, seqTypeLoader);
-        renderable.createNpcs(data, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
+        renderable.createNpcs(data.npcs, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
+        renderable.createDynamicNpcs(createDrawCall, npcProgram);
 
         return renderable;
     }
@@ -222,10 +227,10 @@ export class WebGLRenderable {
         }
     }
 
-    createNpcs(data: SdRenderableData, npcTypeLoader: NpcTypeLoader, basTypeLoader: BasTypeLoader,
+    createNpcs(data: NpcData[], npcTypeLoader: NpcTypeLoader, basTypeLoader: BasTypeLoader,
         createDrawCall: CreateDrawCallFunction, npcProgram: Program) {
         this.npcs = [];
-        for (const npc of data.npcs) {
+        for (const npc of data) {
             const npcType = npcTypeLoader.load(npc.id);
 
             this.npcs.push(
@@ -244,6 +249,11 @@ export class WebGLRenderable {
 
         const drawRangesNpc = this.npcs.map((_npc) => newDrawRange(0, 0, 1));
         this.drawCallNpc = createDrawCall(npcProgram, undefined, drawRangesNpc);
+    }
+
+    createDynamicNpcs(createDrawCall: CreateDrawCallFunction, npcProgram: Program) {
+        const drawRangesNpc = this.dynamicNpcs.map((_npc) => newDrawRange(0, 0, 1));
+        this.drawCallDynamicNpc = createDrawCall(npcProgram, undefined, drawRangesNpc);
     }
 
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {

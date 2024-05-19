@@ -21,6 +21,9 @@ import { renderGameView } from "./game/GameRenderer";
 import { GameScene } from "./game/GameScene";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { WebGLMapSquare } from "../renderer/webgl/WebGLMapSquare";
+import { SceneBuffer } from "../renderer/buffer/SceneBuffer";
+import { createSceneModel } from "../renderer/loc/SceneLocs";
+import { InteractiveObject } from "./game/InteractiveObject";
 
 export class ClientRenderer extends RendererMainLoop implements GameEvents {
     inputManager: InputManager;
@@ -208,24 +211,50 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
 
         const scene = this.game.currentScene;
         for (let i = 0; i < scene.sceneSpawnRequestsCacheCurrentPos; i++) {
-            const interactiveObject = scene.sceneSpawnRequests[i]!;
+            const interactiveObject: InteractiveObject = scene.sceneSpawnRequests[i]!;
             console.log(interactiveObject);
 
             const model = interactiveObject.renderable!.getRotatedModel();
             const builtModel = model?.getBuiltModel(this.cacheLoaders.textureLoader);
 
+            const textureLoader = this.cacheLoaders.textureLoader;
+            let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
+            textureIds = textureIds.slice(0, 2047);
+            const textureIdIndexMap = new Map<number, number>();
+            for (let i = 0; i < textureIds.length; i++) {
+                textureIdIndexMap.set(textureIds[i], i);
+            }
+
+            const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
+            sceneBuf.addModel()
+
+            const vertices = sceneBuf.vertexBuf.byteArray();
+            const indices = new Int32Array(sceneBuf.indices);
+
+            const loadedTextures = new Map<number, Int32Array>();
+            for (const textureId of sceneBuf.usedTextureIds) {
+                if (!loadedTextureIds.has(textureId)) {
+                    try {
+                        const pixels = textureLoader.getPixelsArgb(textureId, 128, true, 1.0);
+                        loadedTextures.set(textureId, pixels);
+                    } catch (e) { }
+                }
+            }
+
             const mapX = interactiveObject.tileLeft;
             const mapY = interactiveObject.tileRight;
-
-            const map = this.renderer.loadedMaps.get(getMapSquareId(mapX, mapY)) as WebGLMapSquare;
+            const mapId = getMapSquareId(mapX, mapY);
+            const map = this.renderer.loadedMaps.get(mapId) as WebGLMapSquare;
             if (map) {
                 console.log(map);
 
-                
             }
 
             console.log(model);
         }
+
+        //SdNpcMapDataLoader
+
 
         // Render interactive objects
 

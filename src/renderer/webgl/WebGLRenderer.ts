@@ -165,7 +165,6 @@ export class WebGLRenderer extends WebGLMapRenderer {
             }
 
             const npcs = renderable.npcs;
-
             if (npcs.length === 0) {
                 continue;
             }

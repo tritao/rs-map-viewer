@@ -590,6 +590,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.addNpcRenderData(map);
         }
 
+
         const npcDataTextureIndex = this.updateNpcDataTexture();
         const npcDataTexture = this.npcDataTextureBuffer[npcDataTextureIndex];
 
@@ -675,10 +676,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     addNpcRenderData(renderable: WebGLRenderable) {
         const npcs = renderable.npcs;
+        //if (npcs.length === 0) {
+        //    return;
+        //}
 
-        if (npcs.length === 0) {
-            return;
-        }
+        const dynamicNpcs = renderable.dynamicNpcs;
 
         const frameCount = this.stats.frameCount;
 
@@ -687,6 +689,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         const newCount = this.npcRenderCount + npcs.length;
 
+        // Expand the npc data array if there is not enough space for the new npcs.
         if (this.npcRenderData.length / 4 < newCount) {
             const newData = new Uint16Array(Math.ceil((newCount * 2) / 16) * 16 * 4);
             newData.set(this.npcRenderData);
@@ -700,7 +703,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const tileY = npc.y >> 7;
 
             let renderPlane = npc.level;
-            if (renderPlane < 3 && (renderable.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+            const isBridge = (renderable.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE)
+                === TILE_FLAGS_BRIDGE;
+            if (renderPlane < 3 && isBridge) {
                 renderPlane ++;
             }
 
@@ -793,7 +798,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             }
 
             const npcs = map.npcs;
-
             if (npcs.length === 0) {
                 continue;
             }

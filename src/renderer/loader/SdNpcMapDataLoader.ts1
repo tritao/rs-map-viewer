@@ -1,0 +1,129 @@
+import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
+import { NpcModelLoader } from "../../rs/config/npctype/NpcModelLoader";
+import { RenderDataLoader, RenderDataResult } from "../../worker/RenderDataLoader";
+import { WorkerState } from "../../worker/RenderDataWorker";
+import { NpcSpawn } from "../../data/npc/NpcSpawn";
+import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
+import {
+    SceneBuffer,
+    SceneModel,
+} from "../buffer/SceneBuffer";
+import { SdMapData } from "./SdMapData";
+import { SdMapLoaderInput } from "./SdMapLoaderInput";
+import { addNpcAnimationFrames, SdRenderableDataLoader } from "./SdRenderableDataLoader";
+
+export type SdNpcMapLoaderInput = {
+    mapX: number;
+    mapY: number;
+
+    minimizeDrawCalls: boolean;
+    loadedTextureIds: Set<number>;
+};
+
+
+export class SdNpcMapDataLoader implements RenderDataLoader<SdNpcMapLoaderInput, SdMapData | undefined> {
+    __type = "sdMapDataLoader" as const;
+
+    modelHashBuf?: ModelHashBuffer;
+
+    init(): void {
+        if (!this.modelHashBuf) {
+            this.modelHashBuf = new ModelHashBuffer(5000);
+        }
+    }
+
+    async load(
+        state: WorkerState,
+        {
+            mapX,
+            mapY,
+            minimizeDrawCalls,
+            loadedTextureIds,
+        }: SdMapLoaderInput,
+    ): Promise<RenderDataResult<SdMapData | undefined>> {
+        console.time(`load map ${mapX},${mapY}`);
+        this.init();
+
+        const locTypeLoader = state.locTypeLoader;
+        const npcTypeLoader = state.npcTypeLoader;
+        const basTypeLoader = state.basTypeLoader;
+        const textureLoader = state.textureLoader;
+
+        const npcModelLoader = state.npcModelLoader;
+
+        const varManager = state.varManager;
+
+        let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
+        textureIds = textureIds.slice(0, 2047);
+        const textureIdIndexMap = new Map<number, number>();
+        for (let i = 0; i < textureIds.length; i++) {
+            textureIdIndexMap.set(textureIds[i], i);
+        }
+
+        const borderSize = 6;
+        const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
+
+        const sceneModels: SceneModel[] = sceneLocs.locs;
+
+        const drawRanges = SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY);
+
+        const vertices = sceneBuf.vertexBuf.byteArray();
+        const indices = new Int32Array(sceneBuf.indices);
+
+        const loadedTextures = new Map<number, Int32Array>();
+        for (const textureId of sceneBuf.usedTextureIds) {
+            if (!loadedTextureIds.has(textureId)) {
+                try {
+                    const pixels = textureLoader.getPixelsArgb(textureId, 128, true, 1.0);
+                    loadedTextures.set(textureId, pixels);
+                } catch (e) { }
+            }
+        }
+
+        console.timeEnd(`load dynamic npcs for map ${mapX},${mapY}`);
+
+        const transferables = [
+            ...scene.tileRenderFlags.flat().map((buf) => buf.buffer),
+            ...scene.collisionMaps.map((map) => map.flags.buffer),
+            ...Array.from(loadedTextures.values()).map((pixels) => pixels.buffer),
+
+            vertices.buffer,
+            indices.buffer,
+        ];
+
+        const totalBytes = transferables.reduce((sum, buf) => sum + buf.byteLength, 0);
+
+        //console.log(
+        //    `total bytes: ${totalBytes} ${mapX},${mapY}`,
+        //    sceneBuf.usedTextureIds,
+        //    loadedTextures.size,
+        //);
+
+        const data = new SdMapData(
+            mapX,
+            mapY,
+
+            state.cache.info.name,
+
+            borderSize,
+            scene.tileRenderFlags,
+            scene.collisionMaps,
+
+            vertices,
+            indices,
+
+            drawRanges,
+
+            loadedTextures,
+        );
+
+        return {
+            data,
+            transferables,
+        };
+    }
+
+    reset(): void {
+        this.modelHashBuf = undefined;
+    }
+}

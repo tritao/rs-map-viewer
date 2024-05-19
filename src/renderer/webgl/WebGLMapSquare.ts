@@ -75,7 +75,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
         renderable.createAnimatedLocs(time, data, seqTypeLoader);
-        renderable.createNpcs(data, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
+        renderable.createNpcs(data.npcs, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
         renderable.processNpcsCollisions();
 
         return renderable;
