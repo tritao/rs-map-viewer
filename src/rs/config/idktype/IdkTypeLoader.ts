@@ -1,7 +1,7 @@
 import { Archive } from "../../cache/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { IdkType } from "../idktype/IdkType";
+import { IdkType } from "./IdkType";
 import { ArchiveTypeLoader, DatTypeLoader, IndexTypeLoader, TypeLoader } from "../TypeLoader";
 
 export type IdkTypeLoader = TypeLoader<IdkType>;

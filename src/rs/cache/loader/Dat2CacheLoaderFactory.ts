@@ -10,7 +10,7 @@ import {
     FloorTypeLoader,
     OverlayFloorTypeLoader,
 } from "../../config/floortype/FloorTypeLoader";
-import { ArchiveIdkTypeLoader, IdkTypeLoader, IndexIdkTypeLoader } from "../../config/invtype/IdkTypeLoader";
+import { ArchiveIdkTypeLoader, IdkTypeLoader, IndexIdkTypeLoader } from "../../config/idktype/IdkTypeLoader";
 import {
     ArchiveLocTypeLoader,
     IndexLocTypeLoader,

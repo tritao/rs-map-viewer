@@ -1,6 +1,6 @@
 import { BasTypeLoader } from "../../config/bastype/BasTypeLoader";
 import { FloorTypeLoader, OverlayFloorTypeLoader } from "../../config/floortype/FloorTypeLoader";
-import { IdkTypeLoader } from "../../config/invtype/IdkTypeLoader";
+import { IdkTypeLoader } from "../../config/idktype/IdkTypeLoader";
 import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../../config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../config/objtype/ObjTypeLoader";
