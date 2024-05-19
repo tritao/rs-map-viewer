@@ -1,7 +1,8 @@
 import { VertexNormal } from "../../../rs/model/VertexNormal";
 import { CacheableNode } from "../collection/CacheableNode";
+import { Model } from "./Model";
 
-export class Renderable extends CacheableNode {
+export abstract class Renderable extends CacheableNode {
     public verticesNormal: VertexNormal[] | null = null;
 
     public modelHeight: number = 1000;
@@ -18,7 +19,5 @@ export class Renderable extends CacheableNode {
     //    }
     //}
 
-    //public getRotatedModel(): Model {
-    //    return null;
-    //}
+    abstract getRotatedModel(): Model | null;
 }

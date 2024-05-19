@@ -1,4 +1,5 @@
 import { NpcType } from "../../../../rs/config/npctype/NpcType";
+import { Model } from "../Model";
 import { Actor } from "./Actor";
 
 export class Npc extends Actor {
@@ -21,10 +22,10 @@ export class Npc extends Actor {
     //    return this.npcDefinition.getChildModel(j, -1, null);
     //}
 
-    /**
-     *
-     * @return {Model}
-     */
+    getRotatedModel(): Model | null {
+        throw new Error("Method not implemented.");
+    }
+
     //public getRotatedModel(): Model {
     //    if (this.npcDefinition == null) { return null; }
     //    let model: Model = this.getChildModel();

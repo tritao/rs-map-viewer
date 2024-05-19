@@ -58,6 +58,7 @@ export function renderPlayers(game: Game, priority: boolean) {
             continue;
         }
 
+        // Check if an overriden model exists for the player and use it if that is the case.
         if (
             player.playerModel != null &&
             game.pulseCycle >= player.objectAppearanceStartTick &&

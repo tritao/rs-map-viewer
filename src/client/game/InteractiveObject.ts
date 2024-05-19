@@ -7,7 +7,7 @@ export class InteractiveObject {
     public worldX: number;
     public worldY: number;
 
-    public renderable: Renderable|null;
+    public renderable: Renderable | null;
 
     public rotation: number;
 

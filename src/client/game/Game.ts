@@ -15,6 +15,8 @@ import { LinkedList } from "./util/LinkedList";
 import { Actor } from "./renderable/actor/Actor";
 import { CacheLoaders } from "../../rs/cache/CacheLoaders";
 import { GameScene } from "./GameScene";
+import { IdentityKit } from "./cache/IdentityKit";
+import { Model } from "./renderable/Model";
 
 export interface GameEvents {
     onMapRegionLoad(mapX: number, mapY: number): void;
@@ -97,6 +99,8 @@ export class Game {
 
     public async init() {
         this.currentScene = new GameScene(Game.MAX_LEVELS, Game.MAX_TILES, Game.MAX_TILES);
+        Model.loader = this.cacheLoaders.modelLoader;
+        IdentityKit.loadCache(this.cacheLoaders.loaderFactory.getIdkTypeLoader());
     }
 
     public async processGameLoop() {

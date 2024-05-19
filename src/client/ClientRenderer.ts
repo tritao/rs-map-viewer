@@ -14,11 +14,13 @@ import { InputManager } from "../util/InputManager";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { MapRenderer, RendererMapSquare } from "../renderer/MapRenderer";
+import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { Game, GameEvents } from "./game/Game";
 import { renderGameView } from "./game/GameRenderer";
 import { GameScene } from "./game/GameScene";
+import { getMapSquareId } from "../rs/map/MapFileIndex";
+import { WebGLMapSquare } from "../renderer/webgl/WebGLMapSquare";
 
 export class ClientRenderer extends RendererMainLoop implements GameEvents {
     inputManager: InputManager;
@@ -33,7 +35,10 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
     mapManager: MapManager;
     mapManagerTime: number = 0;
 
-    renderer: MapRenderer<RendererMapSquare, MapData>;
+    lastKnownRegionX: number = -1;
+    lastKnownRegionY: number = -1;
+
+    renderer: MapRenderer<MapSquareRenderable, MapData>;
 
     // State
     lastClientTick: number = 0;
@@ -68,6 +73,9 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
     onMapRegionLoad(mapX: number, mapY: number): void {
         let regionX = Math.floor(mapX / 8);
         let regionY = Math.floor(mapY / 8);
+
+        this.lastKnownRegionX = regionX;
+        this.lastKnownRegionY = regionY;
 
         this.mapManager.loadMap(regionX, regionY);
     }
@@ -170,7 +178,6 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
         const seqFrameLoader = this.cacheLoaders.seqFrameLoader;
         const seqTypeLoader = this.cacheLoaders.seqTypeLoader;
 
-        this.renderer.npcRenderCount = 0;
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
             const map = this.renderer.getMap(mapInfo.mapId)!;
@@ -193,8 +200,6 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
                     npc.updateMovement(seqTypeLoader, seqFrameLoader);
                 }
             }
-
-            this.renderer.addNpcRenderData(map);
         }
     }
 
@@ -203,8 +208,23 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
 
         const scene = this.game.currentScene;
         for (let i = 0; i < scene.sceneSpawnRequestsCacheCurrentPos; i++) {
-            const interactiveObject = scene.sceneSpawnRequests[i];
+            const interactiveObject = scene.sceneSpawnRequests[i]!;
             console.log(interactiveObject);
+
+            const model = interactiveObject.renderable!.getRotatedModel();
+            const builtModel = model?.getBuiltModel(this.cacheLoaders.textureLoader);
+
+            const mapX = interactiveObject.tileLeft;
+            const mapY = interactiveObject.tileRight;
+
+            const map = this.renderer.loadedMaps.get(getMapSquareId(mapX, mapY)) as WebGLMapSquare;
+            if (map) {
+                console.log(map);
+
+                
+            }
+
+            console.log(model);
         }
 
         // Render interactive objects
