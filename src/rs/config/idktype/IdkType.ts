@@ -23,6 +23,11 @@ export class IdkType extends Type {
         this.bodyPartyId = -1;
         this.ifModelIds = [-1, -1, -1, -1, -1];
         this.nonSelectable = false;
+
+        if (!this.isNewFormat()) {
+            this.recolorFrom = [0, 0, 0, 0, 0, 0];
+            this.recolorTo = [0, 0, 0, 0, 0, 0];
+        }
     }
 
     override decodeOpcode(opcode: number, buffer: ByteBuffer): void {
@@ -36,7 +41,7 @@ export class IdkType extends Type {
             }
         } else if (opcode === 3) {
             this.nonSelectable = true;
-        } else if (opcode === 40) {
+        } else if (opcode === 40 && this.isNewFormat()) {
             const count = buffer.readUnsignedByte();
             this.recolorFrom = new Array<number>(count);
             this.recolorTo = new Array<number>(count);
@@ -44,7 +49,7 @@ export class IdkType extends Type {
                 this.recolorFrom[i] = buffer.readUnsignedShort();
                 this.recolorTo[i] = buffer.readUnsignedShort();
             }
-        } else if (opcode === 41) {
+        } else if (opcode === 41 && this.isNewFormat()) {
             const count = buffer.readUnsignedByte();
             this.retextureFrom = new Array<number>(count);
             this.retextureTo = new Array<number>(count);
@@ -52,8 +57,19 @@ export class IdkType extends Type {
                 this.retextureFrom[i] = buffer.readUnsignedShort();
                 this.retextureTo[i] = buffer.readUnsignedShort();
             }
+        } else if (opcode >= 40 && opcode < 50) {
+            this.recolorFrom[opcode - 40] = buffer.readUnsignedShort();
+        } else if (opcode >= 50 && opcode < 60) {
+            this.recolorTo[opcode - 50] = buffer.readUnsignedShort();
         } else if (opcode >= 60 && opcode < 70) {
             this.ifModelIds[opcode - 60] = buffer.readUnsignedShort();
+        } else {
+            console.warn("Error unrecognised opcode: " + opcode);
         }
     }
+
+    isNewFormat(): boolean {
+        return this.cacheInfo.game == "oldschool";
+    }
+
 }
