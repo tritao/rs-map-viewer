@@ -4,6 +4,7 @@ import {
     FloorTypeLoader,
     OverlayFloorTypeLoader,
 } from "../../config/floortype/FloorTypeLoader";
+import { DatIdkTypeLoader } from "../../config/invtype/IdkTypeLoader";
 import { DatLocTypeLoader, LocTypeLoader } from "../../config/loctype/LocTypeLoader";
 import { DatNpcTypeLoader, NpcTypeLoader } from "../../config/npctype/NpcTypeLoader";
 import { DatObjTypeLoader, ObjTypeLoader } from "../../config/objtype/ObjTypeLoader";
@@ -99,6 +100,10 @@ export class LegacyCacheLoaderFactory implements CacheLoaderFactory {
 
     getBasTypeLoader(): BasTypeLoader {
         return new DummyBasTypeLoader(this.cacheInfo);
+    }
+
+    getIdkTypeLoader() {
+        return DatIdkTypeLoader.load(this.cacheInfo, this.configArchive);
     }
 
     getQuestTypeLoader(): QuestTypeLoader | undefined {

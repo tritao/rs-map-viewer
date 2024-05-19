@@ -54,5 +54,6 @@ export class IndexType {
         materials: 26,
         particles: 27,
         defaults: 28,
+        idks: 30, // FIXME
     };
 }

@@ -1,5 +1,6 @@
 import { BasTypeLoader } from "../../config/bastype/BasTypeLoader";
 import { FloorTypeLoader, OverlayFloorTypeLoader } from "../../config/floortype/FloorTypeLoader";
+import { IdkTypeLoader } from "../../config/invtype/IdkTypeLoader";
 import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../../config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../config/objtype/ObjTypeLoader";
@@ -34,6 +35,8 @@ export interface CacheLoaderFactory {
     getSeqTypeLoader(): SeqTypeLoader;
 
     getBasTypeLoader(): BasTypeLoader;
+
+    getIdkTypeLoader(): IdkTypeLoader;
 
     getQuestTypeLoader(): QuestTypeLoader | undefined;
 

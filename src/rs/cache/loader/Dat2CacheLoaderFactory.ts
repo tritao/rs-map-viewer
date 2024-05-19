@@ -10,6 +10,7 @@ import {
     FloorTypeLoader,
     OverlayFloorTypeLoader,
 } from "../../config/floortype/FloorTypeLoader";
+import { ArchiveIdkTypeLoader, IdkTypeLoader, IndexIdkTypeLoader } from "../../config/invtype/IdkTypeLoader";
 import {
     ArchiveLocTypeLoader,
     IndexLocTypeLoader,
@@ -151,6 +152,17 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             }
         }
         return new DummyBasTypeLoader(this.cacheInfo);
+    }
+
+    getIdkTypeLoader(): IdkTypeLoader {
+        if (this.isIndexConfigs()) {
+            const idksIndex = this.cacheSystem.getIndex(IndexType.RS2.idks);
+            return new IndexIdkTypeLoader(this.cacheInfo, idksIndex);
+        } else {
+            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const npcsArchive = configIndex.getArchive(ConfigType.DAT2.identkits);
+            return new ArchiveIdkTypeLoader(this.cacheInfo, npcsArchive);
+        }
     }
 
     getQuestTypeLoader(): QuestTypeLoader | undefined {
