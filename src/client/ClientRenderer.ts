@@ -12,18 +12,21 @@ import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { InputManager } from "../util/InputManager";
 import { CacheLoaders } from "../rs/cache/CacheLoaders";
-import { Camera } from "../renderer/Camera";
+import { Camera, Ray } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { Game, GameEvents } from "./game/Game";
 import { renderGameView } from "./game/GameRenderer";
-import { GameScene } from "./game/GameScene";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { WebGLMapSquare } from "../renderer/webgl/WebGLMapSquare";
 import { SceneBuffer } from "../renderer/buffer/SceneBuffer";
-import { createSceneModel } from "../renderer/loc/SceneLocs";
 import { InteractiveObject } from "./game/InteractiveObject";
+import { addAnimatedModelAnimationFrames } from "../renderer/loader/SdRenderableDataLoader";
+import { Actor } from "./game/renderable/actor/Actor";
+import { DynamicNpcData } from "../renderer/npc/NpcData";
+import { Scene } from "../rs/scene/Scene";
+import { vec3 } from "gl-matrix";
 
 export class ClientRenderer extends RendererMainLoop implements GameEvents {
     inputManager: InputManager;
@@ -32,14 +35,15 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
 
     game: Game;
 
+    ray: Ray;
     camera: Camera;
     pathfinder: Pathfinder;
 
     mapManager: MapManager;
     mapManagerTime: number = 0;
 
-    lastKnownRegionX: number = -1;
-    lastKnownRegionY: number = -1;
+    lastKnownMapX: number = -1;
+    lastKnownMapY: number = -1;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
 
@@ -53,6 +57,7 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
         this.cacheLoaders = client.cacheLoaders;
         this.workerPool = client.workerPool;
         this.camera = client.camera;
+        this.ray = new Ray();
         this.pathfinder = client.pathfinder;
         this.renderer = new WebGLMapRenderer(
             this.cacheLoaders, this.workerPool, this.inputManager, client.renderDistance,
@@ -73,14 +78,14 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
         console.log(message);
     }
 
-    onMapRegionLoad(mapX: number, mapY: number): void {
-        let regionX = Math.floor(mapX / 8);
-        let regionY = Math.floor(mapY / 8);
+    onMapRegionLoad(chunkX: number, chunkY: number): void {
+        let mapX = Math.floor(chunkX / 8);
+        let mapY = Math.floor(chunkY / 8);
 
-        this.lastKnownRegionX = regionX;
-        this.lastKnownRegionY = regionY;
+        this.lastKnownMapX = mapX;
+        this.lastKnownMapY = mapY;
 
-        this.mapManager.loadMap(regionX, regionY);
+        this.mapManager.loadMap(mapX, mapY);
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
@@ -113,8 +118,13 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
 
         this.game.init();
 
-        let username = "Wildy" + Math.floor(Math.random() * 1000);
-        await this.game.login(username, "test123");
+        try {
+            const username = "Wildy" + Math.floor(Math.random() * 1000);
+            await this.game.login(username, "test123");
+        } catch (ex: any) {
+            console.error(ex);
+        }
+
     }
 
     initCache(): void {
@@ -141,6 +151,34 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
         this.game.processGameLoop();
 
         this.handleInput(deltaTime);
+
+        const hasMovementKey =
+            this.inputManager.isKeyDown('ArrowLeft') ||
+            this.inputManager.isKeyDown('ArrowRight') ||
+            this.inputManager.isKeyDown('ArrowUp') ||
+            this.inputManager.isKeyDown('ArrowDown');
+
+        if (hasMovementKey && this.game.localPlayer) {
+            const localX = this.game.localPlayer.worldX >> 7;
+            const localY = this.game.localPlayer.worldY >> 7;
+
+            let deltaX = 0;
+            let deltaY = 0;
+
+            if (this.inputManager.isKeyDown('ArrowLeft'))
+                deltaX -= 1;
+            else if (this.inputManager.isKeyDown('ArrowRight'))
+                deltaX += 1;
+            else if (this.inputManager.isKeyDown('ArrowUp'))
+                deltaY += 1;
+            else if (this.inputManager.isKeyDown('ArrowDown'))
+                deltaY -= 1;
+
+            console.log('hasMovementKey delta x,y', deltaX, deltaY);
+
+            this.game.simulateWalk(this.game.localPlayer, localX, localY,
+                localX + deltaX, localY + deltaY);
+        }
 
         const { width, height } = this.renderer.getViewportDimensions();
         this.camera.update(width, height);
@@ -173,6 +211,68 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
         const tickStart = performance.now();
         this.tickPass(timeSec, ticksElapsed, clientTicksElapsed);
         this.renderer.rendererStats.tickTime = performance.now() - tickStart;
+    }
+
+    processClick(x: number, y: number) {
+        const viewportSize = this.renderer.getViewportDimensions();
+
+        this.ray.fromMouseAndProjection(
+            x,
+            y,
+            viewportSize.width,
+            viewportSize.height,
+            this.camera.invViewProjMatrix,
+        );
+
+        const maxMapY = (Scene.UNITS_LEVEL_HEIGHT * 3) / 128;
+
+        const pos = vec3.copy(vec3.create(), this.ray.origin);
+        const distance = vec3.distance(pos, this.ray.destination);
+        let stepCount = 0;
+        let map: MapSquareInfo | undefined;
+        let foundTile = false;
+
+        let tileX = -1;
+        let tileZ = -1;
+
+        for (let i = 0; i < distance && pos[1] < maxMapY; i++) {
+            const mapX = (pos[0] / Scene.MAP_SQUARE_SIZE) | 0;
+            const mapZ = (pos[2] / Scene.MAP_SQUARE_SIZE) | 0;
+
+            if (!map || map.mapX !== mapX || map.mapY !== mapZ) {
+                map = this.mapManager.getMap(mapX, mapZ);
+                if (!map) {
+                    break;
+                }
+            }
+
+            tileX = pos[0] - mapX * Scene.MAP_SQUARE_SIZE;
+            tileZ = pos[2] - mapZ * Scene.MAP_SQUARE_SIZE;
+
+            const mapRenderable = this.renderer.getMap(map.mapId) as WebGLMapSquare;
+            if (!mapRenderable) {
+                continue;
+            }
+
+            const height = mapRenderable.getHeight(0, tileX, tileZ);
+            if (pos[1] > height) {
+                // tile selected
+                foundTile = true;
+                break;
+            }
+
+            vec3.add(pos, pos, this.ray.direction);
+            stepCount++;
+        }
+
+        if (foundTile) {
+            // convert to scene local tile
+            const sceneX = pos[0] - this.game.viewportOriginTileX;
+            const sceneZ = pos[2] - this.game.viewportOriginTileY;
+            console.log('found tile', sceneX, sceneZ);
+
+            this.game.processWalk(this.game.localPlayer, sceneX | 0, sceneZ | 0);
+        }
     }
 
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
@@ -209,58 +309,85 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
     override render(time: number, deltaTime: number, resized: boolean) {
         renderGameView(this.game);
 
+        this.rebuildActors();
+
+        super.render(time, deltaTime, resized);
+    }
+
+    rebuildActors() {
+        for (const _map of this.renderer.loadedMaps.values()) {
+            const map = _map as WebGLMapSquare;
+            map.clearDynamicNpcs();
+        }
+
+        const textureLoader = this.cacheLoaders.textureLoader;
+        const textureIdIndexMap = new Map<number, number>();
+        const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
+
         const scene = this.game.currentScene;
         for (let i = 0; i < scene.sceneSpawnRequestsCacheCurrentPos; i++) {
             const interactiveObject: InteractiveObject = scene.sceneSpawnRequests[i]!;
-            console.log(interactiveObject);
-
-            const model = interactiveObject.renderable!.getRotatedModel();
-            const builtModel = model?.getBuiltModel(this.cacheLoaders.textureLoader);
-
-            const textureLoader = this.cacheLoaders.textureLoader;
-            let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
-            textureIds = textureIds.slice(0, 2047);
-            const textureIdIndexMap = new Map<number, number>();
-            for (let i = 0; i < textureIds.length; i++) {
-                textureIdIndexMap.set(textureIds[i], i);
-            }
-
-            const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
-            sceneBuf.addModel()
-
-            const vertices = sceneBuf.vertexBuf.byteArray();
-            const indices = new Int32Array(sceneBuf.indices);
-
-            const loadedTextures = new Map<number, Int32Array>();
-            for (const textureId of sceneBuf.usedTextureIds) {
-                if (!loadedTextureIds.has(textureId)) {
-                    try {
-                        const pixels = textureLoader.getPixelsArgb(textureId, 128, true, 1.0);
-                        loadedTextures.set(textureId, pixels);
-                    } catch (e) { }
-                }
-            }
-
-            const mapX = interactiveObject.tileLeft;
-            const mapY = interactiveObject.tileRight;
-            const mapId = getMapSquareId(mapX, mapY);
-            const map = this.renderer.loadedMaps.get(mapId) as WebGLMapSquare;
-            if (map) {
-                console.log(map);
-
-            }
-
-            console.log(model);
+            this.renderActor(interactiveObject, sceneBuf);
         }
 
-        //SdNpcMapDataLoader
+        const vertices = sceneBuf.vertexBuf.byteArray();
+        const indices = new Int32Array(sceneBuf.indices);
+        const renderer = this.renderer as WebGLMapRenderer;
+        renderer.dynamicNpcBuffers.createDynamicBuffers(renderer.app, vertices, indices);
 
-
-        // Render interactive objects
+        for (const _map of this.renderer.loadedMaps.values()) {
+            const map = _map as WebGLMapSquare;
+            map.createDynamicNpcs(renderer.dynamicNpcBuffers);
+        }
 
         scene.clearInteractiveObjectCache();
+    }
 
-        super.render(time, deltaTime, resized);
+    private renderActor(interactiveObject: InteractiveObject, sceneBuf: SceneBuffer) {
+        const localX = interactiveObject.worldX >> 7;
+        const localY = interactiveObject.worldY >> 7;
+
+        const model = interactiveObject.renderable!.getRotatedModel(this.cacheLoaders);
+
+        const actor = interactiveObject.renderable! as Actor;
+        const seqId = actor.primaryAnimSeq!;
+
+        let animFrames = addAnimatedModelAnimationFrames(sceneBuf, model!, seqId);
+
+        const npcWorldTileX = (this.game.viewportOriginTileX + localX);
+        const npcWorldTileY = (this.game.viewportOriginTileY + localY);
+
+        const mapX = Math.floor(npcWorldTileX / 64);
+        const mapY = Math.floor(npcWorldTileY / 64);
+
+        const tileX = npcWorldTileX % 64;
+        const tileY = npcWorldTileY % 64;
+
+        const diffTileX = localX - tileX;
+        const diffTileY = localY - tileY;
+
+        const worldX = actor.worldX - diffTileX * 128;
+        const worldY = actor.worldY - diffTileY * 128;
+
+        const data: DynamicNpcData = {
+            id: -1,
+            x: worldX,
+            y: worldY,
+            spawnX: tileX,
+            spawnY: tileY,
+            rotation: actor.currentRotation,
+            level: interactiveObject.z,
+            idleAnim: animFrames,
+            walkAnim: animFrames,
+            idleAnimSeqId: actor.idleAnimation,
+            walkAnimSeqId: actor.walkAnimationId,
+        };
+
+        const mapId = getMapSquareId(mapX, mapY);
+        const map = this.renderer.loadedMaps.get(mapId) as WebGLMapSquare;
+        if (map) {
+            map.addDynamicNpc(data);
+        }
     }
 
     handleInput(deltaTime: number) {
@@ -360,6 +487,12 @@ export class ClientRenderer extends RendererMainLoop implements GameEvents {
         // mouse/touch controls
         const deltaMouseX = this.inputManager.getDeltaMouseX();
         const deltaMouseY = this.inputManager.getDeltaMouseY();
+
+        if (this.inputManager.isClick) {
+            const mouseX = this.inputManager.mouseX;
+            const mouseY = this.inputManager.mouseY;
+            this.processClick(mouseX, mouseY);
+        }
 
         if (deltaMouseX !== 0 || deltaMouseY !== 0) {
             if (this.inputManager.isTouch) {

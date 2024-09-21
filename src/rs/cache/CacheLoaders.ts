@@ -11,6 +11,7 @@ import { SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { TextureLoader } from "../texture/TextureLoader";
 import { LoadedCache } from "../../util/Caches";
 import { ModelLoader } from "../model/ModelLoader";
+import { NpcModelLoader } from "../config/npctype/NpcModelLoader";
 
 export class CacheLoaders {
     // Cache
@@ -19,6 +20,7 @@ export class CacheLoaders {
     loaderFactory!: CacheLoaderFactory;
 
     modelLoader!: ModelLoader;
+    npcModelLoader!: NpcModelLoader;
 
     textureLoader!: TextureLoader;
     seqTypeLoader!: SeqTypeLoader;
@@ -53,6 +55,18 @@ export class CacheLoaders {
         if (questTypeLoader) {
             this.varManager.setQuestsCompleted(questTypeLoader);
         }
+
+        const skeletalSeqLoader = this.loaderFactory.getSkeletalSeqLoader();
+
+        this.npcModelLoader = new NpcModelLoader(
+            this.npcTypeLoader,
+            this.modelLoader,
+            this.textureLoader,
+            this.seqTypeLoader,
+            this.seqFrameLoader,
+            skeletalSeqLoader,
+            this.varManager,
+        );
 
         const mapFileLoader = this.loaderFactory.getMapFileLoader();
         this.mapFileIndex = mapFileLoader.mapFileIndex;

@@ -30,6 +30,8 @@ import { NpcData } from "../npc/NpcData";
 import { NpcType } from "../../rs/config/npctype/NpcType";
 import { NpcModelLoader } from "../../rs/config/npctype/NpcModelLoader";
 import { RenderableType } from "../Renderer";
+import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
+import { SeqType } from "../../rs/config/seqtype/SeqType";
 
 function createModelGroups(
     modelGroupMap: Map<number, ModelMergeGroup>,
@@ -219,6 +221,40 @@ function addLocAnimationFrames(
         } else {
             frames[i] = NULL_DRAW_RANGE;
             framesAlpha[i] = NULL_DRAW_RANGE;
+        }
+    }
+
+    return {
+        frames,
+        framesAlpha: alphaFrameCount > 0 ? framesAlpha : undefined,
+    };
+}
+
+export function addAnimatedModelAnimationFrames(
+    sceneBuf: SceneBuffer,
+    model: Model,
+    seqType: SeqType,
+): AnimationFrames | undefined {
+    let frameCount: number;
+    if (seqType.isSkeletalSeq()) {
+        frameCount = seqType.getSkeletalDuration();
+    } else {
+        if (!seqType.frameIds) {
+            return undefined;
+        }
+        frameCount = seqType.frameIds.length;
+    }
+    if (frameCount === 0) {
+        return undefined;
+    }
+    const frames = new Array<DrawRange>(frameCount);
+    const framesAlpha = new Array<DrawRange>(frameCount);
+    let alphaFrameCount = 0;
+    for (let i = 0; i < frameCount; i++) {
+        frames[i] = sceneBuf.addModelAnimFrame(model, false);
+        framesAlpha[i] = sceneBuf.addModelAnimFrame(model, true);
+        if (framesAlpha[i][1] > 0) {
+            alphaFrameCount++;
         }
     }
 
@@ -442,6 +478,7 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
 
                 borderSize: 0,
                 tileRenderFlags: scene.tileRenderFlags,
+                tileHeights: scene.tileHeights,
                 collisionDatas: scene.collisionMaps,
 
                 vertices,

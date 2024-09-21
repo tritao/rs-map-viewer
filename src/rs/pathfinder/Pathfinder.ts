@@ -150,8 +150,10 @@ export class Pathfinder {
             const approxDestY = routeStrategy.approxDestY;
 
             // what we will do here is search the coordinates range of destination +- ALTERNATIVE_ROUTE_RANGE
-            // to see if at least one position in that range is reachable, and reaching it takes no longer than ALTERNATIVE_ROUTE_MAX_DISTANCE steps.
-            // if we have multiple positions in our range that fits all the conditions, we will choose the one which takes fewer steps.
+            // to see if at least one position in that range is reachable, and reaching it takes
+            // no longer than ALTERNATIVE_ROUTE_MAX_DISTANCE steps.
+            // if we have multiple positions in our range that fits all the conditions, we will
+            // choose the one which takes fewer steps.
 
             for (
                 let checkX = approxDestX - ALTERNATIVE_ROUTE_RANGE;
@@ -254,6 +256,7 @@ export class Pathfinder {
         return steps;
     }
 
+    // Searches for a path for an entity with size of 1 tile square.
     findPathS1(
         srcX: number,
         srcY: number,
@@ -481,6 +484,7 @@ export class Pathfinder {
         return false;
     }
 
+    // Searches for a path for an entity with maximum size of 2 tile squares.
     findPathS2(
         srcX: number,
         srcY: number,
@@ -492,6 +496,7 @@ export class Pathfinder {
         return this.findPathSX(srcX, srcY, 2, plane, routeStrategy, collisionStrategy, customFlag);
     }
 
+    // Searches for a path for an entity with size of arbitrary tile squares.
     findPathSX(
         srcX: number,
         srcY: number,

@@ -687,6 +687,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
                 borderSize,
                 scene.tileRenderFlags,
+                scene.tileHeights,
                 scene.collisionMaps,
 
                 minimapBlob,

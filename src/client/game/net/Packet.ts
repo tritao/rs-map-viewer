@@ -98,8 +98,22 @@ export enum LoginType {
 }
 
 export enum OutgoingPacket {
-    KEEP_ALIVE = 40
+    KEEP_ALIVE = 40,
+    // A walk initiated by clicking on a tile in the 3d view
+    WALK_TILE = 28,
+    // A walk initiated by clicking on the minimap
+    WALK_MAP = 213,
+    // A walk initiated as a result of interacting with something
+    WALK_INTERACTION = 247,
 }
+
+export enum WalkPacketMode {
+    TILE = OutgoingPacket.WALK_TILE,
+    MAP = OutgoingPacket.WALK_MAP,
+    INTERACTION = OutgoingPacket.WALK_INTERACTION,
+}
+
+export const MAX_WALK_STEPS = 25;
 
 export enum NpcUpdateMask {
     TRANSFORM = 0x1,
@@ -131,6 +145,21 @@ export enum MovementType {
     WALK = 1,
     RUN = 2,
     TELEPORT = 3
+}
+
+export enum AppearanceStyles {
+    HEAD = 0,
+    CHIN_BEARD = 1,
+    CHEST = 2,
+    ARMS = 3,
+    HANDS = 4,
+    LEGS = 5,
+    FEET = 6,
+    COLOR_1 = 7,
+    COLOR_2 = 8,
+    COLOR_3 = 9,
+    COLOR_4 = 10,
+    COLOR_5 = 11,
 }
 
 export enum LoginStatus {

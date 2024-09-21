@@ -66,7 +66,7 @@ export class ReferenceTable {
         if (protocol < 5 || protocol > 7) {
             throw new Error("Invalid protocol: " + protocol);
         }
-        const revision = protocol > 5 ? buffer.readInt() : 0;
+        const revision = protocol >= 6 ? buffer.readInt() : 0;
         const flag = buffer.readUnsignedByte();
         const named = (flag & 0x1) !== 0;
         const usesWhirlpool = (flag & 0x2) !== 0;

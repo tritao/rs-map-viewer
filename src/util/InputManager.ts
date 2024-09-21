@@ -37,6 +37,7 @@ export class InputManager {
     deltaMouseX: number = 0;
     deltaMouseY: number = 0;
 
+    isClick: boolean = false;
     isTouch: boolean = false;
 
     pickX: number = -1;
@@ -192,6 +193,7 @@ export class InputManager {
         const [x, y] = getMousePos(this.element, event);
         this.dragX = x;
         this.dragY = y;
+        this.isClick = true;
         this.mouseX = x;
         this.mouseY = y;
     };
@@ -214,6 +216,7 @@ export class InputManager {
     private onMouseUp = (event: MouseEvent) => {
         this.dragX = -1;
         this.dragY = -1;
+        this.isClick = false;
     };
 
     private onMouseLeave = (event: MouseEvent) => {
@@ -283,6 +286,7 @@ export class InputManager {
         this.mouseY = -1;
         this.dragX = -1;
         this.dragY = -1;
+        this.isClick = false;
     }
 
     onFrameEnd() {

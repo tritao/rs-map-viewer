@@ -16,9 +16,9 @@ export class InteractiveObject {
     public tileTop: number;
     public tileBottom: number;
 
-    public anInt123: number;
+    public cameraRelativePosition: number;
     public cycle: number;
-    public uid: number;
+    public hash: number;
     public config: number;
 
     constructor() {
@@ -33,9 +33,9 @@ export class InteractiveObject {
         this.tileRight = 0;
         this.tileTop = 0;
         this.tileBottom = 0;
-        this.anInt123 = 0;
+        this.cameraRelativePosition = 0;
         this.cycle = 0;
-        this.uid = 0;
+        this.hash = 0;
         this.config = 0;
     }
 }

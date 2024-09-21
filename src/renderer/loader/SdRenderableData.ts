@@ -41,6 +41,7 @@ export class SdRenderableData {
 
         readonly borderSize: number,
         readonly tileRenderFlags: Uint8Array[][],
+        readonly tileHeights: Int32Array[][],
         readonly collisionDatas: CollisionData[],
 
         readonly vertices: Uint8Array,

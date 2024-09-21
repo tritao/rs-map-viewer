@@ -17,6 +17,15 @@ class BlockedCollisionStrategy implements CollisionStrategy {
     }
 }
 
+class LineOfSightBlockFlagCollision implements CollisionStrategy {
+    canMove(tileFlag: number, blockFlag: number): boolean {
+        const movementFlags = (blockFlag & BLOCK_MOVEMENT) << 9;
+        const routeFlags = (blockFlag & BLOCK_ROUTE) >> 13;
+        const finalBlockFlag = movementFlags | routeFlags;
+        return (tileFlag & finalBlockFlag) === 0;
+    }
+}
+
 const BLOCK_MOVEMENT =
     CollisionFlag.WALL_NORTH_WEST |
     CollisionFlag.WALL_NORTH |
@@ -38,15 +47,6 @@ const BLOCK_ROUTE =
     CollisionFlag.WALL_SOUTH_WEST_ROUTE_BLOCKER |
     CollisionFlag.WALL_WEST_ROUTE_BLOCKER |
     CollisionFlag.OBJECT_ROUTE_BLOCKER;
-
-class LineOfSightBlockFlagCollision implements CollisionStrategy {
-    canMove(tileFlag: number, blockFlag: number): boolean {
-        const movementFlags = (blockFlag & BLOCK_MOVEMENT) << 9;
-        const routeFlags = (blockFlag & BLOCK_ROUTE) >> 13;
-        const finalBlockFlag = movementFlags | routeFlags;
-        return (tileFlag & finalBlockFlag) === 0;
-    }
-}
 
 export const NORMAL_STRATEGY = new NormalCollisionStrategy();
 export const BLOCKED_STATEGY = new BlockedCollisionStrategy();

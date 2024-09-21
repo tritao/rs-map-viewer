@@ -1,6 +1,9 @@
+import { CacheLoaders } from "../../../rs/cache/CacheLoaders";
 import { IdkType } from "../../../rs/config/idktype/IdkType";
-import { IdkTypeLoader } from "../../../rs/config/invtype/IdkTypeLoader";
-import { Model } from "../renderable/Model";
+import { IdkTypeLoader } from "../../../rs/config/idktype/IdkTypeLoader";
+import { Model } from "../../../rs/model/Model";
+import { ModelData } from "../../../rs/model/ModelData";
+import { TextureLoader } from "../../../rs/texture/TextureLoader";
 
 export class IdentityKit {
     public static count: number = 0;
@@ -40,24 +43,24 @@ export class IdentityKit {
         return isCached;
     }
 
-    public getBodyModel(): Model | null {
+    public getBodyModel(cacheLoaders: CacheLoaders): ModelData | null {
         if (this.idk.modelIds == null) {
             return null;
         }
 
-        const models: Model[] = Array(this.idk.modelIds.length).fill(undefined);
+        const models: ModelData[] = [];
         for (let model: number = 0; model < this.idk.modelIds.length; model++) {
-            const loadedModel = Model.getModel(this.idk.modelIds[model]);
+            const loadedModel = cacheLoaders.modelLoader.getModel(this.idk.modelIds[model]);
             if (loadedModel) {
-                models[model] = loadedModel;
+                models.push(loadedModel);
             }
         }
 
-        let model: Model;
+        let model: ModelData;
         if (models.length === 1) {
             model = models[0];
         } else {
-            model = Model.merge(models.length, models);
+            model = ModelData.merge(models, models.length);
         }
 
         for (let color: number = 0; color < 6; color++) {

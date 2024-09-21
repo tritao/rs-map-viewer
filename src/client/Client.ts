@@ -72,7 +72,7 @@ export class Client {
     ) {
         this.loadedCache = cache;
         this.cacheLoaders = new CacheLoaders(cache);
-        this.game = new Game();
+        this.game = new Game(this.pathfinder);
         this.renderer = new ClientRenderer(this);
         this.initCache(cache);
     }

@@ -24,6 +24,7 @@ export class SdMapData extends SdRenderableData implements MapData {
         readonly borderSize: number,
 
         readonly tileRenderFlags: Uint8Array[][],
+        readonly tileHeights: Int32Array[][],
         readonly collisionDatas: CollisionData[],
 
         readonly minimapBlob: Blob,
@@ -43,8 +44,8 @@ export class SdMapData extends SdRenderableData implements MapData {
         readonly loadedTextures: Map<number, Int32Array>,
     ) {
         super(RenderableType.Map, getMapSquareId(mapX, mapY), cacheName,
-            borderSize, tileRenderFlags, collisionDatas, vertices, indices,
-            modelInfoTextures, drawRanges, locsAnimated, npcs,
-            loadedTextures);
+            borderSize, tileRenderFlags, tileHeights, collisionDatas,
+            vertices, indices, modelInfoTextures, drawRanges, locsAnimated,
+            npcs, loadedTextures);
     }
 };

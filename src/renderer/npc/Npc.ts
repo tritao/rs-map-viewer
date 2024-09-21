@@ -47,10 +47,16 @@ export class Npc {
         readonly level: number,
         readonly idleAnim: AnimationFrames | undefined,
         readonly walkAnim: AnimationFrames | undefined,
-        readonly npcType: NpcType,
         readonly idleSeqId: number,
         readonly walkSeqId: number,
+        readonly npcType: NpcType | null,
     ) {
+        if (npcType == null) {
+            this.x = 0;
+            this.y = 0;
+            return;
+        }
+
         this.rotation = DIRECTION_ROTATIONS[npcType.spawnDirection];
 
         this.pathX[0] = clamp(spawnX, 0, 64 - npcType.size);
@@ -61,10 +67,13 @@ export class Npc {
     }
 
     getSize(): number {
-        return this.npcType.size;
+        return this?.npcType?.size ?? 0;
     }
 
     canWalk(): boolean {
+        if (this.npcType == null)
+            return false;
+
         if (this.npcType.cacheInfo.revision >= 508) {
             return (this.npcType.loginScreenProps & 0x2) > 0 && this.walkSeqId !== -1;
         }
@@ -72,6 +81,9 @@ export class Npc {
     }
 
     queuePathDir(dir: number, movementType: MovementType) {
+        if (this.npcType == null)
+            return;
+
         let x = this.pathX[0];
         let y = this.pathY[0];
         switch (dir) {
@@ -121,6 +133,9 @@ export class Npc {
     }
 
     queuePath(x: number, y: number, movementType: MovementType) {
+        if (this.npcType == null)
+            return;
+
         if (this.pathLength < 9) {
             this.pathLength++;
         }
@@ -137,6 +152,9 @@ export class Npc {
     }
 
     updateMovement(seqTypeLoader: SeqTypeLoader, seqFrameLoader: SeqFrameLoader) {
+        if (this.npcType == null)
+            return;
+
         this.movementSeqId = this.idleSeqId;
         if (this.pathLength > 0) {
             const currX = this.x;
@@ -353,7 +371,8 @@ export class Npc {
             routeStrategy.destSizeX = 1;
             routeStrategy.destSizeY = 1;
 
-            pathfinder.setNpcFlags(srcX, srcY, spawnX, spawnY, 5, borderSize, collisionMap);
+            const wanderRadius = 5;
+            pathfinder.setNpcFlags(srcX, srcY, spawnX, spawnY, wanderRadius, borderSize, collisionMap);
 
             let collisionStrategy = NORMAL_STRATEGY;
             if (

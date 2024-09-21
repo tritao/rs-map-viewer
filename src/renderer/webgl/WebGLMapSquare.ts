@@ -4,6 +4,7 @@ import {
     Program,
     Texture,
     UniformBuffer,
+    VertexArray,
 } from "picogl";
 
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
@@ -20,6 +21,7 @@ import { RenderableType } from "../Renderer";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
+
     static load(
         seqTypeLoader: SeqTypeLoader,
         npcTypeLoader: NpcTypeLoader,
@@ -42,11 +44,12 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
         const createDrawCall: CreateDrawCallFunction = (
             program: Program,
+            vertexArray: VertexArray,
             modelInfoTexture: Texture | undefined,
             drawRanges: DrawRange[],
         ): DrawCallRange => {
             const drawCall = app
-                .createDrawCall(program, renderable.vertexArray)
+                .createDrawCall(program, vertexArray)
                 .uniformBlock("SceneUniforms", sceneUniformBuffer)
                 .uniform("u_timeLoaded", time)
                 .uniform("u_mapPos", mapPos)
@@ -68,14 +71,16 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
         const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
 
-        const renderable = new WebGLMapSquare(mapX, mapY, borderSize, data.tileRenderFlags,
-            collisionMaps, time, frame);
+        const renderable = new WebGLMapSquare(mapX, mapY, createDrawCall, npcProgram,
+            borderSize, data.tileRenderFlags, data.tileHeights, collisionMaps,
+            time, frame);
         renderable.createBuffers(app, data);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
         renderable.createAnimatedLocs(time, data, seqTypeLoader);
-        renderable.createNpcs(data.npcs, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
+        renderable.createNpcs(data.npcs, npcTypeLoader, basTypeLoader);
+
         renderable.processNpcsCollisions();
 
         return renderable;
@@ -85,15 +90,19 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         readonly mapX: number,
         readonly mapY: number,
 
+        readonly createDrawCall: CreateDrawCallFunction,
+        readonly npcProgram: Program,
+
         readonly borderSize: number,
         readonly tileRenderFlags: Uint8Array[][],
+        readonly tileHeights: Int32Array[][],
         readonly collisionMaps: CollisionMap[],
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {
-        super(RenderableType.Map, getMapSquareId(mapX, mapY), borderSize,
-            tileRenderFlags, collisionMaps, timeLoaded, frameLoaded);
+        super(RenderableType.Map, getMapSquareId(mapX, mapY), createDrawCall, npcProgram,
+            borderSize, tileRenderFlags, tileHeights, collisionMaps, timeLoaded, frameLoaded);
     }
 
     processNpcsCollisions() {

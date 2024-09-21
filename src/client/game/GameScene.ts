@@ -27,7 +27,7 @@ export class GameScene {
     tiles: (GameSceneTile | null)[][][];
     tileFlags: number[][][];
     tileRenderCount: number[][];
-    intGroundArray: number[][][];
+    tileHeights: number[][][];
     currentCollisionMap: CollisionMap[];
 
     sceneSpawnRequestsCacheCurrentPos: number = 0;
@@ -39,7 +39,7 @@ export class GameScene {
         this.tiles = array3d(levels, sizeX, sizeY, null);
         this.tileFlags = array3d(levels, sizeX, sizeY, 0);
         this.tileRenderCount = array2d(sizeX, sizeY, 0);
-        this.intGroundArray = array3d(levels, sizeX + 1, sizeY + 1, 0);
+        this.tileHeights = array3d(levels, sizeX + 1, sizeY + 1, 0);
         this.currentCollisionMap = Array(levels).fill(null)
 
         for (let j: number = 0; j < levels; j++) {
@@ -161,7 +161,7 @@ export class GameScene {
         }
 
         const interactiveObject: InteractiveObject = new InteractiveObject();
-        interactiveObject.uid = uid;
+        interactiveObject.hash = uid;
         interactiveObject.config = config;
         interactiveObject.z = z;
         interactiveObject.worldX = worldX;
@@ -177,16 +177,16 @@ export class GameScene {
             for (let y: number = minY; y < minY + tileWidth; y++) {
                 let size: number = 0;
                 if (x > minX) {
-                    size++;
+                    size += 0b0001;
                 }
-                if (x < minX + tileHeight - 1) {
-                    size += 4;
+                if (x < (minX + tileHeight) - 1) {
+                    size += 0b0100;
                 }
                 if (y > minY) {
-                    size += 8;
+                    size += 0b1000;
                 }
-                if (y < minY + tileWidth - 1) {
-                    size += 2;
+                if (y < (minY + tileWidth) - 1) {
+                    size += 0b0010;
                 }
                 for (let plane: number = z; plane >= 0; plane--) {
                     if (this.tiles[plane][x][y] == null) {
@@ -246,8 +246,9 @@ export class GameScene {
 
     /**
      * Returns the floor height at a given x,y coordinate in 3D space.
-     * The calculation takes into account the surrounding tile heights and the specific position within
-     * a tile, performing a form of bilinear interpolation to determine the precise height.
+     * The calculation takes into account the surrounding tile heights and the specific
+     * position within a tile, performing a form of bilinear interpolation to determine
+     * the precise height.
      *
      * @param plane The current plane (or level) within the 3D space
      * @param x The x coordinate in the 3D space
@@ -278,14 +279,14 @@ export class GameScene {
         // Interpolate the height for the X-axis at Y position 'groundY' based on tile position X
         // It's a weighted average between the height at groundX and groundX+1
         const interpolatedHeightX1: number =
-            (this.intGroundArray[groundZ][groundX + 0][groundY] * (128 - tilePositionX) +
-                this.intGroundArray[groundZ][groundX + 1][groundY] * tilePositionX) >> 7;
+            (this.tileHeights[groundZ][groundX + 0][groundY] * (128 - tilePositionX) +
+                this.tileHeights[groundZ][groundX + 1][groundY] * tilePositionX) >> 7;
 
         // Interpolate the height for the X-axis at Y position 'groundY+1' based on tile position X
         // Similar to above, but one step forward in the Y-axis
         const interpolatedHeightX2: number =
-            (this.intGroundArray[groundZ][groundX][groundY + 1] * (128 - tilePositionX) +
-                this.intGroundArray[groundZ][groundX + 1][groundY + 1] * tilePositionX) >> 7;
+            (this.tileHeights[groundZ][groundX][groundY + 1] * (128 - tilePositionX) +
+                this.tileHeights[groundZ][groundX + 1][groundY + 1] * tilePositionX) >> 7;
 
         // Interpolate between the two interpolated X-axis heights, based on the tile position Y
         // This results in a height that takes into account the position within the tile in both the X

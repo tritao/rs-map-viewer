@@ -22,8 +22,8 @@ export class CollisionFlag {
     /**
      * Custom flag dedicated to blocking NPCs.
      * It should be noted that this is a custom flag, and you do not need to use this.
-     * The pathfinder takes the flag as a custom option, so you may use any other flag, this just defines
-     * a reliable constant to use
+     * The pathfinder takes the flag as a custom option, so you may use any other flag,
+     * this just defines a reliable constant to use
      */
     static readonly BLOCK_NPCS: number = 0x80000;
 

@@ -29,13 +29,14 @@ import { InputManager } from "../../util/InputManager";
 import { Camera } from "../Camera";
 import { RendererStats } from "./RendererStats";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { FrameStats } from "../Renderer";
+import { FrameStats, RenderableType } from "../Renderer";
 import { getMaxAnisotropy, MapRenderer, TextureFilterMode } from "../MapRenderer";
 import { SdMapDataLoader } from "../loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { WebGLRenderable } from "./WebGLRenderable";
+import { WebGLDynamicBuffers } from "./WebGLDynamicBuffers";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -93,6 +94,13 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     npcDataTextureBuffer: (Texture | undefined)[] = new Array(5);
 
+    dynamicNpcRenderCount: number = 0;
+    dynamicNpcRenderData: Uint16Array = new Uint16Array(16 * 4);
+
+    dynamicNpcDataTextureBuffer: (Texture | undefined)[] = new Array(5);
+
+    dynamicNpcBuffers!: WebGLDynamicBuffers;
+
     isNewTextureAnim: boolean = false;
 
     constructor(
@@ -145,6 +153,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             new Float32Array([-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1]),
         );
         this.quadArray = this.app.createVertexArray().vertexAttributeBuffer(0, this.quadPositions);
+
+        this.dynamicNpcBuffers = new WebGLDynamicBuffers(RenderableType.NPC);
 
         this.shadersPromise = this.initShaders();
 
@@ -507,6 +517,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     render(time: number, deltaTime: number, resized: boolean): void {
         this.npcRenderCount = 0;
+        this.dynamicNpcRenderCount = 0;
         this.rendererStats.frameStart = performance.now();
         const timeSec = time / 1000;
 
@@ -588,18 +599,23 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             }
 
             this.addNpcRenderData(map);
+            this.addDynamicNpcRenderData(map);
         }
-
 
         const npcDataTextureIndex = this.updateNpcDataTexture();
         const npcDataTexture = this.npcDataTextureBuffer[npcDataTextureIndex];
+
+        const dynamicNpcDataTextureIndex = this.updateDynamicNpcDataTexture();
+        const dynamicNpcDataTexture = this.dynamicNpcDataTextureBuffer[dynamicNpcDataTextureIndex];
 
         this.app.disable(PicoGL.BLEND);
         const opaquePassStart = performance.now();
         this.renderOpaquePass();
         this.rendererStats.opaquePassTime = performance.now() - opaquePassStart;
         const opaqueNpcPassStart = performance.now();
-        this.renderOpaqueNpcPass(npcDataTextureIndex, npcDataTexture);
+        //this.renderOpaqueNpcPass(npcDataTextureIndex, npcDataTexture);
+        this.renderOpaqueDynamicNpcPass(dynamicNpcDataTextureIndex, dynamicNpcDataTexture);
+
         this.rendererStats.opaqueNpcPassTime = performance.now() - opaqueNpcPassStart;
 
         this.app.enable(PicoGL.BLEND);
@@ -676,11 +692,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     addNpcRenderData(renderable: WebGLRenderable) {
         const npcs = renderable.npcs;
-        //if (npcs.length === 0) {
-        //    return;
-        //}
-
-        const dynamicNpcs = renderable.dynamicNpcs;
+        if (npcs.length === 0) {
+            return;
+        }
 
         const frameCount = this.stats.frameCount;
 
@@ -706,15 +720,57 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const isBridge = (renderable.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE)
                 === TILE_FLAGS_BRIDGE;
             if (renderPlane < 3 && isBridge) {
-                renderPlane ++;
+                renderPlane++;
             }
 
             this.npcRenderData[offset++] = npc.x;
             this.npcRenderData[offset++] = npc.y;
             this.npcRenderData[offset++] = (npc.rotation << 2) | renderPlane;
-            this.npcRenderData[offset++] = npc.npcType.id;
+            this.npcRenderData[offset++] = npc?.npcType?.id ?? 0;
 
             this.npcRenderCount++;
+        }
+    }
+
+    addDynamicNpcRenderData(renderable: WebGLRenderable) {
+        const npcs = renderable.dynamicNpcs;
+        if (!npcs || npcs.length === 0) {
+            return;
+        }
+
+        const frameCount = this.stats.frameCount;
+
+        renderable.dynamicNpcDataTextureOffsets[frameCount % renderable.dynamicNpcDataTextureOffsets.length] =
+            this.dynamicNpcRenderCount;
+
+        const newCount = this.dynamicNpcRenderCount + npcs.length;
+
+        // Expand the npc data array if there is not enough space for the new npcs.
+        if (this.dynamicNpcRenderData.length / 4 < newCount) {
+            const newData = new Uint16Array(Math.ceil((newCount * 2) / 16) * 16 * 4);
+            newData.set(this.dynamicNpcRenderData);
+            this.dynamicNpcRenderData = newData;
+        }
+
+        for (const npc of npcs) {
+            let offset = this.dynamicNpcRenderCount * 4;
+
+            const tileX = npc.spawnX;
+            const tileY = npc.spawnY;
+
+            let renderPlane = npc.level;
+            const isBridge = (renderable.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE)
+                === TILE_FLAGS_BRIDGE;
+            if (renderPlane < 3 && isBridge) {
+                renderPlane++;
+            }
+
+            this.dynamicNpcRenderData[offset++] = npc.x;
+            this.dynamicNpcRenderData[offset++] = npc.y;
+            this.dynamicNpcRenderData[offset++] = (npc.rotation << 2) | renderPlane;
+            this.dynamicNpcRenderData[offset++] = npc?.npcType?.id ?? 0;
+
+            this.dynamicNpcRenderCount++;
         }
     }
 
@@ -728,6 +784,26 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.npcRenderData,
             16,
             Math.max(Math.ceil(this.npcRenderCount / 16), 1),
+            {
+                internalFormat: PicoGL.RGBA16UI,
+                minFilter: PicoGL.NEAREST,
+                magFilter: PicoGL.NEAREST,
+            },
+        );
+
+        return npcDataTextureIndex;
+    }
+
+    updateDynamicNpcDataTexture() {
+        const frameCount = this.stats.frameCount;
+
+        const newNpcDataTextureIndex = frameCount % this.dynamicNpcDataTextureBuffer.length;
+        const npcDataTextureIndex = (frameCount + 1) % this.dynamicNpcDataTextureBuffer.length;
+        this.dynamicNpcDataTextureBuffer[newNpcDataTextureIndex]?.delete();
+        this.dynamicNpcDataTextureBuffer[newNpcDataTextureIndex] = this.app.createTexture2D(
+            this.dynamicNpcRenderData,
+            16,
+            Math.max(Math.ceil(this.dynamicNpcRenderCount / 16), 1),
             {
                 internalFormat: PicoGL.RGBA16UI,
                 minFilter: PicoGL.NEAREST,
@@ -832,6 +908,54 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
     }
 
+    renderOpaqueDynamicNpcPass(npcDataTextureIndex: number, npcDataTexture: Texture | undefined): void {
+        if (!npcDataTexture) {//|| !this.loadNpcs) {
+            return;
+        }
+
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
+            const npcs = map.dynamicNpcs;
+            if (!npcs || npcs.length === 0) {
+                continue;
+            }
+
+            const dataOffset = map.dynamicNpcDataTextureOffsets[npcDataTextureIndex];
+            if (dataOffset === -1) {
+                continue;
+            }
+
+            const { drawCall, drawRanges } = map.drawCallDynamicNpc;
+
+            drawCall.uniform("u_npcDataOffset", dataOffset);
+            drawCall.texture("u_npcDataTexture", npcDataTexture);
+
+            for (let i = 0; i < npcs.length; i++) {
+                const npc = npcs[i];
+                const anim = npc.getAnimationFrames();
+
+                if (anim) {
+
+                    const frameId = npc.movementFrame;
+                    const frame = anim.frames[frameId];
+
+                    (drawCall as any).offsets[i] = frame[0];
+                    (drawCall as any).numElements[i] = frame[1];
+
+                    drawRanges[i] = frame;
+                }
+            }
+
+            this.draw(drawCall, drawRanges);
+        }
+    }
+
+
     renderTransparentPass(): void {
         const cameraMapX = this.camera.getMapX();
         const cameraMapY = this.camera.getMapY();
@@ -921,7 +1045,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
-        closestInteractIndices: Map<number, number[]>): void {}
+        closestInteractIndices: Map<number, number[]>): void { }
 
     prepareInteractions(interactions: Interactions): void {
         const interactReady = interactions.check(

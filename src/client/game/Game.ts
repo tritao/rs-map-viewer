@@ -6,7 +6,7 @@ import { Socket } from "./net/Socket";
 import { TextUtils } from "./util/TextUtils";
 import { SignLink } from "./util/SignLink";
 import { ISAACCipher } from "./net/ISAACCipher";
-import { LoginStatus, PacketConstants, IncomingPacket, LoginType, RegionUpdateOpcode, OutgoingPacket, NpcUpdateMask, PlayerUpdateMask, MovementType } from "./net/Packet";
+import { LoginStatus, PacketConstants, IncomingPacket, LoginType, RegionUpdateOpcode, OutgoingPacket, NpcUpdateMask, PlayerUpdateMask, MovementType, WalkPacketMode, MAX_WALK_STEPS } from "./net/Packet";
 import { array3d } from "./util/Arrays";
 import { Player } from "./renderable/actor/Player";
 import { Npc } from "./renderable/actor/Npc";
@@ -16,7 +16,11 @@ import { Actor } from "./renderable/actor/Actor";
 import { CacheLoaders } from "../../rs/cache/CacheLoaders";
 import { GameScene } from "./GameScene";
 import { IdentityKit } from "./cache/IdentityKit";
-import { Model } from "./renderable/Model";
+import { SeqType } from "../../rs/config/seqtype/SeqType";
+import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
+import { ExactRouteStrategy } from "../../rs/pathfinder/RouteStrategy";
+import { NORMAL_STRATEGY } from "../../rs/pathfinder/CollisionStrategy";
+import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 
 export interface GameEvents {
     onMapRegionLoad(mapX: number, mapY: number): void;
@@ -25,10 +29,12 @@ export interface GameEvents {
 
 export class Game {
     static MAX_LEVELS = 4;
-    static MAX_TILES = 104;
+    static MAX_TILES = 104; // 13 * 8 tiles (viewport)
 
     static MAX_PLAYERS = 2048;
     static MAX_NPCS = 16384;
+
+    static OBJECT_TYPES: number[] = [0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3];
 
     events!: GameEvents;
     gameConnection!: BufferedConnection;
@@ -51,8 +57,8 @@ export class Game {
     tickDelta: number = 0;
     pulseCycle: number = 0;
 
-    chunkX: number = 0;
-    chunkY: number = 0;
+    viewportCentralChunkX: number = 0;
+    viewportCentralChunkY: number = 0;
     plane: number = 0;
 
     currentScene!: GameScene;
@@ -63,8 +69,8 @@ export class Game {
     cachedAppearances: (Buffer | null)[] = Array(Game.MAX_PLAYERS).fill(null);
     updatedActors: number[] = Array(Game.MAX_PLAYERS).fill(0);
 
-    entityUpdatesIndices: number[] = Array(1000).fill(0);
-    entityUpdateCount: number = 0;
+    removedActorIds: number[] = Array(1000).fill(0);
+    removedActorCount: number = 0;
 
     localPlayerCount: number = 0;
     updatedActorCount: number = 0;
@@ -80,11 +86,23 @@ export class Game {
     gameAnimableObjectQueue: LinkedList = new LinkedList();
     groundItems: (LinkedList | null)[][][] = array3d(Game.MAX_LEVELS, Game.MAX_TILES, Game.MAX_TILES, null);
 
-    objectTypes: number[] = [0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3];
     placementX: number = 0;
     placementY: number = 0;
 
+    viewportOriginTileX: number = 0;
+    viewportOriginTileY: number = 0;
+
     cacheLoaders!: CacheLoaders;
+
+    // Movement-related data
+    pathfinder: Pathfinder;
+
+    walkingQueueX: number[] = Array(4000).fill(0);
+    walkingQueueY: number[] = Array(4000).fill(0);
+    walkingQueueLength: number = 0;
+
+    destinationX: number = 0;
+    destinationY: number = 0;
 
     // Sound-related data
     sound: number[] = Array(50).fill(0);
@@ -97,9 +115,12 @@ export class Game {
     currentSong: number = 0;
     previousSong: number = 0;
 
+    constructor(pathfinder: Pathfinder) {
+        this.pathfinder = pathfinder;
+    }
+
     public async init() {
         this.currentScene = new GameScene(Game.MAX_LEVELS, Game.MAX_TILES, Game.MAX_TILES);
-        Model.loader = this.cacheLoaders.modelLoader;
         IdentityKit.loadCache(this.cacheLoaders.loaderFactory.getIdkTypeLoader());
     }
 
@@ -168,6 +189,12 @@ export class Game {
     }
 
     public processPlayers() {
+        if (this.localPlayer.worldX >> 7 === this.destinationX
+            && this.localPlayer.worldY >> 7 === this.destinationY) {
+            this.destinationX = 0;
+            this.destinationY = 0;
+        }
+
         for (let i = -1; i < this.localPlayerCount; i++) {
             let index: number;
             if (i === -1) {
@@ -193,7 +220,8 @@ export class Game {
     }
 
     public processActor(actor: Actor) {
-        if (actor.worldX < 128 || actor.worldY < 128 || actor.worldX >= 13184 || actor.worldY >= 13184) {
+        if (actor.worldX < 128 || actor.worldY < 128
+            || actor.worldX >= 13184 || actor.worldY >= 13184) {
             actor.emoteAnimation = -1;
             actor.graphic = -1;
             actor.moveCycleEnd = 0;
@@ -211,15 +239,387 @@ export class Game {
             actor.worldY = actor.pathY[0] * 128 + actor.size * 64;
             actor.resetPath();
         }
+
+        // processActorLateMovement and processActorMovementVariables are only relevant
+        // for processing forced movement requests from the server.
         if (actor.moveCycleEnd > this.pulseCycle) {
-            //this.processActorLateMovement(actor, true);
+            this.processActorLateMovement(actor);
         } else if (actor.moveCycleStart >= this.pulseCycle) {
-            //this.processActorMovementVariables(actor);
+            this.processActorMovementVariables(actor);
         } else {
-            //this.processActorMovement(actor, 0);
+            this.processActorMovement(actor);
         }
-        //this.processActorRotation(actor);
-        //this.processActorSequence(actor);
+
+        this.processActorRotation(actor);
+        this.processActorSequence(actor);
+    }
+
+    public processActorLateMovement(actor: Actor) {
+        const dt: number = actor.moveCycleEnd - this.pulseCycle;
+        const destX: number = actor.movementStartX * 128 + actor.size * 64;
+        const destY: number = actor.movementStartY * 128 + actor.size * 64;
+        actor.worldX += ((destX - actor.worldX) / dt) | 0;
+        actor.worldY += ((destY - actor.worldY) / dt) | 0;
+        actor.resyncWalkCycle = 0;
+        this.updateActorNextStepOrientation(actor);
+    }
+
+    private updateActorNextStepOrientation(actor: Actor) {
+        if (actor.moveDirection === 0) {
+            actor.nextStepOrientation = 1024;
+        }
+        if (actor.moveDirection === 1) {
+            actor.nextStepOrientation = 1536;
+        }
+        if (actor.moveDirection === 2) {
+            actor.nextStepOrientation = 0;
+        }
+        if (actor.moveDirection === 3) {
+            actor.nextStepOrientation = 512;
+        }
+    }
+
+    // This function is only taken for forced movement updates from the server.
+    public processActorMovementVariables(actor: Actor) {
+        if (
+            actor.moveCycleStart === this.pulseCycle ||
+            actor.emoteAnimation === -1 ||
+            actor.animationDelay !== 0 ||
+            actor.animationSequence + 1 >
+            this.cacheLoaders.seqTypeLoader.load(actor.emoteAnimation).getFrameLength(
+                this.cacheLoaders.seqFrameLoader, actor.displayedEmoteFrames
+            )
+        ) {
+            const moveCycles: number = actor.moveCycleStart - actor.moveCycleEnd;
+            const dt: number = this.pulseCycle - actor.moveCycleEnd;
+
+            // Calculate world coordinates for the actor current movement step.
+            const startX: number = actor.movementStartX * 128 + actor.size * 64;
+            const startY: number = actor.movementStartY * 128 + actor.size * 64;
+            const endX: number = actor.movementEndX * 128 + actor.size * 64;
+            const endY: number = actor.movementEndY * 128 + actor.size * 64;
+
+            // Linearly interpolate between the start and end position.
+            actor.worldX = ((startX * (moveCycles - dt) + endX * dt) / moveCycles) | 0;
+            actor.worldY = ((startY * (moveCycles - dt) + endY * dt) / moveCycles) | 0;
+        }
+        actor.resyncWalkCycle = 0;
+        this.updateActorNextStepOrientation(actor);
+        actor.currentRotation = actor.nextStepOrientation;
+    }
+
+    public processActorMovement(actor: Actor) {
+        actor.movementAnimation = actor.idleAnimation;
+
+        if (actor.pathLength === 0) {
+            actor.resyncWalkCycle = 0;
+            return;
+        }
+
+        // Something related to emote animation.
+        if (actor.emoteAnimation !== -1 && actor.animationDelay === 0) {
+            const animSeq: SeqType = this.cacheLoaders.seqTypeLoader.load(actor.emoteAnimation);
+            if (actor.stillPathPosition > 0 && animSeq.precedenceAnimating === 0) {
+                actor.resyncWalkCycle++;
+                return;
+            }
+            if (actor.stillPathPosition <= 0 && animSeq.priority === 0) {
+                actor.resyncWalkCycle++;
+                return;
+            }
+        }
+
+        // Calculate the world coordinates for the actor current and next steps.
+        const currentX = actor.worldX;
+        const currentY = actor.worldY;
+        const destX = actor.pathX[actor.pathLength - 1] * 128 + actor.size * 64;
+        const destY = actor.pathY[actor.pathLength - 1] * 128 + actor.size * 64;
+
+        // Some kind of movement threshold check.
+        if (destX - currentX > 256 || destX - currentX < -256 ||
+            destY - currentY > 256 || destY - currentY < -256) {
+            actor.worldX = destX;
+            actor.worldY = destY;
+            return;
+        }
+
+        // Calculate the next step orientation based on next tile location.
+        // Consider refactoring this code to work with typed directions.
+        if (currentX < destX) {
+            if (currentY < destY) {
+                actor.nextStepOrientation = 1280;
+            } else if (currentY > destY) {
+                actor.nextStepOrientation = 1792;
+            } else {
+                actor.nextStepOrientation = 1536;
+            }
+        } else if (currentX > destX) {
+            if (currentY < destY) {
+                actor.nextStepOrientation = 768;
+            } else if (currentY > destY) {
+                actor.nextStepOrientation = 256;
+            } else {
+                actor.nextStepOrientation = 512;
+            }
+        } else if (currentY < destY) {
+            actor.nextStepOrientation = 1024;
+        } else {
+            actor.nextStepOrientation = 0;
+        }
+
+        // Calculate the angle difference between the current and next step orientations.
+        let angleDifference: number = (actor.nextStepOrientation - actor.currentRotation) & 0x7ff;
+        if (angleDifference > 1024) {
+            angleDifference -= 2048;
+        }
+
+        // Calculate the turn around animation based on the angle difference.
+        let turnAroundAnimId: number = actor.turnAroundAnimationId;
+        if (angleDifference >= -256 && angleDifference <= 256) {
+            turnAroundAnimId = actor.walkAnimationId;
+        } else if (angleDifference >= 256 && angleDifference < 768) {
+            turnAroundAnimId = actor.turnLeftAnimationId;
+        } else if (angleDifference >= -768 && angleDifference <= -256) {
+            turnAroundAnimId = actor.turnRightAnimationId;
+        }
+        if (turnAroundAnimId === -1) {
+            turnAroundAnimId = actor.walkAnimationId;
+        }
+
+        actor.movementAnimation = turnAroundAnimId;
+
+        // Calculate the movement speed based on a few factors.
+        let speed: number = 4;
+        if (
+            actor.currentRotation !== actor.nextStepOrientation &&
+            actor.faceActor === -1 &&
+            actor.degreesToTurn !== 0
+        ) {
+            speed = 2;
+        }
+        if (actor.pathLength > 2) {
+            speed = 6;
+        }
+        if (actor.pathLength > 3) {
+            speed = 8;
+        }
+        if (actor.resyncWalkCycle > 0 && actor.pathLength > 1) {
+            speed = 8;
+            actor.resyncWalkCycle--;
+        }
+        if (actor.runningQueue[actor.pathLength - 1]) {
+            speed <<= 1;
+        }
+
+        // Use the running animation if necessary.
+        if (
+            speed >= 8 &&
+            actor.movementAnimation === actor.walkAnimationId &&
+            actor.runAnimationId !== -1
+        ) {
+            actor.movementAnimation = actor.runAnimationId;
+        }
+
+        // Calculate the new position.
+        if (currentX < destX) {
+            actor.worldX += speed;
+            if (actor.worldX > destX) {
+                actor.worldX = destX;
+            }
+        } else if (currentX > destX) {
+            actor.worldX -= speed;
+            if (actor.worldX < destX) {
+                actor.worldX = destX;
+            }
+        }
+        if (currentY < destY) {
+            actor.worldY += speed;
+            if (actor.worldY > destY) {
+                actor.worldY = destY;
+            }
+        } else if (currentY > destY) {
+            actor.worldY -= speed;
+            if (actor.worldY < destY) {
+                actor.worldY = destY;
+            }
+        }
+
+        if (actor.worldX === destX && actor.worldY === destY) {
+            actor.pathLength--;
+            if (actor.stillPathPosition > 0) {
+                actor.stillPathPosition--;
+            }
+        }
+    }
+
+    public processActorRotation(actor: Actor) {
+        if (actor.degreesToTurn === 0) {
+            return;
+        }
+
+        // If the actor is facing an actor, then calculate the new orientation
+        // based on the difference in position between both.
+        if (actor.faceActor !== -1 && actor.faceActor < 32768) {
+            const npc: Npc | null = this.npcs[actor.faceActor];
+            if (npc != null) {
+                const dx: number = actor.worldX - npc.worldX;
+                const dy: number = actor.worldY - npc.worldY;
+                if (dx !== 0 || dy !== 0) {
+                    actor.nextStepOrientation = (((Math.atan2(dx, dy) * 325.949) as number) | 0) & 0x7ff;
+                }
+            }
+        }
+
+        // If the actor is facing a player, then calculate the new orientation
+        // based on the difference in position between both.
+        if (actor.faceActor >= 32768) {
+            let i: number = actor.faceActor - 32768;
+            if (i === this.thisPlayerServerId) {
+                i = this.thisPlayerId;
+            }
+            const player: Player | null = this.players[i];
+            if (player != null) {
+                const dx: number = actor.worldX - player.worldX;
+                const dy: number = actor.worldY - player.worldY;
+                if (dx !== 0 || dy !== 0) {
+                    actor.nextStepOrientation = (((Math.atan2(dx, dy) * 325.949) as number) | 0) & 0x7ff;
+                }
+            }
+        }
+
+        // If we are facing a tile, then calculate the new orientation, based
+        // on the difference in position between the current actor position and
+        // the facing tile.
+        if (
+            (actor.faceX !== 0 || actor.faceY !== 0) &&
+            (actor.pathLength === 0 || actor.resyncWalkCycle > 0)
+        ) {
+            const dx: number =
+                actor.worldX - (actor.faceX - this.viewportOriginTileX - this.viewportOriginTileX) * 64;
+            const dy: number =
+                actor.worldY - (actor.faceY - this.viewportOriginTileY - this.viewportOriginTileY) * 64;
+            if (dx !== 0 || dy !== 0) {
+                actor.nextStepOrientation = (((Math.atan2(dx, dy) * 325.949) as number) | 0) & 2047;
+            }
+            actor.faceX = 0;
+            actor.faceY = 0;
+        }
+
+        // Calculate the rotation amount based on the next step orientation and the maximum 
+        // degrees to turn for a single cycle.
+        const angleDifference = (actor.nextStepOrientation - actor.currentRotation) & 0x7ff;
+        if (angleDifference !== 0) {
+            if (angleDifference < actor.degreesToTurn || angleDifference > 2048 - actor.degreesToTurn) {
+                actor.currentRotation = actor.nextStepOrientation;
+            } else if (angleDifference > 1024) {
+                actor.currentRotation -= actor.degreesToTurn;
+            } else {
+                actor.currentRotation += actor.degreesToTurn;
+            }
+            actor.currentRotation &= 0x7ff;
+
+            // Enable the turning animation if we are rotating.
+            if (
+                actor.movementAnimation === actor.idleAnimation &&
+                actor.currentRotation !== actor.nextStepOrientation
+            ) {
+                if (actor.standTurnAnimationId !== -1) {
+                    actor.movementAnimation = actor.standTurnAnimationId;
+                } else {
+                    actor.movementAnimation = actor.walkAnimationId;
+                }
+            }
+        }
+    }
+
+    public processActorSequence(actor: Actor) {
+        actor.dynamic = false;
+        if (actor.movementAnimation !== -1) {
+            const animation: SeqType = this.cacheLoaders.seqTypeLoader.load(actor.movementAnimation);
+            actor.movementCycle++;
+
+            if (
+                actor.displayedMovementFrames < animation.frameLengths.length &&
+                actor.movementCycle > animation.getFrameLength(this.cacheLoaders.seqFrameLoader,
+                    actor.displayedMovementFrames)
+            ) {
+                actor.movementCycle = 1;
+                actor.displayedMovementFrames++;
+            }
+            if (actor.displayedMovementFrames >= animation.frameLengths.length) {
+                actor.movementCycle = 1;
+                actor.displayedMovementFrames = 0;
+            }
+        }
+
+        if (actor.graphic !== -1 && this.pulseCycle >= actor.spotGraphicDelay) {
+            if (actor.currentAnimation < 0) {
+                actor.currentAnimation = 0;
+            }
+            //const animSeq: SeqType = SpotAnimation.cache[actor.graphic].sequences;
+            actor.animationCycle++;
+            //if (
+            //    actor.currentAnimation < animSeq.frameLengths.length &&
+            //    actor.animationCycle > animSeq.getFrameLength(this.cacheLoaders.seqFrameLoader,
+            //        actor.currentAnimation)
+            //) {
+            //    actor.animationCycle = 1;
+            //    actor.currentAnimation++;
+            //}
+            //if (
+            //    actor.currentAnimation >= animSeq.frameLengths.length &&
+            //    (actor.currentAnimation < 0 || actor.currentAnimation >= animSeq.frameLengths.length)
+            //) {
+            //    actor.graphic = -1;
+            //}
+        }
+
+        if (actor.emoteAnimation !== -1 && actor.animationDelay <= 1) {
+            const animSeq: SeqType = this.cacheLoaders.seqTypeLoader.load(actor.emoteAnimation);
+            if (
+                animSeq.precedenceAnimating === 1 &&
+                actor.stillPathPosition > 0 &&
+                actor.moveCycleEnd <= this.pulseCycle &&
+                actor.moveCycleStart < this.pulseCycle
+            ) {
+                actor.animationDelay = 1;
+                return;
+            }
+        }
+
+        if (actor.emoteAnimation !== -1 && actor.animationDelay === 0) {
+            const animSeq: SeqType = this.cacheLoaders.seqTypeLoader.load(actor.emoteAnimation);
+            actor.animationSequence++;
+
+            if (
+                actor.displayedEmoteFrames < animSeq.frameLengths.length &&
+                actor.animationSequence > animSeq.getFrameLength(this.cacheLoaders.seqFrameLoader,
+                    actor.displayedEmoteFrames)
+            ) {
+                actor.animationSequence = 1;
+                actor.displayedEmoteFrames++;
+            }
+
+            if (actor.displayedEmoteFrames >= animSeq.frameLengths.length) {
+                actor.displayedEmoteFrames -= animSeq.frameStep;
+                actor.animationResetCycle++;
+                if (actor.animationResetCycle >= animSeq.maxLoops) {
+                    actor.emoteAnimation = -1;
+                }
+                if (
+                    actor.displayedEmoteFrames < 0 ||
+                    actor.displayedEmoteFrames >= animSeq.frameLengths.length
+                ) {
+                    actor.emoteAnimation = -1;
+                }
+            }
+
+            actor.dynamic = animSeq.stretches;
+        }
+
+        if (actor.animationDelay > 0) {
+            actor.animationDelay--;
+        }
     }
 
     static Region_method170(type: number, index: number): boolean {
@@ -296,7 +696,87 @@ export class Game {
                 }
             }
         }
-        //}
+    }
+
+    processWalk(player: Player, destX: number, destY: number) {
+        const srcX = player.pathX[0];
+        const srcY = player.pathY[0];
+
+        const routeStrategy = new ExactRouteStrategy();
+        routeStrategy.approxDestX = destX;
+        routeStrategy.approxDestY = destY;
+        routeStrategy.destSizeX = 1;
+        routeStrategy.destSizeY = 1;
+
+        let collisionStrategy = NORMAL_STRATEGY;
+
+        let steps = this.pathfinder.findPath(
+            srcX, srcY, 0, this.plane,
+            routeStrategy, collisionStrategy,
+            CollisionFlag.BLOCK_PLAYERS, true);
+
+        if (steps > 0) {
+            if (steps >= MAX_WALK_STEPS) {
+                steps = MAX_WALK_STEPS - 1;
+            }
+            for (let s = 0; s < steps; s++) {
+                this.walkingQueueX[s] = this.pathfinder.bufferX[s];
+                this.walkingQueueY[s] = this.pathfinder.bufferY[s];
+            }
+            this.walkingQueueLength = steps;
+        }
+
+        this.walk(WalkPacketMode.TILE, false);
+    }
+
+    simulateWalk(player: Player, tileX: number, tileY: number, destX: number, destY: number) {
+        this.walkingQueueX[0] = destX;
+        this.walkingQueueY[0] = destY;
+
+        this.walkingQueueLength = 1;
+
+        this.walk(WalkPacketMode.TILE, false);
+    }
+
+    public walk(mode: WalkPacketMode, running: boolean) {
+        let currentIndex = this.walkingQueueLength;
+        if (currentIndex > 0) {
+            //this.destinationX = this.walkingQueueX[0];
+            //this.destinationY = this.walkingQueueY[0];
+
+            let pathSteps: number = currentIndex;
+            if (pathSteps > MAX_WALK_STEPS) {
+                pathSteps = MAX_WALK_STEPS;
+            }
+            currentIndex--;
+
+            if (mode === WalkPacketMode.TILE) {
+                this.outBuffer.putOpcode(OutgoingPacket.WALK_TILE);
+                this.outBuffer.putByte(pathSteps + pathSteps + 3);
+            }
+            else if (mode === WalkPacketMode.MAP) {
+                this.outBuffer.putOpcode(OutgoingPacket.WALK_MAP);
+                this.outBuffer.putByte(pathSteps + pathSteps + 3 + 14);
+            }
+            else if (mode === WalkPacketMode.INTERACTION) {
+                this.outBuffer.putOpcode(OutgoingPacket.WALK_INTERACTION);
+                this.outBuffer.putByte(pathSteps + pathSteps + 3);
+            }
+
+            const startX: number = this.walkingQueueX[currentIndex];
+            const startY: number = this.walkingQueueY[currentIndex];
+
+            this.outBuffer.putOffsetShortLE(this.viewportOriginTileX + startX);
+            const ctrlClickRunning = running; //this.keyStatus[5] !== 1 ? 0 : 1;
+            this.outBuffer.putByte(ctrlClickRunning ? 1 : 0);
+            this.outBuffer.putOffsetShortLE(this.viewportOriginTileY + startY);
+
+            for (let i: number = 1; i < pathSteps; i++) {
+                currentIndex--;
+                this.outBuffer.putByte(this.walkingQueueX[currentIndex] - startX);
+                this.outBuffer.putNegativeOffsetByte(this.walkingQueueY[currentIndex] - startY);
+            }
+        }
     }
 
     public addLocation(rotation: number, x: number, objectId: number, y: number, plane: number,
@@ -445,7 +925,7 @@ export class Game {
             //this.secondLastOpcode = this.lastOpcode;
             //this.lastOpcode = this.opcode;
 
-            console.log(`got opcode ${IncomingPacket[this.opcode]} (${this.opcode}), size ${this.packetSize}`);
+            //console.log(`got opcode ${IncomingPacket[this.opcode]} (${this.opcode}), size ${this.packetSize}`);
 
             if (this.opcode === IncomingPacket.UPDATE_MEMBERSHIP_AND_WORLD_INDEX) {
                 let playerMembers = this.buffer.getUnsignedByte();
@@ -515,8 +995,8 @@ export class Game {
 
             else if (this.opcode === IncomingPacket.UPDATE_ACTIVE_MAP_REGION ||
                 this.opcode === IncomingPacket.CONSTRUCT_MAP_REGION) {
-                let tmpChunkX: number = this.chunkX;
-                let tmpChunkY: number = this.chunkY;
+                let tmpChunkX: number = this.viewportCentralChunkX;
+                let tmpChunkY: number = this.viewportCentralChunkY;
                 if (this.opcode === IncomingPacket.UPDATE_ACTIVE_MAP_REGION) {
                     tmpChunkY = this.buffer.getUnsignedShortBE();
                     tmpChunkX = this.buffer.getUnsignedNegativeOffsetShortLE();
@@ -539,14 +1019,16 @@ export class Game {
                     this.buffer.finishBitAccess();
                     tmpChunkY = this.buffer.getUnsignedNegativeOffsetShortBE();
                 }
-                if (this.chunkX === tmpChunkX && this.chunkY === tmpChunkY && this.loadingStage === 2) {
+                if (this.viewportCentralChunkX === tmpChunkX && this.viewportCentralChunkY === tmpChunkY && this.loadingStage === 2) {
                     this.opcode = -1;
                     return true;
                 }
-                this.chunkX = tmpChunkX;
-                this.chunkY = tmpChunkY;
-                console.log(`got region update for X: ${this.chunkX}, Y: ${this.chunkY}`);
-                this.events.onMapRegionLoad(this.chunkX, this.chunkY);
+                this.viewportCentralChunkX = tmpChunkX; // centralX
+                this.viewportCentralChunkY = tmpChunkY; // centralY
+                this.viewportOriginTileX = (this.viewportCentralChunkX - 6) * 8;
+                this.viewportOriginTileY = (this.viewportCentralChunkY - 6) * 8;
+                console.log(`got region update for X: ${this.viewportCentralChunkX}, Y: ${this.viewportCentralChunkY}`);
+                this.events.onMapRegionLoad(this.viewportCentralChunkX, this.viewportCentralChunkY);
 
                 this.loadingStage = 1;
 
@@ -600,6 +1082,7 @@ export class Game {
             }
 
             if (this.opcode != -1) {
+                debugger;
                 throw new Error("TODO: packet id is not handled yet")
             }
 
@@ -626,14 +1109,14 @@ export class Game {
     }
 
     public updateNpcs(buffer: Buffer, packetSize: number) {
-        this.entityUpdateCount = 0;
+        this.removedActorCount = 0;
         this.updatedActorCount = 0;
         this.updateNpcMovement(buffer);
         this.processNewNpcs(buffer, packetSize);
         this.parseNpcUpdateMasks(buffer, packetSize);
 
-        for (let i = 0; i < this.entityUpdateCount; i++) {
-            const npcIndex: number = this.entityUpdatesIndices[i];
+        for (let i = 0; i < this.removedActorCount; i++) {
+            const npcIndex: number = this.removedActorIds[i];
             const npc = this.npcs[npcIndex];
             if (npc != null && npc.pulseCycle !== this.pulseCycle) {
                 npc.npcDefinition = null;
@@ -662,7 +1145,7 @@ export class Game {
         const id: number = buffer.getBits(8);
         if (id < this.npcCount) {
             for (let i = id; i < this.npcCount; i++) {
-                this.entityUpdatesIndices[this.entityUpdateCount++] = this.npcIds[i];
+                this.removedActorIds[this.removedActorCount++] = this.npcIds[i];
             }
         }
 
@@ -709,7 +1192,7 @@ export class Game {
                     this.updatedActors[this.updatedActorCount++] = npcId;
                 }
             } else if (moveType === MovementType.TELEPORT) {
-                this.entityUpdatesIndices[this.entityUpdateCount++] = npcId;
+                this.removedActorIds[this.removedActorCount++] = npcId;
             }
         }
     }
@@ -720,24 +1203,30 @@ export class Game {
             if (id === (Game.MAX_NPCS - 1)) {
                 break;
             }
+
             if (this.npcs[id] == null) {
                 this.npcs[id] = new Npc();
             }
+
             const npc: Npc = this.npcs[id]!;
             this.npcIds[this.npcCount++] = id;
             npc.pulseCycle = this.pulseCycle;
+
             const updateRequired: number = buffer.getBits(1);
             if (updateRequired === 1) {
                 this.updatedActors[this.updatedActorCount++] = id;
             }
+
             let offsetX: number = buffer.getBits(5);
             if (offsetX > 15) {
                 offsetX -= 32;
             }
+
             let offsetY: number = buffer.getBits(5);
             if (offsetY > 15) {
                 offsetY -= 32;
             }
+
             let defId = buffer.getBits(13);
             npc.npcDefinition = this.cacheLoaders.npcTypeLoader.load(defId);
             npc.size = npc.npcDefinition.size;
@@ -748,7 +1237,8 @@ export class Game {
             npc.turnLeftAnimationId = npc.npcDefinition.turnLeftSeqId;
             npc.idleAnimation = npc.npcDefinition.idleSeqId;
             let discardWalkingQueue = buffer.getBits(1) === 1;
-            npc.setPosition(this.localPlayer.pathX[0] + offsetY, this.localPlayer.pathY[0] + offsetX, discardWalkingQueue);
+            npc.setPosition(this.localPlayer.pathX[0] + offsetY,
+                this.localPlayer.pathY[0] + offsetX, discardWalkingQueue);
         }
         buffer.finishBitAccess();
     }
@@ -848,24 +1338,28 @@ export class Game {
     }
 
     public updatePlayers(size: number, buffer: Buffer) {
-        this.entityUpdateCount = 0;
+        this.removedActorCount = 0;
         this.updatedActorCount = 0;
         this.updateLocalPlayerMovement(buffer);
         this.updateOtherPlayerMovement(buffer);
         this.addNewPlayers(size, buffer);
         this.parsePlayerBlocks(buffer);
 
-        for (let i = 0; i < this.entityUpdateCount; i++) {
-            const index: number = this.entityUpdatesIndices[i];
-            const player = this.players[index];
+        // Remove players.
+        for (let i = 0; i < this.removedActorCount; i++) {
+            const id: number = this.removedActorIds[i];
+            const player = this.players[id];
             if (player != null && player.pulseCycle !== this.pulseCycle) {
-                this.players[index] = null;
+                this.players[id] = null;
             }
         }
+
         if (buffer.currentPosition !== size) {
-            console.log("Error packet size mismatch in getplayer coord:" + buffer.currentPosition + " psize:" + size);
+            console.log("Error packet size mismatch in getplayer coord:" + buffer.currentPosition
+                + " psize:" + size);
             throw Error("eek");
         }
+
         for (let i = 0; i < this.localPlayerCount; i++) {
             if (this.players[this.playerList[i]] == null) {
                 console.error(" null entry in pl list - coord:" + i + " size:" + this.localPlayerCount);
@@ -889,6 +1383,7 @@ export class Game {
         }
         else if (moveType === MovementType.WALK) {
             const direction: number = buffer.getBits(3);
+            console.log("[Local Player] Walk!", direction);
             this.localPlayer.move(direction, false);
             const blockUpdateRequired: number = buffer.getBits(1);
             if (blockUpdateRequired === 1) {
@@ -912,6 +1407,8 @@ export class Game {
             this.plane = buffer.getBits(2);
             const localY: number = buffer.getBits(7);
             const localX: number = buffer.getBits(7);
+            console.log("[Local Player] Teleport!", localY)
+
             const blockUpdateRequired: number = buffer.getBits(1);
             if (blockUpdateRequired === 1) {
                 this.updatedActors[this.updatedActorCount++] = this.thisPlayerId;
@@ -924,57 +1421,57 @@ export class Game {
         const playerCount: number = buffer.getBits(8);
         if (playerCount < this.localPlayerCount) {
             for (let i = playerCount; i < this.localPlayerCount; i++) {
-                this.entityUpdatesIndices[this.entityUpdateCount++] = this.playerList[i];
+                this.removedActorIds[this.removedActorCount++] = this.playerList[i];
+            }
+        }
+
+        if (playerCount > this.localPlayerCount) {
+            console.error(" Too many players");
+            throw Error("eek");
+        }
+
+        this.localPlayerCount = 0;
+
+        for (let i = 0; i < playerCount; i++) {
+            const id = this.playerList[i];
+            const player: Player = this.players[id]!;
+            const updated: number = buffer.getBits(1);
+            if (updated === 0) {
+                this.playerList[this.localPlayerCount++] = id;
+                player.pulseCycle = this.pulseCycle;
+                continue;
             }
 
-            if (playerCount > this.localPlayerCount) {
-                console.error(" Too many players");
-                throw Error("eek");
+            const moveType: number = buffer.getBits(2);
+            if (moveType === MovementType.NONE) {
+                this.playerList[this.localPlayerCount++] = id;
+                player.pulseCycle = this.pulseCycle;
+                this.updatedActors[this.updatedActorCount++] = id;
             }
-
-            this.localPlayerCount = 0;
-
-            for (let i = 0; i < playerCount; i++) {
-                const id = this.playerList[i];
-                const player: Player = this.players[id]!;
-                const updated: number = buffer.getBits(1);
-                if (updated === 0) {
-                    this.playerList[this.localPlayerCount++] = id;
-                    player.pulseCycle = this.pulseCycle;
-                    continue;
-                }
-
-                const moveType: number = buffer.getBits(2);
-                if (moveType === MovementType.NONE) {
-                    this.playerList[this.localPlayerCount++] = id;
-                    player.pulseCycle = this.pulseCycle;
+            else if (moveType === MovementType.WALK) {
+                this.playerList[this.localPlayerCount++] = id;
+                player.pulseCycle = this.pulseCycle;
+                const direction: number = buffer.getBits(3);
+                player.move(direction, false);
+                const blockUpdateRequired: number = buffer.getBits(1);
+                if (blockUpdateRequired === MovementType.RUN) {
                     this.updatedActors[this.updatedActorCount++] = id;
                 }
-                else if (moveType === MovementType.WALK) {
-                    this.playerList[this.localPlayerCount++] = id;
-                    player.pulseCycle = this.pulseCycle;
-                    const direction: number = buffer.getBits(3);
-                    player.move(direction, false);
-                    const blockUpdateRequired: number = buffer.getBits(1);
-                    if (blockUpdateRequired === MovementType.RUN) {
-                        this.updatedActors[this.updatedActorCount++] = id;
-                    }
+            }
+            else if (moveType === MovementType.RUN) {
+                this.playerList[this.localPlayerCount++] = id;
+                player.pulseCycle = this.pulseCycle;
+                const direction1: number = buffer.getBits(3);
+                player.move(direction1, true);
+                const direction2: number = buffer.getBits(3);
+                player.move(direction2, true);
+                const blockUpdateRequired: number = buffer.getBits(1);
+                if (blockUpdateRequired === 1) {
+                    this.updatedActors[this.updatedActorCount++] = id;
                 }
-                else if (moveType === MovementType.RUN) {
-                    this.playerList[this.localPlayerCount++] = id;
-                    player.pulseCycle = this.pulseCycle;
-                    const direction1: number = buffer.getBits(3);
-                    player.move(direction1, true);
-                    const direction2: number = buffer.getBits(3);
-                    player.move(direction2, true);
-                    const updateRequired: number = buffer.getBits(1);
-                    if (updateRequired === 1) {
-                        this.updatedActors[this.updatedActorCount++] = id;
-                    }
-                }
-                else if (moveType === MovementType.TELEPORT) {
-                    this.entityUpdatesIndices[this.entityUpdateCount++] = id;
-                }
+            }
+            else if (moveType === MovementType.TELEPORT) {
+                this.removedActorIds[this.removedActorCount++] = id;
             }
         }
     }
@@ -1011,7 +1508,8 @@ export class Game {
                 y -= 32;
             }
 
-            player.setPosition(this.localPlayer.pathX[0] + x, this.localPlayer.pathY[0] + y, discardQueue === 1);
+            player.setPosition(this.localPlayer.pathX[0] + x, this.localPlayer.pathY[0] + y,
+                discardQueue === 1);
         }
 
         buffer.finishBitAccess();
@@ -1112,14 +1610,7 @@ export class Game {
         }
         else if ((mask & PlayerUpdateMask.APPEARANCE) !== 0) {
             const size: number = buffer.getUnsignedByte();
-            // FIXME
-            const bytes: number[] = (s => {
-                const a = [];
-                while (s-- > 0) {
-                    a.push(0);
-                }
-                return a;
-            })(size);
+            const bytes: number[] = Array(size).fill(0);
             const appearance: Buffer = new Buffer(bytes);
             buffer.getBytesReverse(bytes, 0, size);
             this.cachedAppearances[id] = appearance;
@@ -1182,7 +1673,7 @@ export class Game {
             const locObjectData: number = buf.getUnsignedPostNegativeOffsetByte();
             let typeIndex: number = locObjectData >> 2;
             const rotation: number = locObjectData & 3;
-            const type: number = this.objectTypes[typeIndex];
+            const type: number = Game.OBJECT_TYPES[typeIndex];
             const offset: number = buf.getUnsignedByte();
             const x: number = this.placementX + ((offset >> 4) & 7);
             const y: number = this.placementY + (offset & 7);
@@ -1402,7 +1893,7 @@ export class Game {
             const locObjectData: number = buf.getUnsignedInvertedByte();
             const typeIndex: number = locObjectData >> 2;
             const rotation: number = locObjectData & 3;
-            const type: number = this.objectTypes[typeIndex];
+            const type: number = Game.OBJECT_TYPES[typeIndex];
             const locObjectId: number = buf.getUnsignedNegativeOffsetShortLE();
             const offset: number = buf.getUnsignedPostNegativeOffsetByte();
             const x: number = this.placementX + ((offset >> 4) & 7);
@@ -1420,7 +1911,7 @@ export class Game {
             const locObjectData: number = buf.getUnsignedPreNegativeOffsetByte();
             const typeIndex: number = locObjectData >> 2;
             const rotation: number = locObjectData & 3;
-            const type: number = this.objectTypes[typeIndex];
+            const type: number = Game.OBJECT_TYPES[typeIndex];
             if (x >= 0 && y >= 0 && x < Game.MAX_TILES && y < Game.MAX_TILES) {
                 this.createObjectSpawnRequest(this.plane, x, rotation, -1, typeIndex, -1, 0, type, y);
             }
@@ -1457,7 +1948,7 @@ export class Game {
             const locObjectData: number = buf.getUnsignedByte();
             const typeIndex: number = locObjectData >> 2;
             const rotation: number = locObjectData & 3;
-            const type: number = this.objectTypes[typeIndex];
+            const type: number = Game.OBJECT_TYPES[typeIndex];
             let byte0: number = buf.getInvertedByte();
             const offset: number = buf.getUnsignedPostNegativeOffsetByte();
             const x: number = this.placementX + ((offset >> 4) & 7);
@@ -1640,7 +2131,7 @@ export class Game {
         this.outBuffer.putByte(hash);
         this.gameConnection.write(2, 0, this.outBuffer.buffer);
 
-        for (let j: number = 0; j < 8; j++) {
+        for (let i: number = 0; i < 8; i++) {
             await this.gameConnection.read$();
         }
 

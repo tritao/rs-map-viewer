@@ -11,6 +11,20 @@ export type NpcData = {
     walkAnim: AnimationFrames | undefined;
 };
 
+export type DynamicNpcData = {
+    id: number;
+    x: number;
+    y: number;
+    spawnX: number,
+    spawnY: number,
+    level: number;
+    rotation: number;
+    idleAnim: AnimationFrames | undefined;
+    walkAnim: AnimationFrames | undefined;
+    idleAnimSeqId: number;
+    walkAnimSeqId: number;
+};
+
 export function createNpcDatas(groups: NpcSpawnGroup[]): NpcData[] {
     const npcs: NpcData[] = [];
 

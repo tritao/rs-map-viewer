@@ -1,3 +1,4 @@
+import { SeqType } from "../../../../rs/config/seqtype/SeqType";
 import { Renderable } from "../Renderable";
 
 export abstract class Actor extends Renderable {
@@ -20,7 +21,8 @@ export abstract class Actor extends Renderable {
     public pathY: number[] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     public pathLength: number;
 
-    public runningQueue: boolean[] = [false, false, false, false, false, false, false, false, false, false];
+    public runningQueue: boolean[] =
+        [false, false, false, false, false, false, false, false, false, false];
     public movementCycle: number;
     public endCycle: number = -1000;
     public resyncWalkCycle: number;
@@ -63,8 +65,10 @@ export abstract class Actor extends Renderable {
     public turnLeftAnimationId: number = -1;
     public standTurnAnimationId: number = -1;
 
+    public primaryAnimSeq: SeqType | null = null;
+
     // Chat-related data
-    public forcedChat: string|null;
+    public forcedChat: string | null;
     public textCycle: number = 100;
     public textColour: number;
     public textEffect: number;
@@ -126,40 +130,51 @@ export abstract class Actor extends Renderable {
     public move(direction: number, running: boolean) {
         let x: number = this.pathX[0];
         let y: number = this.pathY[0];
+
         if (direction === 0) {
             x--;
             y++;
         }
-        if (direction === 1) { y++; }
-        if (direction === 2) {
+        else if (direction === 1) { y++; }
+        else if (direction === 2) {
             x++;
             y++;
         }
-        if (direction === 3) { x--; }
-        if (direction === 4) { x++; }
-        if (direction === 5) {
+        else if (direction === 3) { x--; }
+        else if (direction === 4) { x++; }
+        else if (direction === 5) {
             x--;
             y--;
         }
-        if (direction === 6) { y--; }
-        if (direction === 7) {
+        else if (direction === 6) { y--; }
+        else if (direction === 7) {
             x++;
             y--;
         }
-        //if (this.emoteAnimation !== -1 && AnimationSequence.animations[this.emoteAnimation].priority === 1) { this.emoteAnimation = -1; }
+
+        //if (this.emoteAnimation !== -1 && 
+        // AnimationSequence.animations[this.emoteAnimation].priority === 1) { 
+            //this.emoteAnimation = -1; 
+        //}
+
         if (this.pathLength < 9) { this.pathLength++; }
         for (let pos: number = this.pathLength; pos > 0; pos--) {{
             this.pathX[pos] = this.pathX[pos - 1];
             this.pathY[pos] = this.pathY[pos - 1];
             this.runningQueue[pos] = this.runningQueue[pos - 1];
         }}
+        
         this.pathX[0] = x;
         this.pathY[0] = y;
         this.runningQueue[0] = running;
     }
 
     public setPosition(x: number, y: number, discard: boolean) {
-        //if (this.emoteAnimation !== -1 && AnimationSequence.animations[this.emoteAnimation].priority === 1) { this.emoteAnimation = -1; }
+        //if (this.emoteAnimation !== -1 &&
+        // AnimationSequence.animations[this.emoteAnimation].priority === 1) { 
+        //     this.emoteAnimation = -1;
+        // }
+
         if (!discard) {
             const distX: number = x - this.pathX[0];
             const distY: number = y - this.pathY[0];
@@ -176,6 +191,7 @@ export abstract class Actor extends Renderable {
                 return;
             }
         }
+
         this.pathLength = 0;
         this.stillPathPosition = 0;
         this.resyncWalkCycle = 0;
@@ -186,11 +202,13 @@ export abstract class Actor extends Renderable {
     }
 
     public updateHits(hitType: number, hitDamage: number, hitCycle: number) {
-        for (let hit: number = 0; hit < 4; hit++) {if (this.hitCycles[hit] <= hitCycle) {
-            this.hitDamages[hit] = hitDamage;
-            this.hitTypes[hit] = hitType;
-            this.hitCycles[hit] = hitCycle + 70;
-            return;
-        }}
+        for (let hit: number = 0; hit < 4; hit++) {
+            if (this.hitCycles[hit] <= hitCycle) {
+                this.hitDamages[hit] = hitDamage;
+                this.hitTypes[hit] = hitType;
+                this.hitCycles[hit] = hitCycle + 70;
+                return;
+            }
+        }
     }
 }

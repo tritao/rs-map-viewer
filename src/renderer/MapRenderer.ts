@@ -58,6 +58,7 @@ export interface MapSquareRenderable {
 
     // Npcs
     readonly npcs: Npc[];
+    readonly dynamicNpcs: Npc[];
 
     canRender(frameCount: number): boolean;
     delete(): void;

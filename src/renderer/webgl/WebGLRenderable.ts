@@ -18,8 +18,9 @@ import { DrawRange, newDrawRange } from "../DrawRange";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { LocAnimated } from "../loc/LocAnimated";
 import { Npc } from "../npc/Npc";
-import { NpcData } from "../npc/NpcData";
+import { DynamicNpcData, NpcData } from "../npc/NpcData";
 import { RenderableType } from "../Renderer";
+import { WebGLDynamicBuffers } from "./WebGLDynamicBuffers";
 
 const FRAME_RENDER_DELAY = 3;
 
@@ -38,7 +39,9 @@ export type DrawCallRange = {
     drawRanges: DrawRange[];
 };
 
-export type CreateDrawCallFunction = (program: Program, modelInfoTexture: Texture | undefined,
+export type CreateDrawCallFunction = (program: Program,
+    vertexArray: VertexArray,
+    modelInfoTexture: Texture | undefined,
     drawRanges: DrawRange[]) => DrawCallRange;
 
 export class WebGLRenderable {
@@ -83,6 +86,7 @@ export class WebGLRenderable {
     dynamicNpcs!: Npc[];
 
     npcDataTextureOffsets!: number[];
+    dynamicNpcDataTextureOffsets!: number[];
 
     static load(
         seqTypeLoader: SeqTypeLoader,
@@ -108,11 +112,12 @@ export class WebGLRenderable {
 
         const createDrawCall: CreateDrawCallFunction = (
             program: Program,
+            vertexArray: VertexArray,
             modelInfoTexture: Texture | undefined,
             drawRanges: DrawRange[],
         ): DrawCallRange => {
             const drawCall = app
-                .createDrawCall(program, renderable.vertexArray)
+                .createDrawCall(program, vertexArray)
                 .uniformBlock("SceneUniforms", sceneUniformBuffer)
                 .uniform("u_timeLoaded", time)
                 .uniform("u_mapPos", mapPos)
@@ -134,15 +139,14 @@ export class WebGLRenderable {
 
         const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
 
-        const renderable = new WebGLRenderable(type, ids, data.borderSize,
-            data.tileRenderFlags, collisionMaps, time, frame);
+        const renderable = new WebGLRenderable(type, ids, createDrawCall, npcProgram,
+            data.borderSize, data.tileRenderFlags, data.tileHeights, collisionMaps, time, frame);
         renderable.createBuffers(app, data);
         renderable.createHeightMapTexture(app, new Int16Array(), heightMapSize);
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
         renderable.createAnimatedLocs(time, data, seqTypeLoader);
-        renderable.createNpcs(data.npcs, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
-        renderable.createDynamicNpcs(createDrawCall, npcProgram);
+        renderable.createNpcs(data.npcs, npcTypeLoader, basTypeLoader);
 
         return renderable;
     }
@@ -151,18 +155,44 @@ export class WebGLRenderable {
         readonly type: RenderableType,
         readonly id: number,
 
+        readonly createDrawCall: CreateDrawCallFunction,
+        readonly npcProgram: Program,
+
         readonly borderSize: number,
         readonly tileRenderFlags: Uint8Array[][],
+        readonly tileHeights: Int32Array[][],
         readonly collisionMaps: CollisionMap[],
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {
         this.npcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_BUFFER_SIZE).fill(-1);
+        this.dynamicNpcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_BUFFER_SIZE).fill(-1);
     }
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
         return this.tileRenderFlags[level][tileX + this.borderSize][tileY + this.borderSize];
+    }
+
+    getTileHeight(level: number, tileX: number, tileZ: number): number {
+        return this.tileHeights[level][tileX + this.borderSize][tileZ + this.borderSize];
+    }
+
+    getHeight(level: number, x: number, z: number): number {
+        const tileX = x | 0;
+        const tileZ = z | 0;
+        const dx = x - tileX;
+        const dz = z - tileZ;
+
+        const h00 = this.getTileHeight(level, tileX, tileZ);
+        const h10 = this.getTileHeight(level, tileX + 1, tileZ);
+        const h01 = this.getTileHeight(level, tileX, tileZ + 1);
+        const h11 = this.getTileHeight(level, tileX + 1, tileZ + 1);
+
+        const height =
+            h00 + dx * (h10 - h00) + dz * (h01 - h00) + dx * dz * (h00 - h10 - h01 + h11);
+
+        return height / 128;
     }
 
     createHeightMapTexture(app: PicoApp, data: Int16Array, heightMapSize: number) {
@@ -227,8 +257,7 @@ export class WebGLRenderable {
         }
     }
 
-    createNpcs(data: NpcData[], npcTypeLoader: NpcTypeLoader, basTypeLoader: BasTypeLoader,
-        createDrawCall: CreateDrawCallFunction, npcProgram: Program) {
+    createNpcs(data: NpcData[], npcTypeLoader: NpcTypeLoader, basTypeLoader: BasTypeLoader) {
         this.npcs = [];
         for (const npc of data) {
             const npcType = npcTypeLoader.load(npc.id);
@@ -240,20 +269,45 @@ export class WebGLRenderable {
                     npc.level,
                     npc.idleAnim,
                     npc.walkAnim,
-                    npcType,
                     npcType.getIdleSeqId(basTypeLoader),
-                    npcType.getWalkSeqId(basTypeLoader)
+                    npcType.getWalkSeqId(basTypeLoader),
+                    npcType,
                 )
             );
         }
 
         const drawRangesNpc = this.npcs.map((_npc) => newDrawRange(0, 0, 1));
-        this.drawCallNpc = createDrawCall(npcProgram, undefined, drawRangesNpc);
+        this.drawCallNpc = this.createDrawCall(
+            this.npcProgram, this.vertexArray, undefined, drawRangesNpc);
     }
 
-    createDynamicNpcs(createDrawCall: CreateDrawCallFunction, npcProgram: Program) {
+    clearDynamicNpcs() {
+        this.dynamicNpcs = [];
+    }
+
+    addDynamicNpc(npc: DynamicNpcData) {
+        // TODO: optimize array access
+
+        const _npc = new Npc(
+            npc.spawnX,
+            npc.spawnY,
+            npc.level,
+            npc.idleAnim,
+            npc.walkAnim,
+            npc.walkAnimSeqId,
+            npc.idleAnimSeqId,
+            null,
+        );
+        _npc.rotation = npc.rotation;
+        _npc.x = npc.x;
+        _npc.y = npc.y;
+        this.dynamicNpcs.push(_npc);
+    }
+
+    createDynamicNpcs(buffers: WebGLDynamicBuffers) {
         const drawRangesNpc = this.dynamicNpcs.map((_npc) => newDrawRange(0, 0, 1));
-        this.drawCallDynamicNpc = createDrawCall(npcProgram, undefined, drawRangesNpc);
+        this.drawCallDynamicNpc = this.createDrawCall(
+            this.npcProgram, buffers.vertexArray, undefined, drawRangesNpc);
     }
 
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {
@@ -287,38 +341,55 @@ export class WebGLRenderable {
 
     createDrawCalls(data: SdRenderableData, createDrawCall: CreateDrawCallFunction,
         mainProgram: Program, mainAlphaProgram: Program) {
-        this.drawCall = createDrawCall(mainProgram, this.modelInfoTexture, data.drawRanges.base);
+        this.drawCall = createDrawCall(
+            mainProgram,
+            this.vertexArray,
+            this.modelInfoTexture,
+            data.drawRanges.base
+        );
+
         this.drawCallAlpha = createDrawCall(
             mainAlphaProgram,
+            this.vertexArray,
             this.modelInfoTextureAlpha,
             data.drawRanges.alpha
         );
 
-        this.drawCallLod = createDrawCall(mainProgram, this.modelInfoTextureLod, data.drawRanges.lod);
+        this.drawCallLod = createDrawCall(
+            mainProgram, this.vertexArray,
+            this.modelInfoTextureLod,
+            data.drawRanges.lod
+        );
+
         this.drawCallLodAlpha = createDrawCall(
             mainAlphaProgram,
+            this.vertexArray,
             this.modelInfoTextureLodAlpha,
             data.drawRanges.lodAlpha
         );
 
         this.drawCallInteract = createDrawCall(
             mainProgram,
+            this.vertexArray,
             this.modelInfoTextureInteract,
             data.drawRanges.interact
         );
         this.drawCallInteractAlpha = createDrawCall(
             mainAlphaProgram,
+            this.vertexArray,
             this.modelInfoTextureInteractAlpha,
             data.drawRanges.interactAlpha
         );
 
         this.drawCallInteractLod = createDrawCall(
             mainProgram,
+            this.vertexArray,
             this.modelInfoTextureInteractLod,
             data.drawRanges.interactLod
         );
         this.drawCallInteractLodAlpha = createDrawCall(
             mainAlphaProgram,
+            this.vertexArray,
             this.modelInfoTextureInteractLodAlpha,
             data.drawRanges.interactLodAlpha
         );

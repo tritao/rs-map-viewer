@@ -1,4 +1,4 @@
-import { mat4, vec3 } from "gl-matrix";
+import { mat4, vec3, vec4 } from "gl-matrix";
 
 import { DEGREES_TO_RADIANS, RS_TO_RADIANS } from "../rs/MathConstants";
 import { clamp } from "../util/MathUtil";
@@ -17,9 +17,64 @@ export enum ProjectionType {
     ORTHO,
 }
 
+export class Ray {
+    // Create ray
+    static nearScreenPos: vec4 = vec4.create();
+    static farScreenPos: vec4 = vec4.create();
+    static nearWorldPos: vec4 = vec4.create();
+    static farWorldPos: vec4 = vec4.create();
+
+    // Intersects box
+    static tMin: vec3 = vec3.create();
+    static tMax: vec3 = vec3.create();
+    static t1: vec3 = vec3.create();
+    static t2: vec3 = vec3.create();
+
+    origin: vec3 = vec3.create();
+    destination: vec3 = vec3.create();
+    direction: vec3 = vec3.create();
+
+    fromMouseAndProjection(
+        mouseX: number,
+        mouseY: number,
+        width: number,
+        height: number,
+        invViewProjMatrix: mat4,
+    ): Ray {
+        const x = (2.0 * mouseX) / width - 1.0;
+        const y = 1.0 - (2.0 * mouseY) / height;
+
+        vec4.set(Ray.nearScreenPos, x, y, -1, 1);
+        vec4.set(Ray.farScreenPos, x, y, 1, 1);
+
+        vec4.transformMat4(Ray.nearWorldPos, Ray.nearScreenPos, invViewProjMatrix);
+        vec4.transformMat4(Ray.farWorldPos, Ray.farScreenPos, invViewProjMatrix);
+
+        vec4.scale(Ray.nearWorldPos, Ray.nearWorldPos, 1 / Ray.nearWorldPos[3]);
+        vec4.scale(Ray.farWorldPos, Ray.farWorldPos, 1 / Ray.farWorldPos[3]);
+
+        vec3.set(this.origin, Ray.nearWorldPos[0], Ray.nearWorldPos[1], Ray.nearWorldPos[2]);
+        vec3.set(this.destination, Ray.farWorldPos[0], Ray.farWorldPos[1], Ray.farWorldPos[2]);
+        vec3.sub(this.direction, this.destination, this.origin);
+        vec3.normalize(this.direction, this.direction);
+
+        return this;
+    }
+
+    intersectsBox(min: vec3, max: vec3): boolean {
+        vec3.divide(Ray.tMin, vec3.sub(Ray.tMin, min, this.origin), this.direction);
+        vec3.divide(Ray.tMax, vec3.sub(Ray.tMax, max, this.origin), this.direction);
+        vec3.min(Ray.t1, Ray.tMin, Ray.tMax);
+        vec3.max(Ray.t2, Ray.tMin, Ray.tMax);
+        const tNear = Math.max(Ray.t1[0], Ray.t1[1], Ray.t1[2]);
+        const tFar = Math.min(Ray.t2[0], Ray.t2[1], Ray.t2[2]);
+        return tFar >= tNear && tFar >= 0;
+    }
+}
+
 export class Camera {
     static moveCameraRotOrigin: vec3 = vec3.create();
-    static deltaTemp: vec3 = vec3.create();
+    static temp: vec3 = vec3.create();
 
     pos: vec3;
 
@@ -35,6 +90,7 @@ export class Camera {
     cameraMatrix: mat4 = mat4.create();
     viewMatrix: mat4 = mat4.create();
     viewProjMatrix: mat4 = mat4.create();
+    invViewProjMatrix: mat4 = mat4.create();
 
     frustum = new Frustum();
 
@@ -54,26 +110,26 @@ export class Camera {
     }
 
     move(deltaX: number, deltaY: number, deltaZ: number, rotatePitch: boolean = false): void {
-        Camera.deltaTemp[0] = deltaX;
-        Camera.deltaTemp[1] = deltaY;
-        Camera.deltaTemp[2] = deltaZ;
+        Camera.temp[0] = deltaX;
+        Camera.temp[1] = deltaY;
+        Camera.temp[2] = deltaZ;
 
         if (rotatePitch) {
             vec3.rotateX(
-                Camera.deltaTemp,
-                Camera.deltaTemp,
+                Camera.temp,
+                Camera.temp,
                 Camera.moveCameraRotOrigin,
                 -this.pitch * RS_TO_RADIANS,
             );
         }
         vec3.rotateY(
-            Camera.deltaTemp,
-            Camera.deltaTemp,
+            Camera.temp,
+            Camera.temp,
             Camera.moveCameraRotOrigin,
             (this.yaw - 1024) * RS_TO_RADIANS,
         );
 
-        vec3.add(this.pos, this.pos, Camera.deltaTemp);
+        vec3.add(this.pos, this.pos, Camera.temp);
         this.updated = true;
         this.updatedPosition = true;
     }
@@ -101,13 +157,14 @@ export class Camera {
         // Projection
         mat4.identity(this.projectionMatrix);
         if (this.projectionType === ProjectionType.PERSPECTIVE) {
-            mat4.perspective(
-                this.projectionMatrix,
-                this.fov * DEGREES_TO_RADIANS,
-                width / height,
-                0.1,
-                1024.0 * 4,
-            );
+            const aspect = width / height;
+            const near = 0.1;
+            const far = 1024.0 * 4;
+            const top = Math.tan(this.fov * DEGREES_TO_RADIANS * 0.5) * near;
+            const bottom = -top;
+            const left = aspect * bottom;
+            const right = aspect * top;
+            mat4.frustum(this.projectionMatrix, left, right, bottom, top, near, far);
         } else {
             mat4.ortho(
                 this.projectionMatrix,
@@ -119,6 +176,9 @@ export class Camera {
                 1024.0 * 4,
             );
         }
+        // const temp = mat4.create();
+        // this.pickProjectionMatrix(temp, 50, 50, 100, 100, width, height);
+        // this.projectionMatrix = temp;
 
         // View
         const pitch = this.pitch * RS_TO_RADIANS;
@@ -136,7 +196,93 @@ export class Camera {
         // Calculate view projection matrix
         mat4.multiply(this.viewProjMatrix, this.projectionMatrix, this.viewMatrix);
 
+        mat4.invert(this.invViewProjMatrix, this.viewProjMatrix);
+
         this.frustum.setPlanes(this.viewProjMatrix);
+    }
+
+    pickMatrix(
+        out: mat4,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        viewportX: number,
+        viewportY: number,
+        viewportWidth: number,
+        viewportHeight: number,
+    ): mat4 {
+        const centerX = x - viewportX;
+        const centerY = y - viewportY;
+
+        const scaleX = viewportWidth / width;
+        const scaleY = viewportHeight / height;
+        const translateX = (viewportWidth - 2 * centerX) / width;
+        const translateY = (viewportHeight - 2 * centerY) / height;
+
+        mat4.identity(out);
+        vec3.set(Camera.temp, translateX, translateY, 0);
+        mat4.translate(out, out, Camera.temp);
+        vec3.set(Camera.temp, scaleX, scaleY, 1);
+        mat4.scale(out, out, Camera.temp);
+
+        return out;
+    }
+
+    pickProjectionMatrix(
+        out: mat4,
+        mouseX: number,
+        mouseY: number,
+        pickWidth: number,
+        pickHeight: number,
+        viewportWidth: number,
+        viewportHeight: number,
+    ): mat4 {
+        mat4.identity(out);
+
+        this.pickMatrix(
+            out,
+            mouseX,
+            mouseY,
+            pickWidth,
+            pickHeight,
+            0,
+            0,
+            viewportWidth,
+            viewportHeight,
+        );
+
+        // Multiply pick matrix with projection matrix
+        mat4.multiply(out, out, this.projectionMatrix);
+
+        return out;
+    }
+
+    pickViewProjectionMatrix(
+        out: mat4,
+        mouseX: number,
+        mouseY: number,
+        pickWidth: number,
+        pickHeight: number,
+        viewportWidth: number,
+        viewportHeight: number,
+    ): mat4 {
+        mat4.identity(out);
+
+        this.pickProjectionMatrix(
+            out,
+            mouseX,
+            mouseY,
+            pickWidth,
+            pickHeight,
+            viewportWidth,
+            viewportHeight,
+        );
+
+        // Multiply pick matrix with view projection matrix
+        mat4.multiply(out, out, this.viewMatrix);
+
+        return out;
     }
 
     onFrameEnd() {

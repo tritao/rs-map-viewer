@@ -3,7 +3,7 @@ export enum RenderableType {
     NPC,
     Item,
     Loc,
-    Map
+    Map,
 }
 
 export interface Renderer {

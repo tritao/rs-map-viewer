@@ -1,10 +1,11 @@
 import { Actor } from "./Actor";
 import { Buffer } from "../../net/Buffer"
-import { Model } from "../Model";
 import { TextUtils } from "../../util/TextUtils";
 import { IdentityKit } from "../../cache/IdentityKit";
-import { ItemDefinition } from "../../cache/ItemDefinition";
+import { Model } from "../../../../rs/model/Model";
 import { ModelData } from "../../../../rs/model/ModelData";
+import { SeqType } from "../../../../rs/config/seqtype/SeqType";
+import { CacheLoaders } from "../../../../rs/cache/CacheLoaders";
 
 const NUM_APPEARANCE_EQUIPMENT_SLOTS = 12;
 
@@ -194,7 +195,7 @@ export class Player extends Actor {
     //     return headModel;
     // }
 
-    public getAnimatedModel(): Model | null {
+    public getAnimatedModel(cacheLoaders: CacheLoaders): Model | null {
         // TODO: Refactor according to RuneJS 435 rename.
         // if (this.npcDefinition != null) {
         //     let frame: number = -1;
@@ -207,29 +208,35 @@ export class Player extends Actor {
         //     return model;
         // }
 
-        // First check if we are running an animation and use the animation-specific models.
+        // First check if we are running an emote animation and use the emote-specific models.
         let hash: number = this.appearanceHash;
-        let primaryFrame: number = -1;
-        let secondaryFrame: number = -1;
-        let shieldModel: number = -1;
-        let weaponModel: number = -1;
+        let primaryAnimFrame: number = -1;
+        let secondaryAnimFrame: number = -1;
+        let leftHandItemModel: number = -1;
+        let rightHandItemModel: number = -1;
+
         if (this.emoteAnimation >= 0 && this.animationDelay === 0) {
-            //const emote: AnimationSequence = AnimationSequence.animations[this.emoteAnimation];
-            //primaryFrame = emote.getPrimaryFrame[this.displayedEmoteFrames];
-            //if (this.movementAnimation >= 0 && this.movementAnimation !== this.idleAnimation) {
-            //    secondaryFrame = AnimationSequence.animations[this.movementAnimation].getPrimaryFrame[this.displayedMovementFrames];
-            //}
-            //if (emote.getPlayerShieldModel >= 0) {
-            //    shieldModel = emote.getPlayerShieldModel;
-            //    hash += (shieldModel - this.appearance[5]) << 40;
-            //}
-            //if (emote.getPlayerWeaponModel >= 0) {
-            //    weaponModel = emote.getPlayerWeaponModel;
-            //    hash += (weaponModel - this.appearance[3]) << 48;
-            //}
+            const emoteSeq: SeqType = this.primaryAnimSeq = cacheLoaders.seqTypeLoader.load(this.emoteAnimation);
+            primaryAnimFrame = emoteSeq.frameIds[this.displayedEmoteFrames];
+
+            if (this.movementAnimation >= 0 && this.movementAnimation !== this.idleAnimation) {
+                const moveSeq: SeqType = cacheLoaders.seqTypeLoader.load(this.movementAnimation);
+                secondaryAnimFrame = moveSeq.frameIds[this.displayedMovementFrames];
+            }
+
+            if (emoteSeq.leftHandItem >= 0) {
+                leftHandItemModel = emoteSeq.leftHandItem;
+                hash += (leftHandItemModel - this.appearance[5]) << 40;
+            }
+            if (emoteSeq.rightHandItem >= 0) {
+                rightHandItemModel = emoteSeq.rightHandItem;
+                hash += (rightHandItemModel - this.appearance[3]) << 48;
+            }
         } else if (this.movementAnimation >= 0) {
-            //primaryFrame = AnimationSequence.animations[this.movementAnimation].getPrimaryFrame[this.displayedMovementFrames];
+            const moveSeq: SeqType = this.primaryAnimSeq = cacheLoaders.seqTypeLoader.load(this.movementAnimation);
+            primaryAnimFrame = moveSeq.frameIds[this.displayedMovementFrames];
         }
+
 
         // Else lets check the cache
         let cachedModel: Model | null = null; // Player.modelCache.get(hash) as Model;
@@ -270,22 +277,22 @@ export class Player extends Actor {
         // For this we check the appearance slot blocks and populate the models with
         // either the builtin model from the identity kit or the model from equipment.
         if (cachedModel == null) {
-            const models: Model[] = [];
+            const models: ModelData[] = [];
             for (let index: number = 0; index < NUM_APPEARANCE_EQUIPMENT_SLOTS; index++) {
                 let part: number = this.appearance[index];
 
                 // TODO: Refactor these.
-                if (weaponModel >= 0 && index === 3) {
-                    part = weaponModel;
+                if (rightHandItemModel >= 0 && index === 3) {
+                    part = rightHandItemModel;
                 }
-                if (shieldModel >= 0 && index === 5) {
-                    part = shieldModel;
+                if (leftHandItemModel >= 0 && index === 5) {
+                    part = leftHandItemModel;
                 }
 
                 if (part >= 256 && part < 512) {
                     const identityKit = IdentityKit.loadFromCache(part - 256);
                     if (identityKit) {
-                        const bodyModel: Model | null = identityKit.getBodyModel();
+                        const bodyModel: ModelData | null = identityKit.getBodyModel(cacheLoaders);
                         if (bodyModel) {
                             models.push(bodyModel);
                         }
@@ -293,13 +300,13 @@ export class Player extends Actor {
                 } else if (part >= 512) {
                     throw new Error("Not implemented yet");
                     //const equipment: Model = ItemDefinition.lookup(part - 512)
-                        //.asEquipment(this.gender);
+                    //.asEquipment(this.gender);
                     //if (equipment != null) {
                     //    models[count++] = equipment;
                     //}
                 }
             }
-            cachedModel = Model.merge(models.length, models);
+            const mergedModel = ModelData.merge(models, models.length);
 
             // Now we recolor the models (HAIR_COLOR to SKIN_COLOR).
             for (let part: number = 0; part < 5; part++) {
@@ -312,46 +319,61 @@ export class Player extends Actor {
                     //}
                 }
             }
-            //cachedModel.createBones();
-            //cachedModel.applyLighting(64, 850, -30, -50, -30, true);
+
+            cachedModel = mergedModel.light(
+                cacheLoaders.textureLoader,
+                0 + 64,
+                0 + 850,
+                -50,
+                -10,
+                -50,
+            );
+
             //Player.modelCache.put(cachedModel, hash);
+
             this.cachedModel = hash;
         }
         if (this.preventRotation) {
             return cachedModel;
         }
 
-        //const finalModel: Model = new Model(new ModelData());
-        //finalModel.replaceWithModel(cachedModel,
-            //((lhs, rhs) => lhs && rhs)(Animation.exists(primaryFrame), Animation.exists(secondaryFrame)));
-        //if (primaryFrame !== -1 && secondaryFrame !== -1) {
-        //    finalModel.mixAnimationFrames(secondaryFrame, 0, primaryFrame, AnimationSequence.animations[this.emoteAnimation].flowControl);
-        //} else if (primaryFrame !== -1) {
-        //    finalModel.applyTransform(primaryFrame);
-        //}
+        let replaceAlphaValues = primaryAnimFrame !== -1 && secondaryAnimFrame !== -1;
+        const finalModel: Model = Model.copyAnimated(cachedModel,
+            replaceAlphaValues, true);
+
+        // If we have two animations going on, them blend them together, else just animate the main animation.
+        if (primaryAnimFrame !== -1 && secondaryAnimFrame !== -1) {
+            throw new Error("Player animation mixing is not implemented yet");
+            //let flowControl = AnimationSequence.animations[this.emoteAnimation].flowControl;
+            //finalModel.mixAnimationFrames(secondaryFrame, 0, primaryFrame, flowControl);
+        } else if (primaryAnimFrame !== -1) {
+            const animFrame = cacheLoaders.seqFrameLoader.load(primaryAnimFrame);
+            if (animFrame) {
+                finalModel.animate(animFrame, undefined, this.primaryAnimSeq!.op14);
+            }
+        }
+
         //finalModel.calculateDiagonals();
         //finalModel.triangleSkin = null;
         //finalModel.vectorSkin = null;
-        //return finalModel;
-
-        return cachedModel;
+        return finalModel;
     }
 
     public isVisible(): boolean {
         return this.visible;
     }
 
-    public getRotatedModel(): Model | null {
+    public getRotatedModel(cacheLoaders: CacheLoaders): Model | null {
         if (!this.visible) {
             return null;
         }
 
-        let appearanceModel: Model | null = this.getAnimatedModel();
+        let appearanceModel: Model | null = this.getAnimatedModel(cacheLoaders);
         if (appearanceModel == null) {
             return null;
         }
 
-        this.modelHeight = appearanceModel.modelHeight;
+        this.modelHeight = appearanceModel.height;
         //appearanceModel.oneSquareModel = true;
         if (this.preventRotation) {
             return appearanceModel;
