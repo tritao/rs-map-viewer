@@ -1,4 +1,5 @@
 import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheType } from "../../cache/CacheType";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
 import { Type } from "../Type";
@@ -68,7 +69,7 @@ export class SeqType extends Type {
     getFrameLength(seqFrameLoader: SeqFrameLoader, frame: number): number {
         let frameLength = this.frameLengths[frame];
 
-        if (this.cacheType === "legacy" || this.cacheType === "dat") {
+        if (this.cacheType === CacheType.Legacy || this.cacheType === CacheType.Dat) {
             if (frameLength === 0) {
                 const animFrame = seqFrameLoader.load(this.frameIds[frame]);
                 if (animFrame) {

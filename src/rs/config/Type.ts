@@ -36,7 +36,7 @@ export abstract class Type {
     }
 
     readString(buffer: ByteBuffer): string {
-        const stopValue = this.cacheType !== "dat2" ? 0xa : 0;
+        const stopValue = this.cacheType !== CacheType.Dat2 ? 0xa : 0;
         return buffer.readString(stopValue);
     }
 

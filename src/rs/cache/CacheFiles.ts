@@ -20,11 +20,11 @@ export class CacheFiles {
         progressListener?: ProgressListener,
     ): Promise<CacheFiles> {
         switch (cacheType) {
-            case "legacy":
+            case CacheType.Classic:
                 return CacheFiles.fetchLegacy(baseUrl, name, shared, signal, progressListener);
-            case "dat":
+            case CacheType.Dat:
                 return CacheFiles.fetchDat(baseUrl, name, shared, signal, progressListener);
-            case "dat2":
+            case CacheType.Dat2:
                 return CacheFiles.fetchDat2(baseUrl, name, [], shared, signal, progressListener);
         }
         throw new Error("Not implemented");

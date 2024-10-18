@@ -37,6 +37,7 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { ModelLoader } from "../rs/model/ModelLoader";
+import { CacheType } from "../rs/cache/CacheType";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -315,9 +316,9 @@ const worker = {
 
         const cacheType = workerState.cache.type;
 
-        if (cacheType === "dat2") {
+        if (cacheType === CacheType.Dat2) {
             await exportSpritesToZip(workerState.cacheSystem, zip);
-        } else if (cacheType === "dat") {
+        } else if (cacheType === CacheType.Dat) {
             await exportDatSpritesToZip(workerState.cacheSystem, zip);
         }
 

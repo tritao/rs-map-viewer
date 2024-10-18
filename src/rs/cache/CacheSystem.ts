@@ -8,12 +8,12 @@ import { LegacyIndexType, DatIndexType } from "./IndexType";
 import { MemoryStore } from "./store/MemoryStore";
 
 export class CacheSystem<A extends ApiType = ApiType.SYNC> {
-    static loadIndicesFromStore(cacheType: "dat" | "dat2", store: MemoryStore) {
+    static loadIndicesFromStore(cacheType: CacheType, store: MemoryStore) {
         return store.indexFiles.map((indexFile, id) => {
             if (!indexFile) {
                 return undefined;
             }
-            if (cacheType === "dat") {
+            if (cacheType === CacheType.Dat) {
                 return CacheIndexDat.fromStore(id, store, indexFile);
             } else {
                 return CacheIndexDat2.fromStore(id, store);
@@ -77,10 +77,10 @@ export class CacheSystem<A extends ApiType = ApiType.SYNC> {
         indicesToLoad: number[] = [],
     ): CacheSystem {
         switch (cacheType) {
-            case "legacy":
+            case CacheType.Legacy:
                 return CacheSystem.loadLegacy(cacheFiles);
-            case "dat":
-            case "dat2":
+            case CacheType.Dat:
+            case CacheType.Dat2:
                 const store = MemoryStore.fromFiles(cacheFiles, indicesToLoad);
                 const indices = CacheSystem.loadIndicesFromStore(cacheType, store);
                 return new CacheSystem(indices);
