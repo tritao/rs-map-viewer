@@ -11,7 +11,11 @@ export class MemoryStore implements CacheStore {
 
         const indexFiles: ArrayBuffer[] = [];
         const indicesSet = new Set(indicesToLoad);
-        for (const [name, data] of files.entries()) {
+        const entries = Array.from(files.entries());
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            const name = entry[0];
+            const data = entry[1];
             if (
                 name !== CacheFiles.META_FILE_NAME &&
                 name.startsWith(CacheFiles.INDEX_FILE_PREFIX)

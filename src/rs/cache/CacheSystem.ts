@@ -52,14 +52,16 @@ export class CacheSystem {
         const mapsPrefix = "maps/";
         const mapArchives: Archive[] = [];
         const mapArchiveNameHashes = new Map<number, number>();
-        for (const [name, data] of cacheFiles.files) {
-            if (!name.startsWith(mapsPrefix)) {
-                continue;
+        const entries = Array.from(cacheFiles.files.entries());
+        for (let i = 0; i < entries.length; i++) {
+            const name = entries[i][0];
+            const data = entries[i][1];
+            if (name.startsWith(mapsPrefix)) {
+                const archiveName = name.substring(mapsPrefix.length);
+                const archiveId = mapArchives.length;
+                mapArchives.push(Archive.create(archiveId, new Int8Array(data)));
+                mapArchiveNameHashes.set(StringUtil.hashOld(archiveName), archiveId);
             }
-            const archiveName = name.substring(mapsPrefix.length);
-            const archiveId = mapArchives.length;
-            mapArchives.push(Archive.create(archiveId, new Int8Array(data)));
-            mapArchiveNameHashes.set(StringUtil.hashOld(archiveName), archiveId);
         }
         const mapIndex = new LegacyCacheIndex(
             LegacyIndexType.maps,

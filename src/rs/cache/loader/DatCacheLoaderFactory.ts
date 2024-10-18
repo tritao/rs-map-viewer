@@ -35,9 +35,11 @@ import { CacheLoaderFactory } from "./CacheLoaderFactory";
 export function loadMapSprites(mediaArchive: Archive, name: string): IndexedSprite[] {
     // TODO: maybe there is a way to check how many sprites there are
     const sprites = new Array<IndexedSprite>();
-    for (let i = 0; i < 100; i++) {
+    let i = 0;
+    while (true) {
         try {
             sprites[i] = SpriteLoader.loadIndexedSpriteDat(mediaArchive, name, i);
+            i++;
         } catch (e) {
             break;
         }

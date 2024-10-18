@@ -236,14 +236,14 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             const mapSceneTypeLoader = new MapSceneTypeLoader(this.cacheInfo, mapScenesArchive);
 
             const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId);
-            for (const id of mapScenesArchive.fileIds) {
+            for (let i = 0; i < mapScenesArchive.fileIds.length; i++) {
+                const id = mapScenesArchive.fileIds[i];
                 const mapScene = mapSceneTypeLoader.load(id);
-                if (mapScene.spriteId === -1) {
-                    continue;
-                }
-                const sprite = SpriteLoader.loadIntoIndexedSprite(spriteIndex, mapScene.spriteId);
-                if (sprite) {
-                    mapSceneSprites[id] = sprite;
+                if (mapScene.spriteId !== -1) {
+                    const sprite = SpriteLoader.loadIntoIndexedSprite(spriteIndex, mapScene.spriteId);
+                    if (sprite) {
+                        mapSceneSprites[id] = sprite;
+                    }
                 }
             }
 
