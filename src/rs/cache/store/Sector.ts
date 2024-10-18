@@ -1,15 +1,15 @@
 import { ByteBuffer } from "../../io/ByteBuffer";
 
 export class Sector {
-    static readonly HEADER_SIZE = 8;
+    static readonly HEADER_SIZE: i32 = 8;
 
-    static readonly DATA_SIZE = 512;
+    static readonly DATA_SIZE: i32 = 512;
 
-    static readonly EXTENDED_HEADER_SIZE = 10;
+    static readonly EXTENDED_HEADER_SIZE: i32 = 10;
 
-    static readonly EXTENDED_DATA_SIZE = 510;
+    static readonly EXTENDED_DATA_SIZE: i32 = 510;
 
-    static readonly SIZE = Sector.HEADER_SIZE + Sector.DATA_SIZE;
+    static readonly SIZE: i32 = Sector.HEADER_SIZE + Sector.DATA_SIZE;
 
     indexId!: number;
     archiveId!: number;

@@ -1,7 +1,7 @@
 import { ByteBuffer } from "../../io/ByteBuffer";
 
 export class SectorCluster {
-    static readonly SIZE = 6;
+    static readonly SIZE: i32 = 6;
 
     static decode(buffer: ByteBuffer): SectorCluster {
         const size = buffer.readMedium();
@@ -10,7 +10,7 @@ export class SectorCluster {
     }
 
     constructor(
-        readonly size: number,
-        readonly sector: number,
+        readonly size: i32,
+        readonly sector: i32,
     ) {}
 }
