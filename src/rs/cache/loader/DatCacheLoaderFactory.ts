@@ -29,7 +29,7 @@ import { CacheInfo } from "../CacheInfo";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { ConfigType } from "../ConfigType";
-import { IndexType } from "../IndexType";
+import { DatIndexType } from "../IndexType";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
 export function loadMapSprites(mediaArchive: Archive, name: string): IndexedSprite[] {
@@ -66,7 +66,7 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
         readonly cacheType: CacheType,
         readonly cacheSystem: CacheSystem,
     ) {
-        this.configIndex = cacheSystem.getIndex(IndexType.DAT.configs);
+        this.configIndex = cacheSystem.getIndex(DatIndexType.configs);
         this.configArchive = this.configIndex.getArchive(ConfigType.DAT.configs);
         this.mediaArchive = this.configIndex.getArchive(ConfigType.DAT.media);
     }
@@ -127,12 +127,12 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getModelLoader(): ModelLoader {
-        const modelIndex = this.cacheSystem.getIndex(IndexType.DAT.models);
+        const modelIndex = this.cacheSystem.getIndex(DatIndexType.models);
         return new IndexModelLoader(modelIndex);
     }
 
     getSeqFrameLoader(): SeqFrameLoader {
-        const seqFrameIndex = this.cacheSystem.getIndex(IndexType.DAT.animations);
+        const seqFrameIndex = this.cacheSystem.getIndex(DatIndexType.animations);
         return DatSeqFrameLoader.load(seqFrameIndex);
     }
 
@@ -141,7 +141,7 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getMapFileLoader(): MapFileLoader {
-        const mapIndex = this.cacheSystem.getIndex(IndexType.DAT.maps);
+        const mapIndex = this.cacheSystem.getIndex(DatIndexType.maps);
         const versionListArchive = this.configIndex.getArchive(ConfigType.DAT.versionList);
         const mapFileIndex = DatMapFileIndex.load(versionListArchive);
         return new MapFileLoader(mapIndex, mapFileIndex);

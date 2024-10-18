@@ -59,7 +59,7 @@ import { CacheInfo } from "../CacheInfo";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { ConfigType } from "../ConfigType";
-import { IndexType } from "../IndexType";
+import { Dat2IndexType, Rs2IndexType, OsrsIndexType } from "../IndexType";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
 export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
@@ -74,23 +74,23 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getUnderlayTypeLoader(): FloorTypeLoader {
-        const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+        const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
         const underlaysArchive = configIndex.getArchive(ConfigType.DAT2.underlays);
         return new ArchiveUnderlayFloorTypeLoader(this.cacheInfo, underlaysArchive);
     }
 
     getOverlayTypeLoader(): OverlayFloorTypeLoader {
-        const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+        const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
         const overlaysArchive = configIndex.getArchive(ConfigType.DAT2.overlays);
         return new ArchiveOverlayFloorTypeLoader(this.cacheInfo, overlaysArchive);
     }
 
     getVarBitTypeLoader(): VarBitTypeLoader {
         if (this.isIndexConfigs()) {
-            const varbitsIndex = this.cacheSystem.getIndex(IndexType.RS2.varbits);
+            const varbitsIndex = this.cacheSystem.getIndex(Rs2IndexType.varbits);
             return new IndexVarBitTypeLoader(this.cacheInfo, varbitsIndex);
         } else {
-            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             const varbitsArchive = configIndex.getArchive(ConfigType.DAT2.varbits);
             return new ArchiveVarBitTypeLoader(this.cacheInfo, varbitsArchive);
         }
@@ -98,10 +98,10 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
     getLocTypeLoader(): LocTypeLoader {
         if (this.isIndexConfigs()) {
-            const locsIndex = this.cacheSystem.getIndex(IndexType.RS2.locs);
+            const locsIndex = this.cacheSystem.getIndex(Rs2IndexType.locs);
             return new IndexLocTypeLoader(this.cacheInfo, locsIndex);
         } else {
-            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             const locsArchive = configIndex.getArchive(ConfigType.DAT2.locs);
             return new ArchiveLocTypeLoader(this.cacheInfo, locsArchive);
         }
@@ -109,10 +109,10 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
     getNpcTypeLoader(): NpcTypeLoader {
         if (this.isIndexConfigs()) {
-            const npcIndex = this.cacheSystem.getIndex(IndexType.RS2.npcs);
+            const npcIndex = this.cacheSystem.getIndex(Rs2IndexType.npcs);
             return new IndexNpcTypeLoader(this.cacheInfo, npcIndex);
         } else {
-            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             const npcsArchive = configIndex.getArchive(ConfigType.DAT2.npcs);
             return new ArchiveNpcTypeLoader(this.cacheInfo, npcsArchive);
         }
@@ -120,10 +120,10 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
     getObjTypeLoader(): ObjTypeLoader {
         if (this.isIndexConfigs()) {
-            const objIndex = this.cacheSystem.getIndex(IndexType.RS2.objs);
+            const objIndex = this.cacheSystem.getIndex(Rs2IndexType.objs);
             return new IndexObjTypeLoader(this.cacheInfo, objIndex);
         } else {
-            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             const objsArchive = configIndex.getArchive(ConfigType.DAT2.objs);
             return new ArchiveObjTypeLoader(this.cacheInfo, objsArchive);
         }
@@ -131,10 +131,10 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
     getSeqTypeLoader(): SeqTypeLoader {
         if (this.isIndexConfigs()) {
-            const seqIndex = this.cacheSystem.getIndex(IndexType.RS2.seqs);
+            const seqIndex = this.cacheSystem.getIndex(Rs2IndexType.seqs);
             return new IndexSeqTypeLoader(this.cacheInfo, seqIndex);
         } else {
-            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             const seqsArchive = configIndex.getArchive(ConfigType.DAT2.seqs);
             return new ArchiveSeqTypeLoader(this.cacheInfo, seqsArchive);
         }
@@ -142,7 +142,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
     getBasTypeLoader(): BasTypeLoader {
         if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 530) {
-            const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             try {
                 const basArchive = configIndex.getArchive(ConfigType.RS2.bas);
                 return new ArchiveBasTypeLoader(this.cacheInfo, basArchive);
@@ -154,7 +154,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getQuestTypeLoader(): QuestTypeLoader | undefined {
-        const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
+        const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
         if (
             this.cacheInfo.game === "runescape" &&
             configIndex.archiveExists(ConfigType.RS2.quests)
@@ -170,14 +170,14 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getTextureLoader(): TextureLoader {
-        const textureIndex = this.cacheSystem.getIndex(IndexType.DAT2.textures);
-        const spriteIndex = this.cacheSystem.getIndex(IndexType.DAT2.sprites);
+        const textureIndex = this.cacheSystem.getIndex(Dat2IndexType.textures);
+        const spriteIndex = this.cacheSystem.getIndex(Dat2IndexType.sprites);
         if (
             this.cacheInfo.game === "oldschool" ||
             (this.cacheInfo.game === "runescape" && this.cacheInfo.revision < 474)
         ) {
             return SpriteTextureLoader.load(textureIndex, spriteIndex);
-        } else if (this.cacheSystem.indexExists(IndexType.RS2.materials)) {
+        } else if (this.cacheSystem.indexExists(Rs2IndexType.materials)) {
             // materials starting 499 or 500
 
             // removed in 629
@@ -185,7 +185,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             // after 534
             const hasAlphaOperation = this.cacheInfo.revision >= 537;
 
-            const materialIndex = this.cacheSystem.getIndex(IndexType.RS2.materials);
+            const materialIndex = this.cacheSystem.getIndex(Rs2IndexType.materials);
 
             return ProceduralTextureLoader.load(
                 hasAlphaMaterialField,
@@ -200,34 +200,34 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getModelLoader(): ModelLoader {
-        const modelIndex = this.cacheSystem.getIndex(IndexType.DAT2.models);
+        const modelIndex = this.cacheSystem.getIndex(Dat2IndexType.models);
         return new IndexModelLoader(modelIndex);
     }
 
     getSeqBaseLoader(): SeqBaseLoader {
-        const index = this.cacheSystem.getIndex(IndexType.DAT2.skeletons);
+        const index = this.cacheSystem.getIndex(Dat2IndexType.skeletons);
         return new IndexSeqBaseLoader(this.cacheInfo, index);
     }
 
     getSeqFrameLoader(): SeqFrameLoader {
-        const index = this.cacheSystem.getIndex(IndexType.DAT2.animations);
+        const index = this.cacheSystem.getIndex(Dat2IndexType.animations);
         return new Dat2SeqFrameLoader(this.cacheInfo, index, this.getSeqBaseLoader());
     }
 
     getSkeletalSeqLoader(): SkeletalSeqLoader | undefined {
-        const index = this.cacheSystem.getIndex(IndexType.DAT2.animations);
+        const index = this.cacheSystem.getIndex(Dat2IndexType.animations);
         return new IndexSkeletalSeqLoader(index, this.getSeqBaseLoader());
     }
 
     getMapFileLoader(): MapFileLoader {
-        const mapIndex = this.cacheSystem.getIndex(IndexType.DAT2.maps);
+        const mapIndex = this.cacheSystem.getIndex(Dat2IndexType.maps);
         const mapFileIndex = new Dat2MapIndex(mapIndex);
         return new MapFileLoader(mapIndex, mapFileIndex);
     }
 
     getMapScenes(): IndexedSprite[] {
-        const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
-        const spriteIndex = this.cacheSystem.getIndex(IndexType.DAT2.sprites);
+        const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
+        const spriteIndex = this.cacheSystem.getIndex(Dat2IndexType.sprites);
 
         if (
             this.cacheInfo.game === "runescape" &&
@@ -285,8 +285,8 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getMapFunctions(): IndexedSprite[] {
-        const configIndex = this.cacheSystem.getIndex(IndexType.DAT2.configs);
-        const spriteIndex = this.cacheSystem.getIndex(IndexType.DAT2.sprites);
+        const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
+        const spriteIndex = this.cacheSystem.getIndex(Dat2IndexType.sprites);
 
         if (
             this.cacheInfo.game === "oldschool" &&

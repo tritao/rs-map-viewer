@@ -1,6 +1,6 @@
 import { CacheInfo } from "../../cache/CacheInfo";
 import { CacheSystem } from "../../cache/CacheSystem";
-import { IndexType } from "../../cache/IndexType";
+import { OsrsIndexType, Rs2IndexType, Dat2IndexType } from "../../cache/IndexType";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { Type } from "../Type";
 import { DefaultsGroup } from "./DefaultsGroup";
@@ -22,9 +22,9 @@ export class GraphicsDefaults extends Type {
     static load(cacheInfo: CacheInfo, fileSystem: CacheSystem): GraphicsDefaults {
         if (
             cacheInfo.game === "oldschool" &&
-            fileSystem.indexExists(IndexType.OSRS.graphicDefaults)
+            fileSystem.indexExists(OsrsIndexType.graphicDefaults)
         ) {
-            const defaultsIndex = fileSystem.getIndex(IndexType.OSRS.graphicDefaults);
+            const defaultsIndex = fileSystem.getIndex(OsrsIndexType.graphicDefaults);
             const defaultsFile = defaultsIndex.getFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
                 throw new Error("GraphicsDefaults: File not found");
@@ -36,13 +36,13 @@ export class GraphicsDefaults extends Type {
             return defaults;
         } else if (
             cacheInfo.game === "runescape" &&
-            fileSystem.indexExists(IndexType.RS2.defaults)
+            fileSystem.indexExists(Rs2IndexType.defaults)
         ) {
             const defaults = new GraphicsDefaults(-1, cacheInfo);
 
             return defaults;
         } else {
-            const spriteIndex = fileSystem.getIndex(IndexType.DAT2.sprites);
+            const spriteIndex = fileSystem.getIndex(Dat2IndexType.sprites);
 
             const defaults = new GraphicsDefaults(-1, cacheInfo);
             defaults.compass = spriteIndex.getArchiveId("compass");

@@ -5,7 +5,7 @@ import { Transfer, expose } from "threads/worker";
 
 import { CacheSystem } from "../rs/cache/CacheSystem";
 import { ConfigType } from "../rs/cache/ConfigType";
-import { IndexType } from "../rs/cache/IndexType";
+import { Dat2IndexType, DatIndexType } from "../rs/cache/IndexType";
 import {
     CacheLoaderFactory,
     getCacheLoaderFactory,
@@ -427,7 +427,7 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
 }
 
 async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
-    const spriteIndex = cacheSystem.getIndex(IndexType.DAT2.sprites);
+    const spriteIndex = cacheSystem.getIndex(Dat2IndexType.sprites);
 
     const promises: Promise<any>[] = [];
 
@@ -443,7 +443,7 @@ async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise
 }
 
 async function exportDatSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
-    const configIndex = cacheSystem.getIndex(IndexType.DAT.configs);
+    const configIndex = cacheSystem.getIndex(DatIndexType.configs);
     const mediaArchive = configIndex.getArchive(ConfigType.DAT.media);
 
     const indexDatId = mediaArchive.getFileId("index.dat");

@@ -4,7 +4,7 @@ import { ApiReturnType, ApiType } from "./ApiType";
 import { Archive } from "./Archive";
 import { ArchiveFile } from "./ArchiveFile";
 import { Container } from "./Container";
-import { IndexType } from "./IndexType";
+import { DatIndexType } from "./IndexType";
 import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
@@ -109,13 +109,13 @@ export class CacheIndexDat extends CacheStoreIndexSync {
 
     override getArchive(id: number, key?: number[]): Archive {
         const data = this.read(id);
-        return Archive.decodeOld(id, data, this.id === IndexType.DAT.configs);
+        return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
     }
 }
 export class CacheIndexDatAsync extends CacheStoreIndex<ApiType.ASYNC> {
     override async getArchive(id: number, key?: number[]): Promise<Archive> {
         const data = await this.read(id);
-        return Archive.decodeOld(id, data, this.id === IndexType.DAT.configs);
+        return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
     }
 
     override async getFile(
