@@ -3,7 +3,7 @@
 import bzip2 from "bzip2";
 
 export class Bzip2 {
-    static bzip2Header = new Uint8Array("BZh1".split("").map((char) => char.charCodeAt(0)));
+    static bzip2Header: Uint8Array = new Uint8Array("BZh1".split("").map((char) => char.charCodeAt(0)));
 
     // static wasmBzip: WasmBzip2;
 
