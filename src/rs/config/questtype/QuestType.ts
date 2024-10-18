@@ -18,11 +18,11 @@ export class QuestSkillReq {
 }
 
 export class QuestType extends Type {
-    name?: string;
-    sortName?: string;
+    name: string | null = null;
+    sortName: string | null = null;
 
-    varps?: QuestVar[];
-    varbits?: QuestVar[];
+    varps: QuestVar[] | null = null;
+    varbits: QuestVar[] | null = null;
 
     type: number;
     difficulty: number;
