@@ -3,7 +3,7 @@ import { StringUtil } from "../../util/StringUtil";
 import { ArchiveReference } from "./ArchiveReference";
 
 export class ReferenceTable {
-    static INVALID_TABLE = new ReferenceTable(
+    static INVALID_TABLE: ReferenceTable = new ReferenceTable(
         -1,
         -1,
         false,
@@ -11,13 +11,13 @@ export class ReferenceTable {
         0,
         -1,
         new Map(),
-        new Int32Array(),
-        new Int32Array(),
+        new Int32Array(0),
+        new Int32Array(0),
         [],
         new DataView(new ArrayBuffer(0)),
         new DataView(new ArrayBuffer(0)),
-        new Int32Array(),
-        new Int32Array(),
+        new Int32Array(0),
+        new Int32Array(0),
         [],
         [],
     );
@@ -187,18 +187,19 @@ export class ReferenceTable {
         }
     }
 
-    getArchiveId(name: string): number | undefined {
-        return this._archiveNameHashIdMap.get(StringUtil.hashDjb2(name));
+    getArchiveId(name: string): number | null {
+        const value = this._archiveNameHashIdMap.get(StringUtil.hashDjb2(name));
+        return value ? value : null;
     }
 
     archiveExists(id: number): boolean {
         return this._archiveIdIndexMap.has(id);
     }
 
-    getArchiveReference(id: number): ArchiveReference | undefined {
+    getArchiveReference(id: number): ArchiveReference | null {
         const i = this._archiveIdIndexMap.get(id);
         if (i === undefined) {
-            return undefined;
+            return null;
         }
 
         const nameHash = this._archiveNameHashes[i];

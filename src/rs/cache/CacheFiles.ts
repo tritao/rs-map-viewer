@@ -2,14 +2,14 @@ import { CacheType } from "./CacheType";
 import { SectorCluster } from "./store/SectorCluster";
 
 export class CacheFiles {
-    static DAT_FILE_NAME = "main_file_cache.dat";
-    static DAT2_FILE_NAME = "main_file_cache.dat2";
+    static DAT_FILE_NAME: string = "main_file_cache.dat";
+    static DAT2_FILE_NAME: string = "main_file_cache.dat2";
 
-    static INDEX_FILE_PREFIX = "main_file_cache.idx";
+    static INDEX_FILE_PREFIX: string = "main_file_cache.idx";
 
-    static META_FILE_NAME = "main_file_cache.idx255";
+    static META_FILE_NAME: string = "main_file_cache.idx255";
 
-    static DAT_INDEX_COUNT = 5;
+    static DAT_INDEX_COUNT: number = 5;
 
     static fetchFiles(
         cacheType: CacheType,

@@ -30,7 +30,7 @@ export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
         return this.table.lastArchiveId;
     }
 
-    getArchiveReference(archiveId: number): ArchiveReference | undefined {
+    getArchiveReference(archiveId: number): ArchiveReference | null {
         return this.table.getArchiveReference(archiveId);
     }
 

@@ -14,10 +14,10 @@ export class ArchiveReference {
         readonly fileNameHashes: Int32Array,
     ) {}
 
-    getFileReference(id: number): ArchiveFileReference | undefined {
+    getFileReference(id: number): ArchiveFileReference | null {
         const i = this._fileIdIndexMap.get(id);
         if (i === undefined) {
-            return undefined;
+            return null;
         }
 
         return new ArchiveFileReference(
