@@ -1,7 +1,7 @@
 export class StringUtil {
     // An implementation of Dan Bernstein's {@code djb2} hash function which is
     // slightly modified. Instead of the initial hash being 5381, it is zero.
-    static hashDjb2(str: string) {
+    static hashDjb2(str: string): number {
         let hash = 0;
         if (str.length === 0) {
             return hash;
@@ -15,7 +15,7 @@ export class StringUtil {
         return hash;
     }
 
-    static hashOld(name: string) {
+    static hashOld(name: string): number {
         name = name.toUpperCase();
         let hash = 0;
         for (let i = 0; i < name.length; i++) {
