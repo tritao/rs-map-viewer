@@ -1,22 +1,22 @@
 import { ByteBuffer } from "../io/ByteBuffer";
 
 export class Xtea {
-    static readonly GOLDEN_RATIO = 0x9e3779b9;
+    static readonly GOLDEN_RATIO : number  = 0x9e3779b9;
 
-    static readonly ROUNDS = 32;
+    static readonly ROUNDS: number = 32;
 
-    static readonly INITIAL_SUM = Math.imul(Xtea.GOLDEN_RATIO, Xtea.ROUNDS);
+    static readonly INITIAL_SUM: number = Math.imul(Xtea.GOLDEN_RATIO, Xtea.ROUNDS);
 
-    static isValidKey(key: number[] | undefined): key is number[] {
+    static isValidKey(key: Array<number> | null): boolean {
         return (
-            key !== undefined &&
+            key !== null &&
             key.length === 4 &&
             (key[0] !== 0 || key[1] !== 0 || key[2] !== 0 || key[3] !== 0)
         );
     }
 
-    static decrypt(buf: ByteBuffer, start: number, end: number, key: number[]): void {
-        if (key.length !== 4) {
+    static decrypt(buf: ByteBuffer, start: number, end: number, key: number[] | null): void {
+        if (key == null || key.length !== 4) {
             throw new Error("Xtea: key is not 128 bits");
         }
 
