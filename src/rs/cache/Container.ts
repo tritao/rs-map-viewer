@@ -6,7 +6,7 @@ import { Xtea } from "../crypto/Xtea";
 import { ByteBuffer } from "../io/ByteBuffer";
 
 export class Container {
-    static decode(buffer: ByteBuffer, key?: number[]): Container {
+    static decode(buffer: ByteBuffer, key: number[] | null): Container {
         if (buffer.remaining === 0) {
             throw new Error("Empty container");
         }

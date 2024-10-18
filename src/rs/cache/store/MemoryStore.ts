@@ -30,16 +30,16 @@ export class MemoryStore implements CacheStore<ApiType.SYNC> {
             throw new Error("main_file_cache data file not found");
         }
         const metaFile = files.get(CacheFiles.META_FILE_NAME);
-        return new MemoryStore(dataFile, indexFiles, metaFile);
+        return new MemoryStore(dataFile, indexFiles, metaFile ? metaFile : null);
     }
 
     constructor(
         readonly dataFile: ArrayBuffer,
-        readonly indexFiles: (ArrayBuffer | undefined)[],
-        readonly metaFile?: ArrayBuffer,
+        readonly indexFiles: (ArrayBuffer | null)[],
+        readonly metaFile: ArrayBuffer | null,
     ) {}
 
-    getIndexFile(indexId: number): ArrayBuffer | undefined {
+    getIndexFile(indexId: number): ArrayBuffer | null {
         if (indexId === CacheIndex.META_INDEX_ID) {
             return this.metaFile;
         }

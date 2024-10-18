@@ -22,7 +22,7 @@ export class IndexModelLoader implements ModelLoader {
     getModel(id: number): ModelData | undefined {
         try {
             const file = this.modelIndex.getFile(id, 0);
-            return file && ModelData.decode(file.data);
+            return (file && ModelData.decode(file.data)) ?? undefined;
         } catch (e) {
             console.error("Failed loading model file", id, e);
             return undefined;

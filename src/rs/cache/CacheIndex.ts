@@ -38,8 +38,9 @@ export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
         return this.table.getArchiveId(name) ?? -1;
     }
 
-    getFileIds(archiveId: number): Int32Array | undefined {
-        return this.getArchiveReference(archiveId)?.fileIds;
+    getFileIds(archiveId: number): Int32Array | null {
+        const ref = this.getArchiveReference(archiveId);
+        return ref ? ref.fileIds : null;
     }
 
     archiveExists(archiveId: number): boolean {
@@ -50,21 +51,32 @@ export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
         return this.table.getArchiveReference(archiveId)?.fileCount ?? 0;
     }
 
-    abstract getArchive(archiveId: number, key?: number[]): ApiReturnType<A, Archive>;
+    abstract getArchiveKey(archiveId: number, key: number[] | null): ApiReturnType<A, Archive>;
 
-    abstract getFile(
+    getArchive(archiveId: number): ApiReturnType<A, Archive> {
+        return this.getArchiveKey(archiveId, null)
+    }
+
+    abstract getFileKey(
         archiveId: number,
         fileId: number,
-        key?: number[],
-    ): ApiReturnType<A, ArchiveFile | undefined>;
+        key: number[] | null,
+    ): ApiReturnType<A, ArchiveFile | null>;
 
-    getFileSmart(id: number, key?: number[]): ApiReturnType<A, ArchiveFile | undefined> {
+    getFileSmart(id: number, key: number[] | null): ApiReturnType<A, ArchiveFile | null> {
         if (this.getArchiveCount() === 1) {
-            return this.getFile(0, id, key);
+            return this.getFileKey(0, id, key);
         } else if (this.getFileCount(id) === 1) {
-            return this.getFile(id, 0, key);
+            return this.getFileKey(id, 0, key);
         }
         throw new Error("Invalid archive");
+    }
+
+    getFile(
+        archiveId: number,
+        fileId: number,
+    ): ApiReturnType<A, ArchiveFile | null> {
+        return this.getFileKey(archiveId, fileId, null)
     }
 }
 
@@ -82,17 +94,17 @@ export abstract class CacheStoreIndex<A extends ApiType> extends CacheIndex<A> {
     }
 }
 export abstract class CacheStoreIndexSync extends CacheStoreIndex<ApiType.SYNC> {
-    override getFile(archiveId: number, fileId: number, key?: number[]): ArchiveFile | undefined {
-        return this.getArchive(archiveId, key).getFile(fileId);
+    override getFileKey(archiveId: number, fileId: number, key: number[] | null): ArchiveFile | null {
+        return this.getArchiveKey(archiveId, key).getFile(fileId);
     }
 }
 export abstract class CacheStoreIndexAsync extends CacheStoreIndex<ApiType.ASYNC> {
-    override async getFile(
+    override async getFileKey(
         archiveId: number,
         fileId: number,
-        key?: number[] | undefined,
-    ): Promise<ArchiveFile | undefined> {
-        const archive = await this.getArchive(archiveId, key);
+        key: number[] | null,
+    ): Promise<ArchiveFile | null> {
+        const archive = await this.getArchiveKey(archiveId, key);
         return archive.getFile(fileId);
     }
 }
@@ -107,30 +119,30 @@ export class CacheIndexDat extends CacheStoreIndexSync {
         return new CacheIndexDat(id, table, store);
     }
 
-    override getArchive(id: number, key?: number[]): Archive {
+    override getArchiveKey(id: number, key: number[] | null): Archive {
         const data = this.read(id);
         return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
     }
 }
 export class CacheIndexDatAsync extends CacheStoreIndex<ApiType.ASYNC> {
-    override async getArchive(id: number, key?: number[]): Promise<Archive> {
+    override async getArchiveKey(id: number, key: number[] | null): Promise<Archive> {
         const data = await this.read(id);
         return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
     }
 
-    override async getFile(
+    override async getFileKey(
         archiveId: number,
         fileId: number,
-        key?: number[],
-    ): Promise<ArchiveFile | undefined> {
-        const archive = await this.getArchive(archiveId, key);
+        key: number[] | null,   
+    ): Promise<ArchiveFile | null> {
+        const archive = await this.getArchiveKey(archiveId, key);
         return archive.getFile(fileId);
     }
 }
 
 function decodeTable(data: Int8Array): ReferenceTable {
     if (data.length) {
-        const container = Container.decode(new ByteBuffer(data));
+        const container = Container.decode(new ByteBuffer(data), null);
         return ReferenceTable.decode(new ByteBuffer(container.data));
     }
     return ReferenceTable.INVALID_TABLE;
@@ -140,7 +152,7 @@ function decodeArchiveData<A extends ApiType>(
     index: CacheIndex<A>,
     id: number,
     data: Int8Array,
-    key?: number[],
+    key: number[] | null,
 ): Archive {
     const archiveRef = index.getArchiveReference(id);
     if (!archiveRef) {
@@ -169,13 +181,13 @@ export class CacheIndexDat2 extends CacheStoreIndexSync {
         }
     }
 
-    override getArchive(id: number, key?: number[] | undefined): Archive {
+    override getArchiveKey(id: number, key: number[] | null): Archive {
         const data = this.read(id);
         return decodeArchiveData(this, id, data, key);
     }
 }
 export class CacheIndexDat2Async extends CacheStoreIndexAsync {
-    override async getArchive(id: number, key?: number[] | undefined): Promise<Archive> {
+    override async getArchiveKey(id: number, key: number[] | null): Promise<Archive> {
         const data = await this.read(id);
         return decodeArchiveData(this, id, data, key);
     }
@@ -190,7 +202,7 @@ export class LegacyCacheIndex extends CacheIndex {
         super(id, ReferenceTable.INVALID_TABLE);
     }
 
-    override getArchive(archiveId: number, key?: number[]): Archive {
+    override getArchiveKey(archiveId: number, key: number[] | null): Archive {
         return this.archives[archiveId];
     }
 
@@ -198,7 +210,8 @@ export class LegacyCacheIndex extends CacheIndex {
         return this.archiveNameHashes.get(StringUtil.hashOld(name)) ?? -1;
     }
 
-    override getFile(archiveId: number, fileId: number, key?: number[]): ArchiveFile | undefined {
-        return this.archives[archiveId]?.getFile(fileId);
+    override getFileKey(archiveId: number, fileId: number, key: number[] | null): ArchiveFile | null {
+        const value = this.archives[archiveId];
+        return value ? value.getFile(fileId) : null;
     }
 }

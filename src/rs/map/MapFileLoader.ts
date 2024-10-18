@@ -30,7 +30,7 @@ export class MapFileLoader {
         }
         const key = xteasMap.get(archiveId);
         try {
-            const file = this.mapIndex.getFile(archiveId, 0, key);
+            const file = this.mapIndex.getFileKey(archiveId, 0, key ? key : null);
             return file?.data;
         } catch (e) {
             return undefined;
@@ -45,7 +45,7 @@ export class MapFileLoader {
         }
         const key = xteasMap.get(locArchiveId);
         try {
-            const file = this.mapIndex.getFile(archiveId, 0, key);
+            const file = this.mapIndex.getFileKey(archiveId, 0, key ? key : null);
             return file?.data;
         } catch (e) {
             return undefined;

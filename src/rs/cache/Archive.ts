@@ -173,8 +173,9 @@ export class Archive {
         }
     }
 
-    getFile(id: number): ArchiveFile | undefined {
-        return this._files.get(id);
+    getFile(id: number): ArchiveFile | null {
+        const value = this._files.get(id);
+        return value ? value : null;
     }
 
     getFileId(name: string): number {
@@ -183,10 +184,10 @@ export class Archive {
         return this._fileNameHashIdMap.get(hash) ?? -1;
     }
 
-    getFileNamed(name: string): ArchiveFile | undefined {
+    getFileNamed(name: string): ArchiveFile | null {
         const id = this.getFileId(name);
         if (id === -1) {
-            return undefined;
+            return null;
         }
         return this.getFile(id);
     }
