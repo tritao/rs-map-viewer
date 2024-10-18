@@ -1,17 +1,17 @@
 export class FloatUtil {
-    static MAX_VALUE = 3.4028234663852886e38;
+    static MAX_VALUE: number = 3.4028234663852886e38;
 
-    static float: Float32Array = new Float32Array(1);
-    static integer: Int32Array = new Int32Array(FloatUtil.float.buffer);
+    static buffer: ArrayBuffer = new ArrayBuffer(4);
+    static view: DataView = new DataView(FloatUtil.buffer);
 
     static floatBitsToInt(n: number): number {
-        FloatUtil.float[0] = n;
-        return FloatUtil.integer[0];
+        this.view.setFloat32(0, n, true);
+        return this.view.getInt32(0, true);
     }
 
     static intBitsToFloat(n: number): number {
-        FloatUtil.integer[0] = n;
-        return FloatUtil.float[0];
+        this.view.setInt32(0, n, true);
+        return this.view.getFloat32(0, true);
     }
 
     static packFloat11(v: number): number {
