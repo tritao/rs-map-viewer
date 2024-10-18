@@ -126,7 +126,7 @@ export class Archive {
 
             const fileData = new Array<ByteBuffer>(fileCount);
             for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                fileData[fileIdx] = new ByteBuffer(fileSizes[fileIdx]);
+                fileData[fileIdx] = ByteBuffer.createWithSize(fileSizes[fileIdx]);
             }
 
             buffer.offset = 0;

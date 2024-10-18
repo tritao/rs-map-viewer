@@ -5,14 +5,12 @@ export class ByteBuffer {
 
     offset: number = 0;
 
-    constructor(dataOrSize: Int8Array | ArrayBuffer | number) {
-        if (dataOrSize instanceof Int8Array) {
-            this._data = dataOrSize;
-        } else if (dataOrSize instanceof ArrayBuffer) {
-            this._data = new Int8Array(dataOrSize);
-        } else {
-            this._data = new Int8Array(dataOrSize);
-        }
+    constructor(data: Int8Array) {
+        this._data = data;
+    }
+
+    static createWithSize(size: number): ByteBuffer {
+        return new ByteBuffer(new Int8Array(size));
     }
 
     readByte(): number {
@@ -124,18 +122,18 @@ export class ByteBuffer {
         return str;
     }
 
-    readNullString(): string | undefined {
+    readNullString(): string | null {
         if (this.getByte(this.offset) === 0) {
             this.offset++;
-            return undefined;
+            return null;
         } else {
             return this.readString();
         }
     }
 
-    readVerString(): string | undefined {
+    readVerString(): string | null {
         if (this.readByte() !== 0) {
-            return undefined;
+            return null;
         }
         return this.readString();
     }
@@ -182,14 +180,14 @@ export class ByteBuffer {
         this.offset += bytes.length;
     }
 
-    writeInt(v: number) {
+    writeInt(v: number): void {
         this._data[this.offset++] = v >> 24;
         this._data[this.offset++] = v >> 16;
         this._data[this.offset++] = v >> 8;
         this._data[this.offset++] = v;
     }
 
-    setInt(offset: number, v: number) {
+    setInt(offset: number, v: number): void {
         this._data[offset++] = v >> 24;
         this._data[offset++] = v >> 16;
         this._data[offset++] = v >> 8;

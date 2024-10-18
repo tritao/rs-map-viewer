@@ -83,7 +83,7 @@ export class MemoryStore implements CacheStore<ApiType.SYNC> {
         let remaining = sectorCluster.size;
         let sectorPtr = sectorCluster.sector * Sector.SIZE;
 
-        const sectorBuffer = new ByteBuffer(0);
+        const sectorBuffer: ByteBuffer = ByteBuffer.createWithSize(0);
         const sector = new Sector();
 
         while (remaining > 0) {
