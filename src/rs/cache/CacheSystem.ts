@@ -1,5 +1,4 @@
 import { StringUtil } from "../util/StringUtil";
-import { ApiType } from "./ApiType";
 import { Archive } from "./Archive";
 import { CacheFiles } from "./CacheFiles";
 import { CacheIndex, CacheIndexDat, CacheIndexDat2, LegacyCacheIndex } from "./CacheIndex";
@@ -7,7 +6,7 @@ import { CacheType } from "./CacheType";
 import { LegacyIndexType, DatIndexType } from "./IndexType";
 import { MemoryStore } from "./store/MemoryStore";
 
-export class CacheSystem<A extends ApiType = ApiType.SYNC> {
+export class CacheSystem {
     static loadIndicesFromStore(cacheType: CacheType, store: MemoryStore) {
         return store.indexFiles.map((indexFile, id) => {
             if (!indexFile) {
@@ -88,13 +87,13 @@ export class CacheSystem<A extends ApiType = ApiType.SYNC> {
         throw new Error("Not implemented");
     }
 
-    constructor(readonly indices: (CacheIndex<A> | undefined)[]) {}
+    constructor(readonly indices: (CacheIndex | undefined)[]) {}
 
     indexExists(indexId: number): boolean {
         return !!this.indices[indexId];
     }
 
-    getIndex(indexId: number): CacheIndex<A> {
+    getIndex(indexId: number): CacheIndex {
         const index = this.indices[indexId];
         if (!index) {
             throw new Error("Index not found: " + indexId);

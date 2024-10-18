@@ -1,6 +1,5 @@
 import { ByteBuffer } from "../io/ByteBuffer";
 import { StringUtil } from "../util/StringUtil";
-import { ApiReturnType, ApiType } from "./ApiType";
 import { Archive } from "./Archive";
 import { ArchiveFile } from "./ArchiveFile";
 import { Container } from "./Container";
@@ -10,7 +9,7 @@ import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { SectorCluster } from "./store/SectorCluster";
 
-export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
+export abstract class CacheIndex {
     static META_INDEX_ID = 255;
 
     constructor(
@@ -51,9 +50,9 @@ export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
         return this.table.getArchiveReference(archiveId)?.fileCount ?? 0;
     }
 
-    abstract getArchiveKey(archiveId: number, key: number[] | null): ApiReturnType<A, Archive>;
+    abstract getArchiveKey(archiveId: number, key: number[] | null): Archive;
 
-    getArchive(archiveId: number): ApiReturnType<A, Archive> {
+    getArchive(archiveId: number): Archive {
         return this.getArchiveKey(archiveId, null)
     }
 
@@ -61,9 +60,9 @@ export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
         archiveId: number,
         fileId: number,
         key: number[] | null,
-    ): ApiReturnType<A, ArchiveFile | null>;
+    ): ArchiveFile | null;
 
-    getFileSmart(id: number, key: number[] | null): ApiReturnType<A, ArchiveFile | null> {
+    getFileSmart(id: number, key: number[] | null): ArchiveFile | null {
         if (this.getArchiveCount() === 1) {
             return this.getFileKey(0, id, key);
         } else if (this.getFileCount(id) === 1) {
@@ -75,44 +74,35 @@ export abstract class CacheIndex<A extends ApiType = ApiType.SYNC> {
     getFile(
         archiveId: number,
         fileId: number,
-    ): ApiReturnType<A, ArchiveFile | null> {
+    ): ArchiveFile | null {
         return this.getFileKey(archiveId, fileId, null)
     }
 }
 
-export abstract class CacheStoreIndex<A extends ApiType> extends CacheIndex<A> {
+export abstract class CacheStoreIndex extends CacheIndex {
     constructor(
         id: number,
         table: ReferenceTable,
-        readonly store: CacheStore<A>,
+        readonly store: CacheStore,
     ) {
         super(id, table);
     }
 
-    read(archiveId: number): ApiReturnType<A, Int8Array> {
+    read(archiveId: number): Int8Array {
         return this.store.read(this.id, archiveId);
     }
 }
-export abstract class CacheStoreIndexSync extends CacheStoreIndex<ApiType.SYNC> {
+
+export abstract class CacheStoreIndexSync extends CacheStoreIndex {
     override getFileKey(archiveId: number, fileId: number, key: number[] | null): ArchiveFile | null {
         return this.getArchiveKey(archiveId, key).getFile(fileId);
-    }
-}
-export abstract class CacheStoreIndexAsync extends CacheStoreIndex<ApiType.ASYNC> {
-    override async getFileKey(
-        archiveId: number,
-        fileId: number,
-        key: number[] | null,
-    ): Promise<ArchiveFile | null> {
-        const archive = await this.getArchiveKey(archiveId, key);
-        return archive.getFile(fileId);
     }
 }
 
 export class CacheIndexDat extends CacheStoreIndexSync {
     static fromStore(
         id: number,
-        store: CacheStore<ApiType.SYNC>,
+        store: CacheStore,
         indexFile: ArrayBuffer,
     ): CacheIndexDat {
         const table = ReferenceTable.fromArchiveCount(indexFile.byteLength / SectorCluster.SIZE);
@@ -124,21 +114,6 @@ export class CacheIndexDat extends CacheStoreIndexSync {
         return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
     }
 }
-export class CacheIndexDatAsync extends CacheStoreIndex<ApiType.ASYNC> {
-    override async getArchiveKey(id: number, key: number[] | null): Promise<Archive> {
-        const data = await this.read(id);
-        return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
-    }
-
-    override async getFileKey(
-        archiveId: number,
-        fileId: number,
-        key: number[] | null,   
-    ): Promise<ArchiveFile | null> {
-        const archive = await this.getArchiveKey(archiveId, key);
-        return archive.getFile(fileId);
-    }
-}
 
 function decodeTable(data: Int8Array): ReferenceTable {
     if (data.length) {
@@ -148,8 +123,8 @@ function decodeTable(data: Int8Array): ReferenceTable {
     return ReferenceTable.INVALID_TABLE;
 }
 
-function decodeArchiveData<A extends ApiType>(
-    index: CacheIndex<A>,
+function decodeArchiveData(
+    index: CacheIndex,
     id: number,
     data: Int8Array,
     key: number[] | null,
@@ -170,7 +145,7 @@ function decodeArchiveData<A extends ApiType>(
 }
 
 export class CacheIndexDat2 extends CacheStoreIndexSync {
-    static fromStore(id: number, store: CacheStore<ApiType.SYNC>): CacheIndexDat2 {
+    static fromStore(id: number, store: CacheStore): CacheIndexDat2 {
         const data = store.read(CacheIndex.META_INDEX_ID, id);
         try {
             const table = decodeTable(data);
@@ -183,12 +158,6 @@ export class CacheIndexDat2 extends CacheStoreIndexSync {
 
     override getArchiveKey(id: number, key: number[] | null): Archive {
         const data = this.read(id);
-        return decodeArchiveData(this, id, data, key);
-    }
-}
-export class CacheIndexDat2Async extends CacheStoreIndexAsync {
-    override async getArchiveKey(id: number, key: number[] | null): Promise<Archive> {
-        const data = await this.read(id);
         return decodeArchiveData(this, id, data, key);
     }
 }

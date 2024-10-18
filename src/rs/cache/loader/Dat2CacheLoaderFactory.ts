@@ -53,7 +53,6 @@ import { OldProceduralTextureLoader } from "../../texture/OldProceduralTextureLo
 import { ProceduralTextureLoader } from "../../texture/ProceduralTextureLoader";
 import { SpriteTextureLoader } from "../../texture/SpriteTextureLoader";
 import { TextureLoader } from "../../texture/TextureLoader";
-import { ApiType } from "../ApiType";
 import { CacheIndex } from "../CacheIndex";
 import { CacheInfo, GameType } from "../CacheInfo";
 import { CacheSystem } from "../CacheSystem";

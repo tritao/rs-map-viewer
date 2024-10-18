@@ -1,12 +1,11 @@
 import { ByteBuffer } from "../../io/ByteBuffer";
-import { ApiType } from "../ApiType";
 import { CacheFiles } from "../CacheFiles";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { Sector } from "./Sector";
 import { SectorCluster } from "./SectorCluster";
 
-export class MemoryStore implements CacheStore<ApiType.SYNC> {
+export class MemoryStore implements CacheStore {
     static fromFiles(cacheFiles: CacheFiles, indicesToLoad: number[] = []): MemoryStore {
         const files = cacheFiles.files;
 
