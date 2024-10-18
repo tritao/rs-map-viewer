@@ -25,16 +25,18 @@ export function getGameTypeFromName(name: string): GameType {
     }
 }
 
-export type CacheInfo = {
-    name: string;
-    game: GameType;
-    environment: string;
-    revision: number;
-    timestamp: string;
-    size: number;
-};
+export class CacheInfo {
+    constructor(
+        public name: string,
+        public game: GameType,
+        public environment: string,
+        public revision: number,
+        public timestamp: string,
+        public size: number,
+    ) {}
+}
 
-export function sortCachesNewToOld(caches: CacheInfo[]): void {
+export function sortCachesNewToOld(caches: Array<CacheInfo>): void {
     caches.sort((a, b) => {
         const isOsrsA = a.game === GameType.Oldschool;
         const isOsrsB = b.game === GameType.Oldschool;
@@ -51,9 +53,9 @@ export function sortCachesNewToOld(caches: CacheInfo[]): void {
     });
 }
 
-export function getLatestCache(caches: CacheInfo[]): CacheInfo | undefined {
+export function getLatestCache(caches: Array<CacheInfo>): CacheInfo | null {
     if (caches.length === 0) {
-        return undefined;
+        return null;
     }
 
     sortCachesNewToOld(caches);
