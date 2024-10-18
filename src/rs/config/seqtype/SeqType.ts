@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheType } from "../../cache/CacheType";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
@@ -86,13 +86,13 @@ export class SeqType extends Type {
     }
 
     isNewSoundEffects(): boolean {
-        return this.cacheInfo.game === "oldschool" && this.cacheInfo.revision >= 220;
+        return this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision >= 220;
     }
 
     override decodeOpcode(opcode: number, buffer: ByteBuffer): void {
         if (opcode === 1) {
             let count = 0;
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision < 456) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision < 456) {
                 count = buffer.readUnsignedByte();
             } else {
                 count = buffer.readUnsignedShort();
@@ -100,7 +100,7 @@ export class SeqType extends Type {
             this.frameIds = new Array(count);
             this.frameLengths = new Array(count);
 
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision <= 377) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision <= 377) {
                 for (let i = 0; i < count; i++) {
                     this.frameIds[i] = buffer.readUnsignedShort();
                     // used by widgets
@@ -128,7 +128,7 @@ export class SeqType extends Type {
             }
             this.masks[count] = 9999999;
         } else if (opcode === 4) {
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision <= 194) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision <= 194) {
                 this.stretches = buffer.readUnsignedShort() === 1;
             } else {
                 this.stretches = true;
@@ -149,7 +149,7 @@ export class SeqType extends Type {
         } else if (opcode === 11) {
             this.replyMode = buffer.readUnsignedByte();
         } else if (opcode === 12) {
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision <= 377) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision <= 377) {
                 buffer.readInt();
             } else {
                 const count = buffer.readUnsignedByte();
@@ -164,7 +164,7 @@ export class SeqType extends Type {
             }
         } else if (opcode === 13) {
             // might be wrong start revision
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 508) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 508) {
                 const count = buffer.readUnsignedShort();
                 for (let i = 0; i < count; i++) {
                     const effectCount = buffer.readUnsignedByte();
@@ -201,13 +201,13 @@ export class SeqType extends Type {
                 }
             }
         } else if (opcode === 14) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.skeletalId = buffer.readInt();
             } else {
                 this.op14 = true;
             }
         } else if (opcode === 15) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 const count = buffer.readUnsignedShort();
                 this.skeletalFrameSounds = new Map();
 
@@ -239,14 +239,14 @@ export class SeqType extends Type {
                 // interpolate = true;
             }
         } else if (opcode === 16) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.skeletalStart = buffer.readUnsignedShort();
                 this.skeletalEnd = buffer.readUnsignedShort();
             } else {
                 // bool = true;
             }
         } else if (opcode === 17) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 const count = buffer.readUnsignedByte();
 
                 this.skeletalMasks = new Array(256).fill(false);

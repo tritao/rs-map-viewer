@@ -1,3 +1,4 @@
+import { GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
 
@@ -59,8 +60,8 @@ export class MapElementType extends Type {
             this.ops[opcode - 10] = buffer.readString();
         } else if (opcode === 15) {
             if (
-                this.cacheInfo.game === "oldschool" ||
-                (this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 629)
+                this.cacheInfo.game === GameType.Oldschool ||
+                (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 629)
             ) {
                 const count = buffer.readUnsignedByte();
                 for (let i = 0; i < count * 2; i++) {

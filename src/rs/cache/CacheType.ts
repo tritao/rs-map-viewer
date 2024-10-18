@@ -1,4 +1,4 @@
-import { CacheInfo } from "./CacheInfo";
+import { CacheInfo, GameType, getGameTypeName } from "./CacheInfo";
 
 export enum CacheType {
     Classic,
@@ -19,9 +19,9 @@ export function getCacheTypeName(cacheType: CacheType): String {
 
 export function detectCacheType(cacheInfo: CacheInfo): CacheType {
     switch (cacheInfo.game) {
-        case "classic":
+        case GameType.Classic:
             return CacheType.Classic;
-        case "runescape":
+        case GameType.Runescape:
             if (cacheInfo.revision < 234) {
                 return CacheType.Legacy;
             } else if (cacheInfo.revision < 410) {
@@ -29,9 +29,9 @@ export function detectCacheType(cacheInfo: CacheInfo): CacheType {
             } else {
                 return CacheType.Dat2;
             }
-        case "oldschool":
+        case GameType.Oldschool:
             return CacheType.Dat2;
         default:
-            throw new Error("Unknown game type: " + cacheInfo.game);
+            throw new Error("Unknown game type: " + getGameTypeName(cacheInfo.game));
     }
 }

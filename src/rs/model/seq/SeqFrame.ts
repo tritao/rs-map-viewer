@@ -1,5 +1,5 @@
 import { Archive } from "../../cache/Archive";
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { DatSeqBase, LegacySeqBase, SeqBase } from "./SeqBase";
 import { SeqBaseLoader } from "./SeqBaseLoader";
@@ -278,7 +278,7 @@ export class Dat2SeqFrame {
         const buf = new ByteBuffer(data);
         const dataBuf = new ByteBuffer(data);
 
-        if (cacheInfo.game === "runescape" && cacheInfo.revision >= 610) {
+        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
             buf.readUnsignedByte();
         }
 
@@ -341,7 +341,7 @@ export class Dat2SeqFrame {
                 SeqFrame.transformZCache[transformCount] = defaultValue;
             }
 
-            if (cacheInfo.game === "runescape" && cacheInfo.revision >= 610) {
+            if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
                 if (type === SeqTransformType.ORIGIN || type === SeqTransformType.TRANSLATE) {
                     SeqFrame.transformXCache[transformCount] >>= 2;
                     SeqFrame.transformYCache[transformCount] >>= 2;

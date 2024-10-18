@@ -1,12 +1,25 @@
 import { CacheFiles, ProgressListener } from "../rs/cache/CacheFiles";
-import { CacheInfo, getLatestCache } from "../rs/cache/CacheInfo";
+import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
 
 const CACHE_PATH = "/caches/";
 
+export class CacheInfoJson {
+    constructor(
+        public name: string,
+        public game: string,
+        public environment: string,
+        public revision: number,
+        public timestamp: string,
+        public size: number,
+    ) { }
+}
+
 export async function fetchCacheInfos(): Promise<CacheInfo[]> {
     const resp = await fetch(CACHE_PATH + "caches.json");
-    return resp.json();
+    var infos: CacheInfoJson[] = await resp.json();
+    return infos.map(info => new CacheInfo(info.name, getGameTypeFromName(info.game),
+        info.environment, info.revision, info.timestamp, info.size))
 }
 
 export type CacheList = {

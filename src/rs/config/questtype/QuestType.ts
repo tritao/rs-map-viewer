@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
 
@@ -103,7 +103,7 @@ export class QuestType extends Type {
         } else if (opcode === 15) {
             this.pointsRequirement = buffer.readUnsignedShort();
         } else if (opcode === 17) {
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 670) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 670) {
                 const iconId = buffer.readBigSmart();
             } else {
                 const iconId = buffer.readUnsignedShort();

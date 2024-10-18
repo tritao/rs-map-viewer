@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheSystem } from "../../cache/CacheSystem";
 import { OsrsIndexType, Rs2IndexType, Dat2IndexType } from "../../cache/IndexType";
 import { ByteBuffer } from "../../io/ByteBuffer";
@@ -21,7 +21,7 @@ export class GraphicsDefaults extends Type {
 
     static load(cacheInfo: CacheInfo, fileSystem: CacheSystem): GraphicsDefaults {
         if (
-            cacheInfo.game === "oldschool" &&
+            cacheInfo.game === GameType.Oldschool &&
             fileSystem.indexExists(OsrsIndexType.graphicDefaults)
         ) {
             const defaultsIndex = fileSystem.getIndex(OsrsIndexType.graphicDefaults);
@@ -35,7 +35,7 @@ export class GraphicsDefaults extends Type {
 
             return defaults;
         } else if (
-            cacheInfo.game === "runescape" &&
+            cacheInfo.game === GameType.Runescape &&
             fileSystem.indexExists(Rs2IndexType.defaults)
         ) {
             const defaults = new GraphicsDefaults(-1, cacheInfo);

@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../rs/cache/CacheInfo";
+import { CacheInfo, GameType } from "../../rs/cache/CacheInfo";
 import npcSpawns2004Url from "./npc-spawns-2004.json?url";
 import npcSpawns2009Url from "./npc-spawns-2009.json?url";
 import npcSpawnsOsrsUrl from "./npc-spawns-osrs.json?url";
@@ -12,7 +12,7 @@ export interface NpcSpawn {
 }
 
 export function getNpcSpawnsUrl(cacheInfo: CacheInfo): string {
-    if (cacheInfo.game === "oldschool") {
+    if (cacheInfo.game === GameType.Oldschool) {
         return npcSpawnsOsrsUrl;
     } else if (cacheInfo.revision > 474) {
         return npcSpawns2009Url;

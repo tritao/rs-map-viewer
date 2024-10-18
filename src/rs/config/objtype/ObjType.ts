@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
 import { ObjStackability } from "./ObjStackability";
@@ -134,7 +134,7 @@ export class ObjType extends Type {
     }
 
     isLargeModelId(): boolean {
-        return this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 670;
+        return this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 670;
     }
 
     readModelId(buffer: ByteBuffer): number {

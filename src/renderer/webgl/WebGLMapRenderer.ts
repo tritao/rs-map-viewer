@@ -36,6 +36,7 @@ import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { WebGLRenderable } from "./WebGLRenderable";
+import { GameType } from "../../rs/cache/CacheInfo";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -257,7 +258,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     initCache(): void {
         const cache = this.cacheLoaders.cache;
-        this.isNewTextureAnim = cache.info.game === "runescape" && cache.info.revision >= 681;
+        this.isNewTextureAnim = cache.info.game === GameType.Runescape && cache.info.revision >= 681;
 
         if (this.app) {
             this.initTextures();
@@ -301,7 +302,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         let maxPreloadTextures = textureCount;
         // we should check if the texture loader is procedural instead
-        if (cacheInfo.game === "runescape" && cacheInfo.revision >= 508) {
+        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 508) {
             maxPreloadTextures = 64;
         }
 

@@ -55,7 +55,7 @@ import { SpriteTextureLoader } from "../../texture/SpriteTextureLoader";
 import { TextureLoader } from "../../texture/TextureLoader";
 import { ApiType } from "../ApiType";
 import { CacheIndex } from "../CacheIndex";
-import { CacheInfo } from "../CacheInfo";
+import { CacheInfo, GameType } from "../CacheInfo";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { ConfigType } from "../ConfigType";
@@ -70,7 +70,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     ) {}
 
     isIndexConfigs(): boolean {
-        return this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 488;
+        return this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 488;
     }
 
     getUnderlayTypeLoader(): FloorTypeLoader {
@@ -141,7 +141,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getBasTypeLoader(): BasTypeLoader {
-        if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 530) {
+        if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 530) {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             try {
                 const basArchive = configIndex.getArchive(ConfigType.RS2.bas);
@@ -156,7 +156,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     getQuestTypeLoader(): QuestTypeLoader | undefined {
         const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
         if (
-            this.cacheInfo.game === "runescape" &&
+            this.cacheInfo.game === GameType.Runescape &&
             configIndex.archiveExists(ConfigType.RS2.quests)
         ) {
             try {
@@ -173,8 +173,8 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         const textureIndex = this.cacheSystem.getIndex(Dat2IndexType.textures);
         const spriteIndex = this.cacheSystem.getIndex(Dat2IndexType.sprites);
         if (
-            this.cacheInfo.game === "oldschool" ||
-            (this.cacheInfo.game === "runescape" && this.cacheInfo.revision < 474)
+            this.cacheInfo.game === GameType.Oldschool ||
+            (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision < 474)
         ) {
             return SpriteTextureLoader.load(textureIndex, spriteIndex);
         } else if (this.cacheSystem.indexExists(Rs2IndexType.materials)) {
@@ -230,7 +230,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         const spriteIndex = this.cacheSystem.getIndex(Dat2IndexType.sprites);
 
         if (
-            this.cacheInfo.game === "runescape" &&
+            this.cacheInfo.game === GameType.Runescape &&
             configIndex.archiveExists(ConfigType.RS2.mapScenes)
         ) {
             const mapScenesArchive = configIndex.getArchive(ConfigType.RS2.mapScenes);
@@ -289,7 +289,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         const spriteIndex = this.cacheSystem.getIndex(Dat2IndexType.sprites);
 
         if (
-            this.cacheInfo.game === "oldschool" &&
+            this.cacheInfo.game === GameType.Oldschool &&
             configIndex.archiveExists(ConfigType.OSRS.mapFunctions)
         ) {
             const mapElementArchive = configIndex.getArchive(ConfigType.OSRS.mapFunctions);
@@ -300,7 +300,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
             return this.loadMapElementSprites(spriteIndex, mapElementTypeLoader);
         } else if (
-            this.cacheInfo.game === "runescape" &&
+            this.cacheInfo.game === GameType.Runescape &&
             configIndex.archiveExists(ConfigType.RS2.mapFunctions)
         ) {
             const mapElementArchive = configIndex.getArchive(ConfigType.RS2.mapFunctions);

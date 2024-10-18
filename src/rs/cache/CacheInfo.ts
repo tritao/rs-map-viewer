@@ -1,4 +1,29 @@
-export type GameType = "classic" | "runescape" | "oldschool";
+export enum GameType {
+    Classic,
+    Runescape,
+    Oldschool,
+}
+
+export function getGameTypeName(gameType: GameType): String {
+    switch(gameType) {
+    case GameType.Classic: return "classic"
+    case GameType.Runescape: return "runescape"
+    case GameType.Oldschool: return "oldschool"
+    default: throw Error("Unknown game type");
+    }
+}
+
+export function getGameTypeFromName(name: string): GameType {
+    if (name === "classic") {
+        return GameType.Classic;
+    } else if (name === "runescape") {
+        return GameType.Runescape;
+    } else if (name === "oldschool") {
+        return GameType.Oldschool;
+    } else {
+        throw new Error("Unknown game type");
+    }
+}
 
 export type CacheInfo = {
     name: string;
@@ -11,8 +36,8 @@ export type CacheInfo = {
 
 export function sortCachesNewToOld(caches: CacheInfo[]): void {
     caches.sort((a, b) => {
-        const isOsrsA = a.game === "oldschool";
-        const isOsrsB = b.game === "oldschool";
+        const isOsrsA = a.game === GameType.Oldschool;
+        const isOsrsB = b.game === GameType.Oldschool;
         const isLiveA = a.environment === "live";
         const isLiveB = b.environment === "live";
         const dateA = Date.parse(a.timestamp);

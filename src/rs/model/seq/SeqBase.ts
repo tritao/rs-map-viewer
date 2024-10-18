@@ -1,5 +1,5 @@
 import { Archive } from "../../cache/Archive";
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SkeletalBase } from "../skeletal/SkeletalBase";
 import { SeqTransformType } from "./SeqTransformType";
@@ -93,7 +93,7 @@ export class Dat2SeqBase {
             }
         }
 
-        if (cacheInfo.game === "runescape" && cacheInfo.revision >= 481) {
+        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 481) {
             for (let i = 0; i < count; i++) {
                 transformActor[i] = buf.readUnsignedByte() === 1;
             }
@@ -101,7 +101,7 @@ export class Dat2SeqBase {
             transformActor.fill(true);
         }
 
-        if (cacheInfo.game === "runescape" && cacheInfo.revision >= 530) {
+        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 530) {
             for (let i = 0; i < count; i++) {
                 masks[i] = buf.readUnsignedShort();
             }

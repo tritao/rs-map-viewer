@@ -1,3 +1,4 @@
+import { GameType } from "../../cache/CacheInfo";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
@@ -163,7 +164,7 @@ export class LocModelLoader {
 
         if (locType.recolorFrom) {
             const retexture =
-                locType.cacheInfo.game === "runescape" && locType.cacheInfo.revision <= 377;
+                locType.cacheInfo.game === GameType.Runescape && locType.cacheInfo.revision <= 377;
             for (let i = 0; i < locType.recolorFrom.length; i++) {
                 copy.recolor(locType.recolorFrom[i], locType.recolorTo[i]);
                 if (retexture) {

@@ -1,3 +1,4 @@
+import { GameType } from "../../cache/CacheInfo";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
@@ -48,7 +49,7 @@ export class NpcModelLoader {
 
             if (npcType.recolorFrom) {
                 const retexture =
-                    npcType.cacheInfo.game === "runescape" && npcType.cacheInfo.revision <= 377;
+                    npcType.cacheInfo.game === GameType.Runescape && npcType.cacheInfo.revision <= 377;
                 for (let i = 0; i < npcType.recolorFrom.length; i++) {
                     merged.recolor(npcType.recolorFrom[i], npcType.recolorTo[i]);
                     if (retexture) {

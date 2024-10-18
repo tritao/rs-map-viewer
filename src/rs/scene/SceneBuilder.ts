@@ -1,5 +1,5 @@
 import { NpcSpawn } from "../../data/npc/NpcSpawn";
-import { CacheInfo } from "../cache/CacheInfo";
+import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { FloorTypeLoader, OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
 import { ContourGroundInfo, LocModelLoader } from "../config/loctype/LocModelLoader";
 import { LocModelType } from "../config/loctype/LocModelType";
@@ -53,11 +53,11 @@ export class SceneBuilder {
         readonly xteasMap: Map<number, number[]>,
     ) {
         this.newTerrainFormat =
-            this.cacheInfo.game === "oldschool" && this.cacheInfo.revision >= 209;
+            this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision >= 209;
     }
 
     static fillEmptyTerrain(info: CacheInfo): boolean {
-        return info.game === "runescape" && info.revision <= 225;
+        return info.game === GameType.Runescape && info.revision <= 225;
     }
 
     getTerrainData(mapX: number, mapY: number): Int8Array | undefined {

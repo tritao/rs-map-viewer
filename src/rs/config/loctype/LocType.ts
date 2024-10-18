@@ -1,5 +1,5 @@
 import { toSigned16bit } from "../../../util/MathUtil";
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
 import { VarManager } from "../vartype/VarManager";
@@ -154,11 +154,11 @@ export class LocType extends Type {
     }
 
     isNewModelsFormat(): boolean {
-        return this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 582;
+        return this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 582;
     }
 
     isLargeModelId(): boolean {
-        return this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 670;
+        return this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 670;
     }
 
     override decodeOpcode(opcode: number, buffer: ByteBuffer): void {
@@ -346,14 +346,14 @@ export class LocType extends Type {
         } else if (opcode === 78) {
             this.ambientSoundId = buffer.readUnsignedShort();
             this.ambientSoundDistance = buffer.readUnsignedByte();
-            if (this.cacheInfo.game === "oldschool" && this.cacheInfo.revision >= 220) {
+            if (this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision >= 220) {
                 this.ambientSoundRetain = buffer.readUnsignedByte();
             }
         } else if (opcode === 79) {
             this.ambientSoundChangeTicksMin = buffer.readUnsignedShort();
             this.ambientSoundChangeTicksMax = buffer.readUnsignedShort();
             this.ambientSoundDistance = buffer.readUnsignedByte();
-            if (this.cacheInfo.game === "oldschool" && this.cacheInfo.revision >= 220) {
+            if (this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision >= 220) {
                 this.ambientSoundRetain = buffer.readUnsignedByte();
             }
             const count = buffer.readUnsignedByte();
@@ -368,7 +368,7 @@ export class LocType extends Type {
             this.contourGroundType = 2;
             this.contourGroundParam = toSigned16bit(this.contouredGround);
         } else if (opcode === 82) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.mapFunctionId = buffer.readUnsignedShort();
             } else {
                 // hd only = true?
@@ -389,7 +389,7 @@ export class LocType extends Type {
         } else if (opcode === 95) {
             this.contourGroundType = 5;
             // Added somewhere between 582 and 614, not sure
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 614) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 614) {
                 this.contourGroundParam = buffer.readUnsignedShort();
             }
         } else if (opcode === 96) {

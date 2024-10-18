@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { Type } from "../Type";
 import { FloorType } from "./FloorType";
@@ -57,7 +57,7 @@ export class OverlayFloorType extends Type implements FloorType {
         this.blendTexture = false;
         this.underwaterColor = 0x122b3d;
         this.waterOpacity = 16;
-        this.isOverlay = cacheInfo.game !== "runescape" || cacheInfo.revision > 377;
+        this.isOverlay = cacheInfo.game !== GameType.Runescape || cacheInfo.revision > 377;
     }
 
     getHueBlend(): number {
@@ -74,7 +74,7 @@ export class OverlayFloorType extends Type implements FloorType {
         } else if (opcode === 2) {
             this.textureId = buffer.readUnsignedByte();
         } else if (opcode === 3) {
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision <= 377) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision <= 377) {
                 this.isOverlay = true;
             } else {
                 this.textureId = buffer.readUnsignedShort();

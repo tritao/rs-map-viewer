@@ -1,4 +1,4 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
 import { BasTypeLoader } from "../bastype/BasTypeLoader";
@@ -116,7 +116,7 @@ export class NpcType extends Type {
     }
 
     isLargeModelId(): boolean {
-        return this.cacheInfo.game === "runescape" && this.cacheInfo.revision >= 670;
+        return this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 670;
     }
 
     override decodeOpcode(opcode: number, buffer: ByteBuffer): void {
@@ -147,7 +147,7 @@ export class NpcType extends Type {
         } else if (opcode === 15) {
             this.turnLeftSeqId = buffer.readUnsignedShort();
         } else if (opcode === 16) {
-            if (this.cacheInfo.game === "runescape" && this.cacheInfo.revision < 254) {
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision < 254) {
                 // disposeAlpha?
             } else {
                 this.turnRightSeqId = buffer.readUnsignedShort();
@@ -213,8 +213,8 @@ export class NpcType extends Type {
             this.contrast = buffer.readByte() * 5;
         } else if (opcode === 102) {
             if (
-                (this.cacheInfo.game === "oldschool" && this.cacheInfo.revision < 210) ||
-                this.cacheInfo.game === "runescape"
+                (this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision < 210) ||
+                this.cacheInfo.game === GameType.Runescape
             ) {
                 this.headIconPrayer = buffer.readUnsignedShort();
             } else {
@@ -274,7 +274,7 @@ export class NpcType extends Type {
         } else if (opcode === 109) {
             this.isClickable = false;
         } else if (opcode === 111) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.isFollower = true;
             } else {
                 // hasShadow = false
@@ -285,14 +285,14 @@ export class NpcType extends Type {
             const shadowColor1 = buffer.readUnsignedShort();
             const shadowColor2 = buffer.readUnsignedShort();
         } else if (opcode === 114) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.runSeqId = buffer.readUnsignedShort();
             } else {
                 const shadowColorMod1 = buffer.readByte();
                 const shadowColorMod2 = buffer.readByte();
             }
         } else if (opcode === 115) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.runSeqId = buffer.readUnsignedShort();
                 this.runBackSeqId = buffer.readUnsignedShort();
                 this.runLeftSeqId = buffer.readUnsignedShort();
@@ -321,7 +321,7 @@ export class NpcType extends Type {
                 offsets[2] = buffer.readByte();
             }
         } else if (opcode === 122) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 this.isFollower = true;
             } else {
                 if (this.isLargeModelId()) {
@@ -331,7 +331,7 @@ export class NpcType extends Type {
                 }
             }
         } else if (opcode === 123) {
-            if (this.cacheInfo.game === "oldschool") {
+            if (this.cacheInfo.game === GameType.Oldschool) {
                 // lowPriorityFollowerOps = true;
             } else {
                 const iconHeight = buffer.readUnsignedShort();
