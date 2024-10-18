@@ -24,7 +24,7 @@ import {
     createMainProgram,
     createNpcProgram,
 } from "./shaders/Shaders";
-import { CacheLoaders } from "../../rs/cache/CacheLoaders";
+import { CacheLoaders } from "../../rs/loaders/CacheLoaders";
 import { InputManager } from "../../util/InputManager";
 import { Camera } from "../Camera";
 import { RendererStats } from "./RendererStats";

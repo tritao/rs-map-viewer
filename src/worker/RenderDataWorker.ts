@@ -8,7 +8,7 @@ import { Dat2IndexType, DatIndexType } from "../rs/cache/IndexType";
 import {
     CacheLoaderFactory,
     getCacheLoaderFactory,
-} from "../rs/cache/loader/CacheLoaderFactory";
+} from "../rs/loaders/CacheLoaderFactory";
 import { Bzip2 } from "../rs/compression/Bzip2";
 import { Gzip } from "../rs/compression/Gzip";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";

@@ -1,5 +1,5 @@
-import { CacheSystem } from "./CacheSystem";
-import { CacheLoaderFactory, getCacheLoaderFactory } from "./loader/CacheLoaderFactory";
+import { CacheSystem } from "../cache/CacheSystem";
+import { CacheLoaderFactory, getCacheLoaderFactory } from "./CacheLoaderFactory";
 import { BasTypeLoader } from "../config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../config/npctype/NpcTypeLoader";

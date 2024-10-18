@@ -2,63 +2,63 @@ import {
     ArchiveBasTypeLoader,
     BasTypeLoader,
     DummyBasTypeLoader,
-} from "../../config/bastype/BasTypeLoader";
-import { GraphicsDefaults } from "../../config/defaults/GraphicsDefaults";
+} from "../config/bastype/BasTypeLoader";
+import { GraphicsDefaults } from "../config/defaults/GraphicsDefaults";
 import {
     ArchiveOverlayFloorTypeLoader,
     ArchiveUnderlayFloorTypeLoader,
     FloorTypeLoader,
     OverlayFloorTypeLoader,
-} from "../../config/floortype/FloorTypeLoader";
+} from "../config/floortype/FloorTypeLoader";
 import {
     ArchiveLocTypeLoader,
     IndexLocTypeLoader,
     LocTypeLoader,
-} from "../../config/loctype/LocTypeLoader";
-import { MapSceneTypeLoader } from "../../config/mapscenetype/MapSceneTypeLoader";
+} from "../config/loctype/LocTypeLoader";
+import { MapSceneTypeLoader } from "../config/mapscenetype/MapSceneTypeLoader";
 import {
     ArchiveMapElementTypeLoader,
     MapElementTypeLoader,
-} from "../../config/meltype/MapElementTypeLoader";
+} from "../config/meltype/MapElementTypeLoader";
 import {
     ArchiveNpcTypeLoader,
     IndexNpcTypeLoader,
     NpcTypeLoader,
-} from "../../config/npctype/NpcTypeLoader";
+} from "../config/npctype/NpcTypeLoader";
 import {
     ArchiveObjTypeLoader,
     IndexObjTypeLoader,
     ObjTypeLoader,
-} from "../../config/objtype/ObjTypeLoader";
-import { ArchiveQuestTypeLoader, QuestTypeLoader } from "../../config/questtype/QuestTypeLoader";
+} from "../config/objtype/ObjTypeLoader";
+import { ArchiveQuestTypeLoader, QuestTypeLoader } from "../config/questtype/QuestTypeLoader";
 import {
     ArchiveSeqTypeLoader,
     IndexSeqTypeLoader,
     SeqTypeLoader,
-} from "../../config/seqtype/SeqTypeLoader";
+} from "../config/seqtype/SeqTypeLoader";
 import {
     ArchiveVarBitTypeLoader,
     IndexVarBitTypeLoader,
     VarBitTypeLoader,
-} from "../../config/vartype/bit/VarBitTypeLoader";
-import { Dat2MapIndex, MapFileIndex } from "../../map/MapFileIndex";
-import { MapFileLoader } from "../../map/MapFileLoader";
-import { IndexModelLoader, ModelLoader } from "../../model/ModelLoader";
-import { IndexSeqBaseLoader, SeqBaseLoader } from "../../model/seq/SeqBaseLoader";
-import { Dat2SeqFrameLoader, SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
-import { IndexSkeletalSeqLoader, SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
-import { IndexedSprite } from "../../sprite/IndexedSprite";
-import { SpriteLoader } from "../../sprite/SpriteLoader";
-import { OldProceduralTextureLoader } from "../../texture/OldProceduralTextureLoader";
-import { ProceduralTextureLoader } from "../../texture/ProceduralTextureLoader";
-import { SpriteTextureLoader } from "../../texture/SpriteTextureLoader";
-import { TextureLoader } from "../../texture/TextureLoader";
-import { CacheIndex } from "../CacheIndex";
-import { CacheInfo, GameType } from "../CacheInfo";
-import { CacheSystem } from "../CacheSystem";
-import { CacheType } from "../CacheType";
-import { ConfigTypeDAT2, ConfigTypeOSRS, ConfigTypeRS2 } from "../ConfigType";
-import { Dat2IndexType, Rs2IndexType, OsrsIndexType } from "../IndexType";
+} from "../config/vartype/bit/VarBitTypeLoader";
+import { Dat2MapIndex, MapFileIndex } from "../map/MapFileIndex";
+import { MapFileLoader } from "../map/MapFileLoader";
+import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
+import { IndexSeqBaseLoader, SeqBaseLoader } from "../model/seq/SeqBaseLoader";
+import { Dat2SeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
+import { IndexSkeletalSeqLoader, SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
+import { IndexedSprite } from "../sprite/IndexedSprite";
+import { SpriteLoader } from "../sprite/SpriteLoader";
+import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoader";
+import { ProceduralTextureLoader } from "../texture/ProceduralTextureLoader";
+import { SpriteTextureLoader } from "../texture/SpriteTextureLoader";
+import { TextureLoader } from "../texture/TextureLoader";
+import { CacheIndex } from "../cache/CacheIndex";
+import { CacheInfo, GameType } from "../cache/CacheInfo";
+import { CacheSystem } from "../cache/CacheSystem";
+import { CacheType } from "../cache/CacheType";
+import { ConfigTypeDAT2, ConfigTypeOSRS, ConfigTypeRS2 } from "../cache/ConfigType";
+import { Dat2IndexType, Rs2IndexType, OsrsIndexType } from "../cache/IndexType";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
 export class Dat2CacheLoaderFactory implements CacheLoaderFactory {

@@ -14,7 +14,7 @@ import { MapViewerRenderer } from "./MapViewerRenderer";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import { CacheLoaders } from "../rs/cache/CacheLoaders";
+import { CacheLoaders } from "../rs/loaders/CacheLoaders";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 

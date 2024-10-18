@@ -1,28 +1,28 @@
-import { BasTypeLoader, DummyBasTypeLoader } from "../../config/bastype/BasTypeLoader";
+import { BasTypeLoader, DummyBasTypeLoader } from "../config/bastype/BasTypeLoader";
 import {
     DatFloorTypeLoader,
     FloorTypeLoader,
     OverlayFloorTypeLoader,
-} from "../../config/floortype/FloorTypeLoader";
-import { DatLocTypeLoader, LocTypeLoader } from "../../config/loctype/LocTypeLoader";
-import { DatNpcTypeLoader, NpcTypeLoader } from "../../config/npctype/NpcTypeLoader";
-import { DatObjTypeLoader, ObjTypeLoader } from "../../config/objtype/ObjTypeLoader";
-import { QuestTypeLoader } from "../../config/questtype/QuestTypeLoader";
-import { DatSeqTypeLoader, SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
-import { DummyVarBitTypeLoader, VarBitTypeLoader } from "../../config/vartype/bit/VarBitTypeLoader";
-import { Dat2MapIndex } from "../../map/MapFileIndex";
-import { LegacyMapFileLoader, MapFileLoader } from "../../map/MapFileLoader";
-import { LegacyModelLoader } from "../../model/ModelLoader";
-import { LegacySeqFrameLoader, SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
-import { SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
-import { IndexedSprite } from "../../sprite/IndexedSprite";
-import { DatTextureLoader } from "../../texture/DatTextureLoader";
-import { TextureLoader } from "../../texture/TextureLoader";
-import { Archive } from "../Archive";
-import { CacheIndex } from "../CacheIndex";
-import { CacheInfo } from "../CacheInfo";
-import { CacheSystem } from "../CacheSystem";
-import { LegacyIndexType } from "../IndexType";
+} from "../config/floortype/FloorTypeLoader";
+import { DatLocTypeLoader, LocTypeLoader } from "../config/loctype/LocTypeLoader";
+import { DatNpcTypeLoader, NpcTypeLoader } from "../config/npctype/NpcTypeLoader";
+import { DatObjTypeLoader, ObjTypeLoader } from "../config/objtype/ObjTypeLoader";
+import { QuestTypeLoader } from "../config/questtype/QuestTypeLoader";
+import { DatSeqTypeLoader, SeqTypeLoader } from "../config/seqtype/SeqTypeLoader";
+import { DummyVarBitTypeLoader, VarBitTypeLoader } from "../config/vartype/bit/VarBitTypeLoader";
+import { Dat2MapIndex } from "../map/MapFileIndex";
+import { LegacyMapFileLoader, MapFileLoader } from "../map/MapFileLoader";
+import { LegacyModelLoader } from "../model/ModelLoader";
+import { LegacySeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
+import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
+import { IndexedSprite } from "../sprite/IndexedSprite";
+import { DatTextureLoader } from "../texture/DatTextureLoader";
+import { TextureLoader } from "../texture/TextureLoader";
+import { Archive } from "../cache/Archive";
+import { CacheIndex } from "../cache/CacheIndex";
+import { CacheInfo } from "../cache/CacheInfo";
+import { CacheSystem } from "../cache/CacheSystem";
+import { LegacyIndexType } from "../cache/IndexType";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 import { loadMapFunctions, loadMapScenes } from "./DatCacheLoaderFactory";
 

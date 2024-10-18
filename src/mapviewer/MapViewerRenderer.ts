@@ -13,7 +13,7 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { InputManager } from "../util/InputManager";
-import { CacheLoaders } from "../rs/cache/CacheLoaders";
+import { CacheLoaders } from "../rs/loaders/CacheLoaders";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
