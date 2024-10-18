@@ -58,7 +58,7 @@ import { CacheIndex } from "../CacheIndex";
 import { CacheInfo, GameType } from "../CacheInfo";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
-import { ConfigType } from "../ConfigType";
+import { ConfigTypeDAT2, ConfigTypeOSRS, ConfigTypeRS2 } from "../ConfigType";
 import { Dat2IndexType, Rs2IndexType, OsrsIndexType } from "../IndexType";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
@@ -75,13 +75,13 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
     getUnderlayTypeLoader(): FloorTypeLoader {
         const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-        const underlaysArchive = configIndex.getArchive(ConfigType.DAT2.underlays);
+        const underlaysArchive = configIndex.getArchive(ConfigTypeDAT2.underlays);
         return new ArchiveUnderlayFloorTypeLoader(this.cacheInfo, underlaysArchive);
     }
 
     getOverlayTypeLoader(): OverlayFloorTypeLoader {
         const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-        const overlaysArchive = configIndex.getArchive(ConfigType.DAT2.overlays);
+        const overlaysArchive = configIndex.getArchive(ConfigTypeDAT2.overlays);
         return new ArchiveOverlayFloorTypeLoader(this.cacheInfo, overlaysArchive);
     }
 
@@ -91,7 +91,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             return new IndexVarBitTypeLoader(this.cacheInfo, varbitsIndex);
         } else {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-            const varbitsArchive = configIndex.getArchive(ConfigType.DAT2.varbits);
+            const varbitsArchive = configIndex.getArchive(ConfigTypeDAT2.varbits);
             return new ArchiveVarBitTypeLoader(this.cacheInfo, varbitsArchive);
         }
     }
@@ -102,7 +102,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             return new IndexLocTypeLoader(this.cacheInfo, locsIndex);
         } else {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-            const locsArchive = configIndex.getArchive(ConfigType.DAT2.locs);
+            const locsArchive = configIndex.getArchive(ConfigTypeDAT2.locs);
             return new ArchiveLocTypeLoader(this.cacheInfo, locsArchive);
         }
     }
@@ -113,7 +113,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             return new IndexNpcTypeLoader(this.cacheInfo, npcIndex);
         } else {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-            const npcsArchive = configIndex.getArchive(ConfigType.DAT2.npcs);
+            const npcsArchive = configIndex.getArchive(ConfigTypeDAT2.npcs);
             return new ArchiveNpcTypeLoader(this.cacheInfo, npcsArchive);
         }
     }
@@ -124,7 +124,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             return new IndexObjTypeLoader(this.cacheInfo, objIndex);
         } else {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-            const objsArchive = configIndex.getArchive(ConfigType.DAT2.objs);
+            const objsArchive = configIndex.getArchive(ConfigTypeDAT2.objs);
             return new ArchiveObjTypeLoader(this.cacheInfo, objsArchive);
         }
     }
@@ -135,7 +135,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             return new IndexSeqTypeLoader(this.cacheInfo, seqIndex);
         } else {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
-            const seqsArchive = configIndex.getArchive(ConfigType.DAT2.seqs);
+            const seqsArchive = configIndex.getArchive(ConfigTypeDAT2.seqs);
             return new ArchiveSeqTypeLoader(this.cacheInfo, seqsArchive);
         }
     }
@@ -144,7 +144,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 530) {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
             try {
-                const basArchive = configIndex.getArchive(ConfigType.RS2.bas);
+                const basArchive = configIndex.getArchive(ConfigTypeRS2.bas);
                 return new ArchiveBasTypeLoader(this.cacheInfo, basArchive);
             } catch (e) {
                 console.error("Failed to load bastype archive", e);
@@ -157,10 +157,10 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         const configIndex = this.cacheSystem.getIndex(Dat2IndexType.configs);
         if (
             this.cacheInfo.game === GameType.Runescape &&
-            configIndex.archiveExists(ConfigType.RS2.quests)
+            configIndex.archiveExists(ConfigTypeRS2.quests)
         ) {
             try {
-                const questArchive = configIndex.getArchive(ConfigType.RS2.quests);
+                const questArchive = configIndex.getArchive(ConfigTypeRS2.quests);
                 return new ArchiveQuestTypeLoader(this.cacheInfo, questArchive);
             } catch (e) {
                 console.error("Failed to load questtype archive", e);
@@ -231,9 +231,9 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
         if (
             this.cacheInfo.game === GameType.Runescape &&
-            configIndex.archiveExists(ConfigType.RS2.mapScenes)
+            configIndex.archiveExists(ConfigTypeRS2.mapScenes)
         ) {
-            const mapScenesArchive = configIndex.getArchive(ConfigType.RS2.mapScenes);
+            const mapScenesArchive = configIndex.getArchive(ConfigTypeRS2.mapScenes);
             const mapSceneTypeLoader = new MapSceneTypeLoader(this.cacheInfo, mapScenesArchive);
 
             const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId);
@@ -290,9 +290,9 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
 
         if (
             this.cacheInfo.game === GameType.Oldschool &&
-            configIndex.archiveExists(ConfigType.OSRS.mapFunctions)
+            configIndex.archiveExists(ConfigTypeOSRS.mapFunctions)
         ) {
-            const mapElementArchive = configIndex.getArchive(ConfigType.OSRS.mapFunctions);
+            const mapElementArchive = configIndex.getArchive(ConfigTypeOSRS.mapFunctions);
             const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
                 this.cacheInfo,
                 mapElementArchive,
@@ -301,9 +301,9 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             return this.loadMapElementSprites(spriteIndex, mapElementTypeLoader);
         } else if (
             this.cacheInfo.game === GameType.Runescape &&
-            configIndex.archiveExists(ConfigType.RS2.mapFunctions)
+            configIndex.archiveExists(ConfigTypeRS2.mapFunctions)
         ) {
-            const mapElementArchive = configIndex.getArchive(ConfigType.RS2.mapFunctions);
+            const mapElementArchive = configIndex.getArchive(ConfigTypeRS2.mapFunctions);
             const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
                 this.cacheInfo,
                 mapElementArchive,

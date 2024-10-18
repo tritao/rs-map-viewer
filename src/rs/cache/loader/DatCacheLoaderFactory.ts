@@ -28,7 +28,7 @@ import { CacheIndex } from "../CacheIndex";
 import { CacheInfo } from "../CacheInfo";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
-import { ConfigType } from "../ConfigType";
+import { ConfigTypeDAT } from "../ConfigType";
 import { DatIndexType } from "../IndexType";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
@@ -67,8 +67,8 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
         readonly cacheSystem: CacheSystem,
     ) {
         this.configIndex = cacheSystem.getIndex(DatIndexType.configs);
-        this.configArchive = this.configIndex.getArchive(ConfigType.DAT.configs);
-        this.mediaArchive = this.configIndex.getArchive(ConfigType.DAT.media);
+        this.configArchive = this.configIndex.getArchive(ConfigTypeDAT.configs);
+        this.mediaArchive = this.configIndex.getArchive(ConfigTypeDAT.media);
     }
 
     getFloTypeLoader(): OverlayFloorTypeLoader {
@@ -118,7 +118,7 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getTextureLoader(): TextureLoader {
-        const textureArchive = this.configIndex.getArchive(ConfigType.DAT.textures);
+        const textureArchive = this.configIndex.getArchive(ConfigTypeDAT.textures);
         const animatedTextureIds = [DatTextureLoader.WATER_DROPLETS_TEXTURE_ID, 24];
         if (this.cacheInfo.revision > 289) {
             animatedTextureIds.push(34, 40);
@@ -142,7 +142,7 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
 
     getMapFileLoader(): MapFileLoader {
         const mapIndex = this.cacheSystem.getIndex(DatIndexType.maps);
-        const versionListArchive = this.configIndex.getArchive(ConfigType.DAT.versionList);
+        const versionListArchive = this.configIndex.getArchive(ConfigTypeDAT.versionList);
         const mapFileIndex = DatMapFileIndex.load(versionListArchive);
         return new MapFileLoader(mapIndex, mapFileIndex);
     }

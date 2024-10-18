@@ -4,7 +4,6 @@ import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import { CacheSystem } from "../rs/cache/CacheSystem";
-import { ConfigType } from "../rs/cache/ConfigType";
 import { Dat2IndexType, DatIndexType } from "../rs/cache/IndexType";
 import {
     CacheLoaderFactory,
@@ -38,6 +37,7 @@ import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
+import { ConfigTypeDAT } from "../rs/cache/ConfigType";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -445,7 +445,7 @@ async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise
 
 async function exportDatSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
     const configIndex = cacheSystem.getIndex(DatIndexType.configs);
-    const mediaArchive = configIndex.getArchive(ConfigType.DAT.media);
+    const mediaArchive = configIndex.getArchive(ConfigTypeDAT.media);
 
     const indexDatId = mediaArchive.getFileId("index.dat");
 
