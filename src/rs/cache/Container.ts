@@ -1,7 +1,6 @@
 // import { Xtea } from "../util/Xtea";
-import { Bzip2 } from "../compression/Bzip2";
+import { compressionHandler, CompressionHandler } from "../compression/CompressionHandler";
 import { CompressionType } from "../compression/CompressionType";
-import { Gzip } from "../compression/Gzip";
 import { Xtea } from "../crypto/Xtea";
 import { ByteBuffer } from "../io/ByteBuffer";
 
@@ -27,9 +26,9 @@ export class Container {
                 let decompressed: Int8Array;
 
                 if (compression === CompressionType.Bzip2) {
-                    decompressed = Bzip2.decompress(data, actualSize);
+                    decompressed = compressionHandler!.decompressBzip2(data, actualSize);
                 } else {
-                    decompressed = Gzip.decompress(data);
+                    decompressed = compressionHandler!.decompressGzip(data);
                 }
 
                 if (decompressed.length !== actualSize) {

@@ -11,6 +11,8 @@ import {
 } from "../rs/loaders/CacheLoaderFactory";
 // import { Bzip2 } from "../rs/compression/Bzip2";
 // import { Gzip } from "../rs/compression/Gzip";
+import { initCompressionHandler } from "../rs/compression/CompressionHandler";
+import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import { LocModelLoader } from "../rs/config/loctype/LocModelLoader";
 import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
@@ -41,6 +43,7 @@ import { ConfigTypeDAT } from "../rs/cache/ConfigType";
 
 registerSerializer(renderDataLoaderSerializer);
 
+initCompressionHandler(new JSCompressionHandler());
 // const compressionPromise = Promise.all([Bzip2.initWasm(), Gzip.initWasm()]);
 const hasherPromise = Hasher.init();
 
