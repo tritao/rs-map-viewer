@@ -1,5 +1,6 @@
-import { CacheFiles, ProgressListener } from "../rs/cache/CacheFiles";
+import { CacheFiles } from "../rs/cache/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
+import { ProgressListener } from "../rs/cache/CacheLoader";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
 
 const CACHE_PATH = "/caches/";

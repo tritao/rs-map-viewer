@@ -8,7 +8,7 @@ import { OsrsMenu, OsrsMenuProps } from "../components/rs/menu/OsrsMenu";
 import { MinimapContainer } from "../components/rs/minimap/MinimapContainer";
 import { WorldMapModal } from "../components/rs/worldmap/WorldMapModal";
 import { RS_TO_DEGREES } from "../rs/MathConstants";
-import { DownloadProgress } from "../rs/cache/CacheFiles";
+import { DownloadProgress } from "../rs/cache/CacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { MapViewer } from "./MapViewer";
