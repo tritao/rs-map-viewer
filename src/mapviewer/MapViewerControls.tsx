@@ -4,6 +4,7 @@ import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useState } from "react";
 
 import { DownloadProgress } from "../rs/cache/CacheLoader";
+import { BrowserCacheLoader } from "../rs/cache/BrowserCacheLoader";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
 import { loadCacheFiles } from "../util/Caches";
@@ -294,7 +295,7 @@ export const MapViewerControls = memo(
                                 );
                                 if (v !== mapViewer.loadedCache.info.name && cacheInfo) {
                                     const [loadedCache, npcSpawns] = await Promise.all([
-                                        loadCacheFiles(cacheInfo, undefined, setDownloadProgress),
+                                        loadCacheFiles(new BrowserCacheLoader(), cacheInfo, undefined, setDownloadProgress),
                                         fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
                                     ]);
                                     mapViewer.npcSpawns = npcSpawns;

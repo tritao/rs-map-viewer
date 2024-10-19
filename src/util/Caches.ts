@@ -1,6 +1,6 @@
 import { CacheFiles } from "../rs/cache/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
-import { ProgressListener } from "../rs/cache/CacheLoader";
+import { CacheLoader, ProgressListener } from "../rs/cache/CacheLoader";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
 
 const CACHE_PATH = "/caches/";
@@ -48,6 +48,7 @@ export type LoadedCache = {
 };
 
 export async function loadCacheFiles(
+    loader: CacheLoader,
     info: CacheInfo,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
@@ -58,6 +59,7 @@ export async function loadCacheFiles(
 
     const cacheType = detectCacheType(info);
     const files = await CacheFiles.fetchFiles(
+        loader,
         cacheType,
         cachePath,
         info.name,

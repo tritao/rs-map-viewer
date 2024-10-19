@@ -5,6 +5,7 @@ import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { DownloadProgress } from "../rs/cache/CacheLoader";
+import { BrowserCacheLoader } from "../rs/cache/BrowserCacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { fetchCacheList, loadCacheFiles } from "../util/Caches";
@@ -56,7 +57,7 @@ function MapViewerApp() {
             }
 
             const [cache, objSpawns, npcSpawns] = await Promise.all([
-                loadCacheFiles(cacheInfo, abortController.signal, setDownloadProgress),
+                loadCacheFiles(new BrowserCacheLoader(), cacheInfo, abortController.signal, setDownloadProgress),
                 objSpawnsPromise,
                 fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
             ]);

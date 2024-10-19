@@ -10,3 +10,15 @@ export type CachedFile = {
     name: string;
     data: ArrayBuffer;
 };
+
+export interface CacheLoader {
+    fetchCachedFile(
+        baseUrl: string,
+        name: string,
+        shared: boolean,
+        incremental: boolean,
+        cache: Cache,
+        signal?: AbortSignal,
+        progressListener?: ProgressListener,
+    ): Promise<CachedFile>;
+}

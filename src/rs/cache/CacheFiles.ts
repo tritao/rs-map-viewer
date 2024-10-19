@@ -1,5 +1,4 @@
-import { CachedFile, ProgressListener } from "./CacheLoader";
-import { fetchCachedFile } from "./CacheLoaderFetch";
+import { CachedFile, CacheLoader, ProgressListener } from "./CacheLoader";
 import { CacheType } from "./CacheType";
 import { SectorCluster } from "./store/SectorCluster";
 
@@ -14,6 +13,7 @@ export class CacheFiles {
     static DAT_INDEX_COUNT: number = 5;
 
     static fetchFiles(
+        loader: CacheLoader,
         cacheType: CacheType,
         baseUrl: string,
         name: string,
@@ -23,16 +23,17 @@ export class CacheFiles {
     ): Promise<CacheFiles> {
         switch (cacheType) {
             case CacheType.Classic:
-                return CacheFiles.fetchLegacy(baseUrl, name, shared, signal, progressListener);
+                return CacheFiles.fetchLegacy(loader, baseUrl, name, shared, signal, progressListener);
             case CacheType.Dat:
-                return CacheFiles.fetchDat(baseUrl, name, shared, signal, progressListener);
+                return CacheFiles.fetchDat(loader, baseUrl, name, shared, signal, progressListener);
             case CacheType.Dat2:
-                return CacheFiles.fetchDat2(baseUrl, name, [], shared, signal, progressListener);
+                return CacheFiles.fetchDat2(loader, baseUrl, name, [], shared, signal, progressListener);
         }
         throw new Error("Not implemented");
     }
 
     static async getCacheAndFiles(
+        loader: CacheLoader,
         baseUrl: string,
         cacheName: string,
         fileNames: string[],
@@ -44,7 +45,7 @@ export class CacheFiles {
         const cache = await caches.open(cacheName);
 
         const filePromises = fileNames.map((name) =>
-            fetchCachedFile(baseUrl, name, shared, false, cache, signal, progressListener),
+            loader.fetchCachedFile(baseUrl, name, shared, false, cache, signal, progressListener),
         );
 
         const cachedFiles = await Promise.all(filePromises);
@@ -57,6 +58,7 @@ export class CacheFiles {
     }
 
     static async fetchLegacy(
+        loader: CacheLoader,
         baseUrl: string,
         cacheName: string,
         shared: boolean = false,
@@ -65,6 +67,7 @@ export class CacheFiles {
     ): Promise<CacheFiles> {
         const fileNames = ["models", "title", "config", "media", "textures"];
         const files = await CacheFiles.getCacheAndFiles(
+            loader,
             baseUrl,
             cacheName,
             fileNames,
@@ -76,10 +79,10 @@ export class CacheFiles {
         let mapNames: string[] = [];
         try {
             mapNames = await fetch(baseUrl + "maps.json").then((resp) => resp.json());
-        } catch (e) {}
+        } catch (e) { }
 
         for (const mapName of mapNames) {
-            const mapFile = await fetchCachedFile(
+            const mapFile = await loader.fetchCachedFile(
                 baseUrl,
                 "maps/" + mapName,
                 shared,
@@ -94,6 +97,7 @@ export class CacheFiles {
     }
 
     static async fetchDat(
+        loader: CacheLoader,
         baseUrl: string,
         cacheName: string,
         shared: boolean = false,
@@ -104,7 +108,7 @@ export class CacheFiles {
 
         const cache = await caches.open(cacheName);
 
-        const dataFilePromise = fetchCachedFile(
+        const dataFilePromise = loader.fetchCachedFile(
             baseUrl,
             CacheFiles.DAT_FILE_NAME,
             shared,
@@ -116,7 +120,7 @@ export class CacheFiles {
         const indexFilePromises: Promise<CachedFile>[] = [];
         for (let i = 0; i < CacheFiles.DAT_INDEX_COUNT; i++) {
             indexFilePromises.push(
-                fetchCachedFile(baseUrl, CacheFiles.INDEX_FILE_PREFIX + i, shared, false, cache),
+                loader.fetchCachedFile(baseUrl, CacheFiles.INDEX_FILE_PREFIX + i, shared, false, cache),
             );
         }
 
@@ -129,6 +133,7 @@ export class CacheFiles {
     }
 
     static async fetchDat2(
+        loader: CacheLoader,
         baseUrl: string,
         cacheName: string,
         indicesToLoad: number[] = [],
@@ -140,7 +145,7 @@ export class CacheFiles {
 
         const cache = await caches.open(cacheName);
 
-        const dataFilePromise = fetchCachedFile(
+        const dataFilePromise = loader.fetchCachedFile(
             baseUrl,
             CacheFiles.DAT2_FILE_NAME,
             shared,
@@ -149,7 +154,7 @@ export class CacheFiles {
             signal,
             progressListener,
         );
-        const metaFile = await fetchCachedFile(
+        const metaFile = await loader.fetchCachedFile(
             baseUrl,
             CacheFiles.META_FILE_NAME,
             shared,
@@ -163,7 +168,7 @@ export class CacheFiles {
         }
 
         const indexPromises = indicesToLoad.map((indexId) =>
-            fetchCachedFile(
+            loader.fetchCachedFile(
                 baseUrl,
                 CacheFiles.INDEX_FILE_PREFIX + indexId,
                 shared,
@@ -183,6 +188,6 @@ export class CacheFiles {
         return new CacheFiles(files);
     }
 
-    constructor(readonly files: Map<string, ArrayBuffer>) {}
+    constructor(readonly files: Map<string, ArrayBuffer>) { }
 }
 
