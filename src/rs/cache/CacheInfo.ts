@@ -25,40 +25,40 @@ export function getGameTypeFromName(name: string): GameType {
     }
 }
 
-export class CacheInfo {
-    constructor(
-        public name: string,
-        public game: GameType,
-        public environment: string,
-        public revision: number,
-        public timestamp: string,
-        public size: number,
-    ) {}
-}
+// export class CacheInfo {
+//     constructor(
+//         public name: string,
+//         public game: GameType,
+//         public environment: string,
+//         public revision: number,
+//         public timestamp: string,
+//         public size: number,
+//     ) {}
+// }
 
-export function sortCachesNewToOld(caches: Array<CacheInfo>): void {
-    caches.sort((a, b) => {
-        const isOsrsA = a.game === GameType.Oldschool;
-        const isOsrsB = b.game === GameType.Oldschool;
-        const isLiveA = a.environment === "live";
-        const isLiveB = b.environment === "live";
-        const dateA = Date.parse(a.timestamp);
-        const dateB = Date.parse(b.timestamp);
-        return (
-            (isOsrsB ? 1 : 0) - (isOsrsA ? 1 : 0) ||
-            (isLiveB ? 1 : 0) - (isLiveA ? 1 : 0) ||
-            b.revision - a.revision ||
-            dateB - dateA
-        );
-    });
-}
+// export function sortCachesNewToOld(caches: Array<CacheInfo>): void {
+//     caches.sort((a, b) => {
+//         const isOsrsA = a.game === GameType.Oldschool;
+//         const isOsrsB = b.game === GameType.Oldschool;
+//         const isLiveA = a.environment === "live";
+//         const isLiveB = b.environment === "live";
+//         const dateA = Date.parse(a.timestamp);
+//         const dateB = Date.parse(b.timestamp);
+//         return (
+//             (isOsrsB ? 1 : 0) - (isOsrsA ? 1 : 0) ||
+//             (isLiveB ? 1 : 0) - (isLiveA ? 1 : 0) ||
+//             b.revision - a.revision ||
+//             dateB - dateA
+//         );
+//     });
+// }
 
-export function getLatestCache(caches: Array<CacheInfo>): CacheInfo | null {
-    if (caches.length === 0) {
-        return null;
-    }
+// export function getLatestCache(caches: Array<CacheInfo>): CacheInfo | null {
+//     if (caches.length === 0) {
+//         return null;
+//     }
 
-    sortCachesNewToOld(caches);
+//     sortCachesNewToOld(caches);
 
-    return caches[0];
-}
+//     return caches[0];
+// }
