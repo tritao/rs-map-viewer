@@ -13,7 +13,7 @@ import { RenderDataWorker } from "./RenderDataWorker";
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
 function spawnWorker(): Promise<RenderDataWorkerThread> {
-    const worker = new Worker(new URL("./RenderDataWorker", import.meta.url));
+    const worker = new Worker(new URL("./RenderDataWorker", import.meta.url), { type: 'module' });
     return spawn<RenderDataWorker>(worker);
 }
 

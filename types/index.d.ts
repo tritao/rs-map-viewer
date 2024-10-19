@@ -9,3 +9,11 @@ declare type u32 = number;
 declare type usize = number;
 declare type f32 = number;
 declare type f64 = number;
+
+declare module "*.png" {
+    const value: string;
+    export default value;
+}
+
+declare module 'picogl/build/module/texture.js';
+declare module 'bzip2';
