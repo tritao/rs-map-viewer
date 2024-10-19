@@ -9,8 +9,6 @@ import {
     CacheLoaderFactory,
     getCacheLoaderFactory,
 } from "../rs/loaders/CacheLoaderFactory";
-// import { Bzip2 } from "../rs/compression/Bzip2";
-// import { Gzip } from "../rs/compression/Gzip";
 import { initCompressionHandler } from "../rs/compression/CompressionHandler";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
@@ -44,7 +42,6 @@ import { ConfigTypeDAT } from "../rs/cache/ConfigType";
 registerSerializer(renderDataLoaderSerializer);
 
 initCompressionHandler(new JSCompressionHandler());
-// const compressionPromise = Promise.all([Bzip2.initWasm(), Gzip.initWasm()]);
 const hasherPromise = Hasher.init();
 
 export type WorkerState = {
@@ -86,7 +83,6 @@ async function initWorker(
     objSpawns: ObjSpawn[],
     npcSpawns: NpcSpawn[],
 ): Promise<WorkerState> {
-    // await compressionPromise;
     await hasherPromise;
 
     const cacheSystem = CacheSystem.fromFiles(cache.type, cache.files);

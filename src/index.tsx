@@ -7,11 +7,6 @@ import MapViewerApp from "./mapviewer/MapViewerApp";
 import reportWebVitals from "./reportWebVitals";
 import { initCompressionHandler } from "./rs/compression/CompressionHandler";
 import { JSCompressionHandler } from "./rs/compression/JSCompressionHandler";
-// import { Bzip2 } from "./rs/compression/Bzip2";
-// import { Gzip } from "./rs/compression/Gzip";
-
-// Bzip2.initWasm();
-// Gzip.initWasm();
 
 initCompressionHandler(new JSCompressionHandler());
 
