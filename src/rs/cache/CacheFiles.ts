@@ -30,6 +30,30 @@ export class CacheFiles {
         throw new Error("Not implemented");
     }
 
+    static async getCacheAndFiles(
+        baseUrl: string,
+        cacheName: string,
+        fileNames: string[],
+        shared: boolean = false,
+        signal?: AbortSignal,
+        progressListener?: ProgressListener,
+    ): Promise<Map<string, ArrayBuffer>> {
+        const files = new Map<string, ArrayBuffer>();
+        const cache = await caches.open(cacheName);
+
+        const filePromises = fileNames.map((name) =>
+            fetchCachedFile(baseUrl, name, shared, false, cache, signal, progressListener),
+        );
+
+        const cachedFiles = await Promise.all(filePromises);
+
+        for (const file of cachedFiles) {
+            files.set(file.name, file.data);
+        }
+
+        return files;
+    }
+
     static async fetchLegacy(
         baseUrl: string,
         cacheName: string,
@@ -37,23 +61,14 @@ export class CacheFiles {
         signal?: AbortSignal,
         progressListener?: ProgressListener,
     ): Promise<CacheFiles> {
-        const files = new Map<string, ArrayBuffer>();
-
-        const cache = await caches.open(cacheName);
-
-        const modelsFilePromise = fetchCachedFile(
+        const fileNames = ["models", "title", "config", "media", "textures"];
+        const files = await CacheFiles.getCacheAndFiles(
             baseUrl,
-            "models",
+            cacheName,
+            fileNames,
             shared,
-            false,
-            cache,
             signal,
             progressListener,
-        );
-
-        const fileNames = ["title", "config", "media", "textures"];
-        const filePromises = fileNames.map((name) =>
-            fetchCachedFile(baseUrl, name, shared, false, cache, signal),
         );
 
         let mapNames: string[] = [];
@@ -62,15 +77,15 @@ export class CacheFiles {
         } catch (e) {}
 
         for (const mapName of mapNames) {
-            filePromises.push(
-                fetchCachedFile(baseUrl, "maps/" + mapName, shared, false, cache, signal),
+            const mapFile = await fetchCachedFile(
+                baseUrl,
+                "maps/" + mapName,
+                shared,
+                false,
+                await caches.open(cacheName),
+                signal,
             );
-        }
-
-        const cachedFiles = await Promise.all([modelsFilePromise, ...filePromises]);
-
-        for (const file of cachedFiles) {
-            files.set(file.name, file.data);
+            files.set(mapFile.name, mapFile.data);
         }
 
         return new CacheFiles(files);
