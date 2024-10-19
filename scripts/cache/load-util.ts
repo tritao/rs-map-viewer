@@ -1,13 +1,15 @@
 import fs from "fs";
 
-import { CacheList, LoadedCache, XteaMap } from "../../src/util/Caches";
+import { CacheInfoJson, CacheList, LoadedCache, XteaMap } from "../../src/util/Caches";
 import { CacheFiles } from "../../src/rs/cache/CacheFiles";
-import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
+import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");
-    return JSON.parse(json);
+    var infos: CacheInfoJson[] = JSON.parse(json);
+    return infos.map(info => new CacheInfo(info.name, getGameTypeFromName(info.game),
+        info.environment, info.revision, info.timestamp, info.size))
 }
 
 export function loadCacheList(caches: CacheInfo[]): CacheList {

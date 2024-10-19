@@ -7,10 +7,10 @@ import { LegacyIndexType, DatIndexType } from "./IndexType";
 import { MemoryStore } from "./store/MemoryStore";
 
 export class CacheSystem {
-    static loadIndicesFromStore(cacheType: CacheType, store: MemoryStore) {
+    static loadIndicesFromStore(cacheType: CacheType, store: MemoryStore): Array<CacheIndex | null> {
         return store.indexFiles.map((indexFile, id) => {
             if (!indexFile) {
-                return undefined;
+                return null;
             }
             if (cacheType === CacheType.Dat) {
                 return CacheIndexDat.fromStore(id, store, indexFile);
@@ -89,7 +89,7 @@ export class CacheSystem {
         throw new Error("Not implemented");
     }
 
-    constructor(readonly indices: (CacheIndex | undefined)[]) {}
+    constructor(readonly indices: (CacheIndex | null)[]) {}
 
     indexExists(indexId: number): boolean {
         return !!this.indices[indexId];

@@ -27,7 +27,7 @@ export class Archive {
         );
     }
 
-    static decodeOld(id: number, data: Int8Array, multipleFiles: boolean) {
+    static decodeOld(id: number, data: Int8Array, multipleFiles: boolean): Archive {
         const buffer = new ByteBuffer(data);
         const files = new Map<number, ArchiveFile>();
 
@@ -179,8 +179,8 @@ export class Archive {
 
     getFileId(name: string): number {
         const hash = this._hashFunction(name);
-
-        return this._fileNameHashIdMap.get(hash) ?? -1;
+        const value = this._fileNameHashIdMap.get(hash);
+        return value ? value : -1;
     }
 
     getFileNamed(name: string): ArchiveFile | null {
