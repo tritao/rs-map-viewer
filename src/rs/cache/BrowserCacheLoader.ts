@@ -15,10 +15,11 @@ export class BrowserCacheLoader implements CacheLoader {
         name: string,
         shared: boolean,
         incremental: boolean,
-        cache: Cache,
+        cacheName: string,
         signal?: AbortSignal,
         progressListener?: ProgressListener,
     ): Promise<CachedFile> {
+        const cache = await caches.open(cacheName);
         return fetchCachedFile(baseUrl, name, shared, incremental, cache, signal, progressListener)
     }
 }

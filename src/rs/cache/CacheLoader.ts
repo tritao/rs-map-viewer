@@ -28,7 +28,7 @@ export interface CacheLoader {
         name: string,
         shared: boolean,
         incremental: boolean,
-        cache: Cache,
+        cacheName: string,
         signal?: AbortSignal,
         progressListener?: ProgressListener,
     ): Promise<CachedFile>;

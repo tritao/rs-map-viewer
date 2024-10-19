@@ -32,31 +32,6 @@ export class CacheFiles {
         throw new Error("Not implemented");
     }
 
-    static async getCacheAndFiles(
-        loader: CacheLoader,
-        baseUrl: string,
-        cacheName: string,
-        fileNames: string[],
-        shared: boolean = false,
-        signal?: AbortSignal,
-        progressListener?: ProgressListener,
-    ): Promise<Map<string, ArrayBuffer>> {
-        const files = new Map<string, ArrayBuffer>();
-        const cache = await caches.open(cacheName);
-
-        const filePromises = fileNames.map((name) =>
-            loader.fetchCachedFile(baseUrl, name, shared, false, cache, signal, progressListener),
-        );
-
-        const cachedFiles = await Promise.all(filePromises);
-
-        for (const file of cachedFiles) {
-            files.set(file.name, file.data);
-        }
-
-        return files;
-    }
-
     static async fetchLegacy(
         loader: CacheLoader,
         baseUrl: string,
@@ -66,15 +41,17 @@ export class CacheFiles {
         progressListener?: ProgressListener,
     ): Promise<CacheFiles> {
         const fileNames = ["models", "title", "config", "media", "textures"];
-        const files = await CacheFiles.getCacheAndFiles(
-            loader,
-            baseUrl,
-            cacheName,
-            fileNames,
-            shared,
-            signal,
-            progressListener,
+        const files = new Map<string, ArrayBuffer>();
+
+        const filePromises = fileNames.map((name) =>
+            loader.fetchCachedFile(baseUrl, name, shared, false, cacheName, signal, progressListener),
         );
+
+        const cachedFiles = await Promise.all(filePromises);
+
+        for (const file of cachedFiles) {
+            files.set(file.name, file.data);
+        }
 
         let mapNames: string[] = [];
         try {
@@ -87,7 +64,7 @@ export class CacheFiles {
                 "maps/" + mapName,
                 shared,
                 false,
-                await caches.open(cacheName),
+                cacheName,
                 signal,
             );
             files.set(mapFile.name, mapFile.data);
@@ -106,21 +83,19 @@ export class CacheFiles {
     ): Promise<CacheFiles> {
         const files = new Map<string, ArrayBuffer>();
 
-        const cache = await caches.open(cacheName);
-
         const dataFilePromise = loader.fetchCachedFile(
             baseUrl,
             CacheFiles.DAT_FILE_NAME,
             shared,
             true,
-            cache,
+            cacheName,
             signal,
             progressListener,
         );
         const indexFilePromises: Promise<CachedFile>[] = [];
         for (let i = 0; i < CacheFiles.DAT_INDEX_COUNT; i++) {
             indexFilePromises.push(
-                loader.fetchCachedFile(baseUrl, CacheFiles.INDEX_FILE_PREFIX + i, shared, false, cache),
+                loader.fetchCachedFile(baseUrl, CacheFiles.INDEX_FILE_PREFIX + i, shared, false, cacheName),
             );
         }
 
@@ -143,14 +118,12 @@ export class CacheFiles {
     ): Promise<CacheFiles> {
         const files = new Map<string, ArrayBuffer>();
 
-        const cache = await caches.open(cacheName);
-
         const dataFilePromise = loader.fetchCachedFile(
             baseUrl,
             CacheFiles.DAT2_FILE_NAME,
             shared,
             true,
-            cache,
+            cacheName,
             signal,
             progressListener,
         );
@@ -159,7 +132,7 @@ export class CacheFiles {
             CacheFiles.META_FILE_NAME,
             shared,
             false,
-            cache,
+            cacheName,
         );
         const indexCount = metaFile.data.byteLength / SectorCluster.SIZE;
 
@@ -173,7 +146,7 @@ export class CacheFiles {
                 CacheFiles.INDEX_FILE_PREFIX + indexId,
                 shared,
                 false,
-                cache,
+                cacheName,
             ).catch(console.error),
         );
 
