@@ -12,10 +12,15 @@ export class DownloadProgress {
 
 export type ProgressListener = (progress: DownloadProgress) => void;
 
-export type CachedFile = {
+export class CachedFile {
     name: string;
     data: ArrayBuffer;
-};
+
+    constructor(name: string, data: ArrayBuffer) {
+        this.name = name;
+        this.data = data;
+    }
+}
 
 export interface CacheLoader {
     fetchCachedFile(
