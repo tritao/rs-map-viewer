@@ -50,6 +50,7 @@
     "lint": "prettier --write \"./**/*.{js,ts,jsx,tsx,css,md}\"",
     "prepare": "husky install",
     "download-caches": "node scripts/download-caches.js",
+    "rs:layer-check": "node scripts/rs-layer-check.mjs",
     "export-textures": "npx ts-node scripts/cache/export-textures.ts"
   },
   "eslintConfig": {

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "root": "src/rs",
+  "grouping": "top-level-folder",
+  "rules": [
+    {
+      "from": "loaders",
+      "to": "runtime",
+      "action": "forbid",
+      "reason": "Keep orchestration one-way: runtime may depend on loaders, but loaders must not depend back on runtime."
+    },
+    {
+      "from": "model",
+      "to": "scene",
+      "action": "forbid",
+      "reason": "Core model types should not depend on scene/rendering abstractions."
+    },
+    {
+      "from": "map",
+      "to": "scene",
+      "action": "forbid",
+      "reason": "Map loading/indexing should not depend on scene; keep rendering in a higher layer."
+    },
+    {
+      "from": "config",
+      "to": "model",
+      "action": "forbid",
+      "reason": "Config/type decoding should not pull in model construction; move model-building services elsewhere."
+    },
+    {
+      "from": "config",
+      "to": "scene",
+      "action": "forbid",
+      "reason": "Config/type decoding should not depend on scene."
+    }
+  ]
+}
