@@ -1,8 +1,8 @@
 import { GameType } from "../../cache/CacheInfo";
+import { ObjTypeLoader } from "../../config/objtype/ObjTypeLoader";
 import { Model } from "../../model/Model";
 import { ModelLoader } from "../../model/ModelLoader";
 import { TextureLoader } from "../../texture/TextureLoader";
-import { ObjTypeLoader } from "./ObjTypeLoader";
 
 export class ObjModelLoader {
     modelCache: Map<number, Model>;

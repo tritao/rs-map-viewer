@@ -1,6 +1,6 @@
 import { COSINE, SINE } from "../MathConstants";
 import { ByteBuffer } from "../io/ByteBuffer";
-import { Entity } from "../scene/entity/Entity";
+import { Entity } from "../core/Entity";
 import { TextureLoader } from "../texture/TextureLoader";
 import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";

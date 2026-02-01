@@ -1,15 +1,15 @@
 import { GameType } from "../../cache/CacheInfo";
+import { LocModelType } from "../../config/loctype/LocModelType";
+import { LocType } from "../../config/loctype/LocType";
+import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
+import { SeqType } from "../../config/seqtype/SeqType";
+import { SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
 import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
 import { TextureLoader } from "../../texture/TextureLoader";
-import { SeqType } from "../seqtype/SeqType";
-import { SeqTypeLoader } from "../seqtype/SeqTypeLoader";
-import { LocModelType } from "./LocModelType";
-import { LocType } from "./LocType";
-import { LocTypeLoader } from "./LocTypeLoader";
 
 export type ContourGroundInfo = {
     type: number;

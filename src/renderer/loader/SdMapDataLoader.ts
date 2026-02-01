@@ -1,9 +1,9 @@
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { ContourGroundInfo, LocModelLoader } from "../../rs/config/loctype/LocModelLoader";
+import { ContourGroundInfo, LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { LocType } from "../../rs/config/loctype/LocType";
-import { NpcModelLoader } from "../../rs/config/npctype/NpcModelLoader";
+import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { NpcType } from "../../rs/config/npctype/NpcType";
-import { ObjModelLoader } from "../../rs/config/objtype/ObjModelLoader";
+import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { VarManager } from "../../rs/config/vartype/VarManager";
 import { Model } from "../../rs/model/Model";
 import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";

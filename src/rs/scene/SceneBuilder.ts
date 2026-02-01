@@ -1,7 +1,6 @@
 import { NpcSpawn } from "../../data/npc/NpcSpawn";
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { FloorTypeLoader, OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
-import { ContourGroundInfo, LocModelLoader } from "../config/loctype/LocModelLoader";
 import { LocModelType } from "../config/loctype/LocModelType";
 import { LocType } from "../config/loctype/LocType";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
@@ -17,6 +16,7 @@ import { SceneTileModel } from "./SceneTileModel";
 import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
 import { LocEntity } from "./entity/LocEntity";
+import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
 
 export enum LocLoadType {
     MODELS,

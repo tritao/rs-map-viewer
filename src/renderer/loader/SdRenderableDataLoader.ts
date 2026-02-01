@@ -1,6 +1,6 @@
-import { LocModelLoader } from "../../rs/config/loctype/LocModelLoader";
+import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { LocType } from "../../rs/config/loctype/LocType";
-import { ObjModelLoader } from "../../rs/config/objtype/ObjModelLoader";
+import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { Model } from "../../rs/model/Model";
 import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
@@ -28,7 +28,7 @@ import { SdRenderableLoaderInput } from "./SdRenderableLoaderInput";
 import { SdRenderableData, SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
 import { NpcData } from "../npc/NpcData";
 import { NpcType } from "../../rs/config/npctype/NpcType";
-import { NpcModelLoader } from "../../rs/config/npctype/NpcModelLoader";
+import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { RenderableType } from "../Renderer";
 
 function createModelGroups(

@@ -1,8 +1,11 @@
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheType } from "../../cache/CacheType";
 import { ByteBuffer } from "../../io/ByteBuffer";
-import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
 import { Type } from "../Type";
+
+export type SeqFrameLengthLoader = {
+    load(id: number): { frameLength: number } | undefined;
+};
 
 export class SeqSoundEffect {
     constructor(
@@ -66,7 +69,7 @@ export class SeqType extends Type {
         this.op14 = false;
     }
 
-    getFrameLength(seqFrameLoader: SeqFrameLoader, frame: number): number {
+    getFrameLength(seqFrameLoader: SeqFrameLengthLoader, frame: number): number {
         let frameLength = this.frameLengths[frame];
 
         if (this.cacheType === CacheType.Legacy || this.cacheType === CacheType.Dat) {

@@ -1,7 +1,7 @@
 import { mat4, vec3 } from "gl-matrix";
 
 import { COSINE, SINE } from "../MathConstants";
-import { Entity } from "../scene/entity/Entity";
+import { Entity } from "../core/Entity";
 import { ModelData } from "./ModelData";
 import { SeqBase } from "./seq/SeqBase";
 import { SeqFrame } from "./seq/SeqFrame";

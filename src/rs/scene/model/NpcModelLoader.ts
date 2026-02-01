@@ -1,15 +1,15 @@
 import { GameType } from "../../cache/CacheInfo";
+import { NpcType } from "../../config/npctype/NpcType";
+import { NpcTypeLoader } from "../../config/npctype/NpcTypeLoader";
+import { SeqType } from "../../config/seqtype/SeqType";
+import { SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
+import { VarManager } from "../../config/vartype/VarManager";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
 import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
 import { TextureLoader } from "../../texture/TextureLoader";
-import { SeqType } from "../seqtype/SeqType";
-import { SeqTypeLoader } from "../seqtype/SeqTypeLoader";
-import { VarManager } from "../vartype/VarManager";
-import { NpcType } from "./NpcType";
-import { NpcTypeLoader } from "./NpcTypeLoader";
 
 export class NpcModelLoader {
     modelCache: Map<number, Model>;

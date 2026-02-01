@@ -24,15 +24,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-import { LocModelType } from "../config/loctype/LocModelType";
-import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
-import { Rasterizer3D } from "../graphics/Rasterizer3D";
-import { Scene, TILE_FLAGS_BRIDGE } from "../scene/Scene";
-import { getIdFromTag, isEntityInteractive } from "../scene/entity/EntityTag";
-import { IndexedSprite } from "../sprite/IndexedSprite";
-import { SpritePixels } from "../sprite/SpritePixels";
-import { TextureLoader } from "../texture/TextureLoader";
-import { INVALID_HSL_COLOR } from "../util/ColorUtil";
+import { LocModelType } from "../../config/loctype/LocModelType";
+import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
+import { Rasterizer3D } from "../../graphics/Rasterizer3D";
+import { IndexedSprite } from "../../sprite/IndexedSprite";
+import { SpritePixels } from "../../sprite/SpritePixels";
+import { TextureLoader } from "../../texture/TextureLoader";
+import { INVALID_HSL_COLOR } from "../../util/ColorUtil";
+import { Scene, TILE_FLAGS_BRIDGE } from "../../scene/Scene";
+import { getIdFromTag, isEntityInteractive } from "../../scene/entity/EntityTag";
 
 const tileShape2D = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
