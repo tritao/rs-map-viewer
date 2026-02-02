@@ -3,10 +3,10 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class MandelbrotOperation extends TextureOperation {
-    field0 = 1365;
-    field1 = 20;
-    field2 = 0;
-    field3 = 0;
+    zoomQ12 = 1365;
+    maxIterations = 20;
+    centerXQ12 = 0;
+    centerYQ12 = 0;
 
     constructor() {
         super(0, true);
@@ -14,13 +14,13 @@ export class MandelbrotOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.field0 = buffer.readUnsignedShort();
+            this.zoomQ12 = buffer.readUnsignedShort();
         } else if (field === 1) {
-            this.field1 = buffer.readUnsignedShort();
+            this.maxIterations = buffer.readUnsignedShort();
         } else if (field === 2) {
-            this.field2 = buffer.readUnsignedShort();
+            this.centerXQ12 = buffer.readUnsignedShort();
         } else if (field === 3) {
-            this.field3 = buffer.readUnsignedShort();
+            this.centerYQ12 = buffer.readUnsignedShort();
         }
     }
 
@@ -31,25 +31,29 @@ export class MandelbrotOperation extends TextureOperation {
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
             for (let x = 0; x < textureGenerator.width; x++) {
-                const local42 =
-                    (this.field2 + (textureGenerator.horizontalGradient[x] << 12) / this.field0) |
+                const cReQ12 =
+                    (this.centerXQ12 +
+                        (textureGenerator.horizontalGradient[x] << 12) / this.zoomQ12) |
                     0;
-                const local54 =
-                    (this.field3 + (textureGenerator.verticalGradient[line] << 12) / this.field0) |
+                const cImQ12 =
+                    (this.centerYQ12 +
+                        (textureGenerator.verticalGradient[line] << 12) / this.zoomQ12) |
                     0;
-                let local58 = local54;
-                let local60 = local42;
-                let local64 = 0;
-                let local70 = (local42 * local42) >> 12;
-                let local76 = (local54 * local54) >> 12;
-                while (local70 + local76 < 16384 && local64 < this.field1) {
-                    local64++;
-                    local58 = local54 + ((local58 * local60) >> 12) * 2;
-                    local60 = local42 + local70 - local76;
-                    local76 = (local58 * local58) >> 12;
-                    local70 = (local60 * local60) >> 12;
+
+                let zImQ12 = cImQ12;
+                let zReQ12 = cReQ12;
+                let iter = 0;
+                let zReSqQ12 = (cReQ12 * cReQ12) >> 12;
+                let zImSqQ12 = (cImQ12 * cImQ12) >> 12;
+                while (zReSqQ12 + zImSqQ12 < 16384 && iter < this.maxIterations) {
+                    iter++;
+                    zImQ12 = cImQ12 + ((zImQ12 * zReQ12) >> 12) * 2;
+                    zReQ12 = cReQ12 + zReSqQ12 - zImSqQ12;
+                    zImSqQ12 = (zImQ12 * zImQ12) >> 12;
+                    zReSqQ12 = (zReQ12 * zReQ12) >> 12;
                 }
-                output[x] = local64 >= this.field1 - 1 ? 0 : ((local64 << 12) / this.field1) | 0;
+                output[x] =
+                    iter >= this.maxIterations - 1 ? 0 : ((iter << 12) / this.maxIterations) | 0;
             }
         }
         return output;
