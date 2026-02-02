@@ -3,7 +3,7 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class MonochromeEdgeDetectorOperation extends TextureOperation {
-    multiplier: number = 4096;
+    strengthQ12: number = 4096;
 
     constructor() {
         super(1, true);
@@ -11,7 +11,7 @@ export class MonochromeEdgeDetectorOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.multiplier = buffer.readUnsignedShort();
+            this.strengthQ12 = buffer.readUnsignedShort();
         }
     }
 
@@ -33,18 +33,19 @@ export class MonochromeEdgeDetectorOperation extends TextureOperation {
                 (line + 1) & textureGenerator.heightMask,
             );
             for (let x = 0; x < textureGenerator.width; x++) {
-                const dy = this.multiplier * (nextInput[x] - prevInput[x]);
-                const dx =
-                    this.multiplier *
+                const dyScaled = this.strengthQ12 * (nextInput[x] - prevInput[x]);
+                const dxScaled =
+                    this.strengthQ12 *
                     (input[(x + 1) & textureGenerator.widthMask] -
                         input[(x - 1) & textureGenerator.widthMask]);
-                const dx0 = dx >> 12;
-                const dy0 = dy >> 12;
-                const dySquared = (dy0 * dy0) >> 12;
-                const dxSquared = (dx0 * dx0) >> 12;
-                const local117 = (Math.sqrt((dySquared + dxSquared + 4096) / 4096.0) * 4096.0) | 0;
-                const local128 = local117 === 0 ? 0 : (16777216 / local117) | 0;
-                output[x] = 4096 - local128;
+                const dxQ12 = dxScaled >> 12;
+                const dyQ12 = dyScaled >> 12;
+                const dySquaredQ12 = (dyQ12 * dyQ12) >> 12;
+                const dxSquaredQ12 = (dxQ12 * dxQ12) >> 12;
+                const normalizerQ12 =
+                    (Math.sqrt((dySquaredQ12 + dxSquaredQ12 + 4096) / 4096.0) * 4096.0) | 0;
+                const invNormalizerQ24 = normalizerQ12 === 0 ? 0 : (16777216 / normalizerQ12) | 0;
+                output[x] = 4096 - invNormalizerQ24;
             }
         }
         return output;
