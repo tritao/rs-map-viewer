@@ -12,6 +12,7 @@ import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
 import { generateHeight } from "../util/HeightCalc";
 import { CollisionMap } from "./CollisionMap";
+import { packLocPlacement } from "./LocPlacementFlag";
 import { Scene, TileRenderFlag } from "./Scene";
 import { SceneTileModel } from "./SceneTileModel";
 import { Entity } from "./entity/Entity";
@@ -473,7 +474,7 @@ export class SceneBuilder {
             id,
         );
 
-        let flags = (rotation << 6) | type;
+        let flags = packLocPlacement(type, rotation);
         if (locType.supportItems === 1) {
             flags += 256;
         }

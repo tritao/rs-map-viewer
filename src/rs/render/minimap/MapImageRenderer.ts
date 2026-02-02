@@ -31,6 +31,7 @@ import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpritePixels } from "../../sprite/SpritePixels";
 import { TextureLoader } from "../../texture/TextureLoader";
 import { INVALID_HSL_COLOR } from "../../util/ColorUtil";
+import { getLocPlacementRotation, getLocPlacementType } from "../../scene/LocPlacementFlag";
 import { Scene, TileRenderFlag } from "../../scene/Scene";
 import { getIdFromTag, isEntityInteractive } from "../../scene/entity/EntityTag";
 
@@ -362,8 +363,8 @@ export class MapImageRenderer {
         const wallTag = scene.getWallTag(level, tileX, tileY);
         if (wallTag !== 0n) {
             const locFlags = scene.getLocFlags(level, tileX, tileY, wallTag);
-            const rotation = (locFlags >> 6) & 0x3;
-            const type = locFlags & 0x1f;
+            const rotation = getLocPlacementRotation(locFlags);
+            const type = getLocPlacementType(locFlags);
 
             const locId = getIdFromTag(wallTag);
             const locType = this.locTypeLoader.load(locId);
@@ -447,8 +448,8 @@ export class MapImageRenderer {
         const locTag = scene.getLocTag(level, tileX, tileY);
         if (locTag !== 0n) {
             const locFlags = scene.getLocFlags(level, tileX, tileY, locTag);
-            const rotation = (locFlags >> 6) & 0x3;
-            const type = locFlags & 0x1f;
+            const rotation = getLocPlacementRotation(locFlags);
+            const type = getLocPlacementType(locFlags);
 
             const locId = getIdFromTag(locTag);
             const locType = this.locTypeLoader.load(locId);
