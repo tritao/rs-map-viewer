@@ -41,88 +41,131 @@ import { VoronoiNoiseOperation } from "./VoronoiNoiseOperation";
 import { WavyCrossOperation } from "./WavyCrossOperation";
 import { WeaveOperation } from "./WeaveOperation";
 
+export enum TextureOperationTypeId {
+    ConstantMonochrome = 0,
+    ConstantColour = 1,
+    HorizontalGradient = 2,
+    VerticalGradient = 3,
+    Bricks = 4,
+    Blur = 5,
+    Clamp = 6,
+    Arithmetic = 7,
+    Curve = 8,
+    Mirror = 9,
+    Gradient = 10,
+    ColourStrip = 11,
+    DiagonalGradient = 12,
+    PseudoRandomNoise = 13,
+    Weave = 14,
+    VoronoiNoise = 15,
+    Herringbone = 16,
+    Hsl = 17,
+    TilingSprite = 18,
+    TrigWarp = 19,
+    Tiling = 20,
+    Lerp = 21,
+    Invert = 22,
+    Kaleidoscope = 23,
+    GrayScale = 24,
+    Brightness = 25,
+    RangeThreshold = 26,
+    SquareWaveform = 27,
+    IrregularBricks = 28,
+    ShapeRasterizer = 29,
+    Range = 30,
+    Mandelbrot = 31,
+    Emboss = 32,
+    NormalMap = 33,
+    PerlinNoise = 34,
+    MonochromeEdgeDetector = 35,
+    TextureSource = 36,
+    WavyCross = 37,
+    LineNoise = 38,
+    SpriteSource = 39,
+}
+
 export class TextureOperationFactory {
-    static instantiate(typeId: number): TextureOperation {
+    static instantiate(typeId: TextureOperationTypeId): TextureOperation {
         switch (typeId) {
-            case 0:
+            case TextureOperationTypeId.ConstantMonochrome:
                 return new ConstantMonochromeOperation();
-            case 1:
+            case TextureOperationTypeId.ConstantColour:
                 return new ConstantColourOperation();
-            case 2:
+            case TextureOperationTypeId.HorizontalGradient:
                 return new HorizontalGradientOperation();
-            case 3:
+            case TextureOperationTypeId.VerticalGradient:
                 return new VerticalGradientOperation();
-            case 4:
+            case TextureOperationTypeId.Bricks:
                 return new BricksOperation();
-            case 5:
+            case TextureOperationTypeId.Blur:
                 return new BlurOperation();
-            case 6:
+            case TextureOperationTypeId.Clamp:
                 return new ClampOperation();
-            case 7:
+            case TextureOperationTypeId.Arithmetic:
                 return new ArithmeticOperation();
-            case 8:
+            case TextureOperationTypeId.Curve:
                 return new CurveOperation();
-            case 9:
+            case TextureOperationTypeId.Mirror:
                 return new MirrorOperation();
-            case 10:
+            case TextureOperationTypeId.Gradient:
                 return new GradientOperation();
-            case 11:
+            case TextureOperationTypeId.ColourStrip:
                 return new ColourStripOperation();
-            case 12:
+            case TextureOperationTypeId.DiagonalGradient:
                 return new DiagonalGradientOperation();
-            case 13:
+            case TextureOperationTypeId.PseudoRandomNoise:
                 return new PseudoRandomNoiseOperation();
-            case 14:
+            case TextureOperationTypeId.Weave:
                 return new WeaveOperation();
-            case 15:
+            case TextureOperationTypeId.VoronoiNoise:
                 return new VoronoiNoiseOperation();
-            case 16:
+            case TextureOperationTypeId.Herringbone:
                 return new HerringboneOperation();
-            case 17:
+            case TextureOperationTypeId.Hsl:
                 return new HslOperation();
-            case 18:
+            case TextureOperationTypeId.TilingSprite:
                 return new TilingSpriteOperation();
-            case 19:
+            case TextureOperationTypeId.TrigWarp:
                 return new TrigWarpOperation();
-            case 20:
+            case TextureOperationTypeId.Tiling:
                 return new TilingOperation();
-            case 21:
+            case TextureOperationTypeId.Lerp:
                 return new LerpOperation();
-            case 22:
+            case TextureOperationTypeId.Invert:
                 return new InvertOperation();
-            case 23:
+            case TextureOperationTypeId.Kaleidoscope:
                 return new KaleidoscopeOperation();
-            case 24:
+            case TextureOperationTypeId.GrayScale:
                 return new GrayScaleOperation();
-            case 25:
+            case TextureOperationTypeId.Brightness:
                 return new BrightnessOperation();
-            case 26:
+            case TextureOperationTypeId.RangeThreshold:
                 return new RangeThresholdOperation();
-            case 27:
+            case TextureOperationTypeId.SquareWaveform:
                 return new SquareWaveformOperation();
-            case 28:
+            case TextureOperationTypeId.IrregularBricks:
                 return new IrregularBricksOperation();
-            case 29:
+            case TextureOperationTypeId.ShapeRasterizer:
                 return new ShapeRasterizerOperation();
-            case 30:
+            case TextureOperationTypeId.Range:
                 return new RangeOperation();
-            case 31:
+            case TextureOperationTypeId.Mandelbrot:
                 return new MandelbrotOperation();
-            case 32:
+            case TextureOperationTypeId.Emboss:
                 return new EmbossOperation();
-            case 33:
+            case TextureOperationTypeId.NormalMap:
                 return new NormalMapOperation();
-            case 34:
+            case TextureOperationTypeId.PerlinNoise:
                 return new PerlinNoiseOperation();
-            case 35:
+            case TextureOperationTypeId.MonochromeEdgeDetector:
                 return new MonochromeEdgeDetectorOperation();
-            case 36:
+            case TextureOperationTypeId.TextureSource:
                 return new TextureSourceOperation();
-            case 37:
+            case TextureOperationTypeId.WavyCross:
                 return new WavyCrossOperation();
-            case 38:
+            case TextureOperationTypeId.LineNoise:
                 return new LineNoiseOperation();
-            case 39:
+            case TextureOperationTypeId.SpriteSource:
                 return new SpriteSourceOperation();
             default:
                 throw new Error("Unknown texture operation: " + typeId);
@@ -131,7 +174,7 @@ export class TextureOperationFactory {
 
     static create(buffer: ByteBuffer): TextureOperation {
         const operationId = buffer.readUnsignedByte();
-        const typeId = buffer.readUnsignedByte();
+        const typeId = buffer.readUnsignedByte() as TextureOperationTypeId;
         // console.log("type", typeId, "id", operationId);
         const operation = TextureOperationFactory.instantiate(typeId);
         operation.operationId = operationId;
