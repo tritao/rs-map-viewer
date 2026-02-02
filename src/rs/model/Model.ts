@@ -103,10 +103,10 @@ export class Model extends Entity {
     yMidOffset: number;
     zMidOffset: number;
 
-    field2494!: number;
-    field2495!: number;
-    field2479!: number;
-    field2474!: number;
+    overrideHue!: number;
+    overrideSaturation!: number;
+    overrideLightness!: number;
+    overrideAmount!: number;
 
     contourHeight: number = 0;
 
