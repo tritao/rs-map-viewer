@@ -48,8 +48,8 @@ export class SpriteSourceOperation extends TextureOperation {
                 }
             } else {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                    const i_9_ = ((this.width * pixel) / textureGenerator.width) | 0;
-                    const value = this.pixels[offset + i_9_];
+                    const srcX = ((this.width * pixel) / textureGenerator.width) | 0;
+                    const value = this.pixels[offset + srcX];
                     outputB[pixel] = (value << 4) & 0xff0;
                     outputG[pixel] = (value & 0xff00) >> 4;
                     outputR[pixel] = (value >> 12) & 0xff0;

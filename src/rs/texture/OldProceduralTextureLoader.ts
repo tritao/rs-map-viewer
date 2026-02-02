@@ -195,11 +195,11 @@ class ProceduralTextureDefinition {
         if (this.unused === 0xff) {
             this.unused = 256;
         }
-        const i_23_ = buffer.readUnsignedByte();
-        const i_24_ = buffer.readUnsignedByte();
-        this.animDirU = (i_23_ >> 6) & 0x3;
-        this.animDirV = (i_24_ >> 6) & 0x3;
-        this.animSpeed = (i_24_ & 0x3f) - 6;
+        const animUFlags = buffer.readUnsignedByte();
+        const animVFlags = buffer.readUnsignedByte();
+        this.animDirU = (animUFlags >> 6) & 0x3;
+        this.animDirV = (animVFlags >> 6) & 0x3;
+        this.animSpeed = (animVFlags & 0x3f) - 6;
         buffer.readUnsignedByte();
         buffer.readUnsignedByte();
     }

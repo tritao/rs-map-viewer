@@ -20,7 +20,6 @@ export class Scene {
     static readonly UNITS_LEVEL_HEIGHT = 240;
     static readonly UNITS_TILE_HEIGHT_BASIS = 8;
 
-
     // Tiles
     tiles: SceneTile[][][];
     collisionMaps: CollisionMap[];
@@ -343,7 +342,9 @@ export class Scene {
         const HEIGHT_SCALE = 65536;
 
         const lightMagnitude =
-            Math.sqrt(LIGHT_DIR_X * LIGHT_DIR_X + LIGHT_DIR_Y * LIGHT_DIR_Y + LIGHT_DIR_Z * LIGHT_DIR_Z) | 0;
+            Math.sqrt(
+                LIGHT_DIR_X * LIGHT_DIR_X + LIGHT_DIR_Y * LIGHT_DIR_Y + LIGHT_DIR_Z * LIGHT_DIR_Z,
+            ) | 0;
         const lightIntensity = (lightMagnitude * LIGHT_INTENSITY_FACTOR) >> 8;
 
         for (let x = 1; x < this.sizeX - 1; x++) {
@@ -359,8 +360,9 @@ export class Scene {
                     this.tileHeights[level][x][y + 1] - this.tileHeights[level][x][y - 1];
 
                 const tileNormalLength =
-                    Math.sqrt(heightDeltaY * heightDeltaY + heightDeltaX * heightDeltaX + HEIGHT_SCALE) |
-                    0;
+                    Math.sqrt(
+                        heightDeltaY * heightDeltaY + heightDeltaX * heightDeltaX + HEIGHT_SCALE,
+                    ) | 0;
 
                 const normalizedTileNormalX = ((heightDeltaX << 8) / tileNormalLength) | 0;
                 const normalizedTileNormalY = (HEIGHT_SCALE / tileNormalLength) | 0;
@@ -380,20 +382,22 @@ export class Scene {
                 //  L: Normalized direction vector from the point to the light source.
                 //  (N dot L): Dot product between the surface normal vector and the light direction vector.
 
-                const dot = (normalizedTileNormalX * LIGHT_DIR_X + normalizedTileNormalY * LIGHT_DIR_Y +
-                    normalizedTileNormalZ * LIGHT_DIR_Z);
+                const dot =
+                    normalizedTileNormalX * LIGHT_DIR_X +
+                    normalizedTileNormalY * LIGHT_DIR_Y +
+                    normalizedTileNormalZ * LIGHT_DIR_Z;
                 const sunLight = (dot / lightIntensity + LIGHT_INTENSITY_BASE) | 0;
 
                 // Now that we have the computed light contribution, take light occlusion from other objects
                 // into account. These tile light occlusions are computed dinamically based on walls, roofs
                 // and floors from neighbour tiles.
-                const lightOcclusion =
-                    ignoreTileLightOcclusion ? 0 :
-                        (this.tileLightOcclusions[level][x - 1][y] >> 2) +
-                        (this.tileLightOcclusions[level][x][y - 1] >> 2) +
-                        (this.tileLightOcclusions[level][x + 1][y] >> 3) +
-                        (this.tileLightOcclusions[level][x][y + 1] >> 3) +
-                        (this.tileLightOcclusions[level][x][y] >> 1);
+                const lightOcclusion = ignoreTileLightOcclusion
+                    ? 0
+                    : (this.tileLightOcclusions[level][x - 1][y] >> 2) +
+                      (this.tileLightOcclusions[level][x][y - 1] >> 2) +
+                      (this.tileLightOcclusions[level][x + 1][y] >> 3) +
+                      (this.tileLightOcclusions[level][x][y + 1] >> 3) +
+                      (this.tileLightOcclusions[level][x][y] >> 1);
 
                 lights[x][y] = sunLight - lightOcclusion;
             }
@@ -411,7 +415,10 @@ export class Scene {
     getTileMinLevel(level: number, tileX: number, tileY: number): number {
         if ((this.tileRenderFlags[level][tileX][tileY] & 0x8) !== 0) {
             return 0;
-        } else if (level > 0 && (this.tileRenderFlags[level][tileX][tileY] & TILE_FLAGS_BRIDGE) !== 0) {
+        } else if (
+            level > 0 &&
+            (this.tileRenderFlags[level][tileX][tileY] & TILE_FLAGS_BRIDGE) !== 0
+        ) {
             return level - 1;
         } else {
             return level;
@@ -461,13 +468,13 @@ export class Scene {
         }
         const rx = x & (tileSize - 1);
         const rz = z & (tileSize - 1);
-        const i_10_ =
+        const heightZ0 =
             ((tileSize - rx) * heights[tileX][tileY] + heights[1 + tileX][tileY] * rx) >>
             tileSizeShift;
-        const i_11_ =
+        const heightZ1 =
             (heights[tileX][1 + tileY] * (-rx + tileSize) + heights[tileX + 1][1 + tileY] * rx) >>
             tileSizeShift;
-        return (rz * i_11_ + (-rz + tileSize) * i_10_) >> tileSizeShift;
+        return (rz * heightZ1 + (-rz + tileSize) * heightZ0) >> tileSizeShift;
     }
 
     getCenterHeight(level: number, tileX: number, tileY: number): number {

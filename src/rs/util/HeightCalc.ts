@@ -1,8 +1,8 @@
 import { COSINE } from "../MathConstants";
 
-function interpolate(i: number, i_4_: number, i_5_: number, freq: number): number {
-    const i_8_ = (65536 - COSINE[(i_5_ * 1024) / freq]) >> 1;
-    return ((i_8_ * i_4_) >> 16) + (((65536 - i_8_) * i) >> 16);
+function interpolate(a: number, b: number, t: number, freq: number): number {
+    const weightB = (65536 - COSINE[(t * 1024) / freq]) >> 1;
+    return ((weightB * b) >> 16) + (((65536 - weightB) * a) >> 16);
 }
 
 function noise(x: number, y: number): number {

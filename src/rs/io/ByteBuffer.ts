@@ -104,12 +104,12 @@ export class ByteBuffer {
 
     readSmart3(): number {
         let i = 0;
-        let i_33_ = this.readUnsignedSmart();
-        while (i_33_ === 32767) {
-            i_33_ = this.readUnsignedSmart();
+        let delta = this.readUnsignedSmart();
+        while (delta === 32767) {
+            delta = this.readUnsignedSmart();
             i += 32767;
         }
-        i += i_33_;
+        i += delta;
         return i;
     }
 
