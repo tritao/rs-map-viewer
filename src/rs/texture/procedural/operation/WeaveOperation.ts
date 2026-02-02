@@ -3,7 +3,7 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class WeaveOperation extends TextureOperation {
-    thickness = 585;
+    strandHalfThicknessQ12 = 585;
 
     constructor() {
         super(0, true);
@@ -11,7 +11,7 @@ export class WeaveOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.thickness = buffer.readUnsignedShort();
+            this.strandHalfThicknessQ12 = buffer.readUnsignedShort();
         }
     }
 
@@ -21,38 +21,48 @@ export class WeaveOperation extends TextureOperation {
         }
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
-            const gradV = textureGenerator.verticalGradient[line];
+            const yQ12 = textureGenerator.verticalGradient[line];
+            const denomQ12 = 2048 - this.strandHalfThicknessQ12;
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                const gradH = textureGenerator.horizontalGradient[pixel];
+                const xQ12 = textureGenerator.horizontalGradient[pixel];
                 if (
-                    gradH > this.thickness &&
-                    4096 - this.thickness > gradH &&
-                    gradV > 2048 - this.thickness &&
-                    gradV < this.thickness + 2048
+                    xQ12 > this.strandHalfThicknessQ12 &&
+                    4096 - this.strandHalfThicknessQ12 > xQ12 &&
+                    yQ12 > 2048 - this.strandHalfThicknessQ12 &&
+                    yQ12 < this.strandHalfThicknessQ12 + 2048
                 ) {
-                    let v = 2048 - gradH;
-                    v = v < 0 ? -v : v;
-                    v <<= 12;
-                    v /= 2048 - this.thickness;
-                    output[pixel] = 4096 - v;
-                } else if (2048 - this.thickness < gradH && 2048 + this.thickness > gradH) {
-                    let v = gradV - 2048;
-                    v = v < 0 ? -v : v;
-                    v -= this.thickness;
-                    v <<= 12;
-                    output[pixel] = v / (2048 - this.thickness);
-                } else if (this.thickness > gradV || gradV > 4096 - this.thickness) {
-                    let v = gradH - 2048;
-                    v = v < 0 ? -v : v;
-                    v -= this.thickness;
-                    v <<= 12;
-                    output[pixel] = v / (2048 - this.thickness);
-                } else if (gradH < this.thickness || 4096 - this.thickness < gradH) {
-                    let v = 2048 - gradV;
-                    v = v < 0 ? -v : v;
-                    v <<= 12;
-                    v /= 2048 - this.thickness;
-                    output[pixel] = 4096 - v;
+                    let distFromCenterX = 2048 - xQ12;
+                    distFromCenterX = distFromCenterX < 0 ? -distFromCenterX : distFromCenterX;
+                    distFromCenterX <<= 12;
+                    distFromCenterX /= denomQ12;
+                    output[pixel] = 4096 - distFromCenterX;
+                } else if (
+                    2048 - this.strandHalfThicknessQ12 < xQ12 &&
+                    2048 + this.strandHalfThicknessQ12 > xQ12
+                ) {
+                    let distFromCenterY = yQ12 - 2048;
+                    distFromCenterY = distFromCenterY < 0 ? -distFromCenterY : distFromCenterY;
+                    distFromCenterY -= this.strandHalfThicknessQ12;
+                    distFromCenterY <<= 12;
+                    output[pixel] = distFromCenterY / denomQ12;
+                } else if (
+                    this.strandHalfThicknessQ12 > yQ12 ||
+                    yQ12 > 4096 - this.strandHalfThicknessQ12
+                ) {
+                    let distFromCenterX = xQ12 - 2048;
+                    distFromCenterX = distFromCenterX < 0 ? -distFromCenterX : distFromCenterX;
+                    distFromCenterX -= this.strandHalfThicknessQ12;
+                    distFromCenterX <<= 12;
+                    output[pixel] = distFromCenterX / denomQ12;
+                } else if (
+                    xQ12 < this.strandHalfThicknessQ12 ||
+                    4096 - this.strandHalfThicknessQ12 < xQ12
+                ) {
+                    let distFromCenterY = 2048 - yQ12;
+                    distFromCenterY = distFromCenterY < 0 ? -distFromCenterY : distFromCenterY;
+                    distFromCenterY <<= 12;
+                    distFromCenterY /= denomQ12;
+                    output[pixel] = 4096 - distFromCenterY;
                 } else {
                     output[pixel] = 0;
                 }
