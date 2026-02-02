@@ -1,3 +1,5 @@
+import { ByteSource } from "../../io/ByteSource";
+
 export interface CacheStore {
     read(indexId: number, archiveId: number): Int8Array;
 
@@ -14,4 +16,13 @@ export interface CacheStore {
         readonly size: number;
         readonly chunks: Iterable<Int8Array>;
     };
+
+    /**
+     * Provides random-access reads over an archive's payload (as stored in the `.dat(2)` sector chain).
+     *
+     * This is the primitive needed for native/seekable stores (file IO, mmap, etc). Decoders can then
+     * pull only the needed ranges (e.g. container headers + compressed payload) instead of materializing
+     * the full archive upfront.
+     */
+    openArchiveReader(indexId: number, archiveId: number): ByteSource;
 }

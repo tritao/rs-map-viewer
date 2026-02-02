@@ -4,6 +4,7 @@ import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { Sector } from "./Sector";
 import { SectorCluster } from "./SectorCluster";
+import { ByteSource } from "../../io/ByteSource";
 
 export class MemoryStore implements CacheStore {
     static fromFiles(cacheFiles: CacheFiles, indicesToLoad: number[] = []): MemoryStore {
@@ -96,6 +97,84 @@ export class MemoryStore implements CacheStore {
         return {
             size: sectorCluster.size,
             chunks,
+        };
+    }
+
+    openArchiveReader(indexId: number, archiveId: number): ByteSource {
+        const stream = this.openArchiveStream(indexId, archiveId);
+
+        type Segment = {
+            start: number;
+            data: Int8Array;
+        };
+
+        const segments: Segment[] = [];
+        let start = 0;
+        for (const chunk of stream.chunks) {
+            segments.push({ start, data: chunk });
+            start += chunk.length;
+        }
+
+        const size = stream.size;
+        if (start !== size) {
+            throw new Error(`Archive size mismatch. expected: ${size}, got: ${start}`);
+        }
+
+        const segmentStarts = segments.map((s) => s.start);
+
+        function findSegmentIndex(offset: number): number {
+            let lo = 0;
+            let hi = segments.length - 1;
+            while (lo <= hi) {
+                const mid = (lo + hi) >>> 1;
+                const segStart = segmentStarts[mid];
+                const segEnd = segStart + segments[mid].data.length;
+                if (offset < segStart) {
+                    hi = mid - 1;
+                } else if (offset >= segEnd) {
+                    lo = mid + 1;
+                } else {
+                    return mid;
+                }
+            }
+            throw new Error(`Invalid offset: ${offset}`);
+        }
+
+        return {
+            size,
+            readInto(offset: number, target: Uint8Array, targetOffset = 0, length = target.length - targetOffset): void {
+                if (length < 0) {
+                    throw new Error("Invalid length");
+                }
+                if (offset < 0 || offset + length > size) {
+                    throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${size}`);
+                }
+                if (length === 0) {
+                    return;
+                }
+
+                let remaining = length;
+                let outOff = targetOffset;
+                let inOff = offset;
+                let segIndex = findSegmentIndex(inOff);
+
+                while (remaining > 0) {
+                    const seg = segments[segIndex];
+                    const segOff = inOff - seg.start;
+                    const available = seg.data.length - segOff;
+                    const take = Math.min(available, remaining);
+
+                    target.set(
+                        new Uint8Array(seg.data.buffer, seg.data.byteOffset + segOff, take),
+                        outOff,
+                    );
+
+                    remaining -= take;
+                    outOff += take;
+                    inOff += take;
+                    segIndex++;
+                }
+            },
         };
     }
 

@@ -3,6 +3,7 @@ import { CompressionHandler } from "../compression/CompressionHandler";
 import { CompressionType } from "../compression/CompressionType";
 import { Xtea } from "../crypto/Xtea";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { ByteSource } from "../io/ByteSource";
 
 export class Container {
     static decode(
@@ -49,6 +50,31 @@ export class Container {
             default:
                 throw new Error("Container: Unsupported compression: " + compression);
         }
+    }
+
+    static decodeFromSource(
+        source: ByteSource,
+        key: number[] | null,
+        compressionHandler: CompressionHandler,
+    ): Container {
+        const header = new Uint8Array(5);
+        source.readInto(0, header);
+
+        const compression: CompressionType = header[0] as CompressionType;
+        const size =
+            ((header[1] << 24) | (header[2] << 16) | (header[3] << 8) | header[4]) | 0;
+
+        const needsExtraSize = compression !== CompressionType.None || Xtea.isValidKey(key);
+        const totalSize = 5 + size + (needsExtraSize ? 4 : 0);
+
+        if (totalSize < 5 || totalSize > source.size) {
+            throw new Error(`Truncated container. expected=${totalSize}, available=${source.size}`);
+        }
+
+        const data = new Int8Array(totalSize);
+        source.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+
+        return Container.decode(new ByteBuffer(data), key, compressionHandler);
     }
 
     constructor(

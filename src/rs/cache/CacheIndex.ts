@@ -9,6 +9,7 @@ import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { SectorCluster } from "./store/SectorCluster";
+import { ByteSource } from "../io/ByteSource";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -150,6 +151,27 @@ function decodeArchiveData(
     );
 }
 
+function decodeArchiveDataFromSource(
+    index: CacheIndex,
+    id: number,
+    source: ByteSource,
+    key: number[] | null,
+): Archive {
+    const archiveRef = index.getArchiveReference(id);
+    if (!archiveRef) {
+        throw new Error("Archive reference not found for: " + id);
+    }
+    const container = Container.decodeFromSource(source, key, index.compressionHandler);
+    return Archive.decode(
+        id,
+        archiveRef.lastFileId,
+        archiveRef.fileCount,
+        archiveRef.fileIds,
+        archiveRef.fileNameHashes,
+        new ByteBuffer(container.data),
+    );
+}
+
 export class CacheIndexDat2 extends CacheStoreIndexSync {
     static fromStore(id: number, store: CacheStore, compressionHandler: CompressionHandler): CacheIndexDat2 {
         const data = store.read(CacheIndex.META_INDEX_ID, id);
@@ -163,8 +185,8 @@ export class CacheIndexDat2 extends CacheStoreIndexSync {
     }
 
     override getArchiveKey(id: number, key: number[] | null): Archive {
-        const data = this.read(id);
-        return decodeArchiveData(this, id, data, key);
+        const source = this.store.openArchiveReader(this.id, id);
+        return decodeArchiveDataFromSource(this, id, source, key);
     }
 }
 
