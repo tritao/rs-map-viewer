@@ -5,10 +5,6 @@ import { BrowserRouter } from "react-router-dom";
 import "./index.css";
 import MapViewerApp from "./mapviewer/MapViewerApp";
 import reportWebVitals from "./reportWebVitals";
-import { initCompressionHandler } from "./rs/compression/CompressionHandler";
-import { JSCompressionHandler } from "./rs/compression/JSCompressionHandler";
-
-initCompressionHandler(new JSCompressionHandler());
 
 window.wallpaperPropertyListener = {
     applyGeneralProperties: (properties: any) => {

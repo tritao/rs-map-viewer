@@ -2,6 +2,7 @@ import fs from "fs";
 import sharp from "sharp";
 
 import { CacheSystem } from "../../src/rs/cache/CacheSystem";
+import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { getCacheLoaderFactory } from "../../src/rs/loaders/CacheLoaderFactory";
 import { loadCache, loadCacheInfos, loadCacheList } from "./load-util";
 
@@ -36,7 +37,11 @@ const cacheInfo = cacheList.latest;
 
 const loadedCache = loadCache(cacheInfo);
 
-const cacheSystem = CacheSystem.fromFiles(loadedCache.type, loadedCache.files);
+const cacheSystem = CacheSystem.fromFiles(
+    loadedCache.type,
+    loadedCache.files,
+    new JSCompressionHandler(),
+);
 const cacheLoaderFactory = getCacheLoaderFactory(cacheInfo, cacheSystem);
 
 const textureLoader = cacheLoaderFactory.getTextureLoader();

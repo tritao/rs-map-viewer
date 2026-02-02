@@ -10,6 +10,7 @@ import { MapFileIndex } from "../map/MapFileIndex";
 import { SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { TextureLoader } from "../texture/TextureLoader";
 import { LoadedCache } from "../../util/Caches";
+import { CompressionHandler } from "../compression/CompressionHandler";
 
 export class CacheLoaders {
     // Cache
@@ -31,9 +32,9 @@ export class CacheLoaders {
 
     mapFileIndex!: MapFileIndex;
 
-    constructor(cache: LoadedCache) {
+    constructor(cache: LoadedCache, compressionHandler: CompressionHandler) {
         this.cache = cache;
-        this.cacheSystem = CacheSystem.fromFiles(cache.type, cache.files);
+        this.cacheSystem = CacheSystem.fromFiles(cache.type, cache.files, compressionHandler);
         this.loaderFactory = getCacheLoaderFactory(cache.info, this.cacheSystem);
 
         this.textureLoader = this.loaderFactory.getTextureLoader();

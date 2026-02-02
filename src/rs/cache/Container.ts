@@ -1,11 +1,15 @@
 // import { Xtea } from "../util/Xtea";
-import { compressionHandler, CompressionHandler } from "../compression/CompressionHandler";
+import { CompressionHandler } from "../compression/CompressionHandler";
 import { CompressionType } from "../compression/CompressionType";
 import { Xtea } from "../crypto/Xtea";
 import { ByteBuffer } from "../io/ByteBuffer";
 
 export class Container {
-    static decode(buffer: ByteBuffer, key: number[] | null): Container {
+    static decode(
+        buffer: ByteBuffer,
+        key: number[] | null,
+        compressionHandler: CompressionHandler,
+    ): Container {
         if (buffer.remaining === 0) {
             throw new Error("Empty container");
         }
@@ -26,9 +30,9 @@ export class Container {
                 let decompressed: Int8Array;
 
                 if (compression === CompressionType.Bzip2) {
-                    decompressed = compressionHandler!.decompressBzip2(data, actualSize);
+                    decompressed = compressionHandler.decompressBzip2(data, actualSize);
                 } else {
-                    decompressed = compressionHandler!.decompressGzip(data);
+                    decompressed = compressionHandler.decompressGzip(data);
                 }
 
                 if (decompressed.length !== actualSize) {

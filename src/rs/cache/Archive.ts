@@ -1,4 +1,4 @@
-import { compressionHandler } from "../compression/CompressionHandler";
+import { CompressionHandler } from "../compression/CompressionHandler";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { StringUtil } from "../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
@@ -27,7 +27,12 @@ export class Archive {
         );
     }
 
-    static decodeOld(id: number, data: Int8Array, multipleFiles: boolean): Archive {
+    static decodeOld(
+        id: number,
+        data: Int8Array,
+        multipleFiles: boolean,
+        compressionHandler: CompressionHandler,
+    ): Archive {
         const buffer = new ByteBuffer(data);
         const files = new Map<number, ArchiveFile>();
 
@@ -42,15 +47,15 @@ export class Archive {
 
             let dataBuffer: ByteBuffer;
             let metaBuffer: ByteBuffer;
-            if (isCompressed) {
-                const data = buffer.readUnsignedBytes(size);
-                const decompressed = compressionHandler!.decompressBzip2(data, actualSize);
-                dataBuffer = new ByteBuffer(decompressed);
-                metaBuffer = new ByteBuffer(decompressed);
-            } else {
-                dataBuffer = new ByteBuffer(data);
-                metaBuffer = buffer;
-            }
+                if (isCompressed) {
+                    const data = buffer.readUnsignedBytes(size);
+                    const decompressed = compressionHandler.decompressBzip2(data, actualSize);
+                    dataBuffer = new ByteBuffer(decompressed);
+                    metaBuffer = new ByteBuffer(decompressed);
+                } else {
+                    dataBuffer = new ByteBuffer(data);
+                    metaBuffer = buffer;
+                }
 
             fileCount = metaBuffer.readUnsignedShort();
             dataBuffer.offset = metaBuffer.offset + fileCount * 10;
@@ -67,14 +72,16 @@ export class Archive {
                     decompressedFile = dataBuffer.readBytes(fileSize);
                 } else {
                     const data = dataBuffer.readUnsignedBytes(fileSize);
-                    decompressedFile = compressionHandler!.decompressBzip2(data, fileActualSize);
+                    decompressedFile = compressionHandler.decompressBzip2(data, fileActualSize);
                 }
                 files.set(i, new ArchiveFile(i, id, decompressedFile));
                 fileIds[i] = i;
                 fileNameHashes[i] = nameHash;
             }
         } else {
-            const decompressed = compressionHandler!.decompressGzip(buffer.readUnsignedBytes(buffer.remaining));
+            const decompressed = compressionHandler.decompressGzip(
+                buffer.readUnsignedBytes(buffer.remaining),
+            );
 
             fileCount = 1;
             fileIds = new Int32Array(fileCount);

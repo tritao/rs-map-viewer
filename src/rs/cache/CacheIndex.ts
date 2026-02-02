@@ -1,5 +1,6 @@
 import { ByteBuffer } from "../io/ByteBuffer";
 import { StringUtil } from "../util/StringUtil";
+import { CompressionHandler } from "../compression/CompressionHandler";
 import { Archive } from "./Archive";
 import { ArchiveFile } from "./ArchiveFile";
 import { Container } from "./Container";
@@ -15,6 +16,7 @@ export abstract class CacheIndex {
     constructor(
         readonly id: number,
         readonly table: ReferenceTable,
+        readonly compressionHandler: CompressionHandler,
     ) {}
 
     getArchiveIds(): Int32Array {
@@ -86,8 +88,9 @@ export abstract class CacheStoreIndex extends CacheIndex {
         id: number,
         table: ReferenceTable,
         readonly store: CacheStore,
+        compressionHandler: CompressionHandler,
     ) {
-        super(id, table);
+        super(id, table, compressionHandler);
     }
 
     read(archiveId: number): Int8Array {
@@ -106,20 +109,21 @@ export class CacheIndexDat extends CacheStoreIndexSync {
         id: number,
         store: CacheStore,
         indexFile: ArrayBuffer,
+        compressionHandler: CompressionHandler,
     ): CacheIndexDat {
         const table = ReferenceTable.fromArchiveCount(indexFile.byteLength / SectorCluster.SIZE);
-        return new CacheIndexDat(id, table, store);
+        return new CacheIndexDat(id, table, store, compressionHandler);
     }
 
     override getArchiveKey(id: number, key: number[] | null): Archive {
         const data = this.read(id);
-        return Archive.decodeOld(id, data, this.id === DatIndexType.configs);
+        return Archive.decodeOld(id, data, this.id === DatIndexType.configs, this.compressionHandler);
     }
 }
 
-function decodeTable(data: Int8Array): ReferenceTable {
+function decodeTable(data: Int8Array, compressionHandler: CompressionHandler): ReferenceTable {
     if (data.length) {
-        const container = Container.decode(new ByteBuffer(data), null);
+        const container = Container.decode(new ByteBuffer(data), null, compressionHandler);
         return ReferenceTable.decode(new ByteBuffer(container.data));
     }
     return ReferenceTable.INVALID_TABLE;
@@ -135,7 +139,7 @@ function decodeArchiveData(
     if (!archiveRef) {
         throw new Error("Archive reference not found for: " + id);
     }
-    const container = Container.decode(new ByteBuffer(data), key);
+    const container = Container.decode(new ByteBuffer(data), key, index.compressionHandler);
     return Archive.decode(
         id,
         archiveRef.lastFileId,
@@ -147,11 +151,11 @@ function decodeArchiveData(
 }
 
 export class CacheIndexDat2 extends CacheStoreIndexSync {
-    static fromStore(id: number, store: CacheStore): CacheIndexDat2 {
+    static fromStore(id: number, store: CacheStore, compressionHandler: CompressionHandler): CacheIndexDat2 {
         const data = store.read(CacheIndex.META_INDEX_ID, id);
         try {
-            const table = decodeTable(data);
-            return new CacheIndexDat2(id, table, store);
+            const table = decodeTable(data, compressionHandler);
+            return new CacheIndexDat2(id, table, store, compressionHandler);
         } catch (e) {
             console.error(data, e);
             throw new Error("Failed to decode index: " + id);
@@ -168,9 +172,10 @@ export class LegacyCacheIndex extends CacheIndex {
     constructor(
         readonly id: number,
         readonly archives: Archive[],
+        compressionHandler: CompressionHandler,
         readonly archiveNameHashes: Map<number, number> = new Map(),
     ) {
-        super(id, ReferenceTable.INVALID_TABLE);
+        super(id, ReferenceTable.INVALID_TABLE, compressionHandler);
     }
 
     override getArchiveKey(archiveId: number, key: number[] | null): Archive {

@@ -9,7 +9,6 @@ import {
     CacheLoaderFactory,
     getCacheLoaderFactory,
 } from "../rs/loaders/CacheLoaderFactory";
-import { initCompressionHandler } from "../rs/compression/CompressionHandler";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
@@ -41,7 +40,7 @@ import { ConfigTypeDAT } from "../rs/cache/ConfigType";
 
 registerSerializer(renderDataLoaderSerializer);
 
-initCompressionHandler(new JSCompressionHandler());
+const compressionHandler = new JSCompressionHandler();
 const hasherPromise = Hasher.init();
 
 export type WorkerState = {
@@ -85,7 +84,7 @@ async function initWorker(
 ): Promise<WorkerState> {
     await hasherPromise;
 
-    const cacheSystem = CacheSystem.fromFiles(cache.type, cache.files);
+    const cacheSystem = CacheSystem.fromFiles(cache.type, cache.files, compressionHandler);
 
     const loaderFactory = getCacheLoaderFactory(cache.info, cacheSystem);
     const underlayTypeLoader = loaderFactory.getUnderlayTypeLoader();

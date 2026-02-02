@@ -15,6 +15,7 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { CacheLoaders } from "../rs/loaders/CacheLoaders";
+import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -69,7 +70,7 @@ export class MapViewer {
         cache: LoadedCache,
     ) {
         this.loadedCache = cache;
-        this.cacheLoaders = new CacheLoaders(cache);
+        this.cacheLoaders = new CacheLoaders(cache, new JSCompressionHandler());
         this.renderer = new MapViewerRenderer(this);
         this.initCache(cache);
     }
