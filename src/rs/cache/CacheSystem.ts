@@ -6,23 +6,27 @@ import { CacheIndex, CacheIndexDat, CacheIndexDat2, LegacyCacheIndex } from "./C
 import { CacheType } from "./CacheType";
 import { LegacyIndexType, DatIndexType } from "./IndexType";
 import { MemoryStore } from "./store/MemoryStore";
+import { CacheStore } from "./store/CacheStore";
 
 export class CacheSystem {
     static loadIndicesFromStore(
         cacheType: CacheType,
-        store: MemoryStore,
+        store: CacheStore,
+        indexIds: number[],
         compressionHandler: CompressionHandler,
     ): Array<CacheIndex | null> {
-        return store.indexFiles.map((indexFile, id) => {
-            if (!indexFile) {
-                return null;
-            }
+        const maxIndexId = indexIds.length ? Math.max(...indexIds) : -1;
+        const indices: Array<CacheIndex | null> = new Array(maxIndexId + 1).fill(null);
+
+        for (const id of indexIds) {
             if (cacheType === CacheType.Dat) {
-                return CacheIndexDat.fromStore(id, store, indexFile, compressionHandler);
+                indices[id] = CacheIndexDat.fromStore(id, store, compressionHandler);
             } else {
-                return CacheIndexDat2.fromStore(id, store, compressionHandler);
+                indices[id] = CacheIndexDat2.fromStore(id, store, compressionHandler);
             }
-        });
+        }
+
+        return indices;
     }
 
     static loadLegacy(cacheFiles: CacheFiles, compressionHandler: CompressionHandler): CacheSystem {
@@ -98,10 +102,23 @@ export class CacheSystem {
             case CacheType.Dat:
             case CacheType.Dat2:
                 const store = MemoryStore.fromFiles(cacheFiles, indicesToLoad);
-                const indices = CacheSystem.loadIndicesFromStore(cacheType, store, compressionHandler);
+                const indexIds = store.indexFiles
+                    .map((file, id) => (file ? id : -1))
+                    .filter((id) => id !== -1);
+                const indices = CacheSystem.loadIndicesFromStore(cacheType, store, indexIds, compressionHandler);
                 return new CacheSystem(indices, compressionHandler);
         }
         throw new Error("Not implemented");
+    }
+
+    static fromStore(
+        cacheType: CacheType.Dat | CacheType.Dat2,
+        store: CacheStore,
+        indexIds: number[],
+        compressionHandler: CompressionHandler,
+    ): CacheSystem {
+        const indices = CacheSystem.loadIndicesFromStore(cacheType, store, indexIds, compressionHandler);
+        return new CacheSystem(indices, compressionHandler);
     }
 
     constructor(

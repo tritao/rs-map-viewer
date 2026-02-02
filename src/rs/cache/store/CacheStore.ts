@@ -1,6 +1,13 @@
 import { ByteSource } from "../../io/ByteSource";
 
 export interface CacheStore {
+    /**
+     * Returns the raw byte size of an index file (`main_file_cache.idx{indexId}`) if available.
+     *
+     * Used for Dat caches to derive archive counts without needing the full file contents in memory.
+     */
+    getIndexFileSize(indexId: number): number | null;
+
     read(indexId: number, archiveId: number): Int8Array;
 
     /**

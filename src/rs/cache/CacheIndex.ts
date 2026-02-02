@@ -109,10 +109,13 @@ export class CacheIndexDat extends CacheStoreIndexSync {
     static fromStore(
         id: number,
         store: CacheStore,
-        indexFile: ArrayBuffer,
         compressionHandler: CompressionHandler,
     ): CacheIndexDat {
-        const table = ReferenceTable.fromArchiveCount(indexFile.byteLength / SectorCluster.SIZE);
+        const indexSize = store.getIndexFileSize(id);
+        if (indexSize === null) {
+            throw new Error("Index file not found: " + id);
+        }
+        const table = ReferenceTable.fromArchiveCount(indexSize / SectorCluster.SIZE);
         return new CacheIndexDat(id, table, store, compressionHandler);
     }
 

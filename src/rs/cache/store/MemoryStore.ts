@@ -43,6 +43,11 @@ export class MemoryStore implements CacheStore {
         readonly metaFile: ArrayBuffer | null,
     ) {}
 
+    getIndexFileSize(indexId: number): number | null {
+        const file = this.getIndexFile(indexId);
+        return file ? file.byteLength : null;
+    }
+
     getIndexFile(indexId: number): ArrayBuffer | null {
         if (indexId === CacheIndex.META_INDEX_ID) {
             return this.metaFile;
