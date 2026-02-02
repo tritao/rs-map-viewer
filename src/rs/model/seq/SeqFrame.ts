@@ -5,13 +5,46 @@ import { DatSeqBase, LegacySeqBase, SeqBase } from "./SeqBase";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { SeqTransformType } from "./SeqTransformType";
 
-export class SeqFrame {
-    static transformGroupCache: Int32Array = new Int32Array(500);
-    static transformXCache: Int32Array = new Int32Array(500);
-    static transformYCache: Int32Array = new Int32Array(500);
-    static transformZCache: Int32Array = new Int32Array(500);
-    static resetOriginGroupsCache: Int32Array = new Int32Array(500);
+export class SeqFrameDecodeScratch {
+    transformGroupCache: Int32Array = new Int32Array(500);
+    transformXCache: Int32Array = new Int32Array(500);
+    transformYCache: Int32Array = new Int32Array(500);
+    transformZCache: Int32Array = new Int32Array(500);
+    resetOriginGroupsCache: Int32Array = new Int32Array(500);
 
+    ensureCapacity(size: number): void {
+        if (this.transformGroupCache.length >= size) {
+            return;
+        }
+
+        let nextSize = this.transformGroupCache.length;
+        while (nextSize < size) {
+            nextSize = Math.max(1, nextSize * 2);
+        }
+
+        const nextGroup = new Int32Array(nextSize);
+        nextGroup.set(this.transformGroupCache);
+        this.transformGroupCache = nextGroup;
+
+        const nextX = new Int32Array(nextSize);
+        nextX.set(this.transformXCache);
+        this.transformXCache = nextX;
+
+        const nextY = new Int32Array(nextSize);
+        nextY.set(this.transformYCache);
+        this.transformYCache = nextY;
+
+        const nextZ = new Int32Array(nextSize);
+        nextZ.set(this.transformZCache);
+        this.transformZCache = nextZ;
+
+        const nextReset = new Int32Array(nextSize);
+        nextReset.set(this.resetOriginGroupsCache);
+        this.resetOriginGroupsCache = nextReset;
+    }
+}
+
+export class SeqFrame {
     constructor(
         readonly frameLength: number,
         readonly base: SeqBase,
@@ -27,7 +60,7 @@ export class SeqFrame {
 }
 
 export class LegacySeqFrame {
-    static load(modelArchive: Archive): SeqFrame[] {
+    static load(modelArchive: Archive, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
         const bases = LegacySeqBase.load(modelArchive);
 
         const head = modelArchive.getFileNamed("frame_head.dat")!.getDataAsBuffer();
@@ -47,6 +80,8 @@ export class LegacySeqFrame {
             const baseId = head.readUnsignedShort();
             const base = bases[baseId];
             const count = head.readUnsignedByte();
+
+            scratch.ensureCapacity(count);
 
             let transformCount = 0;
             let resetOriginGroup = -1;
@@ -70,7 +105,7 @@ export class LegacySeqFrame {
                     lastResetOriginGroup = i;
                 }
 
-                SeqFrame.transformGroupCache[transformCount] = i;
+                scratch.transformGroupCache[transformCount] = i;
 
                 let defaultValue = 0;
                 if (type === SeqTransformType.SCALE) {
@@ -78,31 +113,31 @@ export class LegacySeqFrame {
                 }
 
                 if ((flag & 0x1) !== 0) {
-                    SeqFrame.transformXCache[transformCount] = tran2.readSmart2();
+                    scratch.transformXCache[transformCount] = tran2.readSmart2();
                 } else {
-                    SeqFrame.transformXCache[transformCount] = defaultValue;
+                    scratch.transformXCache[transformCount] = defaultValue;
                 }
 
                 if ((flag & 0x2) !== 0) {
-                    SeqFrame.transformYCache[transformCount] = tran2.readSmart2();
+                    scratch.transformYCache[transformCount] = tran2.readSmart2();
                 } else {
-                    SeqFrame.transformYCache[transformCount] = defaultValue;
+                    scratch.transformYCache[transformCount] = defaultValue;
                 }
 
                 if ((flag & 0x4) !== 0) {
-                    SeqFrame.transformZCache[transformCount] = tran2.readSmart2();
+                    scratch.transformZCache[transformCount] = tran2.readSmart2();
                 } else {
-                    SeqFrame.transformZCache[transformCount] = defaultValue;
+                    scratch.transformZCache[transformCount] = defaultValue;
                 }
 
-                SeqFrame.resetOriginGroupsCache[transformCount] = -1;
+                scratch.resetOriginGroupsCache[transformCount] = -1;
                 if (
                     type === SeqTransformType.TRANSLATE ||
                     type === SeqTransformType.ROTATE ||
                     type === SeqTransformType.SCALE
                 ) {
                     if (resetOriginGroup > lastResetOriginGroup) {
-                        SeqFrame.resetOriginGroupsCache[transformCount] = resetOriginGroup;
+                        scratch.resetOriginGroupsCache[transformCount] = resetOriginGroup;
                         lastResetOriginGroup = resetOriginGroup;
                     }
                 } else if (type === SeqTransformType.ALPHA) {
@@ -117,11 +152,11 @@ export class LegacySeqFrame {
             const transformZ: number[] = new Array(transformCount);
             const resetOriginGroups: number[] = new Array(transformCount);
             for (let i = 0; i < transformCount; i++) {
-                transformGroups[i] = SeqFrame.transformGroupCache[i];
-                transformX[i] = SeqFrame.transformXCache[i];
-                transformY[i] = SeqFrame.transformYCache[i];
-                transformZ[i] = SeqFrame.transformZCache[i];
-                resetOriginGroups[i] = SeqFrame.resetOriginGroupsCache[i];
+                transformGroups[i] = scratch.transformGroupCache[i];
+                transformX[i] = scratch.transformXCache[i];
+                transformY[i] = scratch.transformYCache[i];
+                transformZ[i] = scratch.transformZCache[i];
+                resetOriginGroups[i] = scratch.resetOriginGroupsCache[i];
             }
 
             frames[frameId] = new SeqFrame(
@@ -142,7 +177,11 @@ export class LegacySeqFrame {
 }
 
 export class DatSeqFrame {
-    static load(frames: Map<number, SeqFrame>, data: Int8Array): void {
+    static load(
+        frames: Map<number, SeqFrame>,
+        data: Int8Array,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): void {
         const footerBuffer = new ByteBuffer(data);
 
         footerBuffer.offset = data.length - 8;
@@ -179,6 +218,8 @@ export class DatSeqFrame {
             const frameLength = frameLengthBuffer.readUnsignedByte();
             const count = frameMapBuffer.readUnsignedByte();
 
+            scratch.ensureCapacity(count);
+
             let transformCount = 0;
             let resetOriginGroup = -1;
             let lastResetOriginGroup = -1;
@@ -201,7 +242,7 @@ export class DatSeqFrame {
                     lastResetOriginGroup = i;
                 }
 
-                SeqFrame.transformGroupCache[transformCount] = i;
+                scratch.transformGroupCache[transformCount] = i;
 
                 let defaultValue = 0;
                 if (type === SeqTransformType.SCALE) {
@@ -209,31 +250,31 @@ export class DatSeqFrame {
                 }
 
                 if ((flag & 0x1) !== 0) {
-                    SeqFrame.transformXCache[transformCount] = transformBuffer.readSmart2();
+                    scratch.transformXCache[transformCount] = transformBuffer.readSmart2();
                 } else {
-                    SeqFrame.transformXCache[transformCount] = defaultValue;
+                    scratch.transformXCache[transformCount] = defaultValue;
                 }
 
                 if ((flag & 0x2) !== 0) {
-                    SeqFrame.transformYCache[transformCount] = transformBuffer.readSmart2();
+                    scratch.transformYCache[transformCount] = transformBuffer.readSmart2();
                 } else {
-                    SeqFrame.transformYCache[transformCount] = defaultValue;
+                    scratch.transformYCache[transformCount] = defaultValue;
                 }
 
                 if ((flag & 0x4) !== 0) {
-                    SeqFrame.transformZCache[transformCount] = transformBuffer.readSmart2();
+                    scratch.transformZCache[transformCount] = transformBuffer.readSmart2();
                 } else {
-                    SeqFrame.transformZCache[transformCount] = defaultValue;
+                    scratch.transformZCache[transformCount] = defaultValue;
                 }
 
-                SeqFrame.resetOriginGroupsCache[transformCount] = -1;
+                scratch.resetOriginGroupsCache[transformCount] = -1;
                 if (
                     type === SeqTransformType.TRANSLATE ||
                     type === SeqTransformType.ROTATE ||
                     type === SeqTransformType.SCALE
                 ) {
                     if (resetOriginGroup > lastResetOriginGroup) {
-                        SeqFrame.resetOriginGroupsCache[transformCount] = resetOriginGroup;
+                        scratch.resetOriginGroupsCache[transformCount] = resetOriginGroup;
                         lastResetOriginGroup = resetOriginGroup;
                     }
                 } else if (type === SeqTransformType.ALPHA) {
@@ -248,11 +289,11 @@ export class DatSeqFrame {
             const transformZ: number[] = new Array(transformCount);
             const resetOriginGroups: number[] = new Array(transformCount);
             for (let i = 0; i < transformCount; i++) {
-                transformGroups[i] = SeqFrame.transformGroupCache[i];
-                transformX[i] = SeqFrame.transformXCache[i];
-                transformY[i] = SeqFrame.transformYCache[i];
-                transformZ[i] = SeqFrame.transformZCache[i];
-                resetOriginGroups[i] = SeqFrame.resetOriginGroupsCache[i];
+                transformGroups[i] = scratch.transformGroupCache[i];
+                transformX[i] = scratch.transformXCache[i];
+                transformY[i] = scratch.transformYCache[i];
+                transformZ[i] = scratch.transformZCache[i];
+                resetOriginGroups[i] = scratch.resetOriginGroupsCache[i];
             }
 
             frames.set(
@@ -274,7 +315,12 @@ export class DatSeqFrame {
 }
 
 export class Dat2SeqFrame {
-    static load(cacheInfo: CacheInfo, baseLoader: SeqBaseLoader, data: Int8Array): SeqFrame {
+    static load(
+        cacheInfo: CacheInfo,
+        baseLoader: SeqBaseLoader,
+        data: Int8Array,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): SeqFrame {
         const buf = new ByteBuffer(data);
         const dataBuf = new ByteBuffer(data);
 
@@ -290,6 +336,8 @@ export class Dat2SeqFrame {
         }
 
         const count = buf.readUnsignedByte();
+
+        scratch.ensureCapacity(count);
 
         dataBuf.offset = buf.offset + count;
 
@@ -316,7 +364,7 @@ export class Dat2SeqFrame {
                 lastResetOriginGroup = i;
             }
 
-            SeqFrame.transformGroupCache[transformCount] = i;
+            scratch.transformGroupCache[transformCount] = i;
 
             let defaultValue = 0;
             if (type === SeqTransformType.SCALE || type === SeqTransformType.TYPE_10) {
@@ -324,32 +372,32 @@ export class Dat2SeqFrame {
             }
 
             if ((flag & 0x1) !== 0) {
-                SeqFrame.transformXCache[transformCount] = dataBuf.readSmart2();
+                scratch.transformXCache[transformCount] = dataBuf.readSmart2();
             } else {
-                SeqFrame.transformXCache[transformCount] = defaultValue;
+                scratch.transformXCache[transformCount] = defaultValue;
             }
 
             if ((flag & 0x2) !== 0) {
-                SeqFrame.transformYCache[transformCount] = dataBuf.readSmart2();
+                scratch.transformYCache[transformCount] = dataBuf.readSmart2();
             } else {
-                SeqFrame.transformYCache[transformCount] = defaultValue;
+                scratch.transformYCache[transformCount] = defaultValue;
             }
 
             if ((flag & 0x4) !== 0) {
-                SeqFrame.transformZCache[transformCount] = dataBuf.readSmart2();
+                scratch.transformZCache[transformCount] = dataBuf.readSmart2();
             } else {
-                SeqFrame.transformZCache[transformCount] = defaultValue;
+                scratch.transformZCache[transformCount] = defaultValue;
             }
 
             if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
                 if (type === SeqTransformType.ORIGIN || type === SeqTransformType.TRANSLATE) {
-                    SeqFrame.transformXCache[transformCount] >>= 2;
-                    SeqFrame.transformYCache[transformCount] >>= 2;
-                    SeqFrame.transformZCache[transformCount] >>= 2;
+                    scratch.transformXCache[transformCount] >>= 2;
+                    scratch.transformYCache[transformCount] >>= 2;
+                    scratch.transformZCache[transformCount] >>= 2;
                 } else if (type === SeqTransformType.ROTATE) {
-                    SeqFrame.transformXCache[transformCount] >>= 4;
-                    SeqFrame.transformYCache[transformCount] >>= 4;
-                    SeqFrame.transformZCache[transformCount] >>= 4;
+                    scratch.transformXCache[transformCount] >>= 4;
+                    scratch.transformYCache[transformCount] >>= 4;
+                    scratch.transformZCache[transformCount] >>= 4;
                 } else if (type === SeqTransformType.SCALE) {
                     // SeqFrame.transformXCache[transformCount] >>= 1;
                     // SeqFrame.transformYCache[transformCount] >>= 1;
@@ -357,14 +405,14 @@ export class Dat2SeqFrame {
                 }
             }
 
-            SeqFrame.resetOriginGroupsCache[transformCount] = -1;
+            scratch.resetOriginGroupsCache[transformCount] = -1;
             if (
                 type === SeqTransformType.TRANSLATE ||
                 type === SeqTransformType.ROTATE ||
                 type === SeqTransformType.SCALE
             ) {
                 if (resetOriginGroup > lastResetOriginGroup) {
-                    SeqFrame.resetOriginGroupsCache[transformCount] = resetOriginGroup;
+                    scratch.resetOriginGroupsCache[transformCount] = resetOriginGroup;
                     lastResetOriginGroup = resetOriginGroup;
                 }
             } else if (type === SeqTransformType.ALPHA) {
@@ -394,11 +442,11 @@ export class Dat2SeqFrame {
         const transformZ: number[] = new Array(transformCount);
         const resetOriginGroups: number[] = new Array(transformCount);
         for (let i = 0; i < transformCount; i++) {
-            transformGroups[i] = SeqFrame.transformGroupCache[i];
-            transformX[i] = SeqFrame.transformXCache[i];
-            transformY[i] = SeqFrame.transformYCache[i];
-            transformZ[i] = SeqFrame.transformZCache[i];
-            resetOriginGroups[i] = SeqFrame.resetOriginGroupsCache[i];
+            transformGroups[i] = scratch.transformGroupCache[i];
+            transformX[i] = scratch.transformXCache[i];
+            transformY[i] = scratch.transformYCache[i];
+            transformZ[i] = scratch.transformZCache[i];
+            resetOriginGroups[i] = scratch.resetOriginGroupsCache[i];
         }
 
         return new SeqFrame(

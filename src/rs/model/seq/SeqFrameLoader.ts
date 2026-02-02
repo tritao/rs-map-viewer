@@ -2,7 +2,7 @@ import { Archive } from "../../cache/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { SeqBaseLoader } from "./SeqBaseLoader";
-import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame } from "./SeqFrame";
+import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
 
 export interface SeqFrameLoader {
@@ -28,6 +28,7 @@ export class LegacySeqFrameLoader implements SeqFrameLoader {
 export class DatSeqFrameLoader implements SeqFrameLoader {
     static load(frameMapIndex: CacheIndex): DatSeqFrameLoader {
         const frames: Map<number, SeqFrame> = new Map();
+        const scratch = new SeqFrameDecodeScratch();
 
         for (let i = 0; i < frameMapIndex.getArchiveCount(); i++) {
             try {
@@ -35,7 +36,7 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
                 if (!file) {
                     continue;
                 }
-                DatSeqFrame.load(frames, file.data);
+                DatSeqFrame.load(frames, file.data, scratch);
             } catch (e) {
                 console.error("Failed loading frame map " + i, e);
             }
@@ -72,9 +73,10 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
             const archive = this.animIndex.getArchive(frameMapId);
 
             const frames: SeqFrame[] = new Array(archive.lastFileId);
+            const scratch = new SeqFrameDecodeScratch();
 
             for (const file of archive.files) {
-                frames[file.id] = Dat2SeqFrame.load(this.cacheInfo, this.baseLoader, file.data);
+                frames[file.id] = Dat2SeqFrame.load(this.cacheInfo, this.baseLoader, file.data, scratch);
             }
 
             frameMap = new SeqFrameMap(frames);
