@@ -80,41 +80,41 @@ export class SpritePixels {
 
     pad(padding: number): void {
         if (this.subWidth !== this.width || this.subHeight !== this.height) {
-            let var2 = padding;
+            let leftPad = padding;
             if (padding > this.xOffset) {
-                var2 = this.xOffset;
+                leftPad = this.xOffset;
             }
 
-            let var3 = padding;
+            let rightPad = padding;
             if (padding + this.xOffset + this.subWidth > this.width) {
-                var3 = this.width - this.xOffset - this.subWidth;
+                rightPad = this.width - this.xOffset - this.subWidth;
             }
 
-            let var4 = padding;
+            let topPad = padding;
             if (padding > this.yOffset) {
-                var4 = this.yOffset;
+                topPad = this.yOffset;
             }
 
-            let var5 = padding;
+            let bottomPad = padding;
             if (padding + this.yOffset + this.subHeight > this.height) {
-                var5 = this.height - this.yOffset - this.subHeight;
+                bottomPad = this.height - this.yOffset - this.subHeight;
             }
 
-            const width = var2 + var3 + this.subWidth;
-            const height = var4 + var5 + this.subHeight;
+            const width = leftPad + rightPad + this.subWidth;
+            const height = topPad + bottomPad + this.subHeight;
             const pixels = new Int32Array(width * height);
 
             for (let y = 0; y < this.subHeight; y++) {
                 for (let x = 0; x < this.subWidth; x++) {
-                    pixels[width * (y + var4) + x + var2] = this.pixels[x + y * this.subWidth];
+                    pixels[width * (y + topPad) + x + leftPad] = this.pixels[x + y * this.subWidth];
                 }
             }
 
             this.pixels = pixels;
             this.subWidth = width;
             this.subHeight = height;
-            this.xOffset -= var2;
-            this.yOffset -= var4;
+            this.xOffset -= leftPad;
+            this.yOffset -= topPad;
         }
     }
 

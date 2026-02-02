@@ -28,11 +28,11 @@ export class IndexedSprite {
         endX: number,
         endY: number,
     ): void {
-        let var9 = -(width >> 2);
+        let quadCountNeg = -(width >> 2);
         width = -(width & 3);
 
-        for (let var10 = -height; var10 < 0; var10++) {
-            for (let var11 = var9; var11 < 0; var11++) {
+        for (let rowNeg = -height; rowNeg < 0; rowNeg++) {
+            for (let quadNeg = quadCountNeg; quadNeg < 0; quadNeg++) {
                 let p = spritePixels[startX++];
                 if (p !== 0) {
                     pixels[startY++] = palette[p & 0xff];
@@ -62,10 +62,10 @@ export class IndexedSprite {
                 }
             }
 
-            for (let var11 = width; var11 < 0; var11++) {
-                let var12 = spritePixels[startX++];
-                if (var12 !== 0) {
-                    pixels[startY++] = palette[var12 & 0xff];
+            for (let remNeg = width; remNeg < 0; remNeg++) {
+                const paletteIndex = spritePixels[startX++];
+                if (paletteIndex !== 0) {
+                    pixels[startY++] = palette[paletteIndex & 0xff];
                 } else {
                     startY++;
                 }
@@ -178,11 +178,11 @@ export class IndexedSprite {
         let endX = Rasterizer2D.width - width;
         let endY = 0;
         if (y < Rasterizer2D.yClipStart) {
-            const var9 = Rasterizer2D.yClipStart - y;
-            height -= var9;
+            const clipY = Rasterizer2D.yClipStart - y;
+            height -= clipY;
             y = Rasterizer2D.yClipStart;
-            startX += var9 * width;
-            startY += var9 * Rasterizer2D.width;
+            startX += clipY * width;
+            startY += clipY * Rasterizer2D.width;
         }
 
         if (height + y > Rasterizer2D.yClipEnd) {
@@ -190,20 +190,20 @@ export class IndexedSprite {
         }
 
         if (x < Rasterizer2D.xClipStart) {
-            const var9 = Rasterizer2D.xClipStart - x;
-            width -= var9;
+            const clipX = Rasterizer2D.xClipStart - x;
+            width -= clipX;
             x = Rasterizer2D.xClipStart;
-            startX += var9;
-            startY += var9;
-            endY += var9;
-            endX += var9;
+            startX += clipX;
+            startY += clipX;
+            endY += clipX;
+            endX += clipX;
         }
 
         if (width + x > Rasterizer2D.xClipEnd) {
-            const var9 = width + x - Rasterizer2D.xClipEnd;
-            width -= var9;
-            endY += var9;
-            endX += var9;
+            const clipRight = width + x - Rasterizer2D.xClipEnd;
+            width -= clipRight;
+            endY += clipRight;
+            endX += clipRight;
         }
 
         if (width > 0 && height > 0) {

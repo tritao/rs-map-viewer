@@ -43,10 +43,10 @@ export class PerlinNoiseOperation extends TextureOperation {
     }
 
     static calcNoise(n: number) {
-        const i_9_ = (((n * n) >> 12) * n) >> 12;
-        const i_10_ = n * 6 - 61440;
-        const i_11_ = 40960 + ((n * i_10_) >> 12);
-        return (i_9_ * i_11_) >> 12;
+        const i = (((n * n) >> 12) * n) >> 12;
+        const j = n * 6 - 61440;
+        const k = 40960 + ((n * j) >> 12);
+        return (i * k) >> 12;
     }
 
     static lerp(start: number, end: number, amount: number): number {
@@ -129,120 +129,113 @@ export class PerlinNoiseOperation extends TextureOperation {
     noise0(textureGenerator: TextureGenerator, line: number, output: Int32Array): void {
         const vGrad = this.field6 * textureGenerator.verticalGradient[line];
         if (this.field1 === 1) {
-            const nin0 = this.noiseInput0[0];
-            const nin1 = this.noiseInput1[0] << 12;
-            const n1f5 = (nin1 * this.field5) >> 12;
-            const n1f6 = (nin1 * this.field6) >> 12;
-            let noiseIndex = (nin1 * vGrad) >> 12;
-            const permIndex0 = noiseIndex >> 12;
+            const amplitude = this.noiseInput0[0];
+            const freq12 = this.noiseInput1[0] << 12;
+            const xWrap = (freq12 * this.field5) >> 12;
+            const yWrap = (freq12 * this.field6) >> 12;
+            let yCoord = (freq12 * vGrad) >> 12;
+            const permIndex0 = yCoord >> 12;
             let permIndex1 = permIndex0 + 1;
-            if (n1f6 <= permIndex1) {
+            if (yWrap <= permIndex1) {
                 permIndex1 = 0;
             }
-            noiseIndex &= 0xfff;
-            const noise = PerlinNoiseOperation.noise[noiseIndex];
+            yCoord &= 0xfff;
+            const fadeY = PerlinNoiseOperation.noise[yCoord];
             const perm0 = this.permutations[permIndex0 & 0xff] & 0xff;
             const perm1 = this.permutations[permIndex1 & 0xff] & 0xff;
             if (this.field0) {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                     const hGrad = this.field5 * textureGenerator.horizontalGradient[pixel];
-                    let v = this.noise1(
-                        (nin1 * hGrad) >> 12,
-                        n1f5,
-                        perm0,
-                        perm1,
-                        noiseIndex,
-                        noise,
-                    );
-                    v = (nin0 * v) >> 12;
+                    let v = this.noise1((freq12 * hGrad) >> 12, xWrap, perm0, perm1, yCoord, fadeY);
+                    v = (amplitude * v) >> 12;
                     output[pixel] = (v >> 1) + 2048;
                 }
             } else {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                     const hGrad = this.field5 * textureGenerator.horizontalGradient[pixel];
                     const v = this.noise1(
-                        (nin1 * hGrad) >> 12,
-                        n1f5,
+                        (freq12 * hGrad) >> 12,
+                        xWrap,
                         perm0,
                         perm1,
-                        noiseIndex,
-                        noise,
+                        yCoord,
+                        fadeY,
                     );
-                    output[pixel] = (v * nin0) >> 12;
+                    output[pixel] = (v * amplitude) >> 12;
                 }
             }
         } else {
-            let i_45_ = this.noiseInput0[0];
-            if (i_45_ > 8 || i_45_ < -8) {
-                const i_46_ = this.noiseInput1[0] << 12;
-                let i_47_ = (i_46_ * vGrad) >> 12;
-                const i_48_ = (i_46_ * this.field5) >> 12;
-                const i_49_ = (i_46_ * this.field6) >> 12;
-                const i_50_ = i_47_ >> 12;
-                let i_51_ = i_50_ + 1;
-                i_47_ &= 0xfff;
-                if (i_49_ <= i_51_) {
-                    i_51_ = 0;
+            let amplitude = this.noiseInput0[0];
+            if (amplitude > 8 || amplitude < -8) {
+                const freq12 = this.noiseInput1[0] << 12;
+                let yCoord = (freq12 * vGrad) >> 12;
+                const xWrap = (freq12 * this.field5) >> 12;
+                const yWrap = (freq12 * this.field6) >> 12;
+                const yCell = yCoord >> 12;
+                let yCellNext = yCell + 1;
+                yCoord &= 0xfff;
+                if (yWrap <= yCellNext) {
+                    yCellNext = 0;
                 }
-                const i_52_ = this.permutations[i_50_ & 0xff] & 0xff;
-                const i_53_ = PerlinNoiseOperation.noise[i_47_];
-                const i_54_ = this.permutations[i_51_ & 0xff] & 0xff;
+                const permY0 = this.permutations[yCell & 0xff] & 0xff;
+                const fadeY = PerlinNoiseOperation.noise[yCoord];
+                const permY1 = this.permutations[yCellNext & 0xff] & 0xff;
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                    const i_56_ = this.field5 * textureGenerator.horizontalGradient[pixel];
-                    const i_57_ = this.noise1(
-                        (i_56_ * i_46_) >> 12,
-                        i_48_,
-                        i_52_,
-                        i_54_,
-                        i_47_,
-                        i_53_,
+                    const xBase = this.field5 * textureGenerator.horizontalGradient[pixel];
+                    const v = this.noise1(
+                        (xBase * freq12) >> 12,
+                        xWrap,
+                        permY0,
+                        permY1,
+                        yCoord,
+                        fadeY,
                     );
-                    output[pixel] = (i_45_ * i_57_) >> 12;
+                    output[pixel] = (amplitude * v) >> 12;
                 }
             }
 
-            for (let i_58_ = 1; i_58_ < this.field1; i_58_++) {
-                i_45_ = this.noiseInput0[i_58_];
-                if (i_45_ > 8 || i_45_ < -8) {
-                    const i_59_ = this.noiseInput1[i_58_] << 12;
-                    const i_60_ = (this.field6 * i_59_) >> 12;
-                    const i_61_ = (this.field5 * i_59_) >> 12;
-                    let i_62_ = (vGrad * i_59_) >> 12;
-                    const i_63_ = i_62_ >> 12;
-                    let i_64_ = i_63_ + 1;
-                    i_62_ &= 0xfff;
-                    if (i_60_ <= i_64_) {
-                        i_64_ = 0;
+            for (let octave = 1; octave < this.field1; octave++) {
+                amplitude = this.noiseInput0[octave];
+                if (amplitude > 8 || amplitude < -8) {
+                    const freq12 = this.noiseInput1[octave] << 12;
+                    const yWrap = (this.field6 * freq12) >> 12;
+                    const xWrap = (this.field5 * freq12) >> 12;
+                    let yCoord = (vGrad * freq12) >> 12;
+                    const yCell = yCoord >> 12;
+                    let yCellNext = yCell + 1;
+                    yCoord &= 0xfff;
+                    if (yWrap <= yCellNext) {
+                        yCellNext = 0;
                     }
-                    const i_65_ = this.permutations[i_64_ & 0xff] & 0xff;
-                    const i_66_ = this.permutations[i_63_ & 0xff] & 0xff;
-                    const i_67_ = PerlinNoiseOperation.noise[i_62_];
-                    if (this.field0 && this.field1 - 1 === i_58_) {
+                    const permY1 = this.permutations[yCellNext & 0xff] & 0xff;
+                    const permY0 = this.permutations[yCell & 0xff] & 0xff;
+                    const fadeY = PerlinNoiseOperation.noise[yCoord];
+                    if (this.field0 && this.field1 - 1 === octave) {
                         for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                            const i_69_ = textureGenerator.horizontalGradient[pixel] * this.field5;
-                            let i_70_ = this.noise1(
-                                (i_59_ * i_69_) >> 12,
-                                i_61_,
-                                i_66_,
-                                i_65_,
-                                i_62_,
-                                i_67_,
+                            const xBase = textureGenerator.horizontalGradient[pixel] * this.field5;
+                            let v = this.noise1(
+                                (freq12 * xBase) >> 12,
+                                xWrap,
+                                permY0,
+                                permY1,
+                                yCoord,
+                                fadeY,
                             );
-                            i_70_ = output[pixel] + ((i_70_ * i_45_) >> 12);
-                            output[pixel] = 2048 + (i_70_ >> 1);
+                            v = output[pixel] + ((v * amplitude) >> 12);
+                            output[pixel] = 2048 + (v >> 1);
                         }
                     } else {
                         for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                            const i_72_ = textureGenerator.horizontalGradient[pixel] * this.field5;
-                            const i_73_ = this.noise1(
-                                (i_59_ * i_72_) >> 12,
-                                i_61_,
-                                i_66_,
-                                i_65_,
-                                i_62_,
-                                i_67_,
+                            const xBase = textureGenerator.horizontalGradient[pixel] * this.field5;
+                            const v = this.noise1(
+                                (freq12 * xBase) >> 12,
+                                xWrap,
+                                permY0,
+                                permY1,
+                                yCoord,
+                                fadeY,
                             );
-                            output[pixel] += (i_45_ * i_73_) >> 12;
+                            output[pixel] += (amplitude * v) >> 12;
                         }
                     }
                 }
@@ -251,53 +244,54 @@ export class PerlinNoiseOperation extends TextureOperation {
     }
 
     noise1(
-        hGrad: number,
-        vGrad: number,
-        perm0: number,
-        perm1: number,
-        noiseIndex: number,
-        noise: number,
+        xCoord: number,
+        xWrap: number,
+        permY0: number,
+        permY1: number,
+        yFrac: number,
+        fadeY: number,
     ): number {
-        let i_8_ = hGrad >> 12;
-        let i_9_ = i_8_ + 1;
-        hGrad &= 0xfff;
-        if (i_9_ >= vGrad) {
-            i_9_ = 0;
+        let xCell = xCoord >> 12;
+        let xCellNext = xCell + 1;
+        xCoord &= 0xfff;
+        if (xCellNext >= xWrap) {
+            xCellNext = 0;
         }
-        i_8_ &= 0xff;
-        let i_10_ = noiseIndex - 4096;
-        let i_11_ = hGrad - 4096;
-        i_9_ &= 0xff;
-        let i_12_ = this.permutations[perm0 + i_8_] & 0x3;
-        let i_13_ = PerlinNoiseOperation.noise[hGrad];
-        let i_14_;
-        if (i_12_ > 1) {
-            i_14_ = i_12_ === 2 ? -noiseIndex + hGrad : -noiseIndex + -hGrad;
+        xCell &= 0xff;
+        const yFracMinusOne = yFrac - 4096;
+        const xFracMinusOne = xCoord - 4096;
+        xCellNext &= 0xff;
+        let gradIndex = this.permutations[permY0 + xCell] & 0x3;
+        const fadeX = PerlinNoiseOperation.noise[xCoord];
+        let dot00: number;
+        if (gradIndex > 1) {
+            dot00 = gradIndex === 2 ? -yFrac + xCoord : -yFrac + -xCoord;
         } else {
-            i_14_ = i_12_ === 0 ? noiseIndex + hGrad : -hGrad + noiseIndex;
+            dot00 = gradIndex === 0 ? yFrac + xCoord : -xCoord + yFrac;
         }
-        i_12_ = this.permutations[perm0 + i_9_] & 0x3;
-        let i_15_: number;
-        if (i_12_ <= 1) {
-            i_15_ = i_12_ === 0 ? noiseIndex + i_11_ : noiseIndex - i_11_;
+        gradIndex = this.permutations[permY0 + xCellNext] & 0x3;
+        let dot01: number;
+        if (gradIndex <= 1) {
+            dot01 = gradIndex === 0 ? yFrac + xFracMinusOne : yFrac - xFracMinusOne;
         } else {
-            i_15_ = i_12_ === 2 ? i_11_ - noiseIndex : -i_11_ + -noiseIndex;
+            dot01 = gradIndex === 2 ? xFracMinusOne - yFrac : -xFracMinusOne + -yFrac;
         }
-        i_12_ = this.permutations[perm1 + i_8_] & 0x3;
-        const i_16_ = ((i_13_ * (i_15_ - i_14_)) >> 12) + i_14_;
-        if (i_12_ <= 1) {
-            i_14_ = i_12_ !== 0 ? i_10_ - hGrad : hGrad + i_10_;
+        const interpTop = ((fadeX * (dot01 - dot00)) >> 12) + dot00;
+        gradIndex = this.permutations[permY1 + xCell] & 0x3;
+        if (gradIndex <= 1) {
+            dot00 = gradIndex !== 0 ? yFracMinusOne - xCoord : xCoord + yFracMinusOne;
         } else {
-            i_14_ = i_12_ !== 2 ? -i_10_ + -hGrad : hGrad - i_10_;
+            dot00 = gradIndex !== 2 ? -yFracMinusOne + -xCoord : xCoord - yFracMinusOne;
         }
-        i_12_ = this.permutations[i_9_ + perm1] & 0x3;
-        if (i_12_ <= 1) {
-            i_15_ = i_12_ === 0 ? i_11_ + i_10_ : i_10_ - i_11_;
+        gradIndex = this.permutations[xCellNext + permY1] & 0x3;
+        if (gradIndex <= 1) {
+            dot01 = gradIndex === 0 ? xFracMinusOne + yFracMinusOne : yFracMinusOne - xFracMinusOne;
         } else {
-            i_15_ = i_12_ === 2 ? -i_10_ + i_11_ : -i_10_ + -i_11_;
+            dot01 =
+                gradIndex === 2 ? -yFracMinusOne + xFracMinusOne : -yFracMinusOne + -xFracMinusOne;
         }
-        const i_17_ = i_14_ + ((i_13_ * (i_15_ - i_14_)) >> 12);
-        return i_16_ + ((noise * (i_17_ - i_16_)) >> 12);
+        const interpBottom = dot00 + ((fadeX * (dot01 - dot00)) >> 12);
+        return interpTop + ((fadeY * (interpBottom - interpTop)) >> 12);
     }
 
     noise(x: number, y: number, verticalGradient: number, horizontalGradient: number): number {

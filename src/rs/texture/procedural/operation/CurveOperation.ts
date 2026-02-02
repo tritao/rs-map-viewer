@@ -100,21 +100,21 @@ export class CurveOperation extends TextureOperation {
                     }
                     const markP = this.markers[markIndex - 1];
                     const markN = this.markers[markIndex];
-                    const i_17_ = this.getMarker(markIndex - 2)[1];
-                    const i_18_ = markP[1];
-                    const i_19_ = markN[1];
-                    const i_20_ = this.getMarker(markIndex + 1)[1];
+                    const yPrevPrev = this.getMarker(markIndex - 2)[1];
+                    const yPrev = markP[1];
+                    const yNext = markN[1];
+                    const yNextNext = this.getMarker(markIndex + 1)[1];
                     const interpIn =
                         (((indexTimes16 - markP[0]) * 4096) / (markN[0] - markP[0])) | 0;
                     const xSq = ((interpIn * interpIn) / 4096) | 0;
-                    const i_23_ = i_18_ - i_17_ + (i_20_ - i_19_);
-                    const i_24_ = i_17_ - i_18_ - i_23_;
-                    const i_25_ = i_19_ - i_17_;
-                    const i_26_ = i_18_;
-                    const i_27_ = (xSq * ((interpIn * i_23_) >> 12)) >> 12;
-                    const i_28_ = ((xSq * i_24_) / 4096) | 0;
-                    const i_29_ = ((interpIn * i_25_) / 4096) | 0;
-                    let out = i_29_ + i_27_ + i_28_ + i_26_;
+                    const coefA = yPrev - yPrevPrev + (yNextNext - yNext);
+                    const coefB = yPrevPrev - yPrev - coefA;
+                    const coefC = yNext - yPrevPrev;
+                    const coefD = yPrev;
+                    const cubicTerm = (xSq * ((interpIn * coefA) >> 12)) >> 12;
+                    const quadraticTerm = ((xSq * coefB) / 4096) | 0;
+                    const linearTerm = ((interpIn * coefC) / 4096) | 0;
+                    let out = linearTerm + cubicTerm + quadraticTerm + coefD;
                     if (out <= -32768) {
                         out = -32767;
                     }

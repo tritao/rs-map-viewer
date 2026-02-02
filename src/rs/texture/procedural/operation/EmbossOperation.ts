@@ -61,29 +61,30 @@ export class EmbossOperation extends TextureOperation {
                 const prevPixel = currLine[(pixel - 1) & textureGenerator.widthMask];
                 const nextPixel = currLine[(pixel + 1) & textureGenerator.widthMask];
 
-                const i_10_ = (widthMult * (nextLine[pixel] - prevLine[pixel])) >> 12;
-                const i_11_ = (widthMult * (prevPixel - nextPixel)) >> 12;
+                const gradY = (widthMult * (nextLine[pixel] - prevLine[pixel])) >> 12;
+                const gradX = (widthMult * (prevPixel - nextPixel)) >> 12;
 
-                let i_12_ = i_11_ >> 4;
-                let i_13_ = i_10_ >> 4;
-                if (i_12_ < 0) {
-                    i_12_ = -i_12_;
+                let gradXAbs = gradX >> 4;
+                let gradYAbs = gradY >> 4;
+                if (gradXAbs < 0) {
+                    gradXAbs = -gradXAbs;
                 }
-                if (i_12_ > 255) {
-                    i_12_ = 255;
+                if (gradXAbs > 255) {
+                    gradXAbs = 255;
                 }
-                if (i_13_ < 0) {
-                    i_13_ = -i_13_;
+                if (gradYAbs < 0) {
+                    gradYAbs = -gradYAbs;
                 }
-                if (i_13_ > 255) {
-                    i_13_ = 255;
+                if (gradYAbs > 255) {
+                    gradYAbs = 255;
                 }
-                const i_14_ =
-                    TextureGenerator.INVERSE_SQUARE_ROOT[i_12_ + (((i_13_ + 1) * i_13_) >> 1)] &
-                    0xff;
-                let v0 = (i_14_ * i_11_) >> 8;
-                let v1 = (i_14_ * i_10_) >> 8;
-                let v2 = (i_14_ * 4096) >> 8;
+                const invMagnitude =
+                    TextureGenerator.INVERSE_SQUARE_ROOT[
+                        gradXAbs + (((gradYAbs + 1) * gradYAbs) >> 1)
+                    ] & 0xff;
+                let v0 = (invMagnitude * gradX) >> 8;
+                let v1 = (invMagnitude * gradY) >> 8;
+                let v2 = (invMagnitude * 4096) >> 8;
                 v0 = (this.table[0] * v0) >> 12;
                 v1 = (this.table[1] * v1) >> 12;
                 v2 = (this.table[2] * v2) >> 12;

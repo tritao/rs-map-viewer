@@ -1,70 +1,74 @@
-export function buildPalette(brightness: number, var2: number, var3: number): Int32Array {
+export function buildPalette(
+    brightness: number,
+    startHslIndex: number,
+    endHslIndex: number,
+): Int32Array {
     const palette = new Int32Array(0xffff);
 
-    let paletteIndex = var2 * 128;
+    let paletteIndex = startHslIndex * 128;
 
-    for (let var5 = var2; var5 < var3; var5++) {
-        let var6 = (var5 >> 3) / 64.0 + 0.0078125;
-        let var8 = (var5 & 7) / 8.0 + 0.0625;
+    for (let hslIndex = startHslIndex; hslIndex < endHslIndex; hslIndex++) {
+        let hue = (hslIndex >> 3) / 64.0 + 0.0078125;
+        let saturation = (hslIndex & 7) / 8.0 + 0.0625;
 
-        for (let var10 = 0; var10 < 128; var10++) {
-            const var11 = var10 / 128.0;
-            let var13 = var11;
-            let var15 = var11;
-            let var17 = var11;
-            if (var8 !== 0.0) {
-                let var19: number;
-                if (var11 < 0.5) {
-                    var19 = var11 * (1.0 + var8);
+        for (let lightnessIndex = 0; lightnessIndex < 128; lightnessIndex++) {
+            const lightness = lightnessIndex / 128.0;
+            let rFloat = lightness;
+            let gFloat = lightness;
+            let bFloat = lightness;
+            if (saturation !== 0.0) {
+                let q: number;
+                if (lightness < 0.5) {
+                    q = lightness * (1.0 + saturation);
                 } else {
-                    var19 = var11 + var8 - var11 * var8;
+                    q = lightness + saturation - lightness * saturation;
                 }
 
-                const var21 = 2.0 * var11 - var19;
-                let var23 = var6 + 0.3333333333333333;
-                if (var23 > 1.0) {
-                    var23--;
+                const p = 2.0 * lightness - q;
+                let tR = hue + 0.3333333333333333;
+                if (tR > 1.0) {
+                    tR--;
                 }
 
-                let var27 = var6 - 0.3333333333333333;
-                if (var27 < 0.0) {
-                    var27++;
+                let tB = hue - 0.3333333333333333;
+                if (tB < 0.0) {
+                    tB++;
                 }
 
-                if (6.0 * var23 < 1.0) {
-                    var13 = var21 + (var19 - var21) * 6.0 * var23;
-                } else if (2.0 * var23 < 1.0) {
-                    var13 = var19;
-                } else if (3.0 * var23 < 2.0) {
-                    var13 = var21 + (var19 - var21) * (0.6666666666666666 - var23) * 6.0;
+                if (6.0 * tR < 1.0) {
+                    rFloat = p + (q - p) * 6.0 * tR;
+                } else if (2.0 * tR < 1.0) {
+                    rFloat = q;
+                } else if (3.0 * tR < 2.0) {
+                    rFloat = p + (q - p) * (0.6666666666666666 - tR) * 6.0;
                 } else {
-                    var13 = var21;
+                    rFloat = p;
                 }
 
-                if (6.0 * var6 < 1.0) {
-                    var15 = var21 + (var19 - var21) * 6.0 * var6;
-                } else if (2.0 * var6 < 1.0) {
-                    var15 = var19;
-                } else if (3.0 * var6 < 2.0) {
-                    var15 = var21 + (var19 - var21) * (0.6666666666666666 - var6) * 6.0;
+                if (6.0 * hue < 1.0) {
+                    gFloat = p + (q - p) * 6.0 * hue;
+                } else if (2.0 * hue < 1.0) {
+                    gFloat = q;
+                } else if (3.0 * hue < 2.0) {
+                    gFloat = p + (q - p) * (0.6666666666666666 - hue) * 6.0;
                 } else {
-                    var15 = var21;
+                    gFloat = p;
                 }
 
-                if (6.0 * var27 < 1.0) {
-                    var17 = var21 + (var19 - var21) * 6.0 * var27;
-                } else if (2.0 * var27 < 1.0) {
-                    var17 = var19;
-                } else if (3.0 * var27 < 2.0) {
-                    var17 = var21 + (var19 - var21) * (0.6666666666666666 - var27) * 6.0;
+                if (6.0 * tB < 1.0) {
+                    bFloat = p + (q - p) * 6.0 * tB;
+                } else if (2.0 * tB < 1.0) {
+                    bFloat = q;
+                } else if (3.0 * tB < 2.0) {
+                    bFloat = p + (q - p) * (0.6666666666666666 - tB) * 6.0;
                 } else {
-                    var17 = var21;
+                    bFloat = p;
                 }
             }
 
-            const r = (var13 * 256.0) | 0;
-            const g = (var15 * 256.0) | 0;
-            const b = (var17 * 256.0) | 0;
+            const r = (rFloat * 256.0) | 0;
+            const g = (gFloat * 256.0) | 0;
+            const b = (bFloat * 256.0) | 0;
             const rgb = (r << 16) + (g << 8) + b;
 
             let newRgb = brightenRgb(rgb, brightness);

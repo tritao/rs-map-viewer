@@ -191,32 +191,24 @@ export function computeTextureCoords(
                     if ((direction & 0x1) === 0) {
                         if (u1 - u0 > scaleZHalf) {
                             u1 -= scaleZ;
-                            // i_769_ = 1;
                         } else if (u0 - u1 > scaleZHalf) {
                             u1 += scaleZ;
-                            // i_769_ = 2;
                         }
                         if (u2 - u0 > scaleZHalf) {
                             u2 -= scaleZ;
-                            // i_770_ = 1;
                         } else if (u0 - u2 > scaleZHalf) {
                             u2 += scaleZ;
-                            // i_770_ = 2;
                         }
                     } else {
                         if (v1 - v0 > scaleZHalf) {
                             v1 -= scaleZ;
-                            // i_769_ = 1;
                         } else if (v0 - v1 > scaleZHalf) {
                             v1 += scaleZ;
-                            // i_769_ = 2;
                         }
                         if (v2 - v0 > scaleZHalf) {
                             v2 -= scaleZ;
-                            // i_770_ = 1;
                         } else if (v0 - v2 > scaleZHalf) {
                             v2 += scaleZ;
-                            // i_770_ = 2;
                         }
                     }
                 } else if (type === 2) {
@@ -339,32 +331,24 @@ export function computeTextureCoords(
                     if ((direction & 0x1) === 0) {
                         if (u1 - u0 > 0.5) {
                             u1--;
-                            // i_769_ = 1;
                         } else if (u0 - u1 > 0) {
                             u1++;
-                            // i_769_ = 2;
                         }
                         if (u2 - u0 > 0.5) {
                             u2--;
-                            // i_770_ = 1;
                         } else if (u0 - u2 > 0.5) {
                             u2++;
-                            // i_770_ = 2;
                         }
                     } else {
                         if (v1 - v0 > 0.5) {
                             v1--;
-                            // i_769_ = 1;
                         } else if (v0 - v1 > 0.5) {
                             v1++;
-                            // i_769_ = 2;
                         }
                         if (v2 - v0 > 0.5) {
                             v2--;
-                            // i_770_ = 1;
                         } else if (v0 - v2 > 0.5) {
                             v2++;
-                            // i_770_ = 2;
                         }
                     }
                 }
@@ -559,7 +543,7 @@ class TextureScales {
         readonly centerZs: Int32Array | undefined,
         // 3x3 rotation matrix maybe
         readonly fs: Float32Array[] | undefined,
-    ) { }
+    ) {}
 }
 
 export function calculateTextureScales(model: ModelData): TextureScales {
