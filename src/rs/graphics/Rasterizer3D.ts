@@ -1,12 +1,14 @@
 import { nextPow2 } from "../../util/MathUtil";
 import { HSL_RGB_MAP } from "../util/ColorUtil";
-import type { Rasterizer2DContext } from "./Rasterizer2D";
+import type { Rasterizer2D } from "./Rasterizer2D";
 
 export class Rasterizer3D {
     lowMem = false;
     rasterClipEnable: boolean = false;
     rasterGouraudLowRes: boolean = true;
     rasterAlpha: number = 0;
+
+    private r2d!: Rasterizer2D;
 
     rasterClipY: Int32Array = new Int32Array(1024);
 
@@ -21,11 +23,11 @@ export class Rasterizer3D {
     viewportTop: number = 0;
     viewportBottom: number = 0;
 
-    setClip(r2d: Rasterizer2DContext) {
+    setClip(r2d: Rasterizer2D) {
         const Rasterizer3D = this;
+        Rasterizer3D.r2d = r2d;
         const Rasterizer2D = r2d;
         Rasterizer3D.setRasterClip(
-            Rasterizer2D,
             Rasterizer2D.xClipStart,
             Rasterizer2D.yClipStart,
             Rasterizer2D.xClipEnd,
@@ -34,14 +36,13 @@ export class Rasterizer3D {
     }
 
     setRasterClip(
-        r2d: Rasterizer2DContext,
         xClipStart: number,
         yClipStart: number,
         xClipEnd: number,
         yClipEnd: number,
     ) {
         const Rasterizer3D = this;
-        const Rasterizer2D = r2d;
+        const Rasterizer2D = Rasterizer3D.r2d;
         Rasterizer3D.endX = xClipEnd - xClipStart;
         Rasterizer3D.endY = yClipEnd - yClipStart;
         Rasterizer3D.calculateViewport();
@@ -67,9 +68,9 @@ export class Rasterizer3D {
         Rasterizer3D.viewportBottom = Rasterizer3D.endY - Rasterizer3D.centerY;
     }
 
-    setViewport(r2d: Rasterizer2DContext, x: number, y: number) {
+    setViewport(x: number, y: number) {
         const Rasterizer3D = this;
-        const Rasterizer2D = r2d;
+        const Rasterizer2D = Rasterizer3D.r2d;
         const offset = Rasterizer3D.rasterClipY[0];
         const clipStartY = (offset / Rasterizer2D.width) | 0;
         const clipStartX = offset - clipStartY * Rasterizer2D.width;
@@ -82,7 +83,6 @@ export class Rasterizer3D {
     }
 
     rasterGouraud(
-        r2d: Rasterizer2DContext,
         y0: number,
         y1: number,
         y2: number,
@@ -94,7 +94,7 @@ export class Rasterizer3D {
         hsl2: number,
     ) {
         const Rasterizer3D = this;
-        const Rasterizer2D = r2d;
+        const Rasterizer2D = Rasterizer3D.r2d;
         const dx01 = x1 - x0;
         const dy01 = y1 - y0;
         const dx02 = x2 - x0;

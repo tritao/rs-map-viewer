@@ -26,7 +26,7 @@
  */
 import { LocModelType } from "../../config/loctype/LocModelType";
 import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
-import { Rasterizer2D, type Rasterizer2DContext } from "../../graphics/Rasterizer2D";
+import { Rasterizer2D } from "../../graphics/Rasterizer2D";
 import { Rasterizer3D } from "../../graphics/Rasterizer3D";
 import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpritePixels } from "../../sprite/SpritePixels";
@@ -112,7 +112,7 @@ export class MapImageRenderer {
         const wallInteractiveRgb = 0xee0000;
 
         spritePixels.setRaster(this.rasterizer2d);
-        const r2d = this.rasterizer2d.getContext();
+        const r2d = this.rasterizer2d;
 
         for (let tileX = 0; tileX < scene.sizeX; tileX++) {
             for (let tileY = 0; tileY < scene.sizeY; tileY++) {
@@ -169,7 +169,7 @@ export class MapImageRenderer {
         const pixels = spritePixels.pixels;
 
         spritePixels.setRaster(this.rasterizer2d);
-        const r2d = this.rasterizer2d.getContext();
+        const r2d = this.rasterizer2d;
         this.rasterizer3d.setClip(r2d);
         this.rasterizer3d.rasterGouraudLowRes = false;
 
@@ -182,7 +182,7 @@ export class MapImageRenderer {
                     if (!scene.isPlayerLevel(level, tileX, tileY, playerLevel)) {
                         continue;
                     }
-                    this.drawTileHd(scene, r2d, level, tileX, tileY);
+                    this.drawTileHd(scene, level, tileX, tileY);
                 }
             }
             for (let tileY = 0; tileY < scene.sizeY; tileY++) {
@@ -294,7 +294,7 @@ export class MapImageRenderer {
         }
     }
 
-    drawTileHd(scene: Scene, r2d: Rasterizer2DContext, level: number, tileX: number, tileY: number): void {
+    drawTileHd(scene: Scene, level: number, tileX: number, tileY: number): void {
         const tile = scene.tiles[level][tileX][tileY];
         if (!tile || !tile.tileModel) {
             return;
@@ -345,7 +345,6 @@ export class MapImageRenderer {
 
             if (colorA !== INVALID_HSL_COLOR) {
                 this.rasterizer3d.rasterGouraud(
-                    r2d,
                     MapImageRenderer.tmpScreenY[a],
                     MapImageRenderer.tmpScreenY[b],
                     MapImageRenderer.tmpScreenY[c],
@@ -362,7 +361,7 @@ export class MapImageRenderer {
 
     drawLoc(
         scene: Scene,
-        r2d: Rasterizer2DContext,
+        r2d: Rasterizer2D,
         pixels: Int32Array,
         width: number,
         level: number,
