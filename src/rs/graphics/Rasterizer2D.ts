@@ -1,3 +1,13 @@
+export type Rasterizer2DContext = {
+    pixels: Int32Array;
+    width: number;
+    height: number;
+    xClipStart: number;
+    yClipStart: number;
+    xClipEnd: number;
+    yClipEnd: number;
+};
+
 export class Rasterizer2D {
     static pixels: Int32Array;
 
@@ -8,6 +18,18 @@ export class Rasterizer2D {
     static yClipStart: number;
     static xClipEnd: number;
     static yClipEnd: number;
+
+    static getContext(): Rasterizer2DContext {
+        return {
+            pixels: Rasterizer2D.pixels,
+            width: Rasterizer2D.width,
+            height: Rasterizer2D.height,
+            xClipStart: Rasterizer2D.xClipStart,
+            yClipStart: Rasterizer2D.yClipStart,
+            xClipEnd: Rasterizer2D.xClipEnd,
+            yClipEnd: Rasterizer2D.yClipEnd,
+        };
+    }
 
     static setRaster(pixels: Int32Array, width: number, height: number) {
         Rasterizer2D.pixels = pixels;

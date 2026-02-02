@@ -1,28 +1,31 @@
 import { nextPow2 } from "../../util/MathUtil";
 import { HSL_RGB_MAP } from "../util/ColorUtil";
-import { Rasterizer2D } from "./Rasterizer2D";
+import type { Rasterizer2DContext } from "./Rasterizer2D";
 
 export class Rasterizer3D {
-    static lowMem = false;
-    static rasterClipEnable: boolean = false;
-    static rasterGouraudLowRes: boolean = true;
-    static rasterAlpha: number = 0;
+    lowMem = false;
+    rasterClipEnable: boolean = false;
+    rasterGouraudLowRes: boolean = true;
+    rasterAlpha: number = 0;
 
-    static rasterClipY: Int32Array = new Int32Array(1024);
+    rasterClipY: Int32Array = new Int32Array(1024);
 
-    static endX: number = 0;
-    static endY: number = 0;
+    endX: number = 0;
+    endY: number = 0;
 
-    static centerX: number = 0;
-    static centerY: number = 0;
+    centerX: number = 0;
+    centerY: number = 0;
 
-    static viewportLeft: number = 0;
-    static viewportRight: number = 0;
-    static viewportTop: number = 0;
-    static viewportBottom: number = 0;
+    viewportLeft: number = 0;
+    viewportRight: number = 0;
+    viewportTop: number = 0;
+    viewportBottom: number = 0;
 
-    static setClip() {
+    setClip(r2d: Rasterizer2DContext) {
+        const Rasterizer3D = this;
+        const Rasterizer2D = r2d;
         Rasterizer3D.setRasterClip(
+            Rasterizer2D,
             Rasterizer2D.xClipStart,
             Rasterizer2D.yClipStart,
             Rasterizer2D.xClipEnd,
@@ -30,12 +33,15 @@ export class Rasterizer3D {
         );
     }
 
-    static setRasterClip(
+    setRasterClip(
+        r2d: Rasterizer2DContext,
         xClipStart: number,
         yClipStart: number,
         xClipEnd: number,
         yClipEnd: number,
     ) {
+        const Rasterizer3D = this;
+        const Rasterizer2D = r2d;
         Rasterizer3D.endX = xClipEnd - xClipStart;
         Rasterizer3D.endY = yClipEnd - yClipStart;
         Rasterizer3D.calculateViewport();
@@ -51,7 +57,8 @@ export class Rasterizer3D {
         }
     }
 
-    static calculateViewport() {
+    calculateViewport() {
+        const Rasterizer3D = this;
         Rasterizer3D.centerX = (Rasterizer3D.endX / 2) | 0;
         Rasterizer3D.centerY = (Rasterizer3D.endY / 2) | 0;
         Rasterizer3D.viewportLeft = -Rasterizer3D.centerX;
@@ -60,7 +67,9 @@ export class Rasterizer3D {
         Rasterizer3D.viewportBottom = Rasterizer3D.endY - Rasterizer3D.centerY;
     }
 
-    static setViewport(x: number, y: number) {
+    setViewport(r2d: Rasterizer2DContext, x: number, y: number) {
+        const Rasterizer3D = this;
+        const Rasterizer2D = r2d;
         const offset = Rasterizer3D.rasterClipY[0];
         const clipStartY = (offset / Rasterizer2D.width) | 0;
         const clipStartX = offset - clipStartY * Rasterizer2D.width;
@@ -72,7 +81,8 @@ export class Rasterizer3D {
         Rasterizer3D.viewportBottom = Rasterizer3D.endY - Rasterizer3D.centerY;
     }
 
-    static rasterGouraud(
+    rasterGouraud(
+        r2d: Rasterizer2DContext,
         y0: number,
         y1: number,
         y2: number,
@@ -83,6 +93,8 @@ export class Rasterizer3D {
         hsl1: number,
         hsl2: number,
     ) {
+        const Rasterizer3D = this;
+        const Rasterizer2D = r2d;
         const dx01 = x1 - x0;
         const dy01 = y1 - y0;
         const dx02 = x2 - x0;
@@ -748,7 +760,7 @@ export class Rasterizer3D {
         }
     }
 
-    static rasterGouraudLine(
+    rasterGouraudLine(
         pixels: Int32Array,
         offset: number,
         startX: number,
@@ -756,9 +768,10 @@ export class Rasterizer3D {
         hslIndex: number,
         grad: number,
     ) {
+        const Rasterizer3D = this;
         if (Rasterizer3D.rasterClipEnable) {
-            if (endX > this.endX) {
-                endX = this.endX;
+            if (endX > Rasterizer3D.endX) {
+                endX = Rasterizer3D.endX;
             }
 
             if (startX < 0) {

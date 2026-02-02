@@ -26,6 +26,7 @@
  */
 import { LocModelType } from "../../config/loctype/LocModelType";
 import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
+import { Rasterizer2D, type Rasterizer2DContext } from "../../graphics/Rasterizer2D";
 import { Rasterizer3D } from "../../graphics/Rasterizer3D";
 import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpritePixels } from "../../sprite/SpritePixels";
@@ -61,6 +62,8 @@ const tileRotation2D = [
 export class MapImageRenderer {
     static tmpScreenX = new Int32Array(6);
     static tmpScreenY = new Int32Array(6);
+
+    private readonly rasterizer3d = new Rasterizer3D();
 
     constructor(
         readonly textureLoader: TextureLoader,
@@ -163,8 +166,9 @@ export class MapImageRenderer {
 
         spritePixels.setRaster();
 
-        Rasterizer3D.setClip();
-        Rasterizer3D.rasterGouraudLowRes = false;
+        const r2d = Rasterizer2D.getContext();
+        this.rasterizer3d.setClip(r2d);
+        this.rasterizer3d.rasterGouraudLowRes = false;
 
         const wallRgb = 0xeeeeee;
         const wallInteractiveRgb = 0xee0000;
@@ -175,7 +179,7 @@ export class MapImageRenderer {
                     if (!scene.isPlayerLevel(level, tileX, tileY, playerLevel)) {
                         continue;
                     }
-                    this.drawTileHd(scene, level, tileX, tileY);
+                    this.drawTileHd(scene, r2d, level, tileX, tileY);
                 }
             }
             for (let tileY = 0; tileY < scene.sizeY; tileY++) {
@@ -285,7 +289,7 @@ export class MapImageRenderer {
         }
     }
 
-    drawTileHd(scene: Scene, level: number, tileX: number, tileY: number): void {
+    drawTileHd(scene: Scene, r2d: Rasterizer2DContext, level: number, tileX: number, tileY: number): void {
         const tile = scene.tiles[level][tileX][tileY];
         if (!tile || !tile.tileModel) {
             return;
@@ -335,7 +339,8 @@ export class MapImageRenderer {
             const colorC = colorsC[f];
 
             if (colorA !== INVALID_HSL_COLOR) {
-                Rasterizer3D.rasterGouraud(
+                this.rasterizer3d.rasterGouraud(
+                    r2d,
                     MapImageRenderer.tmpScreenY[a],
                     MapImageRenderer.tmpScreenY[b],
                     MapImageRenderer.tmpScreenY[c],
