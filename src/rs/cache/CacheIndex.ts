@@ -133,27 +133,6 @@ function decodeTable(data: Int8Array, compressionHandler: CompressionHandler): R
     return ReferenceTable.INVALID_TABLE;
 }
 
-function decodeArchiveData(
-    index: CacheIndex,
-    id: number,
-    data: Int8Array,
-    key: number[] | null,
-): Archive {
-    const archiveRef = index.getArchiveReference(id);
-    if (!archiveRef) {
-        throw new Error("Archive reference not found for: " + id);
-    }
-    const container = Container.decode(new ByteBuffer(data), key, index.compressionHandler);
-    return Archive.decode(
-        id,
-        archiveRef.lastFileId,
-        archiveRef.fileCount,
-        archiveRef.fileIds,
-        archiveRef.fileNameHashes,
-        new ByteBuffer(container.data),
-    );
-}
-
 function decodeArchiveDataFromSource(
     index: CacheIndex,
     id: number,
