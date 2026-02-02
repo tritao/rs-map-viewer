@@ -532,8 +532,8 @@ export class Model extends Entity {
             model.verticesY = this.verticesY;
         }
         if (type === ContourGroundType.AlignToSlope) {
-            // Based on rt4 `Model.method4573`: sample the terrain plane under the model, rotate around X/Z
-            // to match the slope, then translate Y to the average height.
+            // Sample the terrain plane under the model, rotate around X/Z to match the slope, then
+            // translate Y to the average height.
             const paramU16 = param & 0xffff;
             const sizeX = (paramU16 & 0xff) * 4;
             const sizeZ = ((paramU16 >> 8) & 0xff) * 4;

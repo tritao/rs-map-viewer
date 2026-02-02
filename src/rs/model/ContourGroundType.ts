@@ -1,7 +1,6 @@
 // Terrain contouring modes for location models.
 //
 // These values come from `LocType.contourGroundType` and are applied by `Model.contourGround()`.
-// Type 3 is "align to slope" (rotate/translate to match the terrain plane), as per rt4 client logic.
 export enum ContourGroundType {
     None = 0,
     // Warp all vertices in Y to match terrain height under each vertex.
