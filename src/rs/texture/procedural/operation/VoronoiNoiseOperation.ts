@@ -6,17 +6,17 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class VoronoiNoiseOperation extends TextureOperation {
-    static temp0: number = 0;
-    static temp1: number = 0;
-    static temp2: number = 0;
-    static temp3: number = 0;
+    static f1DistQ12: number = 0;
+    static f2DistQ12: number = 0;
+    static f3DistQ12: number = 0;
+    static f4DistQ12: number = 0;
 
     rngSeed: number = 0;
-    field2: number = 2048;
-    field3: number = 2;
-    field4: number = 1;
-    field5: number = 5;
-    field6: number = 5;
+    featurePointJitterQ12: number = 2048;
+    outputMode: number = 2;
+    distanceMetric: number = 1;
+    repeatX: number = 5;
+    repeatY: number = 5;
 
     permutations: Int8Array = new Int8Array(512);
     randomNs: Int16Array = new Int16Array(512);
@@ -28,25 +28,25 @@ export class VoronoiNoiseOperation extends TextureOperation {
     override decode(field: number, buffer: ByteBuffer): void {
         switch (field) {
             case 0:
-                this.field5 = this.field6 = buffer.readUnsignedByte();
+                this.repeatX = this.repeatY = buffer.readUnsignedByte();
                 break;
             case 1:
                 this.rngSeed = buffer.readUnsignedByte();
                 break;
             case 2:
-                this.field2 = buffer.readUnsignedShort();
+                this.featurePointJitterQ12 = buffer.readUnsignedShort();
                 break;
             case 3:
-                this.field3 = buffer.readUnsignedByte();
+                this.outputMode = buffer.readUnsignedByte();
                 break;
             case 4:
-                this.field4 = buffer.readUnsignedByte();
+                this.distanceMetric = buffer.readUnsignedByte();
                 break;
             case 5:
-                this.field5 = buffer.readUnsignedByte();
+                this.repeatX = buffer.readUnsignedByte();
                 break;
             case 6:
-                this.field6 = buffer.readUnsignedByte();
+                this.repeatY = buffer.readUnsignedByte();
                 break;
         }
     }
@@ -59,9 +59,9 @@ export class VoronoiNoiseOperation extends TextureOperation {
     initRandomNumbers(): void {
         const random = new JavaRandom(this.rngSeed);
         this.randomNs = new Int16Array(512);
-        if (this.field2 > 0) {
+        if (this.featurePointJitterQ12 > 0) {
             for (let i = 0; i < 512; i++) {
-                this.randomNs[i] = nextIntJagex(random, this.field2);
+                this.randomNs[i] = nextIntJagex(random, this.featurePointJitterQ12);
             }
         }
     }
@@ -72,124 +72,119 @@ export class VoronoiNoiseOperation extends TextureOperation {
         }
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
-            const yFixed = 2048 + this.field6 * textureGenerator.verticalGradient[line];
-            const yCell = yFixed >> 12;
-            const yCellNext = yCell + 1;
+            const yCoordQ12 = 2048 + this.repeatY * textureGenerator.verticalGradient[line];
+            const cellY = yCoordQ12 >> 12;
+            const cellYNext = cellY + 1;
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                VoronoiNoiseOperation.temp0 = 2147483647;
-                VoronoiNoiseOperation.temp1 = 2147483647;
-                VoronoiNoiseOperation.temp2 = 2147483647;
-                VoronoiNoiseOperation.temp3 = 2147483647;
+                VoronoiNoiseOperation.f1DistQ12 = 2147483647;
+                VoronoiNoiseOperation.f2DistQ12 = 2147483647;
+                VoronoiNoiseOperation.f3DistQ12 = 2147483647;
+                VoronoiNoiseOperation.f4DistQ12 = 2147483647;
 
-                const xFixed = this.field5 * textureGenerator.horizontalGradient[pixel] + 2048;
-                const xCell = xFixed >> 12;
-                const xCellNext = xCell + 1;
-                for (let yNeighbor = yCell - 1; yNeighbor <= yCellNext; yNeighbor++) {
+                const xCoordQ12 = this.repeatX * textureGenerator.horizontalGradient[pixel] + 2048;
+                const cellX = xCoordQ12 >> 12;
+                const cellXNext = cellX + 1;
+                for (let yNeighbor = cellY - 1; yNeighbor <= cellYNext; yNeighbor++) {
                     const yPermutation =
                         this.permutations[
-                            (yNeighbor >= this.field6 ? yNeighbor - this.field6 : yNeighbor) & 0xff
+                            (yNeighbor >= this.repeatY ? yNeighbor - this.repeatY : yNeighbor) &
+                                0xff
                         ] & 0xff;
-                    for (let xNeighbor = xCell - 1; xNeighbor <= xCellNext; xNeighbor++) {
-                        let randomOffsetIndex =
+                    for (let xNeighbor = cellX - 1; xNeighbor <= cellXNext; xNeighbor++) {
+                        let featureIndex =
                             (this.permutations[
-                                ((xNeighbor >= this.field5 ? xNeighbor - this.field5 : xNeighbor) +
+                                ((xNeighbor >= this.repeatX
+                                    ? xNeighbor - this.repeatX
+                                    : xNeighbor) +
                                     yPermutation) &
                                     0xff
                             ] &
                                 0xff) *
                             2;
 
-                        let dxFixed =
-                            xFixed - (this.randomNs[randomOffsetIndex++] + (xNeighbor << 12));
-                        let dyFixed =
-                            yFixed - (this.randomNs[randomOffsetIndex] + (yNeighbor << 12));
-                        let distance: number;
-                        switch (this.field4) {
+                        let dxQ12 = xCoordQ12 - (this.randomNs[featureIndex++] + (xNeighbor << 12));
+                        let dyQ12 = yCoordQ12 - (this.randomNs[featureIndex] + (yNeighbor << 12));
+                        let distQ12: number;
+                        switch (this.distanceMetric) {
                             case 1:
-                                distance = (dxFixed * dxFixed + dyFixed * dyFixed) >> 12;
+                                distQ12 = (dxQ12 * dxQ12 + dyQ12 * dyQ12) >> 12;
                                 break;
                             case 2:
-                                distance =
-                                    (dyFixed < 0 ? -dyFixed : dyFixed) +
-                                    (dxFixed < 0 ? -dxFixed : dxFixed);
+                                distQ12 =
+                                    (dyQ12 < 0 ? -dyQ12 : dyQ12) + (dxQ12 < 0 ? -dxQ12 : dxQ12);
                                 break;
                             case 3:
-                                dxFixed = dxFixed < 0 ? -dxFixed : dxFixed;
-                                dyFixed = dyFixed < 0 ? -dyFixed : dyFixed;
-                                distance = Math.max(dxFixed, dyFixed);
+                                dxQ12 = dxQ12 < 0 ? -dxQ12 : dxQ12;
+                                dyQ12 = dyQ12 < 0 ? -dyQ12 : dyQ12;
+                                distQ12 = Math.max(dxQ12, dyQ12);
                                 break;
                             case 4:
-                                dxFixed =
-                                    (Math.sqrt(
-                                        Math.fround(dxFixed < 0 ? -dxFixed : dxFixed) / 4096.0,
-                                    ) *
+                                dxQ12 =
+                                    (Math.sqrt(Math.fround(dxQ12 < 0 ? -dxQ12 : dxQ12) / 4096.0) *
                                         4096.0) |
                                     0;
-                                dyFixed =
-                                    (Math.sqrt(
-                                        Math.fround(dyFixed < 0 ? -dyFixed : dyFixed) / 4096.0,
-                                    ) *
+                                dyQ12 =
+                                    (Math.sqrt(Math.fround(dyQ12 < 0 ? -dyQ12 : dyQ12) / 4096.0) *
                                         4096.0) |
                                     0;
-                                distance = dyFixed + dxFixed;
-                                distance = (distance * distance) >> 12;
+                                distQ12 = dyQ12 + dxQ12;
+                                distQ12 = (distQ12 * distQ12) >> 12;
                                 break;
 
                             case 5:
-                                dxFixed *= dxFixed;
-                                dyFixed *= dyFixed;
-                                distance =
+                                dxQ12 *= dxQ12;
+                                dyQ12 *= dyQ12;
+                                distQ12 =
                                     (Math.sqrt(
-                                        Math.sqrt(Math.fround((dxFixed + dyFixed) / 1.6777216e7)),
+                                        Math.sqrt(Math.fround((dxQ12 + dyQ12) / 1.6777216e7)),
                                     ) *
                                         4096.0) |
                                     0;
                                 break;
                             default:
-                                distance =
+                                distQ12 =
                                     (Math.sqrt(
-                                        Math.fround(
-                                            (dyFixed * dyFixed + dxFixed * dxFixed) / 1.6777216e7,
-                                        ),
+                                        Math.fround((dyQ12 * dyQ12 + dxQ12 * dxQ12) / 1.6777216e7),
                                     ) *
                                         4096.0) |
                                     0;
                                 break;
                         }
 
-                        if (distance < VoronoiNoiseOperation.temp3) {
-                            VoronoiNoiseOperation.temp0 = VoronoiNoiseOperation.temp1;
-                            VoronoiNoiseOperation.temp1 = VoronoiNoiseOperation.temp2;
-                            VoronoiNoiseOperation.temp2 = VoronoiNoiseOperation.temp3;
-                            VoronoiNoiseOperation.temp3 = distance;
-                        } else if (distance < VoronoiNoiseOperation.temp2) {
-                            VoronoiNoiseOperation.temp0 = VoronoiNoiseOperation.temp1;
-                            VoronoiNoiseOperation.temp1 = VoronoiNoiseOperation.temp2;
-                            VoronoiNoiseOperation.temp2 = distance;
-                        } else if (distance < VoronoiNoiseOperation.temp1) {
-                            VoronoiNoiseOperation.temp0 = VoronoiNoiseOperation.temp1;
-                            VoronoiNoiseOperation.temp1 = distance;
-                        } else if (distance < VoronoiNoiseOperation.temp0) {
-                            VoronoiNoiseOperation.temp0 = distance;
+                        if (distQ12 < VoronoiNoiseOperation.f1DistQ12) {
+                            VoronoiNoiseOperation.f4DistQ12 = VoronoiNoiseOperation.f3DistQ12;
+                            VoronoiNoiseOperation.f3DistQ12 = VoronoiNoiseOperation.f2DistQ12;
+                            VoronoiNoiseOperation.f2DistQ12 = VoronoiNoiseOperation.f1DistQ12;
+                            VoronoiNoiseOperation.f1DistQ12 = distQ12;
+                        } else if (distQ12 < VoronoiNoiseOperation.f2DistQ12) {
+                            VoronoiNoiseOperation.f4DistQ12 = VoronoiNoiseOperation.f3DistQ12;
+                            VoronoiNoiseOperation.f3DistQ12 = VoronoiNoiseOperation.f2DistQ12;
+                            VoronoiNoiseOperation.f2DistQ12 = distQ12;
+                        } else if (distQ12 < VoronoiNoiseOperation.f3DistQ12) {
+                            VoronoiNoiseOperation.f4DistQ12 = VoronoiNoiseOperation.f3DistQ12;
+                            VoronoiNoiseOperation.f3DistQ12 = distQ12;
+                        } else if (distQ12 < VoronoiNoiseOperation.f4DistQ12) {
+                            VoronoiNoiseOperation.f4DistQ12 = distQ12;
                         }
                     }
                 }
 
-                switch (this.field3) {
+                switch (this.outputMode) {
                     case 0:
-                        output[pixel] = VoronoiNoiseOperation.temp3;
+                        output[pixel] = VoronoiNoiseOperation.f1DistQ12;
                         break;
                     case 1:
-                        output[pixel] = VoronoiNoiseOperation.temp2;
+                        output[pixel] = VoronoiNoiseOperation.f2DistQ12;
                         break;
                     case 2:
-                        output[pixel] = VoronoiNoiseOperation.temp2 - VoronoiNoiseOperation.temp3;
+                        output[pixel] =
+                            VoronoiNoiseOperation.f2DistQ12 - VoronoiNoiseOperation.f1DistQ12;
                         break;
                     case 3:
-                        output[pixel] = VoronoiNoiseOperation.temp1;
+                        output[pixel] = VoronoiNoiseOperation.f3DistQ12;
                         break;
                     case 4:
-                        output[pixel] = VoronoiNoiseOperation.temp0;
+                        output[pixel] = VoronoiNoiseOperation.f4DistQ12;
                         break;
                 }
             }
