@@ -7,10 +7,10 @@ import { TextureOperation } from "./TextureOperation";
 
 export class LineNoiseOperation extends TextureOperation {
     seed = 0;
-    count = 2000;
-    length = 16;
-    minAngle = 0;
-    maxAngle = 4096;
+    lineCount = 2000;
+    lineLength = 16;
+    angleCenterQ12 = 0;
+    angleRangeQ12 = 4096;
 
     constructor() {
         super(0, true);
@@ -20,13 +20,13 @@ export class LineNoiseOperation extends TextureOperation {
         if (field === 0) {
             this.seed = buffer.readUnsignedByte();
         } else if (field === 1) {
-            this.count = buffer.readUnsignedShort();
+            this.lineCount = buffer.readUnsignedShort();
         } else if (field === 2) {
-            this.length = buffer.readUnsignedByte();
+            this.lineLength = buffer.readUnsignedByte();
         } else if (field === 3) {
-            this.minAngle = buffer.readUnsignedShort();
+            this.angleCenterQ12 = buffer.readUnsignedShort();
         } else if (field === 4) {
-            this.maxAngle = buffer.readUnsignedShort();
+            this.angleRangeQ12 = buffer.readUnsignedShort();
         }
     }
 
@@ -36,70 +36,73 @@ export class LineNoiseOperation extends TextureOperation {
         }
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
-            const midAngle = this.maxAngle >> 1;
-            const pixels = this.monochromeImageCache.getAll();
+            const halfAngleRangeQ12 = this.angleRangeQ12 >> 1;
+            const pixelsByX = this.monochromeImageCache.getAll();
             const random = new JavaRandom(this.seed);
-            for (let i = 0; i < this.count; i++) {
-                let angle =
-                    this.maxAngle > 0
-                        ? this.minAngle - midAngle + nextIntJagex(random, this.maxAngle)
-                        : this.minAngle;
-                angle = (angle >> 4) & 0xff;
+            for (let i = 0; i < this.lineCount; i++) {
+                const angleQ12 =
+                    this.angleRangeQ12 > 0
+                        ? this.angleCenterQ12 -
+                          halfAngleRangeQ12 +
+                          nextIntJagex(random, this.angleRangeQ12)
+                        : this.angleCenterQ12;
+                const angleIndex = (angleQ12 >> 4) & 0xff;
 
-                let x0 = nextIntJagex(random, textureGenerator.width);
-                let y0 = nextIntJagex(random, textureGenerator.height);
-                let x1 = ((TextureGenerator.COSINE[angle] * this.length) >> 12) + x0;
-                let y1 = ((TextureGenerator.SINE[angle] * this.length) >> 12) + y0;
-                let deltaX = x1 - x0;
-                let deltaY = y1 - y0;
-                if (deltaX !== 0 || deltaY !== 0) {
-                    if (deltaX < 0) {
-                        deltaX = -deltaX;
+                let startX = nextIntJagex(random, textureGenerator.width);
+                let startY = nextIntJagex(random, textureGenerator.height);
+                let endX = ((TextureGenerator.COSINE[angleIndex] * this.lineLength) >> 12) + startX;
+                let endY = ((TextureGenerator.SINE[angleIndex] * this.lineLength) >> 12) + startY;
+                let absDx = endX - startX;
+                let absDy = endY - startY;
+                if (absDx !== 0 || absDy !== 0) {
+                    if (absDx < 0) {
+                        absDx = -absDx;
                     }
-                    if (deltaY < 0) {
-                        deltaY = -deltaY;
+                    if (absDy < 0) {
+                        absDy = -absDy;
                     }
-                    const flag = deltaX < deltaY;
-                    if (flag) {
-                        const tempX0 = x0;
-                        const tempX1 = x1;
-                        x0 = y0;
-                        y0 = tempX0;
-                        x1 = y1;
-                        y1 = tempX1;
+                    const isSteep = absDx < absDy;
+                    if (isSteep) {
+                        const startXPrev = startX;
+                        const endXPrev = endX;
+                        startX = startY;
+                        startY = startXPrev;
+                        endX = endY;
+                        endY = endXPrev;
                     }
-                    if (x0 > x1) {
-                        const tempX0 = x0;
-                        const tempY0 = y0;
-                        x0 = x1;
-                        y0 = y1;
-                        x1 = tempX0;
-                        y1 = tempY0;
+                    if (startX > endX) {
+                        const startXPrev = startX;
+                        const startYPrev = startY;
+                        startX = endX;
+                        startY = endY;
+                        endX = startXPrev;
+                        endY = startYPrev;
                     }
-                    const deltaX0 = x1 - x0;
-                    let deltaY0 = y1 - y0;
-                    let l2 = y0;
-                    if (deltaY0 < 0) {
-                        deltaY0 = -deltaY0;
+                    const dx = endX - startX;
+                    let dy = endY - startY;
+                    let y = startY;
+                    if (dy < 0) {
+                        dy = -dy;
                     }
-                    let i4 = (-deltaX0 / 2) | 0;
-                    const j4 = (2048 / deltaX0) | 0;
-                    const k4 = 1024 - (nextIntJagex(random, 4096) >> 2);
-                    const byte0 = y1 <= y0 ? -1 : 1;
+                    let error = (-dx / 2) | 0;
+                    const valueStep = (2048 / dx) | 0;
+                    const intensityJitter = 1024 - (nextIntJagex(random, 4096) >> 2);
+                    const intensityBase = 1024 + intensityJitter;
+                    const yStep = endY <= startY ? -1 : 1;
 
-                    for (let x = x0; x < x1; x++) {
-                        i4 += deltaY0;
-                        const value = j4 * (x - x0) + (1024 + k4);
-                        const line = l2 & textureGenerator.heightMask;
-                        if (i4 > 0) {
-                            l2 = byte0 + l2;
-                            i4 = i4 - deltaX0;
+                    for (let x = startX; x < endX; x++) {
+                        error += dy;
+                        const value = valueStep * (x - startX) + intensityBase;
+                        const yMasked = y & textureGenerator.heightMask;
+                        if (error > 0) {
+                            y += yStep;
+                            error = error - dx;
                         }
-                        const pixel = x & textureGenerator.widthMask;
-                        if (!flag) {
-                            pixels[pixel][line] = value;
+                        const xMasked = x & textureGenerator.widthMask;
+                        if (!isSteep) {
+                            pixelsByX[xMasked][yMasked] = value;
                         } else {
-                            pixels[line][pixel] = value;
+                            pixelsByX[yMasked][xMasked] = value;
                         }
                     }
                 }
