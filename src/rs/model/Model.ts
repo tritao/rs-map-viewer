@@ -10,16 +10,15 @@ import { SeqTransformType } from "./seq/SeqTransformType";
 import { SkeletalBase } from "./skeletal/SkeletalBase";
 import { SkeletalSeq } from "./skeletal/SkeletalSeq";
 
-const scaleVector = vec3.create();
-
 export class Model extends Entity {
-    static animateOriginX: number = 0;
-    static animateOriginY: number = 0;
-    static animateOriginZ: number = 0;
+    private animateOriginX: number = 0;
+    private animateOriginY: number = 0;
+    private animateOriginZ: number = 0;
 
-    static sketetalTransformMatrix: mat4 = mat4.create();
-    static skeletalScalingMatrix: mat4 = mat4.create();
-    static skeletalBoneMatrix: mat4 = mat4.create();
+    private readonly skeletalTransformMatrix: mat4 = mat4.create();
+    private readonly skeletalScalingMatrix: mat4 = mat4.create();
+    private readonly skeletalBoneMatrix: mat4 = mat4.create();
+    private readonly skeletalScaleVector = vec3.create();
 
     version: number = 0;
 
@@ -168,10 +167,10 @@ export class Model extends Entity {
         return model;
     }
 
-    static resetAnimateOrigin() {
-        Model.animateOriginX = 0;
-        Model.animateOriginY = 0;
-        Model.animateOriginZ = 0;
+    private resetAnimateOrigin(): void {
+        this.animateOriginX = 0;
+        this.animateOriginY = 0;
+        this.animateOriginZ = 0;
     }
 
     constructor() {
@@ -834,7 +833,7 @@ export class Model extends Entity {
 
     animateOld(frame: SeqFrame | undefined) {
         if (this.vertexLabels && frame) {
-            Model.resetAnimateOrigin();
+            this.resetAnimateOrigin();
 
             const base = frame.base;
 
@@ -855,7 +854,7 @@ export class Model extends Entity {
 
     animate(frame: SeqFrame, nextFrame: SeqFrame | undefined, rotateNormals: boolean): void {
         if (this.vertexLabels) {
-            Model.resetAnimateOrigin();
+            this.resetAnimateOrigin();
 
             const base = frame.base;
             if (base !== nextFrame?.base) {
@@ -947,29 +946,29 @@ export class Model extends Entity {
     ) {
         switch (type) {
             case SeqTransformType.ORIGIN:
-                Model.resetAnimateOrigin();
+                this.resetAnimateOrigin();
 
                 let groupVertexCount = 0;
 
                 for (const label of labels) {
                     if (label < this.vertexLabels.length) {
                         for (const v of this.vertexLabels[label]) {
-                            Model.animateOriginX += this.verticesX[v];
-                            Model.animateOriginY += this.verticesY[v];
-                            Model.animateOriginZ += this.verticesZ[v];
+                            this.animateOriginX += this.verticesX[v];
+                            this.animateOriginY += this.verticesY[v];
+                            this.animateOriginZ += this.verticesZ[v];
                             groupVertexCount++;
                         }
                     }
                 }
 
                 if (groupVertexCount > 0) {
-                    Model.animateOriginX = tx + ((Model.animateOriginX / groupVertexCount) | 0);
-                    Model.animateOriginY = ty + ((Model.animateOriginY / groupVertexCount) | 0);
-                    Model.animateOriginZ = tz + ((Model.animateOriginZ / groupVertexCount) | 0);
+                    this.animateOriginX = tx + ((this.animateOriginX / groupVertexCount) | 0);
+                    this.animateOriginY = ty + ((this.animateOriginY / groupVertexCount) | 0);
+                    this.animateOriginZ = tz + ((this.animateOriginZ / groupVertexCount) | 0);
                 } else {
-                    Model.animateOriginX = tx;
-                    Model.animateOriginY = ty;
-                    Model.animateOriginZ = tz;
+                    this.animateOriginX = tx;
+                    this.animateOriginY = ty;
+                    this.animateOriginZ = tz;
                 }
                 break;
             case SeqTransformType.TRANSLATE:
@@ -987,9 +986,9 @@ export class Model extends Entity {
                 for (const label of labels) {
                     if (label < this.vertexLabels.length) {
                         for (const v of this.vertexLabels[label]) {
-                            this.verticesX[v] -= Model.animateOriginX;
-                            this.verticesY[v] -= Model.animateOriginY;
-                            this.verticesZ[v] -= Model.animateOriginZ;
+                            this.verticesX[v] -= this.animateOriginX;
+                            this.verticesY[v] -= this.animateOriginY;
+                            this.verticesZ[v] -= this.animateOriginZ;
 
                             const angleX = (tx & 0xff) * 8;
                             const angleY = (ty & 0xff) * 8;
@@ -1032,9 +1031,9 @@ export class Model extends Entity {
                                 this.verticesX[v] = temp;
                             }
 
-                            this.verticesX[v] += Model.animateOriginX;
-                            this.verticesY[v] += Model.animateOriginY;
-                            this.verticesZ[v] += Model.animateOriginZ;
+                            this.verticesX[v] += this.animateOriginX;
+                            this.verticesY[v] += this.animateOriginY;
+                            this.verticesZ[v] += this.animateOriginZ;
                         }
                     }
                 }
@@ -1043,17 +1042,17 @@ export class Model extends Entity {
                 for (const label of labels) {
                     if (label < this.vertexLabels.length) {
                         for (const v of this.vertexLabels[label]) {
-                            this.verticesX[v] -= Model.animateOriginX;
-                            this.verticesY[v] -= Model.animateOriginY;
-                            this.verticesZ[v] -= Model.animateOriginZ;
+                            this.verticesX[v] -= this.animateOriginX;
+                            this.verticesY[v] -= this.animateOriginY;
+                            this.verticesZ[v] -= this.animateOriginZ;
 
                             this.verticesX[v] = ((tx * this.verticesX[v]) / 128) | 0;
                             this.verticesY[v] = ((ty * this.verticesY[v]) / 128) | 0;
                             this.verticesZ[v] = ((tz * this.verticesZ[v]) / 128) | 0;
 
-                            this.verticesX[v] += Model.animateOriginX;
-                            this.verticesY[v] += Model.animateOriginY;
-                            this.verticesZ[v] += Model.animateOriginZ;
+                            this.verticesX[v] += this.animateOriginX;
+                            this.verticesY[v] += this.animateOriginY;
+                            this.verticesZ[v] += this.animateOriginZ;
                         }
                     }
                 }
@@ -1130,34 +1129,34 @@ export class Model extends Entity {
             return;
         }
         for (let v = 0; v < this.verticesCount; v++) {
-            const group = this.animMayaGroups[v];
+                const group = this.animMayaGroups[v];
             if (group && group.length !== 0) {
                 const scalings = this.animMayaScales[v];
 
-                Model.sketetalTransformMatrix.fill(0);
+                this.skeletalTransformMatrix.fill(0);
                 for (let i = 0; i < group.length; i++) {
                     const boneId = group[i];
                     const bone = skeletalBase.getBone(boneId);
                     if (bone) {
                         const scale = scalings[i] / 255;
-                        vec3.set(scaleVector, scale, scale, scale);
-                        mat4.fromScaling(Model.skeletalScalingMatrix, scaleVector);
+                        vec3.set(this.skeletalScaleVector, scale, scale, scale);
+                        mat4.fromScaling(this.skeletalScalingMatrix, this.skeletalScaleVector);
 
                         mat4.mul(
-                            Model.skeletalBoneMatrix,
-                            Model.skeletalScalingMatrix,
+                            this.skeletalBoneMatrix,
+                            this.skeletalScalingMatrix,
                             bone.getFinalMatrix(poseId),
                         );
 
                         mat4.add(
-                            Model.sketetalTransformMatrix,
-                            Model.sketetalTransformMatrix,
-                            Model.skeletalBoneMatrix,
+                            this.skeletalTransformMatrix,
+                            this.skeletalTransformMatrix,
+                            this.skeletalBoneMatrix,
                         );
                     }
                 }
 
-                this.transformVertex(v, Model.sketetalTransformMatrix);
+                this.transformVertex(v, this.skeletalTransformMatrix);
             }
         }
     }
