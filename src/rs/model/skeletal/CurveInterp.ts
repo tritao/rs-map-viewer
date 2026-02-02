@@ -30,111 +30,111 @@ export function interpolateCurve(curve: Curve, t: number): number {
     if (!point) {
         return 0;
     }
-    let bool0 = false;
-    let bool1 = false;
+    let useCurrentY = false;
+    let useNextY = false;
 
     if (point.field4 === 0 && point.field5 === 0) {
-        bool0 = true;
+        useCurrentY = true;
     } else if (point.field4 === FloatUtil.MAX_VALUE && point.field5 === FloatUtil.MAX_VALUE) {
-        bool1 = true;
+        useNextY = true;
     } else if (!point.next) {
-        bool0 = true;
+        useCurrentY = true;
     } else if (curve.pointIndexUpdated) {
-        const var5 = point.x;
-        const var9 = point.y;
-        const var6 = point.field4 * 0.33333334 + var5;
-        const var10 = point.field5 * 0.33333334 + var9;
-        const var8 = point.next.x;
-        const var12 = point.next.y;
-        const var7 = var8 - point.next.field2 * 0.33333334;
-        const var11 = var12 - point.next.field3 * 0.33333334;
+        const x0 = point.x;
+        const y0 = point.y;
+        const c1x = point.field4 * 0.33333334 + x0;
+        const c1y = point.field5 * 0.33333334 + y0;
+        const x1 = point.next.x;
+        const y1 = point.next.y;
+        const c2x = x1 - point.next.field2 * 0.33333334;
+        const c2y = y1 - point.next.field3 * 0.33333334;
         if (curve.bool) {
-            let var15 = var10;
-            let var16 = var11;
-            const var17 = var8 - var5;
-            if (var17 !== 0.0) {
-                const var18 = var6 - var5;
-                const var19 = var7 - var5;
-                const var29 = vec2.fromValues(var18 / var17, var19 / var17);
-                curve.interpBool = var29[0] === 0.33333334 && var29[1] === 0.6666667;
-                const var21 = var29[0];
-                const var22 = var29[1];
-                if (var29[0] < 0.0) {
-                    var29[0] = 0.0;
+            let adjC1y = c1y;
+            let adjC2y = c2y;
+            const dx = x1 - x0;
+            if (dx !== 0.0) {
+                const u1 = c1x - x0;
+                const u2 = c2x - x0;
+                const controlX01 = vec2.fromValues(u1 / dx, u2 / dx);
+                curve.interpBool = controlX01[0] === 0.33333334 && controlX01[1] === 0.6666667;
+                const origU1 = controlX01[0];
+                const origU2 = controlX01[1];
+                if (controlX01[0] < 0.0) {
+                    controlX01[0] = 0.0;
                 }
 
-                if (var29[1] > 1.0) {
-                    var29[1] = 1.0;
+                if (controlX01[1] > 1.0) {
+                    controlX01[1] = 1.0;
                 }
 
-                if (var29[0] > 1.0 || var29[1] < -1.0) {
-                    method3282(var29);
+                if (controlX01[0] > 1.0 || controlX01[1] < -1.0) {
+                    method3282(controlX01);
                 }
 
-                if (var29[0] !== var21) {
-                    if (0.0 !== var21) {
-                        var15 = ((var10 - var9) * var29[0]) / var21 + var9;
+                if (controlX01[0] !== origU1) {
+                    if (0.0 !== origU1) {
+                        adjC1y = ((c1y - y0) * controlX01[0]) / origU1 + y0;
                     }
                 }
 
-                if (var22 !== var29[1]) {
-                    if (1.0 !== var22) {
-                        var16 = var12 - ((1.0 - var29[1]) * (var12 - var11)) / (1.0 - var22);
+                if (origU2 !== controlX01[1]) {
+                    if (1.0 !== origU2) {
+                        adjC2y = y1 - ((1.0 - controlX01[1]) * (y1 - c2y)) / (1.0 - origU2);
                     }
                 }
 
-                curve.interpV0 = var5;
-                curve.interpV1 = var8;
-                const var23 = var29[0];
-                const var24 = var29[1];
-                let var25 = var23 - 0.0;
-                let var26 = var24 - var23;
-                let var27 = 1.0 - var24;
-                let var28 = var26 - var25;
-                curve.interpV5 = var27 - var26 - var28;
-                curve.interpV4 = var28 + var28 + var28;
-                curve.interpV3 = var25 + var25 + var25;
+                curve.interpV0 = x0;
+                curve.interpV1 = x1;
+                const bezierU1 = controlX01[0];
+                const bezierU2 = controlX01[1];
+                let a = bezierU1 - 0.0;
+                let b = bezierU2 - bezierU1;
+                let c = 1.0 - bezierU2;
+                let d = b - a;
+                curve.interpV5 = c - b - d;
+                curve.interpV4 = d + d + d;
+                curve.interpV3 = a + a + a;
                 curve.interpV2 = 0.0;
-                var25 = var15 - var9;
-                var26 = var16 - var15;
-                var27 = var12 - var16;
-                var28 = var26 - var25;
-                curve.interpV9 = var27 - var26 - var28;
-                curve.interpV8 = var28 + var28 + var28;
-                curve.interpV7 = var25 + var25 + var25;
-                curve.interpV6 = var9;
+                a = adjC1y - y0;
+                b = adjC2y - adjC1y;
+                c = y1 - adjC2y;
+                d = b - a;
+                curve.interpV9 = c - b - d;
+                curve.interpV8 = d + d + d;
+                curve.interpV7 = a + a + a;
+                curve.interpV6 = y0;
             }
         } else {
-            curve.interpV0 = var5;
-            const var13 = var8 - var5;
-            const var14 = var12 - var9;
-            let var15 = var6 - var5;
-            let var16 = 0.0;
-            let var17 = 0.0;
-            if (var15 !== 0.0) {
-                var16 = (var10 - var9) / var15;
+            curve.interpV0 = x0;
+            const dx = x1 - x0;
+            const dy = y1 - y0;
+            let d1x = c1x - x0;
+            let slope1 = 0.0;
+            let slope2 = 0.0;
+            if (d1x !== 0.0) {
+                slope1 = (c1y - y0) / d1x;
             }
 
-            var15 = var8 - var7;
-            if (var15 !== 0.0) {
-                var17 = (var12 - var11) / var15;
+            d1x = x1 - c2x;
+            if (d1x !== 0.0) {
+                slope2 = (y1 - c2y) / d1x;
             }
 
-            const var18 = 1.0 / (var13 * var13);
-            const var19 = var16 * var13;
-            const var20 = var17 * var13;
-            curve.interpV2 = (var18 * (var19 + var20 - var14 - var14)) / var13;
-            curve.interpV3 = var18 * (var14 + var14 + var14 - var19 - var19 - var20);
-            curve.interpV4 = var16;
-            curve.interpV5 = var9;
+            const invDx2 = 1.0 / (dx * dx);
+            const slope1Dx = slope1 * dx;
+            const slope2Dx = slope2 * dx;
+            curve.interpV2 = (invDx2 * (slope1Dx + slope2Dx - dy - dy)) / dx;
+            curve.interpV3 = invDx2 * (dy + dy + dy - slope1Dx - slope1Dx - slope2Dx);
+            curve.interpV4 = slope1;
+            curve.interpV5 = y0;
         }
 
         curve.pointIndexUpdated = false;
     }
 
-    if (bool0) {
+    if (useCurrentY) {
         return point.y;
-    } else if (bool1) {
+    } else if (useNextY) {
         if (point.x !== t && point.next) {
             return point.next.y;
         } else {
@@ -143,12 +143,11 @@ export function interpolateCurve(curve: Curve, t: number): number {
     } else if (curve.bool) {
         return method8290(curve, t);
     } else {
-        const var6 = t - curve.interpV0;
-        const var5 =
-            curve.interpV5 +
-            var6 * ((var6 * curve.interpV2 + curve.interpV3) * var6 + curve.interpV4);
+        const dt = t - curve.interpV0;
+        const y =
+            curve.interpV5 + dt * ((dt * curve.interpV2 + curve.interpV3) * dt + curve.interpV4);
 
-        return var5;
+        return y;
     }
 }
 
@@ -156,79 +155,79 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
     if (!curve || !curve.points || curve.points.length === 0) {
         return 0;
     }
-    const var4 = curve.points[0].x;
-    const var5 = curve.points[curve.points.length - 1].x;
-    const var6 = var5 - var4;
-    if (var6 === 0.0) {
+    const startX = curve.points[0].x;
+    const endX = curve.points[curve.points.length - 1].x;
+    const rangeX = endX - startX;
+    if (rangeX === 0.0) {
         return curve.points[0].y;
     }
 
-    let var7: number;
-    if (t > var5) {
-        var7 = (t - var5) / var6;
+    let normalizedPos: number;
+    if (t > endX) {
+        normalizedPos = (t - endX) / rangeX;
     } else {
-        var7 = (t - var4) / var6;
+        normalizedPos = (t - startX) / rangeX;
     }
 
-    let var8 = var7 | 0;
-    let var10 = Math.abs(var7 - var8);
-    let var11 = var10 * var6;
-    var8 = Math.abs(1.0 + var8);
-    const var12 = var8 / 2.0;
-    const var14 = var12 | 0;
-    var10 = var12 - var14;
+    let cycleCount = normalizedPos | 0;
+    let cycleFrac = Math.abs(normalizedPos - cycleCount);
+    let mappedT = cycleFrac * rangeX;
+    cycleCount = Math.abs(1.0 + cycleCount);
+    const halfCycles = cycleCount / 2.0;
+    const halfCyclesInt = halfCycles | 0;
+    const pingPongPhase = halfCycles - halfCyclesInt;
     if (isStart) {
         if (curve.startInterpType === CurveInterpType.TYPE_4) {
-            if (var10 !== 0.0) {
-                var11 += var4;
+            if (pingPongPhase !== 0.0) {
+                mappedT += startX;
             } else {
-                var11 = var5 - var11;
+                mappedT = endX - mappedT;
             }
         } else if (
             curve.startInterpType === CurveInterpType.TYPE_2 ||
             curve.startInterpType === CurveInterpType.TYPE_3
         ) {
-            var11 = var5 - var11;
+            mappedT = endX - mappedT;
         } else if (curve.startInterpType === CurveInterpType.TYPE_1) {
-            var11 = var4 - t;
-            const var16 = curve.points[0].field2;
-            const var17 = curve.points[0].field3;
+            mappedT = startX - t;
+            const tangentDx = curve.points[0].field2;
+            const tangentDy = curve.points[0].field3;
             let output = curve.points[0].y;
-            if (var16 !== 0.0) {
-                output -= (var11 * var17) / var16;
+            if (tangentDx !== 0.0) {
+                output -= (mappedT * tangentDy) / tangentDx;
             }
             return output;
         }
     } else {
         if (curve.endInterpType === CurveInterpType.TYPE_4) {
-            if (var10 !== 0.0) {
-                var11 = var5 - var11;
+            if (pingPongPhase !== 0.0) {
+                mappedT = endX - mappedT;
             } else {
-                var11 += var4;
+                mappedT += startX;
             }
         } else if (
             curve.endInterpType === CurveInterpType.TYPE_2 ||
             curve.endInterpType === CurveInterpType.TYPE_3
         ) {
-            var11 += var4;
+            mappedT += startX;
         } else if (curve.endInterpType === CurveInterpType.TYPE_1) {
-            var11 = t - var5;
-            const var16 = curve.points[curve.getPointCount() - 1].field4;
-            const var17 = curve.points[curve.getPointCount() - 1].field5;
+            mappedT = t - endX;
+            const tangentDx = curve.points[curve.getPointCount() - 1].field4;
+            const tangentDy = curve.points[curve.getPointCount() - 1].field5;
             let output = curve.points[curve.getPointCount() - 1].y;
-            if (var16 !== 0.0) {
-                output += (var17 * var11) / var16;
+            if (tangentDx !== 0.0) {
+                output += (tangentDy * mappedT) / tangentDx;
             }
             return output;
         }
     }
-    let output = interpolateCurve(curve, var11);
+    let output = interpolateCurve(curve, mappedT);
     if (isStart && curve.startInterpType === CurveInterpType.TYPE_3) {
-        const var18 = curve.points[curve.points.length - 1].y - curve.points[0].y;
-        output = output - var18 * var8;
+        const cycleDeltaY = curve.points[curve.points.length - 1].y - curve.points[0].y;
+        output = output - cycleDeltaY * cycleCount;
     } else if (!isStart && curve.endInterpType === CurveInterpType.TYPE_3) {
-        const var18 = curve.points[curve.points.length - 1].y - curve.points[0].y;
-        output = output + var18 * var8;
+        const cycleDeltaY = curve.points[curve.points.length - 1].y - curve.points[0].y;
+        output = output + cycleDeltaY * cycleCount;
     }
     return output;
 }
@@ -244,19 +243,19 @@ function method3282(v: vec2): void {
     }
 
     if (v[0] > 1.0 || v[1] > 1.0) {
-        const var1 = 1.0 + v[0] * (v[0] - 2.0 + v[1]) + (v[1] - 2.0) * v[1];
-        if (var1 + ULP > 0.0) {
+        const constraint = 1.0 + v[0] * (v[0] - 2.0 + v[1]) + (v[1] - 2.0) * v[1];
+        if (constraint + ULP > 0.0) {
             if (ULP + v[0] < 1.3333334) {
-                const var2 = v[0] - 2.0;
-                const var3 = v[0] - 1.0;
-                const var4 = Math.sqrt(var2 * var2 - 4.0 * var3 * var3);
-                const var5 = 0.5 * (var4 + -var2);
-                if (v[1] + ULP > var5) {
-                    v[1] = var5 - ULP;
+                const a = v[0] - 2.0;
+                const b = v[0] - 1.0;
+                const sqrtTerm = Math.sqrt(a * a - 4.0 * b * b);
+                const upperY = 0.5 * (sqrtTerm + -a);
+                if (v[1] + ULP > upperY) {
+                    v[1] = upperY - ULP;
                 } else {
-                    const var6 = (-var2 - var4) * 0.5;
-                    if (v[1] < var6 + ULP) {
-                        v[1] = var6 + ULP;
+                    const lowerY = (-a - sqrtTerm) * 0.5;
+                    if (v[1] < lowerY + ULP) {
+                        v[1] = lowerY + ULP;
                     }
                 }
             } else {
@@ -298,8 +297,8 @@ function method8290(curve: Curve, t: number): number {
         method5023Output[2] = 0.0;
         method5023Output[3] = 0.0;
         method5023Output[4] = 0.0;
-        const var4 = method5023(method5023Input, 3, 0.0, true, 1.0, true, method5023Output);
-        if (var4 === 1) {
+        const rootCount = method5023(method5023Input, 3, 0.0, true, 1.0, true, method5023Output);
+        if (rootCount === 1) {
             v1 = method5023Output[0];
         } else {
             v1 = 0.0;
@@ -309,230 +308,234 @@ function method8290(curve: Curve, t: number): number {
     return v1 * (curve.interpV7 + v1 * (v1 * curve.interpV9 + curve.interpV8)) + curve.interpV6;
 }
 
-function method6869(values: Float32Array, lastIndex: number, var2: number): number {
+function method6869(values: Float32Array, lastIndex: number, x: number): number {
     let output = values[lastIndex];
 
     for (let i = lastIndex - 1; i >= 0; i--) {
-        output = output * var2 + values[i];
+        output = output * x + values[i];
     }
 
     return output;
 }
 
 function method5023(
-    var0: Float32Array,
-    var1: number,
-    var2: number,
-    var3: boolean,
-    var4: number,
-    var5: boolean,
-    var6: Float32Array,
+    coeffs: Float32Array,
+    degree: number,
+    minX: number,
+    minInclusive: boolean,
+    maxX: number,
+    maxInclusive: boolean,
+    rootsOut: Float32Array,
 ): number {
-    let var7 = 0.0;
+    let coeffAbsSum = 0.0;
 
-    for (let i = 0; i < var1 + 1; i++) {
-        var7 += Math.abs(var0[i]);
+    for (let i = 0; i < degree + 1; i++) {
+        coeffAbsSum += Math.abs(coeffs[i]);
     }
 
-    const var44 = (Math.abs(var2) + Math.abs(var4)) * (var1 + 1) * ULP;
-    if (var7 <= var44) {
+    const eps = (Math.abs(minX) + Math.abs(maxX)) * (degree + 1) * ULP;
+    if (coeffAbsSum <= eps) {
         return -1;
     }
-    const var9 = new Float32Array(var1 + 1);
+    const normalizedCoeffs = new Float32Array(degree + 1);
 
-    for (let i = 0; i < var1 + 1; i++) {
-        var9[i] = (1.0 / var7) * var0[i];
+    for (let i = 0; i < degree + 1; i++) {
+        normalizedCoeffs[i] = (1.0 / coeffAbsSum) * coeffs[i];
     }
 
-    while (Math.abs(var9[var1]) < var44) {
-        var1--;
+    while (Math.abs(normalizedCoeffs[degree]) < eps) {
+        degree--;
     }
 
-    let status = 0;
-    if (var1 === 0) {
-        return status;
-    } else if (var1 === 1) {
-        var6[0] = -var9[0] / var9[1];
-        const var42 = var3 ? var2 < var6[0] + var44 : var2 < var6[0] - var44;
-        const var43 = var5 ? var4 > var6[0] - var44 : var4 > var6[0] + var44;
-        status = var42 && var43 ? 1 : 0;
-        if (status > 0) {
-            if (var3 && var6[0] < var2) {
-                var6[0] = var2;
-            } else if (var5 && var6[0] > var4) {
-                var6[0] = var4;
+    let rootCount = 0;
+    if (degree === 0) {
+        return rootCount;
+    } else if (degree === 1) {
+        rootsOut[0] = -normalizedCoeffs[0] / normalizedCoeffs[1];
+        const minOk = minInclusive ? minX < rootsOut[0] + eps : minX < rootsOut[0] - eps;
+        const maxOk = maxInclusive ? maxX > rootsOut[0] - eps : maxX > rootsOut[0] + eps;
+        rootCount = minOk && maxOk ? 1 : 0;
+        if (rootCount > 0) {
+            if (minInclusive && rootsOut[0] < minX) {
+                rootsOut[0] = minX;
+            } else if (maxInclusive && rootsOut[0] > maxX) {
+                rootsOut[0] = maxX;
             }
         }
 
-        return status;
+        return rootCount;
     } else {
-        const field4756 = var9;
-        const field4757 = var1;
+        const polyCoeffs = normalizedCoeffs;
+        const polyDegree = degree;
 
-        const var12 = new Float32Array(var1 + 1);
+        const derivativeCoeffs = new Float32Array(degree + 1);
 
-        for (let var13 = 1; var13 <= var1; var13++) {
-            var12[var13 - 1] = var13 * var9[var13];
+        for (let i = 1; i <= degree; i++) {
+            derivativeCoeffs[i - 1] = i * normalizedCoeffs[i];
         }
 
-        const var41 = new Float32Array(var1 + 1);
-        const recursiveStatus = method5023(var12, var1 - 1, var2, false, var4, false, var41);
-        if (recursiveStatus === -1) {
+        const derivativeRoots = new Float32Array(degree + 1);
+        const derivativeRootCount = method5023(
+            derivativeCoeffs,
+            degree - 1,
+            minX,
+            false,
+            maxX,
+            false,
+            derivativeRoots,
+        );
+        if (derivativeRootCount === -1) {
             return 0;
         }
 
-        let var15 = false;
-        let var17 = 0.0;
-        let var18 = 0.0;
-        let var19 = 0.0;
+        let prevWasRoot = false;
+        let fRight = 0.0;
+        let fLeft = 0.0;
+        let rightX = 0.0;
 
-        for (let s = 0; s <= recursiveStatus; s++) {
-            if (status > var1) {
-                return status;
+        for (let s = 0; s <= derivativeRootCount; s++) {
+            if (rootCount > degree) {
+                return rootCount;
             }
 
-            let var16: number;
+            let leftX: number;
             if (s === 0) {
-                var16 = var2;
-                var18 = method6869(var9, var1, var2);
-                if (Math.abs(var18) <= var44 && var3) {
-                    var6[status++] = var2;
+                leftX = minX;
+                fLeft = method6869(normalizedCoeffs, degree, minX);
+                if (Math.abs(fLeft) <= eps && minInclusive) {
+                    rootsOut[rootCount++] = minX;
                 }
             } else {
-                var16 = var19;
-                var18 = var17;
+                leftX = rightX;
+                fLeft = fRight;
             }
 
-            if (recursiveStatus === s) {
-                var19 = var4;
-                var15 = false;
+            if (derivativeRootCount === s) {
+                rightX = maxX;
+                prevWasRoot = false;
             } else {
-                var19 = var41[s];
+                rightX = derivativeRoots[s];
             }
 
-            var17 = method6869(var9, var1, var19);
-            if (var15) {
-                var15 = false;
-            } else if (Math.abs(var17) < var44) {
-                if (recursiveStatus !== s || var5) {
-                    var6[status++] = var19;
-                    var15 = true;
+            fRight = method6869(normalizedCoeffs, degree, rightX);
+            if (prevWasRoot) {
+                prevWasRoot = false;
+            } else if (Math.abs(fRight) < eps) {
+                if (derivativeRootCount !== s || maxInclusive) {
+                    rootsOut[rootCount++] = rightX;
+                    prevWasRoot = true;
                 }
-            } else if ((var18 < 0.0 && var17 > 0.0) || (var18 > 0.0 && var17 < 0.0)) {
-                let var22 = status++;
-                let var24 = var16;
-                let var25 = var19;
-                let var26 = method6869(field4756, field4757, var16);
-                let var23: number;
-                if (Math.abs(var26) < ULP) {
-                    var23 = var16;
+            } else if ((fLeft < 0.0 && fRight > 0.0) || (fLeft > 0.0 && fRight < 0.0)) {
+                const rootIndex = rootCount++;
+                let a = leftX;
+                let b = rightX;
+                let fa = method6869(polyCoeffs, polyDegree, leftX);
+                let root: number;
+                if (Math.abs(fa) < ULP) {
+                    root = leftX;
                 } else {
-                    let var27 = method6869(field4756, field4757, var19);
-                    if (Math.abs(var27) < ULP) {
-                        var23 = var19;
+                    let fb = method6869(polyCoeffs, polyDegree, rightX);
+                    if (Math.abs(fb) < ULP) {
+                        root = rightX;
                     } else {
-                        let var28 = 0.0;
-                        let var29 = 0.0;
-                        let var30 = 0.0;
-                        let var35 = 0.0;
-                        let var36 = true;
-                        let var37 = false;
+                        let c = 0.0;
+                        let d = 0.0;
+                        let e = 0.0;
+                        let fc = 0.0;
+                        let needsInit = true;
+                        let continueLoop = false;
 
                         do {
-                            var37 = false;
-                            if (var36) {
-                                var28 = var24;
-                                var35 = var26;
-                                var29 = var25 - var24;
-                                var30 = var29;
-                                var36 = false;
+                            continueLoop = false;
+                            if (needsInit) {
+                                c = a;
+                                fc = fa;
+                                d = b - a;
+                                e = d;
+                                needsInit = false;
                             }
 
-                            if (Math.abs(var35) < Math.abs(var27)) {
-                                var24 = var25;
-                                var25 = var28;
-                                var28 = var24;
-                                var26 = var27;
-                                var27 = var35;
-                                var35 = var26;
+                            if (Math.abs(fc) < Math.abs(fb)) {
+                                a = b;
+                                b = c;
+                                c = a;
+                                fa = fb;
+                                fb = fc;
+                                fc = fa;
                             }
 
-                            const var38 = ULP2 * Math.abs(var25) + 0.0;
-                            const var39 = 0.5 * (var28 - var25);
-                            const var40 = Math.abs(var39) > var38 && var27 !== 0.0;
-                            if (var40) {
-                                if (Math.abs(var30) < var38 || Math.abs(var26) <= Math.abs(var27)) {
-                                    var29 = var39;
-                                    var30 = var39;
+                            const tol = ULP2 * Math.abs(b) + 0.0;
+                            const m = 0.5 * (c - b);
+                            const shouldContinue = Math.abs(m) > tol && fb !== 0.0;
+                            if (shouldContinue) {
+                                if (Math.abs(e) < tol || Math.abs(fa) <= Math.abs(fb)) {
+                                    d = m;
+                                    e = m;
                                 } else {
-                                    let var34 = var27 / var26;
-                                    let var31: number;
-                                    let var32: number;
-                                    if (var24 === var28) {
-                                        var31 = var39 * 2.0 * var34;
-                                        var32 = 1.0 - var34;
+                                    const s = fb / fa;
+                                    let p: number;
+                                    let q: number;
+                                    if (a === c) {
+                                        p = m * 2.0 * s;
+                                        q = 1.0 - s;
                                     } else {
-                                        var32 = var26 / var35;
-                                        const var33 = var27 / var35;
-                                        var31 =
-                                            var34 *
-                                            (var39 * 2.0 * var32 * (var32 - var33) -
-                                                (var33 - 1.0) * (var25 - var24));
-                                        var32 = (var33 - 1.0) * (var32 - 1.0) * (var34 - 1.0);
+                                        q = fa / fc;
+                                        const r = fb / fc;
+                                        p = s * (m * 2.0 * q * (q - r) - (r - 1.0) * (b - a));
+                                        q = (r - 1.0) * (q - 1.0) * (s - 1.0);
                                     }
 
-                                    if (var31 > 0.0) {
-                                        var32 = -var32;
+                                    if (p > 0.0) {
+                                        q = -q;
                                     } else {
-                                        var31 = -var31;
+                                        p = -p;
                                     }
 
-                                    var34 = var30;
-                                    var30 = var29;
+                                    const prevE = e;
+                                    e = d;
                                     if (
-                                        2.0 * var31 <
-                                            3.0 * var39 * var32 - Math.abs(var32 * var38) &&
-                                        var31 < Math.abs(var32 * var34 * 0.5)
+                                        2.0 * p < 3.0 * m * q - Math.abs(q * tol) &&
+                                        p < Math.abs(q * prevE * 0.5)
                                     ) {
-                                        var29 = var31 / var32;
+                                        d = p / q;
                                     } else {
-                                        var29 = var39;
-                                        var30 = var39;
+                                        d = m;
+                                        e = m;
                                     }
                                 }
 
-                                var24 = var25;
-                                var26 = var27;
-                                if (Math.abs(var29) > var38) {
-                                    var25 += var29;
-                                } else if (var39 > 0.0) {
-                                    var25 += var38;
+                                a = b;
+                                fa = fb;
+                                if (Math.abs(d) > tol) {
+                                    b += d;
+                                } else if (m > 0.0) {
+                                    b += tol;
                                 } else {
-                                    var25 -= var38;
+                                    b -= tol;
                                 }
 
-                                var27 = method6869(field4756, field4757, var25);
-                                if (var27 * (var35 / Math.abs(var35)) > 0.0) {
-                                    var36 = true;
-                                    var37 = true;
-                                } else {
-                                    var37 = true;
+                                fb = method6869(polyCoeffs, polyDegree, b);
+                                if (fb * (fc / Math.abs(fc)) > 0.0) {
+                                    needsInit = true;
+                                    continueLoop = true;
                                 }
+                                continueLoop = true;
                             }
-                        } while (var37);
+                        } while (continueLoop);
 
-                        var23 = var25;
+                        root = b;
                     }
                 }
 
-                var6[var22] = var23;
-                if (status > 1 && var6[status - 2] >= var6[status - 1] - var44) {
-                    var6[status - 2] = 0.5 * (var6[status - 2] + var6[status - 1]);
-                    status--;
+                rootsOut[rootIndex] = root;
+                if (rootCount > 1 && rootsOut[rootCount - 2] >= rootsOut[rootCount - 1] - eps) {
+                    rootsOut[rootCount - 2] =
+                        0.5 * (rootsOut[rootCount - 2] + rootsOut[rootCount - 1]);
+                    rootCount--;
                 }
             }
         }
 
-        return status;
+        return rootCount;
     }
 }

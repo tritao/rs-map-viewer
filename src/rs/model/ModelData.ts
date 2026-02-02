@@ -546,19 +546,19 @@ export class ModelData extends Entity {
         const vertexCount = buf1.readUnsignedShort();
         const faceCount = buf1.readUnsignedShort();
         const texTriangleCount = buf1.readUnsignedByte();
-        const var12 = buf1.readUnsignedByte();
-        const var13 = buf1.readUnsignedByte();
-        const var14 = buf1.readUnsignedByte();
-        const var15 = buf1.readUnsignedByte();
-        const var16 = buf1.readUnsignedByte();
-        const var17 = buf1.readUnsignedByte();
+        const hasFaceRenderTypes = buf1.readUnsignedByte();
+        const priorityOrFlag = buf1.readUnsignedByte();
+        const hasFaceAlphas = buf1.readUnsignedByte();
+        const hasFaceSkins = buf1.readUnsignedByte();
+        const hasFaceTextures = buf1.readUnsignedByte();
+        const hasVertexSkins = buf1.readUnsignedByte();
         const hasMayaGroups = buf1.readUnsignedByte();
-        const var19 = buf1.readUnsignedShort();
-        const var20 = buf1.readUnsignedShort();
-        const var21 = buf1.readUnsignedShort();
-        const var22 = buf1.readUnsignedShort();
-        const var23 = buf1.readUnsignedShort();
-        const var24 = buf1.readUnsignedShort();
+        const vertexDeltaXDataLength = buf1.readUnsignedShort();
+        const vertexDeltaYDataLength = buf1.readUnsignedShort();
+        const vertexDeltaZDataLength = buf1.readUnsignedShort();
+        const faceIndexDataLength = buf1.readUnsignedShort();
+        const textureCoordDataLength = buf1.readUnsignedShort();
+        const vertexSkinAndMayaDataLength = buf1.readUnsignedShort();
         let simpleTextureFaceCount = 0;
         let complexTextureFaceCount = 0;
         let cubeTextureFaceCount = 0;
@@ -582,60 +582,60 @@ export class ModelData extends Entity {
             }
         }
 
-        let var28 = texTriangleCount + vertexCount;
-        const var30 = var28;
-        if (var12 === 1) {
-            var28 += faceCount;
+        let offset = texTriangleCount + vertexCount;
+        const faceRenderTypeOffset = offset;
+        if (hasFaceRenderTypes === 1) {
+            offset += faceCount;
         }
 
-        const var31 = var28;
-        var28 += faceCount;
-        const var32 = var28;
-        if (var13 === 255) {
-            var28 += faceCount;
+        const faceIndexTypeOffset = offset;
+        offset += faceCount;
+        const facePriorityOffset = offset;
+        if (priorityOrFlag === 255) {
+            offset += faceCount;
         }
 
-        const var33 = var28;
-        if (var15 === 1) {
-            var28 += faceCount;
+        const faceSkinOffset = offset;
+        if (hasFaceSkins === 1) {
+            offset += faceCount;
         }
 
-        const var34 = var28;
-        var28 += var24;
-        const var35 = var28;
-        if (var14 === 1) {
-            var28 += faceCount;
+        const vertexSkinAndMayaOffset = offset;
+        offset += vertexSkinAndMayaDataLength;
+        const faceAlphaOffset = offset;
+        if (hasFaceAlphas === 1) {
+            offset += faceCount;
         }
 
-        const var36 = var28;
-        var28 += var22;
-        const var37 = var28;
-        if (var16 === 1) {
-            var28 += faceCount * 2;
+        const faceIndexDataOffset = offset;
+        offset += faceIndexDataLength;
+        const faceTextureOffset = offset;
+        if (hasFaceTextures === 1) {
+            offset += faceCount * 2;
         }
 
-        const var38 = var28;
-        var28 += var23;
-        const var39 = var28;
-        var28 += faceCount * 2;
-        const var40 = var28;
-        var28 += var19;
-        const var41 = var28;
-        var28 += var20;
-        const var42 = var28;
-        var28 += var21;
-        const var43 = var28;
-        var28 += simpleTextureFaceCount * 6;
-        const var44 = var28;
-        var28 += complexTextureFaceCount * 6;
-        const var45 = var28;
-        var28 += complexTextureFaceCount * 6;
-        const var46 = var28;
-        var28 += complexTextureFaceCount * 2;
-        const var47 = var28;
-        var28 += complexTextureFaceCount;
-        const var48 = var28;
-        var28 += complexTextureFaceCount * 2 + cubeTextureFaceCount * 2;
+        const textureCoordOffset = offset;
+        offset += textureCoordDataLength;
+        const faceColorOffset = offset;
+        offset += faceCount * 2;
+        const vertexDeltaXOffset = offset;
+        offset += vertexDeltaXDataLength;
+        const vertexDeltaYOffset = offset;
+        offset += vertexDeltaYDataLength;
+        const vertexDeltaZOffset = offset;
+        offset += vertexDeltaZDataLength;
+        const simpleTextureMappingOffset = offset;
+        offset += simpleTextureFaceCount * 6;
+        const complexTextureMappingOffset = offset;
+        offset += complexTextureFaceCount * 6;
+        const complexTextureScaleOffset = offset;
+        offset += complexTextureFaceCount * 6;
+        const complexTextureRotationOffset = offset;
+        offset += complexTextureFaceCount * 2;
+        const complexTextureDirectionOffset = offset;
+        offset += complexTextureFaceCount;
+        const complexTextureTranslationOffset = offset;
+        offset += complexTextureFaceCount * 2 + cubeTextureFaceCount * 2;
         this.verticesCount = vertexCount;
         this.faceCount = faceCount;
         this.textureFaceCount = texTriangleCount;
@@ -645,33 +645,33 @@ export class ModelData extends Entity {
         this.indices1 = new Int32Array(faceCount);
         this.indices2 = new Int32Array(faceCount);
         this.indices3 = new Int32Array(faceCount);
-        if (var17 === 1) {
+        if (hasVertexSkins === 1) {
             this.vertexSkins = new Int32Array(vertexCount);
         }
 
-        if (var12 === 1) {
+        if (hasFaceRenderTypes === 1) {
             this.faceRenderTypes = new Int8Array(faceCount);
         }
 
-        if (var13 === 255) {
+        if (priorityOrFlag === 255) {
             this.faceRenderPriorities = new Int8Array(faceCount);
         } else {
-            this.priority = var13;
+            this.priority = priorityOrFlag;
         }
 
-        if (var14 === 1) {
+        if (hasFaceAlphas === 1) {
             this.faceAlphas = new Int8Array(faceCount);
         }
 
-        if (var15 === 1) {
+        if (hasFaceSkins === 1) {
             this.faceSkins = new Int32Array(faceCount);
         }
 
-        if (var16 === 1) {
+        if (hasFaceTextures === 1) {
             this.faceTextures = new Int16Array(faceCount);
         }
 
-        if (var16 === 1 && texTriangleCount > 0) {
+        if (hasFaceTextures === 1 && texTriangleCount > 0) {
             this.textureCoords = new Int8Array(faceCount);
         }
 
@@ -700,278 +700,10 @@ export class ModelData extends Entity {
         }
 
         buf1.offset = texTriangleCount;
-        buf2.offset = var40;
-        buf3.offset = var41;
-        buf4.offset = var42;
-        buf5.offset = var34;
-        let lastVertX = 0;
-        let lastVertY = 0;
-        let lastVertZ = 0;
-
-        for (let i = 0; i < vertexCount; i++) {
-            const flag = buf1.readUnsignedByte();
-            let deltaVertX = 0;
-            if ((flag & 1) !== 0) {
-                deltaVertX = buf2.readSmart2();
-            }
-
-            let deltaVertY = 0;
-            if ((flag & 2) !== 0) {
-                deltaVertY = buf3.readSmart2();
-            }
-
-            let deltaVertZ = 0;
-            if ((flag & 4) !== 0) {
-                deltaVertZ = buf4.readSmart2();
-            }
-
-            this.verticesX[i] = lastVertX + deltaVertX;
-            this.verticesY[i] = lastVertY + deltaVertY;
-            this.verticesZ[i] = lastVertZ + deltaVertZ;
-            lastVertX = this.verticesX[i];
-            lastVertY = this.verticesY[i];
-            lastVertZ = this.verticesZ[i];
-            if (var17 === 1 && this.vertexSkins) {
-                this.vertexSkins[i] = buf5.readUnsignedByte();
-            }
-        }
-
-        if (hasMayaGroups === 1) {
-            for (let i = 0; i < vertexCount; i++) {
-                const var54 = buf5.readUnsignedByte();
-                this.animMayaGroups[i] = new Int32Array(var54);
-                this.animMayaScales[i] = new Int32Array(var54);
-
-                for (let j = 0; j < var54; j++) {
-                    this.animMayaGroups[i][j] = buf5.readUnsignedByte();
-                    this.animMayaScales[i][j] = buf5.readUnsignedByte();
-                }
-            }
-        }
-
-        buf1.offset = var39;
-        buf2.offset = var30;
-        buf3.offset = var32;
-        buf4.offset = var35;
-        buf5.offset = var33;
-        buf6.offset = var37;
-        buf7.offset = var38;
-
-        for (let i = 0; i < faceCount; i++) {
-            this.faceColors[i] = buf1.readUnsignedShort();
-            if (var12 === 1 && this.faceRenderTypes) {
-                this.faceRenderTypes[i] = buf2.readByte();
-            }
-
-            if (var13 === 255) {
-                this.faceRenderPriorities[i] = buf3.readByte();
-            }
-
-            if (var14 === 1) {
-                this.faceAlphas[i] = buf4.readByte();
-            }
-
-            if (var15 === 1 && this.faceSkins) {
-                this.faceSkins[i] = buf5.readUnsignedByte();
-            }
-
-            if (var16 === 1 && this.faceTextures) {
-                this.faceTextures[i] = buf6.readUnsignedShort() - 1;
-            }
-
-            if (this.textureCoords && this.faceTextures && this.faceTextures[i] !== -1) {
-                this.textureCoords[i] = buf7.readUnsignedByte() - 1;
-            }
-        }
-
-        buf1.offset = var36;
-        buf2.offset = var31;
-        let var53 = 0;
-        let var54 = 0;
-        let var55 = 0;
-        let var56 = 0;
-
-        for (let i = 0; i < faceCount; i++) {
-            const type = buf2.readUnsignedByte();
-            if (type === 1) {
-                var53 = buf1.readSmart2() + var56;
-                var54 = buf1.readSmart2() + var53;
-                var55 = buf1.readSmart2() + var54;
-                var56 = var55;
-                this.indices1[i] = var53;
-                this.indices2[i] = var54;
-                this.indices3[i] = var55;
-            }
-
-            if (type === 2) {
-                var54 = var55;
-                var55 = buf1.readSmart2() + var56;
-                var56 = var55;
-                this.indices1[i] = var53;
-                this.indices2[i] = var54;
-                this.indices3[i] = var55;
-            }
-
-            if (type === 3) {
-                var53 = var55;
-                var55 = buf1.readSmart2() + var56;
-                var56 = var55;
-                this.indices1[i] = var53;
-                this.indices2[i] = var54;
-                this.indices3[i] = var55;
-            }
-
-            if (type === 4) {
-                const var59 = var53;
-                var53 = var54;
-                var54 = var59;
-                var55 = buf1.readSmart2() + var56;
-                var56 = var55;
-                this.indices1[i] = var53;
-                this.indices2[i] = var59;
-                this.indices3[i] = var55;
-            }
-        }
-
-        buf1.offset = var43;
-        buf2.offset = var44;
-        buf3.offset = var45;
-        buf4.offset = var46;
-        buf5.offset = var47;
-        buf6.offset = var48;
-
-        for (let i = 0; i < texTriangleCount; i++) {
-            const type = this.textureRenderTypes[i] & 255;
-            if (type === 0) {
-                this.textureMappingP[i] = buf1.readUnsignedShort();
-                this.textureMappingM[i] = buf1.readUnsignedShort();
-                this.textureMappingN[i] = buf1.readUnsignedShort();
-            }
-        }
-
-        buf1.offset = var28;
-        const var57 = buf1.readUnsignedByte();
-        if (var57 !== 0) {
-            // new ModelData0();
-            buf1.readUnsignedShort();
-            buf1.readUnsignedShort();
-            buf1.readUnsignedShort();
-            buf1.readInt();
-        }
-    }
-
-    decodeV2(data: Int8Array): void {
-        this.version = 2;
-        let var2 = false;
-        let var3 = false;
-        const buf1 = new ByteBuffer(data);
-        const buf2 = new ByteBuffer(data);
-        const buf3 = new ByteBuffer(data);
-        const buf4 = new ByteBuffer(data);
-        const buf5 = new ByteBuffer(data);
-        buf1.offset = data.length - 23;
-        const vertexCount = buf1.readUnsignedShort();
-        const faceCount = buf1.readUnsignedShort();
-        const texTriangleCount = buf1.readUnsignedByte();
-        const var12 = buf1.readUnsignedByte();
-        const var13 = buf1.readUnsignedByte();
-        const var14 = buf1.readUnsignedByte();
-        const var15 = buf1.readUnsignedByte();
-        const hasVertexSkins = buf1.readUnsignedByte();
-        const hasMayaGroups = buf1.readUnsignedByte();
-        const var18 = buf1.readUnsignedShort();
-        const var19 = buf1.readUnsignedShort();
-        const var20 = buf1.readUnsignedShort();
-        const var21 = buf1.readUnsignedShort();
-        const var22 = buf1.readUnsignedShort();
-        let var23 = 0;
-        let var47 = var23 + vertexCount;
-        const var25 = var47;
-        var47 += faceCount;
-        const var26 = var47;
-        if (var13 === 255) {
-            var47 += faceCount;
-        }
-
-        const var27 = var47;
-        if (var15 === 1) {
-            var47 += faceCount;
-        }
-
-        const var28 = var47;
-        if (var12 === 1) {
-            var47 += faceCount;
-        }
-
-        const var29 = var47;
-        var47 += var22;
-        const var30 = var47;
-        if (var14 === 1) {
-            var47 += faceCount;
-        }
-
-        const var31 = var47;
-        var47 += var21;
-        const var32 = var47;
-        var47 += faceCount * 2;
-        const var33 = var47;
-        var47 += texTriangleCount * 6;
-        const var34 = var47;
-        var47 += var18;
-        const var35 = var47;
-        var47 += var19;
-        // const var10000 = var47 + var20;
-        this.verticesCount = vertexCount;
-        this.faceCount = faceCount;
-        this.textureFaceCount = texTriangleCount;
-        this.verticesX = new Int32Array(vertexCount);
-        this.verticesY = new Int32Array(vertexCount);
-        this.verticesZ = new Int32Array(vertexCount);
-        this.indices1 = new Int32Array(faceCount);
-        this.indices2 = new Int32Array(faceCount);
-        this.indices3 = new Int32Array(faceCount);
-        if (texTriangleCount > 0) {
-            this.textureRenderTypes = new Int8Array(texTriangleCount);
-            this.textureMappingP = new Int16Array(texTriangleCount);
-            this.textureMappingM = new Int16Array(texTriangleCount);
-            this.textureMappingN = new Int16Array(texTriangleCount);
-        }
-
-        if (hasVertexSkins === 1) {
-            this.vertexSkins = new Int32Array(vertexCount);
-        }
-
-        if (var12 === 1) {
-            this.faceRenderTypes = new Int8Array(faceCount);
-            this.textureCoords = new Int8Array(faceCount);
-            this.faceTextures = new Int16Array(faceCount);
-        }
-
-        if (var13 === 255) {
-            this.faceRenderPriorities = new Int8Array(faceCount);
-        } else {
-            this.priority = var13;
-        }
-
-        if (var14 === 1) {
-            this.faceAlphas = new Int8Array(faceCount);
-        }
-
-        if (var15 === 1) {
-            this.faceSkins = new Int32Array(faceCount);
-        }
-
-        if (hasMayaGroups === 1) {
-            this.animMayaGroups = new Array(vertexCount);
-            this.animMayaScales = new Array(vertexCount);
-        }
-
-        this.faceColors = new Uint16Array(faceCount);
-        buf1.offset = var23;
-        buf2.offset = var34;
-        buf3.offset = var35;
-        buf4.offset = var47;
-        buf5.offset = var29;
+        buf2.offset = vertexDeltaXOffset;
+        buf3.offset = vertexDeltaYOffset;
+        buf4.offset = vertexDeltaZOffset;
+        buf5.offset = vertexSkinAndMayaOffset;
         let lastVertX = 0;
         let lastVertY = 0;
         let lastVertZ = 0;
@@ -1006,40 +738,314 @@ export class ModelData extends Entity {
 
         if (hasMayaGroups === 1) {
             for (let i = 0; i < vertexCount; i++) {
-                const var41 = buf5.readUnsignedByte();
-                this.animMayaGroups[i] = new Int32Array(var41);
-                this.animMayaScales[i] = new Int32Array(var41);
+                const mayaGroupCount = buf5.readUnsignedByte();
+                this.animMayaGroups[i] = new Int32Array(mayaGroupCount);
+                this.animMayaScales[i] = new Int32Array(mayaGroupCount);
 
-                for (let j = 0; j < var41; j++) {
+                for (let j = 0; j < mayaGroupCount; j++) {
                     this.animMayaGroups[i][j] = buf5.readUnsignedByte();
                     this.animMayaScales[i][j] = buf5.readUnsignedByte();
                 }
             }
         }
 
-        buf1.offset = var32;
-        buf2.offset = var28;
-        buf3.offset = var26;
-        buf4.offset = var30;
-        buf5.offset = var27;
+        buf1.offset = faceColorOffset;
+        buf2.offset = faceRenderTypeOffset;
+        buf3.offset = facePriorityOffset;
+        buf4.offset = faceAlphaOffset;
+        buf5.offset = faceSkinOffset;
+        buf6.offset = faceTextureOffset;
+        buf7.offset = textureCoordOffset;
 
         for (let i = 0; i < faceCount; i++) {
             this.faceColors[i] = buf1.readUnsignedShort();
-            if (var12 === 1 && this.faceRenderTypes && this.textureCoords && this.faceTextures) {
-                const var41 = buf2.readUnsignedByte();
-                if ((var41 & 1) === 1) {
+            if (hasFaceRenderTypes === 1 && this.faceRenderTypes) {
+                this.faceRenderTypes[i] = buf2.readByte();
+            }
+
+            if (priorityOrFlag === 255) {
+                this.faceRenderPriorities[i] = buf3.readByte();
+            }
+
+            if (hasFaceAlphas === 1) {
+                this.faceAlphas[i] = buf4.readByte();
+            }
+
+            if (hasFaceSkins === 1 && this.faceSkins) {
+                this.faceSkins[i] = buf5.readUnsignedByte();
+            }
+
+            if (hasFaceTextures === 1 && this.faceTextures) {
+                this.faceTextures[i] = buf6.readUnsignedShort() - 1;
+            }
+
+            if (this.textureCoords && this.faceTextures && this.faceTextures[i] !== -1) {
+                this.textureCoords[i] = buf7.readUnsignedByte() - 1;
+            }
+        }
+
+        buf1.offset = faceIndexDataOffset;
+        buf2.offset = faceIndexTypeOffset;
+        let index1 = 0;
+        let index2 = 0;
+        let index3 = 0;
+        let lastIndex = 0;
+
+        for (let i = 0; i < faceCount; i++) {
+            const type = buf2.readUnsignedByte();
+            if (type === 1) {
+                index1 = buf1.readSmart2() + lastIndex;
+                index2 = buf1.readSmart2() + index1;
+                index3 = buf1.readSmart2() + index2;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = index2;
+                this.indices3[i] = index3;
+            }
+
+            if (type === 2) {
+                index2 = index3;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = index2;
+                this.indices3[i] = index3;
+            }
+
+            if (type === 3) {
+                index1 = index3;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = index2;
+                this.indices3[i] = index3;
+            }
+
+            if (type === 4) {
+                const tmpIndex = index1;
+                index1 = index2;
+                index2 = tmpIndex;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = tmpIndex;
+                this.indices3[i] = index3;
+            }
+        }
+
+        buf1.offset = simpleTextureMappingOffset;
+        buf2.offset = complexTextureMappingOffset;
+        buf3.offset = complexTextureScaleOffset;
+        buf4.offset = complexTextureRotationOffset;
+        buf5.offset = complexTextureDirectionOffset;
+        buf6.offset = complexTextureTranslationOffset;
+
+        for (let i = 0; i < texTriangleCount; i++) {
+            const type = this.textureRenderTypes[i] & 255;
+            if (type === 0) {
+                this.textureMappingP[i] = buf1.readUnsignedShort();
+                this.textureMappingM[i] = buf1.readUnsignedShort();
+                this.textureMappingN[i] = buf1.readUnsignedShort();
+            }
+        }
+
+        buf1.offset = offset;
+        const extraDataFlag = buf1.readUnsignedByte();
+        if (extraDataFlag !== 0) {
+            // new ModelData0();
+            buf1.readUnsignedShort();
+            buf1.readUnsignedShort();
+            buf1.readUnsignedShort();
+            buf1.readInt();
+        }
+    }
+
+    decodeV2(data: Int8Array): void {
+        this.version = 2;
+        let hasRenderType = false;
+        let isTextured = false;
+        const buf1 = new ByteBuffer(data);
+        const buf2 = new ByteBuffer(data);
+        const buf3 = new ByteBuffer(data);
+        const buf4 = new ByteBuffer(data);
+        const buf5 = new ByteBuffer(data);
+        buf1.offset = data.length - 23;
+        const vertexCount = buf1.readUnsignedShort();
+        const faceCount = buf1.readUnsignedShort();
+        const texTriangleCount = buf1.readUnsignedByte();
+        const usesTextures = buf1.readUnsignedByte();
+        const priorityOrFlag = buf1.readUnsignedByte();
+        const hasFaceAlphas = buf1.readUnsignedByte();
+        const hasFaceSkins = buf1.readUnsignedByte();
+        const hasVertexSkins = buf1.readUnsignedByte();
+        const hasMayaGroups = buf1.readUnsignedByte();
+        const vertexDeltaXDataLength = buf1.readUnsignedShort();
+        const vertexDeltaYDataLength = buf1.readUnsignedShort();
+        const vertexDeltaZDataLength = buf1.readUnsignedShort();
+        const faceIndexDataLength = buf1.readUnsignedShort();
+        const vertexSkinAndMayaDataLength = buf1.readUnsignedShort();
+        const baseOffset = 0;
+        let offset = baseOffset + vertexCount;
+        const faceIndexTypeOffset = offset;
+        offset += faceCount;
+        const facePriorityOffset = offset;
+        if (priorityOrFlag === 255) {
+            offset += faceCount;
+        }
+
+        const faceSkinOffset = offset;
+        if (hasFaceSkins === 1) {
+            offset += faceCount;
+        }
+
+        const faceFlagOffset = offset;
+        if (usesTextures === 1) {
+            offset += faceCount;
+        }
+
+        const vertexSkinAndMayaOffset = offset;
+        offset += vertexSkinAndMayaDataLength;
+        const faceAlphaOffset = offset;
+        if (hasFaceAlphas === 1) {
+            offset += faceCount;
+        }
+
+        const faceIndexDataOffset = offset;
+        offset += faceIndexDataLength;
+        const faceColorOffset = offset;
+        offset += faceCount * 2;
+        const textureTriangleMappingOffset = offset;
+        offset += texTriangleCount * 6;
+        const vertexDeltaXOffset = offset;
+        offset += vertexDeltaXDataLength;
+        const vertexDeltaYOffset = offset;
+        offset += vertexDeltaYDataLength;
+        const vertexDeltaZOffset = offset;
+        // Note: V2 doesn't use `vertexDeltaZDataLength` for any subsequent offsets here.
+        this.verticesCount = vertexCount;
+        this.faceCount = faceCount;
+        this.textureFaceCount = texTriangleCount;
+        this.verticesX = new Int32Array(vertexCount);
+        this.verticesY = new Int32Array(vertexCount);
+        this.verticesZ = new Int32Array(vertexCount);
+        this.indices1 = new Int32Array(faceCount);
+        this.indices2 = new Int32Array(faceCount);
+        this.indices3 = new Int32Array(faceCount);
+        if (texTriangleCount > 0) {
+            this.textureRenderTypes = new Int8Array(texTriangleCount);
+            this.textureMappingP = new Int16Array(texTriangleCount);
+            this.textureMappingM = new Int16Array(texTriangleCount);
+            this.textureMappingN = new Int16Array(texTriangleCount);
+        }
+
+        if (hasVertexSkins === 1) {
+            this.vertexSkins = new Int32Array(vertexCount);
+        }
+
+        if (usesTextures === 1) {
+            this.faceRenderTypes = new Int8Array(faceCount);
+            this.textureCoords = new Int8Array(faceCount);
+            this.faceTextures = new Int16Array(faceCount);
+        }
+
+        if (priorityOrFlag === 255) {
+            this.faceRenderPriorities = new Int8Array(faceCount);
+        } else {
+            this.priority = priorityOrFlag;
+        }
+
+        if (hasFaceAlphas === 1) {
+            this.faceAlphas = new Int8Array(faceCount);
+        }
+
+        if (hasFaceSkins === 1) {
+            this.faceSkins = new Int32Array(faceCount);
+        }
+
+        if (hasMayaGroups === 1) {
+            this.animMayaGroups = new Array(vertexCount);
+            this.animMayaScales = new Array(vertexCount);
+        }
+
+        this.faceColors = new Uint16Array(faceCount);
+        buf1.offset = baseOffset;
+        buf2.offset = vertexDeltaXOffset;
+        buf3.offset = vertexDeltaYOffset;
+        buf4.offset = vertexDeltaZOffset;
+        buf5.offset = vertexSkinAndMayaOffset;
+        let lastVertX = 0;
+        let lastVertY = 0;
+        let lastVertZ = 0;
+
+        for (let i = 0; i < vertexCount; i++) {
+            const flag = buf1.readUnsignedByte();
+            let deltaVertX = 0;
+            if ((flag & 1) !== 0) {
+                deltaVertX = buf2.readSmart2();
+            }
+
+            let deltaVertY = 0;
+            if ((flag & 2) !== 0) {
+                deltaVertY = buf3.readSmart2();
+            }
+
+            let deltaVertZ = 0;
+            if ((flag & 4) !== 0) {
+                deltaVertZ = buf4.readSmart2();
+            }
+
+            this.verticesX[i] = lastVertX + deltaVertX;
+            this.verticesY[i] = lastVertY + deltaVertY;
+            this.verticesZ[i] = lastVertZ + deltaVertZ;
+            lastVertX = this.verticesX[i];
+            lastVertY = this.verticesY[i];
+            lastVertZ = this.verticesZ[i];
+            if (hasVertexSkins === 1 && this.vertexSkins) {
+                this.vertexSkins[i] = buf5.readUnsignedByte();
+            }
+        }
+
+        if (hasMayaGroups === 1) {
+            for (let i = 0; i < vertexCount; i++) {
+                const mayaGroupCount = buf5.readUnsignedByte();
+                this.animMayaGroups[i] = new Int32Array(mayaGroupCount);
+                this.animMayaScales[i] = new Int32Array(mayaGroupCount);
+
+                for (let j = 0; j < mayaGroupCount; j++) {
+                    this.animMayaGroups[i][j] = buf5.readUnsignedByte();
+                    this.animMayaScales[i][j] = buf5.readUnsignedByte();
+                }
+            }
+        }
+
+        buf1.offset = faceColorOffset;
+        buf2.offset = faceFlagOffset;
+        buf3.offset = facePriorityOffset;
+        buf4.offset = faceAlphaOffset;
+        buf5.offset = faceSkinOffset;
+
+        for (let i = 0; i < faceCount; i++) {
+            this.faceColors[i] = buf1.readUnsignedShort();
+            if (
+                usesTextures === 1 &&
+                this.faceRenderTypes &&
+                this.textureCoords &&
+                this.faceTextures
+            ) {
+                const faceFlag = buf2.readUnsignedByte();
+                if ((faceFlag & 1) === 1) {
                     this.faceRenderTypes[i] = 1;
-                    var2 = true;
+                    hasRenderType = true;
                 } else {
                     this.faceRenderTypes[i] = 0;
                 }
 
-                if ((var41 & 2) === 2) {
-                    this.textureCoords[i] = var41 >> 2;
+                if ((faceFlag & 2) === 2) {
+                    this.textureCoords[i] = faceFlag >> 2;
                     this.faceTextures[i] = this.faceColors[i];
                     this.faceColors[i] = 127;
                     if (this.faceTextures[i] !== -1) {
-                        var3 = true;
+                        isTextured = true;
                     }
                 } else {
                     this.textureCoords[i] = -1;
@@ -1047,69 +1053,69 @@ export class ModelData extends Entity {
                 }
             }
 
-            if (var13 === 255) {
+            if (priorityOrFlag === 255) {
                 this.faceRenderPriorities[i] = buf3.readByte();
             }
 
-            if (var14 === 1) {
+            if (hasFaceAlphas === 1) {
                 this.faceAlphas[i] = buf4.readByte();
             }
 
-            if (var15 === 1 && this.faceSkins) {
+            if (hasFaceSkins === 1 && this.faceSkins) {
                 this.faceSkins[i] = buf5.readUnsignedByte();
             }
         }
 
-        buf1.offset = var31;
-        buf2.offset = var25;
-        let var40 = 0;
-        let var41 = 0;
-        let var42 = 0;
-        let var43 = 0;
+        buf1.offset = faceIndexDataOffset;
+        buf2.offset = faceIndexTypeOffset;
+        let index1 = 0;
+        let index2 = 0;
+        let index3 = 0;
+        let lastIndex = 0;
 
         for (let i = 0; i < faceCount; i++) {
-            const var45 = buf2.readUnsignedByte();
-            if (var45 === 1) {
-                var40 = buf1.readSmart2() + var43;
-                var41 = buf1.readSmart2() + var40;
-                var42 = buf1.readSmart2() + var41;
-                var43 = var42;
-                this.indices1[i] = var40;
-                this.indices2[i] = var41;
-                this.indices3[i] = var42;
+            const faceIndexType = buf2.readUnsignedByte();
+            if (faceIndexType === 1) {
+                index1 = buf1.readSmart2() + lastIndex;
+                index2 = buf1.readSmart2() + index1;
+                index3 = buf1.readSmart2() + index2;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = index2;
+                this.indices3[i] = index3;
             }
 
-            if (var45 === 2) {
-                var41 = var42;
-                var42 = buf1.readSmart2() + var43;
-                var43 = var42;
-                this.indices1[i] = var40;
-                this.indices2[i] = var41;
-                this.indices3[i] = var42;
+            if (faceIndexType === 2) {
+                index2 = index3;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = index2;
+                this.indices3[i] = index3;
             }
 
-            if (var45 === 3) {
-                var40 = var42;
-                var42 = buf1.readSmart2() + var43;
-                var43 = var42;
-                this.indices1[i] = var40;
-                this.indices2[i] = var41;
-                this.indices3[i] = var42;
+            if (faceIndexType === 3) {
+                index1 = index3;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = index2;
+                this.indices3[i] = index3;
             }
 
-            if (var45 === 4) {
-                const var46 = var40;
-                var40 = var41;
-                var41 = var46;
-                var42 = buf1.readSmart2() + var43;
-                var43 = var42;
-                this.indices1[i] = var40;
-                this.indices2[i] = var46;
-                this.indices3[i] = var42;
+            if (faceIndexType === 4) {
+                const tmpIndex = index1;
+                index1 = index2;
+                index2 = tmpIndex;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
+                this.indices1[i] = index1;
+                this.indices2[i] = tmpIndex;
+                this.indices3[i] = index3;
             }
         }
 
-        buf1.offset = var33;
+        buf1.offset = textureTriangleMappingOffset;
 
         for (let i = 0; i < texTriangleCount; i++) {
             this.textureRenderTypes[i] = 0;
@@ -1119,7 +1125,7 @@ export class ModelData extends Entity {
         }
 
         if (this.textureCoords) {
-            let var48 = false;
+            let hasValidTexFace = false;
 
             for (let i = 0; i < faceCount; i++) {
                 const coord = this.textureCoords[i] & 255;
@@ -1131,21 +1137,21 @@ export class ModelData extends Entity {
                     ) {
                         this.textureCoords[i] = -1;
                     } else {
-                        var48 = true;
+                        hasValidTexFace = true;
                     }
                 }
             }
 
-            if (!var48) {
+            if (!hasValidTexFace) {
                 this.textureCoords = undefined;
             }
         }
 
-        if (!var3) {
+        if (!isTextured) {
             this.faceTextures = undefined;
         }
 
-        if (!var2) {
+        if (!hasRenderType) {
             this.faceRenderTypes = undefined;
         }
     }
@@ -1426,16 +1432,16 @@ export class ModelData extends Entity {
         let index1 = 0;
         let index2 = 0;
         let index3 = 0;
-        let var54 = 0;
+        let lastIndex = 0;
 
         this.usedVertexCount = -1;
         for (let i = 0; i < faceCount; i++) {
             const type = buf2.readUnsignedByte();
             if (type === 1) {
-                index1 = buf1.readSmart2() + var54;
+                index1 = buf1.readSmart2() + lastIndex;
                 index2 = buf1.readSmart2() + index1;
                 index3 = buf1.readSmart2() + index2;
-                var54 = index3;
+                lastIndex = index3;
                 this.indices1[i] = index1;
                 this.indices2[i] = index2;
                 this.indices3[i] = index3;
@@ -1452,8 +1458,8 @@ export class ModelData extends Entity {
 
             if (type === 2) {
                 index2 = index3;
-                index3 = buf1.readSmart2() + var54;
-                var54 = index3;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
                 this.indices1[i] = index1;
                 this.indices2[i] = index2;
                 this.indices3[i] = index3;
@@ -1464,8 +1470,8 @@ export class ModelData extends Entity {
 
             if (type === 3) {
                 index1 = index3;
-                index3 = buf1.readSmart2() + var54;
-                var54 = index3;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
                 this.indices1[i] = index1;
                 this.indices2[i] = index2;
                 this.indices3[i] = index3;
@@ -1475,13 +1481,13 @@ export class ModelData extends Entity {
             }
 
             if (type === 4) {
-                const var57 = index1;
+                const tmpIndex = index1;
                 index1 = index2;
-                index2 = var57;
-                index3 = buf1.readSmart2() + var54;
-                var54 = index3;
+                index2 = tmpIndex;
+                index3 = buf1.readSmart2() + lastIndex;
+                lastIndex = index3;
                 this.indices1[i] = index1;
-                this.indices2[i] = var57;
+                this.indices2[i] = tmpIndex;
                 this.indices3[i] = index3;
                 if (index3 > this.usedVertexCount) {
                     this.usedVertexCount = index3;
@@ -1505,8 +1511,8 @@ export class ModelData extends Entity {
             this.scaleDown(2);
         }
 
-        // const var55 = buf1.readUnsignedByte();
-        // if (var55 !== 0) {
+        // const extraDataFlag = buf1.readUnsignedByte();
+        // if (extraDataFlag !== 0) {
         //     // new ModelData0();
         //     buf1.readUnsignedShort();
         //     buf1.readUnsignedShort();
@@ -1613,54 +1619,55 @@ export class ModelData extends Entity {
         const faceCount = buf1.readUnsignedShort();
         const texTriangleCount = buf1.readUnsignedByte();
         const usesTextures = buf1.readUnsignedByte();
-        const var13 = buf1.readUnsignedByte();
-        const var14 = buf1.readUnsignedByte();
-        const var15 = buf1.readUnsignedByte();
-        const var16 = buf1.readUnsignedByte();
-        const var17 = buf1.readUnsignedShort();
-        const var18 = buf1.readUnsignedShort();
-        const var19 = buf1.readUnsignedShort();
-        const var20 = buf1.readUnsignedShort();
-        let var21 = 0;
-        let var45 = var21 + vertexCount;
-        let var23 = var45;
-        var45 += faceCount;
-        const var24 = var45;
-        if (var13 === 255) {
-            var45 += faceCount;
+        const priorityOrFlag = buf1.readUnsignedByte();
+        const hasFaceAlphas = buf1.readUnsignedByte();
+        const hasFaceSkins = buf1.readUnsignedByte();
+        const hasVertexSkins = buf1.readUnsignedByte();
+        const vertexDeltaXDataLength = buf1.readUnsignedShort();
+        const vertexDeltaYDataLength = buf1.readUnsignedShort();
+        const vertexDeltaZDataLength = buf1.readUnsignedShort();
+        const faceIndexDataLength = buf1.readUnsignedShort();
+        const baseOffset = 0;
+        let offset = baseOffset + vertexCount;
+        const faceIndexTypeOffset = offset;
+        offset += faceCount;
+        const facePriorityOffset = offset;
+        if (priorityOrFlag === 255) {
+            offset += faceCount;
         }
 
-        const var25 = var45;
-        if (var15 === 1) {
-            var45 += faceCount;
+        const faceSkinOffset = offset;
+        if (hasFaceSkins === 1) {
+            offset += faceCount;
         }
 
-        const var26 = var45;
+        const faceFlagOffset = offset;
         if (usesTextures === 1) {
-            var45 += faceCount;
+            offset += faceCount;
         }
 
-        const var27 = var45;
-        if (var16 === 1) {
-            var45 += vertexCount;
+        const vertexSkinsOffset = offset;
+        if (hasVertexSkins === 1) {
+            offset += vertexCount;
         }
 
-        const var28 = var45;
-        if (var14 === 1) {
-            var45 += faceCount;
+        const faceAlphaOffset = offset;
+        if (hasFaceAlphas === 1) {
+            offset += faceCount;
         }
 
-        const var29 = var45;
-        var45 += var20;
-        const var30 = var45;
-        var45 += faceCount * 2;
-        const var31 = var45;
-        var45 += texTriangleCount * 6;
-        const var32 = var45;
-        var45 += var17;
-        const var33 = var45;
-        var45 += var18;
-        // const var10000 = var45 + var19;
+        const faceIndexDataOffset = offset;
+        offset += faceIndexDataLength;
+        const faceColorOffset = offset;
+        offset += faceCount * 2;
+        const textureTriangleMappingOffset = offset;
+        offset += texTriangleCount * 6;
+        const vertexDeltaXOffset = offset;
+        offset += vertexDeltaXDataLength;
+        const vertexDeltaYOffset = offset;
+        offset += vertexDeltaYDataLength;
+        const vertexDeltaZOffset = offset;
+        // Note: V0 doesn't use `vertexDeltaZDataLength` for any subsequent offsets here.
         this.verticesCount = vertexCount;
         this.faceCount = faceCount;
         this.textureFaceCount = texTriangleCount;
@@ -1677,7 +1684,7 @@ export class ModelData extends Entity {
             this.textureMappingN = new Int16Array(texTriangleCount);
         }
 
-        if (var16 === 1) {
+        if (hasVertexSkins === 1) {
             this.vertexSkins = new Int32Array(vertexCount);
         }
 
@@ -1687,26 +1694,26 @@ export class ModelData extends Entity {
             this.faceTextures = new Int16Array(faceCount);
         }
 
-        if (var13 === 255) {
+        if (priorityOrFlag === 255) {
             this.faceRenderPriorities = new Int8Array(faceCount);
         } else {
-            this.priority = var13;
+            this.priority = priorityOrFlag;
         }
 
-        if (var14 === 1) {
+        if (hasFaceAlphas === 1) {
             this.faceAlphas = new Int8Array(faceCount);
         }
 
-        if (var15 === 1) {
+        if (hasFaceSkins === 1) {
             this.faceSkins = new Int32Array(faceCount);
         }
 
         this.faceColors = new Uint16Array(faceCount);
-        buf1.offset = var21;
-        buf2.offset = var32;
-        buf3.offset = var33;
-        buf4.offset = var45;
-        buf5.offset = var27;
+        buf1.offset = baseOffset;
+        buf2.offset = vertexDeltaXOffset;
+        buf3.offset = vertexDeltaYOffset;
+        buf4.offset = vertexDeltaZOffset;
+        buf5.offset = vertexSkinsOffset;
         let lastVertX = 0;
         let lastVertY = 0;
         let lastVertZ = 0;
@@ -1734,16 +1741,16 @@ export class ModelData extends Entity {
             lastVertX = this.verticesX[i];
             lastVertY = this.verticesY[i];
             lastVertZ = this.verticesZ[i];
-            if (var16 === 1 && this.vertexSkins) {
+            if (hasVertexSkins === 1 && this.vertexSkins) {
                 this.vertexSkins[i] = buf5.readUnsignedByte();
             }
         }
 
-        buf1.offset = var30;
-        buf2.offset = var26;
-        buf3.offset = var24;
-        buf4.offset = var28;
-        buf5.offset = var25;
+        buf1.offset = faceColorOffset;
+        buf2.offset = faceFlagOffset;
+        buf3.offset = facePriorityOffset;
+        buf4.offset = faceAlphaOffset;
+        buf5.offset = faceSkinOffset;
 
         for (let i = 0; i < faceCount; i++) {
             this.faceColors[i] = buf1.readUnsignedShort();
@@ -1774,21 +1781,21 @@ export class ModelData extends Entity {
                 }
             }
 
-            if (var13 === 255) {
+            if (priorityOrFlag === 255) {
                 this.faceRenderPriorities[i] = buf3.readByte();
             }
 
-            if (var14 === 1) {
+            if (hasFaceAlphas === 1) {
                 this.faceAlphas[i] = buf4.readByte();
             }
 
-            if (var15 === 1 && this.faceSkins) {
+            if (hasFaceSkins === 1 && this.faceSkins) {
                 this.faceSkins[i] = buf5.readUnsignedByte();
             }
         }
 
-        buf1.offset = var29;
-        buf2.offset = var23;
+        buf1.offset = faceIndexDataOffset;
+        buf2.offset = faceIndexTypeOffset;
         let index1 = 0;
         let index2 = 0;
         let index3 = 0;
@@ -1841,13 +1848,13 @@ export class ModelData extends Entity {
             }
 
             if (type === 4) {
-                const var44 = index1;
+                const tmpIndex = index1;
                 index1 = index2;
-                index2 = var44;
+                index2 = tmpIndex;
                 index3 = buf1.readSmart2() + lastIndex;
                 lastIndex = index3;
                 this.indices1[i] = index1;
-                this.indices2[i] = var44;
+                this.indices2[i] = tmpIndex;
                 this.indices3[i] = index3;
                 if (index3 > this.usedVertexCount) {
                     this.usedVertexCount = index3;
@@ -1856,7 +1863,7 @@ export class ModelData extends Entity {
         }
         this.usedVertexCount++;
 
-        buf1.offset = var31;
+        buf1.offset = textureTriangleMappingOffset;
 
         for (let i = 0; i < texTriangleCount; i++) {
             this.textureRenderTypes[i] = 0;
@@ -2678,40 +2685,41 @@ export class ModelData extends Entity {
             const verticesY = this.contourVerticesY || this.verticesY;
 
             for (let i = 0; i < this.faceCount; i++) {
-                const var2 = this.indices1[i];
-                const var3 = this.indices2[i];
-                const var4 = this.indices3[i];
-                const var5 = this.verticesX[var3] - this.verticesX[var2];
-                const var6 = verticesY[var3] - verticesY[var2];
-                const var7 = this.verticesZ[var3] - this.verticesZ[var2];
-                const var8 = this.verticesX[var4] - this.verticesX[var2];
-                const var9 = verticesY[var4] - verticesY[var2];
-                const var10 = this.verticesZ[var4] - this.verticesZ[var2];
-                let var11 = var6 * var10 - var9 * var7;
-                let var12 = var7 * var8 - var10 * var5;
-                let var13 = var5 * var9 - var8 * var6;
+                const indexA = this.indices1[i];
+                const indexB = this.indices2[i];
+                const indexC = this.indices3[i];
+                const dxAB = this.verticesX[indexB] - this.verticesX[indexA];
+                const dyAB = verticesY[indexB] - verticesY[indexA];
+                const dzAB = this.verticesZ[indexB] - this.verticesZ[indexA];
+                const dxAC = this.verticesX[indexC] - this.verticesX[indexA];
+                const dyAC = verticesY[indexC] - verticesY[indexA];
+                const dzAC = this.verticesZ[indexC] - this.verticesZ[indexA];
+                let normalX = dyAB * dzAC - dyAC * dzAB;
+                let normalY = dzAB * dxAC - dzAC * dxAB;
+                let normalZ = dxAB * dyAC - dxAC * dyAB;
 
                 while (
-                    var11 > 8192 ||
-                    var12 > 8192 ||
-                    var13 > 8192 ||
-                    var11 < -8192 ||
-                    var12 < -8192 ||
-                    var13 < -8192
+                    normalX > 8192 ||
+                    normalY > 8192 ||
+                    normalZ > 8192 ||
+                    normalX < -8192 ||
+                    normalY < -8192 ||
+                    normalZ < -8192
                 ) {
-                    var11 >>= 1;
-                    var12 >>= 1;
-                    var13 >>= 1;
+                    normalX >>= 1;
+                    normalY >>= 1;
+                    normalZ >>= 1;
                 }
 
-                let var14 = Math.sqrt(var11 * var11 + var12 * var12 + var13 * var13) | 0;
-                if (var14 <= 0) {
-                    var14 = 1;
+                let normalLength =
+                    Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ) | 0;
+                if (normalLength <= 0) {
+                    normalLength = 1;
                 }
 
-                var11 = ((var11 * 256) / var14) | 0;
-                var12 = ((var12 * 256) / var14) | 0;
-                var13 = ((var13 * 256) / var14) | 0;
+                normalX = ((normalX * 256) / normalLength) | 0;
+                normalY = ((normalY * 256) / normalLength) | 0;
+                normalZ = ((normalZ * 256) / normalLength) | 0;
                 let type;
                 if (!this.faceRenderTypes) {
                     type = 0;
@@ -2720,27 +2728,27 @@ export class ModelData extends Entity {
                 }
 
                 if (type === 0) {
-                    let normal = this.normals[var2];
-                    normal.x += var11;
-                    normal.y += var12;
-                    normal.z += var13;
+                    let normal = this.normals[indexA];
+                    normal.x += normalX;
+                    normal.y += normalY;
+                    normal.z += normalZ;
                     normal.magnitude++;
-                    normal = this.normals[var3];
-                    normal.x += var11;
-                    normal.y += var12;
-                    normal.z += var13;
+                    normal = this.normals[indexB];
+                    normal.x += normalX;
+                    normal.y += normalY;
+                    normal.z += normalZ;
                     normal.magnitude++;
-                    normal = this.normals[var4];
-                    normal.x += var11;
-                    normal.y += var12;
-                    normal.z += var13;
+                    normal = this.normals[indexC];
+                    normal.x += normalX;
+                    normal.y += normalY;
+                    normal.z += normalZ;
                     normal.magnitude++;
                 } else if (type === 1) {
                     if (!this.faceNormals) {
                         this.faceNormals = new Array(this.faceCount);
                     }
 
-                    this.faceNormals[i] = new FaceNormal(var11, var12, var13);
+                    this.faceNormals[i] = new FaceNormal(normalX, normalY, normalZ);
                 }
             }
         }
@@ -2928,45 +2936,49 @@ export class ModelData extends Entity {
                     } else {
                         normal = this.normals[this.indices1[i]];
                     }
-                    let var14 =
+                    let shade17 =
                         (ambient +
                             (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                                 (lightIntensity * normal.magnitude)) <<
                         17;
-                    model.faceColors1[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+                    model.faceColors1[i] =
+                        shade17 | ModelData.adjustLightness(color, shade17 >> 17);
 
                     if (this.mergedNormals && this.mergedNormals[this.indices2[i]]) {
                         normal = this.mergedNormals[this.indices2[i]];
                     } else {
                         normal = this.normals[this.indices2[i]];
                     }
-                    var14 =
+                    shade17 =
                         (ambient +
                             (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                                 (lightIntensity * normal.magnitude)) <<
                         17;
-                    model.faceColors2[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+                    model.faceColors2[i] =
+                        shade17 | ModelData.adjustLightness(color, shade17 >> 17);
 
                     if (this.mergedNormals && this.mergedNormals[this.indices3[i]]) {
                         normal = this.mergedNormals[this.indices3[i]];
                     } else {
                         normal = this.normals[this.indices3[i]];
                     }
-                    var14 =
+                    shade17 =
                         (ambient +
                             (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                                 (lightIntensity * normal.magnitude)) <<
                         17;
-                    model.faceColors3[i] = var14 | ModelData.adjustLightness(color, var14 >> 17);
+                    model.faceColors3[i] =
+                        shade17 | ModelData.adjustLightness(color, shade17 >> 17);
                 } else if (type === 1 && this.faceNormals) {
                     const normal = this.faceNormals[i];
-                    const var14 =
+                    const shade17 =
                         (ambient +
                             (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                                 ((lightIntensity >> 1) + lightIntensity)) <<
                         17;
                     model.faceColors1[i] =
-                        var14 | ModelData.adjustLightness(this.faceColors[i] & 0xffff, var14 >> 17);
+                        shade17 |
+                        ModelData.adjustLightness(this.faceColors[i] & 0xffff, shade17 >> 17);
                     model.faceColors3[i] = -1;
                 } else if (type === 3) {
                     model.faceColors1[i] = 128;
@@ -2982,40 +2994,40 @@ export class ModelData extends Entity {
                     normal = this.normals[this.indices1[i]];
                 }
 
-                let var14 =
+                let lightness =
                     ambient +
                     (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                         (lightIntensity * normal.magnitude);
-                model.faceColors1[i] = ModelData.clampLightness(var14);
+                model.faceColors1[i] = ModelData.clampLightness(lightness);
                 if (this.mergedNormals && this.mergedNormals[this.indices2[i]]) {
                     normal = this.mergedNormals[this.indices2[i]];
                 } else {
                     normal = this.normals[this.indices2[i]];
                 }
 
-                var14 =
+                lightness =
                     ambient +
                     (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                         (lightIntensity * normal.magnitude);
-                model.faceColors2[i] = ModelData.clampLightness(var14);
+                model.faceColors2[i] = ModelData.clampLightness(lightness);
                 if (this.mergedNormals && this.mergedNormals[this.indices3[i]]) {
                     normal = this.mergedNormals[this.indices3[i]];
                 } else {
                     normal = this.normals[this.indices3[i]];
                 }
 
-                var14 =
+                lightness =
                     ambient +
                     (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                         (lightIntensity * normal.magnitude);
-                model.faceColors3[i] = ModelData.clampLightness(var14);
+                model.faceColors3[i] = ModelData.clampLightness(lightness);
             } else if (type === 1 && this.faceNormals) {
                 const normal = this.faceNormals[i];
-                const var14 =
+                const lightness =
                     ambient +
                     (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
                         ((lightIntensity >> 1) + lightIntensity);
-                model.faceColors1[i] = ModelData.clampLightness(var14);
+                model.faceColors1[i] = ModelData.clampLightness(lightness);
                 model.faceColors3[i] = -1;
             } else {
                 model.faceColors3[i] = -2;
