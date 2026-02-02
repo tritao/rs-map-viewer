@@ -170,4 +170,3 @@ export async function fetchDat2CacheFiles(
 
     return new CacheFiles(files);
 }
-
