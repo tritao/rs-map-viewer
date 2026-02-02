@@ -68,7 +68,7 @@ export function interpolateCurve(curve: Curve, t: number): number {
                 }
 
                 if (controlX01[0] > 1.0 || controlX01[1] < -1.0) {
-                    method3282(controlX01);
+                    clampBezierControlX01InPlace(controlX01);
                 }
 
                 if (controlX01[0] !== origU1) {
@@ -141,7 +141,7 @@ export function interpolateCurve(curve: Curve, t: number): number {
             return point.y;
         }
     } else if (curve.bool) {
-        return method8290(curve, t);
+        return interpolateBezierSegment(curve, t);
     } else {
         const dt = t - curve.interpV0;
         const y =
@@ -232,7 +232,7 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
     return output;
 }
 
-function method3282(v: vec2): void {
+function clampBezierControlX01InPlace(v: vec2): void {
     v[1] = 1.0 - v[1];
     if (v[0] < 0.0) {
         v[0] = 0.0;
@@ -268,10 +268,10 @@ function method3282(v: vec2): void {
     v[1] = 1.0 - v[1];
 }
 
-const method5023Input = new Float32Array(4);
-const method5023Output = new Float32Array(5);
+const rootSolveCoeffs = new Float32Array(4);
+const rootSolveRoots = new Float32Array(5);
 
-function method8290(curve: Curve, t: number): number {
+function interpolateBezierSegment(curve: Curve, t: number): number {
     if (!curve) {
         return 0;
     }
@@ -288,18 +288,26 @@ function method8290(curve: Curve, t: number): number {
     if (curve.interpBool) {
         v1 = v0;
     } else {
-        method5023Input[3] = curve.interpV5;
-        method5023Input[2] = curve.interpV4;
-        method5023Input[1] = curve.interpV3;
-        method5023Input[0] = curve.interpV2 - v0;
-        method5023Output[0] = 0.0;
-        method5023Output[1] = 0.0;
-        method5023Output[2] = 0.0;
-        method5023Output[3] = 0.0;
-        method5023Output[4] = 0.0;
-        const rootCount = method5023(method5023Input, 3, 0.0, true, 1.0, true, method5023Output);
+        rootSolveCoeffs[3] = curve.interpV5;
+        rootSolveCoeffs[2] = curve.interpV4;
+        rootSolveCoeffs[1] = curve.interpV3;
+        rootSolveCoeffs[0] = curve.interpV2 - v0;
+        rootSolveRoots[0] = 0.0;
+        rootSolveRoots[1] = 0.0;
+        rootSolveRoots[2] = 0.0;
+        rootSolveRoots[3] = 0.0;
+        rootSolveRoots[4] = 0.0;
+        const rootCount = findPolynomialRootsInInterval(
+            rootSolveCoeffs,
+            3,
+            0.0,
+            true,
+            1.0,
+            true,
+            rootSolveRoots,
+        );
         if (rootCount === 1) {
-            v1 = method5023Output[0];
+            v1 = rootSolveRoots[0];
         } else {
             v1 = 0.0;
         }
@@ -308,7 +316,7 @@ function method8290(curve: Curve, t: number): number {
     return v1 * (curve.interpV7 + v1 * (v1 * curve.interpV9 + curve.interpV8)) + curve.interpV6;
 }
 
-function method6869(values: Float32Array, lastIndex: number, x: number): number {
+function evaluatePolynomial(values: Float32Array, lastIndex: number, x: number): number {
     let output = values[lastIndex];
 
     for (let i = lastIndex - 1; i >= 0; i--) {
@@ -318,7 +326,7 @@ function method6869(values: Float32Array, lastIndex: number, x: number): number 
     return output;
 }
 
-function method5023(
+function findPolynomialRootsInInterval(
     coeffs: Float32Array,
     degree: number,
     minX: number,
@@ -375,7 +383,7 @@ function method5023(
         }
 
         const derivativeRoots = new Float32Array(degree + 1);
-        const derivativeRootCount = method5023(
+        const derivativeRootCount = findPolynomialRootsInInterval(
             derivativeCoeffs,
             degree - 1,
             minX,
@@ -401,7 +409,7 @@ function method5023(
             let leftX: number;
             if (s === 0) {
                 leftX = minX;
-                fLeft = method6869(normalizedCoeffs, degree, minX);
+                fLeft = evaluatePolynomial(normalizedCoeffs, degree, minX);
                 if (Math.abs(fLeft) <= eps && minInclusive) {
                     rootsOut[rootCount++] = minX;
                 }
@@ -417,7 +425,7 @@ function method5023(
                 rightX = derivativeRoots[s];
             }
 
-            fRight = method6869(normalizedCoeffs, degree, rightX);
+            fRight = evaluatePolynomial(normalizedCoeffs, degree, rightX);
             if (prevWasRoot) {
                 prevWasRoot = false;
             } else if (Math.abs(fRight) < eps) {
@@ -429,12 +437,12 @@ function method5023(
                 const rootIndex = rootCount++;
                 let a = leftX;
                 let b = rightX;
-                let fa = method6869(polyCoeffs, polyDegree, leftX);
+                let fa = evaluatePolynomial(polyCoeffs, polyDegree, leftX);
                 let root: number;
                 if (Math.abs(fa) < ULP) {
                     root = leftX;
                 } else {
-                    let fb = method6869(polyCoeffs, polyDegree, rightX);
+                    let fb = evaluatePolynomial(polyCoeffs, polyDegree, rightX);
                     if (Math.abs(fb) < ULP) {
                         root = rightX;
                     } else {
@@ -514,7 +522,7 @@ function method5023(
                                     b -= tol;
                                 }
 
-                                fb = method6869(polyCoeffs, polyDegree, b);
+                                fb = evaluatePolynomial(polyCoeffs, polyDegree, b);
                                 if (fb * (fc / Math.abs(fc)) > 0.0) {
                                     needsInit = true;
                                     continueLoop = true;
