@@ -6,6 +6,7 @@ import { TextureOperation } from "./TextureOperation";
 
 export class ShapeRasterizerOperation extends TextureOperation {
     shapes?: RasterizerOperationShape[];
+    private readonly rasterizer = new Rasterizer();
 
     constructor() {
         super(0, true);
@@ -36,8 +37,8 @@ export class ShapeRasterizerOperation extends TextureOperation {
         const width = textureGenerator.width;
         const height = textureGenerator.height;
 
-        Rasterizer.setPixels(pixels);
-        Rasterizer.setDimensionMasks(textureGenerator.widthMask, textureGenerator.heightMask);
+        this.rasterizer.setPixels(pixels);
+        this.rasterizer.setDimensionMasks(textureGenerator.widthMask, textureGenerator.heightMask);
 
         if (this.shapes === undefined) {
             return;
@@ -48,12 +49,12 @@ export class ShapeRasterizerOperation extends TextureOperation {
             const outlineColor = shape.outlineColor;
             if (fillColor >= 0) {
                 if (outlineColor >= 0) {
-                    shape.render(width, height);
+                    shape.render(this.rasterizer, width, height);
                 } else {
-                    shape.renderFill(width, height);
+                    shape.renderFill(this.rasterizer, width, height);
                 }
             } else if (outlineColor >= 0) {
-                shape.renderOutline(width, height);
+                shape.renderOutline(this.rasterizer, width, height);
             }
         }
     }
@@ -102,95 +103,95 @@ export class ShapeRasterizerOperation extends TextureOperation {
 }
 
 export class Rasterizer {
-    static pixels: Int32Array[];
+    pixels!: Int32Array[];
 
-    static widthMask: number = 0;
-    static heightMask: number = 0;
-    static startX: number = 0;
-    static startY: number = 0;
+    widthMask: number = 0;
+    heightMask: number = 0;
+    startX: number = 0;
+    startY: number = 0;
 
-    static circleOutline: Int32Array;
+    circleOutline: Int32Array = new Int32Array(0);
 
-    static setPixels(pixels: Int32Array[]): void {
+    setPixels(pixels: Int32Array[]): void {
         this.pixels = pixels;
     }
 
-    static setDimensionMasks(widthMask: number, heightMask: number): void {
+    setDimensionMasks(widthMask: number, heightMask: number): void {
         this.widthMask = widthMask;
         this.heightMask = heightMask;
         this.startX = 0;
         this.startY = 0;
     }
 
-    static initCircleOutline(size: number): void {
-        if (this.circleOutline === undefined || this.circleOutline.length < size) {
+    initCircleOutline(size: number): void {
+        if (this.circleOutline.length < size) {
             this.circleOutline = new Int32Array(size);
         }
     }
 
-    static rasterLine(x0: number, x1: number, y0: number, y1: number, color: number): void {
+    rasterLine(x0: number, x1: number, y0: number, y1: number, color: number): void {
         const deltaX = x1 - x0;
         const deltaY = y1 - y0;
         if (deltaX === 0) {
             if (deltaY !== 0) {
-                Rasterizer.rasterVerticalLine(x0, y0, y1, color);
+                this.rasterVerticalLine(x0, y0, y1, color);
             }
         } else if (deltaY === 0) {
-            Rasterizer.rasterHorizontalLine(x0, x1, y0, color);
+            this.rasterHorizontalLine(x0, x1, y0, color);
         } else {
             const slopeQ12 = ((deltaY << 12) / deltaX) | 0;
             const yIntercept = y0 - ((x0 * slopeQ12) >> 12);
             let startX: number;
             let startY: number;
-            if (x0 < Rasterizer.startX) {
-                startY = yIntercept + ((Rasterizer.startX * slopeQ12) >> 12);
-                startX = Rasterizer.startX;
-            } else if (Rasterizer.widthMask >= x0) {
+            if (x0 < this.startX) {
+                startY = yIntercept + ((this.startX * slopeQ12) >> 12);
+                startX = this.startX;
+            } else if (this.widthMask >= x0) {
                 startX = x0;
                 startY = y0;
             } else {
-                startX = Rasterizer.widthMask;
-                startY = ((Rasterizer.widthMask * slopeQ12) >> 12) + yIntercept;
+                startX = this.widthMask;
+                startY = ((this.widthMask * slopeQ12) >> 12) + yIntercept;
             }
             let endX: number;
             let endY: number;
-            if (x1 < Rasterizer.startX) {
-                endX = Rasterizer.startX;
-                endY = yIntercept + ((Rasterizer.startX * slopeQ12) >> 12);
-            } else if (x1 <= Rasterizer.widthMask) {
+            if (x1 < this.startX) {
+                endX = this.startX;
+                endY = yIntercept + ((this.startX * slopeQ12) >> 12);
+            } else if (x1 <= this.widthMask) {
                 endX = x1;
                 endY = y1;
             } else {
-                endX = Rasterizer.widthMask;
-                endY = ((slopeQ12 * Rasterizer.widthMask) >> 12) + yIntercept;
+                endX = this.widthMask;
+                endY = ((slopeQ12 * this.widthMask) >> 12) + yIntercept;
             }
-            if (Rasterizer.startY > endY) {
-                endX = ((Rasterizer.startY - yIntercept) << 12) / slopeQ12;
-                endY = Rasterizer.startY;
-            } else if (Rasterizer.heightMask < endY) {
-                endX = ((Rasterizer.heightMask - yIntercept) << 12) / slopeQ12;
-                endY = Rasterizer.heightMask;
+            if (this.startY > endY) {
+                endX = ((this.startY - yIntercept) << 12) / slopeQ12;
+                endY = this.startY;
+            } else if (this.heightMask < endY) {
+                endX = ((this.heightMask - yIntercept) << 12) / slopeQ12;
+                endY = this.heightMask;
             }
-            if (Rasterizer.startY > startY) {
-                startX = ((Rasterizer.startY - yIntercept) << 12) / slopeQ12;
-                startY = Rasterizer.startY;
-            } else if (startY > Rasterizer.heightMask) {
-                startY = Rasterizer.heightMask;
-                startX = ((Rasterizer.heightMask - yIntercept) << 12) / slopeQ12;
+            if (this.startY > startY) {
+                startX = ((this.startY - yIntercept) << 12) / slopeQ12;
+                startY = this.startY;
+            } else if (startY > this.heightMask) {
+                startY = this.heightMask;
+                startX = ((this.heightMask - yIntercept) << 12) / slopeQ12;
             }
-            Rasterizer.rasterLine0(startX, endX, startY, endY, color);
+            this.rasterLine0(startX, endX, startY, endY, color);
         }
     }
 
-    static rasterLine0(x0: number, x1: number, y0: number, y1: number, color: number): void {
+    rasterLine0(x0: number, x1: number, y0: number, y1: number, color: number): void {
         let deltaX = x1 - x0;
         let deltaY = y1 - y0;
         if (deltaX === 0) {
             if (deltaY !== 0) {
-                Rasterizer.rasterVerticalLine0(x0, y0, y1, color);
+                this.rasterVerticalLine0(x0, y0, y1, color);
             }
         } else if (deltaY === 0) {
-            Rasterizer.rasterHorizontalLine0(x0, x1, y0, color);
+            this.rasterHorizontalLine0(x0, x1, y0, color);
         } else {
             if (deltaX < 0) {
                 deltaX = -deltaX;
@@ -226,7 +227,7 @@ export class Rasterizer {
             if (isSteep) {
                 for (let x = x0; x <= x1; x++) {
                     error += absDy;
-                    Rasterizer.pixels[x][y] = color;
+                    this.pixels[x][y] = color;
                     if (error > 0) {
                         y += yStep;
                         error -= dx;
@@ -235,7 +236,7 @@ export class Rasterizer {
             } else {
                 for (let x = x0; x <= x1; x++) {
                     error += absDy;
-                    Rasterizer.pixels[y][x] = color;
+                    this.pixels[y][x] = color;
                     if (error > 0) {
                         y += yStep;
                         error -= dx;
@@ -245,43 +246,43 @@ export class Rasterizer {
         }
     }
 
-    static rasterVerticalLine(x0: number, y0: number, y1: number, color: number) {
-        if (Rasterizer.startX <= x0 && Rasterizer.widthMask >= x0) {
-            y0 = clamp(y0, Rasterizer.startY, Rasterizer.heightMask);
-            y1 = clamp(y1, Rasterizer.startY, Rasterizer.heightMask);
-            Rasterizer.rasterVerticalLine0(x0, y0, y1, color);
+    rasterVerticalLine(x0: number, y0: number, y1: number, color: number) {
+        if (this.startX <= x0 && this.widthMask >= x0) {
+            y0 = clamp(y0, this.startY, this.heightMask);
+            y1 = clamp(y1, this.startY, this.heightMask);
+            this.rasterVerticalLine0(x0, y0, y1, color);
         }
     }
 
-    static rasterVerticalLine0(x0: number, y0: number, y1: number, color: number) {
+    rasterVerticalLine0(x0: number, y0: number, y1: number, color: number) {
         if (y1 >= y0) {
             for (let y = y0; y < y1; y++) {
-                Rasterizer.pixels[y][x0] = color;
+                this.pixels[y][x0] = color;
             }
         } else {
             for (let y = y1; y < y0; y++) {
-                Rasterizer.pixels[y][x0] = color;
+                this.pixels[y][x0] = color;
             }
         }
     }
 
-    static rasterHorizontalLine(x0: number, x1: number, y0: number, color: number) {
-        if (Rasterizer.startY <= y0 && y0 <= Rasterizer.heightMask) {
-            x0 = clamp(x0, Rasterizer.startX, Rasterizer.widthMask);
-            x1 = clamp(x1, Rasterizer.startX, Rasterizer.widthMask);
-            Rasterizer.rasterHorizontalLine0(x0, x1, y0, color);
+    rasterHorizontalLine(x0: number, x1: number, y0: number, color: number) {
+        if (this.startY <= y0 && y0 <= this.heightMask) {
+            x0 = clamp(x0, this.startX, this.widthMask);
+            x1 = clamp(x1, this.startX, this.widthMask);
+            this.rasterHorizontalLine0(x0, x1, y0, color);
         }
     }
 
-    static rasterHorizontalLine0(x0: number, x1: number, y0: number, color: number) {
+    rasterHorizontalLine0(x0: number, x1: number, y0: number, color: number) {
         if (x1 >= x0) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y0], x0, x1, color);
+            ArrayUtils.fillRange(this.pixels[y0], x0, x1, color);
         } else {
-            ArrayUtils.fillRange(Rasterizer.pixels[y0], x1, x0, color);
+            ArrayUtils.fillRange(this.pixels[y0], x1, x0, color);
         }
     }
 
-    static rasterBezierCurve(
+    rasterBezierCurve(
         x0: number,
         y0: number,
         x1: number,
@@ -293,30 +294,30 @@ export class Rasterizer {
         outlineColor: number,
     ) {
         if (
-            Rasterizer.startX <= x0 &&
-            x0 <= Rasterizer.widthMask &&
-            Rasterizer.startX <= x1 &&
-            Rasterizer.widthMask >= x1 &&
-            Rasterizer.startX <= x2 &&
-            Rasterizer.widthMask >= x2 &&
-            Rasterizer.startX <= x3 &&
-            x3 <= Rasterizer.widthMask &&
-            y0 >= Rasterizer.startY &&
-            y0 <= Rasterizer.heightMask &&
-            y1 >= Rasterizer.startY &&
-            Rasterizer.heightMask >= y1 &&
-            y2 >= Rasterizer.startY &&
-            Rasterizer.heightMask >= y2 &&
-            Rasterizer.startY <= y3 &&
-            Rasterizer.heightMask >= y3
+            this.startX <= x0 &&
+            x0 <= this.widthMask &&
+            this.startX <= x1 &&
+            this.widthMask >= x1 &&
+            this.startX <= x2 &&
+            this.widthMask >= x2 &&
+            this.startX <= x3 &&
+            x3 <= this.widthMask &&
+            y0 >= this.startY &&
+            y0 <= this.heightMask &&
+            y1 >= this.startY &&
+            this.heightMask >= y1 &&
+            y2 >= this.startY &&
+            this.heightMask >= y2 &&
+            this.startY <= y3 &&
+            this.heightMask >= y3
         ) {
-            Rasterizer.rasterBezierCurve0(x0, y0, x1, y1, x2, y2, x3, y3, outlineColor);
+            this.rasterBezierCurve0(x0, y0, x1, y1, x2, y2, x3, y3, outlineColor);
         } else {
-            Rasterizer.rasterBezierCurveClamped(x0, y0, x1, y1, x2, y2, x3, y3, outlineColor);
+            this.rasterBezierCurveClamped(x0, y0, x1, y1, x2, y2, x3, y3, outlineColor);
         }
     }
 
-    static rasterBezierCurve0(
+    rasterBezierCurve0(
         x0: number,
         y0: number,
         x1: number,
@@ -328,7 +329,7 @@ export class Rasterizer {
         outlineColor: number,
     ) {
         if (x0 === x1 && y0 === y1 && x2 === x3 && y2 === y3) {
-            Rasterizer.rasterLine0(x0, x3, y0, y3, outlineColor);
+            this.rasterLine0(x0, x3, y0, y3, outlineColor);
             return;
         }
         let prevX = x0;
@@ -356,13 +357,13 @@ export class Rasterizer {
             const yTerm3 = coeffY3 * t3Q12;
             const yTerm1 = coeffY1 * tQ12;
             const y = ((yTerm1 + yTerm3 + yTerm2) >> 12) + y0;
-            Rasterizer.rasterLine0(prevX, x, prevY, y, outlineColor);
+            this.rasterLine0(prevX, x, prevY, y, outlineColor);
             prevX = x;
             prevY = y;
         }
     }
 
-    static rasterBezierCurveClamped(
+    rasterBezierCurveClamped(
         x0: number,
         y0: number,
         x1: number,
@@ -374,7 +375,7 @@ export class Rasterizer {
         outlineColor: number,
     ) {
         if (x1 === x0 && y1 === y0 && x2 === x3 && y2 === y3) {
-            Rasterizer.rasterLine(x0, x3, y0, y3, outlineColor);
+            this.rasterLine(x0, x3, y0, y3, outlineColor);
             return;
         }
         let prevX = x0;
@@ -402,13 +403,13 @@ export class Rasterizer {
             const xTerm1 = coeffX1 * tQ12;
             const x = ((xTerm1 + xTerm2 + xTerm3) >> 12) + x0;
             const y = ((yTerm1 + yTerm3 + yTerm2) >> 12) + y0;
-            Rasterizer.rasterLine(prevX, x, prevY, y, outlineColor);
+            this.rasterLine(prevX, x, prevY, y, outlineColor);
             prevY = y;
             prevX = x;
         }
     }
 
-    static rasterRectangle(
+    rasterRectangle(
         x0: number,
         x1: number,
         y0: number,
@@ -418,14 +419,14 @@ export class Rasterizer {
         outlineWidth: number,
     ) {
         if (
-            x0 >= Rasterizer.startX &&
-            x1 <= Rasterizer.widthMask &&
-            Rasterizer.startY <= y0 &&
-            y1 <= Rasterizer.heightMask
+            x0 >= this.startX &&
+            x1 <= this.widthMask &&
+            this.startY <= y0 &&
+            y1 <= this.heightMask
         ) {
-            Rasterizer.rasterRectangle0(x0, x1, y0, y1, fillColor, outlineColor, outlineWidth);
+            this.rasterRectangle0(x0, x1, y0, y1, fillColor, outlineColor, outlineWidth);
         } else {
-            Rasterizer.rasterRectangleClamped(
+            this.rasterRectangleClamped(
                 x0,
                 x1,
                 y0,
@@ -437,7 +438,7 @@ export class Rasterizer {
         }
     }
 
-    static rasterRectangle0(
+    rasterRectangle0(
         x0: number,
         x1: number,
         y0: number,
@@ -451,20 +452,20 @@ export class Rasterizer {
         const innerLeftX = x0 + outlineWidth;
         const innerRightX = x1 - outlineWidth;
         for (let y = y0; y < innerTopY; y++) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0, x1, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0, x1, outlineColor);
         }
         for (let y = y1; y > innerBottomY; y--) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0, x1, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0, x1, outlineColor);
         }
         for (let y = innerTopY; y <= innerBottomY; y++) {
-            const rowPixels = Rasterizer.pixels[y];
+            const rowPixels = this.pixels[y];
             ArrayUtils.fillRange(rowPixels, x0, innerLeftX, outlineColor);
             ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
             ArrayUtils.fillRange(rowPixels, innerRightX, x1, outlineColor);
         }
     }
 
-    static rasterRectangleClamped(
+    rasterRectangleClamped(
         x0: number,
         x1: number,
         y0: number,
@@ -473,64 +474,64 @@ export class Rasterizer {
         outlineColor: number,
         outlineWidth: number,
     ) {
-        const y0Clamped = clamp(y0, Rasterizer.startY, Rasterizer.heightMask);
-        const y1Clamped = clamp(y1, Rasterizer.startY, Rasterizer.heightMask);
-        const x0Clamped = clamp(x0, Rasterizer.startX, Rasterizer.widthMask);
-        const x1Clamped = clamp(x1, Rasterizer.startX, Rasterizer.widthMask);
-        const innerTopY = clamp(y0 + outlineWidth, Rasterizer.startY, Rasterizer.heightMask);
-        const innerBottomY = clamp(y1 - outlineWidth, Rasterizer.startY, Rasterizer.heightMask);
+        const y0Clamped = clamp(y0, this.startY, this.heightMask);
+        const y1Clamped = clamp(y1, this.startY, this.heightMask);
+        const x0Clamped = clamp(x0, this.startX, this.widthMask);
+        const x1Clamped = clamp(x1, this.startX, this.widthMask);
+        const innerTopY = clamp(y0 + outlineWidth, this.startY, this.heightMask);
+        const innerBottomY = clamp(y1 - outlineWidth, this.startY, this.heightMask);
         for (let y = y0Clamped; y < innerTopY; y++) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0Clamped, x1Clamped, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0Clamped, x1Clamped, outlineColor);
         }
         for (let y = y1Clamped; y > innerBottomY; y--) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0Clamped, x1Clamped, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0Clamped, x1Clamped, outlineColor);
         }
-        const innerLeftX = clamp(x0 + outlineWidth, Rasterizer.startX, Rasterizer.widthMask);
-        const innerRightX = clamp(x1 - outlineWidth, Rasterizer.startX, Rasterizer.widthMask);
+        const innerLeftX = clamp(x0 + outlineWidth, this.startX, this.widthMask);
+        const innerRightX = clamp(x1 - outlineWidth, this.startX, this.widthMask);
         for (let y = innerTopY; y <= innerBottomY; y++) {
-            const rowPixels = Rasterizer.pixels[y];
+            const rowPixels = this.pixels[y];
             ArrayUtils.fillRange(rowPixels, x0Clamped, innerLeftX, outlineColor);
             ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
             ArrayUtils.fillRange(rowPixels, innerRightX, x1Clamped, outlineColor);
         }
     }
 
-    static rasterRectangleFill(x0: number, x1: number, y0: number, y1: number, fillColor: number) {
+    rasterRectangleFill(x0: number, x1: number, y0: number, y1: number, fillColor: number) {
         if (
-            Rasterizer.startX <= x0 &&
-            x1 <= Rasterizer.widthMask &&
-            Rasterizer.startY <= y0 &&
-            y1 <= Rasterizer.heightMask
+            this.startX <= x0 &&
+            x1 <= this.widthMask &&
+            this.startY <= y0 &&
+            y1 <= this.heightMask
         ) {
-            Rasterizer.rasterRectangleFill0(x0, x1, y0, y1, fillColor);
+            this.rasterRectangleFill0(x0, x1, y0, y1, fillColor);
         } else {
-            Rasterizer.rasterRectangleFillClamped(x0, x1, y0, y1, fillColor);
+            this.rasterRectangleFillClamped(x0, x1, y0, y1, fillColor);
         }
     }
 
-    static rasterRectangleFill0(x0: number, x1: number, y0: number, y1: number, fillColor: number) {
+    rasterRectangleFill0(x0: number, x1: number, y0: number, y1: number, fillColor: number) {
         for (let y = y0; y <= y1; y++) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0, x1, fillColor);
+            ArrayUtils.fillRange(this.pixels[y], x0, x1, fillColor);
         }
     }
 
-    static rasterRectangleFillClamped(
+    rasterRectangleFillClamped(
         x0: number,
         x1: number,
         y0: number,
         y1: number,
         fillColor: number,
     ) {
-        const y0Clamped = clamp(y0, Rasterizer.startY, Rasterizer.heightMask);
-        const y1Clamped = clamp(y1, Rasterizer.startY, Rasterizer.heightMask);
-        const x0Clamped = clamp(x0, Rasterizer.startX, Rasterizer.widthMask);
-        const x1Clamped = clamp(x1, Rasterizer.startX, Rasterizer.widthMask);
+        const y0Clamped = clamp(y0, this.startY, this.heightMask);
+        const y1Clamped = clamp(y1, this.startY, this.heightMask);
+        const x0Clamped = clamp(x0, this.startX, this.widthMask);
+        const x1Clamped = clamp(x1, this.startX, this.widthMask);
         for (let y = y0Clamped; y <= y1Clamped; y++) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0Clamped, x1Clamped, fillColor);
+            ArrayUtils.fillRange(this.pixels[y], x0Clamped, x1Clamped, fillColor);
         }
     }
 
-    static rasterRectangleOutline(
+    rasterRectangleOutline(
         x0: number,
         x1: number,
         y0: number,
@@ -539,39 +540,39 @@ export class Rasterizer {
         outlineWidth: number,
     ) {
         if (
-            x0 >= Rasterizer.startX &&
-            Rasterizer.widthMask >= x1 &&
-            y0 >= Rasterizer.startY &&
-            Rasterizer.heightMask >= y1
+            x0 >= this.startX &&
+            this.widthMask >= x1 &&
+            y0 >= this.startY &&
+            this.heightMask >= y1
         ) {
             if (outlineWidth === 1) {
-                Rasterizer.rasterRectangleOutlineWidth1(x0, x1, y0, y1, outlineColor);
+                this.rasterRectangleOutlineWidth1(x0, x1, y0, y1, outlineColor);
             } else {
-                Rasterizer.rasterRectangleOutline0(x0, x1, y0, y1, outlineColor, outlineWidth);
+                this.rasterRectangleOutline0(x0, x1, y0, y1, outlineColor, outlineWidth);
             }
         } else if (outlineWidth === 1) {
-            Rasterizer.rasterRectangleOutlineWidth1Clamped(x0, x1, y0, y1, outlineColor);
+            this.rasterRectangleOutlineWidth1Clamped(x0, x1, y0, y1, outlineColor);
         } else {
-            Rasterizer.rasterRectangleOutlineClamped(x0, x1, y0, y1, outlineColor, outlineWidth);
+            this.rasterRectangleOutlineClamped(x0, x1, y0, y1, outlineColor, outlineWidth);
         }
     }
 
-    static rasterRectangleOutlineWidth1(
+    rasterRectangleOutlineWidth1(
         x0: number,
         x1: number,
         y0: number,
         y1: number,
         outlineColor: number,
     ) {
-        ArrayUtils.fillRange(Rasterizer.pixels[y0++], x0, x1, outlineColor);
-        ArrayUtils.fillRange(Rasterizer.pixels[y1--], x0, x1, outlineColor);
+        ArrayUtils.fillRange(this.pixels[y0++], x0, x1, outlineColor);
+        ArrayUtils.fillRange(this.pixels[y1--], x0, x1, outlineColor);
         for (let y = y0; y <= y1; y++) {
-            const rowPixels = Rasterizer.pixels[y];
+            const rowPixels = this.pixels[y];
             rowPixels[x0] = rowPixels[x1] = outlineColor;
         }
     }
 
-    static rasterRectangleOutline0(
+    rasterRectangleOutline0(
         x0: number,
         x1: number,
         y0: number,
@@ -583,80 +584,80 @@ export class Rasterizer {
         const innerBottomY = y1 - outlineWidth;
         const innerLeftX = outlineWidth + x0;
         for (let y = y0; y < innerTopY; y++) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0, x1, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0, x1, outlineColor);
         }
         for (let y = y1; y > innerBottomY; y--) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0, x1, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0, x1, outlineColor);
         }
         const innerRightX = x1 - outlineWidth;
         for (let y = innerTopY; y <= innerBottomY; y++) {
-            const rowPixels = Rasterizer.pixels[y];
+            const rowPixels = this.pixels[y];
             ArrayUtils.fillRange(rowPixels, x0, innerLeftX, outlineColor);
             ArrayUtils.fillRange(rowPixels, innerRightX, x1, outlineColor);
         }
     }
 
-    static rasterRectangleOutlineWidth1Clamped(
+    rasterRectangleOutlineWidth1Clamped(
         x0: number,
         x1: number,
         y0: number,
         y1: number,
         outlineColor: number,
     ) {
-        if (Rasterizer.heightMask < y0 || Rasterizer.startY > y1) {
+        if (this.heightMask < y0 || this.startY > y1) {
             return;
         }
         let shouldDrawLeftEdge: boolean;
-        if (Rasterizer.startX > x0) {
-            x0 = Rasterizer.startX;
+        if (this.startX > x0) {
+            x0 = this.startX;
             shouldDrawLeftEdge = false;
-        } else if (x0 > Rasterizer.widthMask) {
-            x0 = Rasterizer.widthMask;
+        } else if (x0 > this.widthMask) {
+            x0 = this.widthMask;
             shouldDrawLeftEdge = false;
         } else {
             shouldDrawLeftEdge = true;
         }
         let shouldDrawRightEdge: boolean;
-        if (x1 < Rasterizer.startX) {
-            x1 = Rasterizer.startX;
+        if (x1 < this.startX) {
+            x1 = this.startX;
             shouldDrawRightEdge = false;
-        } else if (Rasterizer.widthMask < x1) {
-            x1 = Rasterizer.widthMask;
+        } else if (this.widthMask < x1) {
+            x1 = this.widthMask;
             shouldDrawRightEdge = false;
         } else {
             shouldDrawRightEdge = true;
         }
         let yStart: number;
-        if (Rasterizer.startY <= y0) {
+        if (this.startY <= y0) {
             yStart = y0 + 1;
-            ArrayUtils.fillRange(Rasterizer.pixels[y0], x0, x1, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y0], x0, x1, outlineColor);
         } else {
-            yStart = Rasterizer.startY;
+            yStart = this.startY;
         }
         let yEnd: number;
-        if (Rasterizer.heightMask < y1) {
-            yEnd = Rasterizer.heightMask;
+        if (this.heightMask < y1) {
+            yEnd = this.heightMask;
         } else {
             yEnd = y1 - 1;
-            ArrayUtils.fillRange(Rasterizer.pixels[y1], x0, x1, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y1], x0, x1, outlineColor);
         }
         if (shouldDrawLeftEdge && shouldDrawRightEdge) {
             for (let y = yStart; y <= yEnd; y++) {
-                const rowPixels = Rasterizer.pixels[y];
+                const rowPixels = this.pixels[y];
                 rowPixels[x0] = rowPixels[x1] = outlineColor;
             }
         } else if (shouldDrawLeftEdge) {
             for (let y = yStart; y <= yEnd; y++) {
-                Rasterizer.pixels[y][x0] = outlineColor;
+                this.pixels[y][x0] = outlineColor;
             }
         } else if (shouldDrawRightEdge) {
             for (let y = yStart; y <= yEnd; y++) {
-                Rasterizer.pixels[y][x1] = outlineColor;
+                this.pixels[y][x1] = outlineColor;
             }
         }
     }
 
-    static rasterRectangleOutlineClamped(
+    rasterRectangleOutlineClamped(
         x0: number,
         x1: number,
         y0: number,
@@ -664,28 +665,28 @@ export class Rasterizer {
         outlineColor: number,
         outlineWidth: number,
     ) {
-        const y0Clamped = clamp(y0, Rasterizer.startY, Rasterizer.heightMask);
-        const y1Clamped = clamp(y1, Rasterizer.startY, Rasterizer.heightMask);
-        const x0Clamped = clamp(x0, Rasterizer.startX, Rasterizer.widthMask);
-        const x1Clamped = clamp(x1, Rasterizer.startX, Rasterizer.widthMask);
-        const innerTopY = clamp(outlineWidth + y0, Rasterizer.startY, Rasterizer.heightMask);
-        const innerBottomY = clamp(y1 - outlineWidth, Rasterizer.startY, Rasterizer.heightMask);
+        const y0Clamped = clamp(y0, this.startY, this.heightMask);
+        const y1Clamped = clamp(y1, this.startY, this.heightMask);
+        const x0Clamped = clamp(x0, this.startX, this.widthMask);
+        const x1Clamped = clamp(x1, this.startX, this.widthMask);
+        const innerTopY = clamp(outlineWidth + y0, this.startY, this.heightMask);
+        const innerBottomY = clamp(y1 - outlineWidth, this.startY, this.heightMask);
         for (let y = y0Clamped; y < innerTopY; y++) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0Clamped, x1Clamped, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0Clamped, x1Clamped, outlineColor);
         }
         for (let y = y1Clamped; y > innerBottomY; y--) {
-            ArrayUtils.fillRange(Rasterizer.pixels[y], x0Clamped, x1Clamped, outlineColor);
+            ArrayUtils.fillRange(this.pixels[y], x0Clamped, x1Clamped, outlineColor);
         }
-        const innerLeftX = clamp(x0 + outlineWidth, Rasterizer.startX, Rasterizer.widthMask);
-        const innerRightX = clamp(x1 - outlineWidth, Rasterizer.startX, Rasterizer.widthMask);
+        const innerLeftX = clamp(x0 + outlineWidth, this.startX, this.widthMask);
+        const innerRightX = clamp(x1 - outlineWidth, this.startX, this.widthMask);
         for (let y = innerTopY; y <= innerBottomY; y++) {
-            const rowPixels = Rasterizer.pixels[y];
+            const rowPixels = this.pixels[y];
             ArrayUtils.fillRange(rowPixels, x0Clamped, innerLeftX, outlineColor);
             ArrayUtils.fillRange(rowPixels, innerRightX, x1Clamped, outlineColor);
         }
     }
 
-    static rasterEllipse(
+    rasterEllipse(
         x: number,
         y: number,
         sizeX: number,
@@ -695,16 +696,16 @@ export class Rasterizer {
         outlineWidth: number,
     ) {
         if (sizeX === sizeY) {
-            Rasterizer.rasterCircle(x, y, sizeX, fillColor, outlineColor, outlineWidth);
+            this.rasterCircle(x, y, sizeX, fillColor, outlineColor, outlineWidth);
         } else if (
-            x - sizeX >= Rasterizer.startX &&
-            Rasterizer.widthMask >= sizeX + x &&
-            y - sizeY >= Rasterizer.startY &&
-            sizeY + y <= Rasterizer.heightMask
+            x - sizeX >= this.startX &&
+            this.widthMask >= sizeX + x &&
+            y - sizeY >= this.startY &&
+            sizeY + y <= this.heightMask
         ) {
-            Rasterizer.rasterEllipse0(x, y, sizeX, sizeY, fillColor, outlineColor, outlineWidth);
+            this.rasterEllipse0(x, y, sizeX, sizeY, fillColor, outlineColor, outlineWidth);
         } else {
-            Rasterizer.rasterEllipseClamped(
+            this.rasterEllipseClamped(
                 x,
                 y,
                 sizeX,
@@ -716,7 +717,7 @@ export class Rasterizer {
         }
     }
 
-    static rasterEllipse0(
+    rasterEllipse0(
         x: number,
         y: number,
         sizeX: number,
@@ -756,7 +757,7 @@ export class Rasterizer {
         let innerDecisionBInc = fourInnerRy2;
         let outerDecisionAAdjust = (sizeY - 1) * fourRx2;
         let innerDecisionAAdjust = fourInnerRx2 * (innerRadiusY - 1);
-        const centerRow = Rasterizer.pixels[y];
+        const centerRow = this.pixels[y];
         ArrayUtils.fillRange(centerRow, x - sizeX, x - innerRadiusX, outlineColor);
         ArrayUtils.fillRange(centerRow, x - innerRadiusX, innerRadiusX + x, fillColor);
         ArrayUtils.fillRange(centerRow, innerRadiusX + x, x + sizeX, outlineColor);
@@ -812,41 +813,41 @@ export class Rasterizer {
             if (isWithinInnerY) {
                 const innerLeftX = x - xOffsetInner;
                 ArrayUtils.fillRange(
-                    Rasterizer.pixels[yBottom],
+                    this.pixels[yBottom],
                     outerLeftX,
                     innerLeftX,
                     outlineColor,
                 );
                 const innerRightX = x + xOffsetInner;
                 ArrayUtils.fillRange(
-                    Rasterizer.pixels[yBottom],
+                    this.pixels[yBottom],
                     innerLeftX,
                     innerRightX,
                     fillColor,
                 );
                 ArrayUtils.fillRange(
-                    Rasterizer.pixels[yBottom],
+                    this.pixels[yBottom],
                     innerRightX,
                     outerRightX,
                     outlineColor,
                 );
-                ArrayUtils.fillRange(Rasterizer.pixels[yTop], outerLeftX, innerLeftX, outlineColor);
-                ArrayUtils.fillRange(Rasterizer.pixels[yTop], innerLeftX, innerRightX, fillColor);
+                ArrayUtils.fillRange(this.pixels[yTop], outerLeftX, innerLeftX, outlineColor);
+                ArrayUtils.fillRange(this.pixels[yTop], innerLeftX, innerRightX, fillColor);
                 ArrayUtils.fillRange(
-                    Rasterizer.pixels[yTop],
+                    this.pixels[yTop],
                     innerRightX,
                     outerRightX,
                     outlineColor,
                 );
             } else {
                 ArrayUtils.fillRange(
-                    Rasterizer.pixels[yBottom],
+                    this.pixels[yBottom],
                     outerLeftX,
                     outerRightX,
                     outlineColor,
                 );
                 ArrayUtils.fillRange(
-                    Rasterizer.pixels[yTop],
+                    this.pixels[yTop],
                     outerLeftX,
                     outerRightX,
                     outlineColor,
@@ -855,7 +856,7 @@ export class Rasterizer {
         }
     }
 
-    static rasterEllipseClamped(
+    rasterEllipseClamped(
         x: number,
         y: number,
         sizeX: number,
@@ -895,12 +896,12 @@ export class Rasterizer {
         let outerDecisionAAdjust = fourRx2 * (sizeY - 1);
         let innerDecisionBInc = fourInnerRy2;
         let innerDecisionAAdjust = (innerRadiusY - 1) * fourInnerRx2;
-        if (y >= Rasterizer.startY && Rasterizer.heightMask >= y) {
-            const centerRow = Rasterizer.pixels[y];
-            const outerLeftX = clamp(x - sizeX, Rasterizer.startX, Rasterizer.widthMask);
-            const outerRightX = clamp(x + sizeX, Rasterizer.startX, Rasterizer.widthMask);
-            const innerLeftX = clamp(x - innerRadiusX, Rasterizer.startX, Rasterizer.widthMask);
-            const innerRightX = clamp(x + innerRadiusX, Rasterizer.startX, Rasterizer.widthMask);
+        if (y >= this.startY && this.heightMask >= y) {
+            const centerRow = this.pixels[y];
+            const outerLeftX = clamp(x - sizeX, this.startX, this.widthMask);
+            const outerRightX = clamp(x + sizeX, this.startX, this.widthMask);
+            const innerLeftX = clamp(x - innerRadiusX, this.startX, this.widthMask);
+            const innerRightX = clamp(x + innerRadiusX, this.startX, this.widthMask);
             ArrayUtils.fillRange(centerRow, outerLeftX, innerLeftX, outlineColor);
             ArrayUtils.fillRange(centerRow, innerLeftX, innerRightX, fillColor);
             ArrayUtils.fillRange(centerRow, innerRightX, outerRightX, outlineColor);
@@ -952,48 +953,48 @@ export class Rasterizer {
             const yBottom = y - yOffsetOuter;
             outerDecisionAAdjust -= fourRx2;
             outerDecisionBDec -= fourRx2;
-            if (yTop >= Rasterizer.startY && Rasterizer.heightMask >= yBottom) {
+            if (yTop >= this.startY && this.heightMask >= yBottom) {
                 const outerRightX = clamp(
                     xOffsetOuter + x,
-                    Rasterizer.startX,
-                    Rasterizer.widthMask,
+                    this.startX,
+                    this.widthMask,
                 );
-                const outerLeftX = clamp(x - xOffsetOuter, Rasterizer.startX, Rasterizer.widthMask);
+                const outerLeftX = clamp(x - xOffsetOuter, this.startX, this.widthMask);
                 if (isWithinInnerY) {
                     const innerRightX = clamp(
                         x + xOffsetInner,
-                        Rasterizer.startX,
-                        Rasterizer.widthMask,
+                        this.startX,
+                        this.widthMask,
                     );
                     const innerLeftX = clamp(
                         x - xOffsetInner,
-                        Rasterizer.startX,
-                        Rasterizer.widthMask,
+                        this.startX,
+                        this.widthMask,
                     );
-                    if (Rasterizer.startY <= yBottom) {
-                        const rowPixels = Rasterizer.pixels[yBottom];
+                    if (this.startY <= yBottom) {
+                        const rowPixels = this.pixels[yBottom];
                         ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
                         ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
                         ArrayUtils.fillRange(rowPixels, innerRightX, outerRightX, outlineColor);
                     }
-                    if (Rasterizer.heightMask >= yTop) {
-                        const rowPixels = Rasterizer.pixels[yTop];
+                    if (this.heightMask >= yTop) {
+                        const rowPixels = this.pixels[yTop];
                         ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
                         ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
                         ArrayUtils.fillRange(rowPixels, innerRightX, outerRightX, outlineColor);
                     }
                 } else {
-                    if (yBottom >= Rasterizer.startY) {
+                    if (yBottom >= this.startY) {
                         ArrayUtils.fillRange(
-                            Rasterizer.pixels[yBottom],
+                            this.pixels[yBottom],
                             outerLeftX,
                             outerRightX,
                             outlineColor,
                         );
                     }
-                    if (Rasterizer.heightMask >= yTop) {
+                    if (this.heightMask >= yTop) {
                         ArrayUtils.fillRange(
-                            Rasterizer.pixels[yTop],
+                            this.pixels[yTop],
                             outerLeftX,
                             outerRightX,
                             outlineColor,
@@ -1004,7 +1005,7 @@ export class Rasterizer {
         }
     }
 
-    static rasterCircle(
+    rasterCircle(
         x: number,
         y: number,
         size: number,
@@ -1013,18 +1014,18 @@ export class Rasterizer {
         outlineWidth: number,
     ) {
         if (
-            Rasterizer.startX <= x - size &&
-            size + x <= Rasterizer.widthMask &&
-            y - size >= Rasterizer.startY &&
-            Rasterizer.heightMask >= size + y
+            this.startX <= x - size &&
+            size + x <= this.widthMask &&
+            y - size >= this.startY &&
+            this.heightMask >= size + y
         ) {
-            Rasterizer.rasterCircle0(x, y, size, fillColor, outlineColor, outlineWidth);
+            this.rasterCircle0(x, y, size, fillColor, outlineColor, outlineWidth);
         } else {
-            Rasterizer.rasterCircleClamped(x, y, size, fillColor, outlineColor, outlineWidth);
+            this.rasterCircleClamped(x, y, size, fillColor, outlineColor, outlineWidth);
         }
     }
 
-    static rasterCircle0(
+    rasterCircle0(
         x: number,
         y: number,
         size: number,
@@ -1032,14 +1033,14 @@ export class Rasterizer {
         outlineColor: number,
         outlineWidth: number,
     ) {
-        Rasterizer.initCircleOutline(size);
+        this.initCircleOutline(size);
         let xOffset = 0;
         let outerError = -size;
         let innerRadius = size - outlineWidth;
         let yOffset = size;
         let innerDelta = -1;
         let outerDelta = -1;
-        const centerRow = Rasterizer.pixels[y];
+        const centerRow = this.pixels[y];
         if (innerRadius < 0) {
             innerRadius = 0;
         }
@@ -1056,7 +1057,7 @@ export class Rasterizer {
             innerDelta += 2;
             innerError += innerDelta;
             if (innerError >= 0 && innerOutlineY >= 1) {
-                Rasterizer.circleOutline[innerOutlineY] = xOffset;
+                this.circleOutline[innerOutlineY] = xOffset;
                 innerOutlineY--;
                 innerError -= innerOutlineY << 1;
             }
@@ -1064,16 +1065,16 @@ export class Rasterizer {
             if (outerError >= 0) {
                 yOffset--;
                 if (yOffset >= innerRadius) {
-                    const upperRow = Rasterizer.pixels[y + yOffset];
+                    const upperRow = this.pixels[y + yOffset];
                     const rightX = x + xOffset;
-                    const lowerRow = Rasterizer.pixels[y - yOffset];
+                    const lowerRow = this.pixels[y - yOffset];
                     const leftX = x - xOffset;
                     ArrayUtils.fillRange(upperRow, leftX, rightX, outlineColor);
                     ArrayUtils.fillRange(lowerRow, leftX, rightX, outlineColor);
                 } else {
-                    const upperRow = Rasterizer.pixels[yOffset + y];
-                    const innerHalfWidth = Rasterizer.circleOutline[yOffset];
-                    const lowerRow = Rasterizer.pixels[y - yOffset];
+                    const upperRow = this.pixels[yOffset + y];
+                    const innerHalfWidth = this.circleOutline[yOffset];
+                    const lowerRow = this.pixels[y - yOffset];
                     const outerRightX = xOffset + x;
                     const innerLeftX = x - innerHalfWidth;
                     const innerRightX = innerHalfWidth + x;
@@ -1087,8 +1088,8 @@ export class Rasterizer {
                 }
                 outerError -= yOffset << 1;
             }
-            const upperRow = Rasterizer.pixels[y + xOffset];
-            const lowerRow = Rasterizer.pixels[y - xOffset];
+            const upperRow = this.pixels[y + xOffset];
+            const lowerRow = this.pixels[y - xOffset];
             const rightX = yOffset + x;
             const leftX = x - yOffset;
             if (innerRadius <= xOffset) {
@@ -1096,7 +1097,7 @@ export class Rasterizer {
                 ArrayUtils.fillRange(lowerRow, leftX, rightX, outlineColor);
             } else {
                 const innerHalfWidthAtX =
-                    xOffset > innerOutlineY ? Rasterizer.circleOutline[xOffset] : innerOutlineY;
+                    xOffset > innerOutlineY ? this.circleOutline[xOffset] : innerOutlineY;
                 const innerRightX = innerHalfWidthAtX + x;
                 const innerLeftX = x - innerHalfWidthAtX;
                 ArrayUtils.fillRange(upperRow, leftX, innerLeftX, outlineColor);
@@ -1109,7 +1110,7 @@ export class Rasterizer {
         }
     }
 
-    static rasterCircleClamped(
+    rasterCircleClamped(
         x: number,
         y: number,
         size: number,
@@ -1117,7 +1118,7 @@ export class Rasterizer {
         outlineColor: number,
         outlineWidth: number,
     ) {
-        Rasterizer.initCircleOutline(size);
+        this.initCircleOutline(size);
         let innerRadius = size - outlineWidth;
         let yOffset = size;
         let xOffset = 0;
@@ -1126,12 +1127,12 @@ export class Rasterizer {
             innerRadius = 0;
         }
         let innerOutlineY = innerRadius;
-        if (Rasterizer.startY <= y && y <= Rasterizer.heightMask) {
-            const centerRow = Rasterizer.pixels[y];
-            const outerLeftX = clamp(x - size, Rasterizer.startX, Rasterizer.widthMask);
-            const outerRightX = clamp(size + x, Rasterizer.startX, Rasterizer.widthMask);
-            const innerLeftX = clamp(x - innerRadius, Rasterizer.startX, Rasterizer.widthMask);
-            const innerRightX = clamp(x + innerRadius, Rasterizer.startX, Rasterizer.widthMask);
+        if (this.startY <= y && y <= this.heightMask) {
+            const centerRow = this.pixels[y];
+            const outerLeftX = clamp(x - size, this.startX, this.widthMask);
+            const outerRightX = clamp(size + x, this.startX, this.widthMask);
+            const innerLeftX = clamp(x - innerRadius, this.startX, this.widthMask);
+            const innerRightX = clamp(x + innerRadius, this.startX, this.widthMask);
             ArrayUtils.fillRange(centerRow, outerLeftX, innerLeftX, outlineColor);
             ArrayUtils.fillRange(centerRow, innerLeftX, innerRightX, fillColor);
             ArrayUtils.fillRange(centerRow, innerRightX, outerRightX, outlineColor);
@@ -1146,7 +1147,7 @@ export class Rasterizer {
             if (innerError >= 0 && innerOutlineY >= 1) {
                 innerOutlineY--;
                 innerError -= innerOutlineY << 1;
-                Rasterizer.circleOutline[innerOutlineY] = xOffset;
+                this.circleOutline[innerOutlineY] = xOffset;
             }
             xOffset++;
             outerError += outerDelta;
@@ -1155,64 +1156,64 @@ export class Rasterizer {
                 outerError -= yOffset << 1;
                 const yBottom = y - yOffset;
                 const yTop = y + yOffset;
-                if (Rasterizer.startY <= yTop && yBottom <= Rasterizer.heightMask) {
+                if (this.startY <= yTop && yBottom <= this.heightMask) {
                     if (yOffset >= innerRadius) {
                         const outerRightX = clamp(
                             x + xOffset,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
                         const outerLeftX = clamp(
                             x - xOffset,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
-                        if (Rasterizer.heightMask >= yTop) {
+                        if (this.heightMask >= yTop) {
                             ArrayUtils.fillRange(
-                                Rasterizer.pixels[yTop],
+                                this.pixels[yTop],
                                 outerLeftX,
                                 outerRightX,
                                 outlineColor,
                             );
                         }
-                        if (yBottom >= Rasterizer.startY) {
+                        if (yBottom >= this.startY) {
                             ArrayUtils.fillRange(
-                                Rasterizer.pixels[yBottom],
+                                this.pixels[yBottom],
                                 outerLeftX,
                                 outerRightX,
                                 outlineColor,
                             );
                         }
                     } else {
-                        const innerHalfWidth = Rasterizer.circleOutline[yOffset];
+                        const innerHalfWidth = this.circleOutline[yOffset];
                         const outerRightX = clamp(
                             x + xOffset,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
                         const outerLeftX = clamp(
                             x - xOffset,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
                         const innerRightX = clamp(
                             x + innerHalfWidth,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
                         const innerLeftX = clamp(
                             x - innerHalfWidth,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
-                        if (Rasterizer.heightMask >= yTop) {
-                            const rowPixels = Rasterizer.pixels[yTop];
+                        if (this.heightMask >= yTop) {
+                            const rowPixels = this.pixels[yTop];
                             ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
                             ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
                             ArrayUtils.fillRange(rowPixels, innerRightX, outerRightX, outlineColor);
                         }
-                        if (Rasterizer.startY <= yBottom) {
-                            const rowPixels = Rasterizer.pixels[yBottom];
+                        if (this.startY <= yBottom) {
+                            const rowPixels = this.pixels[yBottom];
                             ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
                             ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
                             ArrayUtils.fillRange(rowPixels, innerRightX, outerRightX, outlineColor);
@@ -1222,32 +1223,32 @@ export class Rasterizer {
             }
             const yTop = y + xOffset;
             const yBottom = y - xOffset;
-            if (Rasterizer.startY <= yTop && Rasterizer.heightMask >= yBottom) {
+            if (this.startY <= yTop && this.heightMask >= yBottom) {
                 const outerRightXRaw = yOffset + x;
                 const outerLeftXRaw = x - yOffset;
-                if (outerRightXRaw >= Rasterizer.startX && Rasterizer.widthMask >= outerLeftXRaw) {
+                if (outerRightXRaw >= this.startX && this.widthMask >= outerLeftXRaw) {
                     const outerRightX = clamp(
                         outerRightXRaw,
-                        Rasterizer.startX,
-                        Rasterizer.widthMask,
+                        this.startX,
+                        this.widthMask,
                     );
                     const outerLeftX = clamp(
                         outerLeftXRaw,
-                        Rasterizer.startX,
-                        Rasterizer.widthMask,
+                        this.startX,
+                        this.widthMask,
                     );
                     if (xOffset >= innerRadius) {
-                        if (Rasterizer.heightMask >= yTop) {
+                        if (this.heightMask >= yTop) {
                             ArrayUtils.fillRange(
-                                Rasterizer.pixels[yTop],
+                                this.pixels[yTop],
                                 outerLeftX,
                                 outerRightX,
                                 outlineColor,
                             );
                         }
-                        if (Rasterizer.startY <= yBottom) {
+                        if (this.startY <= yBottom) {
                             ArrayUtils.fillRange(
-                                Rasterizer.pixels[yBottom],
+                                this.pixels[yBottom],
                                 outerLeftX,
                                 outerRightX,
                                 outlineColor,
@@ -1257,25 +1258,25 @@ export class Rasterizer {
                         const innerHalfWidthAtX =
                             innerOutlineY >= xOffset
                                 ? innerOutlineY
-                                : Rasterizer.circleOutline[xOffset];
+                                : this.circleOutline[xOffset];
                         const innerRightX = clamp(
                             x + innerHalfWidthAtX,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
                         const innerLeftX = clamp(
                             x - innerHalfWidthAtX,
-                            Rasterizer.startX,
-                            Rasterizer.widthMask,
+                            this.startX,
+                            this.widthMask,
                         );
-                        if (Rasterizer.heightMask >= yTop) {
-                            const rowPixels = Rasterizer.pixels[yTop];
+                        if (this.heightMask >= yTop) {
+                            const rowPixels = this.pixels[yTop];
                             ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
                             ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
                             ArrayUtils.fillRange(rowPixels, innerRightX, outerRightX, outlineColor);
                         }
-                        if (Rasterizer.startY <= yBottom) {
-                            const rowPixels = Rasterizer.pixels[yBottom];
+                        if (this.startY <= yBottom) {
+                            const rowPixels = this.pixels[yBottom];
                             ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
                             ArrayUtils.fillRange(rowPixels, innerLeftX, innerRightX, fillColor);
                             ArrayUtils.fillRange(rowPixels, innerRightX, outerRightX, outlineColor);
@@ -1286,7 +1287,7 @@ export class Rasterizer {
         }
     }
 
-    static rasterEllipseFill(
+    rasterEllipseFill(
         x: number,
         y: number,
         sizeX: number,
@@ -1294,27 +1295,27 @@ export class Rasterizer {
         fillColor: number,
     ) {
         if (sizeX === sizeY) {
-            Rasterizer.rasterCircleFill(x, y, sizeX, fillColor);
+            this.rasterCircleFill(x, y, sizeX, fillColor);
         } else if (
-            Rasterizer.startX <= x - sizeX &&
-            Rasterizer.widthMask >= x + sizeX &&
-            y - sizeY >= Rasterizer.startY &&
-            Rasterizer.heightMask >= y + sizeY
+            this.startX <= x - sizeX &&
+            this.widthMask >= x + sizeX &&
+            y - sizeY >= this.startY &&
+            this.heightMask >= y + sizeY
         ) {
-            Rasterizer.rasterEllipseFill0(x, y, sizeX, sizeY, fillColor);
+            this.rasterEllipseFill0(x, y, sizeX, sizeY, fillColor);
         } else {
-            Rasterizer.rasterEllipseFillClamped(x, y, sizeX, sizeY, fillColor);
+            this.rasterEllipseFillClamped(x, y, sizeX, sizeY, fillColor);
         }
     }
 
-    static rasterEllipseFill0(
+    rasterEllipseFill0(
         x: number,
         y: number,
         sizeX: number,
         sizeY: number,
         fillColor: number,
     ) {
-        ArrayUtils.fillRange(Rasterizer.pixels[y], x - sizeX, sizeX + x, fillColor);
+        ArrayUtils.fillRange(this.pixels[y], x - sizeX, sizeX + x, fillColor);
         let xOffset = 0;
         let yOffset = sizeY;
         const rx2 = sizeX * sizeX;
@@ -1356,12 +1357,12 @@ export class Rasterizer {
             decisionB += -decisionBDec;
             decisionBDec -= fourRx2;
             const leftX = x - xOffset;
-            ArrayUtils.fillRange(Rasterizer.pixels[yBottom], leftX, rightX, fillColor);
-            ArrayUtils.fillRange(Rasterizer.pixels[yTop], leftX, rightX, fillColor);
+            ArrayUtils.fillRange(this.pixels[yBottom], leftX, rightX, fillColor);
+            ArrayUtils.fillRange(this.pixels[yTop], leftX, rightX, fillColor);
         }
     }
 
-    static rasterEllipseFillClamped(
+    rasterEllipseFillClamped(
         x: number,
         y: number,
         sizeX: number,
@@ -1382,10 +1383,10 @@ export class Rasterizer {
         let decisionAInc = twoRy2 * 3;
         let decisionBInc = fourRy2;
         let decisionBDec = ((sizeY << 1) - 3) * twoRx2;
-        if (y >= Rasterizer.startY && Rasterizer.heightMask >= y) {
-            const rightX = clamp(x + sizeX, Rasterizer.startX, Rasterizer.widthMask);
-            const leftX = clamp(x - sizeX, Rasterizer.startX, Rasterizer.widthMask);
-            ArrayUtils.fillRange(Rasterizer.pixels[y], leftX, rightX, fillColor);
+        if (y >= this.startY && this.heightMask >= y) {
+            const rightX = clamp(x + sizeX, this.startX, this.widthMask);
+            const leftX = clamp(x - sizeX, this.startX, this.widthMask);
+            ArrayUtils.fillRange(this.pixels[y], leftX, rightX, fillColor);
         }
         let decisionAAdjust = fourRx2 * (sizeY - 1);
         while (yOffset > 0) {
@@ -1412,34 +1413,34 @@ export class Rasterizer {
             decisionAAdjust -= fourRx2;
             const yTop = yOffset + y;
             decisionBDec -= fourRx2;
-            if (yTop >= Rasterizer.startY && Rasterizer.heightMask >= yBottom) {
-                const rightX = clamp(xOffset + x, Rasterizer.startX, Rasterizer.widthMask);
-                const leftX = clamp(x - xOffset, Rasterizer.startX, Rasterizer.widthMask);
-                if (Rasterizer.startY <= yBottom) {
-                    ArrayUtils.fillRange(Rasterizer.pixels[yBottom], leftX, rightX, fillColor);
+            if (yTop >= this.startY && this.heightMask >= yBottom) {
+                const rightX = clamp(xOffset + x, this.startX, this.widthMask);
+                const leftX = clamp(x - xOffset, this.startX, this.widthMask);
+                if (this.startY <= yBottom) {
+                    ArrayUtils.fillRange(this.pixels[yBottom], leftX, rightX, fillColor);
                 }
-                if (yTop <= Rasterizer.heightMask) {
-                    ArrayUtils.fillRange(Rasterizer.pixels[yTop], leftX, rightX, fillColor);
+                if (yTop <= this.heightMask) {
+                    ArrayUtils.fillRange(this.pixels[yTop], leftX, rightX, fillColor);
                 }
             }
         }
     }
 
-    static rasterCircleFill(x: number, y: number, size: number, fillColor: number) {
+    rasterCircleFill(x: number, y: number, size: number, fillColor: number) {
         if (
-            x - size >= Rasterizer.startX &&
-            Rasterizer.widthMask >= x + size &&
-            y - size >= Rasterizer.startY &&
-            y + size <= Rasterizer.heightMask
+            x - size >= this.startX &&
+            this.widthMask >= x + size &&
+            y - size >= this.startY &&
+            y + size <= this.heightMask
         ) {
-            Rasterizer.rasterCircleFill0(x, y, size, fillColor);
+            this.rasterCircleFill0(x, y, size, fillColor);
         } else {
-            Rasterizer.rasterCircleFillClamped(x, y, size, fillColor);
+            this.rasterCircleFillClamped(x, y, size, fillColor);
         }
     }
 
-    static rasterCircleFill0(x: number, y: number, size: number, fillColor: number) {
-        ArrayUtils.fillRange(Rasterizer.pixels[y], x - size, size + x, fillColor);
+    rasterCircleFill0(x: number, y: number, size: number, fillColor: number) {
+        ArrayUtils.fillRange(this.pixels[y], x - size, size + x, fillColor);
         let xOffset = 0;
         let yOffset = size;
         let error = -size;
@@ -1451,8 +1452,8 @@ export class Rasterizer {
             if (error >= 0) {
                 yOffset--;
                 error -= yOffset << 1;
-                const upperRow = Rasterizer.pixels[y - yOffset];
-                const lowerRow = Rasterizer.pixels[y + yOffset];
+                const upperRow = this.pixels[y - yOffset];
+                const lowerRow = this.pixels[y + yOffset];
                 const leftX = x - xOffset;
                 const rightX = x + xOffset;
                 ArrayUtils.fillRange(lowerRow, leftX, rightX, fillColor);
@@ -1460,21 +1461,21 @@ export class Rasterizer {
             }
             const rightX = x + yOffset;
             const leftX = x - yOffset;
-            const lowerRow = Rasterizer.pixels[y + xOffset];
-            const upperRow = Rasterizer.pixels[y - xOffset];
+            const lowerRow = this.pixels[y + xOffset];
+            const upperRow = this.pixels[y - xOffset];
             ArrayUtils.fillRange(lowerRow, leftX, rightX, fillColor);
             ArrayUtils.fillRange(upperRow, leftX, rightX, fillColor);
         }
     }
 
-    static rasterCircleFillClamped(x: number, y: number, size: number, fillColor: number) {
+    rasterCircleFillClamped(x: number, y: number, size: number, fillColor: number) {
         let xOffset = 0;
         let yOffset = size;
         let delta = -1;
         let error = -size;
-        let rightX = clamp(size + x, Rasterizer.startX, Rasterizer.widthMask);
-        let leftX = clamp(x - size, Rasterizer.startX, Rasterizer.widthMask);
-        ArrayUtils.fillRange(Rasterizer.pixels[y], leftX, rightX, fillColor);
+        let rightX = clamp(size + x, this.startX, this.widthMask);
+        let leftX = clamp(x - size, this.startX, this.widthMask);
+        ArrayUtils.fillRange(this.pixels[y], leftX, rightX, fillColor);
         while (yOffset > xOffset) {
             delta += 2;
             error += delta;
@@ -1483,28 +1484,28 @@ export class Rasterizer {
                 error -= yOffset << 1;
                 const yBottom = y - yOffset;
                 const yTop = yOffset + y;
-                if (yTop >= Rasterizer.startY && yBottom <= Rasterizer.heightMask) {
-                    let rightX = clamp(x + xOffset, Rasterizer.startX, Rasterizer.widthMask);
-                    let leftX = clamp(x - xOffset, Rasterizer.startX, Rasterizer.widthMask);
-                    if (Rasterizer.heightMask >= yTop) {
-                        ArrayUtils.fillRange(Rasterizer.pixels[yTop], leftX, rightX, fillColor);
+                if (yTop >= this.startY && yBottom <= this.heightMask) {
+                    let rightX = clamp(x + xOffset, this.startX, this.widthMask);
+                    let leftX = clamp(x - xOffset, this.startX, this.widthMask);
+                    if (this.heightMask >= yTop) {
+                        ArrayUtils.fillRange(this.pixels[yTop], leftX, rightX, fillColor);
                     }
-                    if (Rasterizer.startY <= yBottom) {
-                        ArrayUtils.fillRange(Rasterizer.pixels[yBottom], leftX, rightX, fillColor);
+                    if (this.startY <= yBottom) {
+                        ArrayUtils.fillRange(this.pixels[yBottom], leftX, rightX, fillColor);
                     }
                 }
             }
             xOffset++;
             const yBottom = y - xOffset;
             const yTop = y + xOffset;
-            if (Rasterizer.startY <= yTop && yBottom <= Rasterizer.heightMask) {
-                const rightX = clamp(x + yOffset, Rasterizer.startX, Rasterizer.widthMask);
-                const leftX = clamp(x - yOffset, Rasterizer.startX, Rasterizer.widthMask);
-                if (yTop <= Rasterizer.heightMask) {
-                    ArrayUtils.fillRange(Rasterizer.pixels[yTop], leftX, rightX, fillColor);
+            if (this.startY <= yTop && yBottom <= this.heightMask) {
+                const rightX = clamp(x + yOffset, this.startX, this.widthMask);
+                const leftX = clamp(x - yOffset, this.startX, this.widthMask);
+                if (yTop <= this.heightMask) {
+                    ArrayUtils.fillRange(this.pixels[yTop], leftX, rightX, fillColor);
                 }
-                if (Rasterizer.startY <= yBottom) {
-                    ArrayUtils.fillRange(Rasterizer.pixels[yBottom], leftX, rightX, fillColor);
+                if (this.startY <= yBottom) {
+                    ArrayUtils.fillRange(this.pixels[yBottom], leftX, rightX, fillColor);
                 }
             }
         }
@@ -1518,11 +1519,11 @@ export abstract class RasterizerOperationShape {
         readonly outlineWidth: number,
     ) {}
 
-    abstract render(width: number, height: number): void;
+    abstract render(rasterizer: Rasterizer, width: number, height: number): void;
 
-    abstract renderFill(width: number, height: number): void;
+    abstract renderFill(rasterizer: Rasterizer, width: number, height: number): void;
 
-    abstract renderOutline(width: number, height: number): void;
+    abstract renderOutline(rasterizer: Rasterizer, width: number, height: number): void;
 }
 
 export class RasterizerOperationLine extends RasterizerOperationShape {
@@ -1547,16 +1548,16 @@ export class RasterizerOperationLine extends RasterizerOperationShape {
         super(-1, color, outlineWidth);
     }
 
-    override render(width: number, height: number): void {}
+    override render(rasterizer: Rasterizer, width: number, height: number): void {}
 
-    override renderFill(width: number, height: number): void {}
+    override renderFill(rasterizer: Rasterizer, width: number, height: number): void {}
 
-    override renderOutline(width: number, height: number): void {
+    override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {
         const x0 = (this.x0 * width) >> 12;
         const x1 = (this.x1 * width) >> 12;
         const y0 = (this.y0 * height) >> 12;
         const y1 = (this.y1 * height) >> 12;
-        Rasterizer.rasterLine(x0, x1, y0, y1, this.outlineColor);
+        rasterizer.rasterLine(x0, x1, y0, y1, this.outlineColor);
     }
 }
 
@@ -1601,11 +1602,11 @@ export class RasterizerOperationBezierCurve extends RasterizerOperationShape {
         super(-1, color, outlineWidth);
     }
 
-    override render(width: number, height: number): void {}
+    override render(rasterizer: Rasterizer, width: number, height: number): void {}
 
-    override renderFill(width: number, height: number): void {}
+    override renderFill(rasterizer: Rasterizer, width: number, height: number): void {}
 
-    override renderOutline(width: number, height: number): void {
+    override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {
         const x0 = (width * this.x0) >> 12;
         const y0 = (height * this.y0) >> 12;
         const x1 = (width * this.x1) >> 12;
@@ -1614,7 +1615,7 @@ export class RasterizerOperationBezierCurve extends RasterizerOperationShape {
         const y2 = (height * this.y2) >> 12;
         const x3 = (width * this.x3) >> 12;
         const y3 = (height * this.y3) >> 12;
-        Rasterizer.rasterBezierCurve(x0, y0, x1, y1, x2, y2, x3, y3, this.outlineColor);
+        rasterizer.rasterBezierCurve(x0, y0, x1, y1, x2, y2, x3, y3, this.outlineColor);
     }
 }
 
@@ -1650,12 +1651,12 @@ export class RasterizerOperationRectangle extends RasterizerOperationShape {
         super(fillColor, outlineColor, outlineWidth);
     }
 
-    override render(width: number, height: number): void {
+    override render(rasterizer: Rasterizer, width: number, height: number): void {
         const x0 = (this.x0 * width) >> 12;
         const x1 = (this.x1 * width) >> 12;
         const y0 = (this.y0 * height) >> 12;
         const y1 = (this.y1 * height) >> 12;
-        Rasterizer.rasterRectangle(
+        rasterizer.rasterRectangle(
             x0,
             x1,
             y0,
@@ -1666,20 +1667,20 @@ export class RasterizerOperationRectangle extends RasterizerOperationShape {
         );
     }
 
-    override renderFill(width: number, height: number): void {
+    override renderFill(rasterizer: Rasterizer, width: number, height: number): void {
         const x0 = (this.x0 * width) >> 12;
         const x1 = (this.x1 * width) >> 12;
         const y0 = (this.y0 * height) >> 12;
         const y1 = (this.y1 * height) >> 12;
-        Rasterizer.rasterRectangleFill(x0, x1, y0, y1, this.fillColor);
+        rasterizer.rasterRectangleFill(x0, x1, y0, y1, this.fillColor);
     }
 
-    override renderOutline(width: number, height: number): void {
+    override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {
         const x0 = (this.x0 * width) >> 12;
         const x1 = (this.x1 * width) >> 12;
         const y0 = (this.y0 * height) >> 12;
         const y1 = (this.y1 * height) >> 12;
-        Rasterizer.rasterRectangleOutline(x0, x1, y0, y1, this.outlineColor, this.outlineWidth);
+        rasterizer.rasterRectangleOutline(x0, x1, y0, y1, this.outlineColor, this.outlineWidth);
     }
 }
 
@@ -1715,12 +1716,12 @@ export class RasterizerOperationEllipse extends RasterizerOperationShape {
         super(fillColor, outlineColor, outlineWidth);
     }
 
-    override render(width: number, height: number): void {
+    override render(rasterizer: Rasterizer, width: number, height: number): void {
         const x = (this.x * width) >> 12;
         const y = (this.y * height) >> 12;
         const sizeX = (this.sizeX * width) >> 12;
         const sizeY = (this.sizeY * height) >> 12;
-        Rasterizer.rasterEllipse(
+        rasterizer.rasterEllipse(
             x,
             y,
             sizeX,
@@ -1731,13 +1732,13 @@ export class RasterizerOperationEllipse extends RasterizerOperationShape {
         );
     }
 
-    override renderFill(width: number, height: number): void {
+    override renderFill(rasterizer: Rasterizer, width: number, height: number): void {
         const x = (this.x * width) >> 12;
         const y = (this.y * height) >> 12;
         const sizeX = (this.sizeX * width) >> 12;
         const sizeY = (this.sizeY * height) >> 12;
-        Rasterizer.rasterEllipseFill(x, y, sizeX, sizeY, this.fillColor);
+        rasterizer.rasterEllipseFill(x, y, sizeX, sizeY, this.fillColor);
     }
 
-    override renderOutline(width: number, height: number): void {}
+    override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {}
 }
