@@ -2,6 +2,7 @@ import { CacheFiles } from "../rs/cache/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
 import { CacheLoader, ProgressListener } from "../rs/cache/CacheLoader";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
+import { fetchCacheFiles } from "../rs/cache/loaders/CacheFilesLoader";
 
 const CACHE_PATH = "/caches/";
 
@@ -58,7 +59,7 @@ export async function loadCacheFiles(
     const xteasPromise = fetchXteas(cachePath + "keys.json", signal);
 
     const cacheType = detectCacheType(info);
-    const files = await CacheFiles.fetchFiles(
+    const files = await fetchCacheFiles(
         loader,
         cacheType,
         cachePath,
