@@ -3,14 +3,14 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class CurveOperation extends TextureOperation {
-    interpMode: number = 0;
+    interpolationMode: number = 0;
 
-    markers!: number[][];
+    controlPoints!: number[][];
 
-    startMarker!: number[];
-    endMarker!: number[];
+    extrapolatedStartPoint!: number[];
+    extrapolatedEndPoint!: number[];
 
-    table: Int16Array = new Int16Array(257);
+    lookupTable: Int16Array = new Int16Array(257);
 
     constructor() {
         super(1, true);
@@ -18,50 +18,53 @@ export class CurveOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.interpMode = buffer.readUnsignedByte();
-            const markerCount = buffer.readUnsignedByte();
-            this.markers = new Array(markerCount);
-            for (let i = 0; i < markerCount; i++) {
-                const marker = (this.markers[i] = new Array(2));
-                marker[0] = buffer.readUnsignedShort();
-                marker[1] = buffer.readUnsignedShort();
+            this.interpolationMode = buffer.readUnsignedByte();
+            const controlPointCount = buffer.readUnsignedByte();
+            this.controlPoints = new Array(controlPointCount);
+            for (let i = 0; i < controlPointCount; i++) {
+                const point = (this.controlPoints[i] = new Array(2));
+                point[0] = buffer.readUnsignedShort();
+                point[1] = buffer.readUnsignedShort();
             }
         }
     }
 
-    calcExtremes(): void {
-        const start0 = this.markers[0];
-        const start1 = this.markers[1];
-        const end0 = this.markers[this.markers.length - 2];
-        const end1 = this.markers[this.markers.length - 1];
-        this.startMarker = [start0[0] + start0[0] - start1[0], start0[1] - start1[1] + start0[1]];
-        this.endMarker = [end0[0] - end1[0] + end0[0], end0[1] - end1[1] + end0[1]];
+    computeExtrapolatedEndpoints(): void {
+        const start0 = this.controlPoints[0];
+        const start1 = this.controlPoints[1];
+        const end0 = this.controlPoints[this.controlPoints.length - 2];
+        const end1 = this.controlPoints[this.controlPoints.length - 1];
+        this.extrapolatedStartPoint = [
+            start0[0] + start0[0] - start1[0],
+            start0[1] - start1[1] + start0[1],
+        ];
+        this.extrapolatedEndPoint = [end0[0] - end1[0] + end0[0], end0[1] - end1[1] + end0[1]];
     }
 
-    getMarker(index: number): number[] {
+    getControlPoint(index: number): number[] {
         if (index < 0) {
-            return this.startMarker;
+            return this.extrapolatedStartPoint;
         }
-        if (index >= this.markers.length) {
-            return this.endMarker;
+        if (index >= this.controlPoints.length) {
+            return this.extrapolatedEndPoint;
         }
-        return this.markers[index];
+        return this.controlPoints[index];
     }
 
     override init() {
-        if (!this.markers) {
-            this.markers = [
+        if (!this.controlPoints) {
+            this.controlPoints = [
                 [0, 0],
                 [4096, 4096],
             ];
         }
-        if (this.markers.length < 2) {
-            throw new Error("Curve operation requires at least two markers");
+        if (this.controlPoints.length < 2) {
+            throw new Error("Curve operation requires at least two control points");
         }
-        if (this.interpMode === 2) {
-            this.calcExtremes();
+        if (this.interpolationMode === 2) {
+            this.computeExtrapolatedEndpoints();
         }
-        this.fillTable();
+        this.buildLookupTable();
     }
 
     override getMonochromeOutput(textureGenerator: TextureGenerator, line: number): Int32Array {
@@ -80,32 +83,37 @@ export class CurveOperation extends TextureOperation {
                 if (value > 256) {
                     value = 256;
                 }
-                output[pixel] = this.table[value];
+                output[pixel] = this.lookupTable[value];
             }
         }
 
         return output;
     }
 
-    fillTable(): void {
-        switch (this.interpMode) {
+    buildLookupTable(): void {
+        switch (this.interpolationMode) {
             case 2:
                 for (let index = 0; index < 257; index++) {
                     const indexTimes16 = index * 16;
-                    let markIndex: number;
-                    for (markIndex = 1; markIndex < this.markers.length - 1; markIndex++) {
-                        if (this.markers[markIndex][0] > indexTimes16) {
+                    let segmentIndex: number;
+                    for (
+                        segmentIndex = 1;
+                        segmentIndex < this.controlPoints.length - 1;
+                        segmentIndex++
+                    ) {
+                        if (this.controlPoints[segmentIndex][0] > indexTimes16) {
                             break;
                         }
                     }
-                    const markP = this.markers[markIndex - 1];
-                    const markN = this.markers[markIndex];
-                    const yPrevPrev = this.getMarker(markIndex - 2)[1];
-                    const yPrev = markP[1];
-                    const yNext = markN[1];
-                    const yNextNext = this.getMarker(markIndex + 1)[1];
+                    const prevPoint = this.controlPoints[segmentIndex - 1];
+                    const nextPoint = this.controlPoints[segmentIndex];
+                    const yPrevPrev = this.getControlPoint(segmentIndex - 2)[1];
+                    const yPrev = prevPoint[1];
+                    const yNext = nextPoint[1];
+                    const yNextNext = this.getControlPoint(segmentIndex + 1)[1];
                     const interpIn =
-                        (((indexTimes16 - markP[0]) * 4096) / (markN[0] - markP[0])) | 0;
+                        (((indexTimes16 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
+                        0;
                     const xSq = ((interpIn * interpIn) / 4096) | 0;
                     const coefA = yPrev - yPrevPrev + (yNextNext - yNext);
                     const coefB = yPrevPrev - yPrev - coefA;
@@ -121,56 +129,67 @@ export class CurveOperation extends TextureOperation {
                     if (out >= 32768) {
                         out = 32767;
                     }
-                    this.table[index] = out;
+                    this.lookupTable[index] = out;
                 }
                 break;
             case 1: // COSINE INTERPOLATION
                 for (let index = 0; index < 257; index++) {
                     const indexTimes16 = index * 16;
-                    let markIndex: number;
-                    for (markIndex = 1; markIndex < this.markers.length - 1; markIndex++) {
-                        if (this.markers[markIndex][0] > indexTimes16) {
+                    let segmentIndex: number;
+                    for (
+                        segmentIndex = 1;
+                        segmentIndex < this.controlPoints.length - 1;
+                        segmentIndex++
+                    ) {
+                        if (this.controlPoints[segmentIndex][0] > indexTimes16) {
                             break;
                         }
                     }
-                    const markP = this.markers[markIndex - 1];
-                    const markN = this.markers[markIndex];
+                    const prevPoint = this.controlPoints[segmentIndex - 1];
+                    const nextPoint = this.controlPoints[segmentIndex];
                     const interpIn =
-                        (((indexTimes16 - markP[0]) * 4096) / (markN[0] - markP[0])) | 0;
+                        (((indexTimes16 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
+                        0;
                     const nMul =
                         ((4096 - TextureGenerator.COSINE[((interpIn & 8187) / 32) | 0]) / 2) | 0;
                     const pMul = 4096 - nMul;
-                    let out = ((pMul * markP[1] + markN[1] * nMul) / 4096) | 0;
+                    let out = ((pMul * prevPoint[1] + nextPoint[1] * nMul) / 4096) | 0;
                     if (out <= -32768) {
                         out = -32767;
                     }
                     if (out >= 32768) {
                         out = 32767;
                     }
-                    this.table[index] = out;
+                    this.lookupTable[index] = out;
                 }
                 break;
             case 0: // LINEAR INTERPOLATION
                 for (let index = 0; index < 257; index++) {
                     const indexTimes16 = index * 16;
-                    let markIndex: number;
-                    for (markIndex = 1; markIndex < this.markers.length - 1; markIndex++) {
-                        if (this.markers[markIndex][0] > indexTimes16) {
+                    let segmentIndex: number;
+                    for (
+                        segmentIndex = 1;
+                        segmentIndex < this.controlPoints.length - 1;
+                        segmentIndex++
+                    ) {
+                        if (this.controlPoints[segmentIndex][0] > indexTimes16) {
                             break;
                         }
                     }
-                    const markP = this.markers[markIndex - 1];
-                    const markN = this.markers[markIndex];
-                    const nMul = (((indexTimes16 - markP[0]) * 4096) / (markN[0] - markP[0])) | 0;
+                    const prevPoint = this.controlPoints[segmentIndex - 1];
+                    const nextPoint = this.controlPoints[segmentIndex];
+                    const nMul =
+                        (((indexTimes16 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
+                        0;
                     const pMul = 4096 - nMul;
-                    let out = ((pMul * markP[1] + markN[1] * nMul) / 4096) | 0;
+                    let out = ((pMul * prevPoint[1] + nextPoint[1] * nMul) / 4096) | 0;
                     if (out <= -32768) {
                         out = -32767;
                     }
                     if (out >= 32768) {
                         out = 32767;
                     }
-                    this.table[index] = out;
+                    this.lookupTable[index] = out;
                 }
                 break;
         }
