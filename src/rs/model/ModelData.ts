@@ -9,12 +9,50 @@ import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
 import { VertexNormal } from "./VertexNormal";
 
+export class MergeNormalsScratch {
+    private stamp: number = 1;
+
+    model0VertexStamp: Int32Array = new Int32Array(10000);
+    model1VertexStamp: Int32Array = new Int32Array(10000);
+
+    nextStamp(model0VertexCount: number, model1VertexCount: number): number {
+        if (this.stamp >= 0x7ffffffe) {
+            this.model0VertexStamp.fill(0);
+            this.model1VertexStamp.fill(0);
+            this.stamp = 1;
+        } else {
+            this.stamp++;
+        }
+
+        this.ensureCapacity0(model0VertexCount);
+        this.ensureCapacity1(model1VertexCount);
+        return this.stamp;
+    }
+
+    private ensureCapacity0(size: number): void {
+        if (this.model0VertexStamp.length >= size) {
+            return;
+        }
+        let nextSize = this.model0VertexStamp.length;
+        while (nextSize < size) {
+            nextSize = Math.max(1, nextSize * 2);
+        }
+        this.model0VertexStamp = new Int32Array(nextSize);
+    }
+
+    private ensureCapacity1(size: number): void {
+        if (this.model1VertexStamp.length >= size) {
+            return;
+        }
+        let nextSize = this.model1VertexStamp.length;
+        while (nextSize < size) {
+            nextSize = Math.max(1, nextSize * 2);
+        }
+        this.model1VertexStamp = new Int32Array(nextSize);
+    }
+}
+
 export class ModelData extends Entity {
-    private static mergeModelNormalsCount: number = 0;
-
-    private static mergedNormalsModel0Cache: Int32Array = new Int32Array(10000);
-    private static mergedNormalsModel1Cache: Int32Array = new Int32Array(10000);
-
     version: number;
 
     verticesCount: number;
@@ -148,6 +186,7 @@ export class ModelData extends Entity {
         offsetY: number,
         offsetZ: number,
         hideOccludedFaces: boolean,
+        scratch: MergeNormalsScratch,
     ): void {
         model0.calculateBounds();
         model0.calculateVertexNormals();
@@ -158,7 +197,12 @@ export class ModelData extends Entity {
             return;
         }
 
-        ModelData.mergeModelNormalsCount++;
+        const stamp = scratch.nextStamp(
+            Math.max(model0.usedVertexCount, model0.verticesCount),
+            Math.max(model1.usedVertexCount, model1.verticesCount),
+        );
+        const model0VertexStamp = scratch.model0VertexStamp;
+        const model1VertexStamp = scratch.model1VertexStamp;
 
         const verticesY0 = model0.contourVerticesY || model0.verticesY;
         const verticesY1 = model1.contourVerticesY || model1.verticesY;
@@ -221,20 +265,17 @@ export class ModelData extends Entity {
 
                 mergedCount++;
 
-                ModelData.mergedNormalsModel0Cache[v0] = ModelData.mergeModelNormalsCount;
-                ModelData.mergedNormalsModel1Cache[v1] = ModelData.mergeModelNormalsCount;
+                model0VertexStamp[v0] = stamp;
+                model1VertexStamp[v1] = stamp;
             }
         }
 
         if (mergedCount >= 3 && hideOccludedFaces) {
             for (let i = 0; i < model0.faceCount; i++) {
                 if (
-                    ModelData.mergedNormalsModel0Cache[model0.indices1[i]] ===
-                        ModelData.mergeModelNormalsCount &&
-                    ModelData.mergedNormalsModel0Cache[model0.indices2[i]] ===
-                        ModelData.mergeModelNormalsCount &&
-                    ModelData.mergedNormalsModel0Cache[model0.indices3[i]] ===
-                        ModelData.mergeModelNormalsCount
+                    model0VertexStamp[model0.indices1[i]] === stamp &&
+                    model0VertexStamp[model0.indices2[i]] === stamp &&
+                    model0VertexStamp[model0.indices3[i]] === stamp
                 ) {
                     if (!model0.faceRenderTypes) {
                         model0.faceRenderTypes = new Int8Array(model0.faceCount);
@@ -245,12 +286,9 @@ export class ModelData extends Entity {
             }
             for (let i = 0; i < model1.faceCount; i++) {
                 if (
-                    ModelData.mergedNormalsModel1Cache[model1.indices1[i]] ===
-                        ModelData.mergeModelNormalsCount &&
-                    ModelData.mergedNormalsModel1Cache[model1.indices2[i]] ===
-                        ModelData.mergeModelNormalsCount &&
-                    ModelData.mergedNormalsModel1Cache[model1.indices3[i]] ===
-                        ModelData.mergeModelNormalsCount
+                    model1VertexStamp[model1.indices1[i]] === stamp &&
+                    model1VertexStamp[model1.indices2[i]] === stamp &&
+                    model1VertexStamp[model1.indices3[i]] === stamp
                 ) {
                     if (!model1.faceRenderTypes) {
                         model1.faceRenderTypes = new Int8Array(model1.faceCount);
@@ -282,11 +320,20 @@ export class ModelData extends Entity {
         offsetY: number,
         offsetZ: number,
         hideOccluded: boolean,
+        scratch?: MergeNormalsScratch,
     ): void {
         if (!(entity instanceof ModelData)) {
             return;
         }
-        ModelData.mergeNormals(this, entity, offsetX, offsetY, offsetZ, hideOccluded);
+        ModelData.mergeNormals(
+            this,
+            entity,
+            offsetX,
+            offsetY,
+            offsetZ,
+            hideOccluded,
+            scratch ?? new MergeNormalsScratch(),
+        );
     }
 
     merge(models: ModelData[], count: number): void {

@@ -1,4 +1,4 @@
-import { ModelData } from "../model/ModelData";
+import { MergeNormalsScratch, ModelData } from "../model/ModelData";
 import { TextureLoader } from "../texture/TextureLoader";
 import { CollisionMap } from "./CollisionMap";
 import { FloorDecoration } from "./FloorDecoration";
@@ -25,6 +25,7 @@ export type TileRotation = 0 | 1 | 2 | 3;
 export type TileShapeId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export class Scene {
+    private readonly mergeNormalsScratch = new MergeNormalsScratch();
     static readonly MAX_LEVELS = 4;
     static readonly MAP_SQUARE_SIZE = 64;
 
@@ -563,6 +564,7 @@ export class Scene {
                                             deltaHeight,
                                             (localY - tileY) * 128 + (1 - sizeY) * 64,
                                             hideOccluded,
+                                            this.mergeNormalsScratch,
                                         );
                                     }
                                     if (wall.entity1 instanceof ModelData) {
@@ -573,6 +575,7 @@ export class Scene {
                                             deltaHeight,
                                             (localY - tileY) * 128 + (1 - sizeY) * 64,
                                             hideOccluded,
+                                            this.mergeNormalsScratch,
                                         );
                                     }
                                 }
@@ -588,6 +591,7 @@ export class Scene {
                                             deltaHeight,
                                             (loc.startY - tileY) * 128 + (var22 - sizeY) * 64,
                                             hideOccluded,
+                                            this.mergeNormalsScratch,
                                         );
                                     }
                                 }
@@ -632,6 +636,7 @@ export class Scene {
                                 deltaHeight,
                                 (y - tileY) * 128,
                                 true,
+                                this.mergeNormalsScratch,
                             );
                         }
                     }
@@ -653,15 +658,15 @@ export class Scene {
                         const model0 = wall.entity0;
                         this.mergeLargeLocNormals(model0, level, tileX, tileY, 1, 1);
 
-                        if (wall.entity1 instanceof ModelData) {
-                            const model1 = wall.entity1;
-                            this.mergeLargeLocNormals(model1, level, tileX, tileY, 1, 1);
-                            ModelData.mergeNormals(model0, model1, 0, 0, 0, false);
-                            wall.entity1 = model1.light(
-                                textureLoader,
-                                model1.ambient,
-                                model1.contrast,
-                                lightX,
+                            if (wall.entity1 instanceof ModelData) {
+                                const model1 = wall.entity1;
+                                this.mergeLargeLocNormals(model1, level, tileX, tileY, 1, 1);
+                                ModelData.mergeNormals(model0, model1, 0, 0, 0, false, this.mergeNormalsScratch);
+                                wall.entity1 = model1.light(
+                                    textureLoader,
+                                    model1.ambient,
+                                    model1.contrast,
+                                    lightX,
                                 lightY,
                                 lightZ,
                             );
