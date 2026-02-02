@@ -23,7 +23,7 @@ export type ContourGroundInfo = {
 };
 
 export class LocModelLoader {
-    static mergeLocModelsCache: ModelData[] = new Array(4);
+    private readonly mergeLocModelsCache: ModelData[] = new Array(4);
 
     modelDataCache: Map<number, ModelData>;
     entityCache: Map<number, Model | ModelData>;
@@ -86,12 +86,12 @@ export class LocModelLoader {
                 }
 
                 if (modelCount > 1) {
-                    LocModelLoader.mergeLocModelsCache[i] = model;
+                    this.mergeLocModelsCache[i] = model;
                 }
             }
 
             if (modelCount > 1) {
-                model = ModelData.merge(LocModelLoader.mergeLocModelsCache, modelCount);
+                model = ModelData.merge(this.mergeLocModelsCache, modelCount);
             }
         } else {
             let index = -1;
@@ -120,12 +120,12 @@ export class LocModelLoader {
                 }
 
                 if (modelCount > 1) {
-                    LocModelLoader.mergeLocModelsCache[i] = model;
+                    this.mergeLocModelsCache[i] = model;
                 }
             }
 
             if (modelCount > 1) {
-                model = ModelData.merge(LocModelLoader.mergeLocModelsCache, modelCount);
+                model = ModelData.merge(this.mergeLocModelsCache, modelCount);
             }
         }
 
