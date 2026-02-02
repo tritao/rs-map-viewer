@@ -57,6 +57,17 @@ export class MemoryStore implements CacheStore {
     }
 
     read(indexId: number, archiveId: number): Int8Array {
+        const stream = this.openArchiveStream(indexId, archiveId);
+        const data = new Int8Array(stream.size);
+        let offset = 0;
+        for (const chunk of stream.chunks) {
+            data.set(chunk, offset);
+            offset += chunk.length;
+        }
+        return data;
+    }
+
+    openArchiveStream(indexId: number, archiveId: number): { readonly size: number; readonly chunks: Iterable<Int8Array> } {
         if (indexId < 0) {
             throw new Error("Index id cannot be lower than 0");
         }
@@ -81,7 +92,19 @@ export class MemoryStore implements CacheStore {
         );
         const sectorCluster = SectorCluster.decode(sectorClusterBuf);
 
-        const data = new Int8Array(sectorCluster.size);
+        const chunks = this.iterateArchiveSectors(archiveId, sectorIndexId, extended, sectorCluster);
+        return {
+            size: sectorCluster.size,
+            chunks,
+        };
+    }
+
+    private *iterateArchiveSectors(
+        archiveId: number,
+        sectorIndexId: number,
+        extended: boolean,
+        sectorCluster: SectorCluster,
+    ): Iterable<Int8Array> {
         let chunk = 0;
         let remaining = sectorCluster.size;
         let sectorPtr = sectorCluster.sector * Sector.SIZE;
@@ -107,9 +130,8 @@ export class MemoryStore implements CacheStore {
             } else {
                 Sector.decode(sector, sectorBuffer, actualDataSize);
             }
-            if (remaining > dataSize) {
-                data.set(sector.data, sectorCluster.size - remaining);
 
+            if (remaining > dataSize) {
                 if (sector.indexId !== sectorIndexId) {
                     throw new Error(
                         `Sector index id mismatch. expected: ${sectorIndexId} got: ${sector.indexId}`,
@@ -127,14 +149,11 @@ export class MemoryStore implements CacheStore {
                 }
 
                 chunk++;
-
                 sectorPtr = sector.nextSector * Sector.SIZE;
-            } else {
-                data.set(sector.data.subarray(0, remaining), sectorCluster.size - remaining);
             }
-            remaining -= dataSize;
-        }
 
-        return data;
+            remaining -= dataSize;
+            yield sector.data;
+        }
     }
 }
