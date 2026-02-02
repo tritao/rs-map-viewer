@@ -1,7 +1,7 @@
 import JavaRandom from "../../../../util/JavaRandom";
 import { nextIntJagex } from "../../../../util/MathUtil";
 import { ByteBuffer } from "../../../io/ByteBuffer";
-import { createPermutations, TextureGenerator } from "../TextureGenerator";
+import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 enum VoronoiOutputMode {
@@ -54,8 +54,12 @@ export class VoronoiNoiseOperation extends TextureOperation {
     }
 
     override init() {
-        this.permutations = createPermutations(this.seed);
         this.initFeaturePointOffsets();
+    }
+
+    override initCaches(textureGenerator: TextureGenerator, width: number, height: number): void {
+        super.initCaches(textureGenerator, width, height);
+        this.permutations = textureGenerator.getPermutations(this.seed);
     }
 
     initFeaturePointOffsets(): void {

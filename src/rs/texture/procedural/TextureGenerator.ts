@@ -49,6 +49,8 @@ export class TextureGenerator {
     readonly cosine = TEXTURE_COSINE_TABLE_Q12;
     readonly inverseSquareRoot = TEXTURE_INVERSE_SQUARE_ROOT_TABLE;
 
+    private readonly permutationCache: Map<number, Int8Array>;
+
     spriteIndex: CacheIndex;
     textureLoader: TextureLoader;
 
@@ -70,9 +72,14 @@ export class TextureGenerator {
 
     debug: boolean = false;
 
-    constructor(spriteIndex: CacheIndex, textureLoader: TextureLoader) {
+    constructor(
+        spriteIndex: CacheIndex,
+        textureLoader: TextureLoader,
+        permutationCache: Map<number, Int8Array> = new Map(),
+    ) {
         this.spriteIndex = spriteIndex;
         this.textureLoader = textureLoader;
+        this.permutationCache = permutationCache;
     }
 
     init(width: number, height: number): void {
@@ -109,6 +116,16 @@ export class TextureGenerator {
 
             this.brightness = brightness;
         }
+    }
+
+    getPermutations(seed: number): Int8Array {
+        const cached = this.permutationCache.get(seed);
+        if (cached) {
+            return cached;
+        }
+        const permutations = createPermutations(seed);
+        this.permutationCache.set(seed, permutations);
+        return permutations;
     }
 
     loadSprite(spriteId: number): IndexedSprite {

@@ -1,5 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
-import { createPermutations, TextureGenerator } from "../TextureGenerator";
+import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 const PERLIN_FADE_TABLE_Q12 = (() => {
@@ -75,7 +75,6 @@ export class PerlinNoiseOperation extends TextureOperation {
     }
 
     override init() {
-        this.initTable();
         this.initNoiseInput();
         for (let i = this.octaveCount - 1; i >= 1; i--) {
             const v = this.amplitudeByOctaveQ12[i];
@@ -86,8 +85,9 @@ export class PerlinNoiseOperation extends TextureOperation {
         }
     }
 
-    initTable() {
-        this.permutations = createPermutations(this.seed); // correct
+    override initCaches(textureGenerator: TextureGenerator, width: number, height: number): void {
+        super.initCaches(textureGenerator, width, height);
+        this.permutations = textureGenerator.getPermutations(this.seed); // correct
     }
 
     initNoiseInput() {
