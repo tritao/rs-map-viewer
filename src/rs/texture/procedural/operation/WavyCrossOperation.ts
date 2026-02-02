@@ -62,24 +62,26 @@ export class WavyCrossOperation extends TextureOperation {
         }
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
-            const local22 = textureGenerator.verticalGradient[line] - 2048;
+            const yCenteredQ12 = textureGenerator.verticalGradient[line] - 2048;
             for (let x = 0; x < textureGenerator.width; x++) {
-                const local33 = textureGenerator.horizontalGradient[x] - 2048;
-                let local38 = local33 + this.band0OffsetX;
-                local38 = local38 >= -2048 ? local38 : local38 + 4096;
-                let local53 = local22 + this.band0OffsetY;
-                local38 = local38 <= 2048 ? local38 : local38 - 4096;
-                local53 = local53 >= -2048 ? local53 : local53 + 4096;
-                local53 = local53 <= 2048 ? local53 : local53 - 4096;
-                let local87 = local33 + this.band1OffsetX;
-                let local92 = local22 + this.band1OffsetY;
-                local87 = local87 >= -2048 ? local87 : local87 + 4096;
-                local87 = local87 <= 2048 ? local87 : local87 - 4096;
-                local92 = local92 >= -2048 ? local92 : local92 + 4096;
-                local92 = local92 <= 2048 ? local92 : local92 - 4096;
+                const xCenteredQ12 = textureGenerator.horizontalGradient[x] - 2048;
+
+                let band0X = xCenteredQ12 + this.band0OffsetX;
+                band0X = band0X >= -2048 ? band0X : band0X + 4096;
+                let band0Y = yCenteredQ12 + this.band0OffsetY;
+                band0X = band0X <= 2048 ? band0X : band0X - 4096;
+                band0Y = band0Y >= -2048 ? band0Y : band0Y + 4096;
+                band0Y = band0Y <= 2048 ? band0Y : band0Y - 4096;
+
+                let band1X = xCenteredQ12 + this.band1OffsetX;
+                let band1Y = yCenteredQ12 + this.band1OffsetY;
+                band1X = band1X >= -2048 ? band1X : band1X + 4096;
+                band1X = band1X <= 2048 ? band1X : band1X - 4096;
+                band1Y = band1Y >= -2048 ? band1Y : band1Y + 4096;
+                band1Y = band1Y <= 2048 ? band1Y : band1Y - 4096;
                 output[x] =
-                    this.isInWavyAntiDiagonalBand(local38, local53) ||
-                    this.isInWavyDiagonalBand(local87, local92)
+                    this.isInWavyAntiDiagonalBand(band0X, band0Y) ||
+                    this.isInWavyDiagonalBand(band1X, band1Y)
                         ? 4096
                         : 0;
             }
