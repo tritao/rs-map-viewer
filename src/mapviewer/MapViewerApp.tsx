@@ -5,7 +5,7 @@ import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { DownloadProgress } from "../rs/cache/CacheLoader";
-import { BrowserCacheLoader } from "../rs/cache/BrowserCacheLoader";
+import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { fetchCacheList, loadCacheFiles } from "../util/Caches";

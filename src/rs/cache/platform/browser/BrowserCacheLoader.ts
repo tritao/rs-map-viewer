@@ -1,4 +1,4 @@
-import { CachedFile, CacheLoader, DownloadProgress, ProgressListener } from './CacheLoader'
+import { CachedFile, CacheLoader, DownloadProgress, ProgressListener } from "../../CacheLoader";
 
 function ReadableBufferStream(ab: ArrayBuffer): ReadableStream<Uint8Array> {
     return new ReadableStream({
