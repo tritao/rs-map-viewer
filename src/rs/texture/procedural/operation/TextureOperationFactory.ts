@@ -1,6 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
 import { ArithmeticOperation } from "./ArithmeticOperation";
-import { BinaryOperation } from "./BinaryOperation";
 import { BlurOperation } from "./BlurOperation";
 import { BricksOperation } from "./BricksOperation";
 import { BrightnessOperation } from "./BrightnessOperation";
@@ -22,13 +21,14 @@ import { KaleidoscopeOperation } from "./KaleidoscopeOperation";
 import { LineNoiseOperation } from "./LineNoiseOperation";
 import { MandelbrotOperation } from "./MandelbrotOperation";
 import { MirrorOperation } from "./MirrorOperation";
-import { MixerOperation } from "./MixerOperation";
+import { LerpOperation } from "./LerpOperation";
 import { MonochromeEdgeDetectorOperation } from "./MonochromeEdgeDetectorOperation";
 import { NormalMapOperation } from "./NormalMapOperation";
 import { PerlinNoiseOperation } from "./PerlinNoiseOperation";
 import { PseudoRandomNoiseOperation } from "./PseudoRandomNoiseOperation";
 import { RangeOperation } from "./RangeOperation";
-import { RasterizerOperation } from "./RasterizerOperation";
+import { RangeThresholdOperation } from "./RangeThresholdOperation";
+import { ShapeRasterizerOperation } from "./ShapeRasterizerOperation";
 import { SpriteSourceOperation } from "./SpriteSourceOperation";
 import { SquareWaveformOperation } from "./SquareWaveformOperation";
 import { TextureOperation } from "./TextureOperation";
@@ -87,7 +87,7 @@ export class TextureOperationFactory {
             case 20:
                 return new TilingOperation();
             case 21:
-                return new MixerOperation();
+                return new LerpOperation();
             case 22:
                 return new InvertOperation();
             case 23:
@@ -97,13 +97,13 @@ export class TextureOperationFactory {
             case 25:
                 return new BrightnessOperation();
             case 26:
-                return new BinaryOperation();
+                return new RangeThresholdOperation();
             case 27:
                 return new SquareWaveformOperation();
             case 28:
                 return new IrregularBricksOperation();
             case 29:
-                return new RasterizerOperation();
+                return new ShapeRasterizerOperation();
             case 30:
                 return new RangeOperation();
             case 31:

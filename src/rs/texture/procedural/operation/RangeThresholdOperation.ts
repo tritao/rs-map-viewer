@@ -2,7 +2,7 @@ import { ByteBuffer } from "../../../io/ByteBuffer";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
-export class BinaryOperation extends TextureOperation {
+export class RangeThresholdOperation extends TextureOperation {
     minValue: number = 0;
     maxValue: number = 4096;
 

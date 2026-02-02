@@ -4,7 +4,7 @@ import { ArrayUtils } from "../../../util/ArrayUtils";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
-export class RasterizerOperation extends TextureOperation {
+export class ShapeRasterizerOperation extends TextureOperation {
     shapes?: RasterizerOperationShape[];
 
     constructor() {

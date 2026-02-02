@@ -2,7 +2,7 @@ import { ByteBuffer } from "../../../io/ByteBuffer";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
-export class MixerOperation extends TextureOperation {
+export class LerpOperation extends TextureOperation {
     constructor() {
         super(3, false);
     }
