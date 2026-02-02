@@ -6,6 +6,34 @@ export interface CollisionData {
     flags: Int32Array;
 }
 
+export enum CollisionFlag {
+    Loc = 0x100,
+    LocProjectile = 0x20000,
+
+    BlockedByFloor = 0x200000,
+    BlockedByFloorDecoration = 0x40000,
+
+    WallWest = 0x80,
+    WallEast = 0x8,
+    WallNorth = 0x2,
+    WallSouth = 0x20,
+
+    WallNorthWest = 0x1,
+    WallNorthEast = 0x4,
+    WallSouthEast = 0x10,
+    WallSouthWest = 0x40,
+
+    ProjectileWallWest = 0x10000,
+    ProjectileWallEast = 0x1000,
+    ProjectileWallNorth = 0x400,
+    ProjectileWallSouth = 0x4000,
+
+    ProjectileWallNorthWest = 0x200,
+    ProjectileWallNorthEast = 0x800,
+    ProjectileWallSouthEast = 0x2000,
+    ProjectileWallSouthWest = 0x8000,
+}
+
 export class CollisionMap {
     sizeX: number;
     sizeY: number;
@@ -70,24 +98,24 @@ export class CollisionMap {
     }
 
     setBlockedByFloor(x: number, y: number) {
-        this.flag(x, y, 0x200000);
+        this.flag(x, y, CollisionFlag.BlockedByFloor);
     }
 
     setBlockedByFloorDec(x: number, y: number) {
-        this.flag(x, y, 0x40000);
+        this.flag(x, y, CollisionFlag.BlockedByFloorDecoration);
     }
 
     addLoc(x: number, y: number, sizeX: number, sizeY: number, blockProjectile: boolean) {
-        let flag = 0x100;
+        let flags = CollisionFlag.Loc;
         if (blockProjectile) {
-            flag += 0x20000;
+            flags |= CollisionFlag.LocProjectile;
         }
 
         for (let fx = x; fx < sizeX + x; fx++) {
             if (fx >= 0 && fx < this.sizeX) {
                 for (let fy = y; fy < y + sizeY; fy++) {
                     if (fy >= 0 && fy < this.sizeY) {
-                        this.flag(fx, fy, flag);
+                        this.flag(fx, fy, flags);
                     }
                 }
             }
@@ -97,142 +125,158 @@ export class CollisionMap {
     addWall(x: number, y: number, type: LocModelType, rotation: number, blockProjectile: boolean) {
         if (type === LocModelType.WALL) {
             if (rotation === 0) {
-                this.flag(x, y, 128);
-                this.flag(x - 1, y, 8);
+                this.flag(x, y, CollisionFlag.WallWest);
+                this.flag(x - 1, y, CollisionFlag.WallEast);
             }
 
             if (rotation === 1) {
-                this.flag(x, y, 2);
-                this.flag(x, y + 1, 32);
+                this.flag(x, y, CollisionFlag.WallNorth);
+                this.flag(x, y + 1, CollisionFlag.WallSouth);
             }
 
             if (rotation === 2) {
-                this.flag(x, y, 8);
-                this.flag(x + 1, y, 128);
+                this.flag(x, y, CollisionFlag.WallEast);
+                this.flag(x + 1, y, CollisionFlag.WallWest);
             }
 
             if (rotation === 3) {
-                this.flag(x, y, 32);
-                this.flag(x, y - 1, 2);
+                this.flag(x, y, CollisionFlag.WallSouth);
+                this.flag(x, y - 1, CollisionFlag.WallNorth);
             }
         }
 
         if (type === LocModelType.WALL_TRI_CORNER || type === LocModelType.WALL_RECT_CORNER) {
             if (rotation === 0) {
-                this.flag(x, y, 1);
-                this.flag(x - 1, y + 1, 16);
+                this.flag(x, y, CollisionFlag.WallNorthWest);
+                this.flag(x - 1, y + 1, CollisionFlag.WallSouthEast);
             }
 
             if (rotation === 1) {
-                this.flag(x, y, 4);
-                this.flag(x + 1, y + 1, 64);
+                this.flag(x, y, CollisionFlag.WallNorthEast);
+                this.flag(x + 1, y + 1, CollisionFlag.WallSouthWest);
             }
 
             if (rotation === 2) {
-                this.flag(x, y, 16);
-                this.flag(x + 1, y - 1, 1);
+                this.flag(x, y, CollisionFlag.WallSouthEast);
+                this.flag(x + 1, y - 1, CollisionFlag.WallNorthWest);
             }
 
             if (rotation === 3) {
-                this.flag(x, y, 64);
-                this.flag(x - 1, y - 1, 4);
+                this.flag(x, y, CollisionFlag.WallSouthWest);
+                this.flag(x - 1, y - 1, CollisionFlag.WallNorthEast);
             }
         }
 
         if (type === LocModelType.WALL_CORNER) {
             if (rotation === 0) {
-                this.flag(x, y, 130);
-                this.flag(x - 1, y, 8);
-                this.flag(x, y + 1, 32);
+                this.flag(x, y, CollisionFlag.WallWest | CollisionFlag.WallNorth);
+                this.flag(x - 1, y, CollisionFlag.WallEast);
+                this.flag(x, y + 1, CollisionFlag.WallSouth);
             }
 
             if (rotation === 1) {
-                this.flag(x, y, 10);
-                this.flag(x, y + 1, 32);
-                this.flag(x + 1, y, 128);
+                this.flag(x, y, CollisionFlag.WallEast | CollisionFlag.WallNorth);
+                this.flag(x, y + 1, CollisionFlag.WallSouth);
+                this.flag(x + 1, y, CollisionFlag.WallWest);
             }
 
             if (rotation === 2) {
-                this.flag(x, y, 40);
-                this.flag(x + 1, y, 128);
-                this.flag(x, y - 1, 2);
+                this.flag(x, y, CollisionFlag.WallEast | CollisionFlag.WallSouth);
+                this.flag(x + 1, y, CollisionFlag.WallWest);
+                this.flag(x, y - 1, CollisionFlag.WallNorth);
             }
 
             if (rotation === 3) {
-                this.flag(x, y, 160);
-                this.flag(x, y - 1, 2);
-                this.flag(x - 1, y, 8);
+                this.flag(x, y, CollisionFlag.WallWest | CollisionFlag.WallSouth);
+                this.flag(x, y - 1, CollisionFlag.WallNorth);
+                this.flag(x - 1, y, CollisionFlag.WallEast);
             }
         }
 
         if (blockProjectile) {
             if (type === LocModelType.WALL) {
                 if (rotation === 0) {
-                    this.flag(x, y, 65536);
-                    this.flag(x - 1, y, 4096);
+                    this.flag(x, y, CollisionFlag.ProjectileWallWest);
+                    this.flag(x - 1, y, CollisionFlag.ProjectileWallEast);
                 }
 
                 if (rotation === 1) {
-                    this.flag(x, y, 1024);
-                    this.flag(x, y + 1, 16384);
+                    this.flag(x, y, CollisionFlag.ProjectileWallNorth);
+                    this.flag(x, y + 1, CollisionFlag.ProjectileWallSouth);
                 }
 
                 if (rotation === 2) {
-                    this.flag(x, y, 4096);
-                    this.flag(x + 1, y, 65536);
+                    this.flag(x, y, CollisionFlag.ProjectileWallEast);
+                    this.flag(x + 1, y, CollisionFlag.ProjectileWallWest);
                 }
 
                 if (rotation === 3) {
-                    this.flag(x, y, 16384);
-                    this.flag(x, y - 1, 1024);
+                    this.flag(x, y, CollisionFlag.ProjectileWallSouth);
+                    this.flag(x, y - 1, CollisionFlag.ProjectileWallNorth);
                 }
             }
 
             if (type === LocModelType.WALL_TRI_CORNER || type === LocModelType.WALL_RECT_CORNER) {
                 if (rotation === 0) {
-                    this.flag(x, y, 512);
-                    this.flag(x - 1, y + 1, 8192);
+                    this.flag(x, y, CollisionFlag.ProjectileWallNorthWest);
+                    this.flag(x - 1, y + 1, CollisionFlag.ProjectileWallSouthEast);
                 }
 
                 if (rotation === 1) {
-                    this.flag(x, y, 2048);
-                    this.flag(x + 1, y + 1, 32768);
+                    this.flag(x, y, CollisionFlag.ProjectileWallNorthEast);
+                    this.flag(x + 1, y + 1, CollisionFlag.ProjectileWallSouthWest);
                 }
 
                 if (rotation === 2) {
-                    this.flag(x, y, 8192);
-                    this.flag(x + 1, y - 1, 512);
+                    this.flag(x, y, CollisionFlag.ProjectileWallSouthEast);
+                    this.flag(x + 1, y - 1, CollisionFlag.ProjectileWallNorthWest);
                 }
 
                 if (rotation === 3) {
-                    this.flag(x, y, 32768);
-                    this.flag(x - 1, y - 1, 2048);
+                    this.flag(x, y, CollisionFlag.ProjectileWallSouthWest);
+                    this.flag(x - 1, y - 1, CollisionFlag.ProjectileWallNorthEast);
                 }
             }
 
             if (type === LocModelType.WALL_CORNER) {
                 if (rotation === 0) {
-                    this.flag(x, y, 66560);
-                    this.flag(x - 1, y, 4096);
-                    this.flag(x, y + 1, 16384);
+                    this.flag(
+                        x,
+                        y,
+                        CollisionFlag.ProjectileWallWest | CollisionFlag.ProjectileWallNorth,
+                    );
+                    this.flag(x - 1, y, CollisionFlag.ProjectileWallEast);
+                    this.flag(x, y + 1, CollisionFlag.ProjectileWallSouth);
                 }
 
                 if (rotation === 1) {
-                    this.flag(x, y, 5120);
-                    this.flag(x, y + 1, 16384);
-                    this.flag(x + 1, y, 65536);
+                    this.flag(
+                        x,
+                        y,
+                        CollisionFlag.ProjectileWallEast | CollisionFlag.ProjectileWallNorth,
+                    );
+                    this.flag(x, y + 1, CollisionFlag.ProjectileWallSouth);
+                    this.flag(x + 1, y, CollisionFlag.ProjectileWallWest);
                 }
 
                 if (rotation === 2) {
-                    this.flag(x, y, 20480);
-                    this.flag(x + 1, y, 65536);
-                    this.flag(x, y - 1, 1024);
+                    this.flag(
+                        x,
+                        y,
+                        CollisionFlag.ProjectileWallEast | CollisionFlag.ProjectileWallSouth,
+                    );
+                    this.flag(x + 1, y, CollisionFlag.ProjectileWallWest);
+                    this.flag(x, y - 1, CollisionFlag.ProjectileWallNorth);
                 }
 
                 if (rotation === 3) {
-                    this.flag(x, y, 81920);
-                    this.flag(x, y - 1, 1024);
-                    this.flag(x - 1, y, 4096);
+                    this.flag(
+                        x,
+                        y,
+                        CollisionFlag.ProjectileWallWest | CollisionFlag.ProjectileWallSouth,
+                    );
+                    this.flag(x, y - 1, CollisionFlag.ProjectileWallNorth);
+                    this.flag(x - 1, y, CollisionFlag.ProjectileWallEast);
                 }
             }
         }

@@ -31,7 +31,7 @@ import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpritePixels } from "../../sprite/SpritePixels";
 import { TextureLoader } from "../../texture/TextureLoader";
 import { INVALID_HSL_COLOR } from "../../util/ColorUtil";
-import { Scene, TILE_FLAGS_BRIDGE } from "../../scene/Scene";
+import { Scene, TileRenderFlag } from "../../scene/Scene";
 import { getIdFromTag, isEntityInteractive } from "../../scene/entity/EntityTag";
 
 const tileShape2D = [
@@ -79,17 +79,22 @@ export class MapImageRenderer {
 
             for (let tileX = 0; tileX < scene.sizeX; tileX++) {
                 let realLevel = level;
-                if ((scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+                if ((scene.tileRenderFlags[1][tileX][tileY] & TileRenderFlag.Bridge) !== 0) {
                     realLevel++;
                 }
-                if ((scene.tileRenderFlags[level][tileX][tileY] & 0x18) === 0) {
+                if (
+                    (scene.tileRenderFlags[level][tileX][tileY] &
+                        (TileRenderFlag.RenderOnLowerLevel | TileRenderFlag.ExcludeFromPlayerLevel)) ===
+                    0
+                ) {
                     this.drawTile(scene, pixels, offset, width, realLevel, tileX, tileY);
                 }
 
                 if (
                     level < 3 &&
                     realLevel < 3 &&
-                    (scene.tileRenderFlags[level + 1][tileX][tileY] & 0x8) !== 0
+                    (scene.tileRenderFlags[level + 1][tileX][tileY] & TileRenderFlag.RenderOnLowerLevel) !==
+                        0
                 ) {
                     this.drawTile(scene, pixels, offset, width, realLevel + 1, tileX, tileY);
                 }
@@ -106,10 +111,14 @@ export class MapImageRenderer {
         for (let tileX = 0; tileX < scene.sizeX; tileX++) {
             for (let tileY = 0; tileY < scene.sizeY; tileY++) {
                 let realLevel = level;
-                if ((scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+                if ((scene.tileRenderFlags[1][tileX][tileY] & TileRenderFlag.Bridge) !== 0) {
                     realLevel++;
                 }
-                if ((scene.tileRenderFlags[level][tileX][tileY] & 0x18) === 0) {
+                if (
+                    (scene.tileRenderFlags[level][tileX][tileY] &
+                        (TileRenderFlag.RenderOnLowerLevel | TileRenderFlag.ExcludeFromPlayerLevel)) ===
+                    0
+                ) {
                     this.drawLoc(
                         scene,
                         pixels,
@@ -125,7 +134,8 @@ export class MapImageRenderer {
                 if (
                     level < 3 &&
                     realLevel < 3 &&
-                    (scene.tileRenderFlags[level + 1][tileX][tileY] & 0x8) !== 0
+                    (scene.tileRenderFlags[level + 1][tileX][tileY] & TileRenderFlag.RenderOnLowerLevel) !==
+                        0
                 ) {
                     this.drawLoc(
                         scene,

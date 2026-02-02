@@ -12,7 +12,7 @@ import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
 import { generateHeight } from "../util/HeightCalc";
 import { CollisionMap } from "./CollisionMap";
-import { Scene, TILE_FLAGS_BRIDGE } from "./Scene";
+import { Scene, TileRenderFlag } from "./Scene";
 import { SceneTileModel } from "./SceneTileModel";
 import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
@@ -260,9 +260,9 @@ export class SceneBuilder {
                     if (!scene.isWithinBounds(level, sceneX, sceneY)) {
                         continue;
                     }
-                    if ((scene.tileRenderFlags[level][x][y] & 0x1) === 1) {
+                    if ((scene.tileRenderFlags[level][x][y] & TileRenderFlag.Blocked) !== 0) {
                         let realLevel = level;
-                        if ((scene.tileRenderFlags[1][x][y] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+                        if ((scene.tileRenderFlags[1][x][y] & TileRenderFlag.Bridge) !== 0) {
                             realLevel = level - 1;
                         }
 
@@ -386,7 +386,7 @@ export class SceneBuilder {
                     sceneY < scene.sizeY - 1
                 ) {
                     let transformedLevel = level;
-                    if ((scene.tileRenderFlags[1][sceneX][sceneY] & 2) === 2) {
+                    if ((scene.tileRenderFlags[1][sceneX][sceneY] & TileRenderFlag.Bridge) !== 0) {
                         transformedLevel = level - 1;
                     }
 
@@ -1308,7 +1308,7 @@ export class SceneBuilder {
             const id = buffer.readUnsignedShort();
             if (
                 level > 0 &&
-                (scene.tileRenderFlags[1][x + borderSize][y + borderSize] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE
+                (scene.tileRenderFlags[1][x + borderSize][y + borderSize] & TileRenderFlag.Bridge) !== 0
             ) {
                 level--;
             }

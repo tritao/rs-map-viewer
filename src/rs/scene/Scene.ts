@@ -11,7 +11,17 @@ import { Entity } from "./entity/Entity";
 import { EntityTag, EntityType, getEntityTypeFromTag } from "./entity/EntityTag";
 
 const MAX_LOC_PER_TILE = 5;
-export const TILE_FLAGS_BRIDGE = 0x2;
+
+export enum TileRenderFlag {
+    Blocked = 0x1,
+    Bridge = 0x2,
+    Inside = 0x4,
+    RenderOnLowerLevel = 0x8,
+    ExcludeFromPlayerLevel = 0x10,
+    Unknown0x20 = 0x20,
+}
+
+export const TILE_FLAGS_BRIDGE = TileRenderFlag.Bridge;
 
 export class Scene {
     static readonly MAX_LEVELS = 4;
@@ -413,11 +423,11 @@ export class Scene {
     }
 
     getTileMinLevel(level: number, tileX: number, tileY: number): number {
-        if ((this.tileRenderFlags[level][tileX][tileY] & 0x8) !== 0) {
+        if ((this.tileRenderFlags[level][tileX][tileY] & TileRenderFlag.RenderOnLowerLevel) !== 0) {
             return 0;
         } else if (
             level > 0 &&
-            (this.tileRenderFlags[level][tileX][tileY] & TILE_FLAGS_BRIDGE) !== 0
+            (this.tileRenderFlags[level][tileX][tileY] & TileRenderFlag.Bridge) !== 0
         ) {
             return level - 1;
         } else {
@@ -433,7 +443,7 @@ export class Scene {
     }
 
     isInside(level: number, tileX: number, tileY: number): boolean {
-        return (this.tileRenderFlags[level][tileX][tileY] & 0x4) !== 0;
+        return (this.tileRenderFlags[level][tileX][tileY] & TileRenderFlag.Inside) !== 0;
     }
 
     setTileMinLevels() {
@@ -447,10 +457,10 @@ export class Scene {
     }
 
     isPlayerLevel(level: number, tileX: number, tileY: number, playerLevel: number): boolean {
-        if ((this.tileRenderFlags[0][tileX][tileY] & TILE_FLAGS_BRIDGE) !== 0) {
+        if ((this.tileRenderFlags[0][tileX][tileY] & TileRenderFlag.Bridge) !== 0) {
             return true;
         }
-        if ((this.tileRenderFlags[level][tileX][tileY] & 0x10) !== 0) {
+        if ((this.tileRenderFlags[level][tileX][tileY] & TileRenderFlag.ExcludeFromPlayerLevel) !== 0) {
             return false;
         }
         return playerLevel === this.getTileMinLevel(level, tileX, tileY);
