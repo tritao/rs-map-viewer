@@ -4,68 +4,68 @@ import { ByteBuffer } from "../io/ByteBuffer";
 import { IndexedSprite } from "./IndexedSprite";
 
 export class SpriteLoader {
-    static spriteCount: number = 0;
-    static xOffsets?: Int32Array;
-    static yOffsets?: Int32Array;
-    static widths?: Int32Array;
-    static heights?: Int32Array;
-    static pixels?: Uint8Array[];
-    static width: number = 0;
-    static height: number = 0;
-    static palette?: Int32Array;
+    spriteCount: number = 0;
+    xOffsets!: Int32Array;
+    yOffsets!: Int32Array;
+    widths!: Int32Array;
+    heights!: Int32Array;
+    pixels!: Uint8Array[];
+    width: number = 0;
+    height: number = 0;
+    palette!: Int32Array;
 
-    static load(data: Int8Array): void {
+    load(data: Int8Array): this {
         const buffer = new ByteBuffer(data);
 
         buffer.offset = data.length - 2;
 
-        SpriteLoader.spriteCount = buffer.readUnsignedShort();
-        SpriteLoader.xOffsets = new Int32Array(SpriteLoader.spriteCount);
-        SpriteLoader.yOffsets = new Int32Array(SpriteLoader.spriteCount);
-        SpriteLoader.widths = new Int32Array(SpriteLoader.spriteCount);
-        SpriteLoader.heights = new Int32Array(SpriteLoader.spriteCount);
-        SpriteLoader.pixels = new Array(SpriteLoader.spriteCount);
+        this.spriteCount = buffer.readUnsignedShort();
+        this.xOffsets = new Int32Array(this.spriteCount);
+        this.yOffsets = new Int32Array(this.spriteCount);
+        this.widths = new Int32Array(this.spriteCount);
+        this.heights = new Int32Array(this.spriteCount);
+        this.pixels = new Array(this.spriteCount);
 
-        buffer.offset = data.length - 7 - SpriteLoader.spriteCount * 8;
+        buffer.offset = data.length - 7 - this.spriteCount * 8;
 
-        SpriteLoader.width = buffer.readUnsignedShort();
-        SpriteLoader.height = buffer.readUnsignedShort();
+        this.width = buffer.readUnsignedShort();
+        this.height = buffer.readUnsignedShort();
         const paletteSize = (buffer.readUnsignedByte() & 0xff) + 1;
 
-        for (let i = 0; i < SpriteLoader.spriteCount; i++) {
-            SpriteLoader.xOffsets[i] = buffer.readUnsignedShort();
+        for (let i = 0; i < this.spriteCount; i++) {
+            this.xOffsets[i] = buffer.readUnsignedShort();
         }
 
-        for (let i = 0; i < SpriteLoader.spriteCount; i++) {
-            SpriteLoader.yOffsets[i] = buffer.readUnsignedShort();
+        for (let i = 0; i < this.spriteCount; i++) {
+            this.yOffsets[i] = buffer.readUnsignedShort();
         }
 
-        for (let i = 0; i < SpriteLoader.spriteCount; i++) {
-            SpriteLoader.widths[i] = buffer.readUnsignedShort();
+        for (let i = 0; i < this.spriteCount; i++) {
+            this.widths[i] = buffer.readUnsignedShort();
         }
 
-        for (let i = 0; i < SpriteLoader.spriteCount; i++) {
-            SpriteLoader.heights[i] = buffer.readUnsignedShort();
+        for (let i = 0; i < this.spriteCount; i++) {
+            this.heights[i] = buffer.readUnsignedShort();
         }
 
-        buffer.offset = data.length - 7 - SpriteLoader.spriteCount * 8 - (paletteSize - 1) * 3;
+        buffer.offset = data.length - 7 - this.spriteCount * 8 - (paletteSize - 1) * 3;
 
-        SpriteLoader.palette = new Int32Array(paletteSize);
+        this.palette = new Int32Array(paletteSize);
 
         for (let i = 1; i < paletteSize; i++) {
-            SpriteLoader.palette[i] = buffer.readMedium();
-            if (SpriteLoader.palette[i] === 0) {
-                SpriteLoader.palette[i] = 1;
+            this.palette[i] = buffer.readMedium();
+            if (this.palette[i] === 0) {
+                this.palette[i] = 1;
             }
         }
 
         buffer.offset = 0;
 
-        for (let i = 0; i < SpriteLoader.spriteCount; i++) {
-            const width = SpriteLoader.widths[i];
-            const height = SpriteLoader.heights[i];
+        for (let i = 0; i < this.spriteCount; i++) {
+            const width = this.widths[i];
+            const height = this.heights[i];
             const pixelCount = width * height;
-            const pixels = (SpriteLoader.pixels[i] = new Uint8Array(pixelCount));
+            const pixels = (this.pixels[i] = new Uint8Array(pixelCount));
             const readPixelsDimension = buffer.readUnsignedByte();
             if (readPixelsDimension === 0) {
                 for (let pi = 0; pi < pixelCount; pi++) {
@@ -79,21 +79,14 @@ export class SpriteLoader {
                 }
             }
         }
+
+        return this;
     }
 
-    static reset() {
-        SpriteLoader.xOffsets = undefined;
-        SpriteLoader.yOffsets = undefined;
-        SpriteLoader.widths = undefined;
-        SpriteLoader.heights = undefined;
-        SpriteLoader.palette = undefined;
-        SpriteLoader.pixels = undefined;
-    }
-
-    static loadFromIndex(spriteIndex: CacheIndex, id: number): boolean {
+    loadFromIndex(spriteIndex: CacheIndex, id: number): boolean {
         const file = spriteIndex.getFile(id, 0);
         if (file) {
-            SpriteLoader.load(file.data);
+            this.load(file.data);
             return true;
         }
         return false;
@@ -160,65 +153,51 @@ export class SpriteLoader {
         return sprite;
     }
 
-    static loadIntoIndexedSprite(spriteIndex: CacheIndex, id: number): IndexedSprite | undefined {
-        if (
-            SpriteLoader.loadFromIndex(spriteIndex, id) &&
-            SpriteLoader.xOffsets &&
-            SpriteLoader.yOffsets &&
-            SpriteLoader.widths &&
-            SpriteLoader.heights &&
-            SpriteLoader.palette &&
-            SpriteLoader.pixels
-        ) {
-            const sprite = new IndexedSprite();
+    toIndexedSprite(index: number = 0): IndexedSprite {
+        const sprite = new IndexedSprite();
+        sprite.width = this.width;
+        sprite.height = this.height;
+        sprite.xOffset = this.xOffsets[index];
+        sprite.yOffset = this.yOffsets[index];
+        sprite.subWidth = this.widths[index];
+        sprite.subHeight = this.heights[index];
+        sprite.palette = this.palette;
+        sprite.pixels = this.pixels[index];
+        return sprite;
+    }
 
-            sprite.width = SpriteLoader.width;
-            sprite.height = SpriteLoader.height;
-            sprite.xOffset = SpriteLoader.xOffsets[0];
-            sprite.yOffset = SpriteLoader.yOffsets[0];
-            sprite.subWidth = SpriteLoader.widths[0];
-            sprite.subHeight = SpriteLoader.heights[0];
-            sprite.palette = SpriteLoader.palette;
-            sprite.pixels = SpriteLoader.pixels[0];
-
-            SpriteLoader.reset();
-
-            return sprite;
+    toIndexedSprites(): IndexedSprite[] {
+        const sprites = new Array<IndexedSprite>(this.spriteCount);
+        for (let i = 0; i < this.spriteCount; i++) {
+            const sprite = (sprites[i] = new IndexedSprite());
+            sprite.width = this.width;
+            sprite.height = this.height;
+            sprite.xOffset = this.xOffsets[i];
+            sprite.yOffset = this.yOffsets[i];
+            sprite.subWidth = this.widths[i];
+            sprite.subHeight = this.heights[i];
+            sprite.palette = this.palette;
+            sprite.pixels = this.pixels[i];
         }
-        return undefined;
+        return sprites;
+    }
+
+    static loadIntoIndexedSprite(spriteIndex: CacheIndex, id: number): IndexedSprite | undefined {
+        const loader = new SpriteLoader();
+        if (!loader.loadFromIndex(spriteIndex, id) || loader.spriteCount === 0) {
+            return undefined;
+        }
+        return loader.toIndexedSprite(0);
     }
 
     static loadIntoIndexedSprites(
         spriteIndex: CacheIndex,
         id: number,
     ): IndexedSprite[] | undefined {
-        if (
-            SpriteLoader.loadFromIndex(spriteIndex, id) &&
-            SpriteLoader.xOffsets &&
-            SpriteLoader.yOffsets &&
-            SpriteLoader.widths &&
-            SpriteLoader.heights &&
-            SpriteLoader.palette &&
-            SpriteLoader.pixels
-        ) {
-            const sprites = new Array<IndexedSprite>(SpriteLoader.spriteCount);
-            for (let i = 0; i < SpriteLoader.spriteCount; i++) {
-                const sprite = (sprites[i] = new IndexedSprite());
-
-                sprite.width = SpriteLoader.width;
-                sprite.height = SpriteLoader.height;
-                sprite.xOffset = SpriteLoader.xOffsets[i];
-                sprite.yOffset = SpriteLoader.yOffsets[i];
-                sprite.subWidth = SpriteLoader.widths[i];
-                sprite.subHeight = SpriteLoader.heights[i];
-                sprite.palette = SpriteLoader.palette;
-                sprite.pixels = SpriteLoader.pixels[i];
-            }
-
-            SpriteLoader.reset();
-
-            return sprites;
+        const loader = new SpriteLoader();
+        if (!loader.loadFromIndex(spriteIndex, id) || loader.spriteCount === 0) {
+            return undefined;
         }
-        return undefined;
+        return loader.toIndexedSprites();
     }
 }
