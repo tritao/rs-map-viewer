@@ -2,8 +2,14 @@ import { ByteBuffer } from "../../../io/ByteBuffer";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
+enum CurveInterpolationMode {
+    Linear = 0,
+    Cosine = 1,
+    Cubic = 2,
+}
+
 export class CurveOperation extends TextureOperation {
-    interpolationMode: number = 0;
+    interpolationMode: CurveInterpolationMode = CurveInterpolationMode.Linear;
 
     controlPoints!: number[][];
 
@@ -18,11 +24,11 @@ export class CurveOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.interpolationMode = buffer.readUnsignedByte();
+            this.interpolationMode = buffer.readUnsignedByte() as CurveInterpolationMode;
             const controlPointCount = buffer.readUnsignedByte();
             this.controlPoints = new Array(controlPointCount);
-            for (let i = 0; i < controlPointCount; i++) {
-                const point = (this.controlPoints[i] = new Array(2));
+            for (let controlPointIndex = 0; controlPointIndex < controlPointCount; controlPointIndex++) {
+                const point = (this.controlPoints[controlPointIndex] = new Array(2));
                 point[0] = buffer.readUnsignedShort();
                 point[1] = buffer.readUnsignedShort();
             }
@@ -30,15 +36,18 @@ export class CurveOperation extends TextureOperation {
     }
 
     computeExtrapolatedEndpoints(): void {
-        const start0 = this.controlPoints[0];
-        const start1 = this.controlPoints[1];
-        const end0 = this.controlPoints[this.controlPoints.length - 2];
-        const end1 = this.controlPoints[this.controlPoints.length - 1];
+        const firstControlPoint = this.controlPoints[0];
+        const secondControlPoint = this.controlPoints[1];
+        const secondLastControlPoint = this.controlPoints[this.controlPoints.length - 2];
+        const lastControlPoint = this.controlPoints[this.controlPoints.length - 1];
         this.extrapolatedStartPoint = [
-            start0[0] + start0[0] - start1[0],
-            start0[1] - start1[1] + start0[1],
+            firstControlPoint[0] + firstControlPoint[0] - secondControlPoint[0],
+            firstControlPoint[1] - secondControlPoint[1] + firstControlPoint[1],
         ];
-        this.extrapolatedEndPoint = [end0[0] - end1[0] + end0[0], end0[1] - end1[1] + end0[1]];
+        this.extrapolatedEndPoint = [
+            secondLastControlPoint[0] - lastControlPoint[0] + secondLastControlPoint[0],
+            secondLastControlPoint[1] - lastControlPoint[1] + secondLastControlPoint[1],
+        ];
     }
 
     getControlPoint(index: number): number[] {
@@ -61,7 +70,7 @@ export class CurveOperation extends TextureOperation {
         if (this.controlPoints.length < 2) {
             throw new Error("Curve operation requires at least two control points");
         }
-        if (this.interpolationMode === 2) {
+        if (this.interpolationMode === CurveInterpolationMode.Cubic) {
             this.computeExtrapolatedEndpoints();
         }
         this.buildLookupTable();
@@ -92,16 +101,16 @@ export class CurveOperation extends TextureOperation {
 
     buildLookupTable(): void {
         switch (this.interpolationMode) {
-            case 2:
+            case CurveInterpolationMode.Cubic:
                 for (let index = 0; index < 257; index++) {
-                    const indexTimes16 = index * 16;
+                    const inputQ12 = index * 16;
                     let segmentIndex: number;
                     for (
                         segmentIndex = 1;
                         segmentIndex < this.controlPoints.length - 1;
                         segmentIndex++
                     ) {
-                        if (this.controlPoints[segmentIndex][0] > indexTimes16) {
+                        if (this.controlPoints[segmentIndex][0] > inputQ12) {
                             break;
                         }
                     }
@@ -111,17 +120,17 @@ export class CurveOperation extends TextureOperation {
                     const yPrev = prevPoint[1];
                     const yNext = nextPoint[1];
                     const yNextNext = this.getControlPoint(segmentIndex + 1)[1];
-                    const interpIn =
-                        (((indexTimes16 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
+                    const tQ12 =
+                        (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
                         0;
-                    const xSq = ((interpIn * interpIn) / 4096) | 0;
+                    const tSquaredQ12 = ((tQ12 * tQ12) / 4096) | 0;
                     const coefA = yPrev - yPrevPrev + (yNextNext - yNext);
                     const coefB = yPrevPrev - yPrev - coefA;
                     const coefC = yNext - yPrevPrev;
                     const coefD = yPrev;
-                    const cubicTerm = (xSq * ((interpIn * coefA) >> 12)) >> 12;
-                    const quadraticTerm = ((xSq * coefB) / 4096) | 0;
-                    const linearTerm = ((interpIn * coefC) / 4096) | 0;
+                    const cubicTerm = (tSquaredQ12 * ((tQ12 * coefA) >> 12)) >> 12;
+                    const quadraticTerm = ((tSquaredQ12 * coefB) / 4096) | 0;
+                    const linearTerm = ((tQ12 * coefC) / 4096) | 0;
                     let out = linearTerm + cubicTerm + quadraticTerm + coefD;
                     if (out <= -32768) {
                         out = -32767;
@@ -132,28 +141,30 @@ export class CurveOperation extends TextureOperation {
                     this.lookupTable[index] = out;
                 }
                 break;
-            case 1: // COSINE INTERPOLATION
+            case CurveInterpolationMode.Cosine:
                 for (let index = 0; index < 257; index++) {
-                    const indexTimes16 = index * 16;
+                    const inputQ12 = index * 16;
                     let segmentIndex: number;
                     for (
                         segmentIndex = 1;
                         segmentIndex < this.controlPoints.length - 1;
                         segmentIndex++
                     ) {
-                        if (this.controlPoints[segmentIndex][0] > indexTimes16) {
+                        if (this.controlPoints[segmentIndex][0] > inputQ12) {
                             break;
                         }
                     }
                     const prevPoint = this.controlPoints[segmentIndex - 1];
                     const nextPoint = this.controlPoints[segmentIndex];
-                    const interpIn =
-                        (((indexTimes16 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
+                    const tQ12 =
+                        (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
                         0;
-                    const nMul =
-                        ((4096 - TextureGenerator.COSINE[((interpIn & 8187) / 32) | 0]) / 2) | 0;
-                    const pMul = 4096 - nMul;
-                    let out = ((pMul * prevPoint[1] + nextPoint[1] * nMul) / 4096) | 0;
+                    const nextWeightQ12 =
+                        ((4096 - TextureGenerator.COSINE[((tQ12 & 8187) / 32) | 0]) / 2) | 0;
+                    const prevWeightQ12 = 4096 - nextWeightQ12;
+                    let out =
+                        ((prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12) / 4096) |
+                        0;
                     if (out <= -32768) {
                         out = -32767;
                     }
@@ -163,26 +174,28 @@ export class CurveOperation extends TextureOperation {
                     this.lookupTable[index] = out;
                 }
                 break;
-            case 0: // LINEAR INTERPOLATION
+            case CurveInterpolationMode.Linear:
                 for (let index = 0; index < 257; index++) {
-                    const indexTimes16 = index * 16;
+                    const inputQ12 = index * 16;
                     let segmentIndex: number;
                     for (
                         segmentIndex = 1;
                         segmentIndex < this.controlPoints.length - 1;
                         segmentIndex++
                     ) {
-                        if (this.controlPoints[segmentIndex][0] > indexTimes16) {
+                        if (this.controlPoints[segmentIndex][0] > inputQ12) {
                             break;
                         }
                     }
                     const prevPoint = this.controlPoints[segmentIndex - 1];
                     const nextPoint = this.controlPoints[segmentIndex];
-                    const nMul =
-                        (((indexTimes16 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
+                    const nextWeightQ12 =
+                        (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
                         0;
-                    const pMul = 4096 - nMul;
-                    let out = ((pMul * prevPoint[1] + nextPoint[1] * nMul) / 4096) | 0;
+                    const prevWeightQ12 = 4096 - nextWeightQ12;
+                    let out =
+                        ((prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12) / 4096) |
+                        0;
                     if (out <= -32768) {
                         out = -32767;
                     }

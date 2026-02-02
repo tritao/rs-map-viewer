@@ -2,8 +2,23 @@ import { ByteBuffer } from "../../../io/ByteBuffer";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
+enum ArithmeticBlendMode {
+    Add = 1,
+    Subtract = 2,
+    Multiply = 3,
+    Divide = 4,
+    Screen = 5,
+    Overlay = 6,
+    ColorDodge = 7,
+    ColorBurn = 8,
+    Min = 9,
+    Max = 10,
+    Difference = 11,
+    Exclusion = 12,
+}
+
 export class ArithmeticOperation extends TextureOperation {
-    operation: number = 6;
+    blendMode: ArithmeticBlendMode = ArithmeticBlendMode.Overlay;
 
     constructor() {
         super(2, false);
@@ -11,7 +26,7 @@ export class ArithmeticOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.operation = buffer.readUnsignedByte();
+            this.blendMode = buffer.readUnsignedByte() as ArithmeticBlendMode;
         } else if (field === 1) {
             this.isMonochrome = buffer.readUnsignedByte() === 1;
         }
@@ -26,81 +41,93 @@ export class ArithmeticOperation extends TextureOperation {
         if (this.monochromeImageCache.dirty) {
             const inputA = this.getMonochromeInput(textureGenerator, 0, line);
             const inputB = this.getMonochromeInput(textureGenerator, 1, line);
-            switch (this.operation) {
-                case 1:
+            switch (this.blendMode) {
+                case ArithmeticBlendMode.Add:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         output[pixel] = inputA[pixel] + inputB[pixel];
                     }
                     break;
-                case 2:
+                case ArithmeticBlendMode.Subtract:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         output[pixel] = inputA[pixel] - inputB[pixel];
                     }
                     break;
-                case 3:
+                case ArithmeticBlendMode.Multiply:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         output[pixel] = (inputB[pixel] * inputA[pixel]) / 4096;
                     }
                     break;
-                case 4:
+                case ArithmeticBlendMode.Divide:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const b = inputB[pixel];
-                        output[pixel] = b === 0 ? 4096 : (inputA[pixel] * 4096) / b;
+                        const inputBValue = inputB[pixel];
+                        output[pixel] =
+                            inputBValue === 0 ? 4096 : (inputA[pixel] * 4096) / inputBValue;
                     }
                     break;
-                case 5:
+                case ArithmeticBlendMode.Screen:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         output[pixel] =
                             4096 - ((4096 - inputA[pixel]) * (4096 - inputB[pixel])) / 4096;
                     }
                     break;
-                case 6:
+                case ArithmeticBlendMode.Overlay:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const b = inputB[pixel];
+                        const inputBValue = inputB[pixel];
                         output[pixel] =
-                            b < 2048
-                                ? (b * inputA[pixel]) / 2048
-                                : 4096 - ((((4096 - inputA[pixel]) * (4096 - b)) / 2048) | 0);
+                            inputBValue < 2048
+                                ? (inputBValue * inputA[pixel]) / 2048
+                                : 4096 -
+                                  ((((4096 - inputA[pixel]) * (4096 - inputBValue)) / 2048) | 0);
                     }
                     break;
-                case 7:
+                case ArithmeticBlendMode.ColorDodge:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const a = inputA[pixel];
-                        output[pixel] = a === 4096 ? 4096 : (inputB[pixel] * 4096) / (4096 - a);
+                        const inputAValue = inputA[pixel];
+                        output[pixel] =
+                            inputAValue === 4096
+                                ? 4096
+                                : (inputB[pixel] * 4096) / (4096 - inputAValue);
                     }
                     break;
-                case 8:
+                case ArithmeticBlendMode.ColorBurn:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const a = inputA[pixel];
-                        output[pixel] = a === 0 ? 0 : 4096 - ((4096 - inputB[pixel]) * 4096) / a;
+                        const inputAValue = inputA[pixel];
+                        output[pixel] =
+                            inputAValue === 0
+                                ? 0
+                                : 4096 - ((4096 - inputB[pixel]) * 4096) / inputAValue;
                     }
                     break;
-                case 9:
+                case ArithmeticBlendMode.Min:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const b = inputB[pixel];
-                        const a = inputA[pixel];
-                        output[pixel] = Math.min(a, b);
+                        const inputAValue = inputA[pixel];
+                        const inputBValue = inputB[pixel];
+                        output[pixel] = Math.min(inputAValue, inputBValue);
                     }
                     break;
-                case 10:
+                case ArithmeticBlendMode.Max:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const a = inputA[pixel];
-                        const b = inputB[pixel];
-                        output[pixel] = Math.max(a, b);
+                        const inputAValue = inputA[pixel];
+                        const inputBValue = inputB[pixel];
+                        output[pixel] = Math.max(inputAValue, inputBValue);
                     }
                     break;
-                case 11:
+                case ArithmeticBlendMode.Difference:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const a = inputA[pixel];
-                        const b = inputB[pixel];
-                        output[pixel] = b < a ? a - b : b - a;
+                        const inputAValue = inputA[pixel];
+                        const inputBValue = inputB[pixel];
+                        output[pixel] =
+                            inputBValue < inputAValue
+                                ? inputAValue - inputBValue
+                                : inputBValue - inputAValue;
                     }
                     break;
-                case 12:
+                case ArithmeticBlendMode.Exclusion:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const a = inputB[pixel];
-                        const b = inputA[pixel];
-                        output[pixel] = a + b - (a * b) / 2048;
+                        const inputAValue = inputA[pixel];
+                        const inputBValue = inputB[pixel];
+                        output[pixel] =
+                            inputBValue + inputAValue - (inputBValue * inputAValue) / 2048;
                     }
                     break;
             }
@@ -125,29 +152,29 @@ export class ArithmeticOperation extends TextureOperation {
             const inputBR = inputB[0];
             const inputBG = inputB[1];
             const inputBB = inputB[2];
-            switch (this.operation) {
-                case 1:
+            switch (this.blendMode) {
+                case ArithmeticBlendMode.Add:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         outputR[pixel] = inputAR[pixel] + inputBR[pixel];
                         outputG[pixel] = inputAG[pixel] + inputBG[pixel];
                         outputB[pixel] = inputAB[pixel] + inputBB[pixel];
                     }
                     break;
-                case 2:
+                case ArithmeticBlendMode.Subtract:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         outputR[pixel] = inputAR[pixel] - inputBR[pixel];
                         outputG[pixel] = inputAG[pixel] - inputBG[pixel];
                         outputB[pixel] = inputAB[pixel] - inputBB[pixel];
                     }
                     break;
-                case 3:
+                case ArithmeticBlendMode.Multiply:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         outputR[pixel] = (inputBR[pixel] * inputAR[pixel]) / 4096;
                         outputG[pixel] = (inputBG[pixel] * inputAG[pixel]) / 4096;
                         outputB[pixel] = (inputBB[pixel] * inputAB[pixel]) / 4096;
                     }
                     break;
-                case 4:
+                case ArithmeticBlendMode.Divide:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const bR = inputBR[pixel];
                         const bG = inputBG[pixel];
@@ -157,7 +184,7 @@ export class ArithmeticOperation extends TextureOperation {
                         outputB[pixel] = bB === 0 ? 4096 : (inputAB[pixel] * 4096) / bB;
                     }
                     break;
-                case 5:
+                case ArithmeticBlendMode.Screen:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         outputR[pixel] =
                             4096 - ((4096 - inputAR[pixel]) * (4096 - inputBR[pixel])) / 4096;
@@ -167,7 +194,7 @@ export class ArithmeticOperation extends TextureOperation {
                             4096 - ((4096 - inputAB[pixel]) * (4096 - inputBB[pixel])) / 4096;
                     }
                     break;
-                case 6:
+                case ArithmeticBlendMode.Overlay:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const bR = inputBR[pixel];
                         const bG = inputBG[pixel];
@@ -186,7 +213,7 @@ export class ArithmeticOperation extends TextureOperation {
                                 : 4096 - ((((4096 - inputAB[pixel]) * (4096 - bB)) / 2048) | 0);
                     }
                     break;
-                case 7:
+                case ArithmeticBlendMode.ColorDodge:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const aR = inputAR[pixel];
                         const aG = inputAG[pixel];
@@ -196,7 +223,7 @@ export class ArithmeticOperation extends TextureOperation {
                         outputB[pixel] = aB === 4096 ? 4096 : (inputBB[pixel] * 4096) / (4096 - aB);
                     }
                     break;
-                case 8:
+                case ArithmeticBlendMode.ColorBurn:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const aR = inputAR[pixel];
                         const aG = inputAG[pixel];
@@ -209,7 +236,7 @@ export class ArithmeticOperation extends TextureOperation {
                             aB === 0 ? 0 : 4096 - ((4096 - inputBB[pixel]) * 4096) / aB;
                     }
                     break;
-                case 9:
+                case ArithmeticBlendMode.Min:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const aR = inputAR[pixel];
                         const aG = inputAG[pixel];
@@ -222,7 +249,7 @@ export class ArithmeticOperation extends TextureOperation {
                         outputB[pixel] = Math.min(aB, bB);
                     }
                     break;
-                case 10:
+                case ArithmeticBlendMode.Max:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const aR = inputAR[pixel];
                         const aG = inputAG[pixel];
@@ -235,7 +262,7 @@ export class ArithmeticOperation extends TextureOperation {
                         outputB[pixel] = Math.max(aB, bB);
                     }
                     break;
-                case 11:
+                case ArithmeticBlendMode.Difference:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const aR = inputAR[pixel];
                         const aG = inputAG[pixel];
@@ -248,7 +275,7 @@ export class ArithmeticOperation extends TextureOperation {
                         outputB[pixel] = bB < aB ? aB - bB : bB - aB;
                     }
                     break;
-                case 12:
+                case ArithmeticBlendMode.Exclusion:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const aR = inputBR[pixel];
                         const aG = inputBG[pixel];

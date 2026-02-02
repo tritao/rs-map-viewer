@@ -36,31 +36,33 @@ export class LineNoiseOperation extends TextureOperation {
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
             const halfAngleRangeQ12 = this.angleRangeQ12 >> 1;
-            const pixelsByX = this.monochromeImageCache.getAll();
-            const random = new JavaRandom(this.seed);
-            for (let i = 0; i < this.lineCount; i++) {
+            const pixelsByColumn = this.monochromeImageCache.getAll();
+            const rng = new JavaRandom(this.seed);
+            for (let lineIndex = 0; lineIndex < this.lineCount; lineIndex++) {
                 const angleQ12 =
                     this.angleRangeQ12 > 0
                         ? this.angleCenterQ12 -
                           halfAngleRangeQ12 +
-                          nextIntJagex(random, this.angleRangeQ12)
+                          nextIntJagex(rng, this.angleRangeQ12)
                         : this.angleCenterQ12;
-                const angleIndex = (angleQ12 >> 4) & 0xff;
+                const angleTableIndex = (angleQ12 >> 4) & 0xff;
 
-                let startX = nextIntJagex(random, textureGenerator.width);
-                let startY = nextIntJagex(random, textureGenerator.height);
-                let endX = ((TextureGenerator.COSINE[angleIndex] * this.lineLength) >> 12) + startX;
-                let endY = ((TextureGenerator.SINE[angleIndex] * this.lineLength) >> 12) + startY;
-                let absDx = endX - startX;
-                let absDy = endY - startY;
-                if (absDx !== 0 || absDy !== 0) {
-                    if (absDx < 0) {
-                        absDx = -absDx;
+                let startX = nextIntJagex(rng, textureGenerator.width);
+                let startY = nextIntJagex(rng, textureGenerator.height);
+                let endX =
+                    ((TextureGenerator.COSINE[angleTableIndex] * this.lineLength) >> 12) + startX;
+                let endY =
+                    ((TextureGenerator.SINE[angleTableIndex] * this.lineLength) >> 12) + startY;
+                let absDeltaX = endX - startX;
+                let absDeltaY = endY - startY;
+                if (absDeltaX !== 0 || absDeltaY !== 0) {
+                    if (absDeltaX < 0) {
+                        absDeltaX = -absDeltaX;
                     }
-                    if (absDy < 0) {
-                        absDy = -absDy;
+                    if (absDeltaY < 0) {
+                        absDeltaY = -absDeltaY;
                     }
-                    const isSteep = absDx < absDy;
+                    const isSteep = absDeltaX < absDeltaY;
                     if (isSteep) {
                         const startXPrev = startX;
                         const endXPrev = endX;
@@ -77,31 +79,31 @@ export class LineNoiseOperation extends TextureOperation {
                         endX = startXPrev;
                         endY = startYPrev;
                     }
-                    const dx = endX - startX;
-                    let dy = endY - startY;
+                    const deltaX = endX - startX;
+                    let deltaY = endY - startY;
                     let y = startY;
-                    if (dy < 0) {
-                        dy = -dy;
+                    if (deltaY < 0) {
+                        deltaY = -deltaY;
                     }
-                    let error = (-dx / 2) | 0;
-                    const valueStep = (2048 / dx) | 0;
-                    const intensityJitter = 1024 - (nextIntJagex(random, 4096) >> 2);
+                    let error = (-deltaX / 2) | 0;
+                    const valueStep = (2048 / deltaX) | 0;
+                    const intensityJitter = 1024 - (nextIntJagex(rng, 4096) >> 2);
                     const intensityBase = 1024 + intensityJitter;
                     const yStep = endY <= startY ? -1 : 1;
 
                     for (let x = startX; x < endX; x++) {
-                        error += dy;
-                        const value = valueStep * (x - startX) + intensityBase;
+                        error += deltaY;
+                        const valueQ12 = valueStep * (x - startX) + intensityBase;
                         const yMasked = y & textureGenerator.heightMask;
                         if (error > 0) {
                             y += yStep;
-                            error = error - dx;
+                            error = error - deltaX;
                         }
                         const xMasked = x & textureGenerator.widthMask;
                         if (!isSteep) {
-                            pixelsByX[xMasked][yMasked] = value;
+                            pixelsByColumn[xMasked][yMasked] = valueQ12;
                         } else {
-                            pixelsByX[yMasked][xMasked] = value;
+                            pixelsByColumn[yMasked][xMasked] = valueQ12;
                         }
                     }
                 }

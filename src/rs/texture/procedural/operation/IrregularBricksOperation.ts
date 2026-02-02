@@ -5,6 +5,11 @@ import { ArrayUtils } from "../../../util/ArrayUtils";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
+enum CornerBlendMode {
+    Multiply = 0,
+    Min = 1,
+}
+
 export class IrregularBricksOperation extends TextureOperation {
     seed = 0;
     minBrickWidthQ12 = 1024;
@@ -12,7 +17,7 @@ export class IrregularBricksOperation extends TextureOperation {
     minBrickHeightQ12 = 409;
     maxBrickHeightQ12 = 819;
     bevelRadiusScaleQ12 = 1024;
-    cornerBlendMode = 0;
+    cornerBlendMode: CornerBlendMode = CornerBlendMode.Multiply;
     bevelJitterQ12 = 1024;
     brickValueVariationQ12 = 1024;
 
@@ -36,7 +41,7 @@ export class IrregularBricksOperation extends TextureOperation {
         } else if (field === 5) {
             this.bevelRadiusScaleQ12 = buffer.readUnsignedShort();
         } else if (field === 6) {
-            this.cornerBlendMode = buffer.readUnsignedByte();
+            this.cornerBlendMode = buffer.readUnsignedByte() as CornerBlendMode;
         } else if (field === 7) {
             this.bevelJitterQ12 = buffer.readUnsignedShort();
         } else if (field === 8) {
@@ -94,7 +99,7 @@ export class IrregularBricksOperation extends TextureOperation {
                         }
                     } else {
                         const verticalFade = ((invY * brickValue) / bevelHeightPx) | 0;
-                        if (this.cornerBlendMode === 0) {
+                        if (this.cornerBlendMode === CornerBlendMode.Multiply) {
                             for (let dx = 0; dx < bevelWidthPx; dx++) {
                                 const horizontalFade = ((dx * brickValue) / bevelWidthPx) | 0;
                                 row[textureGenerator.widthMask & (startX + dx)] = row[
@@ -119,7 +124,7 @@ export class IrregularBricksOperation extends TextureOperation {
                     }
                 } else {
                     const verticalFade = ((y * brickValue) / bevelHeightPx) | 0;
-                    if (this.cornerBlendMode === 0) {
+                    if (this.cornerBlendMode === CornerBlendMode.Multiply) {
                         for (let dx = 0; dx < bevelWidthPx; dx++) {
                             const horizontalFade = ((brickValue * dx) / bevelWidthPx) | 0;
                             row[textureGenerator.widthMask & (dx + startX)] = row[

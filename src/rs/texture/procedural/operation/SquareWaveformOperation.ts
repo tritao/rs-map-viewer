@@ -2,10 +2,17 @@ import { ByteBuffer } from "../../../io/ByteBuffer";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
+enum SquareWaveDirectionMode {
+    Vertical = 0,
+    Horizontal = 1,
+    DiagonalSum = 2,
+    DiagonalDifference = 3,
+}
+
 export class SquareWaveformOperation extends TextureOperation {
     periodCount = 10;
     dutyCycleQ12 = 2048;
-    direction = 0;
+    directionMode: SquareWaveDirectionMode = SquareWaveDirectionMode.Vertical;
 
     pulseEndQ12!: Int32Array;
     segmentStartQ12!: Int32Array;
@@ -20,7 +27,7 @@ export class SquareWaveformOperation extends TextureOperation {
         } else if (field === 1) {
             this.dutyCycleQ12 = buffer.readUnsignedShort();
         } else if (field === 2) {
-            this.direction = buffer.readUnsignedByte();
+            this.directionMode = buffer.readUnsignedByte() as SquareWaveDirectionMode;
         }
     }
 
@@ -47,7 +54,7 @@ export class SquareWaveformOperation extends TextureOperation {
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
             const verticalGradient = textureGenerator.verticalGradient[line];
-            if (this.direction === 0) {
+            if (this.directionMode === SquareWaveDirectionMode.Vertical) {
                 let outputValueQ12 = 0;
                 for (let periodIndex = 0; periodIndex < this.periodCount; periodIndex++) {
                     if (
@@ -67,15 +74,15 @@ export class SquareWaveformOperation extends TextureOperation {
                     let phaseQ12 = 0;
                     let outputValueQ12 = 0;
                     const horizontalGradient = textureGenerator.horizontalGradient[pixel];
-                    switch (this.direction) {
-                        case 3:
+                    switch (this.directionMode) {
+                        case SquareWaveDirectionMode.DiagonalDifference:
                             phaseQ12 = ((horizontalGradient - verticalGradient) >> 1) + 2048;
                             break;
-                        case 2:
+                        case SquareWaveDirectionMode.DiagonalSum:
                             phaseQ12 =
                                 ((horizontalGradient - (4096 - verticalGradient)) >> 1) + 2048;
                             break;
-                        case 1:
+                        case SquareWaveDirectionMode.Horizontal:
                             phaseQ12 = horizontalGradient;
                             break;
                     }

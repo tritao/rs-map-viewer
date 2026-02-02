@@ -4,6 +4,14 @@ import { ByteBuffer } from "../../../io/ByteBuffer";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
+enum VoronoiOutputMode {
+    Nearest = 0,
+    SecondNearest = 1,
+    SecondMinusNearest = 2,
+    ThirdNearest = 3,
+    FourthNearest = 4,
+}
+
 export class VoronoiNoiseOperation extends TextureOperation {
     static nearestDistQ12: number = 0;
     static secondNearestDistQ12: number = 0;
@@ -12,8 +20,8 @@ export class VoronoiNoiseOperation extends TextureOperation {
 
     seed: number = 0;
     featurePointJitterQ12: number = 2048;
-    outputMode: number = 2;
-    metric: number = 1;
+    outputMode: VoronoiOutputMode = VoronoiOutputMode.SecondMinusNearest;
+    distanceMetric: number = 1;
     repeatX: number = 5;
     repeatY: number = 5;
 
@@ -36,10 +44,10 @@ export class VoronoiNoiseOperation extends TextureOperation {
                 this.featurePointJitterQ12 = buffer.readUnsignedShort();
                 break;
             case 3:
-                this.outputMode = buffer.readUnsignedByte();
+                this.outputMode = buffer.readUnsignedByte() as VoronoiOutputMode;
                 break;
             case 4:
-                this.metric = buffer.readUnsignedByte();
+                this.distanceMetric = buffer.readUnsignedByte();
                 break;
             case 5:
                 this.repeatX = buffer.readUnsignedByte();
@@ -108,7 +116,7 @@ export class VoronoiNoiseOperation extends TextureOperation {
                             yCoordQ12 -
                             (this.featurePointOffsetsQ12[featureIndex] + (yNeighbor << 12));
                         let distQ12: number;
-                        switch (this.metric) {
+                        switch (this.distanceMetric) {
                             case 1:
                                 distQ12 = (dxQ12 * dxQ12 + dyQ12 * dyQ12) >> 12;
                                 break;
@@ -179,21 +187,21 @@ export class VoronoiNoiseOperation extends TextureOperation {
                 }
 
                 switch (this.outputMode) {
-                    case 0:
+                    case VoronoiOutputMode.Nearest:
                         output[pixel] = VoronoiNoiseOperation.nearestDistQ12;
                         break;
-                    case 1:
+                    case VoronoiOutputMode.SecondNearest:
                         output[pixel] = VoronoiNoiseOperation.secondNearestDistQ12;
                         break;
-                    case 2:
+                    case VoronoiOutputMode.SecondMinusNearest:
                         output[pixel] =
                             VoronoiNoiseOperation.secondNearestDistQ12 -
                             VoronoiNoiseOperation.nearestDistQ12;
                         break;
-                    case 3:
+                    case VoronoiOutputMode.ThirdNearest:
                         output[pixel] = VoronoiNoiseOperation.thirdNearestDistQ12;
                         break;
-                    case 4:
+                    case VoronoiOutputMode.FourthNearest:
                         output[pixel] = VoronoiNoiseOperation.fourthNearestDistQ12;
                         break;
                 }

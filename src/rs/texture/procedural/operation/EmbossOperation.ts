@@ -9,7 +9,7 @@ export class EmbossOperation extends TextureOperation {
     lightAzimuthQ12 = 3216;
     lightElevationQ12 = 3216;
 
-    lightDirQ12 = new Int32Array(3);
+    lightDirectionQ12 = new Int32Array(3);
 
     constructor() {
         super(1, true);
@@ -27,19 +27,19 @@ export class EmbossOperation extends TextureOperation {
 
     override init() {
         const cosElevation = Math.cos(Math.fround(this.lightElevationQ12 / 4096));
-        this.lightDirQ12[0] =
+        this.lightDirectionQ12[0] =
             4096 * (cosElevation * Math.sin(Math.fround(this.lightAzimuthQ12 / 4096)));
-        this.lightDirQ12[1] =
+        this.lightDirectionQ12[1] =
             4096 * (cosElevation * Math.cos(Math.fround(this.lightAzimuthQ12 / 4096)));
-        this.lightDirQ12[2] = 4096 * Math.sin(Math.fround(this.lightElevationQ12 / 4096));
-        const t0 = (this.lightDirQ12[0] * this.lightDirQ12[0]) >> 12;
-        const t1 = (this.lightDirQ12[1] * this.lightDirQ12[1]) >> 12;
-        const t2 = (this.lightDirQ12[2] * this.lightDirQ12[2]) >> 12;
-        const scale = (Math.sqrt((t0 + t1 + t2) >> 12) * 4096) | 0;
-        if (scale !== 0) {
-            this.lightDirQ12[0] = (this.lightDirQ12[0] << 12) / scale;
-            this.lightDirQ12[1] = (this.lightDirQ12[1] << 12) / scale;
-            this.lightDirQ12[2] = (this.lightDirQ12[2] << 12) / scale;
+        this.lightDirectionQ12[2] = 4096 * Math.sin(Math.fround(this.lightElevationQ12 / 4096));
+        const xSqQ12 = (this.lightDirectionQ12[0] * this.lightDirectionQ12[0]) >> 12;
+        const ySqQ12 = (this.lightDirectionQ12[1] * this.lightDirectionQ12[1]) >> 12;
+        const zSqQ12 = (this.lightDirectionQ12[2] * this.lightDirectionQ12[2]) >> 12;
+        const magnitudeQ12 = (Math.sqrt((xSqQ12 + ySqQ12 + zSqQ12) >> 12) * 4096) | 0;
+        if (magnitudeQ12 !== 0) {
+            this.lightDirectionQ12[0] = (this.lightDirectionQ12[0] << 12) / magnitudeQ12;
+            this.lightDirectionQ12[1] = (this.lightDirectionQ12[1] << 12) / magnitudeQ12;
+            this.lightDirectionQ12[2] = (this.lightDirectionQ12[2] << 12) / magnitudeQ12;
         }
     }
 
@@ -86,13 +86,13 @@ export class EmbossOperation extends TextureOperation {
                     TextureGenerator.INVERSE_SQUARE_ROOT[
                         gradXAbs + (((gradYAbs + 1) * gradYAbs) >> 1)
                     ] & 0xff;
-                let v0 = (invMagnitude * gradX) >> 8;
-                let v1 = (invMagnitude * gradY) >> 8;
-                let v2 = (invMagnitude * 4096) >> 8;
-                v0 = (this.lightDirQ12[0] * v0) >> 12;
-                v1 = (this.lightDirQ12[1] * v1) >> 12;
-                v2 = (this.lightDirQ12[2] * v2) >> 12;
-                output[pixel] = v0 + v1 + v2;
+                const normalXQ12 = (invMagnitude * gradX) >> 8;
+                const normalYQ12 = (invMagnitude * gradY) >> 8;
+                const normalZQ12 = (invMagnitude * 4096) >> 8;
+                const lightDotXQ12 = (this.lightDirectionQ12[0] * normalXQ12) >> 12;
+                const lightDotYQ12 = (this.lightDirectionQ12[1] * normalYQ12) >> 12;
+                const lightDotZQ12 = (this.lightDirectionQ12[2] * normalZQ12) >> 12;
+                output[pixel] = lightDotXQ12 + lightDotYQ12 + lightDotZQ12;
             }
         }
         return output;
