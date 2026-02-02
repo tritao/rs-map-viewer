@@ -63,6 +63,7 @@ export class MapImageRenderer {
     static tmpScreenX = new Int32Array(6);
     static tmpScreenY = new Int32Array(6);
 
+    private readonly rasterizer2d = new Rasterizer2D();
     private readonly rasterizer3d = new Rasterizer3D();
 
     constructor(
@@ -110,7 +111,8 @@ export class MapImageRenderer {
         const wallRgb = 0xeeeeee;
         const wallInteractiveRgb = 0xee0000;
 
-        spritePixels.setRaster();
+        spritePixels.setRaster(this.rasterizer2d);
+        const r2d = this.rasterizer2d.getContext();
 
         for (let tileX = 0; tileX < scene.sizeX; tileX++) {
             for (let tileY = 0; tileY < scene.sizeY; tileY++) {
@@ -125,6 +127,7 @@ export class MapImageRenderer {
                 ) {
                     this.drawLoc(
                         scene,
+                        r2d,
                         pixels,
                         width,
                         realLevel,
@@ -143,6 +146,7 @@ export class MapImageRenderer {
                 ) {
                     this.drawLoc(
                         scene,
+                        r2d,
                         pixels,
                         width,
                         realLevel + 1,
@@ -164,9 +168,8 @@ export class MapImageRenderer {
         const spritePixels = SpritePixels.fromDimensions(width, height);
         const pixels = spritePixels.pixels;
 
-        spritePixels.setRaster();
-
-        const r2d = Rasterizer2D.getContext();
+        spritePixels.setRaster(this.rasterizer2d);
+        const r2d = this.rasterizer2d.getContext();
         this.rasterizer3d.setClip(r2d);
         this.rasterizer3d.rasterGouraudLowRes = false;
 
@@ -189,6 +192,7 @@ export class MapImageRenderer {
                     }
                     this.drawLoc(
                         scene,
+                        r2d,
                         pixels,
                         width,
                         level,
@@ -219,6 +223,7 @@ export class MapImageRenderer {
                                 const x = ((locType.sizeX * 4 - mapFunction.subWidth) / 2) | 0;
                                 const y = ((locType.sizeY * 4 - mapFunction.subHeight) / 2) | 0;
                                 mapFunction.drawAt(
+                                    r2d,
                                     tileX * 4 + x,
                                     y + (scene.sizeY - tileY - locType.sizeY) * 4,
                                 );
@@ -357,6 +362,7 @@ export class MapImageRenderer {
 
     drawLoc(
         scene: Scene,
+        r2d: Rasterizer2DContext,
         pixels: Int32Array,
         width: number,
         level: number,
@@ -379,7 +385,7 @@ export class MapImageRenderer {
                 if (mapScene) {
                     const x = ((locType.sizeX * 4 - mapScene.subWidth) / 2) | 0;
                     const y = ((locType.sizeY * 4 - mapScene.subHeight) / 2) | 0;
-                    mapScene.drawAt(tileX * 4 + x, y + (scene.sizeY - tileY - locType.sizeY) * 4);
+                    mapScene.drawAt(r2d, tileX * 4 + x, y + (scene.sizeY - tileY - locType.sizeY) * 4);
                 }
             } else {
                 let rgb = wallRgb;
@@ -464,7 +470,7 @@ export class MapImageRenderer {
                 if (mapScene) {
                     const x = ((locType.sizeX * 4 - mapScene.subWidth) / 2) | 0;
                     const y = ((locType.sizeY * 4 - mapScene.subHeight) / 2) | 0;
-                    mapScene.drawAt(tileX * 4 + x, (scene.sizeY - tileY - locType.sizeY) * 4 + y);
+                    mapScene.drawAt(r2d, tileX * 4 + x, (scene.sizeY - tileY - locType.sizeY) * 4 + y);
                 }
             } else if (type === LocModelType.WALL_DIAGONAL) {
                 let rgb = wallRgb;
@@ -497,7 +503,7 @@ export class MapImageRenderer {
                 if (mapScene) {
                     const x = ((locType.sizeX * 4 - mapScene.subWidth) / 2) | 0;
                     const y = ((locType.sizeY * 4 - mapScene.subHeight) / 2) | 0;
-                    mapScene.drawAt(tileX * 4 + x, y + (scene.sizeY - tileY - locType.sizeY) * 4);
+                    mapScene.drawAt(r2d, tileX * 4 + x, y + (scene.sizeY - tileY - locType.sizeY) * 4);
                 }
             }
         }

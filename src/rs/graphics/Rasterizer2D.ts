@@ -9,36 +9,36 @@ export type Rasterizer2DContext = {
 };
 
 export class Rasterizer2D {
-    static pixels: Int32Array;
+    pixels!: Int32Array;
 
-    static width: number;
-    static height: number;
+    width: number = 0;
+    height: number = 0;
 
-    static xClipStart: number;
-    static yClipStart: number;
-    static xClipEnd: number;
-    static yClipEnd: number;
+    xClipStart: number = 0;
+    yClipStart: number = 0;
+    xClipEnd: number = 0;
+    yClipEnd: number = 0;
 
-    static getContext(): Rasterizer2DContext {
+    getContext(): Rasterizer2DContext {
         return {
-            pixels: Rasterizer2D.pixels,
-            width: Rasterizer2D.width,
-            height: Rasterizer2D.height,
-            xClipStart: Rasterizer2D.xClipStart,
-            yClipStart: Rasterizer2D.yClipStart,
-            xClipEnd: Rasterizer2D.xClipEnd,
-            yClipEnd: Rasterizer2D.yClipEnd,
+            pixels: this.pixels,
+            width: this.width,
+            height: this.height,
+            xClipStart: this.xClipStart,
+            yClipStart: this.yClipStart,
+            xClipEnd: this.xClipEnd,
+            yClipEnd: this.yClipEnd,
         };
     }
 
-    static setRaster(pixels: Int32Array, width: number, height: number) {
-        Rasterizer2D.pixels = pixels;
-        Rasterizer2D.width = width;
-        Rasterizer2D.height = height;
-        Rasterizer2D.setClip(0, 0, width, height);
+    setRaster(pixels: Int32Array, width: number, height: number) {
+        this.pixels = pixels;
+        this.width = width;
+        this.height = height;
+        this.setClip(0, 0, width, height);
     }
 
-    static setClip(x: number, y: number, width: number, height: number) {
+    setClip(x: number, y: number, width: number, height: number) {
         if (x < 0) {
             x = 0;
         }
@@ -47,45 +47,45 @@ export class Rasterizer2D {
             y = 0;
         }
 
-        if (width > Rasterizer2D.width) {
-            width = Rasterizer2D.width;
+        if (width > this.width) {
+            width = this.width;
         }
 
-        if (height > Rasterizer2D.height) {
-            height = Rasterizer2D.height;
+        if (height > this.height) {
+            height = this.height;
         }
 
-        Rasterizer2D.xClipStart = x;
-        Rasterizer2D.yClipStart = y;
-        Rasterizer2D.xClipEnd = width;
-        Rasterizer2D.yClipEnd = height;
+        this.xClipStart = x;
+        this.yClipStart = y;
+        this.xClipEnd = width;
+        this.yClipEnd = height;
     }
 
-    static fillRectangle(x: number, y: number, width: number, height: number, rgb: number) {
-        if (x < Rasterizer2D.xClipStart) {
-            width -= Rasterizer2D.xClipStart - x;
-            x = Rasterizer2D.xClipStart;
+    fillRectangle(x: number, y: number, width: number, height: number, rgb: number) {
+        if (x < this.xClipStart) {
+            width -= this.xClipStart - x;
+            x = this.xClipStart;
         }
 
-        if (y < Rasterizer2D.yClipStart) {
-            height -= Rasterizer2D.yClipStart - y;
-            y = Rasterizer2D.yClipStart;
+        if (y < this.yClipStart) {
+            height -= this.yClipStart - y;
+            y = this.yClipStart;
         }
 
-        if (x + width > Rasterizer2D.xClipEnd) {
-            width = Rasterizer2D.xClipEnd - x;
+        if (x + width > this.xClipEnd) {
+            width = this.xClipEnd - x;
         }
 
-        if (height + y > Rasterizer2D.yClipEnd) {
-            height = Rasterizer2D.yClipEnd - y;
+        if (height + y > this.yClipEnd) {
+            height = this.yClipEnd - y;
         }
 
-        const widthOffset = Rasterizer2D.width - width;
-        let offset = x + Rasterizer2D.width * y;
+        const widthOffset = this.width - width;
+        let offset = x + this.width * y;
 
         for (let h = -height; h < 0; h++) {
             for (let w = -width; w < 0; w++) {
-                Rasterizer2D.pixels[offset++] = rgb;
+                this.pixels[offset++] = rgb;
             }
 
             offset += widthOffset;

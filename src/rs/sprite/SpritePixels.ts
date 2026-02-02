@@ -187,7 +187,7 @@ export class SpritePixels {
         }
     }
 
-    setRaster() {
-        Rasterizer2D.setRaster(this.pixels, this.subWidth, this.subHeight);
+    setRaster(rasterizer2d: Rasterizer2D) {
+        rasterizer2d.setRaster(this.pixels, this.subWidth, this.subHeight);
     }
 }

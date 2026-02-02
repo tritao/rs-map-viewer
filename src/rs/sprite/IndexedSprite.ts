@@ -1,4 +1,4 @@
-import { Rasterizer2D } from "../graphics/Rasterizer2D";
+import type { Rasterizer2DContext } from "../graphics/Rasterizer2D";
 
 export class IndexedSprite {
     pixels!: Uint8Array;
@@ -168,7 +168,8 @@ export class IndexedSprite {
         return canvas;
     }
 
-    drawAt(x: number, y: number): void {
+    drawAt(r2d: Rasterizer2DContext, x: number, y: number): void {
+        const Rasterizer2D = r2d;
         x += this.xOffset;
         y += this.yOffset;
         let startY = x + y * Rasterizer2D.width;
