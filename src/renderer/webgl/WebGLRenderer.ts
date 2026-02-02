@@ -1,7 +1,6 @@
 import Denque from "denque";
 import PicoGL, { Texture } from "picogl";
 import { CacheLoaders } from "../../rs/loaders/CacheLoaders";
-import { TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { InputManager } from "../../util/InputManager";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { Camera } from "../Camera";

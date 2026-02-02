@@ -5,7 +5,7 @@ import { LocType } from "../../rs/config/loctype/LocType";
 import { NpcType } from "../../rs/config/npctype/NpcType";
 import { VarManager } from "../../rs/config/vartype/VarManager";
 import { Model } from "../../rs/model/Model";
-import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
+import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { ContourGroundInfo, LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
@@ -93,7 +93,7 @@ function createObjSceneModel(
     let renderLevel = spawn.plane;
     if (
         renderLevel < 3 &&
-        (scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE
+        (scene.tileRenderFlags[1][tileX][tileY] & TileRenderFlag.Bridge) !== 0
     ) {
         renderLevel = spawn.plane + 1;
     }

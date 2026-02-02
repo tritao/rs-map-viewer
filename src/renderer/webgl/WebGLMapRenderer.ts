@@ -34,7 +34,7 @@ import { getMaxAnisotropy, MapRenderer, TextureFilterMode } from "../MapRenderer
 import { SdMapDataLoader } from "../loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
-import { TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
+import { TileRenderFlag } from "../../rs/scene/Scene";
 import { WebGLRenderable } from "./WebGLRenderable";
 import { GameType } from "../../rs/cache/CacheInfo";
 
@@ -701,7 +701,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const tileY = npc.y >> 7;
 
             let renderPlane = npc.level;
-            if (renderPlane < 3 && (renderable.getTileRenderFlag(1, tileX, tileY) & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+            if (
+                renderPlane < 3 &&
+                (renderable.getTileRenderFlag(1, tileX, tileY) & TileRenderFlag.Bridge) !== 0
+            ) {
                 renderPlane ++;
             }
 

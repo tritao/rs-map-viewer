@@ -2,7 +2,7 @@ import { ObjSpawn } from "../../data/obj/ObjSpawn";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { NpcType } from "../../rs/config/npctype/NpcType";
 import { Model } from "../../rs/model/Model";
-import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
+import { Scene } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
