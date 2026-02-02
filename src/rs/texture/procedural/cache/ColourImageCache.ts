@@ -8,7 +8,7 @@ export class ColourImageCacheSlot {
 }
 
 export class ColourImageCache {
-    static SLOT_USED = new ColourImageCacheSlot(0, 0);
+    static readonly SLOT_USED = new ColourImageCacheSlot(0, 0);
 
     slotCount: number;
 

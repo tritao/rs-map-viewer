@@ -8,7 +8,7 @@ export class MonochromeImageCacheSlot {
 }
 
 export class MonochromeImageCache {
-    static SLOT_USED = new MonochromeImageCacheSlot(0, 0);
+    static readonly SLOT_USED = new MonochromeImageCacheSlot(0, 0);
 
     slotCount: number;
 

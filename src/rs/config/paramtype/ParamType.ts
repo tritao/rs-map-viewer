@@ -2,7 +2,7 @@ import { ByteBuffer } from "../../io/ByteBuffer";
 import { Type } from "../Type";
 
 export class ParamType extends Type {
-    private static SCRIPT_VAR_TYPES = [
+    private static readonly SCRIPT_VAR_TYPES: string[] = [
         "€",
         "\u0000",
         "‚",
