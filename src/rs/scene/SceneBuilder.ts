@@ -7,6 +7,7 @@ import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { getMapSquareId } from "../map/MapFileIndex";
 import { MapFileLoader } from "../map/MapFileLoader";
+import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
 import { generateHeight } from "../util/HeightCalc";
@@ -478,7 +479,7 @@ export class SceneBuilder {
         }
 
         const contourGroundInfo: ContourGroundInfo = {
-            type: locType.contourGroundType,
+            type: locType.contourGroundType as ContourGroundType,
             param: locType.contourGroundParam,
             heightMap,
             heightMapAbove,

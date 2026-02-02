@@ -3,6 +3,7 @@ import { ByteBuffer } from "../io/ByteBuffer";
 import { Entity } from "../core/Entity";
 import { TextureLoader } from "../texture/TextureLoader";
 import { FaceNormal } from "./FaceNormal";
+import { ContourGroundType } from "./ContourGroundType";
 import { Model } from "./Model";
 import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
@@ -2286,7 +2287,7 @@ export class ModelData extends Entity {
     }
 
     contourGround(
-        type: number,
+        type: ContourGroundType,
         param: number,
         heightMap: Int32Array[],
         heightMapAbove: Int32Array[] | undefined,
@@ -2303,7 +2304,10 @@ export class ModelData extends Entity {
         let startY = sceneZ + this.minZ;
         let endY = sceneZ + this.maxZ;
         if (
-            (type === 1 || type === 2 || type === 3 || type === 5) &&
+            (type === ContourGroundType.WarpToTerrain ||
+                type === ContourGroundType.WarpToTerrainFadeByVertexHeight ||
+                type === ContourGroundType.AlignToSlope ||
+                type === ContourGroundType.WarpBetweenPlanes) &&
             (startX < 0 ||
                 (endX + 128) >> 7 >= heightMap.length ||
                 startY < 0 ||
@@ -2311,7 +2315,7 @@ export class ModelData extends Entity {
         ) {
             return this;
         }
-        if (type === 4 || type === 5) {
+        if (type === ContourGroundType.WarpToPlaneAbove || type === ContourGroundType.WarpBetweenPlanes) {
             if (heightMapAbove === undefined) {
                 return this;
             }
@@ -2375,7 +2379,7 @@ export class ModelData extends Entity {
         model.verticesY = this.verticesY;
         model.contourVerticesY = new Int32Array(model.verticesCount);
 
-        if (type === 1) {
+        if (type === ContourGroundType.WarpToTerrain) {
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
                 const vz = this.verticesZ[i] + sceneZ;
@@ -2409,7 +2413,7 @@ export class ModelData extends Entity {
                     model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight;
                 }
             }
-        } else if (type === 2) {
+        } else if (type === ContourGroundType.WarpToTerrainFadeByVertexHeight) {
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const yRatio = ((this.verticesY[i] << 16) / -this.height) | 0;
                 if (yRatio < param) {
@@ -2457,12 +2461,13 @@ export class ModelData extends Entity {
                     model.contourVerticesY[i] = this.verticesY[i];
                 }
             }
-        } else if (type === 3) {
-            // TODO: implement contourGround type 3
+        } else if (type === ContourGroundType.AlignToSlope) {
+            // TODO: implement ContourGroundType.AlignToSlope. In rt4 this rotates around X/Z to match the
+            // terrain plane under the model, then translates Y to the average height.
             for (let i = 0; i < model.usedVertexCount; i++) {
                 model.contourVerticesY[i] = this.verticesY[i];
             }
-        } else if (type === 4) {
+        } else if (type === ContourGroundType.WarpToPlaneAbove) {
             const deltaY = this.maxY - this.minY;
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
@@ -2480,7 +2485,7 @@ export class ModelData extends Entity {
                 const height = (h0 * (128 - rz) + h1 * rz) >> 7;
                 model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight + deltaY;
             }
-        } else if (type === 5) {
+        } else if (type === ContourGroundType.WarpBetweenPlanes) {
             const deltaY = this.maxY - this.minY;
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;

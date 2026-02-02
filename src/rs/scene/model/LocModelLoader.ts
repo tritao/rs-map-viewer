@@ -4,6 +4,7 @@ import { LocType } from "../../config/loctype/LocType";
 import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
 import { SeqType } from "../../config/seqtype/SeqType";
 import { SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
+import { ContourGroundType } from "../../model/ContourGroundType";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
@@ -12,7 +13,7 @@ import { SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
 import { TextureLoader } from "../../texture/TextureLoader";
 
 export type ContourGroundInfo = {
-    type: number;
+    type: ContourGroundType;
     param: number;
     heightMap: Int32Array[];
     heightMapAbove: Int32Array[] | undefined;
