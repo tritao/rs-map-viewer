@@ -43,6 +43,12 @@ export class SeqType extends Type {
 
     replyMode: number;
 
+    tweened: boolean;
+    vorbisSound: boolean;
+    soundVolumesByIndex?: Map<number, number>;
+    soundRateMinByIndex?: Map<number, number>;
+    soundRateMaxByIndex?: Map<number, number>;
+
     animMayaId: number;
     animMayaFrameSounds?: Map<number, SeqSoundEffect>;
     animMayaStart: number;
@@ -63,6 +69,8 @@ export class SeqType extends Type {
         this.precedenceAnimating = -1;
         this.priority = -1;
         this.replyMode = 2;
+        this.tweened = false;
+        this.vorbisSound = false;
         this.animMayaId = -1;
         this.animMayaStart = 0;
         this.animMayaEnd = 0;
@@ -239,7 +247,7 @@ export class SeqType extends Type {
                     );
                 }
             } else {
-                // interpolate = true;
+                this.tweened = true;
             }
         } else if (opcode === 16) {
             if (this.cacheInfo.game === GameType.Oldschool) {
@@ -258,17 +266,27 @@ export class SeqType extends Type {
                     this.animMayaMasks[buffer.readUnsignedByte()] = true;
                 }
             } else {
-                const v = buffer.readUnsignedByte();
+                const blendFlagCount = buffer.readUnsignedByte();
             }
         } else if (opcode === 18) {
-            const b = true;
+            this.vorbisSound = true;
         } else if (opcode === 19) {
-            const index = buffer.readUnsignedByte();
-            const value = buffer.readUnsignedByte();
+            const soundIndex = buffer.readUnsignedByte();
+            const volume = buffer.readUnsignedByte();
+            if (!this.soundVolumesByIndex) {
+                this.soundVolumesByIndex = new Map();
+            }
+            this.soundVolumesByIndex.set(soundIndex, volume);
         } else if (opcode === 20) {
-            const index = buffer.readUnsignedByte();
-            const max = buffer.readUnsignedShort();
-            const min = buffer.readUnsignedShort();
+            const soundIndex = buffer.readUnsignedByte();
+            const rateMin = buffer.readUnsignedShort();
+            const rateMax = buffer.readUnsignedShort();
+            if (!this.soundRateMinByIndex || !this.soundRateMaxByIndex) {
+                this.soundRateMinByIndex = new Map();
+                this.soundRateMaxByIndex = new Map();
+            }
+            this.soundRateMinByIndex.set(soundIndex, rateMin);
+            this.soundRateMaxByIndex.set(soundIndex, rateMax);
         } else {
             throw new Error("SeqType: Opcode " + opcode + " not implemented.");
         }

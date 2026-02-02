@@ -54,6 +54,17 @@ export class LocType extends Type {
     mapSceneId: number;
     flipMapSceneSprite: boolean;
 
+    hardShadow: boolean;
+    membersOnly: boolean;
+    rotateMapSceneSprite: boolean;
+    mapSceneRotationOffset: number;
+    animated: boolean;
+    cursor1Op: number;
+    cursor1: number;
+    cursor2Op: number;
+    cursor2: number;
+    occludeRoofs: boolean;
+
     isRotated: boolean;
 
     clipped: boolean;
@@ -82,6 +93,12 @@ export class LocType extends Type {
     ambientSoundChangeTicksMin: number;
     ambientSoundChangeTicksMax: number;
     ambientSoundRetain: number;
+    ambientSoundVolume: number;
+    ambientSoundRateMin: number;
+    ambientSoundRateMax: number;
+    ambientSoundSize: number;
+    vorbisSound: boolean;
+    randomSound: boolean;
 
     ambientSoundIds!: number[];
 
@@ -89,6 +106,14 @@ export class LocType extends Type {
 
     randomSeqIds?: number[];
     randomSeqDelays?: number[];
+
+    quests?: number[];
+    targetHue: number;
+    targetSaturation: number;
+    targetLightness: number;
+    colourShiftPercentage: number;
+    occlusionHeight: number;
+    occlusionOffset: number;
 
     params!: ParamsMap;
 
@@ -112,6 +137,16 @@ export class LocType extends Type {
         this.mapFunctionId = -1;
         this.mapSceneId = -1;
         this.flipMapSceneSprite = false;
+        this.hardShadow = true;
+        this.membersOnly = false;
+        this.rotateMapSceneSprite = false;
+        this.mapSceneRotationOffset = 0;
+        this.animated = false;
+        this.cursor1Op = -1;
+        this.cursor1 = -1;
+        this.cursor2Op = -1;
+        this.cursor2 = -1;
+        this.occludeRoofs = false;
         this.isRotated = false;
         this.clipped = true;
         this.modelSizeX = 128;
@@ -130,10 +165,22 @@ export class LocType extends Type {
         this.ambientSoundChangeTicksMin = 0;
         this.ambientSoundChangeTicksMax = 0;
         this.ambientSoundRetain = 0;
+        this.ambientSoundVolume = 0;
+        this.ambientSoundRateMin = 256;
+        this.ambientSoundRateMax = 256;
+        this.ambientSoundSize = 0;
+        this.vorbisSound = false;
+        this.randomSound = false;
         this.seqRandomStart = true;
 
         this.contourGroundType = 0;
         this.contourGroundParam = -1;
+        this.targetHue = 0;
+        this.targetSaturation = 0;
+        this.targetLightness = 0;
+        this.colourShiftPercentage = 0;
+        this.occlusionHeight = 0;
+        this.occlusionOffset = 0;
     }
 
     skipNewModels(buffer: ByteBuffer): void {
@@ -374,13 +421,13 @@ export class LocType extends Type {
                 // hd only = true?
             }
         } else if (opcode === 88) {
-            const bool = true;
+            this.hardShadow = false;
         } else if (opcode === 89) {
             this.seqRandomStart = false;
         } else if (opcode === 90) {
-            const bool = true;
+            const unusedOpcode90 = true;
         } else if (opcode === 91) {
-            const members = true;
+            this.membersOnly = true;
         } else if (opcode === 93) {
             this.contourGroundType = 3;
             this.contourGroundParam = buffer.readShort();
@@ -393,27 +440,27 @@ export class LocType extends Type {
                 this.contourGroundParam = buffer.readUnsignedShort();
             }
         } else if (opcode === 96) {
-            const aBoolean1878 = true;
+            const unusedOpcode96 = true;
         } else if (opcode === 97) {
-            const adjustMapSceneRotation = true;
+            this.rotateMapSceneSprite = true;
         } else if (opcode === 98) {
-            const hasAnimation = true;
+            this.animated = true;
         } else if (opcode === 99) {
-            const cursor1op = buffer.readUnsignedByte();
-            const cursor1 = buffer.readUnsignedShort();
+            this.cursor1Op = buffer.readUnsignedByte();
+            this.cursor1 = buffer.readUnsignedShort();
         } else if (opcode === 100) {
-            const cursor2op = buffer.readUnsignedByte();
-            const cursor2 = buffer.readUnsignedShort();
+            this.cursor2Op = buffer.readUnsignedByte();
+            this.cursor2 = buffer.readUnsignedShort();
         } else if (opcode === 101) {
-            const mapSceneRotationOff = buffer.readUnsignedByte();
+            this.mapSceneRotationOffset = buffer.readUnsignedByte();
         } else if (opcode === 102) {
             this.mapSceneId = buffer.readUnsignedShort();
         } else if (opcode === 103) {
-            const occludeType = 0;
+            this.occludeRoofs = true;
         } else if (opcode === 104) {
-            const ambientSoundVolume = buffer.readUnsignedByte();
+            this.ambientSoundVolume = buffer.readUnsignedByte();
         } else if (opcode === 105) {
-            const flipMapSceneSprite = true;
+            this.flipMapSceneSprite = true;
         } else if (opcode === 106) {
             let totalDelay = 0;
             const count = buffer.readUnsignedByte();
@@ -436,32 +483,32 @@ export class LocType extends Type {
             }
         } else if (opcode === 160) {
             const count = buffer.readUnsignedByte();
-            const campaigns: number[] = new Array(count);
+            this.quests = new Array(count);
             for (let i = 0; i < count; i++) {
-                campaigns[i] = buffer.readUnsignedShort();
+                this.quests[i] = buffer.readUnsignedShort();
             }
         } else if (opcode === 163) {
-            const aByte2193 = buffer.readByte();
-            const aByte2130 = buffer.readByte();
-            const aByte2148 = buffer.readByte();
-            const aByte2140 = buffer.readByte();
+            this.targetHue = buffer.readByte();
+            this.targetSaturation = buffer.readByte();
+            this.targetLightness = buffer.readByte();
+            this.colourShiftPercentage = buffer.readByte();
         } else if (opcode === 167) {
-            const v = buffer.readUnsignedShort();
+            const offsetY = buffer.readUnsignedShort();
         } else if (opcode === 168) {
-            const b = true;
+            this.vorbisSound = true;
         } else if (opcode === 169) {
-            const b = true;
+            this.randomSound = true;
         } else if (opcode === 170) {
-            const v = buffer.readUnsignedSmart();
+            this.occlusionHeight = buffer.readUnsignedSmart();
         } else if (opcode === 171) {
-            const v = buffer.readUnsignedSmart();
+            this.occlusionOffset = buffer.readUnsignedSmart();
         } else if (opcode === 173) {
-            const v0 = buffer.readUnsignedShort();
-            const v1 = buffer.readUnsignedShort();
+            this.ambientSoundRateMin = buffer.readUnsignedShort();
+            this.ambientSoundRateMax = buffer.readUnsignedShort();
         } else if (opcode === 177) {
             const b = true;
         } else if (opcode === 178) {
-            const v = buffer.readUnsignedByte();
+            this.ambientSoundSize = buffer.readUnsignedByte();
         } else if (opcode === 189) {
             const bloom = true;
         } else if (opcode === 190) {

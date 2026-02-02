@@ -31,6 +31,7 @@ export class OverlayFloorType extends Type implements FloorType {
 
     underwaterColor: number;
     waterOpacity: number;
+    waterBias: number;
 
     // Old caches uses the same type for overlays and underlays
     isOverlay: boolean;
@@ -57,6 +58,7 @@ export class OverlayFloorType extends Type implements FloorType {
         this.blendTexture = false;
         this.underwaterColor = 0x122b3d;
         this.waterOpacity = 16;
+        this.waterBias = 127;
         this.isOverlay = cacheInfo.game !== GameType.Runescape || cacheInfo.revision > 377;
     }
 
@@ -115,7 +117,7 @@ export class OverlayFloorType extends Type implements FloorType {
                 this.secondaryTextureId = -1;
             }
         } else if (opcode === 16) {
-            const v = buffer.readUnsignedByte();
+            this.waterBias = buffer.readUnsignedByte();
         } else {
             throw new Error(
                 "OverlayFloorType: Opcode " + opcode + " not implemented. id: " + this.id,

@@ -34,8 +34,8 @@ export class BasType extends Type {
         } else if (opcode === 9) {
             const runRightSeqId = buffer.readUnsignedShort();
         } else if (opcode === 26) {
-            const anInt1059 = buffer.readUnsignedByte() * 4;
-            const anInt1050 = buffer.readUnsignedByte() * 4;
+            const hillWidth = buffer.readUnsignedByte() * 4;
+            const hillHeight = buffer.readUnsignedByte() * 4;
         } else if (opcode === 27) {
             if (!this.modelRotateTranslate) {
                 this.modelRotateTranslate = new Array(12);
@@ -88,17 +88,17 @@ export class BasType extends Type {
         } else if (opcode === 45) {
             buffer.readUnsignedShort();
         } else if (opcode === 46) {
-            const anInt203 = buffer.readUnsignedShort();
+            const crawlTurnCcwSeqId = buffer.readUnsignedShort();
         } else if (opcode === 47) {
-            const anInt198 = buffer.readUnsignedShort();
+            const crawlTurnCwSeqId = buffer.readUnsignedShort();
         } else if (opcode === 48) {
-            const anInt194 = buffer.readUnsignedShort();
+            const runTurnCcwSeqId = buffer.readUnsignedShort();
         } else if (opcode === 49) {
-            const anInt211 = buffer.readUnsignedShort();
+            const runTurnCwSeqId = buffer.readUnsignedShort();
         } else if (opcode === 50) {
-            const anInt202 = buffer.readUnsignedShort();
+            const walkTurnCcwSeqId = buffer.readUnsignedShort();
         } else if (opcode === 51) {
-            const anInt222 = buffer.readUnsignedShort();
+            const walkTurnCwSeqId = buffer.readUnsignedShort();
         } else if (opcode === 52) {
             const count = buffer.readUnsignedByte();
             for (let i = 0; i < count; i++) {
@@ -106,10 +106,10 @@ export class BasType extends Type {
                 buffer.readUnsignedByte();
             }
         } else if (opcode === 53) {
-            const bool = false;
+            const animateShadow = false;
         } else if (opcode === 54) {
-            const v0 = buffer.readUnsignedByte() << 6;
-            const v1 = buffer.readUnsignedByte() << 6;
+            const hillMaxAngleX = buffer.readUnsignedByte() << 6;
+            const hillMaxAngleY = buffer.readUnsignedByte() << 6;
         } else if (opcode === 55) {
             const bodyPartId = buffer.readUnsignedByte();
             buffer.readUnsignedShort();

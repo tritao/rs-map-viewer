@@ -72,6 +72,34 @@ export class NpcType extends Type {
 
     basTypeId: number;
 
+    readySoundId: number;
+    crawlSoundId: number;
+    walkSoundId: number;
+    runSoundId: number;
+    soundRangeMin: number;
+    soundRangeMax: number;
+    soundVolume: number;
+    cursor1Op: number;
+    cursor1: number;
+    cursor2Op: number;
+    cursor2: number;
+    attackCursor: number;
+    mapElementId: number;
+    mobilisingArmiesIcon: number;
+    timerbarSpriteId: number;
+    healthBarSpriteId: number;
+    lowPriority: boolean;
+    colourHue: number;
+    colourSaturation: number;
+    colourLightness: number;
+    colourScale: number;
+    followerOpsPriorityFlag: number;
+    quests?: number[];
+    vorbisSound: boolean;
+    soundRateMin: number;
+    soundRateMax: number;
+    pickSizeShift: number;
+
     params!: ParamsMap;
 
     constructor(id: number, cacheInfo: CacheInfo) {
@@ -113,6 +141,32 @@ export class NpcType extends Type {
         // this.spawnDirection = 7;
         this.spawnDirection = 6;
         this.basTypeId = -1;
+        this.readySoundId = -1;
+        this.crawlSoundId = -1;
+        this.walkSoundId = -1;
+        this.runSoundId = -1;
+        this.soundRangeMin = 0;
+        this.soundRangeMax = 0;
+        this.soundVolume = 0;
+        this.cursor1Op = -1;
+        this.cursor1 = -1;
+        this.cursor2Op = -1;
+        this.cursor2 = -1;
+        this.attackCursor = -1;
+        this.mapElementId = -1;
+        this.mobilisingArmiesIcon = -1;
+        this.timerbarSpriteId = -1;
+        this.healthBarSpriteId = -1;
+        this.lowPriority = false;
+        this.colourHue = 0;
+        this.colourSaturation = 0;
+        this.colourLightness = 0;
+        this.colourScale = 0;
+        this.followerOpsPriorityFlag = -1;
+        this.vorbisSound = false;
+        this.soundRateMin = 256;
+        this.soundRateMax = 256;
+        this.pickSizeShift = 0;
     }
 
     isLargeModelId(): boolean {
@@ -325,9 +379,12 @@ export class NpcType extends Type {
                 this.isFollower = true;
             } else {
                 if (this.isLargeModelId()) {
-                    const hitBarSpriteId = buffer.readBigSmart();
+                    this.healthBarSpriteId = buffer.readBigSmart();
                 } else {
-                    const hitBarSpriteId = buffer.readUnsignedShort();
+                    this.healthBarSpriteId = buffer.readUnsignedShort();
+                    if (this.healthBarSpriteId === 65535) {
+                        this.healthBarSpriteId = -1;
+                    }
                 }
             }
         } else if (opcode === 123) {
@@ -343,39 +400,60 @@ export class NpcType extends Type {
         } else if (opcode === 128) {
             buffer.readUnsignedByte();
         } else if (opcode === 134) {
-            const idleSound = buffer.readUnsignedShort();
-            const crawlSound = buffer.readUnsignedShort();
-            const walkSound = buffer.readUnsignedShort();
-            const runSound = buffer.readUnsignedShort();
-            const soundRadius = buffer.readUnsignedByte();
+            this.readySoundId = buffer.readUnsignedShort();
+            if (this.readySoundId === 65535) {
+                this.readySoundId = -1;
+            }
+            this.crawlSoundId = buffer.readUnsignedShort();
+            if (this.crawlSoundId === 65535) {
+                this.crawlSoundId = -1;
+            }
+            this.walkSoundId = buffer.readUnsignedShort();
+            if (this.walkSoundId === 65535) {
+                this.walkSoundId = -1;
+            }
+            this.runSoundId = buffer.readUnsignedShort();
+            if (this.runSoundId === 65535) {
+                this.runSoundId = -1;
+            }
+            this.soundRangeMax = buffer.readUnsignedByte();
         } else if (opcode === 135) {
-            const cursor1op = buffer.readUnsignedByte();
-            const cursor1 = buffer.readUnsignedShort();
+            this.cursor1Op = buffer.readUnsignedByte();
+            this.cursor1 = buffer.readUnsignedShort();
         } else if (opcode === 136) {
-            const cursor2op = buffer.readUnsignedByte();
-            const cursor2 = buffer.readUnsignedShort();
+            this.cursor2Op = buffer.readUnsignedByte();
+            this.cursor2 = buffer.readUnsignedShort();
         } else if (opcode === 137) {
-            const attackCursor = buffer.readUnsignedShort();
+            this.attackCursor = buffer.readUnsignedShort();
         } else if (opcode === 138) {
             if (this.isLargeModelId()) {
-                const icon = buffer.readBigSmart();
+                this.mobilisingArmiesIcon = buffer.readBigSmart();
             } else {
-                const icon = buffer.readUnsignedShort();
+                this.mobilisingArmiesIcon = buffer.readUnsignedShort();
+                if (this.mobilisingArmiesIcon === 65535) {
+                    this.mobilisingArmiesIcon = -1;
+                }
             }
         } else if (opcode === 139) {
             if (this.isLargeModelId()) {
-                const icon = buffer.readBigSmart();
+                this.timerbarSpriteId = buffer.readBigSmart();
             } else {
-                const icon = buffer.readUnsignedShort();
+                this.timerbarSpriteId = buffer.readUnsignedShort();
+                if (this.timerbarSpriteId === 65535) {
+                    this.timerbarSpriteId = -1;
+                }
             }
         } else if (opcode === 140) {
-            const ambientSoundVolume = buffer.readUnsignedByte();
+            this.soundVolume = buffer.readUnsignedByte();
         } else if (opcode === 141) {
-            const bool = true;
+            this.isFollower = true;
         } else if (opcode === 142) {
-            const mapFunctionId = buffer.readUnsignedShort();
+            this.mapElementId = buffer.readUnsignedShort();
+            if (this.mapElementId === 65535) {
+                this.mapElementId = -1;
+            }
         } else if (opcode === 143) {
-            const bool = true;
+            this.lowPriority = true;
         } else if (opcode === 144) {
             buffer.readUnsignedShort();
         } else if (opcode >= 150 && opcode < 155) {
@@ -386,32 +464,33 @@ export class NpcType extends Type {
                 delete this.actions[opcode - 150];
             }
         } else if (opcode === 155) {
-            const b0 = buffer.readByte();
-            const b1 = buffer.readByte();
-            const b2 = buffer.readByte();
-            const b3 = buffer.readByte();
+            this.colourHue = buffer.readByte();
+            this.colourSaturation = buffer.readByte();
+            this.colourLightness = buffer.readByte();
+            this.colourScale = buffer.readByte();
         } else if (opcode === 158) {
-            const b = 1;
+            this.followerOpsPriorityFlag = 1;
         } else if (opcode === 159) {
-            const b = 0;
+            this.followerOpsPriorityFlag = 0;
         } else if (opcode === 160) {
             const count = buffer.readUnsignedByte();
+            this.quests = new Array(count);
             for (let i = 0; i < count; i++) {
-                const v = buffer.readUnsignedShort();
+                this.quests[i] = buffer.readUnsignedShort();
             }
         } else if (opcode === 161) {
-            const bool = true;
+            const unusedOpcode161 = true;
         } else if (opcode === 162) {
-            const bool = true;
+            this.vorbisSound = true;
         } else if (opcode === 163) {
-            const v = buffer.readUnsignedByte();
+            const unknownOpcode163Value = buffer.readUnsignedByte();
         } else if (opcode === 164) {
-            const v0 = buffer.readUnsignedShort();
-            const v1 = buffer.readUnsignedShort();
+            this.soundRateMin = buffer.readUnsignedShort();
+            this.soundRateMax = buffer.readUnsignedShort();
         } else if (opcode === 165) {
-            const v = buffer.readUnsignedByte();
+            this.pickSizeShift = buffer.readUnsignedByte();
         } else if (opcode === 168) {
-            const v = buffer.readUnsignedByte();
+            this.soundRangeMin = buffer.readUnsignedByte();
         } else if (opcode >= 170 && opcode < 176) {
             buffer.readUnsignedShort();
         } else if (opcode === 249) {

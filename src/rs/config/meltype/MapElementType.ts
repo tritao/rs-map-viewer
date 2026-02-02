@@ -18,6 +18,8 @@ export class MapElementType extends Type {
 
     randomizePosition: boolean = true;
 
+    showInElementList: boolean = true;
+
     ops: (string | undefined)[] = new Array(5);
 
     params?: ParamsMap;
@@ -88,7 +90,7 @@ export class MapElementType extends Type {
                 buffer.readInt();
             }
         } else if (opcode === 16) {
-            const bool = false;
+            this.showInElementList = false;
         } else if (opcode === 17) {
             const opBase = buffer.readString();
         } else if (opcode === 18) {
