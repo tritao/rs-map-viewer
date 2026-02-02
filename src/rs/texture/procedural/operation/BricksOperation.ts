@@ -6,22 +6,22 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class BricksOperation extends TextureOperation {
-    field0 = 4;
-    seed = 8;
-    field2 = 409;
-    field3 = 204;
-    field4 = 1024;
-    field5 = 0;
-    field6 = 81;
-    field7 = 1024;
+    columns = 4;
+    rowCount = 8;
+    widthJitterQ12 = 409;
+    heightJitterQ12 = 204;
+    rowStaggerQ12 = 1024;
+    yOffsetQ12 = 0;
+    mortarThicknessQ12 = 81;
+    brickValueVariationQ12 = 1024;
 
-    halfField6 = 0;
-    ratio0 = 0;
-    ratio1 = 0;
+    halfMortarThicknessQ12 = 0;
+    xStepQ12 = 0;
+    yStepQ12 = 0;
 
-    table0!: Int32Array[];
-    table1!: Int32Array[];
-    table2!: Int32Array;
+    brickValueByRowCol!: Int32Array[];
+    xBoundariesByRow!: Int32Array[];
+    yBoundaries!: Int32Array;
 
     constructor() {
         super(0, true);
@@ -29,64 +29,68 @@ export class BricksOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.field0 = buffer.readUnsignedByte();
+            this.columns = buffer.readUnsignedByte();
         } else if (field === 1) {
-            this.seed = buffer.readUnsignedByte();
+            this.rowCount = buffer.readUnsignedByte();
         } else if (field === 2) {
-            this.field2 = buffer.readUnsignedShort();
+            this.widthJitterQ12 = buffer.readUnsignedShort();
         } else if (field === 3) {
-            this.field3 = buffer.readUnsignedShort();
+            this.heightJitterQ12 = buffer.readUnsignedShort();
         } else if (field === 4) {
-            this.field4 = buffer.readUnsignedShort();
+            this.rowStaggerQ12 = buffer.readUnsignedShort();
         } else if (field === 5) {
-            this.field5 = buffer.readUnsignedShort();
+            this.yOffsetQ12 = buffer.readUnsignedShort();
         } else if (field === 6) {
-            this.field6 = buffer.readUnsignedShort();
+            this.mortarThicknessQ12 = buffer.readUnsignedShort();
         } else if (field === 7) {
-            this.field7 = buffer.readUnsignedShort();
+            this.brickValueVariationQ12 = buffer.readUnsignedShort();
         }
     }
 
     override init(): void {
-        this.table0 = new Array(this.seed);
-        this.table1 = new Array(this.seed);
-        for (let i = 0; i < this.seed; i++) {
-            this.table0[i] = new Int32Array(this.field0);
-            this.table1[i] = new Int32Array(this.field0 + 1);
+        this.brickValueByRowCol = new Array(this.rowCount);
+        this.xBoundariesByRow = new Array(this.rowCount);
+        for (let i = 0; i < this.rowCount; i++) {
+            this.brickValueByRowCol[i] = new Int32Array(this.columns);
+            this.xBoundariesByRow[i] = new Int32Array(this.columns + 1);
         }
-        this.table2 = new Int32Array(this.seed + 1);
+        this.yBoundaries = new Int32Array(this.rowCount + 1);
 
-        const random = new JavaRandom(this.seed);
-        this.halfField6 = (this.field6 / 2) | 0;
-        this.ratio0 = (4096 / this.field0) | 0;
-        const halfR0 = (this.ratio0 / 2) | 0;
-        this.ratio1 = (4096 / this.seed) | 0;
-        const halfR1 = (this.ratio1 / 2) | 0;
-        this.table2[0] = 0;
+        const random = new JavaRandom(this.rowCount);
+        this.halfMortarThicknessQ12 = (this.mortarThicknessQ12 / 2) | 0;
+        this.xStepQ12 = (4096 / this.columns) | 0;
+        const halfXStepQ12 = (this.xStepQ12 / 2) | 0;
+        this.yStepQ12 = (4096 / this.rowCount) | 0;
+        const halfYStepQ12 = (this.yStepQ12 / 2) | 0;
+        this.yBoundaries[0] = 0;
 
-        for (let x = 0; x < this.seed; x++) {
-            if (x > 0) {
-                let value = this.ratio1;
-                const randomValue = ((nextIntJagex(random, 4096) - 2048) * this.field3) >> 12;
-                value += (randomValue * halfR1) >> 12;
-                this.table2[x] = value + this.table2[x - 1];
+        for (let row = 0; row < this.rowCount; row++) {
+            if (row > 0) {
+                let value = this.yStepQ12;
+                const randomValue =
+                    ((nextIntJagex(random, 4096) - 2048) * this.heightJitterQ12) >> 12;
+                value += (randomValue * halfYStepQ12) >> 12;
+                this.yBoundaries[row] = value + this.yBoundaries[row - 1];
             }
-            this.table1[x][0] = 0;
-            for (let y = 0; y < this.field0; y++) {
-                if (y > 0) {
-                    let value = this.ratio0;
-                    const randomValue = ((nextIntJagex(random, 4096) - 2048) * this.field2) >> 12;
-                    value += (randomValue * halfR0) >> 12;
-                    this.table1[x][y] = this.table1[x][y - 1] + value;
+            this.xBoundariesByRow[row][0] = 0;
+            for (let col = 0; col < this.columns; col++) {
+                if (col > 0) {
+                    let value = this.xStepQ12;
+                    const randomValue =
+                        ((nextIntJagex(random, 4096) - 2048) * this.widthJitterQ12) >> 12;
+                    value += (randomValue * halfXStepQ12) >> 12;
+                    this.xBoundariesByRow[row][col] = this.xBoundariesByRow[row][col - 1] + value;
                 }
-                this.table0[x][y] =
-                    this.field7 > 0 ? 4096 - nextIntJagex(random, this.field7) : 4096;
+                this.brickValueByRowCol[row][col] =
+                    this.brickValueVariationQ12 > 0
+                        ? 4096 - nextIntJagex(random, this.brickValueVariationQ12)
+                        : 4096;
             }
 
-            this.table1[x][this.field0] = 4096;
+            this.xBoundariesByRow[row][this.columns] = 4096;
         }
 
-        this.table2[this.seed] = 4096;
+        this.yBoundaries[this.rowCount] = 4096;
     }
 
     override getMonochromeOutput(textureGenerator: TextureGenerator, line: number): Int32Array {
@@ -98,36 +102,43 @@ export class BricksOperation extends TextureOperation {
             // if (1) {
             //     return output;
             // }
-            let index0 = 0;
-            let value0 = this.field5 + textureGenerator.verticalGradient[line];
-            for (; value0 < 0; value0 += 4096);
-            for (; value0 > 4096; value0 -= 4096);
-            for (; index0 < this.seed; index0++) {
-                if (value0 < this.table2[index0]) {
+            let rowIndex = 0;
+            let yCoord = this.yOffsetQ12 + textureGenerator.verticalGradient[line];
+            for (; yCoord < 0; yCoord += 4096);
+            for (; yCoord > 4096; yCoord -= 4096);
+            for (; rowIndex < this.rowCount; rowIndex++) {
+                if (yCoord < this.yBoundaries[rowIndex]) {
                     break;
                 }
             }
 
-            const tv0 = this.table2[index0 - 1];
-            const tv1 = this.table2[index0];
-            if (value0 > this.halfField6 + tv0 && value0 < tv1 - this.halfField6) {
+            const rowStartY = this.yBoundaries[rowIndex - 1];
+            const rowEndY = this.yBoundaries[rowIndex];
+            if (
+                yCoord > this.halfMortarThicknessQ12 + rowStartY &&
+                yCoord < rowEndY - this.halfMortarThicknessQ12
+            ) {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                    const f4 = index0 % 2 !== 0 ? -this.field4 : this.field4;
-                    let index1 = 0;
-                    let value1 =
-                        ((this.ratio0 * f4) >> 12) + textureGenerator.horizontalGradient[pixel];
-                    for (; value1 < 0; value1 += 4096);
-                    for (; value1 > 4096; value1 -= 4096);
-                    for (; index1 < this.field0; index1++) {
-                        if (value1 < this.table1[index0 - 1][index1]) {
+                    const stagger = rowIndex % 2 !== 0 ? -this.rowStaggerQ12 : this.rowStaggerQ12;
+                    let colIndex = 0;
+                    let xCoord =
+                        ((this.xStepQ12 * stagger) >> 12) +
+                        textureGenerator.horizontalGradient[pixel];
+                    for (; xCoord < 0; xCoord += 4096);
+                    for (; xCoord > 4096; xCoord -= 4096);
+                    for (; colIndex < this.columns; colIndex++) {
+                        if (xCoord < this.xBoundariesByRow[rowIndex - 1][colIndex]) {
                             break;
                         }
                     }
 
-                    const tv2 = this.table1[index0 - 1][index1 - 1];
-                    const tv3 = this.table1[index0 - 1][index1];
-                    if (tv2 + this.halfField6 < value1 && value1 < tv3 - this.halfField6) {
-                        output[pixel] = this.table0[index0 - 1][index1 - 1];
+                    const colStartX = this.xBoundariesByRow[rowIndex - 1][colIndex - 1];
+                    const colEndX = this.xBoundariesByRow[rowIndex - 1][colIndex];
+                    if (
+                        colStartX + this.halfMortarThicknessQ12 < xCoord &&
+                        xCoord < colEndX - this.halfMortarThicknessQ12
+                    ) {
+                        output[pixel] = this.brickValueByRowCol[rowIndex - 1][colIndex - 1];
                     } else {
                         output[pixel] = 0;
                     }
