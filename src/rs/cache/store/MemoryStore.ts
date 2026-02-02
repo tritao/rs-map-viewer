@@ -63,17 +63,13 @@ export class MemoryStore implements CacheStore {
     }
 
     read(indexId: number, archiveId: number): Int8Array {
-        const stream = this.openArchiveStream(indexId, archiveId);
-        const data = new Int8Array(stream.size);
-        let offset = 0;
-        for (const chunk of stream.chunks) {
-            data.set(chunk, offset);
-            offset += chunk.length;
-        }
+        const reader = this.openArchiveReader(indexId, archiveId);
+        const data = new Int8Array(reader.size);
+        reader.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
         return data;
     }
 
-    openArchiveStream(indexId: number, archiveId: number): { readonly size: number; readonly chunks: Iterable<Int8Array> } {
+    openArchiveReader(indexId: number, archiveId: number): ByteSource {
         if (indexId < 0) {
             throw new Error("Index id cannot be lower than 0");
         }
@@ -98,16 +94,6 @@ export class MemoryStore implements CacheStore {
         );
         const sectorCluster = SectorCluster.decode(sectorClusterBuf);
 
-        const chunks = this.iterateArchiveSectors(archiveId, sectorIndexId, extended, sectorCluster);
-        return {
-            size: sectorCluster.size,
-            chunks,
-        };
-    }
-
-    openArchiveReader(indexId: number, archiveId: number): ByteSource {
-        const stream = this.openArchiveStream(indexId, archiveId);
-
         type Segment = {
             start: number;
             data: Int8Array;
@@ -115,12 +101,12 @@ export class MemoryStore implements CacheStore {
 
         const segments: Segment[] = [];
         let start = 0;
-        for (const chunk of stream.chunks) {
+        for (const chunk of this.iterateArchiveSectors(archiveId, sectorIndexId, extended, sectorCluster)) {
             segments.push({ start, data: chunk });
             start += chunk.length;
         }
 
-        const size = stream.size;
+        const size = sectorCluster.size;
         if (start !== size) {
             throw new Error(`Archive size mismatch. expected: ${size}, got: ${start}`);
         }

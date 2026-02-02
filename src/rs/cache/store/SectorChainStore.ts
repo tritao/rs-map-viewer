@@ -35,16 +35,6 @@ export class SectorChainStore implements CacheStore {
         return out;
     }
 
-    openArchiveStream(indexId: number, archiveId: number): { readonly size: number; readonly chunks: Iterable<Int8Array> } {
-        const reader = this.openArchiveReader(indexId, archiveId);
-        const dataSize = archiveId > 65535 ? Sector.EXTENDED_DATA_SIZE : Sector.DATA_SIZE;
-        const chunks = this.iterateReaderChunks(reader, dataSize);
-        return {
-            size: reader.size,
-            chunks,
-        };
-    }
-
     openArchiveReader(indexId: number, archiveId: number): ByteSource {
         if (indexId < 0) {
             throw new Error("Index id cannot be lower than 0");
@@ -198,15 +188,5 @@ export class SectorChainStore implements CacheStore {
         return sectorIds;
     }
 
-    private *iterateReaderChunks(reader: ByteSource, chunkSize: number): Iterable<Int8Array> {
-        let offset = 0;
-        while (offset < reader.size) {
-            const len = Math.min(chunkSize, reader.size - offset);
-            const chunk = new Int8Array(len);
-            reader.readInto(offset, new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
-            offset += len;
-            yield chunk;
-        }
-    }
+    // Note: forward chunk iteration can be implemented on top of `openArchiveReader` if/when needed.
 }
-
