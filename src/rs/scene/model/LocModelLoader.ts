@@ -364,7 +364,7 @@ export class LocModelLoader {
                     model.rotate90();
                 }
 
-                model.animate(seqFrame, undefined, seqType.op14);
+                model.animate(seqFrame, undefined, seqType.rotateNormals);
 
                 if (rotation === 1) {
                     model.rotate90();

@@ -49,7 +49,7 @@ export class SeqType extends Type {
     animMayaEnd: number;
     animMayaMasks?: boolean[];
 
-    op14: boolean;
+    rotateNormals: boolean;
 
     constructor(id: number, cacheInfo: CacheInfo) {
         super(id, cacheInfo);
@@ -66,7 +66,7 @@ export class SeqType extends Type {
         this.animMayaId = -1;
         this.animMayaStart = 0;
         this.animMayaEnd = 0;
-        this.op14 = false;
+        this.rotateNormals = false;
     }
 
     getFrameLength(seqFrameLoader: SeqFrameLengthLoader, frame: number): number {
@@ -207,7 +207,7 @@ export class SeqType extends Type {
             if (this.cacheInfo.game === GameType.Oldschool) {
                 this.animMayaId = buffer.readInt();
             } else {
-                this.op14 = true;
+                this.rotateNormals = true;
             }
         } else if (opcode === 15) {
             if (this.cacheInfo.game === GameType.Oldschool) {

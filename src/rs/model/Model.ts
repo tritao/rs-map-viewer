@@ -754,7 +754,7 @@ export class Model extends Entity {
         }
     }
 
-    animate(frame: SeqFrame, nextFrame: SeqFrame | undefined, op14: boolean): void {
+    animate(frame: SeqFrame, nextFrame: SeqFrame | undefined, rotateNormals: boolean): void {
         if (this.vertexLabels) {
             Model.resetAnimateOrigin();
 
@@ -763,7 +763,15 @@ export class Model extends Entity {
                 nextFrame = undefined;
             }
 
-            this.transformInterpolated(base, frame, nextFrame, undefined, true, op14, 0xffff);
+            this.transformInterpolated(
+                base,
+                frame,
+                nextFrame,
+                undefined,
+                true,
+                rotateNormals,
+                0xffff,
+            );
             this.postAnimate();
         }
     }
@@ -774,7 +782,7 @@ export class Model extends Entity {
         nextFrame: SeqFrame | undefined,
         animateLabels: boolean[] | undefined,
         condition: boolean,
-        op14: boolean,
+        rotateNormals: boolean,
         mask: number,
     ): void {
         if (!nextFrame) {
@@ -794,7 +802,7 @@ export class Model extends Entity {
                             0,
                             0,
                             0,
-                            op14,
+                            rotateNormals,
                             base.masks[resetOriginGroup] & mask,
                         );
                     }
@@ -805,7 +813,7 @@ export class Model extends Entity {
                         frame.transformX[i],
                         frame.transformY[i],
                         frame.transformZ[i],
-                        op14,
+                        rotateNormals,
                         base.masks[group] & mask,
                     );
                 }
@@ -819,14 +827,14 @@ export class Model extends Entity {
         tx: number,
         ty: number,
         tz: number,
-        op14: boolean = false,
+        rotateNormals: boolean = false,
         mask: number = 0xffff,
     ): void {
         if (mask !== 0xffff) {
             // console.error("animate mask", mask);
             // throw new Error("animate mask");
         } else {
-            this.transform0(type, labels, tx, ty, tz, op14);
+            this.transform0(type, labels, tx, ty, tz, rotateNormals);
         }
     }
 
@@ -836,7 +844,7 @@ export class Model extends Entity {
         tx: number,
         ty: number,
         tz: number,
-        op14: boolean,
+        rotateNormals: boolean,
     ) {
         switch (type) {
             case SeqTransformType.ORIGIN:

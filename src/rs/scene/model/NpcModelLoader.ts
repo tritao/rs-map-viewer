@@ -117,7 +117,7 @@ export class NpcModelLoader {
                     !seqFrame.hasColorTransform,
                 );
 
-                model.animate(seqFrame, undefined, seqType.op14);
+                model.animate(seqFrame, undefined, seqType.rotateNormals);
             }
         }
 
