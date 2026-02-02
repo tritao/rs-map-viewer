@@ -5,7 +5,6 @@ import { BlurOperation } from "./BlurOperation";
 import { BricksOperation } from "./BricksOperation";
 import { BrightnessOperation } from "./BrightnessOperation";
 import { ClampOperation } from "./ClampOperation";
-import { ColorEdgeDetectorOperation } from "./ColorEdgeDetectorOperation";
 import { ColourStripOperation } from "./ColourStripOperation";
 import { ConstantColourOperation } from "./ConstantColourOperation";
 import { ConstantMonochromeOperation } from "./ConstantMonochromeOperation";
@@ -25,6 +24,7 @@ import { MandelbrotOperation } from "./MandelbrotOperation";
 import { MirrorOperation } from "./MirrorOperation";
 import { MixerOperation } from "./MixerOperation";
 import { MonochromeEdgeDetectorOperation } from "./MonochromeEdgeDetectorOperation";
+import { NormalMapOperation } from "./NormalMapOperation";
 import { PerlinNoiseOperation } from "./PerlinNoiseOperation";
 import { PseudoRandomNoiseOperation } from "./PseudoRandomNoiseOperation";
 import { RangeOperation } from "./RangeOperation";
@@ -111,7 +111,7 @@ export class TextureOperationFactory {
             case 32:
                 return new EmbossOperation();
             case 33:
-                return new ColorEdgeDetectorOperation();
+                return new NormalMapOperation();
             case 34:
                 return new PerlinNoiseOperation();
             case 35:
