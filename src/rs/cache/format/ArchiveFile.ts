@@ -1,4 +1,4 @@
-import { ByteBuffer } from "../io/ByteBuffer";
+import { ByteBuffer } from "../../io/ByteBuffer";
 
 export class ArchiveFile {
     constructor(

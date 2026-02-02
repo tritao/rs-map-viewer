@@ -1,9 +1,9 @@
 import { ByteBuffer } from "../io/ByteBuffer";
 import { StringUtil } from "../util/StringUtil";
 import { CompressionHandler } from "../compression/CompressionHandler";
-import { Archive } from "./Archive";
-import { ArchiveFile } from "./ArchiveFile";
-import { Container } from "./Container";
+import { Archive } from "./format/Archive";
+import { ArchiveFile } from "./format/ArchiveFile";
+import { Container } from "./format/Container";
 import { DatIndexType } from "./IndexType";
 import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";

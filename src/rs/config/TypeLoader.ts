@@ -1,5 +1,5 @@
 import { BIT_MASKS } from "../MathConstants";
-import { Archive } from "../cache/Archive";
+import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { ByteBuffer } from "../io/ByteBuffer";

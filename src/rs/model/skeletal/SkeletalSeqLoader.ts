@@ -1,4 +1,4 @@
-import { Archive } from "../../cache/Archive";
+import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { SkeletalSeq } from "./SkeletalSeq";

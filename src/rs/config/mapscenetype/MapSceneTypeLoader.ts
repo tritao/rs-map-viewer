@@ -1,4 +1,4 @@
-import { Archive } from "../../cache/Archive";
+import { Archive } from "../../cache/format/Archive";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { ArchiveTypeLoader } from "../TypeLoader";
 import { MapSceneType } from "./MapSceneType";

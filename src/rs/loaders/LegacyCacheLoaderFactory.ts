@@ -18,7 +18,7 @@ import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { DatTextureLoader } from "../texture/DatTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
-import { Archive } from "../cache/Archive";
+import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";

@@ -1,6 +1,6 @@
-import { CompressionHandler } from "../compression/CompressionHandler";
-import { ByteBuffer } from "../io/ByteBuffer";
-import { StringUtil } from "../util/StringUtil";
+import { CompressionHandler } from "../../compression/CompressionHandler";
+import { ByteBuffer } from "../../io/ByteBuffer";
+import { StringUtil } from "../../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
 
 type HashFunction = (str: string) => number;

@@ -1,4 +1,4 @@
-import { Archive } from "../../cache/Archive";
+import { Archive } from "../../cache/format/Archive";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SkeletalBase } from "../skeletal/SkeletalBase";

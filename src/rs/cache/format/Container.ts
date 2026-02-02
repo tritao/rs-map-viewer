@@ -1,9 +1,9 @@
 // import { Xtea } from "../util/Xtea";
-import { CompressionHandler } from "../compression/CompressionHandler";
-import { CompressionType } from "../compression/CompressionType";
-import { Xtea } from "../crypto/Xtea";
-import { ByteBuffer } from "../io/ByteBuffer";
-import { ByteSource } from "../io/ByteSource";
+import { CompressionHandler } from "../../compression/CompressionHandler";
+import { CompressionType } from "../../compression/CompressionType";
+import { Xtea } from "../../crypto/Xtea";
+import { ByteBuffer } from "../../io/ByteBuffer";
+import { ByteSource } from "../../io/ByteSource";
 
 export class Container {
     static decode(

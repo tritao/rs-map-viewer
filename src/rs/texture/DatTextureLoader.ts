@@ -1,4 +1,4 @@
-import { Archive } from "../cache/Archive";
+import { Archive } from "../cache/format/Archive";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { brightenRgb, rgbToHsl } from "../util/ColorUtil";

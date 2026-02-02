@@ -1,6 +1,6 @@
 import { StringUtil } from "../util/StringUtil";
 import { CompressionHandler } from "../compression/CompressionHandler";
-import { Archive } from "./Archive";
+import { Archive } from "./format/Archive";
 import { CacheFiles } from "./CacheFiles";
 import { CacheIndex, CacheIndexDat, CacheIndexDat2, LegacyCacheIndex } from "./CacheIndex";
 import { CacheType } from "./CacheType";
