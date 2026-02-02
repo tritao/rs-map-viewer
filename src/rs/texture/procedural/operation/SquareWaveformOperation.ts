@@ -3,12 +3,12 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class SquareWaveformOperation extends TextureOperation {
-    field0 = 10;
-    field1 = 2048;
-    field2 = 0;
+    periodCount = 10;
+    dutyCycleQ12 = 2048;
+    direction = 0;
 
-    table0!: Int32Array;
-    table1!: Int32Array;
+    pulseEndQ12!: Int32Array;
+    segmentStartQ12!: Int32Array;
 
     constructor() {
         super(0, true);
@@ -16,28 +16,28 @@ export class SquareWaveformOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            this.field0 = buffer.readUnsignedByte();
+            this.periodCount = buffer.readUnsignedByte();
         } else if (field === 1) {
-            this.field1 = buffer.readUnsignedShort();
+            this.dutyCycleQ12 = buffer.readUnsignedShort();
         } else if (field === 2) {
-            this.field2 = buffer.readUnsignedByte();
+            this.direction = buffer.readUnsignedByte();
         }
     }
 
     override init() {
-        this.table0 = new Int32Array(this.field0 + 1);
-        this.table1 = new Int32Array(this.field0 + 1);
+        this.pulseEndQ12 = new Int32Array(this.periodCount + 1);
+        this.segmentStartQ12 = new Int32Array(this.periodCount + 1);
 
-        let i = 0;
-        let j = (4096 / this.field0) | 0;
-        let k = (j * this.field1) >> 12;
-        for (let l = 0; l < this.field0; l++) {
-            this.table1[l] = i;
-            this.table0[l] = i + k;
-            i += j;
+        let segmentStartQ12 = 0;
+        const segmentSizeQ12 = (4096 / this.periodCount) | 0;
+        const pulseWidthQ12 = (segmentSizeQ12 * this.dutyCycleQ12) >> 12;
+        for (let periodIndex = 0; periodIndex < this.periodCount; periodIndex++) {
+            this.segmentStartQ12[periodIndex] = segmentStartQ12;
+            this.pulseEndQ12[periodIndex] = segmentStartQ12 + pulseWidthQ12;
+            segmentStartQ12 += segmentSizeQ12;
         }
-        this.table1[this.field0] = 4096;
-        this.table0[this.field0] = this.table0[0] + 4096;
+        this.segmentStartQ12[this.periodCount] = 4096;
+        this.pulseEndQ12[this.periodCount] = this.pulseEndQ12[0] + 4096;
     }
 
     override getMonochromeOutput(textureGenerator: TextureGenerator, line: number): Int32Array {
@@ -47,46 +47,50 @@ export class SquareWaveformOperation extends TextureOperation {
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
             const verticalGradient = textureGenerator.verticalGradient[line];
-            if (this.field2 === 0) {
-                let value = 0;
-                for (let i = 0; i < this.field0; i++) {
+            if (this.direction === 0) {
+                let outputValueQ12 = 0;
+                for (let periodIndex = 0; periodIndex < this.periodCount; periodIndex++) {
                     if (
-                        verticalGradient >= this.table1[i] &&
-                        verticalGradient < this.table1[i + 1]
+                        verticalGradient >= this.segmentStartQ12[periodIndex] &&
+                        verticalGradient < this.segmentStartQ12[periodIndex + 1]
                     ) {
-                        if (verticalGradient < this.table0[i]) {
-                            value = 4096;
+                        if (verticalGradient < this.pulseEndQ12[periodIndex]) {
+                            outputValueQ12 = 4096;
                         }
                         break;
                     }
                 }
 
-                output.fill(value, 0, textureGenerator.width);
+                output.fill(outputValueQ12, 0, textureGenerator.width);
             } else {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                    let index = 0;
-                    let value = 0;
+                    let phaseQ12 = 0;
+                    let outputValueQ12 = 0;
                     const horizontalGradient = textureGenerator.horizontalGradient[pixel];
-                    switch (this.field2) {
+                    switch (this.direction) {
                         case 3:
-                            index = ((horizontalGradient - verticalGradient) >> 1) + 2048;
+                            phaseQ12 = ((horizontalGradient - verticalGradient) >> 1) + 2048;
                             break;
                         case 2:
-                            index = ((horizontalGradient - (4096 - verticalGradient)) >> 1) + 2048;
+                            phaseQ12 =
+                                ((horizontalGradient - (4096 - verticalGradient)) >> 1) + 2048;
                             break;
                         case 1:
-                            index = horizontalGradient;
+                            phaseQ12 = horizontalGradient;
                             break;
                     }
-                    for (let i = 0; i < this.field0; i++) {
-                        if (index >= this.table1[i] && index < this.table1[i + 1]) {
-                            if (index < this.table0[i]) {
-                                value = 4096;
+                    for (let periodIndex = 0; periodIndex < this.periodCount; periodIndex++) {
+                        if (
+                            phaseQ12 >= this.segmentStartQ12[periodIndex] &&
+                            phaseQ12 < this.segmentStartQ12[periodIndex + 1]
+                        ) {
+                            if (phaseQ12 < this.pulseEndQ12[periodIndex]) {
+                                outputValueQ12 = 4096;
                             }
                             break;
                         }
                     }
-                    output[pixel] = value;
+                    output[pixel] = outputValueQ12;
                 }
             }
         }
