@@ -33,21 +33,24 @@ export function interpolateCurve(curve: Curve, t: number): number {
     let useCurrentY = false;
     let useNextY = false;
 
-    if (point.field4 === 0 && point.field5 === 0) {
+    if (point.outTangentDx === 0 && point.outTangentDy === 0) {
         useCurrentY = true;
-    } else if (point.field4 === FloatUtil.MAX_VALUE && point.field5 === FloatUtil.MAX_VALUE) {
+    } else if (
+        point.outTangentDx === FloatUtil.MAX_VALUE &&
+        point.outTangentDy === FloatUtil.MAX_VALUE
+    ) {
         useNextY = true;
     } else if (!point.next) {
         useCurrentY = true;
     } else if (curve.pointIndexUpdated) {
         const x0 = point.x;
         const y0 = point.y;
-        const c1x = point.field4 * 0.33333334 + x0;
-        const c1y = point.field5 * 0.33333334 + y0;
+        const c1x = point.outTangentDx * 0.33333334 + x0;
+        const c1y = point.outTangentDy * 0.33333334 + y0;
         const x1 = point.next.x;
         const y1 = point.next.y;
-        const c2x = x1 - point.next.field2 * 0.33333334;
-        const c2y = y1 - point.next.field3 * 0.33333334;
+        const c2x = x1 - point.next.inTangentDx * 0.33333334;
+        const c2y = y1 - point.next.inTangentDy * 0.33333334;
         if (curve.bool) {
             let adjC1y = c1y;
             let adjC2y = c2y;
@@ -190,8 +193,8 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
             mappedT = endX - mappedT;
         } else if (curve.startInterpType === CurveInterpType.TYPE_1) {
             mappedT = startX - t;
-            const tangentDx = curve.points[0].field2;
-            const tangentDy = curve.points[0].field3;
+            const tangentDx = curve.points[0].inTangentDx;
+            const tangentDy = curve.points[0].inTangentDy;
             let output = curve.points[0].y;
             if (tangentDx !== 0.0) {
                 output -= (mappedT * tangentDy) / tangentDx;
@@ -212,8 +215,8 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
             mappedT += startX;
         } else if (curve.endInterpType === CurveInterpType.TYPE_1) {
             mappedT = t - endX;
-            const tangentDx = curve.points[curve.getPointCount() - 1].field4;
-            const tangentDy = curve.points[curve.getPointCount() - 1].field5;
+            const tangentDx = curve.points[curve.getPointCount() - 1].outTangentDx;
+            const tangentDy = curve.points[curve.getPointCount() - 1].outTangentDy;
             let output = curve.points[curve.getPointCount() - 1].y;
             if (tangentDx !== 0.0) {
                 output += (tangentDy * mappedT) / tangentDx;

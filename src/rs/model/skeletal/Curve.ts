@@ -171,19 +171,19 @@ export class Curve {
 export class CurvePoint {
     x!: number;
     y!: number;
-    field2!: number;
-    field3!: number;
-    field4!: number;
-    field5!: number;
+    inTangentDx!: number;
+    inTangentDy!: number;
+    outTangentDx!: number;
+    outTangentDy!: number;
 
     next?: CurvePoint;
 
     decode(buffer: ByteBuffer, version: number): void {
         this.x = buffer.readShort();
         this.y = buffer.readFloat();
-        this.field2 = buffer.readFloat();
-        this.field3 = buffer.readFloat();
-        this.field4 = buffer.readFloat();
-        this.field5 = buffer.readFloat();
+        this.inTangentDx = buffer.readFloat();
+        this.inTangentDy = buffer.readFloat();
+        this.outTangentDx = buffer.readFloat();
+        this.outTangentDy = buffer.readFloat();
     }
 }
