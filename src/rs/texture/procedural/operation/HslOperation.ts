@@ -60,45 +60,45 @@ export class HslOperation extends TextureOperation {
     }
 
     setRgb(hue: number, saturation: number, lightness: number) {
-        const i =
+        const q =
             lightness > 2048
                 ? saturation + lightness - ((saturation * lightness) >> 12)
                 : (lightness * (4096 + saturation)) >> 12;
-        if (i > 0) {
-            const j = lightness - i + lightness;
-            const k = ((i - j) << 12) / i;
-            hue *= 6;
-            const l = hue >> 12;
-            let j1 = i;
-            let i1 = hue - (l << 12);
-            j1 = (j1 * k) >> 12;
-            j1 = (i1 * j1) >> 12;
-            const k1 = j + j1;
-            const l1 = i - j1;
-            if (l === 0) {
-                this.rgbR = i;
-                this.rgbG = k1;
-                this.rgbB = j;
-            } else if (l === 1) {
-                this.rgbR = l1;
-                this.rgbG = i;
-                this.rgbB = j;
-            } else if (l === 2) {
-                this.rgbR = j;
-                this.rgbG = i;
-                this.rgbB = k1;
-            } else if (l === 3) {
-                this.rgbR = j;
-                this.rgbG = l1;
-                this.rgbB = i;
-            } else if (l === 4) {
-                this.rgbR = k1;
-                this.rgbG = j;
-                this.rgbB = i;
-            } else if (l === 5) {
-                this.rgbR = i;
-                this.rgbG = j;
-                this.rgbB = l1;
+        if (q > 0) {
+            const p = lightness - q + lightness;
+            const qMinusPOverQQ12 = ((q - p) << 12) / q;
+            const hue6Q12 = hue * 6;
+            const hueSector = hue6Q12 >> 12;
+            const hueFracQ12 = hue6Q12 - (hueSector << 12);
+            let deltaQ12 = q;
+            deltaQ12 = (deltaQ12 * qMinusPOverQQ12) >> 12;
+            deltaQ12 = (hueFracQ12 * deltaQ12) >> 12;
+            const pPlusDelta = p + deltaQ12;
+            const qMinusDelta = q - deltaQ12;
+            if (hueSector === 0) {
+                this.rgbR = q;
+                this.rgbG = pPlusDelta;
+                this.rgbB = p;
+            } else if (hueSector === 1) {
+                this.rgbR = qMinusDelta;
+                this.rgbG = q;
+                this.rgbB = p;
+            } else if (hueSector === 2) {
+                this.rgbR = p;
+                this.rgbG = q;
+                this.rgbB = pPlusDelta;
+            } else if (hueSector === 3) {
+                this.rgbR = p;
+                this.rgbG = qMinusDelta;
+                this.rgbB = q;
+            } else if (hueSector === 4) {
+                this.rgbR = pPlusDelta;
+                this.rgbG = p;
+                this.rgbB = q;
+            } else if (hueSector === 5) {
+                this.rgbR = q;
+                this.rgbG = p;
+                this.rgbB = qMinusDelta;
             }
         } else {
             this.rgbR = this.rgbG = this.rgbB = lightness;

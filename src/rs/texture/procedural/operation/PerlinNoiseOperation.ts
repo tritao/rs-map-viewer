@@ -36,17 +36,17 @@ export class PerlinNoiseOperation extends TextureOperation {
     }
 
     static fade(n: number): number {
-        const i = (((n * n) >> 12) * n) >> 12;
-        const j = 6 * n - 61440;
-        const k = 40960 + ((j * n) >> 12);
-        return (k * i) >> 12;
+        const nCubedQ12 = (((n * n) >> 12) * n) >> 12;
+        const sixNMinus15Q12 = 6 * n - 61440;
+        const innerQ12 = 40960 + ((sixNMinus15Q12 * n) >> 12);
+        return (innerQ12 * nCubedQ12) >> 12;
     }
 
     static calcFadeQ12(n: number) {
-        const i = (((n * n) >> 12) * n) >> 12;
-        const j = n * 6 - 61440;
-        const k = 40960 + ((n * j) >> 12);
-        return (i * k) >> 12;
+        const nCubedQ12 = (((n * n) >> 12) * n) >> 12;
+        const sixNMinus15Q12 = n * 6 - 61440;
+        const innerQ12 = 40960 + ((n * sixNMinus15Q12) >> 12);
+        return (nCubedQ12 * innerQ12) >> 12;
     }
 
     static lerp(start: number, end: number, amount: number): number {
@@ -311,55 +311,58 @@ export class PerlinNoiseOperation extends TextureOperation {
         verticalGradient: number,
         horizontalGradient: number,
     ): number {
-        let k = x & 0xfffff000;
-        x -= k;
-        let l = y & 0xfffff000;
-        y -= l;
-        const j1 = verticalGradient & 0xfffff000;
-        const i1 = horizontalGradient & 0xfffff000;
-        l >>= 12;
-        let j = l + 1;
-        l &= 0xff;
-        k >>= 12;
-        let i = k + 1;
-        if (i1 >> 12 <= i) {
-            i = 0;
+        let xCellBaseQ12 = x & 0xfffff000;
+        x -= xCellBaseQ12;
+        let yCellBaseQ12 = y & 0xfffff000;
+        y -= yCellBaseQ12;
+        const yWrapQ12 = verticalGradient & 0xfffff000;
+        const xWrapQ12 = horizontalGradient & 0xfffff000;
+
+        let yCell = yCellBaseQ12 >> 12;
+        let yCellNext = yCell + 1;
+        yCell &= 0xff;
+        xCellBaseQ12 >>= 12;
+        let xCellNext = xCellBaseQ12 + 1;
+        if (xWrapQ12 >> 12 <= xCellNext) {
+            xCellNext = 0;
         }
-        k &= 0xff;
-        i &= 0xff;
-        if (j >= j1 >> 12) {
-            j = 0;
+        const xCell = xCellBaseQ12 & 0xff;
+        xCellNext &= 0xff;
+        if (yCellNext >= yWrapQ12 >> 12) {
+            yCellNext = 0;
         }
-        const i2 = this.permutations[this.permutations[l] + i] % 4;
-        const k1 = this.permutations[this.permutations[l] + k] % 4;
-        j &= 0xff;
-        const j2 = this.permutations[this.permutations[j] + i] % 4;
-        const l1 = this.permutations[this.permutations[j] + k] % 4;
-        const k2 = PerlinNoiseOperation.dotGradient2D(
+        yCellNext &= 0xff;
+
+        const grad00 = this.permutations[this.permutations[yCell] + xCell] % 4;
+        const grad10 = this.permutations[this.permutations[yCell] + xCellNext] % 4;
+        const grad11 = this.permutations[this.permutations[yCellNext] + xCellNext] % 4;
+        const grad01 = this.permutations[this.permutations[yCellNext] + xCell] % 4;
+
+        const dot00 = PerlinNoiseOperation.dotGradient2D(
             x,
             y,
-            PerlinNoiseOperation.gradientDirections[k1],
+            PerlinNoiseOperation.gradientDirections[grad00],
         );
-        const l2 = PerlinNoiseOperation.dotGradient2D(
+        const dot10 = PerlinNoiseOperation.dotGradient2D(
             x - 4096,
             y,
-            PerlinNoiseOperation.gradientDirections[i2],
+            PerlinNoiseOperation.gradientDirections[grad10],
         );
-        const i3 = PerlinNoiseOperation.dotGradient2D(
+        const dot01 = PerlinNoiseOperation.dotGradient2D(
             x,
             y - 4096,
-            PerlinNoiseOperation.gradientDirections[l1],
+            PerlinNoiseOperation.gradientDirections[grad01],
         );
-        const j3 = PerlinNoiseOperation.dotGradient2D(
+        const dot11 = PerlinNoiseOperation.dotGradient2D(
             x - 4096,
             y - 4096,
-            PerlinNoiseOperation.gradientDirections[j2],
+            PerlinNoiseOperation.gradientDirections[grad11],
         );
-        const k3 = PerlinNoiseOperation.fade(x);
-        const l3 = PerlinNoiseOperation.fade(y);
-        const i4 = PerlinNoiseOperation.lerp(k2, l2, k3);
-        const j4 = PerlinNoiseOperation.lerp(i3, j3, k3);
-        return PerlinNoiseOperation.lerp(i4, j4, l3);
+        const fadeX = PerlinNoiseOperation.fade(x);
+        const fadeY = PerlinNoiseOperation.fade(y);
+        const interpTop = PerlinNoiseOperation.lerp(dot00, dot10, fadeX);
+        const interpBottom = PerlinNoiseOperation.lerp(dot01, dot11, fadeX);
+        return PerlinNoiseOperation.lerp(interpTop, interpBottom, fadeY);
     }
 }
 
