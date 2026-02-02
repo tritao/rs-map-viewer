@@ -14,6 +14,7 @@ import { generateHeight } from "../util/HeightCalc";
 import { CollisionMap } from "./CollisionMap";
 import { packLocPlacement } from "./LocPlacementFlag";
 import { Scene, TileRenderFlag } from "./Scene";
+import type { TileRotation, TileShapeId } from "./Scene";
 import { SceneTileModel } from "./SceneTileModel";
 import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
@@ -322,8 +323,8 @@ export class SceneBuilder {
                         buffer,
                         this.newTerrainFormat,
                     );
-                    scene.tileShapes[level][x][y] = (v - 2) / 4;
-                    scene.tileRotations[level][x][y] = (v - 2 + rotOffset) & 3;
+                    scene.tileShapes[level][x][y] = ((v - 2) >> 2) as TileShapeId;
+                    scene.tileRotations[level][x][y] = ((v - 2 + rotOffset) & 3) as TileRotation;
                 } else if (v <= 81) {
                     scene.tileRenderFlags[level][x][y] = v - 49;
                 } else {
@@ -1188,8 +1189,8 @@ export class SceneBuilder {
                     let tileModel: SceneTileModel;
                     if (overlayId === -1) {
                         tileModel = new SceneTileModel(
-                            0,
-                            0,
+                            0 as TileShapeId,
+                            0 as TileRotation,
                             -1,
                             x,
                             y,
@@ -1211,8 +1212,8 @@ export class SceneBuilder {
                             0,
                         );
                     } else {
-                        const shape = tileShapes[level][x][y] + 1;
-                        const rotation = tileRotations[level][x][y];
+                        const shape = (tileShapes[level][x][y] + 1) as TileShapeId;
+                        const rotation = tileRotations[level][x][y] as TileRotation;
 
                         const overlay = this.overlayTypeLoader.load(overlayId);
 

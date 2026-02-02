@@ -21,6 +21,9 @@ export enum TileRenderFlag {
     Unknown0x20 = 0x20,
 }
 
+export type TileRotation = 0 | 1 | 2 | 3;
+export type TileShapeId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+
 export const TILE_FLAGS_BRIDGE = TileRenderFlag.Bridge;
 
 export class Scene {

@@ -5,6 +5,7 @@ import {
     mixHsl,
     packHsl,
 } from "../util/ColorUtil";
+import type { TileRotation, TileShapeId } from "./Scene";
 
 const TILE_SIZE = 128;
 const HALF_TILE_SIZE = TILE_SIZE / 2;
@@ -96,8 +97,8 @@ export class SceneTileModel {
     normalFaceCount: number;
 
     constructor(
-        readonly shape: number,
-        readonly rotation: number,
+        readonly shape: TileShapeId,
+        readonly rotation: TileRotation,
         readonly textureId: number,
         x: number,
         y: number,
@@ -118,9 +119,6 @@ export class SceneTileModel {
         readonly underlayRgb: number,
         readonly overlayRgb: number,
     ) {
-        this.shape = shape;
-        this.rotation = rotation;
-
         const underlayHslSw = (this.underlayHslSw = adjustUnderlayLight(
             blendUnderlayHslSw,
             lightSw,
