@@ -132,12 +132,12 @@ export function computeTextureCoords(
                 textureScales.centerXs &&
                 textureScales.centerYs &&
                 textureScales.centerZs &&
-                textureScales.fs
+                textureScales.transformMatrices
             ) {
                 const centerX = textureScales.centerXs[texCoord];
                 const centerY = textureScales.centerYs[texCoord];
                 const centerZ = textureScales.centerZs[texCoord];
-                const scales = textureScales.fs[texCoord];
+                const transform = textureScales.transformMatrices[texCoord];
                 const direction = model.textureDirection[texCoord];
                 const speed = model.textureSpeed[texCoord] / 256.0;
                 if (type === 1) {
@@ -149,7 +149,7 @@ export function computeTextureCoords(
                         centerX,
                         centerY,
                         centerZ,
-                        scales,
+                        transform,
                         scaleZ,
                         direction,
                         speed,
@@ -164,7 +164,7 @@ export function computeTextureCoords(
                         centerX,
                         centerY,
                         centerZ,
-                        scales,
+                        transform,
                         scaleZ,
                         direction,
                         speed,
@@ -179,7 +179,7 @@ export function computeTextureCoords(
                         centerX,
                         centerY,
                         centerZ,
-                        scales,
+                        transform,
                         scaleZ,
                         direction,
                         speed,
@@ -236,11 +236,11 @@ export function computeTextureCoords(
                     const scaleY = 64.0 / model.textureScaleY[texCoord];
                     const scaleZ = 64.0 / model.textureScaleZ[texCoord];
                     const scaledNormalX =
-                        (vx * scales[0] + vy * scales[1] + vz * scales[2]) / scaleX;
+                        (vx * transform[0] + vy * transform[1] + vz * transform[2]) / scaleX;
                     const scaledNormalY =
-                        (vx * scales[3] + vy * scales[4] + vz * scales[5]) / scaleY;
+                        (vx * transform[3] + vy * transform[4] + vz * transform[5]) / scaleY;
                     const scaledNormalZ =
-                        (vx * scales[6] + vy * scales[7] + vz * scales[8]) / scaleZ;
+                        (vx * transform[6] + vy * transform[7] + vz * transform[8]) / scaleZ;
 
                     const cubeFace = getDominantAxisFace(
                         scaledNormalX,
@@ -256,7 +256,7 @@ export function computeTextureCoords(
                         centerY,
                         centerZ,
                         cubeFace,
-                        scales,
+                        transform,
                         direction,
                         speed,
                         uOffset,
@@ -273,7 +273,7 @@ export function computeTextureCoords(
                         centerY,
                         centerZ,
                         cubeFace,
-                        scales,
+                        transform,
                         direction,
                         speed,
                         uOffset,
@@ -290,7 +290,7 @@ export function computeTextureCoords(
                         centerY,
                         centerZ,
                         cubeFace,
-                        scales,
+                        transform,
                         direction,
                         speed,
                         uOffset,
@@ -307,7 +307,7 @@ export function computeTextureCoords(
                         centerX,
                         centerY,
                         centerZ,
-                        scales,
+                        transform,
                         direction,
                         speed,
                         uvTemp,
@@ -321,7 +321,7 @@ export function computeTextureCoords(
                         centerX,
                         centerY,
                         centerZ,
-                        scales,
+                        transform,
                         direction,
                         speed,
                         uvTemp,
@@ -335,7 +335,7 @@ export function computeTextureCoords(
                         centerX,
                         centerY,
                         centerZ,
-                        scales,
+                        transform,
                         direction,
                         speed,
                         uvTemp,
@@ -409,7 +409,7 @@ function computeCylindricalUv(
     centerX: number,
     centerY: number,
     centerZ: number,
-    scales: Float32Array,
+    transform: Float32Array,
     scaleZ: number,
     direction: number,
     speed: number,
@@ -418,9 +418,9 @@ function computeCylindricalUv(
     vx -= centerX;
     vy -= centerY;
     vz -= centerZ;
-    const localX = vx * scales[0] + vy * scales[1] + vz * scales[2];
-    const localY = vx * scales[3] + vy * scales[4] + vz * scales[5];
-    const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
+    const localX = vx * transform[0] + vy * transform[1] + vz * transform[2];
+    const localY = vx * transform[3] + vy * transform[4] + vz * transform[5];
+    const localZ = vx * transform[6] + vy * transform[7] + vz * transform[8];
     let u = Math.atan2(localX, localZ) / 6.2831855 + 0.5;
     if (scaleZ !== 1.0) {
         u *= scaleZ;
@@ -472,7 +472,7 @@ function computeBoxProjectedUv(
     centerY: number,
     centerZ: number,
     cubeFace: number,
-    scales: Float32Array,
+    transform: Float32Array,
     direction: number,
     speed: number,
     uOffset: number,
@@ -482,9 +482,9 @@ function computeBoxProjectedUv(
     vx -= centerX;
     vy -= centerY;
     vz -= centerZ;
-    const localX = vx * scales[0] + vy * scales[1] + vz * scales[2];
-    const localY = vx * scales[3] + vy * scales[4] + vz * scales[5];
-    const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
+    const localX = vx * transform[0] + vy * transform[1] + vz * transform[2];
+    const localY = vx * transform[3] + vy * transform[4] + vz * transform[5];
+    const localZ = vx * transform[6] + vy * transform[7] + vz * transform[8];
     let u: number;
     let v: number;
     if (cubeFace === 0) {
@@ -529,7 +529,7 @@ function computeSphericalUv(
     centerX: number,
     centerY: number,
     centerZ: number,
-    scales: Float32Array,
+    transform: Float32Array,
     direction: number,
     speed: number,
     out: Float32Array,
@@ -537,9 +537,9 @@ function computeSphericalUv(
     vx -= centerX;
     vy -= centerY;
     vz -= centerZ;
-    const localX = vx * scales[0] + vy * scales[1] + vz * scales[2];
-    const localY = vx * scales[3] + vy * scales[4] + vz * scales[5];
-    const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
+    const localX = vx * transform[0] + vy * transform[1] + vz * transform[2];
+    const localY = vx * transform[3] + vy * transform[4] + vz * transform[5];
+    const localZ = vx * transform[6] + vy * transform[7] + vz * transform[8];
     const localLen = Math.sqrt(localX * localX + localY * localY + localZ * localZ);
     let u = Math.atan2(localX, localZ) / 6.2831855 + 0.5;
     let v = Math.asin(localY / localLen) / 3.1415927 + 0.5 + speed;
@@ -564,8 +564,8 @@ class TextureScales {
         readonly centerXs: Int32Array | undefined,
         readonly centerYs: Int32Array | undefined,
         readonly centerZs: Int32Array | undefined,
-        // 3x3 rotation matrix maybe
-        readonly fs: Float32Array[] | undefined,
+        // 3x3 transform matrix for each texture face
+        readonly transformMatrices: Float32Array[] | undefined,
     ) {}
 }
 
@@ -573,7 +573,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
     let centerXs: Int32Array | undefined;
     let centerYs: Int32Array | undefined;
     let centerZs: Int32Array | undefined;
-    let fs: Float32Array[] | undefined;
+    let transformMatrices: Float32Array[] | undefined;
     if (model.textureCoords) {
         const textureFaceCount = model.textureFaceCount;
         const minX = new Int32Array(textureFaceCount);
@@ -590,7 +590,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
             minZ[i] = 2147483647;
             maxZ[i] = -2147483647;
         }
-        fs = new Array(textureFaceCount);
+        transformMatrices = new Array(textureFaceCount);
         for (let i = 0; i < model.faceCount; i++) {
             if (model.textureCoords[i] === -1) {
                 continue;
@@ -663,7 +663,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
                     scaleY = model.textureScaleY[i] / 1024.0;
                     scaleZ = model.textureScaleZ[i] / 1024.0;
                 }
-                fs[i] = buildTextureTransformMatrix(
+                transformMatrices[i] = buildTextureTransformMatrix(
                     model.textureMappingP[i],
                     model.textureMappingM[i],
                     model.textureMappingN[i],
@@ -675,7 +675,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
             }
         }
     }
-    return new TextureScales(centerXs, centerYs, centerZs, fs);
+    return new TextureScales(centerXs, centerYs, centerZs, transformMatrices);
 }
 
 function buildTextureTransformMatrix(
@@ -687,7 +687,7 @@ function buildTextureTransformMatrix(
     scaleY: number,
     scaleZ: number,
 ): Float32Array {
-    const fs = new Float32Array(9);
+    const baseMatrix = new Float32Array(9);
     let axisX = 1.0;
     let axisZ = 0.0;
     let cosAngle = m / 32767.0;
@@ -698,45 +698,72 @@ function buildTextureTransformMatrix(
         axisX = -n / axisLenXZ;
         axisZ = p / axisLenXZ;
     }
-    fs[0] = cosAngle + axisX * axisX * oneMinusCosAngle;
-    fs[1] = axisZ * sinAngle;
-    fs[2] = axisZ * axisX * oneMinusCosAngle;
-    fs[3] = -axisZ * sinAngle;
-    fs[4] = cosAngle;
-    fs[5] = axisX * sinAngle;
-    fs[6] = axisX * axisZ * oneMinusCosAngle;
-    fs[7] = -axisX * sinAngle;
-    fs[8] = cosAngle + axisZ * axisZ * oneMinusCosAngle;
-    const fs_558_ = new Float32Array(9);
+    baseMatrix[0] = cosAngle + axisX * axisX * oneMinusCosAngle;
+    baseMatrix[1] = axisZ * sinAngle;
+    baseMatrix[2] = axisZ * axisX * oneMinusCosAngle;
+    baseMatrix[3] = -axisZ * sinAngle;
+    baseMatrix[4] = cosAngle;
+    baseMatrix[5] = axisX * sinAngle;
+    baseMatrix[6] = axisX * axisZ * oneMinusCosAngle;
+    baseMatrix[7] = -axisX * sinAngle;
+    baseMatrix[8] = cosAngle + axisZ * axisZ * oneMinusCosAngle;
+    const yRotationMatrix = new Float32Array(9);
     cosAngle = Math.cos(rotation * 0.024543693); //pi/128 = 0.024543693
     sinAngle = Math.sin(rotation * 0.024543693); //pi/128 = 0.024543693
-    fs_558_[0] = cosAngle;
-    fs_558_[1] = 0.0;
-    fs_558_[2] = sinAngle;
-    fs_558_[3] = 0.0;
-    fs_558_[4] = 1.0;
-    fs_558_[5] = 0.0;
-    fs_558_[6] = -sinAngle;
-    fs_558_[7] = 0.0;
-    fs_558_[8] = cosAngle;
-    const fs_559_ = new Float32Array(9);
-    fs_559_[0] = fs_558_[0] * fs[0] + fs_558_[1] * fs[3] + fs_558_[2] * fs[6];
-    fs_559_[1] = fs_558_[0] * fs[1] + fs_558_[1] * fs[4] + fs_558_[2] * fs[7];
-    fs_559_[2] = fs_558_[0] * fs[2] + fs_558_[1] * fs[5] + fs_558_[2] * fs[8];
-    fs_559_[3] = fs_558_[3] * fs[0] + fs_558_[4] * fs[3] + fs_558_[5] * fs[6];
-    fs_559_[4] = fs_558_[3] * fs[1] + fs_558_[4] * fs[4] + fs_558_[5] * fs[7];
-    fs_559_[5] = fs_558_[3] * fs[2] + fs_558_[4] * fs[5] + fs_558_[5] * fs[8];
-    fs_559_[6] = fs_558_[6] * fs[0] + fs_558_[7] * fs[3] + fs_558_[8] * fs[6];
-    fs_559_[7] = fs_558_[6] * fs[1] + fs_558_[7] * fs[4] + fs_558_[8] * fs[7];
-    fs_559_[8] = fs_558_[6] * fs[2] + fs_558_[7] * fs[5] + fs_558_[8] * fs[8];
-    fs_559_[0] *= scaleX;
-    fs_559_[1] *= scaleX;
-    fs_559_[2] *= scaleX;
-    fs_559_[3] *= scaleY;
-    fs_559_[4] *= scaleY;
-    fs_559_[5] *= scaleY;
-    fs_559_[6] *= scaleZ;
-    fs_559_[7] *= scaleZ;
-    fs_559_[8] *= scaleZ;
-    return fs_559_;
+    yRotationMatrix[0] = cosAngle;
+    yRotationMatrix[1] = 0.0;
+    yRotationMatrix[2] = sinAngle;
+    yRotationMatrix[3] = 0.0;
+    yRotationMatrix[4] = 1.0;
+    yRotationMatrix[5] = 0.0;
+    yRotationMatrix[6] = -sinAngle;
+    yRotationMatrix[7] = 0.0;
+    yRotationMatrix[8] = cosAngle;
+    const combinedMatrix = new Float32Array(9);
+    combinedMatrix[0] =
+        yRotationMatrix[0] * baseMatrix[0] +
+        yRotationMatrix[1] * baseMatrix[3] +
+        yRotationMatrix[2] * baseMatrix[6];
+    combinedMatrix[1] =
+        yRotationMatrix[0] * baseMatrix[1] +
+        yRotationMatrix[1] * baseMatrix[4] +
+        yRotationMatrix[2] * baseMatrix[7];
+    combinedMatrix[2] =
+        yRotationMatrix[0] * baseMatrix[2] +
+        yRotationMatrix[1] * baseMatrix[5] +
+        yRotationMatrix[2] * baseMatrix[8];
+    combinedMatrix[3] =
+        yRotationMatrix[3] * baseMatrix[0] +
+        yRotationMatrix[4] * baseMatrix[3] +
+        yRotationMatrix[5] * baseMatrix[6];
+    combinedMatrix[4] =
+        yRotationMatrix[3] * baseMatrix[1] +
+        yRotationMatrix[4] * baseMatrix[4] +
+        yRotationMatrix[5] * baseMatrix[7];
+    combinedMatrix[5] =
+        yRotationMatrix[3] * baseMatrix[2] +
+        yRotationMatrix[4] * baseMatrix[5] +
+        yRotationMatrix[5] * baseMatrix[8];
+    combinedMatrix[6] =
+        yRotationMatrix[6] * baseMatrix[0] +
+        yRotationMatrix[7] * baseMatrix[3] +
+        yRotationMatrix[8] * baseMatrix[6];
+    combinedMatrix[7] =
+        yRotationMatrix[6] * baseMatrix[1] +
+        yRotationMatrix[7] * baseMatrix[4] +
+        yRotationMatrix[8] * baseMatrix[7];
+    combinedMatrix[8] =
+        yRotationMatrix[6] * baseMatrix[2] +
+        yRotationMatrix[7] * baseMatrix[5] +
+        yRotationMatrix[8] * baseMatrix[8];
+    combinedMatrix[0] *= scaleX;
+    combinedMatrix[1] *= scaleX;
+    combinedMatrix[2] *= scaleX;
+    combinedMatrix[3] *= scaleY;
+    combinedMatrix[4] *= scaleY;
+    combinedMatrix[5] *= scaleY;
+    combinedMatrix[6] *= scaleZ;
+    combinedMatrix[7] *= scaleZ;
+    combinedMatrix[8] *= scaleZ;
+    return combinedMatrix;
 }
