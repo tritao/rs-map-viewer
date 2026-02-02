@@ -46,7 +46,7 @@ export class SeqType extends Type {
 
     priority: number;
 
-    replyMode: number;
+    replayMode: number;
     // TODO(revision): naming/meaning differs across eras.
     // - OSRS tooling (eg runelite) calls opcode 11 `replyMode`.
     // - rt4 530 calls it `exactmove`.
@@ -78,7 +78,7 @@ export class SeqType extends Type {
         this.looping = false;
         this.precedenceAnimating = -1;
         this.priority = -1;
-        this.replyMode = 2;
+        this.replayMode = 2;
         this.tweened = false;
         this.vorbisSound = false;
         this.animMayaId = -1;
@@ -168,7 +168,7 @@ export class SeqType extends Type {
         } else if (opcode === 10) {
             this.priority = buffer.readUnsignedByte();
         } else if (opcode === 11) {
-            this.replyMode = buffer.readUnsignedByte();
+            this.replayMode = buffer.readUnsignedByte();
         } else if (opcode === 12) {
             if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision <= 377) {
                 buffer.readInt();
