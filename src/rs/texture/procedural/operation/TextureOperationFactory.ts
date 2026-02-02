@@ -42,8 +42,8 @@ import { WavyCrossOperation } from "./WavyCrossOperation";
 import { WeaveOperation } from "./WeaveOperation";
 
 export class TextureOperationFactory {
-    static instantiate(id: number): TextureOperation {
-        switch (id) {
+    static instantiate(typeId: number): TextureOperation {
+        switch (typeId) {
             case 0:
                 return new ConstantMonochromeOperation();
             case 1:
@@ -125,22 +125,21 @@ export class TextureOperationFactory {
             case 39:
                 return new SpriteSourceOperation();
             default:
-                throw new Error("Unknown texture operation: " + id);
+                throw new Error("Unknown texture operation: " + typeId);
         }
     }
 
     static create(buffer: ByteBuffer): TextureOperation {
-        // some index
-        const id = buffer.readUnsignedByte();
-        const type = buffer.readUnsignedByte();
-        // console.log("type", type, id);
-        const operation = TextureOperationFactory.instantiate(type);
-        operation.id = id;
-        operation.cacheSize = buffer.readUnsignedByte();
-        const fieldCount = buffer.readUnsignedByte();
-        for (let i = 0; i < fieldCount; i++) {
-            const field = buffer.readUnsignedByte();
-            operation.decode(field, buffer);
+        const operationId = buffer.readUnsignedByte();
+        const typeId = buffer.readUnsignedByte();
+        // console.log("type", typeId, "id", operationId);
+        const operation = TextureOperationFactory.instantiate(typeId);
+        operation.operationId = operationId;
+        operation.cacheSlotCount = buffer.readUnsignedByte();
+        const propertyCount = buffer.readUnsignedByte();
+        for (let i = 0; i < propertyCount; i++) {
+            const propertyId = buffer.readUnsignedByte();
+            operation.decode(propertyId, buffer);
         }
         operation.init();
         return operation;

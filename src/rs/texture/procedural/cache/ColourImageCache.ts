@@ -2,7 +2,7 @@ import Denque from "denque";
 
 export class ColourImageCacheSlot {
     constructor(
-        public readonly imageId: number,
+        public readonly line: number,
         public readonly slotId: number,
     ) {}
 }
@@ -12,7 +12,7 @@ export class ColourImageCache {
 
     slotCount: number;
 
-    maxId: number;
+    lineCount: number;
 
     usageTracker: Denque<ColourImageCacheSlot>;
 
@@ -22,13 +22,13 @@ export class ColourImageCache {
 
     usedSlots: number;
 
-    lastRequest: number;
+    lastLine: number;
 
     dirty: boolean;
 
-    constructor(slotCount: number, maxId: number, imageSize: number) {
+    constructor(slotCount: number, lineCount: number, imageSize: number) {
         this.slotCount = slotCount;
-        this.maxId = maxId;
+        this.lineCount = lineCount;
         this.usageTracker = new Denque<ColourImageCacheSlot>();
         this.images = new Array(slotCount);
         for (let i = 0; i < slotCount; i++) {
@@ -39,34 +39,34 @@ export class ColourImageCache {
         }
         this.slots = new Array(slotCount);
         this.usedSlots = 0;
-        this.lastRequest = -1;
+        this.lastLine = -1;
         this.dirty = false;
     }
 
-    get(req: number): Int32Array[] {
-        if (this.slotCount === this.maxId) {
-            this.dirty = this.slots[req] === undefined;
-            this.slots[req] = ColourImageCache.SLOT_USED;
-            return this.images[req];
+    get(line: number): Int32Array[] {
+        if (this.slotCount === this.lineCount) {
+            this.dirty = this.slots[line] === undefined;
+            this.slots[line] = ColourImageCache.SLOT_USED;
+            return this.images[line];
         } else if (this.slotCount === 1) {
-            this.dirty = req !== this.lastRequest;
-            this.lastRequest = req;
+            this.dirty = line !== this.lastLine;
+            this.lastLine = line;
             return this.images[0];
         } else {
-            let slot = this.slots[req];
+            let slot = this.slots[line];
             if (slot === undefined) {
                 this.dirty = true;
                 if (this.slotCount > this.usedSlots) {
-                    slot = new ColourImageCacheSlot(req, this.usedSlots);
+                    slot = new ColourImageCacheSlot(line, this.usedSlots);
                     this.usedSlots++;
                 } else {
                     const oldSlot = this.usageTracker.pop();
                     if (oldSlot) {
-                        slot = new ColourImageCacheSlot(req, oldSlot.slotId);
-                        delete this.slots[oldSlot.imageId];
+                        slot = new ColourImageCacheSlot(line, oldSlot.slotId);
+                        delete this.slots[oldSlot.line];
                     }
                 }
-                this.slots[req] = slot;
+                this.slots[line] = slot;
             } else {
                 this.dirty = false;
             }
@@ -83,7 +83,7 @@ export class ColourImageCache {
     }
 
     getAll(): Int32Array[][] {
-        if (this.maxId !== this.slotCount) {
+        if (this.lineCount !== this.slotCount) {
             throw new Error("Can only retrieve a full image cache");
         }
         for (let slot = 0; slot < this.slotCount; slot++) {

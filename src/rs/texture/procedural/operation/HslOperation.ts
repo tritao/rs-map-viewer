@@ -5,15 +5,15 @@ import { TextureOperation } from "./TextureOperation";
 export class HslOperation extends TextureOperation {
     deltaHue = 0;
     deltaSaturation = 0;
-    deltaLight = 0;
+    deltaLightness = 0;
 
     hue = 0;
     saturation = 0;
     lightness = 0;
 
-    r = 0;
-    g = 0;
-    b = 0;
+    rgbR = 0;
+    rgbG = 0;
+    rgbB = 0;
 
     constructor() {
         super(1, false);
@@ -26,7 +26,7 @@ export class HslOperation extends TextureOperation {
             // TODO: check if this is correct
             this.deltaSaturation = ((buffer.readByte() << 12) / 100) | 0;
         } else if (field === 2) {
-            this.deltaLight = ((buffer.readByte() << 12) / 100) | 0;
+            this.deltaLightness = ((buffer.readByte() << 12) / 100) | 0;
         }
     }
 
@@ -59,13 +59,13 @@ export class HslOperation extends TextureOperation {
         }
     }
 
-    setRgb(hue: number, saturation: number, light: number) {
+    setRgb(hue: number, saturation: number, lightness: number) {
         const i =
-            light > 2048
-                ? saturation + light - ((saturation * light) >> 12)
-                : (light * (4096 + saturation)) >> 12;
+            lightness > 2048
+                ? saturation + lightness - ((saturation * lightness) >> 12)
+                : (lightness * (4096 + saturation)) >> 12;
         if (i > 0) {
-            const j = light - i + light;
+            const j = lightness - i + lightness;
             const k = ((i - j) << 12) / i;
             hue *= 6;
             const l = hue >> 12;
@@ -76,32 +76,32 @@ export class HslOperation extends TextureOperation {
             const k1 = j + j1;
             const l1 = i - j1;
             if (l === 0) {
-                this.r = i;
-                this.g = k1;
-                this.b = j;
+                this.rgbR = i;
+                this.rgbG = k1;
+                this.rgbB = j;
             } else if (l === 1) {
-                this.r = l1;
-                this.g = i;
-                this.b = j;
+                this.rgbR = l1;
+                this.rgbG = i;
+                this.rgbB = j;
             } else if (l === 2) {
-                this.r = j;
-                this.g = i;
-                this.b = k1;
+                this.rgbR = j;
+                this.rgbG = i;
+                this.rgbB = k1;
             } else if (l === 3) {
-                this.r = j;
-                this.g = l1;
-                this.b = i;
+                this.rgbR = j;
+                this.rgbG = l1;
+                this.rgbB = i;
             } else if (l === 4) {
-                this.r = k1;
-                this.g = j;
-                this.b = i;
+                this.rgbR = k1;
+                this.rgbG = j;
+                this.rgbB = i;
             } else if (l === 5) {
-                this.r = i;
-                this.g = j;
-                this.b = l1;
+                this.rgbR = i;
+                this.rgbG = j;
+                this.rgbB = l1;
             }
         } else {
-            this.r = this.g = this.b = light;
+            this.rgbR = this.rgbG = this.rgbB = lightness;
         }
     }
 
@@ -122,7 +122,7 @@ export class HslOperation extends TextureOperation {
                 this.setHsl(inputR[pixel], inputG[pixel], inputB[pixel]);
                 this.hue += this.deltaHue;
                 this.saturation += this.deltaSaturation;
-                this.lightness += this.deltaLight;
+                this.lightness += this.deltaLightness;
                 for (; this.hue < 0; this.hue += 4096) {}
                 for (; this.hue > 4096; this.hue -= 4096) {}
                 if (this.saturation < 0) {
@@ -138,9 +138,9 @@ export class HslOperation extends TextureOperation {
                     this.lightness = 4096;
                 }
                 this.setRgb(this.hue, this.saturation, this.lightness);
-                outputR[pixel] = this.r;
-                outputG[pixel] = this.g;
-                outputB[pixel] = this.b;
+                outputR[pixel] = this.rgbR;
+                outputG[pixel] = this.rgbG;
+                outputB[pixel] = this.rgbB;
             }
         }
         return output;

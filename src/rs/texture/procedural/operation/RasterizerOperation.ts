@@ -4,9 +4,8 @@ import { ArrayUtils } from "../../../util/ArrayUtils";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
-// TODO: actually render
 export class RasterizerOperation extends TextureOperation {
-    ops?: RasterizerOperationShape[];
+    shapes?: RasterizerOperationShape[];
 
     constructor() {
         super(0, true);
@@ -15,17 +14,17 @@ export class RasterizerOperation extends TextureOperation {
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
             const count = buffer.readUnsignedByte();
-            this.ops = new Array(count);
+            this.shapes = new Array(count);
             for (let i = 0; i < count; i++) {
                 const type = buffer.readUnsignedByte();
                 if (type === 0) {
-                    this.ops[i] = RasterizerOperationLine.create(buffer);
+                    this.shapes[i] = RasterizerOperationLine.create(buffer);
                 } else if (type === 1) {
-                    this.ops[i] = RasterizerOperationBezierCurve.create(buffer);
+                    this.shapes[i] = RasterizerOperationBezierCurve.create(buffer);
                 } else if (type === 2) {
-                    this.ops[i] = RasterizerOperationRectangle.create(buffer);
+                    this.shapes[i] = RasterizerOperationRectangle.create(buffer);
                 } else if (type === 3) {
-                    this.ops[i] = RasterizerOperationEllipse.create(buffer);
+                    this.shapes[i] = RasterizerOperationEllipse.create(buffer);
                 }
             }
         } else if (field === 1) {
@@ -40,21 +39,21 @@ export class RasterizerOperation extends TextureOperation {
         Rasterizer.setPixels(pixels);
         Rasterizer.setDimensionMasks(textureGenerator.widthMask, textureGenerator.heightMask);
 
-        if (this.ops === undefined) {
+        if (this.shapes === undefined) {
             return;
         }
 
-        for (const op of this.ops) {
-            const fillColor = op.fillColor;
-            const outlineColor = op.outlineColor;
+        for (const shape of this.shapes) {
+            const fillColor = shape.fillColor;
+            const outlineColor = shape.outlineColor;
             if (fillColor >= 0) {
                 if (outlineColor >= 0) {
-                    op.render(width, height);
+                    shape.render(width, height);
                 } else {
-                    op.renderFill(width, height);
+                    shape.renderFill(width, height);
                 }
             } else if (outlineColor >= 0) {
-                op.renderOutline(width, height);
+                shape.renderOutline(width, height);
             }
         }
     }
