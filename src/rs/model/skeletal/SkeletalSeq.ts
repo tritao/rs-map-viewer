@@ -5,18 +5,14 @@ import { SeqBase } from "../seq/SeqBase";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { Curve } from "./Curve";
 import { getCurveIndex, getCurveTypeForId } from "./CurveType";
-import { MatrixPool } from "./MatrixPool";
-import { QuatPool } from "./QuatPool";
 import { SkeletalBase } from "./SkeletalBase";
 import { SkeletalBone } from "./SkeletalBone";
+import type { SkeletalPools } from "./SkeletalPools";
 import {
     SkeletalTransformType,
     getCurveCount,
     getTransformTypeForId,
 } from "./SkeletalTransformType";
-
-const rotateAxis = vec3.create();
-const scaleVector = vec3.create();
 
 export class SkeletalSeq {
     poseId: number;
@@ -87,18 +83,30 @@ export class SkeletalSeq {
         }
     }
 
-    updateAnimMatrix(frame: number, bone: SkeletalBone, boneIndex: number, poseId: number): void {
-        const matrix = MatrixPool.get();
+    updateAnimMatrix(
+        frame: number,
+        bone: SkeletalBone,
+        boneIndex: number,
+        poseId: number,
+        pools: SkeletalPools,
+    ): void {
+        const matrix = pools.matrices.get();
 
-        this.applyRotation(matrix, boneIndex, bone, frame);
-        this.applyScaling(matrix, boneIndex, bone, frame);
+        this.applyRotation(matrix, boneIndex, bone, frame, pools);
+        this.applyScaling(matrix, boneIndex, bone, frame, pools);
         this.applyTranslation(matrix, boneIndex, bone, frame);
         bone.setAnimMatrix(matrix);
 
-        MatrixPool.release(matrix);
+        pools.matrices.release(matrix);
     }
 
-    applyRotation(matrix: mat4, boneIndex: number, bone: SkeletalBone, frame: number): void {
+    applyRotation(
+        matrix: mat4,
+        boneIndex: number,
+        bone: SkeletalBone,
+        frame: number,
+        pools: SkeletalPools,
+    ): void {
         const rotation = bone.getRotation(this.poseId);
         let rotateX = rotation[0];
         let rotateY = rotation[1];
@@ -119,33 +127,39 @@ export class SkeletalSeq {
             }
         }
 
-        const quatX = QuatPool.get();
-        vec3.set(rotateAxis, 1, 0, 0);
-        quat.setAxisAngle(quatX, rotateAxis, rotateX);
-        const quatY = QuatPool.get();
-        vec3.set(rotateAxis, 0, 1, 0);
-        quat.setAxisAngle(quatY, rotateAxis, rotateY);
-        const quatZ = QuatPool.get();
-        vec3.set(rotateAxis, 0, 0, 1);
-        quat.setAxisAngle(quatZ, rotateAxis, rotateZ);
-        const quaternion = QuatPool.get();
+        const quatX = pools.quats.get();
+        vec3.set(pools.rotateAxis, 1, 0, 0);
+        quat.setAxisAngle(quatX, pools.rotateAxis, rotateX);
+        const quatY = pools.quats.get();
+        vec3.set(pools.rotateAxis, 0, 1, 0);
+        quat.setAxisAngle(quatY, pools.rotateAxis, rotateY);
+        const quatZ = pools.quats.get();
+        vec3.set(pools.rotateAxis, 0, 0, 1);
+        quat.setAxisAngle(quatZ, pools.rotateAxis, rotateZ);
+        const quaternion = pools.quats.get();
         quat.mul(quaternion, quatZ, quaternion);
         quat.mul(quaternion, quatX, quaternion);
         quat.mul(quaternion, quatY, quaternion);
 
-        const rotateMatrix = MatrixPool.get();
+        const rotateMatrix = pools.matrices.get();
 
         mat4.fromQuat(rotateMatrix, quaternion);
         mat4.mul(matrix, rotateMatrix, matrix);
 
-        QuatPool.release(quatX);
-        QuatPool.release(quatY);
-        QuatPool.release(quatZ);
-        QuatPool.release(quaternion);
-        MatrixPool.release(rotateMatrix);
+        pools.quats.release(quatX);
+        pools.quats.release(quatY);
+        pools.quats.release(quatZ);
+        pools.quats.release(quaternion);
+        pools.matrices.release(rotateMatrix);
     }
 
-    applyScaling(matrix: mat4, boneIndex: number, bone: SkeletalBone, frame: number): void {
+    applyScaling(
+        matrix: mat4,
+        boneIndex: number,
+        bone: SkeletalBone,
+        frame: number,
+        pools: SkeletalPools,
+    ): void {
         const scaling = bone.getScaling(this.poseId);
         let scaleX = scaling[0];
         let scaleY = scaling[1];
@@ -166,13 +180,13 @@ export class SkeletalSeq {
             }
         }
 
-        const scaleMatrix = MatrixPool.get();
+        const scaleMatrix = pools.matrices.get();
 
-        vec3.set(scaleVector, scaleX, scaleY, scaleZ);
-        mat4.fromScaling(scaleMatrix, scaleVector);
+        vec3.set(pools.scaleVector, scaleX, scaleY, scaleZ);
+        mat4.fromScaling(scaleMatrix, pools.scaleVector);
         mat4.mul(matrix, scaleMatrix, matrix);
 
-        MatrixPool.release(scaleMatrix);
+        pools.matrices.release(scaleMatrix);
     }
 
     applyTranslation(matrix: mat4, boneIndex: number, bone: SkeletalBone, frame: number): void {

@@ -1,5 +1,6 @@
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SkeletalBone } from "./SkeletalBone";
+import type { SkeletalPools } from "./SkeletalPools";
 import { SkeletalSeq } from "./SkeletalSeq";
 
 export class SkeletalBase {
@@ -29,6 +30,7 @@ export class SkeletalBase {
     updateAnimMatrices(
         skeletalSeq: SkeletalSeq,
         frame: number,
+        pools: SkeletalPools,
         masks: boolean[] | undefined = undefined,
         mask: boolean = false,
     ): void {
@@ -37,7 +39,7 @@ export class SkeletalBase {
         let boneIndex = 0;
         for (const bone of this.bones) {
             if (masks === undefined || masks[boneIndex] === mask) {
-                skeletalSeq.updateAnimMatrix(frame, bone, boneIndex, poseId);
+                skeletalSeq.updateAnimMatrix(frame, bone, boneIndex, poseId, pools);
             }
             boneIndex++;
         }

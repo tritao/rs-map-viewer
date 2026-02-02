@@ -1,31 +1,29 @@
 import { mat4 } from "gl-matrix";
 
 export class MatrixPool {
-    static matrixIndex: number;
-    static matrixLimit: number;
-    static matrixPool: mat4[];
+    private count: number = 0;
+    private readonly pool: mat4[];
 
-    static IDENTITY: mat4 = mat4.create();
-
-    static init(size: number): void {
-        MatrixPool.matrixIndex = 0;
-        MatrixPool.matrixLimit = size;
-        MatrixPool.matrixPool = new Array(size);
+    constructor(private readonly capacity: number) {
+        this.pool = new Array(capacity);
     }
 
-    static get(): mat4 {
-        if (MatrixPool.matrixIndex === 0) {
+    reset(): void {
+        this.count = 0;
+    }
+
+    get(): mat4 {
+        if (this.count === 0) {
             return mat4.create();
-        } else {
-            mat4.identity(MatrixPool.matrixPool[--MatrixPool.matrixIndex]);
-            return MatrixPool.matrixPool[MatrixPool.matrixIndex];
         }
+        const m = this.pool[--this.count]!;
+        mat4.identity(m);
+        return m;
     }
 
-    static release(m: mat4): void {
-        if (MatrixPool.matrixIndex < MatrixPool.matrixLimit - 1) {
-            MatrixPool.matrixPool[MatrixPool.matrixIndex++] = m;
+    release(m: mat4): void {
+        if (this.count < this.capacity) {
+            this.pool[this.count++] = m;
         }
     }
 }
-MatrixPool.init(100);

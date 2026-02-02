@@ -8,6 +8,7 @@ import { SeqBase } from "./seq/SeqBase";
 import { SeqFrame } from "./seq/SeqFrame";
 import { SeqTransformType } from "./seq/SeqTransformType";
 import { SkeletalBase } from "./skeletal/SkeletalBase";
+import { SkeletalPools } from "./skeletal/SkeletalPools";
 import { SkeletalSeq } from "./skeletal/SkeletalSeq";
 
 export class Model extends Entity {
@@ -19,6 +20,7 @@ export class Model extends Entity {
     private readonly skeletalScalingMatrix: mat4 = mat4.create();
     private readonly skeletalBoneMatrix: mat4 = mat4.create();
     private readonly skeletalScaleVector = vec3.create();
+    private readonly skeletalPools = new SkeletalPools();
 
     version: number = 0;
 
@@ -1113,7 +1115,8 @@ export class Model extends Entity {
     animateSkeletal(skeletalSeq: SkeletalSeq, frame: number): void {
         const skeletalBase = skeletalSeq.skeletalBase;
         if (skeletalBase) {
-            skeletalBase.updateAnimMatrices(skeletalSeq, frame);
+            this.skeletalPools.reset();
+            skeletalBase.updateAnimMatrices(skeletalSeq, frame, this.skeletalPools);
             this.transformSkeletal(skeletalBase, skeletalSeq.poseId, frame);
         }
 

@@ -1,7 +1,6 @@
 import { ReadonlyMat4, mat4, vec3 } from "gl-matrix";
 
 import { ByteBuffer } from "../../io/ByteBuffer";
-import { MatrixPool } from "./MatrixPool";
 
 export class SkeletalBone {
     parentId: number;
@@ -82,7 +81,7 @@ export class SkeletalBone {
         this.translations = new Array(poseCount);
         this.scalings = new Array(poseCount);
 
-        const invertedLocalMatrix = MatrixPool.get();
+        const invertedLocalMatrix = mat4.create();
 
         for (let i = 0; i < poseCount; i++) {
             const localMatrix = this.getLocalMatrix(i);
@@ -96,8 +95,6 @@ export class SkeletalBone {
             mat4.getTranslation(this.translations[i], localMatrix);
             mat4.getScaling(this.scalings[i], localMatrix);
         }
-
-        MatrixPool.release(invertedLocalMatrix);
     }
 
     getLocalMatrix(poseId: number): mat4 {

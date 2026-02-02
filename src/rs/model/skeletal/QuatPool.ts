@@ -1,29 +1,29 @@
 import { quat } from "gl-matrix";
 
 export class QuatPool {
-    static quatIndex: number;
-    static quatLimit: number;
-    static quatPool: quat[];
+    private count: number = 0;
+    private readonly pool: quat[];
 
-    static init(size: number): void {
-        QuatPool.quatIndex = 0;
-        QuatPool.quatLimit = size;
-        QuatPool.quatPool = new Array(size);
+    constructor(private readonly capacity: number) {
+        this.pool = new Array(capacity);
     }
 
-    static get(): quat {
-        if (QuatPool.quatIndex === 0) {
+    reset(): void {
+        this.count = 0;
+    }
+
+    get(): quat {
+        if (this.count === 0) {
             return quat.create();
-        } else {
-            quat.identity(QuatPool.quatPool[--QuatPool.quatIndex]);
-            return QuatPool.quatPool[QuatPool.quatIndex];
         }
+        const q = this.pool[--this.count]!;
+        quat.identity(q);
+        return q;
     }
 
-    static release(q: quat): void {
-        if (QuatPool.quatIndex < QuatPool.quatLimit - 1) {
-            QuatPool.quatPool[QuatPool.quatIndex++] = q;
+    release(q: quat): void {
+        if (this.count < this.capacity) {
+            this.pool[this.count++] = q;
         }
     }
 }
-QuatPool.init(100);
