@@ -258,7 +258,7 @@ export class Npc {
     updateMovementSeq(seqTypeLoader: SeqTypeLoader, seqFrameLoader: SeqFrameLoader) {
         if (this.movementSeqId !== -1) {
             const seqType = seqTypeLoader.load(this.movementSeqId);
-            if (!seqType.isSkeletalSeq() && seqType.frameIds) {
+            if (!seqType.hasAnimMayaSeq() && seqType.frameIds) {
                 this.movementFrameTick++;
                 if (
                     this.movementFrame < seqType.frameIds.length &&
@@ -293,9 +293,9 @@ export class Npc {
                         this.movementFrame = 0;
                     }
                 }
-            } else if (seqType.isSkeletalSeq()) {
+            } else if (seqType.hasAnimMayaSeq()) {
                 this.movementFrame++;
-                const frameCount = seqType.getSkeletalDuration();
+                const frameCount = seqType.getAnimMayaDuration();
                 if (this.movementFrame >= frameCount) {
                     if (seqType.frameStep > 0) {
                         this.movementFrame -= seqType.frameStep;

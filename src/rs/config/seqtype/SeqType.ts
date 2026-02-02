@@ -43,11 +43,11 @@ export class SeqType extends Type {
 
     replyMode: number;
 
-    skeletalId: number;
-    skeletalFrameSounds?: Map<number, SeqSoundEffect>;
-    skeletalStart: number;
-    skeletalEnd: number;
-    skeletalMasks?: boolean[];
+    animMayaId: number;
+    animMayaFrameSounds?: Map<number, SeqSoundEffect>;
+    animMayaStart: number;
+    animMayaEnd: number;
+    animMayaMasks?: boolean[];
 
     op14: boolean;
 
@@ -63,9 +63,9 @@ export class SeqType extends Type {
         this.precedenceAnimating = -1;
         this.priority = -1;
         this.replyMode = 2;
-        this.skeletalId = -1;
-        this.skeletalStart = 0;
-        this.skeletalEnd = 0;
+        this.animMayaId = -1;
+        this.animMayaStart = 0;
+        this.animMayaEnd = 0;
         this.op14 = false;
     }
 
@@ -205,14 +205,14 @@ export class SeqType extends Type {
             }
         } else if (opcode === 14) {
             if (this.cacheInfo.game === GameType.Oldschool) {
-                this.skeletalId = buffer.readInt();
+                this.animMayaId = buffer.readInt();
             } else {
                 this.op14 = true;
             }
         } else if (opcode === 15) {
             if (this.cacheInfo.game === GameType.Oldschool) {
                 const count = buffer.readUnsignedShort();
-                this.skeletalFrameSounds = new Map();
+                this.animMayaFrameSounds = new Map();
 
                 const isNewSoundEffects = this.isNewSoundEffects();
 
@@ -233,7 +233,7 @@ export class SeqType extends Type {
                         loops = (sound >> 4) & 0x7;
                         location = sound & 0xf;
                     }
-                    this.skeletalFrameSounds.set(
+                    this.animMayaFrameSounds.set(
                         frame,
                         new SeqSoundEffect(id, loops, location, retain),
                     );
@@ -243,8 +243,8 @@ export class SeqType extends Type {
             }
         } else if (opcode === 16) {
             if (this.cacheInfo.game === GameType.Oldschool) {
-                this.skeletalStart = buffer.readUnsignedShort();
-                this.skeletalEnd = buffer.readUnsignedShort();
+                this.animMayaStart = buffer.readUnsignedShort();
+                this.animMayaEnd = buffer.readUnsignedShort();
             } else {
                 // bool = true;
             }
@@ -252,10 +252,10 @@ export class SeqType extends Type {
             if (this.cacheInfo.game === GameType.Oldschool) {
                 const count = buffer.readUnsignedByte();
 
-                this.skeletalMasks = new Array(256).fill(false);
+                this.animMayaMasks = new Array(256).fill(false);
 
                 for (let i = 0; i < count; i++) {
-                    this.skeletalMasks[buffer.readUnsignedByte()] = true;
+                    this.animMayaMasks[buffer.readUnsignedByte()] = true;
                 }
             } else {
                 const v = buffer.readUnsignedByte();
@@ -274,11 +274,11 @@ export class SeqType extends Type {
         }
     }
 
-    isSkeletalSeq(): boolean {
-        return this.skeletalId >= 0;
+    hasAnimMayaSeq(): boolean {
+        return this.animMayaId >= 0;
     }
 
-    getSkeletalDuration(): number {
-        return this.skeletalEnd - this.skeletalStart;
+    getAnimMayaDuration(): number {
+        return this.animMayaEnd - this.animMayaStart;
     }
 }

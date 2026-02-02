@@ -314,8 +314,8 @@ export class LocModelLoader {
     }
 
     transformModel(model: Model, seqType: SeqType, frame: number, rotation: number): Model {
-        if (seqType.isSkeletalSeq()) {
-            const skeletalSeq = this.skeletalSeqLoader?.load(seqType.skeletalId);
+        if (seqType.hasAnimMayaSeq()) {
+            const skeletalSeq = this.skeletalSeqLoader?.load(seqType.animMayaId);
             if (!skeletalSeq) {
                 return Model.copyAnimated(model, true, true);
             }

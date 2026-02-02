@@ -30,8 +30,8 @@ export class LocAnimated {
         this.cycleStart = cycle - 1;
 
         if (randomStart && seqType.frameStep !== -1) {
-            if (seqType.isSkeletalSeq()) {
-                this.frame = Math.floor(Math.random() * seqType.getSkeletalDuration());
+            if (seqType.hasAnimMayaSeq()) {
+                this.frame = Math.floor(Math.random() * seqType.getAnimMayaDuration());
             } else {
                 this.frame = Math.floor(Math.random() * seqType.frameIds.length);
                 this.cycleStart -= Math.floor(Math.random() * seqType.frameLengths[this.frame]);
@@ -67,8 +67,8 @@ export class LocAnimated {
             elapsed = 100;
         }
 
-        if (this.seqType.isSkeletalSeq()) {
-            const duration = this.seqType.getSkeletalDuration();
+        if (this.seqType.hasAnimMayaSeq()) {
+            const duration = this.seqType.getAnimMayaDuration();
             this.frame += elapsed;
             elapsed = 0;
             if (this.frame >= duration) {

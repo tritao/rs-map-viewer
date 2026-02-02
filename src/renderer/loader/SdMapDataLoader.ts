@@ -1,19 +1,19 @@
+import { NpcSpawn, getMapNpcSpawns } from "../../data/npc/NpcSpawn";
+import { ObjSpawn, getMapObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { ContourGroundInfo, LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { LocType } from "../../rs/config/loctype/LocType";
-import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { NpcType } from "../../rs/config/npctype/NpcType";
-import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { VarManager } from "../../rs/config/vartype/VarManager";
 import { Model } from "../../rs/model/Model";
 import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
+import { ContourGroundInfo, LocModelLoader } from "../../rs/scene/model/LocModelLoader";
+import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
+import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { loadMinimapBlob } from "../../worker/MinimapData";
 import { RenderDataLoader, RenderDataResult } from "../../worker/RenderDataLoader";
 import { WorkerState } from "../../worker/RenderDataWorker";
-import { NpcSpawn, getMapNpcSpawns } from "../../data/npc/NpcSpawn";
-import { ObjSpawn, getMapObjSpawns } from "../../data/obj/ObjSpawn";
 import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
@@ -29,6 +29,7 @@ import {
     getModelFaces,
     isModelFaceTransparent,
 } from "../buffer/SceneBuffer";
+import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
 import { SceneLocEntity } from "../loc/SceneLocEntity";
 import { getSceneLocs, isLowDetail } from "../loc/SceneLocs";
@@ -36,8 +37,7 @@ import { createNpcDatas } from "../npc/NpcData";
 import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
-import { LocAnimatedData } from "../loc/LocAnimatedData";
-import { addNpcAnimationFrames, SdRenderableDataLoader } from "./SdRenderableDataLoader";
+import { SdRenderableDataLoader, addNpcAnimationFrames } from "./SdRenderableDataLoader";
 
 function loadHeightMapTextureData(scene: Scene): Int16Array {
     const heightMapTextureData = new Int16Array(Scene.MAX_LEVELS * scene.sizeX * scene.sizeY);
@@ -46,7 +46,8 @@ function loadHeightMapTextureData(scene: Scene): Int16Array {
     for (let level = 0; level < scene.levels; level++) {
         for (let y = 0; y < scene.sizeY; y++) {
             for (let x = 0; x < scene.sizeX; x++) {
-                heightMapTextureData[dataIndex++] = (-scene.tileHeights[level][x][y] / Scene.UNITS_TILE_HEIGHT_BASIS) | 0;
+                heightMapTextureData[dataIndex++] =
+                    (-scene.tileHeights[level][x][y] / Scene.UNITS_TILE_HEIGHT_BASIS) | 0;
             }
         }
     }
@@ -90,7 +91,10 @@ function createObjSceneModel(
     }
 
     let renderLevel = spawn.plane;
-    if (renderLevel < 3 && (scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE) {
+    if (
+        renderLevel < 3 &&
+        (scene.tileRenderFlags[1][tileX][tileY] & TILE_FLAGS_BRIDGE) === TILE_FLAGS_BRIDGE
+    ) {
         renderLevel = spawn.plane + 1;
     }
 
@@ -293,8 +297,8 @@ function addLocAnimationFrames(
 ): AnimationFrames | undefined {
     const seqType = locModelLoader.seqTypeLoader.load(entity.seqId);
     let frameCount: number;
-    if (seqType.isSkeletalSeq()) {
-        frameCount = seqType.getSkeletalDuration();
+    if (seqType.hasAnimMayaSeq()) {
+        frameCount = seqType.getAnimMayaDuration();
     } else {
         if (!seqType.frameIds) {
             return undefined;
@@ -574,7 +578,13 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         let locsAnimated: LocAnimatedData[] = [];
         if (loadLocs) {
-            addSceneModels(this.modelHashBuf!, textureLoader, sceneBuf, sceneModels, minimizeDrawCalls);
+            addSceneModels(
+                this.modelHashBuf!,
+                textureLoader,
+                sceneBuf,
+                sceneModels,
+                minimizeDrawCalls,
+            );
 
             // Animated locs
             locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
@@ -616,7 +626,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const drawRanges = SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY);
 
         const modelInfoTextures = SdRenderableDataLoader.getModelInfoTextures(sceneBuf);
- 
+
         const heightMapTextureData = loadHeightMapTextureData(scene);
 
         const vertices = sceneBuf.vertexBuf.byteArray();
@@ -673,37 +683,37 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         //);
 
         const data = new SdMapData(
-                mapX,
-                mapY,
+            mapX,
+            mapY,
 
-                state.cache.info.name,
+            state.cache.info.name,
 
-                maxLevel,
-                loadObjs,
-                loadNpcs,
-                loadLocs,
+            maxLevel,
+            loadObjs,
+            loadNpcs,
+            loadLocs,
 
-                smoothTerrain,
+            smoothTerrain,
 
-                borderSize,
-                scene.tileRenderFlags,
-                scene.collisionMaps,
+            borderSize,
+            scene.tileRenderFlags,
+            scene.collisionMaps,
 
-                minimapBlob,
+            minimapBlob,
 
-                vertices,
-                indices,
+            vertices,
+            indices,
 
-                modelInfoTextures,
+            modelInfoTextures,
 
-                heightMapTextureData,
+            heightMapTextureData,
 
-                drawRanges,
+            drawRanges,
 
-                locsAnimated,
-                npcs,
+            locsAnimated,
+            npcs,
 
-                loadedTextures,
+            loadedTextures,
         );
 
         return {

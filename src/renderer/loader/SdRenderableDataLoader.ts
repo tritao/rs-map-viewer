@@ -1,16 +1,19 @@
-import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
+import { ObjSpawn } from "../../data/obj/ObjSpawn";
 import { LocType } from "../../rs/config/loctype/LocType";
-import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
+import { NpcType } from "../../rs/config/npctype/NpcType";
 import { Model } from "../../rs/model/Model";
 import { Scene, TILE_FLAGS_BRIDGE } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
+import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
+import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
+import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { RenderDataLoader, RenderDataResult } from "../../worker/RenderDataLoader";
 import { WorkerState } from "../../worker/RenderDataWorker";
-import { ObjSpawn } from "../../data/obj/ObjSpawn";
 import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
+import { RenderableType } from "../Renderer";
 import { ModelHashBuffer, getModelHash } from "../buffer/ModelHashBuffer";
 import {
     ContourGroundType,
@@ -24,12 +27,13 @@ import {
     isModelFaceTransparent,
 } from "../buffer/SceneBuffer";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
-import { SdRenderableLoaderInput } from "./SdRenderableLoaderInput";
-import { SdRenderableData, SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
 import { NpcData } from "../npc/NpcData";
-import { NpcType } from "../../rs/config/npctype/NpcType";
-import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
-import { RenderableType } from "../Renderer";
+import {
+    SdRenderableData,
+    SdRenderableDrawRanges,
+    SdRenderableModelInfoTextures,
+} from "./SdRenderableData";
+import { SdRenderableLoaderInput } from "./SdRenderableLoaderInput";
 
 function createModelGroups(
     modelGroupMap: Map<number, ModelMergeGroup>,
@@ -188,8 +192,8 @@ function addLocAnimationFrames(
 ): AnimationFrames | undefined {
     const seqType = locModelLoader.seqTypeLoader.load(entity.seqId);
     let frameCount: number;
-    if (seqType.isSkeletalSeq()) {
-        frameCount = seqType.getSkeletalDuration();
+    if (seqType.hasAnimMayaSeq()) {
+        frameCount = seqType.getAnimMayaDuration();
     } else {
         if (!seqType.frameIds) {
             return undefined;
@@ -239,8 +243,8 @@ export function addNpcAnimationFrames(
         return undefined;
     }
     let frameCount: number;
-    if (seqType.isSkeletalSeq()) {
-        frameCount = seqType.getSkeletalDuration();
+    if (seqType.hasAnimMayaSeq()) {
+        frameCount = seqType.getAnimMayaDuration();
     } else {
         if (!seqType.frameIds) {
             return undefined;
@@ -273,7 +277,9 @@ export function addNpcAnimationFrames(
     };
 }
 
-export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoaderInput, SdRenderableData | undefined> {
+export class SdRenderableDataLoader
+    implements RenderDataLoader<SdRenderableLoaderInput, SdRenderableData | undefined>
+{
     __type = "sdRenderableDataLoader" as const;
 
     modelHashBuf?: ModelHashBuffer;
@@ -286,11 +292,7 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
 
     async load(
         state: WorkerState,
-        {
-            type,
-            ids: ids,
-            loadedTextureIds,
-        }: SdRenderableLoaderInput,
+        { type, ids: ids, loadedTextureIds }: SdRenderableLoaderInput,
     ): Promise<RenderDataResult<SdRenderableData | undefined>> {
         this.init();
 
@@ -331,7 +333,12 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
                     continue;
                 }
 
-                const idleAnim = addNpcAnimationFrames(npcModelLoader, sceneBuf, npcType, idleSeqId);
+                const idleAnim = addNpcAnimationFrames(
+                    npcModelLoader,
+                    sceneBuf,
+                    npcType,
+                    idleSeqId,
+                );
                 let walkAnim = idleAnim;
                 if (walkSeqId !== -1 && walkSeqId !== idleSeqId) {
                     walkAnim = addNpcAnimationFrames(npcModelLoader, sceneBuf, npcType, walkSeqId);
@@ -344,14 +351,14 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
                     level: 0,
                     idleAnim,
                     walkAnim,
-                })
+                });
             }
         }
 
         if (type == RenderableType.Model) {
             const modelData = modelLoader.getModel(id);
             if (modelData == null) {
-                console.log('cannot load model data for model id', id);
+                console.log("cannot load model data for model id", id);
             }
 
             const model = modelData!.light(
@@ -376,11 +383,18 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
                     model: model,
                     sceneHeight: 0,
                     lowDetail: false,
-                    forceMerge: false
-                }];
+                    forceMerge: false,
+                },
+            ];
 
             let minimizeDrawCalls = false;
-            addSceneModels(this.modelHashBuf!, textureLoader, sceneBuf, sceneModels, minimizeDrawCalls)//;
+            addSceneModels(
+                this.modelHashBuf!,
+                textureLoader,
+                sceneBuf,
+                sceneModels,
+                minimizeDrawCalls,
+            ); //;
         }
 
         const locAnimatedGroups: LocAnimatedGroup[] = [];
@@ -400,7 +414,7 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
                 try {
                     const pixels = textureLoader.getPixelsArgb(textureId, 128, true, 1.0);
                     loadedTextures.set(textureId, pixels);
-                } catch (e) { }
+                } catch (e) {}
             }
         }
 
@@ -468,63 +482,60 @@ export class SdRenderableDataLoader implements RenderDataLoader<SdRenderableLoad
         const lodAlpha = createModelInfoTextureData(sceneBuf.drawCommandsLodAlpha);
 
         const interact = createModelInfoTextureData(sceneBuf.drawCommandsInteract);
-        const interactAlpha = createModelInfoTextureData(
-            sceneBuf.drawCommandsInteractAlpha
-        );
+        const interactAlpha = createModelInfoTextureData(sceneBuf.drawCommandsInteractAlpha);
 
-        const interactLod = createModelInfoTextureData(
-            sceneBuf.drawCommandsInteractLod
-        );
-        const interactLodAlpha = createModelInfoTextureData(
-            sceneBuf.drawCommandsInteractLodAlpha
-        );
+        const interactLod = createModelInfoTextureData(sceneBuf.drawCommandsInteractLod);
+        const interactLodAlpha = createModelInfoTextureData(sceneBuf.drawCommandsInteractLodAlpha);
 
-        return { base, alpha, lod, lodAlpha, interact, interactAlpha, interactLod, interactLodAlpha };
+        return {
+            base,
+            alpha,
+            lod,
+            lodAlpha,
+            interact,
+            interactAlpha,
+            interactLod,
+            interactLodAlpha,
+        };
     }
 
     static getDrawRanges(sceneBuf: SceneBuffer, ...args: any[]): SdRenderableDrawRanges {
         // Normal (merged)
         const base = sceneBuf.drawCommands.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
         const alpha = sceneBuf.drawCommandsAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(
-            `draw ranges: ${base.length}, alpha: ${alpha.length}`,
-            args
-        );
+        console.log(`draw ranges: ${base.length}, alpha: ${alpha.length}`, args);
 
         // Lod (merged)
         const lod = sceneBuf.drawCommandsLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
         const lodAlpha = sceneBuf.drawCommandsLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
-        console.log(
-            `draw ranges lod: ${lod.length}, alpha: ${lodAlpha.length}`,
-            args
-        );
+        console.log(`draw ranges lod: ${lod.length}, alpha: ${lodAlpha.length}`, args);
 
         // Interact (non merged)
         const interact = sceneBuf.drawCommandsInteract.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
         const interactAlpha = sceneBuf.drawCommandsInteractAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
         console.log(`draw ranges interact: ${interact.length}`, args);
 
         // Interact Lod (non merged)
         const interactLod = sceneBuf.drawCommandsInteractLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
         const interactLodAlpha = sceneBuf.drawCommandsInteractLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length)
+            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
         );
 
         return {
