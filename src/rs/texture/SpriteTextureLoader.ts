@@ -7,7 +7,7 @@ import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 
 export class SpriteTextureLoader implements TextureLoader {
-    static ANIM_DIRECTION_UV = [
+    static readonly ANIM_DIRECTION_UV = [
         [0.0, 0.0],
         [0.0, -1.0],
         [-1.0, 0.0],

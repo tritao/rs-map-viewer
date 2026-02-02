@@ -6,7 +6,7 @@ import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 
 export class DatTextureLoader implements TextureLoader {
-    static WATER_DROPLETS_TEXTURE_ID = 17;
+    static readonly WATER_DROPLETS_TEXTURE_ID = 17;
 
     animatedTextureIds: Set<number>;
 

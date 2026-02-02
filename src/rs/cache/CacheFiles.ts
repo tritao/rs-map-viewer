@@ -3,14 +3,14 @@ import { CacheType } from "./CacheType";
 import { SectorCluster } from "./store/SectorCluster";
 
 export class CacheFiles {
-    static DAT_FILE_NAME: string = "main_file_cache.dat";
-    static DAT2_FILE_NAME: string = "main_file_cache.dat2";
+    static readonly DAT_FILE_NAME: string = "main_file_cache.dat";
+    static readonly DAT2_FILE_NAME: string = "main_file_cache.dat2";
 
-    static INDEX_FILE_PREFIX: string = "main_file_cache.idx";
+    static readonly INDEX_FILE_PREFIX: string = "main_file_cache.idx";
 
-    static META_FILE_NAME: string = "main_file_cache.idx255";
+    static readonly META_FILE_NAME: string = "main_file_cache.idx255";
 
-    static DAT_INDEX_COUNT: number = 5;
+    static readonly DAT_INDEX_COUNT: number = 5;
 
     static fetchFiles(
         loader: CacheLoader,
@@ -163,4 +163,3 @@ export class CacheFiles {
 
     constructor(readonly files: Map<string, ArrayBuffer>) { }
 }
-

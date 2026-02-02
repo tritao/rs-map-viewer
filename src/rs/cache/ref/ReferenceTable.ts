@@ -3,7 +3,7 @@ import { StringUtil } from "../../util/StringUtil";
 import { ArchiveReference } from "./ArchiveReference";
 
 export class ReferenceTable {
-    static INVALID_TABLE: ReferenceTable = new ReferenceTable(
+    static readonly INVALID_TABLE: ReferenceTable = new ReferenceTable(
         -1,
         -1,
         false,

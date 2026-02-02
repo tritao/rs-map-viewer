@@ -11,7 +11,7 @@ import { CacheStore } from "./store/CacheStore";
 import { SectorCluster } from "./store/SectorCluster";
 
 export abstract class CacheIndex {
-    static META_INDEX_ID: i32 = 255;
+    static readonly META_INDEX_ID: i32 = 255;
 
     constructor(
         readonly id: number,
