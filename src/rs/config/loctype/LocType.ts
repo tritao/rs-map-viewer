@@ -64,6 +64,7 @@ export class LocType extends Type {
     cursor2Op: number;
     cursor2: number;
     occludeRoofs: boolean;
+    forceDynamic: boolean;
 
     isRotated: boolean;
 
@@ -147,6 +148,7 @@ export class LocType extends Type {
         this.cursor2Op = -1;
         this.cursor2 = -1;
         this.occludeRoofs = false;
+        this.forceDynamic = false;
         this.isRotated = false;
         this.clipped = true;
         this.modelSizeX = 128;
@@ -506,7 +508,7 @@ export class LocType extends Type {
             this.ambientSoundRateMin = buffer.readUnsignedShort();
             this.ambientSoundRateMax = buffer.readUnsignedShort();
         } else if (opcode === 177) {
-            const b = true;
+            this.forceDynamic = true;
         } else if (opcode === 178) {
             this.ambientSoundSize = buffer.readUnsignedByte();
         } else if (opcode === 189) {
