@@ -1,5 +1,4 @@
-import JavaRandom from "java-random";
-
+import JavaRandom from "../../../util/JavaRandom";
 import { nextIntJagex } from "../../../util/MathUtil";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { IndexedSprite } from "../../sprite/IndexedSprite";

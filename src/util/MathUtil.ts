@@ -1,4 +1,4 @@
-import JavaRandom from "java-random";
+import JavaRandom from "./JavaRandom";
 
 export const clamp = (num: number, min: number, max: number) => Math.min(Math.max(num, min), max);
 
