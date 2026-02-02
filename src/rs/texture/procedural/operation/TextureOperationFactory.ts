@@ -25,7 +25,6 @@ import { MandelbrotOperation } from "./MandelbrotOperation";
 import { MirrorOperation } from "./MirrorOperation";
 import { MixerOperation } from "./MixerOperation";
 import { MonochromeEdgeDetectorOperation } from "./MonochromeEdgeDetectorOperation";
-import { Operation37 } from "./Operation37";
 import { PerlinNoiseOperation } from "./PerlinNoiseOperation";
 import { PseudoRandomNoiseOperation } from "./PseudoRandomNoiseOperation";
 import { RangeOperation } from "./RangeOperation";
@@ -39,6 +38,7 @@ import { TilingSpriteOperation } from "./TilingSpriteOperation";
 import { TrigWarpOperation } from "./TrigWarpOperation";
 import { VerticalGradientOperation } from "./VerticalGradientOperation";
 import { VoronoiNoiseOperation } from "./VoronoiNoiseOperation";
+import { WavyCrossOperation } from "./WavyCrossOperation";
 import { WeaveOperation } from "./WeaveOperation";
 
 export class TextureOperationFactory {
@@ -119,7 +119,7 @@ export class TextureOperationFactory {
             case 36:
                 return new TextureSourceOperation();
             case 37:
-                return new Operation37();
+                return new WavyCrossOperation();
             case 38:
                 return new LineNoiseOperation();
             case 39:
