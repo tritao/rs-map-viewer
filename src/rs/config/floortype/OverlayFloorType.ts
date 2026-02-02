@@ -97,6 +97,10 @@ export class OverlayFloorType extends Type implements FloorType {
         } else if (opcode === 10) {
             this.blockShadow = false;
         } else if (opcode === 11) {
+            // TODO(revision): opcode 11 is revision-dependent.
+            // - rt4 530: `FloType.textureBrightness` (see /home/joao/dev/rs/2009-530/rt4-client/client/src/main/java/rt4/FloType.java)
+            // - 667: `FloorOverlayType.blendPriority` (see /home/joao/dev/rs/2011-667/.../config/flotype/FloorOverlayType.java)
+            // Consider gating by `cacheInfo` revision and/or storing both meanings.
             this.textureBrightness = buffer.readUnsignedByte();
         } else if (opcode === 12) {
             this.blendTexture = true;

@@ -25,6 +25,11 @@ export class SeqType extends Type {
     frameStep: number;
 
     masks?: number[];
+    // TODO(revision): opcode 3 is revision-dependent.
+    // - 377/435/OSRS: `interleaveLeave` (int[] with trailing 9999999 sentinel)
+    // - rt4 530: `framegroup` (boolean[256])
+    // - 667: `blendFlags` (boolean[256])
+    // If we want correct behavior for later RS2 caches, we likely need a separate field and decode path.
 
     stretches: boolean;
 
@@ -42,6 +47,11 @@ export class SeqType extends Type {
     priority: number;
 
     replyMode: number;
+    // TODO(revision): naming/meaning differs across eras.
+    // - OSRS tooling (eg runelite) calls opcode 11 `replyMode`.
+    // - rt4 530 calls it `exactmove`.
+    // - 667 uses `replayMode` (SeqReplayMode).
+    // We may want distinct fields and/or a normalized enum based on `cacheInfo`.
 
     tweened: boolean;
     vorbisSound: boolean;

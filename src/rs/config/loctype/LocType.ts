@@ -53,6 +53,10 @@ export class LocType extends Type {
     mapFunctionId: number;
     mapSceneId: number;
     flipMapSceneSprite: boolean;
+    // TODO(revision): opcodes around map-related ids differ by era.
+    // - OSRS (runelite cache `ObjectLoader`): opcode 82 is `mapAreaId`.
+    // - 667 RS2: `mapelement` is opcode 107.
+    // We should likely split `mapFunctionId` into `mapAreaId` (OSRS) and `mapElementId` (RS2).
 
     hardShadow: boolean;
     membersOnly: boolean;
@@ -418,6 +422,7 @@ export class LocType extends Type {
             this.contourGroundParam = toSigned16bit(this.contouredGround);
         } else if (opcode === 82) {
             if (this.cacheInfo.game === GameType.Oldschool) {
+                // TODO(revision): for OSRS this is commonly treated as `mapAreaId`.
                 this.mapFunctionId = buffer.readUnsignedShort();
             } else {
                 // hd only = true?
@@ -477,6 +482,7 @@ export class LocType extends Type {
                 totalDelay += delay;
             }
         } else if (opcode === 107) {
+            // TODO(revision): for RS2 600+ this is commonly treated as `mapElementId`/`mapelement`.
             this.mapFunctionId = buffer.readUnsignedShort();
         } else if (opcode >= 150 && opcode < 155) {
             this.actions[opcode - 150] = this.readString(buffer);
