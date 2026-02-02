@@ -3,11 +3,12 @@ import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 export class GradientOperation extends TextureOperation {
-    preset: number = 0;
+    presetId: number = 0;
 
-    gradient?: Int32Array[];
+    // Each stop is [posQ12, rQ12, gQ12, bQ12] with posQ12 in [0, 4096]
+    stops?: Int32Array[];
 
-    table: Int32Array = new Int32Array(257);
+    rgbLookup: Int32Array = new Int32Array(257);
 
     constructor() {
         super(1, false);
@@ -15,28 +16,29 @@ export class GradientOperation extends TextureOperation {
 
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
-            const preset = buffer.readUnsignedByte();
-            if (preset === 0) {
-                const count = buffer.readUnsignedByte();
-                this.gradient = new Array(count);
-                for (let i = 0; i < count; i++) {
-                    this.gradient[i] = new Int32Array(4);
-                    this.gradient[i][0] = buffer.readUnsignedShort();
-                    this.gradient[i][1] = buffer.readUnsignedByte() << 4;
-                    this.gradient[i][2] = buffer.readUnsignedByte() << 4;
-                    this.gradient[i][3] = buffer.readUnsignedByte() << 4;
+            const presetId = buffer.readUnsignedByte();
+            if (presetId === 0) {
+                const stopCount = buffer.readUnsignedByte();
+                this.stops = new Array(stopCount);
+                for (let i = 0; i < stopCount; i++) {
+                    const stop = (this.stops[i] = new Int32Array(4));
+                    stop[0] = buffer.readUnsignedShort();
+                    stop[1] = buffer.readUnsignedByte() << 4;
+                    stop[2] = buffer.readUnsignedByte() << 4;
+                    stop[3] = buffer.readUnsignedByte() << 4;
                 }
             } else {
-                this.setGradientPreset(preset);
+                this.presetId = presetId;
+                this.setGradientPreset(presetId);
             }
         }
     }
 
     override init() {
-        if (!this.gradient) {
+        if (!this.stops) {
             this.setGradientPreset(1);
         }
-        this.fillTable();
+        this.buildLookupTable();
     }
 
     override getColourOutput(textureGenerator: TextureGenerator, line: number): Int32Array[] {
@@ -50,62 +52,62 @@ export class GradientOperation extends TextureOperation {
             const outputG = output[1];
             const outputB = output[2];
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                let value = input[pixel] >> 4;
-                if (value < 0) {
-                    value = 0;
+                let index = input[pixel] >> 4;
+                if (index < 0) {
+                    index = 0;
                 }
-                if (value > 256) {
-                    value = 256;
+                if (index > 256) {
+                    index = 256;
                 }
-                value = this.table[value];
-                outputR[pixel] = (value & 0xff0000) >> 12;
-                outputG[pixel] = (value & 0xff00) >> 4;
-                outputB[pixel] = (value & 0xff) << 4;
+                const rgb = this.rgbLookup[index];
+                outputR[pixel] = (rgb & 0xff0000) >> 12;
+                outputG[pixel] = (rgb & 0xff00) >> 4;
+                outputB[pixel] = (rgb & 0xff) << 4;
             }
         }
         return output;
     }
 
-    fillTable(): void {
-        if (!this.gradient) {
+    buildLookupTable(): void {
+        if (!this.stops) {
             return;
         }
 
-        const gradientCount = this.gradient.length;
-        if (gradientCount <= 0) {
+        const stopCount = this.stops.length;
+        if (stopCount <= 0) {
             return;
         }
-        for (let i = 0; i < this.table.length; i++) {
-            let gIdx = 0;
-            const inT16 = i << 4;
-            for (const grad of this.gradient) {
-                if (grad[0] > inT16) {
+        for (let i = 0; i < this.rgbLookup.length; i++) {
+            let stopIndex = 0;
+            const posQ12 = i << 4;
+            for (const stop of this.stops) {
+                if (stop[0] > posQ12) {
                     break;
                 }
-                gIdx++;
+                stopIndex++;
             }
             let r: number;
             let g: number;
             let b: number;
-            if (gIdx < gradientCount) {
-                const gradN = this.gradient[gIdx];
-                if (gIdx > 0) {
-                    const gradP = this.gradient[gIdx - 1];
-                    const nMod = (((inT16 - gradP[0]) << 12) / (gradN[0] - gradP[0])) | 0;
+            if (stopIndex < stopCount) {
+                const stopN = this.stops[stopIndex];
+                if (stopIndex > 0) {
+                    const stopP = this.stops[stopIndex - 1];
+                    const nMod = (((posQ12 - stopP[0]) << 12) / (stopN[0] - stopP[0])) | 0;
                     const pMod = 4096 - nMod;
-                    r = (gradP[1] * pMod + gradN[1] * nMod) >> 12;
-                    g = (gradP[2] * pMod + gradN[2] * nMod) >> 12;
-                    b = (gradN[3] * nMod + gradP[3] * pMod) >> 12;
+                    r = (stopP[1] * pMod + stopN[1] * nMod) >> 12;
+                    g = (stopP[2] * pMod + stopN[2] * nMod) >> 12;
+                    b = (stopN[3] * nMod + stopP[3] * pMod) >> 12;
                 } else {
-                    r = gradN[1];
-                    g = gradN[2];
-                    b = gradN[3];
+                    r = stopN[1];
+                    g = stopN[2];
+                    b = stopN[3];
                 }
             } else {
-                const grad = this.gradient[gradientCount - 1];
-                r = grad[1];
-                g = grad[2];
-                b = grad[3];
+                const stop = this.stops[stopCount - 1];
+                r = stop[1];
+                g = stop[2];
+                b = stop[3];
             }
             r >>= 4;
             g >>= 4;
@@ -125,260 +127,260 @@ export class GradientOperation extends TextureOperation {
             } else if (b > 255) {
                 b = 255;
             }
-            this.table[i] = (r << 16) | (g << 8) | b;
+            this.rgbLookup[i] = (r << 16) | (g << 8) | b;
         }
     }
 
     setGradientPreset(preset: number) {
-        this.preset = preset;
+        this.presetId = preset;
         switch (preset) {
             case 1:
-                this.gradient = new Array(2);
-                for (let i = 0; i < this.gradient.length; i++) {
-                    this.gradient[i] = new Int32Array(4);
+                this.stops = new Array(2);
+                for (let i = 0; i < this.stops.length; i++) {
+                    this.stops[i] = new Int32Array(4);
                 }
-                this.gradient[0][0] = 0;
-                this.gradient[0][1] = 0;
-                this.gradient[0][2] = 0;
-                this.gradient[0][3] = 0;
+                this.stops[0][0] = 0;
+                this.stops[0][1] = 0;
+                this.stops[0][2] = 0;
+                this.stops[0][3] = 0;
 
-                this.gradient[1][0] = 4096;
-                this.gradient[1][1] = 4096;
-                this.gradient[1][2] = 4096;
-                this.gradient[1][3] = 4096;
+                this.stops[1][0] = 4096;
+                this.stops[1][1] = 4096;
+                this.stops[1][2] = 4096;
+                this.stops[1][3] = 4096;
                 break;
             case 2:
-                this.gradient = new Array(8);
-                for (let i = 0; i < this.gradient.length; i++) {
-                    this.gradient[i] = new Int32Array(4);
+                this.stops = new Array(8);
+                for (let i = 0; i < this.stops.length; i++) {
+                    this.stops[i] = new Int32Array(4);
                 }
-                this.gradient[0][0] = 0;
-                this.gradient[0][1] = 2650;
-                this.gradient[0][2] = 2602;
-                this.gradient[0][3] = 2361;
+                this.stops[0][0] = 0;
+                this.stops[0][1] = 2650;
+                this.stops[0][2] = 2602;
+                this.stops[0][3] = 2361;
 
-                this.gradient[1][0] = 2867;
-                this.gradient[1][1] = 2313;
-                this.gradient[1][2] = 1799;
-                this.gradient[1][3] = 1558;
+                this.stops[1][0] = 2867;
+                this.stops[1][1] = 2313;
+                this.stops[1][2] = 1799;
+                this.stops[1][3] = 1558;
 
-                this.gradient[2][0] = 3072;
-                this.gradient[2][1] = 2618;
-                this.gradient[2][2] = 1734;
-                this.gradient[2][3] = 1413;
+                this.stops[2][0] = 3072;
+                this.stops[2][1] = 2618;
+                this.stops[2][2] = 1734;
+                this.stops[2][3] = 1413;
 
-                this.gradient[3][0] = 3276;
-                this.gradient[3][1] = 2296;
-                this.gradient[3][2] = 1220;
-                this.gradient[3][3] = 947;
+                this.stops[3][0] = 3276;
+                this.stops[3][1] = 2296;
+                this.stops[3][2] = 1220;
+                this.stops[3][3] = 947;
 
-                this.gradient[4][0] = 3481;
-                this.gradient[4][1] = 2072;
-                this.gradient[4][2] = 963;
-                this.gradient[4][3] = 722;
+                this.stops[4][0] = 3481;
+                this.stops[4][1] = 2072;
+                this.stops[4][2] = 963;
+                this.stops[4][3] = 722;
 
-                this.gradient[5][0] = 3686;
-                this.gradient[5][1] = 2730;
-                this.gradient[5][2] = 2152;
-                this.gradient[5][3] = 1766;
+                this.stops[5][0] = 3686;
+                this.stops[5][1] = 2730;
+                this.stops[5][2] = 2152;
+                this.stops[5][3] = 1766;
 
-                this.gradient[6][0] = 3891;
-                this.gradient[6][1] = 2232;
-                this.gradient[6][2] = 1060;
-                this.gradient[6][3] = 915;
+                this.stops[6][0] = 3891;
+                this.stops[6][1] = 2232;
+                this.stops[6][2] = 1060;
+                this.stops[6][3] = 915;
 
-                this.gradient[7][0] = 4096;
-                this.gradient[7][1] = 1686;
-                this.gradient[7][2] = 1413;
-                this.gradient[7][3] = 1140;
+                this.stops[7][0] = 4096;
+                this.stops[7][1] = 1686;
+                this.stops[7][2] = 1413;
+                this.stops[7][3] = 1140;
                 break;
             case 3:
-                this.gradient = new Array(7);
-                for (let i = 0; i < this.gradient.length; i++) {
-                    this.gradient[i] = new Int32Array(4);
+                this.stops = new Array(7);
+                for (let i = 0; i < this.stops.length; i++) {
+                    this.stops[i] = new Int32Array(4);
                 }
 
-                this.gradient[0][1] = 0;
-                this.gradient[0][2] = 0;
-                this.gradient[0][0] = 0;
-                this.gradient[0][3] = 4096;
+                this.stops[0][1] = 0;
+                this.stops[0][2] = 0;
+                this.stops[0][0] = 0;
+                this.stops[0][3] = 4096;
 
-                this.gradient[1][1] = 0;
-                this.gradient[1][0] = 663;
-                this.gradient[1][3] = 4096;
-                this.gradient[1][2] = 4096;
+                this.stops[1][1] = 0;
+                this.stops[1][0] = 663;
+                this.stops[1][3] = 4096;
+                this.stops[1][2] = 4096;
 
-                this.gradient[2][2] = 4096;
-                this.gradient[2][1] = 0;
-                this.gradient[2][0] = 1363;
-                this.gradient[2][3] = 0;
+                this.stops[2][2] = 4096;
+                this.stops[2][1] = 0;
+                this.stops[2][0] = 1363;
+                this.stops[2][3] = 0;
 
-                this.gradient[3][3] = 0;
-                this.gradient[3][2] = 4096;
-                this.gradient[3][1] = 4096;
-                this.gradient[3][0] = 2048;
+                this.stops[3][3] = 0;
+                this.stops[3][2] = 4096;
+                this.stops[3][1] = 4096;
+                this.stops[3][0] = 2048;
 
-                this.gradient[4][3] = 0;
-                this.gradient[4][0] = 2727;
-                this.gradient[4][2] = 0;
-                this.gradient[4][1] = 4096;
+                this.stops[4][3] = 0;
+                this.stops[4][0] = 2727;
+                this.stops[4][2] = 0;
+                this.stops[4][1] = 4096;
 
-                this.gradient[5][1] = 4096;
-                this.gradient[5][0] = 3411;
-                this.gradient[5][2] = 0;
-                this.gradient[5][3] = 4096;
+                this.stops[5][1] = 4096;
+                this.stops[5][0] = 3411;
+                this.stops[5][2] = 0;
+                this.stops[5][3] = 4096;
 
-                this.gradient[6][3] = 4096;
-                this.gradient[6][2] = 0;
-                this.gradient[6][1] = 0;
-                this.gradient[6][0] = 4096;
+                this.stops[6][3] = 4096;
+                this.stops[6][2] = 0;
+                this.stops[6][1] = 0;
+                this.stops[6][0] = 4096;
                 break;
 
             case 4:
-                this.gradient = new Array(6);
-                for (let i = 0; i < this.gradient.length; i++) {
-                    this.gradient[i] = new Int32Array(4);
+                this.stops = new Array(6);
+                for (let i = 0; i < this.stops.length; i++) {
+                    this.stops[i] = new Int32Array(4);
                 }
-                this.gradient[0][3] = 0;
-                this.gradient[0][1] = 0;
-                this.gradient[0][0] = 0;
-                this.gradient[0][2] = 0;
+                this.stops[0][3] = 0;
+                this.stops[0][1] = 0;
+                this.stops[0][0] = 0;
+                this.stops[0][2] = 0;
 
-                this.gradient[1][0] = 1843;
-                this.gradient[1][3] = 1493;
-                this.gradient[1][2] = 0;
-                this.gradient[1][1] = 0;
+                this.stops[1][0] = 1843;
+                this.stops[1][3] = 1493;
+                this.stops[1][2] = 0;
+                this.stops[1][1] = 0;
 
-                this.gradient[2][3] = 2939;
-                this.gradient[2][0] = 2457;
-                this.gradient[2][1] = 0;
-                this.gradient[2][2] = 0;
+                this.stops[2][3] = 2939;
+                this.stops[2][0] = 2457;
+                this.stops[2][1] = 0;
+                this.stops[2][2] = 0;
 
-                this.gradient[3][3] = 3565;
-                this.gradient[3][0] = 2781;
-                this.gradient[3][1] = 0;
-                this.gradient[3][2] = 1124;
+                this.stops[3][3] = 3565;
+                this.stops[3][0] = 2781;
+                this.stops[3][1] = 0;
+                this.stops[3][2] = 1124;
 
-                this.gradient[4][3] = 4031;
-                this.gradient[4][1] = 546;
-                this.gradient[4][0] = 3481;
-                this.gradient[4][2] = 3084;
+                this.stops[4][3] = 4031;
+                this.stops[4][1] = 546;
+                this.stops[4][0] = 3481;
+                this.stops[4][2] = 3084;
 
-                this.gradient[5][0] = 4096;
-                this.gradient[5][2] = 4096;
-                this.gradient[5][1] = 4096;
-                this.gradient[5][3] = 4096;
+                this.stops[5][0] = 4096;
+                this.stops[5][2] = 4096;
+                this.stops[5][1] = 4096;
+                this.stops[5][3] = 4096;
                 break;
             case 5:
-                this.gradient = new Array(16);
-                for (let i = 0; i < this.gradient.length; i++) {
-                    this.gradient[i] = new Int32Array(4);
+                this.stops = new Array(16);
+                for (let i = 0; i < this.stops.length; i++) {
+                    this.stops[i] = new Int32Array(4);
                 }
-                this.gradient[0][2] = 192;
-                this.gradient[0][0] = 0;
-                this.gradient[0][1] = 80;
-                this.gradient[0][3] = 321;
+                this.stops[0][2] = 192;
+                this.stops[0][0] = 0;
+                this.stops[0][1] = 80;
+                this.stops[0][3] = 321;
 
-                this.gradient[1][1] = 321;
-                this.gradient[1][0] = 155;
-                this.gradient[1][3] = 562;
-                this.gradient[1][2] = 449;
+                this.stops[1][1] = 321;
+                this.stops[1][0] = 155;
+                this.stops[1][3] = 562;
+                this.stops[1][2] = 449;
 
-                this.gradient[2][1] = 578;
-                this.gradient[2][0] = 389;
-                this.gradient[2][3] = 803;
-                this.gradient[2][2] = 690;
+                this.stops[2][1] = 578;
+                this.stops[2][0] = 389;
+                this.stops[2][3] = 803;
+                this.stops[2][2] = 690;
 
-                this.gradient[3][2] = 995;
-                this.gradient[3][0] = 671;
-                this.gradient[3][3] = 1140;
-                this.gradient[3][1] = 947;
+                this.stops[3][2] = 995;
+                this.stops[3][0] = 671;
+                this.stops[3][3] = 1140;
+                this.stops[3][1] = 947;
 
-                this.gradient[4][2] = 1397;
-                this.gradient[4][1] = 1285;
-                this.gradient[4][0] = 897;
-                this.gradient[4][3] = 1509;
+                this.stops[4][2] = 1397;
+                this.stops[4][1] = 1285;
+                this.stops[4][0] = 897;
+                this.stops[4][3] = 1509;
 
-                this.gradient[5][2] = 1429;
-                this.gradient[5][0] = 1175;
-                this.gradient[5][3] = 1413;
-                this.gradient[5][1] = 1525;
+                this.stops[5][2] = 1429;
+                this.stops[5][0] = 1175;
+                this.stops[5][3] = 1413;
+                this.stops[5][1] = 1525;
 
-                this.gradient[6][3] = 1333;
-                this.gradient[6][0] = 1368;
-                this.gradient[6][1] = 1734;
-                this.gradient[6][2] = 1461;
+                this.stops[6][3] = 1333;
+                this.stops[6][0] = 1368;
+                this.stops[6][1] = 1734;
+                this.stops[6][2] = 1461;
 
-                this.gradient[7][0] = 1507;
-                this.gradient[7][1] = 1413;
-                this.gradient[7][3] = 1702;
-                this.gradient[7][2] = 1525;
+                this.stops[7][0] = 1507;
+                this.stops[7][1] = 1413;
+                this.stops[7][3] = 1702;
+                this.stops[7][2] = 1525;
 
-                this.gradient[8][1] = 1108;
-                this.gradient[8][2] = 1590;
-                this.gradient[8][3] = 2056;
-                this.gradient[8][0] = 1736;
+                this.stops[8][1] = 1108;
+                this.stops[8][2] = 1590;
+                this.stops[8][3] = 2056;
+                this.stops[8][0] = 1736;
 
-                this.gradient[9][1] = 1766;
-                this.gradient[9][0] = 2088;
-                this.gradient[9][3] = 2666;
-                this.gradient[9][2] = 2056;
+                this.stops[9][1] = 1766;
+                this.stops[9][0] = 2088;
+                this.stops[9][3] = 2666;
+                this.stops[9][2] = 2056;
 
-                this.gradient[10][2] = 2586;
-                this.gradient[10][0] = 2355;
-                this.gradient[10][1] = 2409;
-                this.gradient[10][3] = 3276;
+                this.stops[10][2] = 2586;
+                this.stops[10][0] = 2355;
+                this.stops[10][1] = 2409;
+                this.stops[10][3] = 3276;
 
-                this.gradient[11][1] = 3116;
-                this.gradient[11][3] = 3228;
-                this.gradient[11][2] = 3148;
-                this.gradient[11][0] = 2691;
+                this.stops[11][1] = 3116;
+                this.stops[11][3] = 3228;
+                this.stops[11][2] = 3148;
+                this.stops[11][0] = 2691;
 
-                this.gradient[12][2] = 3710;
-                this.gradient[12][1] = 3806;
-                this.gradient[12][3] = 3196;
-                this.gradient[12][0] = 3031;
+                this.stops[12][2] = 3710;
+                this.stops[12][1] = 3806;
+                this.stops[12][3] = 3196;
+                this.stops[12][0] = 3031;
 
-                this.gradient[13][1] = 3437;
-                this.gradient[13][2] = 3421;
-                this.gradient[13][3] = 3019;
-                this.gradient[13][0] = 3522;
+                this.stops[13][1] = 3437;
+                this.stops[13][2] = 3421;
+                this.stops[13][3] = 3019;
+                this.stops[13][0] = 3522;
 
-                this.gradient[14][1] = 3116;
-                this.gradient[14][0] = 3727;
-                this.gradient[14][2] = 3148;
-                this.gradient[14][3] = 3228;
+                this.stops[14][1] = 3116;
+                this.stops[14][0] = 3727;
+                this.stops[14][2] = 3148;
+                this.stops[14][3] = 3228;
 
-                this.gradient[15][1] = 2377;
-                this.gradient[15][2] = 2505;
-                this.gradient[15][3] = 2746;
-                this.gradient[15][0] = 4096;
+                this.stops[15][1] = 2377;
+                this.stops[15][2] = 2505;
+                this.stops[15][3] = 2746;
+                this.stops[15][0] = 4096;
                 break;
 
             case 6:
-                this.gradient = new Array(4);
-                for (let i = 0; i < this.gradient.length; i++) {
-                    this.gradient[i] = new Int32Array(4);
+                this.stops = new Array(4);
+                for (let i = 0; i < this.stops.length; i++) {
+                    this.stops[i] = new Int32Array(4);
                 }
-                this.gradient[0][3] = 0;
-                this.gradient[0][2] = 4096;
-                this.gradient[0][0] = 2048;
-                this.gradient[0][1] = 0;
+                this.stops[0][3] = 0;
+                this.stops[0][2] = 4096;
+                this.stops[0][0] = 2048;
+                this.stops[0][1] = 0;
 
-                this.gradient[1][2] = 4096;
-                this.gradient[1][1] = 4096;
-                this.gradient[1][3] = 0;
-                this.gradient[1][0] = 2867;
+                this.stops[1][2] = 4096;
+                this.stops[1][1] = 4096;
+                this.stops[1][3] = 0;
+                this.stops[1][0] = 2867;
 
-                this.gradient[2][1] = 4096;
-                this.gradient[2][2] = 4096;
-                this.gradient[2][3] = 0;
-                this.gradient[2][0] = 3276;
+                this.stops[2][1] = 4096;
+                this.stops[2][2] = 4096;
+                this.stops[2][3] = 0;
+                this.stops[2][0] = 3276;
 
-                this.gradient[3][2] = 0;
-                this.gradient[3][0] = 4096;
-                this.gradient[3][3] = 0;
-                this.gradient[3][1] = 4096;
+                this.stops[3][2] = 0;
+                this.stops[3][0] = 4096;
+                this.stops[3][3] = 0;
+                this.stops[3][1] = 4096;
                 break;
             default:
                 throw new Error(`Invalid gradient preset: ${preset}`);
