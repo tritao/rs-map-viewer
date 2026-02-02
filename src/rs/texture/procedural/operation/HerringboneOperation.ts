@@ -6,7 +6,7 @@ export class HerringboneOperation extends TextureOperation {
     scaleX: number = 1;
     scaleY: number = 1;
 
-    ratio: number = 204;
+    gapQ12: number = 204;
 
     constructor() {
         super(0, true);
@@ -18,7 +18,7 @@ export class HerringboneOperation extends TextureOperation {
         } else if (field === 1) {
             this.scaleY = buffer.readUnsignedByte();
         } else if (field === 2) {
-            this.ratio = buffer.readUnsignedShort();
+            this.gapQ12 = buffer.readUnsignedShort();
         }
     }
 
@@ -29,33 +29,37 @@ export class HerringboneOperation extends TextureOperation {
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
             for (let x = 0; x < textureGenerator.width; x++) {
-                const vGrad = textureGenerator.horizontalGradient[x];
-                const hGrad = textureGenerator.verticalGradient[line];
-                let local40 = (this.scaleX * vGrad) >> 12;
-                const local51 = (this.scaleY * hGrad) >> 12;
-                const local61 = this.scaleX * (vGrad % ((4096 / this.scaleX) | 0));
-                const local71 = this.scaleY * (hGrad % ((4096 / this.scaleY) | 0));
-                if (local71 < this.ratio) {
-                    for (local40 -= local51; local40 < 0; local40 += 4) {}
-                    while (local40 > 3) {
-                        local40 -= 4;
+                const xQ12 = textureGenerator.horizontalGradient[x];
+                const yQ12 = textureGenerator.verticalGradient[line];
+
+                const xTileIndex = (this.scaleX * xQ12) >> 12;
+                const yTileIndex = (this.scaleY * yQ12) >> 12;
+
+                const xFracQ12 = this.scaleX * (xQ12 % ((4096 / this.scaleX) | 0));
+                const yFracQ12 = this.scaleY * (yQ12 % ((4096 / this.scaleY) | 0));
+
+                if (yFracQ12 < this.gapQ12) {
+                    let phase = xTileIndex - yTileIndex;
+                    for (; phase < 0; phase += 4) {}
+                    while (phase > 3) {
+                        phase -= 4;
                     }
-                    if (local40 !== 1) {
+                    if (phase !== 1) {
                         output[x] = 0;
                         continue;
                     }
-                    if (local61 < this.ratio) {
+                    if (xFracQ12 < this.gapQ12) {
                         output[x] = 0;
                         continue;
                     }
                 }
-                if (local61 < this.ratio) {
-                    let local131: number;
-                    for (local131 = local40 - local51; local131 < 0; local131 += 4) {}
-                    while (local131 > 3) {
-                        local131 -= 4;
+                if (xFracQ12 < this.gapQ12) {
+                    let phase = xTileIndex - yTileIndex;
+                    for (; phase < 0; phase += 4) {}
+                    while (phase > 3) {
+                        phase -= 4;
                     }
-                    if (local131 > 0) {
+                    if (phase > 0) {
                         output[x] = 0;
                         continue;
                     }
