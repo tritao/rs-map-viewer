@@ -2379,6 +2379,57 @@ export class ModelData extends Entity {
         model.verticesY = this.verticesY;
         model.contourVerticesY = new Int32Array(model.verticesCount);
 
+        if (type === ContourGroundType.AlignToSlope) {
+            const paramU16 = param & 0xffff;
+            const sizeX = (paramU16 & 0xff) * 4;
+            const sizeZ = ((paramU16 >> 8) & 0xff) * 4;
+
+            model.verticesX = this.verticesX.slice();
+            model.verticesY = this.verticesY.slice();
+            model.verticesZ = this.verticesZ.slice();
+            model.contourVerticesY = undefined;
+
+            const halfSizeX = (sizeX / 2) | 0;
+            const halfSizeZ = (sizeZ / 2) | 0;
+
+            const h00 = ModelData.sampleHeightMap(heightMap, sceneX - halfSizeX, sceneZ - halfSizeZ);
+            const h10 = ModelData.sampleHeightMap(heightMap, sceneX + halfSizeX, sceneZ - halfSizeZ);
+            const h01 = ModelData.sampleHeightMap(heightMap, sceneX - halfSizeX, sceneZ + halfSizeZ);
+            const h11 = ModelData.sampleHeightMap(heightMap, sceneX + halfSizeX, sceneZ + halfSizeZ);
+
+            const minTop = Math.min(h00, h10);
+            const minBottom = Math.min(h01, h11);
+            const minRight = Math.min(h10, h11);
+            const minLeft = Math.min(h00, h01);
+
+            const angleFactor = 2048.0 / (2.0 * Math.PI);
+            if (sizeZ !== 0) {
+                const pitch = (Math.atan2(minTop - minBottom, sizeZ) * angleFactor) & 0x7ff;
+                if (pitch !== 0) {
+                    model.rotateX(pitch);
+                }
+            }
+            if (sizeX !== 0) {
+                const roll = (Math.atan2(minLeft - minRight, sizeX) * angleFactor) & 0x7ff;
+                if (roll !== 0) {
+                    model.rotateZ(roll);
+                }
+            }
+
+            let diagSumMin = h00 + h11;
+            const otherDiagSum = h10 + h01;
+            if (otherDiagSum < diagSumMin) {
+                diagSumMin = otherDiagSum;
+            }
+            const yOffset = (diagSumMin >> 1) - sceneHeight;
+            if (yOffset !== 0) {
+                model.translate(0, yOffset, 0);
+            }
+
+            model.invalidate();
+            return model;
+        }
+
         if (type === ContourGroundType.WarpToTerrain) {
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
@@ -2461,12 +2512,6 @@ export class ModelData extends Entity {
                     model.contourVerticesY[i] = this.verticesY[i];
                 }
             }
-        } else if (type === ContourGroundType.AlignToSlope) {
-            // TODO: implement ContourGroundType.AlignToSlope. In rt4 this rotates around X/Z to match the
-            // terrain plane under the model, then translates Y to the average height.
-            for (let i = 0; i < model.usedVertexCount; i++) {
-                model.contourVerticesY[i] = this.verticesY[i];
-            }
         } else if (type === ContourGroundType.WarpToPlaneAbove) {
             const deltaY = this.maxY - this.minY;
             for (let i = 0; i < model.usedVertexCount; i++) {
@@ -2517,6 +2562,27 @@ export class ModelData extends Entity {
 
         model.invalidate();
         return model;
+    }
+
+    static sampleHeightMap(heightMap: Int32Array[], x: number, z: number): number {
+        const tileX = x >> 7;
+        const tileZ = z >> 7;
+        if (
+            tileX < 0 ||
+            tileZ < 0 ||
+            tileX >= heightMap.length - 1 ||
+            tileZ >= heightMap[0].length - 1
+        ) {
+            return 0;
+        }
+        const rx = x & 0x7f;
+        const rz = z & 0x7f;
+        const h0 =
+            (heightMap[tileX][tileZ] * (128 - rx) + heightMap[tileX + 1][tileZ] * rx) >> 7;
+        const h1 =
+            (heightMap[tileX][tileZ + 1] * (128 - rx) + heightMap[tileX + 1][tileZ + 1] * rx) >>
+            7;
+        return (h0 * (128 - rz) + h1 * rz) >> 7;
     }
 
     computeAnimationTables(): void {
@@ -2624,6 +2690,30 @@ export class ModelData extends Entity {
             this.verticesX[i] = temp;
         }
 
+        this.invalidate();
+    }
+
+    rotateX(angle: number): void {
+        const sin = SINE[angle];
+        const cos = COSINE[angle];
+        for (let i = 0; i < this.verticesCount; i++) {
+            const y = this.verticesY[i];
+            const z = this.verticesZ[i];
+            this.verticesY[i] = (y * cos - z * sin) >> 16;
+            this.verticesZ[i] = (y * sin + z * cos) >> 16;
+        }
+        this.invalidate();
+    }
+
+    rotateZ(angle: number): void {
+        const sin = SINE[angle];
+        const cos = COSINE[angle];
+        for (let i = 0; i < this.verticesCount; i++) {
+            const x = this.verticesX[i];
+            const y = this.verticesY[i];
+            this.verticesX[i] = (x * cos - y * sin) >> 16;
+            this.verticesY[i] = (x * sin + y * cos) >> 16;
+        }
         this.invalidate();
     }
 

@@ -9,11 +9,9 @@ export enum ContourGroundType {
     // Warp lower vertices with a fade-out towards the top (uses `param` as a cutoff/strength).
     WarpToTerrainFadeByVertexHeight = 2,
     // Align to terrain slope (rotate around X/Z + translate), without per-vertex warping.
-    // TODO: implement in `Model.contourGround()`/`ModelData.contourGround()`.
     AlignToSlope = 3,
     // Warp using the heightmap of the plane above.
     WarpToPlaneAbove = 4,
     // Warp between current plane and plane above.
     WarpBetweenPlanes = 5,
 }
-
