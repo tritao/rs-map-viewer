@@ -355,9 +355,9 @@ export class Model extends Entity {
                     this.bottomY = vertY;
                 }
 
-                const var5 = vertX * vertX + vertZ * vertZ;
-                if (var5 > this.xzRadius) {
-                    this.xzRadius = var5;
+                const xzRadiusSq = vertX * vertX + vertZ * vertZ;
+                if (xzRadiusSq > this.xzRadius) {
+                    this.xzRadius = xzRadiusSq;
                 }
             }
 
@@ -1109,8 +1109,8 @@ export class Model extends Entity {
                 }
                 const color = this.faceColors[i] & 0xffff;
                 if (this.faceColors3[i] === -1) {
-                    const i_617_ = this.faceColors1[i] & ~0x1ffff;
-                    this.faceColors1[i] = i_617_ | ModelData.adjustLightness(color, i_617_ >> 17);
+                    const shade17 = this.faceColors1[i] & ~0x1ffff;
+                    this.faceColors1[i] = shade17 | ModelData.adjustLightness(color, shade17 >> 17);
                 } else if (this.faceColors3[i] !== -2) {
                     let c = this.faceColors1[i] & ~0x1ffff;
                     this.faceColors1[i] = c | ModelData.adjustLightness(color, c >> 17);
@@ -1177,42 +1177,42 @@ export function computeTextureCoords(model: Model): Float32Array | undefined {
             const vy = verticesY[p];
             const vz = verticesZ[p];
 
-            const f_882_ = verticesX[m] - vx;
-            const f_883_ = verticesY[m] - vy;
-            const f_884_ = verticesZ[m] - vz;
-            const f_885_ = verticesX[n] - vx;
-            const f_886_ = verticesY[n] - vy;
-            const f_887_ = verticesZ[n] - vz;
-            const f_888_ = verticesX[index0] - vx;
-            const f_889_ = verticesY[index0] - vy;
-            const f_890_ = verticesZ[index0] - vz;
-            const f_891_ = verticesX[index1] - vx;
-            const f_892_ = verticesY[index1] - vy;
-            const f_893_ = verticesZ[index1] - vz;
-            const f_894_ = verticesX[index2] - vx;
-            const f_895_ = verticesY[index2] - vy;
-            const f_896_ = verticesZ[index2] - vz;
+            const edgeMx = verticesX[m] - vx;
+            const edgeMy = verticesY[m] - vy;
+            const edgeMz = verticesZ[m] - vz;
+            const edgeNx = verticesX[n] - vx;
+            const edgeNy = verticesY[n] - vy;
+            const edgeNz = verticesZ[n] - vz;
+            const v0x = verticesX[index0] - vx;
+            const v0y = verticesY[index0] - vy;
+            const v0z = verticesZ[index0] - vz;
+            const v1x = verticesX[index1] - vx;
+            const v1y = verticesY[index1] - vy;
+            const v1z = verticesZ[index1] - vz;
+            const v2x = verticesX[index2] - vx;
+            const v2y = verticesY[index2] - vy;
+            const v2z = verticesZ[index2] - vz;
 
-            const f_897_ = f_883_ * f_887_ - f_884_ * f_886_;
-            const f_898_ = f_884_ * f_885_ - f_882_ * f_887_;
-            const f_899_ = f_882_ * f_886_ - f_883_ * f_885_;
-            let f_900_ = f_886_ * f_899_ - f_887_ * f_898_;
-            let f_901_ = f_887_ * f_897_ - f_885_ * f_899_;
-            let f_902_ = f_885_ * f_898_ - f_886_ * f_897_;
-            let f_903_ = 1.0 / (f_900_ * f_882_ + f_901_ * f_883_ + f_902_ * f_884_);
+            const crossX = edgeMy * edgeNz - edgeMz * edgeNy;
+            const crossY = edgeMz * edgeNx - edgeMx * edgeNz;
+            const crossZ = edgeMx * edgeNy - edgeMy * edgeNx;
+            const uBasisX = edgeNy * crossZ - edgeNz * crossY;
+            const uBasisY = edgeNz * crossX - edgeNx * crossZ;
+            const uBasisZ = edgeNx * crossY - edgeNy * crossX;
+            const invUDenom = 1.0 / (uBasisX * edgeMx + uBasisY * edgeMy + uBasisZ * edgeMz);
 
-            const u0 = (f_900_ * f_888_ + f_901_ * f_889_ + f_902_ * f_890_) * f_903_;
-            const u1 = (f_900_ * f_891_ + f_901_ * f_892_ + f_902_ * f_893_) * f_903_;
-            const u2 = (f_900_ * f_894_ + f_901_ * f_895_ + f_902_ * f_896_) * f_903_;
+            const u0 = (uBasisX * v0x + uBasisY * v0y + uBasisZ * v0z) * invUDenom;
+            const u1 = (uBasisX * v1x + uBasisY * v1y + uBasisZ * v1z) * invUDenom;
+            const u2 = (uBasisX * v2x + uBasisY * v2y + uBasisZ * v2z) * invUDenom;
 
-            f_900_ = f_883_ * f_899_ - f_884_ * f_898_;
-            f_901_ = f_884_ * f_897_ - f_882_ * f_899_;
-            f_902_ = f_882_ * f_898_ - f_883_ * f_897_;
-            f_903_ = 1.0 / (f_900_ * f_885_ + f_901_ * f_886_ + f_902_ * f_887_);
+            const vBasisX = edgeMy * crossZ - edgeMz * crossY;
+            const vBasisY = edgeMz * crossX - edgeMx * crossZ;
+            const vBasisZ = edgeMx * crossY - edgeMy * crossX;
+            const invVDenom = 1.0 / (vBasisX * edgeNx + vBasisY * edgeNy + vBasisZ * edgeNz);
 
-            const v0 = (f_900_ * f_888_ + f_901_ * f_889_ + f_902_ * f_890_) * f_903_;
-            const v1 = (f_900_ * f_891_ + f_901_ * f_892_ + f_902_ * f_893_) * f_903_;
-            const v2 = (f_900_ * f_894_ + f_901_ * f_895_ + f_902_ * f_896_) * f_903_;
+            const v0 = (vBasisX * v0x + vBasisY * v0y + vBasisZ * v0z) * invVDenom;
+            const v1 = (vBasisX * v1x + vBasisY * v1y + vBasisZ * v1z) * invVDenom;
+            const v2 = (vBasisX * v2x + vBasisY * v2y + vBasisZ * v2z) * invVDenom;
 
             const idx = i * 6;
             faceTextureUCoordinates[idx] = u0;
