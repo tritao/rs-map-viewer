@@ -73,42 +73,42 @@ export function computeTextureCoords(
                 const vy = verticesY[p];
                 const vz = verticesZ[p];
 
-                const f_882_ = verticesX[m] - vx;
-                const f_883_ = verticesY[m] - vy;
-                const f_884_ = verticesZ[m] - vz;
-                const f_885_ = verticesX[n] - vx;
-                const f_886_ = verticesY[n] - vy;
-                const f_887_ = verticesZ[n] - vz;
-                const f_888_ = verticesX[index0] - vx;
-                const f_889_ = verticesY[index0] - vy;
-                const f_890_ = verticesZ[index0] - vz;
-                const f_891_ = verticesX[index1] - vx;
-                const f_892_ = verticesY[index1] - vy;
-                const f_893_ = verticesZ[index1] - vz;
-                const f_894_ = verticesX[index2] - vx;
-                const f_895_ = verticesY[index2] - vy;
-                const f_896_ = verticesZ[index2] - vz;
+                const edgeMx = verticesX[m] - vx;
+                const edgeMy = verticesY[m] - vy;
+                const edgeMz = verticesZ[m] - vz;
+                const edgeNx = verticesX[n] - vx;
+                const edgeNy = verticesY[n] - vy;
+                const edgeNz = verticesZ[n] - vz;
+                const v0x = verticesX[index0] - vx;
+                const v0y = verticesY[index0] - vy;
+                const v0z = verticesZ[index0] - vz;
+                const v1x = verticesX[index1] - vx;
+                const v1y = verticesY[index1] - vy;
+                const v1z = verticesZ[index1] - vz;
+                const v2x = verticesX[index2] - vx;
+                const v2y = verticesY[index2] - vy;
+                const v2z = verticesZ[index2] - vz;
 
-                const f_897_ = f_883_ * f_887_ - f_884_ * f_886_;
-                const f_898_ = f_884_ * f_885_ - f_882_ * f_887_;
-                const f_899_ = f_882_ * f_886_ - f_883_ * f_885_;
-                let f_900_ = f_886_ * f_899_ - f_887_ * f_898_;
-                let f_901_ = f_887_ * f_897_ - f_885_ * f_899_;
-                let f_902_ = f_885_ * f_898_ - f_886_ * f_897_;
-                let f_903_ = 1.0 / (f_900_ * f_882_ + f_901_ * f_883_ + f_902_ * f_884_);
+                const crossX = edgeMy * edgeNz - edgeMz * edgeNy;
+                const crossY = edgeMz * edgeNx - edgeMx * edgeNz;
+                const crossZ = edgeMx * edgeNy - edgeMy * edgeNx;
+                const uBasisX = edgeNy * crossZ - edgeNz * crossY;
+                const uBasisY = edgeNz * crossX - edgeNx * crossZ;
+                const uBasisZ = edgeNx * crossY - edgeNy * crossX;
+                const invUDenom = 1.0 / (uBasisX * edgeMx + uBasisY * edgeMy + uBasisZ * edgeMz);
 
-                u0 = (f_900_ * f_888_ + f_901_ * f_889_ + f_902_ * f_890_) * f_903_;
-                u1 = (f_900_ * f_891_ + f_901_ * f_892_ + f_902_ * f_893_) * f_903_;
-                u2 = (f_900_ * f_894_ + f_901_ * f_895_ + f_902_ * f_896_) * f_903_;
+                u0 = (uBasisX * v0x + uBasisY * v0y + uBasisZ * v0z) * invUDenom;
+                u1 = (uBasisX * v1x + uBasisY * v1y + uBasisZ * v1z) * invUDenom;
+                u2 = (uBasisX * v2x + uBasisY * v2y + uBasisZ * v2z) * invUDenom;
 
-                f_900_ = f_883_ * f_899_ - f_884_ * f_898_;
-                f_901_ = f_884_ * f_897_ - f_882_ * f_899_;
-                f_902_ = f_882_ * f_898_ - f_883_ * f_897_;
-                f_903_ = 1.0 / (f_900_ * f_885_ + f_901_ * f_886_ + f_902_ * f_887_);
+                const vBasisX = edgeMy * crossZ - edgeMz * crossY;
+                const vBasisY = edgeMz * crossX - edgeMx * crossZ;
+                const vBasisZ = edgeMx * crossY - edgeMy * crossX;
+                const invVDenom = 1.0 / (vBasisX * edgeNx + vBasisY * edgeNy + vBasisZ * edgeNz);
 
-                v0 = (f_900_ * f_888_ + f_901_ * f_889_ + f_902_ * f_890_) * f_903_;
-                v1 = (f_900_ * f_891_ + f_901_ * f_892_ + f_902_ * f_893_) * f_903_;
-                v2 = (f_900_ * f_894_ + f_901_ * f_895_ + f_902_ * f_896_) * f_903_;
+                v0 = (vBasisX * v0x + vBasisY * v0y + vBasisZ * v0z) * invVDenom;
+                v1 = (vBasisX * v1x + vBasisY * v1y + vBasisZ * v1z) * invVDenom;
+                v2 = (vBasisX * v2x + vBasisY * v2y + vBasisZ * v2z) * invVDenom;
 
                 if (u1 - u0 > 0.99 && u1 - u0 < 1.1) {
                     u1 = 1.0;
@@ -191,24 +191,32 @@ export function computeTextureCoords(
                     if ((direction & 0x1) === 0) {
                         if (u1 - u0 > scaleZHalf) {
                             u1 -= scaleZ;
+                            // i_769_ = 1;
                         } else if (u0 - u1 > scaleZHalf) {
                             u1 += scaleZ;
+                            // i_769_ = 2;
                         }
                         if (u2 - u0 > scaleZHalf) {
                             u2 -= scaleZ;
+                            // i_770_ = 1;
                         } else if (u0 - u2 > scaleZHalf) {
                             u2 += scaleZ;
+                            // i_770_ = 2;
                         }
                     } else {
                         if (v1 - v0 > scaleZHalf) {
                             v1 -= scaleZ;
+                            // i_769_ = 1;
                         } else if (v0 - v1 > scaleZHalf) {
                             v1 += scaleZ;
+                            // i_769_ = 2;
                         }
                         if (v2 - v0 > scaleZHalf) {
                             v2 -= scaleZ;
+                            // i_770_ = 1;
                         } else if (v0 - v2 > scaleZHalf) {
                             v2 += scaleZ;
+                            // i_770_ = 2;
                         }
                     }
                 } else if (type === 2) {
@@ -227,11 +235,14 @@ export function computeTextureCoords(
                     const scaleX = 64.0 / model.textureScaleX[texCoord];
                     const scaleY = 64.0 / model.textureScaleY[texCoord];
                     const scaleZ = 64.0 / model.textureScaleZ[texCoord];
-                    const f_829_ = (vx * scales[0] + vy * scales[1] + vz * scales[2]) / scaleX;
-                    const f_830_ = (vx * scales[3] + vy * scales[4] + vz * scales[5]) / scaleY;
-                    const f_831_ = (vx * scales[6] + vy * scales[7] + vz * scales[8]) / scaleZ;
+                    const scaledNormalX =
+                        (vx * scales[0] + vy * scales[1] + vz * scales[2]) / scaleX;
+                    const scaledNormalY =
+                        (vx * scales[3] + vy * scales[4] + vz * scales[5]) / scaleY;
+                    const scaledNormalZ =
+                        (vx * scales[6] + vy * scales[7] + vz * scales[8]) / scaleZ;
 
-                    const scaleType = method2437(f_829_, f_830_, f_831_);
+                    const scaleType = method2437(scaledNormalX, scaledNormalY, scaledNormalZ);
 
                     method2416(
                         model.verticesX[index0],
@@ -331,24 +342,32 @@ export function computeTextureCoords(
                     if ((direction & 0x1) === 0) {
                         if (u1 - u0 > 0.5) {
                             u1--;
+                            // i_769_ = 1;
                         } else if (u0 - u1 > 0) {
                             u1++;
+                            // i_769_ = 2;
                         }
                         if (u2 - u0 > 0.5) {
                             u2--;
+                            // i_770_ = 1;
                         } else if (u0 - u2 > 0.5) {
                             u2++;
+                            // i_770_ = 2;
                         }
                     } else {
                         if (v1 - v0 > 0.5) {
                             v1--;
+                            // i_769_ = 1;
                         } else if (v0 - v1 > 0.5) {
                             v1++;
+                            // i_769_ = 2;
                         }
                         if (v2 - v0 > 0.5) {
                             v2--;
+                            // i_770_ = 1;
                         } else if (v0 - v2 > 0.5) {
                             v2++;
+                            // i_770_ = 2;
                         }
                     }
                 }
@@ -395,47 +414,47 @@ function method2431(
     vx -= centerX;
     vy -= centerY;
     vz -= centerZ;
-    const f_651_ = vx * scales[0] + vy * scales[1] + vz * scales[2];
-    const f_652_ = vx * scales[3] + vy * scales[4] + vz * scales[5];
-    const f_653_ = vx * scales[6] + vy * scales[7] + vz * scales[8];
-    let u = Math.atan2(f_651_, f_653_) / 6.2831855 + 0.5;
+    const localX = vx * scales[0] + vy * scales[1] + vz * scales[2];
+    const localY = vx * scales[3] + vy * scales[4] + vz * scales[5];
+    const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
+    let u = Math.atan2(localX, localZ) / 6.2831855 + 0.5;
     if (scaleZ !== 1.0) {
         u *= scaleZ;
     }
-    let v = f_652_ + 0.5 + speed;
+    let v = localY + 0.5 + speed;
     if (direction === 1) {
-        const f_656_ = u;
+        const uPrev = u;
         u = -v;
-        v = f_656_;
+        v = uPrev;
     } else if (direction === 2) {
         u = -u;
         v = -v;
     } else if (direction === 3) {
-        const f_657_ = u;
+        const uPrev = u;
         u = v;
-        v = -f_657_;
+        v = -uPrev;
     }
     out[0] = u;
     out[1] = v;
 }
 
-function method2437(f: number, f_715_: number, f_716_: number): number {
-    const f_717_ = f < 0.0 ? -f : f;
-    const f_718_ = f_715_ < 0.0 ? -f_715_ : f_715_;
-    const f_719_ = f_716_ < 0.0 ? -f_716_ : f_716_;
-    if (f_718_ > f_717_ && f_718_ > f_719_) {
-        if (f_715_ > 0.0) {
+function method2437(x: number, y: number, z: number): number {
+    const absX = x < 0.0 ? -x : x;
+    const absY = y < 0.0 ? -y : y;
+    const absZ = z < 0.0 ? -z : z;
+    if (absY > absX && absY > absZ) {
+        if (y > 0.0) {
             return 0;
         }
         return 1;
     }
-    if (f_719_ > f_717_ && f_719_ > f_718_) {
-        if (f_716_ > 0.0) {
+    if (absZ > absX && absZ > absY) {
+        if (z > 0.0) {
             return 2;
         }
         return 3;
     }
-    if (f > 0.0) {
+    if (x > 0.0) {
         return 4;
     }
     return 5;
@@ -459,41 +478,41 @@ function method2416(
     vx -= centerX;
     vy -= centerY;
     vz -= centerZ;
-    const f_223_ = vx * scales[0] + vy * scales[1] + vz * scales[2];
-    const f_224_ = vx * scales[3] + vy * scales[4] + vz * scales[5];
-    const f_225_ = vx * scales[6] + vy * scales[7] + vz * scales[8];
+    const localX = vx * scales[0] + vy * scales[1] + vz * scales[2];
+    const localY = vx * scales[3] + vy * scales[4] + vz * scales[5];
+    const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
     let u: number;
     let v: number;
     if (scaleType === 0) {
-        u = f_223_ + speed + 0.5;
-        v = -f_225_ + vOffset + 0.5;
+        u = localX + speed + 0.5;
+        v = -localZ + vOffset + 0.5;
     } else if (scaleType === 1) {
-        u = f_223_ + speed + 0.5;
-        v = f_225_ + vOffset + 0.5;
+        u = localX + speed + 0.5;
+        v = localZ + vOffset + 0.5;
     } else if (scaleType === 2) {
-        u = -f_223_ + speed + 0.5;
-        v = -f_224_ + uOffset + 0.5;
+        u = -localX + speed + 0.5;
+        v = -localY + uOffset + 0.5;
     } else if (scaleType === 3) {
-        u = f_223_ + speed + 0.5;
-        v = -f_224_ + uOffset + 0.5;
+        u = localX + speed + 0.5;
+        v = -localY + uOffset + 0.5;
     } else if (scaleType === 4) {
-        u = f_225_ + vOffset + 0.5;
-        v = -f_224_ + uOffset + 0.5;
+        u = localZ + vOffset + 0.5;
+        v = -localY + uOffset + 0.5;
     } else {
-        u = -f_225_ + vOffset + 0.5;
-        v = -f_224_ + uOffset + 0.5;
+        u = -localZ + vOffset + 0.5;
+        v = -localY + uOffset + 0.5;
     }
     if (direction === 1) {
-        const f_228_ = u;
+        const uPrev = u;
         u = -v;
-        v = f_228_;
+        v = uPrev;
     } else if (direction === 2) {
         u = -u;
         v = -v;
     } else if (direction === 3) {
-        const f_229_ = u;
+        const uPrev = u;
         u = v;
-        v = -f_229_;
+        v = -uPrev;
     }
     out[0] = u;
     out[1] = v;
@@ -514,23 +533,23 @@ function method2434(
     vx -= centerX;
     vy -= centerY;
     vz -= centerZ;
-    const f_682_ = vx * scales[0] + vy * scales[1] + vz * scales[2];
-    const f_683_ = vx * scales[3] + vy * scales[4] + vz * scales[5];
-    const f_684_ = vx * scales[6] + vy * scales[7] + vz * scales[8];
-    const f_685_ = Math.sqrt(f_682_ * f_682_ + f_683_ * f_683_ + f_684_ * f_684_);
-    let u = Math.atan2(f_682_, f_684_) / 6.2831855 + 0.5;
-    let v = Math.asin(f_683_ / f_685_) / 3.1415927 + 0.5 + speed;
+    const localX = vx * scales[0] + vy * scales[1] + vz * scales[2];
+    const localY = vx * scales[3] + vy * scales[4] + vz * scales[5];
+    const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
+    const localLen = Math.sqrt(localX * localX + localY * localY + localZ * localZ);
+    let u = Math.atan2(localX, localZ) / 6.2831855 + 0.5;
+    let v = Math.asin(localY / localLen) / 3.1415927 + 0.5 + speed;
     if (direction === 1) {
-        const f_688_ = u;
+        const uPrev = u;
         u = -v;
-        v = f_688_;
+        v = uPrev;
     } else if (direction === 2) {
         u = -u;
         v = -v;
     } else if (direction === 3) {
-        const f_689_ = u;
+        const uPrev = u;
         u = v;
-        v = -f_689_;
+        v = -uPrev;
     }
     out[0] = u;
     out[1] = v;
@@ -665,38 +684,37 @@ function method2424(
     scaleZ: number,
 ): Float32Array {
     const fs = new Float32Array(9);
-    let f_552_ = 1.0;
-    let f_553_ = 0.0;
-    let f_554_ = m / 32767.0;
-    let f_555_ = -Math.sqrt(1.0 - f_554_ * f_554_);
-    let f_556_ = 1.0 - f_554_;
-    const f_557_ = Math.sqrt(p * p + n * n);
-    if (f_557_ !== 0.0) {
-        f_552_ = -n / f_557_;
-        f_553_ = p / f_557_;
+    let axisX = 1.0;
+    let axisZ = 0.0;
+    let cosAngle = m / 32767.0;
+    let sinAngle = -Math.sqrt(1.0 - cosAngle * cosAngle);
+    let oneMinusCosAngle = 1.0 - cosAngle;
+    const axisLenXZ = Math.sqrt(p * p + n * n);
+    if (axisLenXZ !== 0.0) {
+        axisX = -n / axisLenXZ;
+        axisZ = p / axisLenXZ;
     }
-    fs[0] = f_554_ + f_552_ * f_552_ * f_556_;
-    fs[1] = f_553_ * f_555_;
-    fs[2] = f_553_ * f_552_ * f_556_;
-    fs[3] = -f_553_ * f_555_;
-    fs[4] = f_554_;
-    fs[5] = f_552_ * f_555_;
-    fs[6] = f_552_ * f_553_ * f_556_;
-    fs[7] = -f_552_ * f_555_;
-    fs[8] = f_554_ + f_553_ * f_553_ * f_556_;
+    fs[0] = cosAngle + axisX * axisX * oneMinusCosAngle;
+    fs[1] = axisZ * sinAngle;
+    fs[2] = axisZ * axisX * oneMinusCosAngle;
+    fs[3] = -axisZ * sinAngle;
+    fs[4] = cosAngle;
+    fs[5] = axisX * sinAngle;
+    fs[6] = axisX * axisZ * oneMinusCosAngle;
+    fs[7] = -axisX * sinAngle;
+    fs[8] = cosAngle + axisZ * axisZ * oneMinusCosAngle;
     const fs_558_ = new Float32Array(9);
-    f_554_ = Math.cos(rotation * 0.024543693); //pi/128 = 0.024543693
-    f_555_ = Math.sin(rotation * 0.024543693); //pi/128 = 0.024543693
-    f_556_ = 1.0 - f_554_;
-    fs_558_[0] = f_554_;
+    cosAngle = Math.cos(rotation * 0.024543693); //pi/128 = 0.024543693
+    sinAngle = Math.sin(rotation * 0.024543693); //pi/128 = 0.024543693
+    fs_558_[0] = cosAngle;
     fs_558_[1] = 0.0;
-    fs_558_[2] = f_555_;
+    fs_558_[2] = sinAngle;
     fs_558_[3] = 0.0;
     fs_558_[4] = 1.0;
     fs_558_[5] = 0.0;
-    fs_558_[6] = -f_555_;
+    fs_558_[6] = -sinAngle;
     fs_558_[7] = 0.0;
-    fs_558_[8] = f_554_;
+    fs_558_[8] = cosAngle;
     const fs_559_ = new Float32Array(9);
     fs_559_[0] = fs_558_[0] * fs[0] + fs_558_[1] * fs[3] + fs_558_[2] * fs[6];
     fs_559_[1] = fs_558_[0] * fs[1] + fs_558_[1] * fs[4] + fs_558_[2] * fs[7];
