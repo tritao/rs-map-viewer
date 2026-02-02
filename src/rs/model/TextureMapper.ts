@@ -142,7 +142,7 @@ export function computeTextureCoords(
                 const speed = model.textureSpeed[texCoord] / 256.0;
                 if (type === 1) {
                     const scaleZ = model.textureScaleZ[texCoord] / 1024.0;
-                    method2431(
+                    computeCylindricalUv(
                         model.verticesX[index0],
                         model.verticesY[index0],
                         model.verticesZ[index0],
@@ -157,7 +157,7 @@ export function computeTextureCoords(
                     );
                     u0 = uvTemp[0];
                     v0 = uvTemp[1];
-                    method2431(
+                    computeCylindricalUv(
                         model.verticesX[index1],
                         model.verticesY[index1],
                         model.verticesZ[index1],
@@ -172,7 +172,7 @@ export function computeTextureCoords(
                     );
                     u1 = uvTemp[0];
                     v1 = uvTemp[1];
-                    method2431(
+                    computeCylindricalUv(
                         model.verticesX[index2],
                         model.verticesY[index2],
                         model.verticesZ[index2],
@@ -242,16 +242,20 @@ export function computeTextureCoords(
                     const scaledNormalZ =
                         (vx * scales[6] + vy * scales[7] + vz * scales[8]) / scaleZ;
 
-                    const scaleType = method2437(scaledNormalX, scaledNormalY, scaledNormalZ);
+                    const cubeFace = getDominantAxisFace(
+                        scaledNormalX,
+                        scaledNormalY,
+                        scaledNormalZ,
+                    );
 
-                    method2416(
+                    computeBoxProjectedUv(
                         model.verticesX[index0],
                         model.verticesY[index0],
                         model.verticesZ[index0],
                         centerX,
                         centerY,
                         centerZ,
-                        scaleType,
+                        cubeFace,
                         scales,
                         direction,
                         speed,
@@ -261,14 +265,14 @@ export function computeTextureCoords(
                     );
                     u0 = uvTemp[0];
                     v0 = uvTemp[1];
-                    method2416(
+                    computeBoxProjectedUv(
                         model.verticesX[index1],
                         model.verticesY[index1],
                         model.verticesZ[index1],
                         centerX,
                         centerY,
                         centerZ,
-                        scaleType,
+                        cubeFace,
                         scales,
                         direction,
                         speed,
@@ -278,14 +282,14 @@ export function computeTextureCoords(
                     );
                     u1 = uvTemp[0];
                     v1 = uvTemp[1];
-                    method2416(
+                    computeBoxProjectedUv(
                         model.verticesX[index2],
                         model.verticesY[index2],
                         model.verticesZ[index2],
                         centerX,
                         centerY,
                         centerZ,
-                        scaleType,
+                        cubeFace,
                         scales,
                         direction,
                         speed,
@@ -296,7 +300,7 @@ export function computeTextureCoords(
                     u2 = uvTemp[0];
                     v2 = uvTemp[1];
                 } else if (type === 3) {
-                    method2434(
+                    computeSphericalUv(
                         model.verticesX[index0],
                         model.verticesY[index0],
                         model.verticesZ[index0],
@@ -310,7 +314,7 @@ export function computeTextureCoords(
                     );
                     u0 = uvTemp[0];
                     v0 = uvTemp[1];
-                    method2434(
+                    computeSphericalUv(
                         model.verticesX[index1],
                         model.verticesY[index1],
                         model.verticesZ[index1],
@@ -324,7 +328,7 @@ export function computeTextureCoords(
                     );
                     u1 = uvTemp[0];
                     v1 = uvTemp[1];
-                    method2434(
+                    computeSphericalUv(
                         model.verticesX[index2],
                         model.verticesY[index2],
                         model.verticesZ[index2],
@@ -398,7 +402,7 @@ export function computeTextureCoords(
     return uvs;
 }
 
-function method2431(
+function computeCylindricalUv(
     vx: number,
     vy: number,
     vz: number,
@@ -438,7 +442,7 @@ function method2431(
     out[1] = v;
 }
 
-function method2437(x: number, y: number, z: number): number {
+function getDominantAxisFace(x: number, y: number, z: number): number {
     const absX = x < 0.0 ? -x : x;
     const absY = y < 0.0 ? -y : y;
     const absZ = z < 0.0 ? -z : z;
@@ -460,14 +464,14 @@ function method2437(x: number, y: number, z: number): number {
     return 5;
 }
 
-function method2416(
+function computeBoxProjectedUv(
     vx: number,
     vy: number,
     vz: number,
     centerX: number,
     centerY: number,
     centerZ: number,
-    scaleType: number,
+    cubeFace: number,
     scales: Float32Array,
     direction: number,
     speed: number,
@@ -483,19 +487,19 @@ function method2416(
     const localZ = vx * scales[6] + vy * scales[7] + vz * scales[8];
     let u: number;
     let v: number;
-    if (scaleType === 0) {
+    if (cubeFace === 0) {
         u = localX + speed + 0.5;
         v = -localZ + vOffset + 0.5;
-    } else if (scaleType === 1) {
+    } else if (cubeFace === 1) {
         u = localX + speed + 0.5;
         v = localZ + vOffset + 0.5;
-    } else if (scaleType === 2) {
+    } else if (cubeFace === 2) {
         u = -localX + speed + 0.5;
         v = -localY + uOffset + 0.5;
-    } else if (scaleType === 3) {
+    } else if (cubeFace === 3) {
         u = localX + speed + 0.5;
         v = -localY + uOffset + 0.5;
-    } else if (scaleType === 4) {
+    } else if (cubeFace === 4) {
         u = localZ + vOffset + 0.5;
         v = -localY + uOffset + 0.5;
     } else {
@@ -518,7 +522,7 @@ function method2416(
     out[1] = v;
 }
 
-function method2434(
+function computeSphericalUv(
     vx: number,
     vy: number,
     vz: number,
@@ -659,7 +663,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
                     scaleY = model.textureScaleY[i] / 1024.0;
                     scaleZ = model.textureScaleZ[i] / 1024.0;
                 }
-                fs[i] = method2424(
+                fs[i] = buildTextureTransformMatrix(
                     model.textureMappingP[i],
                     model.textureMappingM[i],
                     model.textureMappingN[i],
@@ -674,7 +678,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
     return new TextureScales(centerXs, centerYs, centerZs, fs);
 }
 
-function method2424(
+function buildTextureTransformMatrix(
     p: number,
     m: number,
     n: number,
