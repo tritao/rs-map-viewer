@@ -29,8 +29,8 @@ export class TrigWarpOperation extends TextureOperation {
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                 const angle = (angleInput[pixel] >> 4) & 0xff;
                 const radius = (radiusInput[pixel] * this.radiusMultiplierQ16) >> 12;
-                const dx = (TextureGenerator.COSINE[angle] * radius) >> 12;
-                const dy = (TextureGenerator.SINE[angle] * radius) >> 12;
+                const dx = (textureGenerator.cosine[angle] * radius) >> 12;
+                const dy = (textureGenerator.sine[angle] * radius) >> 12;
                 const sampleX = (pixel + (dx >> 12)) & textureGenerator.widthMask;
                 const sampleY = (line + (dy >> 12)) & textureGenerator.heightMask;
                 const input = this.getMonochromeInput(textureGenerator, 0, sampleY);
@@ -54,8 +54,8 @@ export class TrigWarpOperation extends TextureOperation {
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                 const angle = ((angleInput[pixel] * 255) >> 12) & 0xff;
                 const radius = (radiusInput[pixel] * this.radiusMultiplierQ16) >> 12;
-                const dx = (TextureGenerator.COSINE[angle] * radius) >> 12;
-                const dy = (TextureGenerator.SINE[angle] * radius) >> 12;
+                const dx = (textureGenerator.cosine[angle] * radius) >> 12;
+                const dy = (textureGenerator.sine[angle] * radius) >> 12;
                 const sampleX = (pixel + (dx >> 12)) & textureGenerator.widthMask;
                 const sampleY = (line + (dy >> 12)) & textureGenerator.heightMask;
                 const input = this.getColourInput(textureGenerator, 0, sampleY);

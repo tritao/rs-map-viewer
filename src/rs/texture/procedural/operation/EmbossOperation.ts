@@ -83,7 +83,7 @@ export class EmbossOperation extends TextureOperation {
                     gradYAbs = 255;
                 }
                 const invMagnitude =
-                    TextureGenerator.INVERSE_SQUARE_ROOT[
+                    textureGenerator.inverseSquareRoot[
                         gradXAbs + (((gradYAbs + 1) * gradYAbs) >> 1)
                     ] & 0xff;
                 const normalXQ12 = (invMagnitude * gradX) >> 8;

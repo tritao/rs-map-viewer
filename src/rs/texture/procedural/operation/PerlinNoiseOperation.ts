@@ -1,6 +1,17 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
-import { TextureGenerator } from "../TextureGenerator";
+import { createPermutations, TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
+
+const PERLIN_FADE_TABLE_Q12 = (() => {
+    const table = new Int32Array(4096);
+    for (let i = 0; i < 4096; i++) {
+        const nCubedQ12 = (((i * i) >> 12) * i) >> 12;
+        const sixNMinus15Q12 = i * 6 - 61440;
+        const innerQ12 = 40960 + ((i * sixNMinus15Q12) >> 12);
+        table[i] = (nCubedQ12 * innerQ12) >> 12;
+    }
+    return table;
+})();
 
 export class PerlinNoiseOperation extends TextureOperation {
     static readonly gradientDirections: number[][] = [
@@ -9,8 +20,6 @@ export class PerlinNoiseOperation extends TextureOperation {
         [1, -1],
         [-1, -1],
     ];
-
-    static fadeTableQ12: Int32Array = new Int32Array(4096);
 
     unsignedOutput = true;
     octaveCount = 4;
@@ -24,29 +33,13 @@ export class PerlinNoiseOperation extends TextureOperation {
 
     permutations = new Int8Array(512);
 
-    static initFadeTable(): void {
-        // correct
-        for (let i = 0; i < 4096; i++) {
-            PerlinNoiseOperation.fadeTableQ12[i] = PerlinNoiseOperation.calcFadeQ12(i);
-        }
-    }
 
     static dotGradient2D(x: number, y: number, gradient: number[]): number {
         return x * gradient[0] + y * gradient[1];
     }
 
     static fade(n: number): number {
-        const nCubedQ12 = (((n * n) >> 12) * n) >> 12;
-        const sixNMinus15Q12 = 6 * n - 61440;
-        const innerQ12 = 40960 + ((sixNMinus15Q12 * n) >> 12);
-        return (innerQ12 * nCubedQ12) >> 12;
-    }
-
-    static calcFadeQ12(n: number) {
-        const nCubedQ12 = (((n * n) >> 12) * n) >> 12;
-        const sixNMinus15Q12 = n * 6 - 61440;
-        const innerQ12 = 40960 + ((n * sixNMinus15Q12) >> 12);
-        return (nCubedQ12 * innerQ12) >> 12;
+        return PERLIN_FADE_TABLE_Q12[n & 0xfff];
     }
 
     static lerp(start: number, end: number, amount: number): number {
@@ -94,7 +87,7 @@ export class PerlinNoiseOperation extends TextureOperation {
     }
 
     initTable() {
-        this.permutations = TextureGenerator.initPermutations(this.seed); // correct
+        this.permutations = createPermutations(this.seed); // correct
     }
 
     initNoiseInput() {
@@ -144,7 +137,7 @@ export class PerlinNoiseOperation extends TextureOperation {
                 permIndex1 = 0;
             }
             yCoord &= 0xfff;
-            const fadeY = PerlinNoiseOperation.fadeTableQ12[yCoord];
+            const fadeY = PERLIN_FADE_TABLE_Q12[yCoord];
             const perm0 = this.permutations[permIndex0 & 0xff] & 0xff;
             const perm1 = this.permutations[permIndex1 & 0xff] & 0xff;
             if (this.unsignedOutput) {
@@ -189,7 +182,7 @@ export class PerlinNoiseOperation extends TextureOperation {
                     yCellNext = 0;
                 }
                 const permY0 = this.permutations[yCell & 0xff] & 0xff;
-                const fadeY = PerlinNoiseOperation.fadeTableQ12[yCoord];
+                const fadeY = PERLIN_FADE_TABLE_Q12[yCoord];
                 const permY1 = this.permutations[yCellNext & 0xff] & 0xff;
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                     const xBase = this.repeatX * textureGenerator.horizontalGradient[pixel];
@@ -220,7 +213,7 @@ export class PerlinNoiseOperation extends TextureOperation {
                     }
                     const permY1 = this.permutations[yCellNext & 0xff] & 0xff;
                     const permY0 = this.permutations[yCell & 0xff] & 0xff;
-                    const fadeY = PerlinNoiseOperation.fadeTableQ12[yCoord];
+                    const fadeY = PERLIN_FADE_TABLE_Q12[yCoord];
                     if (this.unsignedOutput && this.octaveCount - 1 === octave) {
                         for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                             const xBase = textureGenerator.horizontalGradient[pixel] * this.repeatX;
@@ -273,7 +266,7 @@ export class PerlinNoiseOperation extends TextureOperation {
         const xFracMinusOne = xCoord - 4096;
         xCellNext &= 0xff;
         let gradIndex = this.permutations[permY0 + xCell] & 0x3;
-        const fadeX = PerlinNoiseOperation.fadeTableQ12[xCoord];
+        const fadeX = PERLIN_FADE_TABLE_Q12[xCoord];
         let dot00: number;
         if (gradIndex > 1) {
             dot00 = gradIndex === 2 ? -yFrac + xCoord : -yFrac + -xCoord;
@@ -365,5 +358,3 @@ export class PerlinNoiseOperation extends TextureOperation {
         return PerlinNoiseOperation.lerp(interpTop, interpBottom, fadeY);
     }
 }
-
-PerlinNoiseOperation.initFadeTable();

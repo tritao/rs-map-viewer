@@ -57,7 +57,7 @@ export class DiagonalGradientOperation extends TextureOperation {
                 }
                 phaseQ12 -= phaseQ12 & ~0xfff;
                 if (this.waveformMode === DiagonalGradientWaveformMode.Sine) {
-                    phaseQ12 = (TextureGenerator.SINE[(phaseQ12 >> 4) & 0xff] + 4096) >> 1;
+                    phaseQ12 = (textureGenerator.sine[(phaseQ12 >> 4) & 0xff] + 4096) >> 1;
                 } else if (this.waveformMode === DiagonalGradientWaveformMode.Triangle) {
                     phaseQ12 -= 2048;
                     if (phaseQ12 < 0) {

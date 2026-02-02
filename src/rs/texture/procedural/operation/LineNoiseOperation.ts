@@ -50,9 +50,9 @@ export class LineNoiseOperation extends TextureOperation {
                 let startX = nextIntJagex(rng, textureGenerator.width);
                 let startY = nextIntJagex(rng, textureGenerator.height);
                 let endX =
-                    ((TextureGenerator.COSINE[angleTableIndex] * this.lineLength) >> 12) + startX;
+                    ((textureGenerator.cosine[angleTableIndex] * this.lineLength) >> 12) + startX;
                 let endY =
-                    ((TextureGenerator.SINE[angleTableIndex] * this.lineLength) >> 12) + startY;
+                    ((textureGenerator.sine[angleTableIndex] * this.lineLength) >> 12) + startY;
                 let absDeltaX = endX - startX;
                 let absDeltaY = endY - startY;
                 if (absDeltaX !== 0 || absDeltaY !== 0) {

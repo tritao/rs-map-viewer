@@ -1,7 +1,7 @@
 import JavaRandom from "../../../../util/JavaRandom";
 import { nextIntJagex } from "../../../../util/MathUtil";
 import { ByteBuffer } from "../../../io/ByteBuffer";
-import { TextureGenerator } from "../TextureGenerator";
+import { createPermutations, TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 enum VoronoiOutputMode {
@@ -13,11 +13,6 @@ enum VoronoiOutputMode {
 }
 
 export class VoronoiNoiseOperation extends TextureOperation {
-    static nearestDistQ12: number = 0;
-    static secondNearestDistQ12: number = 0;
-    static thirdNearestDistQ12: number = 0;
-    static fourthNearestDistQ12: number = 0;
-
     seed: number = 0;
     featurePointJitterQ12: number = 2048;
     outputMode: VoronoiOutputMode = VoronoiOutputMode.SecondMinusNearest;
@@ -59,7 +54,7 @@ export class VoronoiNoiseOperation extends TextureOperation {
     }
 
     override init() {
-        this.permutations = TextureGenerator.initPermutations(this.seed);
+        this.permutations = createPermutations(this.seed);
         this.initFeaturePointOffsets();
     }
 
@@ -83,10 +78,10 @@ export class VoronoiNoiseOperation extends TextureOperation {
             const cellY = yCoordQ12 >> 12;
             const cellYNext = cellY + 1;
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                VoronoiNoiseOperation.nearestDistQ12 = 2147483647;
-                VoronoiNoiseOperation.secondNearestDistQ12 = 2147483647;
-                VoronoiNoiseOperation.thirdNearestDistQ12 = 2147483647;
-                VoronoiNoiseOperation.fourthNearestDistQ12 = 2147483647;
+                let nearestDistQ12 = 2147483647;
+                let secondNearestDistQ12 = 2147483647;
+                let thirdNearestDistQ12 = 2147483647;
+                let fourthNearestDistQ12 = 2147483647;
 
                 const xCoordQ12 = this.repeatX * textureGenerator.horizontalGradient[pixel] + 2048;
                 const cellX = xCoordQ12 >> 12;
@@ -162,47 +157,39 @@ export class VoronoiNoiseOperation extends TextureOperation {
                                 break;
                         }
 
-                        if (distQ12 < VoronoiNoiseOperation.nearestDistQ12) {
-                            VoronoiNoiseOperation.fourthNearestDistQ12 =
-                                VoronoiNoiseOperation.thirdNearestDistQ12;
-                            VoronoiNoiseOperation.thirdNearestDistQ12 =
-                                VoronoiNoiseOperation.secondNearestDistQ12;
-                            VoronoiNoiseOperation.secondNearestDistQ12 =
-                                VoronoiNoiseOperation.nearestDistQ12;
-                            VoronoiNoiseOperation.nearestDistQ12 = distQ12;
-                        } else if (distQ12 < VoronoiNoiseOperation.secondNearestDistQ12) {
-                            VoronoiNoiseOperation.fourthNearestDistQ12 =
-                                VoronoiNoiseOperation.thirdNearestDistQ12;
-                            VoronoiNoiseOperation.thirdNearestDistQ12 =
-                                VoronoiNoiseOperation.secondNearestDistQ12;
-                            VoronoiNoiseOperation.secondNearestDistQ12 = distQ12;
-                        } else if (distQ12 < VoronoiNoiseOperation.thirdNearestDistQ12) {
-                            VoronoiNoiseOperation.fourthNearestDistQ12 =
-                                VoronoiNoiseOperation.thirdNearestDistQ12;
-                            VoronoiNoiseOperation.thirdNearestDistQ12 = distQ12;
-                        } else if (distQ12 < VoronoiNoiseOperation.fourthNearestDistQ12) {
-                            VoronoiNoiseOperation.fourthNearestDistQ12 = distQ12;
+                        if (distQ12 < nearestDistQ12) {
+                            fourthNearestDistQ12 = thirdNearestDistQ12;
+                            thirdNearestDistQ12 = secondNearestDistQ12;
+                            secondNearestDistQ12 = nearestDistQ12;
+                            nearestDistQ12 = distQ12;
+                        } else if (distQ12 < secondNearestDistQ12) {
+                            fourthNearestDistQ12 = thirdNearestDistQ12;
+                            thirdNearestDistQ12 = secondNearestDistQ12;
+                            secondNearestDistQ12 = distQ12;
+                        } else if (distQ12 < thirdNearestDistQ12) {
+                            fourthNearestDistQ12 = thirdNearestDistQ12;
+                            thirdNearestDistQ12 = distQ12;
+                        } else if (distQ12 < fourthNearestDistQ12) {
+                            fourthNearestDistQ12 = distQ12;
                         }
                     }
                 }
 
                 switch (this.outputMode) {
                     case VoronoiOutputMode.Nearest:
-                        output[pixel] = VoronoiNoiseOperation.nearestDistQ12;
+                        output[pixel] = nearestDistQ12;
                         break;
                     case VoronoiOutputMode.SecondNearest:
-                        output[pixel] = VoronoiNoiseOperation.secondNearestDistQ12;
+                        output[pixel] = secondNearestDistQ12;
                         break;
                     case VoronoiOutputMode.SecondMinusNearest:
-                        output[pixel] =
-                            VoronoiNoiseOperation.secondNearestDistQ12 -
-                            VoronoiNoiseOperation.nearestDistQ12;
+                        output[pixel] = secondNearestDistQ12 - nearestDistQ12;
                         break;
                     case VoronoiOutputMode.ThirdNearest:
-                        output[pixel] = VoronoiNoiseOperation.thirdNearestDistQ12;
+                        output[pixel] = thirdNearestDistQ12;
                         break;
                     case VoronoiOutputMode.FourthNearest:
-                        output[pixel] = VoronoiNoiseOperation.fourthNearestDistQ12;
+                        output[pixel] = fourthNearestDistQ12;
                         break;
                 }
             }

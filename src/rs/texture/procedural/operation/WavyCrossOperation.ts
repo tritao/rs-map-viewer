@@ -36,9 +36,9 @@ export class WavyCrossOperation extends TextureOperation {
         }
     }
 
-    isInWavyAntiDiagonalBand(x: number, y: number) {
+    isInWavyAntiDiagonalBand(textureGenerator: TextureGenerator, x: number, y: number) {
         const phase = ((y - x) * this.phaseScaleQ12) >> 12;
-        let halfWidth = TextureGenerator.COSINE[((phase * 255) >> 12) & 0xff];
+        let halfWidth = textureGenerator.cosine[((phase * 255) >> 12) & 0xff];
         halfWidth = ((halfWidth << 12) / this.phaseScaleQ12) | 0;
         halfWidth = ((halfWidth << 12) / this.widthNormalizationQ12) | 0;
         halfWidth = (this.widthScaleQ12 * halfWidth) >> 12;
@@ -46,9 +46,9 @@ export class WavyCrossOperation extends TextureOperation {
         return halfWidth > sum && -halfWidth < sum;
     }
 
-    isInWavyDiagonalBand(x: number, y: number) {
+    isInWavyDiagonalBand(textureGenerator: TextureGenerator, x: number, y: number) {
         const phase = ((y + x) * this.phaseScaleQ12) >> 12;
-        let halfWidth = TextureGenerator.COSINE[((phase * 255) >> 12) & 0xff];
+        let halfWidth = textureGenerator.cosine[((phase * 255) >> 12) & 0xff];
         halfWidth = ((halfWidth << 12) / this.phaseScaleQ12) | 0;
         halfWidth = ((halfWidth << 12) / this.widthNormalizationQ12) | 0;
         halfWidth = (halfWidth * this.widthScaleQ12) >> 12;
@@ -80,8 +80,8 @@ export class WavyCrossOperation extends TextureOperation {
                 band1Y = band1Y >= -2048 ? band1Y : band1Y + 4096;
                 band1Y = band1Y <= 2048 ? band1Y : band1Y - 4096;
                 output[x] =
-                    this.isInWavyAntiDiagonalBand(band0X, band0Y) ||
-                    this.isInWavyDiagonalBand(band1X, band1Y)
+                    this.isInWavyAntiDiagonalBand(textureGenerator, band0X, band0Y) ||
+                    this.isInWavyDiagonalBand(textureGenerator, band1X, band1Y)
                         ? 4096
                         : 0;
             }

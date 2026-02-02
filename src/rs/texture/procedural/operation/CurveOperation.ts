@@ -1,5 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
-import { TextureGenerator } from "../TextureGenerator";
+import { TEXTURE_COSINE_TABLE_Q12, TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 enum CurveInterpolationMode {
@@ -160,7 +160,7 @@ export class CurveOperation extends TextureOperation {
                         (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
                         0;
                     const nextWeightQ12 =
-                        ((4096 - TextureGenerator.COSINE[((tQ12 & 8187) / 32) | 0]) / 2) | 0;
+                        ((4096 - TEXTURE_COSINE_TABLE_Q12[((tQ12 & 8187) / 32) | 0]) / 2) | 0;
                     const prevWeightQ12 = 4096 - nextWeightQ12;
                     let out =
                         ((prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12) / 4096) |

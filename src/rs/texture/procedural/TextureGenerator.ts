@@ -5,13 +5,49 @@ import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpriteLoader } from "../../sprite/SpriteLoader";
 import { TextureLoader } from "../TextureLoader";
 
+function buildTrigTable(fn: (radians: number) => number): Int32Array {
+    const table = new Int32Array(256);
+    for (let i = 0; i < 256; i++) {
+        const radians = (i / 255.0) * 6.283185307179586;
+        table[i] = fn(radians) * 4096.0;
+    }
+    return table;
+}
+
+export const TEXTURE_SINE_TABLE_Q12 = buildTrigTable(Math.sin);
+export const TEXTURE_COSINE_TABLE_Q12 = buildTrigTable(Math.cos);
+
+export const TEXTURE_INVERSE_SQUARE_ROOT_TABLE = (() => {
+    const table = new Int8Array(32896);
+    let i = 0;
+    for (let x = 0; x < 256; x++) {
+        for (let y = 0; y <= x; y++) {
+            table[i++] = (255.0 / Math.sqrt(Math.fround((x * x + y * y + 65535) / 65535.0))) | 0;
+        }
+    }
+    return table;
+})();
+
+export function createPermutations(seed: number): Int8Array {
+    const permutations = new Int8Array(512);
+    const random = new JavaRandom(seed);
+    for (let i = 0; i < 255; i++) {
+        permutations[i] = i;
+    }
+    for (let i = 0; i < 255; i++) {
+        const index0 = 255 - i;
+        const index1 = nextIntJagex(random, index0);
+        const perm1 = permutations[index1];
+        permutations[index1] = permutations[index0];
+        permutations[index0] = permutations[511 - i] = perm1;
+    }
+    return permutations;
+}
+
 export class TextureGenerator {
-    static SINE: Int32Array;
-    static COSINE: Int32Array;
-
-    static INVERSE_SQUARE_ROOT: Int8Array;
-
-    static permutationCache: Map<number, Int8Array> = new Map();
+    readonly sine = TEXTURE_SINE_TABLE_Q12;
+    readonly cosine = TEXTURE_COSINE_TABLE_Q12;
+    readonly inverseSquareRoot = TEXTURE_INVERSE_SQUARE_ROOT_TABLE;
 
     spriteIndex: CacheIndex;
     textureLoader: TextureLoader;
@@ -33,32 +69,6 @@ export class TextureGenerator {
     isTransparent: boolean = false;
 
     debug: boolean = false;
-
-    static initTrig(): void {
-        TextureGenerator.SINE = new Int32Array(256);
-        TextureGenerator.COSINE = new Int32Array(256);
-        for (let i = 0; i < 256; i++) {
-            const d = (i / 255.0) * 6.283185307179586;
-            TextureGenerator.SINE[i] = Math.sin(d) * 4096.0;
-            TextureGenerator.COSINE[i] = Math.cos(d) * 4096.0;
-        }
-    }
-
-    static initInverseSquareRoot(): void {
-        TextureGenerator.INVERSE_SQUARE_ROOT = new Int8Array(32896);
-        let i = 0;
-        for (let x = 0; x < 256; x++) {
-            for (let y = 0; y <= x; y++) {
-                TextureGenerator.INVERSE_SQUARE_ROOT[i++] =
-                    (255.0 / Math.sqrt(Math.fround((x * x + y * y + 65535) / 65535.0))) | 0;
-            }
-        }
-    }
-
-    static init() {
-        TextureGenerator.initTrig();
-        TextureGenerator.initInverseSquareRoot();
-    }
 
     constructor(spriteIndex: CacheIndex, textureLoader: TextureLoader) {
         this.spriteIndex = spriteIndex;
@@ -101,28 +111,6 @@ export class TextureGenerator {
         }
     }
 
-    static initPermutations(seed: number): Int8Array {
-        const cached = TextureGenerator.permutationCache.get(seed);
-        if (cached) {
-            return cached;
-        }
-
-        const permutations = new Int8Array(512);
-        const random = new JavaRandom(seed);
-        for (let i = 0; i < 255; i++) {
-            permutations[i] = i;
-        }
-        for (let i = 0; i < 255; i++) {
-            const index0 = 255 - i;
-            const index1 = nextIntJagex(random, index0);
-            const perm1 = permutations[index1];
-            permutations[index1] = permutations[index0];
-            permutations[index0] = permutations[511 - i] = perm1;
-        }
-        TextureGenerator.permutationCache.set(seed, permutations);
-        return permutations;
-    }
-
     loadSprite(spriteId: number): IndexedSprite {
         const sprite = SpriteLoader.loadIntoIndexedSprite(this.spriteIndex, spriteId);
         if (!sprite) {
@@ -131,5 +119,3 @@ export class TextureGenerator {
         return sprite;
     }
 }
-
-TextureGenerator.init();
