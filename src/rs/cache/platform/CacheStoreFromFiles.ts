@@ -1,4 +1,3 @@
-import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "../store/CacheStore";
 import { SectorChainStore } from "../store/SectorChainStore";
 import { ByteSource } from "../../io/ByteSource";
@@ -32,15 +31,7 @@ export function createCacheStoreFromBundleSources(
         }
     }
 
-    // Keep deterministic ordering for callers.
-    indexIds.sort((a, b) => a - b);
-
     const store = new SectorChainStore(dataFile, indexSources, metaFile);
-
-    // Sanity: ensure meta index is visible when present.
-    if (metaFile && store.getIndexFileSize(CacheIndex.META_INDEX_ID) === null) {
-        throw new Error("Meta index file not available");
-    }
 
     return {
         store,
