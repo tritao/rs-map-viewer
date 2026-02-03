@@ -104,66 +104,6 @@ export class Archive {
         );
     }
 
-    private static decodeFromBuffer(
-        id: number,
-        lastFileId: number,
-        fileCount: number,
-        fileIds: Int32Array,
-        fileNameHashes: Int32Array,
-        buffer: ByteBuffer,
-    ): Archive {
-        const files = new Map<number, ArchiveFile>();
-        if (fileCount === 1) {
-            files.set(lastFileId, new ArchiveFile(lastFileId, id, buffer.data));
-        } else {
-            buffer.offset = buffer.length - 1;
-            const chunks = buffer.readUnsignedByte();
-
-            buffer.offset = buffer.length - 1 - chunks * (fileCount * 4);
-
-            const chunkSizes = new Int32Array(chunks * fileCount);
-            const fileSizes = new Int32Array(fileCount);
-            for (let chunk = 0; chunk < chunks; chunk++) {
-                let lastFileSize = 0;
-                for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                    lastFileSize += buffer.readInt();
-                    chunkSizes[chunk * fileCount + fileIdx] = lastFileSize;
-                    fileSizes[fileIdx] += lastFileSize;
-                }
-            }
-
-            const fileData = new Array<ByteBuffer>(fileCount);
-            for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                fileData[fileIdx] = ByteBuffer.createWithSize(fileSizes[fileIdx]);
-            }
-
-            buffer.offset = 0;
-
-            for (let chunk = 0; chunk < chunks; chunk++) {
-                for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                    const chunkSize = chunkSizes[chunk * fileCount + fileIdx];
-                    const bytes = buffer.readBytes(chunkSize);
-                    fileData[fileIdx].writeBytes(bytes);
-                }
-            }
-
-            for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                const fileId = fileIds[fileIdx];
-                const data = fileData[fileIdx].data;
-                files.set(fileId, new ArchiveFile(fileId, id, data));
-            }
-        }
-        return new Archive(
-            StringUtil.hashDjb2,
-            id,
-            lastFileId,
-            fileCount,
-            fileIds,
-            fileNameHashes,
-            files,
-        );
-    }
-
     static decodeFromSource(
         id: number,
         lastFileId: number,
@@ -172,18 +112,6 @@ export class Archive {
         fileNameHashes: Int32Array,
         source: ByteSource,
     ): Archive {
-        const view = source.tryGetUint8ArrayView?.();
-        if (view) {
-            return Archive.decodeFromBuffer(
-                id,
-                lastFileId,
-                fileCount,
-                fileIds,
-                fileNameHashes,
-                new ByteBuffer(new Int8Array(view.buffer, view.byteOffset, view.byteLength)),
-            );
-        }
-
         const files = new Map<number, ArchiveFile>();
         if (fileCount === 1) {
             const view = source.tryGetUint8ArrayView?.();
@@ -249,20 +177,20 @@ export class Archive {
 
             for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
                 const fileId = fileIds[fileIdx];
-                files.set(fileId, new ArchiveFile(fileId, id, fileData[fileIdx]));
-            }
+            files.set(fileId, new ArchiveFile(fileId, id, fileData[fileIdx]));
         }
-
-        return new Archive(
-            StringUtil.hashDjb2,
-            id,
-            lastFileId,
-            fileCount,
-            fileIds,
-            fileNameHashes,
-            files,
-        );
     }
+
+    return new Archive(
+        StringUtil.hashDjb2,
+        id,
+        lastFileId,
+        fileCount,
+        fileIds,
+        fileNameHashes,
+        files,
+    );
+}
 
     constructor(
         private readonly _hashFunction: HashFunction,
