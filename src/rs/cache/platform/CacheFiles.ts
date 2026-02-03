@@ -1,49 +1,36 @@
-import { ByteSource } from "../../io/ByteSource";
-import { ArrayBufferByteSource } from "../../io/ArrayBufferByteSource";
-import { Uint8ArrayByteSource } from "../../io/Uint8ArrayByteSource";
+export type CacheFileBuffer = ArrayBuffer | SharedArrayBuffer;
 
-export type CacheFileData =
-    | ByteSource
-    | ArrayBuffer
-    | SharedArrayBuffer
-    | Uint8Array
-    | { buffer: ArrayBuffer | SharedArrayBuffer }
-    | { view: Uint8Array };
+export const CACHE_FILE = {
+    DAT: "main_file_cache.dat",
+    DAT2: "main_file_cache.dat2",
+    INDEX_PREFIX: "main_file_cache.idx",
+    META: "main_file_cache.idx255",
+} as const;
 
-export function asByteSource(data: CacheFileData): ByteSource {
-    if (typeof data === "object" && data !== null) {
-        const maybeSource = data as ByteSource;
-        if (typeof maybeSource.readInto === "function" && typeof maybeSource.size === "number") {
-            return maybeSource;
-        }
+// Dat (pre-idx255) caches expose a fixed set of indices.
+export const DAT_INDEX_COUNT: number = 5;
 
-        if ("buffer" in data) {
-            const buf = (data as { buffer: ArrayBuffer | SharedArrayBuffer }).buffer;
-            return new ArrayBufferByteSource(buf);
-        }
-
-        if ("view" in data) {
-            const view = (data as { view: Uint8Array }).view;
-            return new Uint8ArrayByteSource(view);
-        }
-    }
-
-    if (data instanceof Uint8Array) {
-        return new Uint8ArrayByteSource(data);
-    }
-
-    return new ArrayBufferByteSource(data as ArrayBuffer | SharedArrayBuffer);
+export function isCacheIndexFileName(name: string): boolean {
+    return name !== CACHE_FILE.META && name.startsWith(CACHE_FILE.INDEX_PREFIX);
 }
 
-export class CacheFiles {
-    static readonly DAT_FILE_NAME: string = "main_file_cache.dat";
-    static readonly DAT2_FILE_NAME: string = "main_file_cache.dat2";
+export function parseCacheIndexIdFromFileName(name: string): number | null {
+    if (!isCacheIndexFileName(name)) {
+        return null;
+    }
+    const indexId = parseInt(name.slice(CACHE_FILE.INDEX_PREFIX.length));
+    if (!Number.isFinite(indexId) || indexId < 0) {
+        return null;
+    }
+    return indexId;
+}
 
-    static readonly INDEX_FILE_PREFIX: string = "main_file_cache.idx";
-
-    static readonly META_FILE_NAME: string = "main_file_cache.idx255";
-
-    static readonly DAT_INDEX_COUNT: number = 5;
-
-    constructor(readonly files: Map<string, CacheFileData>) {}
+/**
+ * Serializable cache bundle.
+ *
+ * This type is intended to cross thread boundaries (main thread ↔ worker) via structured clone.
+ * Keep it composed of cloneable/transferable primitives only (no class instances with methods).
+ */
+export class CacheFilesTransfer {
+    constructor(readonly files: Map<string, CacheFileBuffer>) {}
 }

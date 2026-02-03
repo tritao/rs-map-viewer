@@ -1,15 +1,10 @@
-import { CacheFiles } from "./CacheFiles";
+import { CACHE_FILE, CacheFilesTransfer, CacheFileBuffer, DAT_INDEX_COUNT } from "./CacheFiles";
 import { CachedFile, CacheLoader, ProgressListener } from "../CacheLoader";
 import { CacheType } from "../CacheType";
 import { SectorCluster } from "../store/SectorCluster";
-import { ArrayBufferByteSource } from "../../io/ArrayBufferByteSource";
-import { ByteSource } from "../../io/ByteSource";
 
-function decodeJsonStringArray(source: ByteSource): string[] {
-    const bytes = new Uint8Array(source.size);
-    source.readInto(0, bytes);
-
-    const text = new TextDecoder("utf-8").decode(bytes);
+function decodeJsonStringArray(buffer: CacheFileBuffer): string[] {
+    const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [];
 }
@@ -22,7 +17,7 @@ export async function fetchCacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFiles> {
+): Promise<CacheFilesTransfer> {
     switch (cacheType) {
         case CacheType.Classic:
             return fetchLegacyCacheFiles(loader, baseUrl, name, shared, signal, progressListener);
@@ -42,9 +37,9 @@ export async function fetchLegacyCacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFiles> {
+): Promise<CacheFilesTransfer> {
     const fileNames = ["models", "title", "config", "media", "textures"];
-    const files = new Map<string, ByteSource>();
+    const files = new Map<string, CacheFileBuffer>();
 
     const filePromises = fileNames.map((name) =>
         loader.fetchCachedFile(baseUrl, name, shared, false, cacheName, signal, progressListener),
@@ -53,7 +48,7 @@ export async function fetchLegacyCacheFiles(
     const cachedFiles = await Promise.all(filePromises);
 
     for (const file of cachedFiles) {
-        files.set(file.name, new ArrayBufferByteSource(file.data));
+        files.set(file.name, file.data);
     }
 
     let mapNames: string[] = [];
@@ -66,7 +61,7 @@ export async function fetchLegacyCacheFiles(
             cacheName,
             signal,
         );
-        mapNames = decodeJsonStringArray(new ArrayBufferByteSource(mapsJson.data));
+        mapNames = decodeJsonStringArray(mapsJson.data);
     } catch {
         // optional
     }
@@ -80,10 +75,10 @@ export async function fetchLegacyCacheFiles(
             cacheName,
             signal,
         );
-        files.set(mapFile.name, new ArrayBufferByteSource(mapFile.data));
+        files.set(mapFile.name, mapFile.data);
     }
 
-    return new CacheFiles(files);
+    return new CacheFilesTransfer(files);
 }
 
 export async function fetchDatCacheFiles(
@@ -93,12 +88,12 @@ export async function fetchDatCacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFiles> {
-    const files = new Map<string, ByteSource>();
+): Promise<CacheFilesTransfer> {
+    const files = new Map<string, CacheFileBuffer>();
 
     const dataFilePromise = loader.fetchCachedFile(
         baseUrl,
-        CacheFiles.DAT_FILE_NAME,
+        CACHE_FILE.DAT,
         shared,
         true,
         cacheName,
@@ -106,18 +101,24 @@ export async function fetchDatCacheFiles(
         progressListener,
     );
     const indexFilePromises: Promise<CachedFile>[] = [];
-    for (let i = 0; i < CacheFiles.DAT_INDEX_COUNT; i++) {
+    for (let i = 0; i < DAT_INDEX_COUNT; i++) {
         indexFilePromises.push(
-            loader.fetchCachedFile(baseUrl, CacheFiles.INDEX_FILE_PREFIX + i, shared, false, cacheName),
+            loader.fetchCachedFile(
+                baseUrl,
+                CACHE_FILE.INDEX_PREFIX + i,
+                shared,
+                false,
+                cacheName,
+            ),
         );
     }
 
     const dataAndIndices = await Promise.all([dataFilePromise, ...indexFilePromises]);
     for (const file of dataAndIndices) {
-        files.set(file.name, new ArrayBufferByteSource(file.data));
+        files.set(file.name, file.data);
     }
 
-    return new CacheFiles(files);
+    return new CacheFilesTransfer(files);
 }
 
 export async function fetchDat2CacheFiles(
@@ -128,12 +129,12 @@ export async function fetchDat2CacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFiles> {
-    const files = new Map<string, ByteSource>();
+): Promise<CacheFilesTransfer> {
+    const files = new Map<string, CacheFileBuffer>();
 
     const dataFilePromise = loader.fetchCachedFile(
         baseUrl,
-        CacheFiles.DAT2_FILE_NAME,
+        CACHE_FILE.DAT2,
         shared,
         true,
         cacheName,
@@ -142,7 +143,7 @@ export async function fetchDat2CacheFiles(
     );
     const metaFile = await loader.fetchCachedFile(
         baseUrl,
-        CacheFiles.META_FILE_NAME,
+        CACHE_FILE.META,
         shared,
         false,
         cacheName,
@@ -157,7 +158,7 @@ export async function fetchDat2CacheFiles(
         loader
             .fetchCachedFile(
                 baseUrl,
-                CacheFiles.INDEX_FILE_PREFIX + indexId,
+                CACHE_FILE.INDEX_PREFIX + indexId,
                 shared,
                 false,
                 cacheName,
@@ -168,10 +169,10 @@ export async function fetchDat2CacheFiles(
     const dataAndIndices = await Promise.all([dataFilePromise, ...indexPromises]);
     for (const file of dataAndIndices) {
         if (file) {
-            files.set(file.name, new ArrayBufferByteSource(file.data));
+            files.set(file.name, file.data);
         }
     }
-    files.set(metaFile.name, new ArrayBufferByteSource(metaFile.data));
+    files.set(metaFile.name, metaFile.data);
 
-    return new CacheFiles(files);
+    return new CacheFilesTransfer(files);
 }

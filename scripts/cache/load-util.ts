@@ -1,11 +1,9 @@
 import fs from "fs";
 
 import { CacheInfoJson, CacheList, LoadedCache, XteaMap } from "../../src/util/Caches";
-import { CacheFiles } from "../../src/rs/cache/platform/CacheFiles";
+import { CacheFilesTransfer } from "../../src/rs/cache/platform/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
-import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
-import { ByteSource } from "../../src/rs/io/ByteSource";
 
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");
@@ -25,17 +23,18 @@ export function loadCacheList(caches: CacheInfo[]): CacheList {
     };
 }
 
-export function loadCacheFiles(cache: CacheInfo): CacheFiles {
+export function loadCacheFiles(cache: CacheInfo): CacheFilesTransfer {
     const cachePath = "./caches/" + cache.name + "/";
 
-    const files = new Map<string, ByteSource>();
+    const files = new Map<string, ArrayBuffer>();
 
     fs.readdirSync(cachePath).forEach((fileName: string) => {
         const buffer = fs.readFileSync(cachePath + fileName);
-        files.set(fileName, new Uint8ArrayByteSource(buffer));
+        const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        files.set(fileName, arrayBuffer);
     });
 
-    return new CacheFiles(files);
+    return new CacheFilesTransfer(files);
 }
 
 export function loadCache(info: CacheInfo): LoadedCache {

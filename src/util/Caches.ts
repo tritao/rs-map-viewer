@@ -1,4 +1,4 @@
-import { CacheFiles } from "../rs/cache/platform/CacheFiles";
+import { CacheFilesTransfer } from "../rs/cache/platform/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
 import { CacheLoader, ProgressListener } from "../rs/cache/CacheLoader";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
@@ -44,7 +44,7 @@ export async function fetchCacheList(): Promise<CacheList | undefined> {
 export type LoadedCache = {
     info: CacheInfo;
     type: CacheType;
-    files: CacheFiles;
+    files: CacheFilesTransfer;
     xteas: XteaMap;
 };
 

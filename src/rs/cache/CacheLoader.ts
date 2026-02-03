@@ -14,9 +14,9 @@ export type ProgressListener = (progress: DownloadProgress) => void;
 
 export class CachedFile {
     name: string;
-    data: ArrayBuffer;
+    data: ArrayBuffer | SharedArrayBuffer;
 
-    constructor(name: string, data: ArrayBuffer) {
+    constructor(name: string, data: ArrayBuffer | SharedArrayBuffer) {
         this.name = name;
         this.data = data;
     }

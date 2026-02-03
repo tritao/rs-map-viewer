@@ -5,13 +5,12 @@ import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { LegacyIndexType } from "../IndexType";
-import { asByteSource, CacheFiles } from "./CacheFiles";
+import { CacheFileBuffer, CacheFilesTransfer } from "./CacheFiles";
 import { createCacheStoreFromFiles } from "./CacheStoreFromFiles";
-import { ByteSource } from "../../io/ByteSource";
 
 export function createCacheSystemFromFiles(
     cacheType: CacheType,
-    cacheFiles: CacheFiles,
+    cacheFiles: CacheFilesTransfer,
     compressionHandler: CompressionHandler,
     indicesToLoad: number[] = [],
 ): CacheSystem {
@@ -28,19 +27,16 @@ export function createCacheSystemFromFiles(
     }
 }
 
-function readAll(source: ByteSource): Int8Array {
-    const data = new Int8Array(source.size);
-    source.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-    return data;
+function readAll(buffer: CacheFileBuffer): Int8Array {
+    return new Int8Array(buffer);
 }
 
-function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: CompressionHandler): CacheSystem {
+function createLegacyCacheSystem(cacheFiles: CacheFilesTransfer, compressionHandler: CompressionHandler): CacheSystem {
     const configDataRaw = cacheFiles.files.get("config");
-    const configData = configDataRaw ? asByteSource(configDataRaw) : null;
-    if (!configData) {
+    if (!configDataRaw) {
         throw new Error("Missing config file");
     }
-    const configArchive = Archive.decodeOld(0, readAll(configData), true, compressionHandler);
+    const configArchive = Archive.decodeOld(0, readAll(configDataRaw), true, compressionHandler);
     const configIndex = new LegacyCacheIndex(
         LegacyIndexType.configs,
         [configArchive],
@@ -48,19 +44,17 @@ function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: Com
     );
 
     const mediaDataRaw = cacheFiles.files.get("media");
-    const mediaData = mediaDataRaw ? asByteSource(mediaDataRaw) : null;
-    if (!mediaData) {
+    if (!mediaDataRaw) {
         throw new Error("Missing media file");
     }
-    const mediaArchive = Archive.decodeOld(0, readAll(mediaData), true, compressionHandler);
+    const mediaArchive = Archive.decodeOld(0, readAll(mediaDataRaw), true, compressionHandler);
     const mediaIndex = new LegacyCacheIndex(LegacyIndexType.media, [mediaArchive], compressionHandler);
 
     const textureDataRaw = cacheFiles.files.get("textures");
-    const textureData = textureDataRaw ? asByteSource(textureDataRaw) : null;
-    if (!textureData) {
+    if (!textureDataRaw) {
         throw new Error("Missing textures file");
     }
-    const textureArchive = Archive.decodeOld(0, readAll(textureData), true, compressionHandler);
+    const textureArchive = Archive.decodeOld(0, readAll(textureDataRaw), true, compressionHandler);
     const textureIndex = new LegacyCacheIndex(
         LegacyIndexType.textures,
         [textureArchive],
@@ -68,11 +62,10 @@ function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: Com
     );
 
     const modelDataRaw = cacheFiles.files.get("models");
-    const modelData = modelDataRaw ? asByteSource(modelDataRaw) : null;
-    if (!modelData) {
+    if (!modelDataRaw) {
         throw new Error("Missing models file");
     }
-    const modelArchive = Archive.decodeOld(0, readAll(modelData), true, compressionHandler);
+    const modelArchive = Archive.decodeOld(0, readAll(modelDataRaw), true, compressionHandler);
     const modelIndex = new LegacyCacheIndex(LegacyIndexType.models, [modelArchive], compressionHandler);
 
     const mapsPrefix = "maps/";
@@ -81,8 +74,8 @@ function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: Com
     const entries = Array.from(cacheFiles.files.entries());
     for (let i = 0; i < entries.length; i++) {
         const name = entries[i][0];
-        const data = asByteSource(entries[i][1]);
         if (name.startsWith(mapsPrefix)) {
+            const data = entries[i][1];
             const archiveName = name.substring(mapsPrefix.length);
             const archiveId = mapArchives.length;
             mapArchives.push(Archive.create(archiveId, readAll(data)));

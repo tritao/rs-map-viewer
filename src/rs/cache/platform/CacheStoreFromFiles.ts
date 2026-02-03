@@ -1,11 +1,12 @@
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "../store/CacheStore";
 import { SectorChainStore } from "../store/SectorChainStore";
-import { asByteSource, CacheFiles } from "./CacheFiles";
+import { CACHE_FILE, CacheFilesTransfer, parseCacheIndexIdFromFileName } from "./CacheFiles";
+import { ArrayBufferByteSource } from "../../io/ArrayBufferByteSource";
 import { ByteSource } from "../../io/ByteSource";
 
 export function createCacheStoreFromFiles(
-    cacheFiles: CacheFiles,
+    cacheFiles: CacheFilesTransfer,
     indicesToLoad: number[] = [],
 ): {
     store: CacheStore;
@@ -13,30 +14,25 @@ export function createCacheStoreFromFiles(
 } {
     const files = cacheFiles.files;
 
-    const dataFileRaw = files.get(CacheFiles.DAT2_FILE_NAME) ?? files.get(CacheFiles.DAT_FILE_NAME);
-    if (!dataFileRaw) {
+    const dataFileBuffer =
+        files.get(CACHE_FILE.DAT2) ?? files.get(CACHE_FILE.DAT);
+    if (!dataFileBuffer) {
         throw new Error("main_file_cache data file not found");
     }
-    const dataFile = asByteSource(dataFileRaw);
+    const dataFile = new ArrayBufferByteSource(dataFileBuffer);
 
-    const metaFileRaw = files.get(CacheFiles.META_FILE_NAME) ?? null;
-    const metaFile = metaFileRaw ? asByteSource(metaFileRaw) : null;
+    const metaFileBuffer = files.get(CACHE_FILE.META) ?? null;
+    const metaFile = metaFileBuffer ? new ArrayBufferByteSource(metaFileBuffer) : null;
 
     const indicesSet = new Set(indicesToLoad);
     const indexSources: Array<ByteSource | null> = [];
     const indexIds: number[] = [];
 
     for (const [name, data] of files.entries()) {
-        if (
-            name !== CacheFiles.META_FILE_NAME &&
-            name.startsWith(CacheFiles.INDEX_FILE_PREFIX)
-        ) {
-            const indexId = parseInt(name.slice(CacheFiles.INDEX_FILE_PREFIX.length));
-            if (!Number.isFinite(indexId) || indexId < 0) {
-                continue;
-            }
+        const indexId = parseCacheIndexIdFromFileName(name);
+        if (indexId !== null) {
             if (indicesSet.size === 0 || indicesSet.has(indexId)) {
-                indexSources[indexId] = asByteSource(data);
+                indexSources[indexId] = new ArrayBufferByteSource(data);
                 indexIds.push(indexId);
             }
         }
