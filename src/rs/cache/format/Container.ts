@@ -2,7 +2,6 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
 import { CompressionType } from "../../compression/CompressionType";
 import { Xtea } from "../../crypto/Xtea";
-import { ByteBuffer } from "../../io/ByteBuffer";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
 import { ByteSourceSlice } from "../../io/ByteSourceSlice";
@@ -33,8 +32,7 @@ export class Container {
 
                 const encrypted = new Uint8Array(encryptedSize);
                 source.readInto(5, encrypted);
-                const buf = new ByteBuffer(new Int8Array(encrypted.buffer, encrypted.byteOffset, encrypted.byteLength));
-                Xtea.decrypt(buf, 0, encryptedSize, key);
+                Xtea.decryptInPlace(encrypted, 0, encryptedSize, key);
 
                 return new Container(
                     compression,
@@ -69,10 +67,11 @@ export class Container {
             const encryptedSize = 4 + compressedSize;
             const encrypted = new Uint8Array(encryptedSize);
             source.readInto(5, encrypted);
-            const buf = new ByteBuffer(new Int8Array(encrypted.buffer, encrypted.byteOffset, encrypted.byteLength));
-            Xtea.decrypt(buf, 0, encryptedSize, key);
+            Xtea.decryptInPlace(encrypted, 0, encryptedSize, key);
 
-            actualSize = buf.getInt(0) & 0xffffffff;
+            actualSize =
+                new DataView(encrypted.buffer, encrypted.byteOffset, encrypted.byteLength).getInt32(0, false) &
+                0xffffffff;
             compressed = encrypted.subarray(4, 4 + compressedSize);
         } else {
             reader.seek(5);

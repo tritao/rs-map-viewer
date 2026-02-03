@@ -35,4 +35,39 @@ export class Xtea {
             buf.setInt(offset + 4, v1);
         }
     }
+
+    static decryptInPlace(data: Uint8Array, start: number, end: number, key: number[] | null): void {
+        if (key == null || key.length !== 4) {
+            throw new Error("Xtea: key is not 128 bits");
+        }
+        if (start < 0 || end < start || end > data.byteLength) {
+            throw new Error(`Xtea: invalid range start=${start} end=${end} length=${data.byteLength}`);
+        }
+
+        const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+        const n = Math.floor((end - start) / 8);
+        for (let i = 0; i < n; i++) {
+            const offset = start + i * 8;
+            let sum = Xtea.INITIAL_SUM | 0;
+            let v0 = dv.getInt32(offset, false);
+            let v1 = dv.getInt32(offset + 4, false);
+
+            for (let j = 0; j < Xtea.ROUNDS; j++) {
+                const expr1 =
+                    (((((v0 << 4) ^ (v0 >>> 5)) + v0) | 0) ^ ((sum + key[(sum >>> 11) & 3]) | 0)) |
+                    0;
+                v1 = (v1 - expr1) | 0;
+
+                sum = (sum - Xtea.GOLDEN_RATIO) | 0;
+
+                const expr2 =
+                    (((((v1 << 4) ^ (v1 >>> 5)) + v1) | 0) ^ ((sum + key[sum & 3]) | 0)) | 0;
+                v0 = (v0 - expr2) | 0;
+            }
+
+            dv.setInt32(offset, v0, false);
+            dv.setInt32(offset + 4, v1, false);
+        }
+    }
 }
