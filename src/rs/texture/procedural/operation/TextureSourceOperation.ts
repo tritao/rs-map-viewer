@@ -49,6 +49,10 @@ export class TextureSourceOperation extends TextureOperation {
         }
         const output = this.colourImageCache.get(line);
         if (this.colourImageCache.dirty) {
+            const pixels = this.pixels;
+            if (!pixels) {
+                throw new Error("TextureSourceOperation: pixels not initialized");
+            }
             let start =
                 (textureGenerator.height === this.height
                     ? line
@@ -59,7 +63,7 @@ export class TextureSourceOperation extends TextureOperation {
 
             if (textureGenerator.width === this.width) {
                 for (let x = 0; x < textureGenerator.width; x++) {
-                    const value = this.pixels![start++];
+                    const value = pixels[start++];
                     outputB[x] = (value & 0xff) << 4;
                     outputG[x] = (value & 0xff00) >> 4;
                     outputR[x] = (value & 0xff0000) >> 12;
@@ -67,7 +71,7 @@ export class TextureSourceOperation extends TextureOperation {
             } else {
                 for (let x = 0; x < textureGenerator.width; x++) {
                     const idx = ((this.width * x) / textureGenerator.width) | 0;
-                    const value = this.pixels![idx + start];
+                    const value = pixels[idx + start];
                     outputB[x] = (value & 0xff) << 4;
                     outputG[x] = (value & 0xff00) >> 4;
                     outputR[x] = (value & 0xff0000) >> 12;
