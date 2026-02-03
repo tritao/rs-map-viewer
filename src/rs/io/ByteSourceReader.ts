@@ -113,14 +113,7 @@ export class ByteSourceReader implements ByteReader {
         }
     }
 
-    readBytes(amount: number): Int8Array {
-        const out = new Int8Array(amount);
-        this.source.readInto(this.position, new Uint8Array(out.buffer, out.byteOffset, out.byteLength));
-        this.position += amount;
-        return out;
-    }
-
-    readUnsignedBytes(amount: number): Uint8Array {
+    readBytes(amount: number): Uint8Array {
         const out = new Uint8Array(amount);
         this.source.readInto(this.position, out);
         this.position += amount;

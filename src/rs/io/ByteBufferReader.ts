@@ -59,12 +59,7 @@ export class ByteBufferReader implements ByteReader {
         return this.buffer.readBigSmart();
     }
 
-    readBytes(amount: number): Int8Array {
-        return this.buffer.readBytes(amount);
-    }
-
-    readUnsignedBytes(amount: number): Uint8Array {
+    readBytes(amount: number): Uint8Array {
         return this.buffer.readUnsignedBytes(amount);
     }
 }
-

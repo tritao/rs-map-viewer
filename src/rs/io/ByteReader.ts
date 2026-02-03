@@ -17,7 +17,5 @@ export interface ByteReader {
 
     readBigSmart(): number;
 
-    readBytes(amount: number): Int8Array;
-    readUnsignedBytes(amount: number): Uint8Array;
+    readBytes(amount: number): Uint8Array;
 }
-

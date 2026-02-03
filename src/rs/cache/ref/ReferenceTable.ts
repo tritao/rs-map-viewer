@@ -105,7 +105,7 @@ export class ReferenceTable {
         const archiveWhirlpools = new Array<Uint8Array>(archiveCount);
         if (usesWhirlpool) {
             for (let i = 0; i < archiveCount; i++) {
-                archiveWhirlpools[i] = reader.readUnsignedBytes(64);
+                archiveWhirlpools[i] = reader.readBytes(64);
             }
         }
 
