@@ -75,13 +75,6 @@ export class SectorChainStore implements CacheStore {
         return file ? file.size : null;
     }
 
-    read(indexId: number, archiveId: number): Uint8Array {
-        const reader = this.openArchiveReader(indexId, archiveId);
-        const out = new Uint8Array(reader.size);
-        reader.readInto(0, out);
-        return out;
-    }
-
     openArchiveReader(indexId: number, archiveId: number): ByteSource {
         if (indexId < 0) {
             throw new Error("Index id cannot be lower than 0");

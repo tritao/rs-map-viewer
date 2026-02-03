@@ -7,6 +7,7 @@ import { DatIndexType } from "./IndexType";
 import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
+import { readAllBytes } from "./store/ByteSourceUtil";
 import { SectorCluster } from "./store/SectorCluster";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
@@ -87,21 +88,6 @@ export abstract class CacheIndex {
     }
 }
 
-export abstract class CacheStoreIndex extends CacheIndex {
-    constructor(
-        id: number,
-        table: ReferenceTable,
-        readonly store: CacheStore,
-        compressionHandler: CompressionHandler,
-    ) {
-        super(id, table, compressionHandler);
-    }
-
-    read(archiveId: number): Uint8Array {
-        return this.store.read(this.id, archiveId);
-    }
-}
-
 function decodeTable(data: Uint8Array, compressionHandler: CompressionHandler): ReferenceTable {
     if (data.length) {
         const container = Container.decodeFromSource(byteSourceFromBytes(data), null, compressionHandler);
@@ -138,15 +124,15 @@ function decodeArchiveDataFromSource(
 
 type ArchiveDecoder = (archiveId: number, key: number[] | null) => Archive;
 
-export class CacheIndexStore extends CacheStoreIndex {
+export class CacheIndexStore extends CacheIndex {
     private constructor(
         id: number,
         table: ReferenceTable,
-        store: CacheStore,
+        readonly store: CacheStore,
         compressionHandler: CompressionHandler,
         private readonly decodeArchive: ArchiveDecoder,
     ) {
-        super(id, table, store, compressionHandler);
+        super(id, table, compressionHandler);
     }
 
     static fromDatStore(
@@ -165,8 +151,13 @@ export class CacheIndexStore extends CacheStoreIndex {
             store,
             compressionHandler,
             (archiveId: number): Archive => {
-                const data = store.read(id, archiveId);
-                return Archive.decodeOld(archiveId, data, id === DatIndexType.configs, compressionHandler);
+                const data = readAllBytes(store.openArchiveReader(id, archiveId));
+                return Archive.decodeOld(
+                    archiveId,
+                    data,
+                    id === DatIndexType.configs,
+                    compressionHandler,
+                );
             },
         );
     }
@@ -176,7 +167,7 @@ export class CacheIndexStore extends CacheStoreIndex {
         store: CacheStore,
         compressionHandler: CompressionHandler,
     ): CacheIndexStore {
-        const metaTableBytes = store.read(CacheIndex.META_INDEX_ID, id);
+        const metaTableBytes = readAllBytes(store.openArchiveReader(CacheIndex.META_INDEX_ID, id));
         const table = decodeTable(metaTableBytes, compressionHandler);
         return new CacheIndexStore(
             id,

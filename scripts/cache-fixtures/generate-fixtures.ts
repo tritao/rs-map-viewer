@@ -3,6 +3,7 @@ import path from "path";
 
 import { Xtea } from "../../src/rs/crypto/Xtea";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
+import { readAllBytes } from "../../src/rs/cache/store/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { Archive } from "../../src/rs/cache/format/Archive";
 
@@ -109,14 +110,13 @@ function genSectorChainDatFixture(): void {
         [new Uint8ArrayByteSource(idx0)],
         null,
     );
-    const readBack = store.read(indexId, archiveId);
-    const readBackU8 = new Uint8Array(readBack.buffer, readBack.byteOffset, readBack.byteLength);
-    if (readBackU8.length !== payload.length) {
-        throw new Error(`SectorChain fixture mismatch: expected len=${payload.length}, got len=${readBackU8.length}`);
+    const readBack = readAllBytes(store.openArchiveReader(indexId, archiveId));
+    if (readBack.length !== payload.length) {
+        throw new Error(`SectorChain fixture mismatch: expected len=${payload.length}, got len=${readBack.length}`);
     }
     for (let i = 0; i < payload.length; i++) {
-        if (payload[i] !== readBackU8[i]) {
-            throw new Error(`SectorChain fixture mismatch at ${i}: expected=${payload[i]} got=${readBackU8[i]}`);
+        if (payload[i] !== readBack[i]) {
+            throw new Error(`SectorChain fixture mismatch at ${i}: expected=${payload[i]} got=${readBack[i]}`);
         }
     }
 

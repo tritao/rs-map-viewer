@@ -8,8 +8,6 @@ export interface CacheStore {
      */
     getIndexFileSize(indexId: number): number | null;
 
-    read(indexId: number, archiveId: number): Uint8Array;
-
     /**
      * Provides random-access reads over an archive's payload (as stored in the `.dat(2)` sector chain).
      *
