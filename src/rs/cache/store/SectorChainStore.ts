@@ -1,5 +1,6 @@
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceSlice } from "../../io/ByteSourceSlice";
+import { ByteSourceAccess } from "../../io/ByteSourceAccess";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
@@ -75,11 +76,16 @@ class SectorChainArchiveSource implements ByteSource {
 }
 
 export class SectorChainStore implements CacheStore {
+    private readonly idxEntryScratch: Uint8Array = new Uint8Array(IDX_ENTRY_SIZE);
+    private readonly sectorHeaderScratch: Uint8Array = new Uint8Array(SECTOR_EXTENDED_HEADER_SIZE);
+    private readonly dataAccess: ByteSourceAccess;
     constructor(
         readonly dataFile: ByteSource,
         readonly indexFiles: (ByteSource | null)[],
         readonly metaFile: ByteSource | null,
-    ) {}
+    ) {
+        this.dataAccess = new ByteSourceAccess(dataFile, this.sectorHeaderScratch);
+    }
 
     getIndexFileSize(indexId: number): number | null {
         const file = this.getIndexFile(indexId);
@@ -144,11 +150,10 @@ export class SectorChainStore implements CacheStore {
             );
         }
 
-        const buf = new Uint8Array(IDX_ENTRY_SIZE);
-        indexFile.readInto(clusterPtr, buf);
-
-        const size = readU24BE(buf, 0);
-        const sector = readU24BE(buf, 3);
+        const access = new ByteSourceAccess(indexFile, this.idxEntryScratch);
+        const entry = access.readSlice(clusterPtr, IDX_ENTRY_SIZE);
+        const size = readU24BE(entry, 0);
+        const sector = readU24BE(entry, 3);
         return { size, sector };
     }
 
@@ -162,8 +167,6 @@ export class SectorChainStore implements CacheStore {
         const headerSize = extended ? SECTOR_EXTENDED_HEADER_SIZE : SECTOR_HEADER_SIZE;
         const dataSize = extended ? SECTOR_EXTENDED_DATA_SIZE : SECTOR_DATA_SIZE;
 
-        const header = new Uint8Array(headerSize);
-
         const sectorIds: number[] = [];
         let remaining = totalSize;
         let chunk = 0;
@@ -171,7 +174,7 @@ export class SectorChainStore implements CacheStore {
 
         while (remaining > 0) {
             const sectorPtr = sectorId * SECTOR_SIZE;
-            this.dataFile.readInto(sectorPtr, header);
+            const header = this.dataAccess.readSlice(sectorPtr, headerSize);
 
             let readArchiveId: number;
             let readChunk: number;
