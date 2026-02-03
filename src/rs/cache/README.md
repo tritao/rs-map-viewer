@@ -16,8 +16,8 @@ For Dat/Dat2 caches, archive bytes live in a sector-chained data file (`main_fil
 
 - `platform/browser/BrowserCacheLoader.ts`: browser implementation of `CacheLoader` (HTTP + Cache API).
 - `platform/CacheFilesFetcher.ts`: fetches a cache “bundle” into `CacheFiles` using a `CacheLoader` (knows about the hosting layout like `maps.json`, `maps/…`, part caching, etc).
-- `platform/CacheFiles.ts`: an in-memory bundle (`Map<string, ArrayBuffer>`) plus cache filename constants.
-- `platform/CacheStoreFromFiles.ts`: adapts `CacheFiles` into a `CacheStore` (in-memory) via `SectorChainStore`.
+- `platform/CacheFiles.ts`: a platform-layer bundle (`Map<string, ByteSource>`) plus cache filename constants.
+- `platform/CacheStoreFromFiles.ts`: adapts `CacheFiles` into a `CacheStore` via `SectorChainStore`.
 
 ### Store (raw archive byte access)
 

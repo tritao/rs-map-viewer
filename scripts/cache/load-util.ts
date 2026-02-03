@@ -4,6 +4,8 @@ import { CacheInfoJson, CacheList, LoadedCache, XteaMap } from "../../src/util/C
 import { CacheFiles } from "../../src/rs/cache/platform/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
+import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
+import { ByteSource } from "../../src/rs/io/ByteSource";
 
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");
@@ -26,18 +28,11 @@ export function loadCacheList(caches: CacheInfo[]): CacheList {
 export function loadCacheFiles(cache: CacheInfo): CacheFiles {
     const cachePath = "./caches/" + cache.name + "/";
 
-    const files = new Map<string, ArrayBuffer>();
+    const files = new Map<string, ByteSource>();
 
     fs.readdirSync(cachePath).forEach((fileName: string) => {
         const buffer = fs.readFileSync(cachePath + fileName);
-
-        const newBuffer = new ArrayBuffer(buffer.byteLength);
-        const newView = new Uint8Array(newBuffer);
-        for (let i = 0; i < buffer.byteLength; i++) {
-            newView[i] = buffer[i];
-        }
-
-        files.set(fileName, newBuffer);
+        files.set(fileName, new Uint8ArrayByteSource(buffer));
     });
 
     return new CacheFiles(files);

@@ -1,3 +1,5 @@
+import { ByteSource } from "../../io/ByteSource";
+
 export class CacheFiles {
     static readonly DAT_FILE_NAME: string = "main_file_cache.dat";
     static readonly DAT2_FILE_NAME: string = "main_file_cache.dat2";
@@ -8,5 +10,5 @@ export class CacheFiles {
 
     static readonly DAT_INDEX_COUNT: number = 5;
 
-    constructor(readonly files: Map<string, ArrayBuffer>) {}
+    constructor(readonly files: Map<string, ByteSource>) {}
 }
