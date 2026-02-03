@@ -99,7 +99,7 @@ export function brightenRgb(rgb: number, brightness: number) {
     const newR = (r * 256.0) | 0;
     const newG = (g * 256.0) | 0;
     const newB = (b * 256.0) | 0;
-    return (newR << 16) | (newG << 8) | newB;
+    return (newR * 0x10000 + newG * 0x100 + newB) | 0;
 }
 
 export function packHsl(hue: number, saturation: number, lightness: number) {

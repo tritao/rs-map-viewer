@@ -127,7 +127,7 @@ export class GradientOperation extends TextureOperation {
             } else if (b > 255) {
                 b = 255;
             }
-            this.rgbLookup[i] = (r << 16) | (g << 8) | b;
+            this.rgbLookup[i] = r * 0x10000 + g * 0x100 + b;
         }
     }
 

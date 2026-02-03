@@ -140,7 +140,7 @@ export class ProceduralTexture {
                 r = textureGenerator.brightnessTable[r];
                 g = textureGenerator.brightnessTable[g];
                 b = textureGenerator.brightnessTable[b];
-                let rgb = (r << 16) | (g << 8) | b;
+                let rgb = r * 0x10000 + g * 0x100 + b;
                 if (rgb !== 0) {
                     rgb |= 0xff000000;
                 } else {
@@ -254,7 +254,7 @@ export class ProceduralTexture {
                     textureGenerator.isTransparent = true;
                 }
 
-                const argb = (a << 24) | (r << 16) | (g << 8) | b;
+                const argb = (a * 0x1000000 + r * 0x10000 + g * 0x100 + b) | 0;
 
                 pixels[dstIdx++] = argb;
                 if (flipV) {
