@@ -514,7 +514,7 @@ export class Scene {
     }
 
     mergeLargeLocNormals(
-        model: ModelData,
+        model: Entity,
         startLevel: number,
         tileX: number,
         tileY: number,
@@ -556,10 +556,10 @@ export class Scene {
 
                                 const wall = tile.wall;
                                 if (wall) {
-                                    if (isModelData(wall.entity0)) {
-                                        ModelData.mergeNormals(
-                                            model,
-                                            wall.entity0,
+                                    const entity0 = wall.entity0;
+                                    if (entity0) {
+                                        model.mergeNormals(
+                                            entity0,
                                             (1 - sizeX) * 64 + (localX - tileX) * 128,
                                             deltaHeight,
                                             (localY - tileY) * 128 + (1 - sizeY) * 64,
@@ -567,10 +567,10 @@ export class Scene {
                                             this.mergeNormalsScratch,
                                         );
                                     }
-                                    if (isModelData(wall.entity1)) {
-                                        ModelData.mergeNormals(
-                                            model,
-                                            wall.entity1,
+                                    const entity1 = wall.entity1;
+                                    if (entity1) {
+                                        model.mergeNormals(
+                                            entity1,
                                             (1 - sizeX) * 64 + (localX - tileX) * 128,
                                             deltaHeight,
                                             (localY - tileY) * 128 + (1 - sizeY) * 64,
@@ -581,19 +581,20 @@ export class Scene {
                                 }
 
                                 for (const loc of tile.locs) {
-                                    if (isModelData(loc.entity)) {
-                                        const var21 = loc.endX - loc.startX + 1;
-                                        const var22 = loc.endY - loc.startY + 1;
-                                        ModelData.mergeNormals(
-                                            model,
-                                            loc.entity,
-                                            (var21 - sizeX) * 64 + (loc.startX - tileX) * 128,
-                                            deltaHeight,
-                                            (loc.startY - tileY) * 128 + (var22 - sizeY) * 64,
-                                            hideOccluded,
-                                            this.mergeNormalsScratch,
-                                        );
+                                    const locEntity = loc.entity;
+                                    if (!locEntity) {
+                                        continue;
                                     }
+                                    const sizeLocX = loc.endX - loc.startX + 1;
+                                    const sizeLocY = loc.endY - loc.startY + 1;
+                                    model.mergeNormals(
+                                        locEntity,
+                                        (sizeLocX - sizeX) * 64 + (loc.startX - tileX) * 128,
+                                        deltaHeight,
+                                        (loc.startY - tileY) * 128 + (sizeLocY - sizeY) * 64,
+                                        hideOccluded,
+                                        this.mergeNormalsScratch,
+                                    );
                                 }
                             }
                         }
@@ -606,7 +607,7 @@ export class Scene {
         }
     }
 
-    mergeFloorNormals(model: ModelData, level: number, tileX: number, tileY: number): void {
+    mergeFloorNormals(model: Entity, level: number, tileX: number, tileY: number): void {
         const endX = tileX + 1;
         const startY = tileY - 1;
         const endY = tileY + 1;
@@ -619,8 +620,7 @@ export class Scene {
                         if (
                             tile &&
                             tile.floorDecoration &&
-                            tile.floorDecoration.entity &&
-                            isModelData(tile.floorDecoration.entity)
+                            tile.floorDecoration.entity
                         ) {
                             const deltaHeight = this.getDeltaHeight(
                                 level,
@@ -630,8 +630,7 @@ export class Scene {
                                 tileX,
                                 tileY,
                             );
-                            ModelData.mergeNormals(
-                                model,
+                            model.mergeNormals(
                                 tile.floorDecoration.entity,
                                 (x - tileX) * 128,
                                 deltaHeight,
@@ -662,7 +661,7 @@ export class Scene {
                             if (isModelData(wall.entity1)) {
                                 const model1 = wall.entity1;
                                 this.mergeLargeLocNormals(model1, level, tileX, tileY, 1, 1);
-                                ModelData.mergeNormals(model0, model1, 0, 0, 0, false, this.mergeNormalsScratch);
+                                model0.mergeNormals(model1, 0, 0, 0, false, this.mergeNormalsScratch);
                                 wall.entity1 = model1.light(
                                     textureLoader,
                                     model1.ambient,

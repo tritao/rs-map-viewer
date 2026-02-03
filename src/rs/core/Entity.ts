@@ -15,6 +15,7 @@ export abstract class Entity {
         offsetY: number,
         offsetZ: number,
         hideOccluded: boolean,
+        scratch?: unknown,
     ): void {}
 
     // light(textureLoader: TextureLoader, lightX: number, lightY: number, lightZ: number): Entity {
