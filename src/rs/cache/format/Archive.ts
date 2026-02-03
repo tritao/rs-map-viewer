@@ -3,7 +3,6 @@ import { ByteBuffer } from "../../io/ByteBuffer";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
 import { ByteSourceSlice } from "../../io/ByteSourceSlice";
-import { Uint8ArrayByteSource } from "../../io/Uint8ArrayByteSource";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
 
@@ -174,15 +173,15 @@ export class Archive {
         fileNameHashes: Int32Array,
         source: ByteSource,
     ): Archive {
-        if (source instanceof Uint8ArrayByteSource) {
-            const data = source.view;
+        const view = source.tryGetUint8ArrayView?.();
+        if (view) {
             return Archive.decodeFromBuffer(
                 id,
                 lastFileId,
                 fileCount,
                 fileIds,
                 fileNameHashes,
-                new ByteBuffer(new Int8Array(data.buffer, data.byteOffset, data.byteLength)),
+                new ByteBuffer(new Int8Array(view.buffer, view.byteOffset, view.byteLength)),
             );
         }
 

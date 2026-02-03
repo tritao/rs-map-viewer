@@ -7,6 +7,10 @@ export class ArrayBufferByteSource implements ByteSource {
         return this.buffer.byteLength;
     }
 
+    tryGetUint8ArrayView(): Uint8Array {
+        return new Uint8Array(this.buffer);
+    }
+
     readInto(
         offset: number,
         target: Uint8Array,

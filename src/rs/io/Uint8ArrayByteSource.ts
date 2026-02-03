@@ -7,6 +7,10 @@ export class Uint8ArrayByteSource implements ByteSource {
         return this.view.byteLength;
     }
 
+    tryGetUint8ArrayView(): Uint8Array {
+        return this.view;
+    }
+
     readInto(
         offset: number,
         target: Uint8Array,
@@ -26,4 +30,3 @@ export class Uint8ArrayByteSource implements ByteSource {
         target.set(this.view.subarray(offset, offset + length), targetOffset);
     }
 }
-

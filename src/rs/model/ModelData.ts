@@ -322,12 +322,12 @@ export class ModelData extends Entity {
         hideOccluded: boolean,
         scratch?: MergeNormalsScratch,
     ): void {
-        if (!(entity instanceof ModelData)) {
+        if (!entity.canMergeNormals()) {
             return;
         }
         ModelData.mergeNormals(
             this,
-            entity,
+            entity as ModelData,
             offsetX,
             offsetY,
             offsetZ,
