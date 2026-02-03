@@ -26,15 +26,15 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
 - `store/CacheStore.ts`: store abstraction used by indices/decoders.
   - `getIndexFileSize(indexId)`: supports Dat index construction without loading the whole `.idx` file.
   - `openArchiveReader(indexId, archiveId)`: returns a seekable `ByteSource` view over a single archive’s raw bytes.
-  - `read(indexId, archiveId)`: convenience materialize-all wrapper.
 - `store/SectorChainStore.ts`: `CacheStore` backed by seekable `ByteSource`s (a “native-shaped” implementation).
-- `store/SectorChainStore.ts`: reads sector chains from `.dat(2)` using `.idx*` index entries.
+  - reads sector chains from `.dat(2)` using `.idx*` index entries.
 
 ### Indices and cache system
 
 - `CacheSystem.ts`: constructs indices from a `CacheStore` (`fromStore` accepts any `CacheStore`).
 - `CacheIndex.ts`:
-  - `CacheIndexStore`: store-backed index implementation (Dat and Dat2; Dat2 uses `idx255` `ReferenceTable`).
+  - `DatCacheIndex`: store-backed index implementation for Dat caches (archive count derived from `.idx` length).
+  - `CacheIndexStore`: store-backed index implementation for Dat2 caches (uses `idx255` `ReferenceTable`).
   - `LegacyCacheIndex`: legacy single-file archives (no sector chain).
 - `ref/*`: `ReferenceTable` and archive/file metadata (counts, ids, name hashes, whirlpools, etc).
 

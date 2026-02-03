@@ -24,45 +24,6 @@ export class ReferenceTable {
         [],
     );
 
-    static fromArchiveCount(archiveCount: number): ReferenceTable {
-        const archiveIds = new Int32Array(archiveCount);
-        const archiveIdIndexMap: Map<number, number> = new Map();
-        for (let i = 0; i < archiveCount; i++) {
-            archiveIds[i] = i;
-            archiveIdIndexMap.set(i, i);
-        }
-        const lastArchiveId = archiveCount - 1;
-
-        const archiveNameHashes = new Int32Array(archiveCount);
-        const archiveWhirlpools = new Array<Uint8Array>(archiveCount);
-
-        const archiveFileCounts = new Int32Array(archiveCount).fill(-1);
-
-        const archiveFileIds = new Array<Int32Array>(archiveCount);
-        const archiveLastFileIds = new Int32Array(archiveCount);
-
-        const archiveFileNameHashes = new Array<Int32Array>(archiveCount);
-
-        return new ReferenceTable(
-            -1,
-            -1,
-            false,
-            false,
-            archiveCount,
-            lastArchiveId,
-            archiveIdIndexMap,
-            archiveIds,
-            archiveNameHashes,
-            archiveWhirlpools,
-            new Int32Array(archiveCount),
-            new Int32Array(archiveCount),
-            archiveFileCounts,
-            archiveLastFileIds,
-            archiveFileIds,
-            archiveFileNameHashes,
-        );
-    }
-
     static decode(buffer: ByteBuffer): ReferenceTable {
         return ReferenceTable.decodeFromReader(new ByteBufferReader(buffer));
     }

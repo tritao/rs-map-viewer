@@ -1,5 +1,5 @@
 import { CompressionHandler } from "../compression/CompressionHandler";
-import { CacheIndex, CacheIndexStore } from "./CacheIndex";
+import { CacheIndex, CacheIndexStore, DatCacheIndex } from "./CacheIndex";
 import { CacheType } from "./CacheType";
 import { CacheStore } from "./store/CacheStore";
 
@@ -15,7 +15,7 @@ export class CacheSystem {
         for (const id of indexIds) {
             const index =
                 cacheType === CacheType.Dat
-                    ? CacheIndexStore.fromDatStore(id, store, compressionHandler)
+                    ? DatCacheIndex.fromStore(id, store, compressionHandler)
                     : CacheIndexStore.fromDat2Store(id, store, compressionHandler);
             indices.set(id, index);
         }
