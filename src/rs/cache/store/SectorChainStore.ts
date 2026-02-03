@@ -84,7 +84,7 @@ export class SectorChainStore implements CacheStore {
         readonly indexFiles: (ByteSource | null)[],
         readonly metaFile: ByteSource | null,
     ) {
-        this.dataAccess = new ByteSourceAccess(dataFile, this.sectorHeaderScratch);
+        this.dataAccess = new ByteSourceAccess(dataFile);
     }
 
     getIndexFileSize(indexId: number): number | null {
@@ -150,8 +150,12 @@ export class SectorChainStore implements CacheStore {
             );
         }
 
-        const access = new ByteSourceAccess(indexFile, this.idxEntryScratch);
-        const entry = access.readSlice(clusterPtr, IDX_ENTRY_SIZE);
+        const access = new ByteSourceAccess(indexFile);
+        const entryView = access.tryView(clusterPtr, IDX_ENTRY_SIZE);
+        const entry = entryView ?? this.idxEntryScratch;
+        if (!entryView) {
+            indexFile.readInto(clusterPtr, this.idxEntryScratch);
+        }
         const size = readU24BE(entry, 0);
         const sector = readU24BE(entry, 3);
         return { size, sector };
@@ -174,7 +178,11 @@ export class SectorChainStore implements CacheStore {
 
         while (remaining > 0) {
             const sectorPtr = sectorId * SECTOR_SIZE;
-            const header = this.dataAccess.readSlice(sectorPtr, headerSize);
+            const headerView = this.dataAccess.tryView(sectorPtr, headerSize);
+            const header = headerView ?? this.sectorHeaderScratch;
+            if (!headerView) {
+                this.dataFile.readInto(sectorPtr, this.sectorHeaderScratch, 0, headerSize);
+            }
 
             let readArchiveId: number;
             let readChunk: number;
