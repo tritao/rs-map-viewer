@@ -1,6 +1,8 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ByteSource } from "../../io/ByteSource";
+import { ByteSourceReader } from "../../io/ByteSourceReader";
+import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { Uint8ArrayByteSource } from "../../io/Uint8ArrayByteSource";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
@@ -190,36 +192,27 @@ export class Archive {
             source.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
             files.set(lastFileId, new ArchiveFile(lastFileId, id, data));
         } else {
-            const size = source.size;
-            if (size < 1) {
+            if (source.size < 1) {
                 throw new Error("Empty archive");
             }
 
-            const tail = new Uint8Array(1);
-            source.readInto(size - 1, tail);
-            const chunks = tail[0];
+            const reader = new ByteSourceReader(source);
+            reader.seek(source.size - 1);
+            const chunks = reader.readUnsignedByte();
 
             const tableBytes = chunks * (fileCount * 4);
-            const tableOffset = size - 1 - tableBytes;
+            const tableOffset = source.size - 1 - tableBytes;
             if (tableOffset < 0) {
                 throw new Error("Invalid archive chunk table");
             }
 
-            const table = new Uint8Array(tableBytes);
-            source.readInto(tableOffset, table);
-
+            reader.seek(tableOffset);
             const chunkSizes = new Int32Array(chunks * fileCount);
             const fileSizes = new Int32Array(fileCount);
-            let tablePtr = 0;
             for (let chunk = 0; chunk < chunks; chunk++) {
                 let lastFileSize = 0;
                 for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                    const delta =
-                        (table[tablePtr] << 24) |
-                        (table[tablePtr + 1] << 16) |
-                        (table[tablePtr + 2] << 8) |
-                        table[tablePtr + 3];
-                    tablePtr += 4;
+                    const delta = reader.readInt();
                     lastFileSize += delta;
                     chunkSizes[chunk * fileCount + fileIdx] = lastFileSize;
                     fileSizes[fileIdx] += lastFileSize;
@@ -232,13 +225,14 @@ export class Archive {
                 fileData[fileIdx] = new Int8Array(fileSizes[fileIdx]);
             }
 
+            const payload = new ByteSourceSlice(source, 0, tableOffset);
             let inputOffset = 0;
             for (let chunk = 0; chunk < chunks; chunk++) {
                 for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
                     const chunkSize = chunkSizes[chunk * fileCount + fileIdx];
                     const dst = fileData[fileIdx];
                     const dstOff = fileOffsets[fileIdx];
-                    source.readInto(
+                    payload.readInto(
                         inputOffset,
                         new Uint8Array(dst.buffer, dst.byteOffset + dstOff, chunkSize),
                     );

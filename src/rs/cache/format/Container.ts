@@ -4,6 +4,8 @@ import { CompressionType } from "../../compression/CompressionType";
 import { Xtea } from "../../crypto/Xtea";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ByteSource } from "../../io/ByteSource";
+import { ByteSourceReader } from "../../io/ByteSourceReader";
+import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 
 export class Container {
     static decodeFromSource(
@@ -11,12 +13,9 @@ export class Container {
         key: number[] | null,
         compressionHandler: CompressionHandler,
     ): Container {
-        const header = new Uint8Array(5);
-        source.readInto(0, header);
-
-        const compression: CompressionType = header[0] as CompressionType;
-        const size =
-            ((header[1] << 24) | (header[2] << 16) | (header[3] << 8) | header[4]) | 0;
+        const reader = new ByteSourceReader(source);
+        const compression: CompressionType = reader.readUnsignedByte() as CompressionType;
+        const size = reader.readInt();
 
         if (size < 0) {
             throw new Error("Invalid container size: " + size);
@@ -76,16 +75,12 @@ export class Container {
             actualSize = buf.getInt(0) & 0xffffffff;
             compressed = encrypted.subarray(4, 4 + compressedSize);
         } else {
-            const actualSizeBytes = new Uint8Array(4);
-            source.readInto(5, actualSizeBytes);
-            actualSize =
-                (((actualSizeBytes[0] << 24) |
-                    (actualSizeBytes[1] << 16) |
-                    (actualSizeBytes[2] << 8) |
-                    actualSizeBytes[3]) as number) & 0xffffffff;
+            reader.seek(5);
+            actualSize = reader.readInt() & 0xffffffff;
 
+            // compressed payload starts at 9
             compressed = new Uint8Array(compressedSize);
-            source.readInto(9, compressed);
+            new ByteSourceSlice(source, 9, compressedSize).readInto(0, compressed);
         }
 
         let decompressed: Int8Array;

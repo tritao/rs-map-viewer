@@ -49,6 +49,7 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
 - `format/Archive.ts` / `format/ArchiveFile.ts`: decodes archive payload bytes into one or more files.
   - multi-file archives use a “chunk table” at the end of the payload to reconstruct each file’s byte stream
 - `io/ByteReader.ts`: cursor-based reader abstraction (seek/tell + primitive reads) used by decoders that prefer sequential parsing without depending on `ByteBuffer`.
+- `io/ByteSourceSlice.ts`: lightweight `ByteSource` view for (start, length) subranges.
 
 ## Dat2 archive decode path (typical)
 
