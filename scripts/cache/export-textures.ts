@@ -3,7 +3,7 @@ import sharp from "sharp";
 
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { getCacheLoaderFactory } from "../../src/rs/loaders/CacheLoaderFactory";
-import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheSystemFromFiles";
+import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { loadCache, loadCacheInfos, loadCacheList } from "./load-util";
 
 function saveArgbArrayToPng(pixels: Int32Array, width: number, height: number, outputPath: string) {

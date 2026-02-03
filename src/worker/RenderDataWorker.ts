@@ -4,7 +4,7 @@ import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import { CacheSystem } from "../rs/cache/CacheSystem";
-import { createCacheSystemFromFiles } from "../rs/cache/platform/CacheSystemFromFiles";
+import { createCacheSystemFromFiles } from "../rs/cache/platform/CacheStoreFromFiles";
 import { Dat2IndexType, DatIndexType } from "../rs/cache/IndexType";
 import {
     CacheLoaderFactory,

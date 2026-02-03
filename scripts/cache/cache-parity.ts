@@ -4,7 +4,7 @@ import path from "path";
 import xxhash from "xxhash-wasm";
 
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
-import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheSystemFromFiles";
+import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { CacheType, detectCacheType, getCacheTypeName } from "../../src/rs/cache/CacheType";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";

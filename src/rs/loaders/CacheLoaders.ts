@@ -1,5 +1,5 @@
 import { CacheSystem } from "../cache/CacheSystem";
-import { createCacheSystemFromFiles } from "../cache/platform/CacheSystemFromFiles";
+import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
 import { CacheLoaderFactory, getCacheLoaderFactory } from "./CacheLoaderFactory";
 import { BasTypeLoader } from "../config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
