@@ -1,25 +1,19 @@
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "../store/CacheStore";
 import { SectorChainStore } from "../store/SectorChainStore";
-import { CacheBundleTransfer, toCacheBytes } from "./CacheFiles";
 import { ByteSource } from "../../io/ByteSource";
-import { Uint8ArrayByteSource } from "../../io/Uint8ArrayByteSource";
+import { CacheBundleTransfer } from "./CacheFiles";
+import { CacheStoreBundleSources, hydrateCacheStoreBundleSources } from "./CacheBundleSources";
 
-export function createCacheStoreFromFiles(
-    bundle: CacheBundleTransfer,
+export function createCacheStoreFromBundleSources(
+    bundle: CacheStoreBundleSources,
     indicesToLoad: number[] = [],
 ): {
     store: CacheStore;
     indexIds: number[];
 } {
-    if (bundle.kind !== "dat" && bundle.kind !== "dat2") {
-        throw new Error(`Unsupported bundle kind for store: ${bundle.kind}`);
-    }
-
-    const dataFileBuffer = bundle.kind === "dat2" ? bundle.dat2 : bundle.dat;
-    const dataFile = new Uint8ArrayByteSource(toCacheBytes(dataFileBuffer));
-
-    const metaFile = bundle.kind === "dat2" ? new Uint8ArrayByteSource(toCacheBytes(bundle.idx255)) : null;
+    const dataFile = bundle.kind === "dat2" ? bundle.dat2 : bundle.dat;
+    const metaFile = bundle.kind === "dat2" ? bundle.idx255 : null;
 
     const indicesSet = new Set(indicesToLoad);
     const indexSources: Array<ByteSource | null> = [];
@@ -27,12 +21,12 @@ export function createCacheStoreFromFiles(
 
     const idx = bundle.idx;
     for (let indexId = 0; indexId < idx.length; indexId++) {
-        const data = idx[indexId];
-        if (!data) {
+        const source = idx[indexId];
+        if (!source) {
             continue;
         }
         if (indicesSet.size === 0 || indicesSet.has(indexId)) {
-            indexSources[indexId] = new Uint8ArrayByteSource(toCacheBytes(data));
+            indexSources[indexId] = source;
             indexIds.push(indexId);
         }
     }
@@ -51,4 +45,14 @@ export function createCacheStoreFromFiles(
         store,
         indexIds,
     };
+}
+
+export function createCacheStoreFromFiles(
+    bundle: CacheBundleTransfer,
+    indicesToLoad: number[] = [],
+): {
+    store: CacheStore;
+    indexIds: number[];
+} {
+    return createCacheStoreFromBundleSources(hydrateCacheStoreBundleSources(bundle), indicesToLoad);
 }
