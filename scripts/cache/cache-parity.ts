@@ -12,7 +12,7 @@ import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { Container } from "../../src/rs/cache/format/Container";
 import { Archive } from "../../src/rs/cache/format/Archive";
-import { DatIndexType } from "../../src/rs/cache/IndexType";
+import { DatIndexType, LegacyIndexType } from "../../src/rs/cache/IndexType";
 
 type Args = {
     cacheName?: string;
@@ -68,6 +68,41 @@ function ensureDir(filePath: string): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function bytesOf(buffer: ArrayBuffer | undefined): Uint8Array {
+    return buffer ? new Uint8Array(buffer) : new Uint8Array(0);
+}
+
+function legacyRawArchiveBytes(
+    bundle: any,
+    indexId: number,
+    archiveId: number,
+): Uint8Array | null {
+    const legacy = bundle?.legacy;
+    if (!legacy) return null;
+
+    if (archiveId !== 0 && indexId !== LegacyIndexType.maps) {
+        return null;
+    }
+
+    switch (indexId) {
+        case LegacyIndexType.configs:
+            return bytesOf(legacy.config);
+        case LegacyIndexType.media:
+            return bytesOf(legacy.media);
+        case LegacyIndexType.textures:
+            return bytesOf(legacy.textures);
+        case LegacyIndexType.models:
+            return bytesOf(legacy.models);
+        case LegacyIndexType.maps: {
+            const maps: ArrayBuffer[] = legacy.maps ?? [];
+            if (archiveId < 0 || archiveId >= maps.length) return null;
+            return bytesOf(maps[archiveId]);
+        }
+        default:
+            return null;
+    }
+}
+
 async function main(): Promise<void> {
     const args = parseArgs(process.argv.slice(2));
 
@@ -106,21 +141,27 @@ async function main(): Promise<void> {
             .sort((a, b) => a - b)
             .slice(0, args.maxArchivesPerIndex);
 
-        // Only Dat/Dat2 indices are store-backed in this harness.
-        const store: unknown = (index as any).store;
-        if (!store) {
-            continue;
-        }
-
         for (const archiveId of selectedArchiveIds) {
-            const rawSource = (store as any).openArchiveReader(indexId, archiveId);
-            if (rawSource.size === 0) {
-                continue;
-            }
+            let raw: Uint8Array;
 
-            const raw = readAllBytes(rawSource);
-            if (raw.byteLength === 0) {
-                continue;
+            // Dat/Dat2 indices are store-backed; Legacy indices are decoded up-front (no store).
+            const store: unknown = (index as any).store;
+            if (store) {
+                const rawSource = (store as any).openArchiveReader(indexId, archiveId);
+                if (rawSource.size === 0) {
+                    continue;
+                }
+
+                raw = readAllBytes(rawSource);
+                if (raw.byteLength === 0) {
+                    continue;
+                }
+            } else {
+                const legacyRaw = legacyRawArchiveBytes(cacheBundle, indexId, archiveId);
+                if (!legacyRaw || legacyRaw.byteLength === 0) {
+                    continue;
+                }
+                raw = legacyRaw;
             }
             const rawHash = h64Hex(hashApi.h64Raw(raw));
 
@@ -161,6 +202,16 @@ async function main(): Promise<void> {
                     // Some dat indices contain empty/truncated entries; skip them.
                     continue;
                 }
+                entry.files = archive.files
+                    .map((f) => ({
+                        fileId: f.id,
+                        len: f.data.byteLength,
+                        xxh64: h64Hex(hashApi.h64Raw(f.data)),
+                    }))
+                    .sort((a, b) => a.fileId - b.fileId);
+            } else {
+                // Legacy/Classic: cacheSystem already contains decoded Archives.
+                const archive = index.getArchive(archiveId);
                 entry.files = archive.files
                     .map((f) => ({
                         fileId: f.id,
