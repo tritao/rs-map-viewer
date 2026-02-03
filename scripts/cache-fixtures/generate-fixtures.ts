@@ -3,7 +3,7 @@ import path from "path";
 
 import { Xtea } from "../../src/rs/crypto/Xtea";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
-import { readAllBytes } from "../../src/rs/cache/store/ByteSourceUtil";
+import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { Archive } from "../../src/rs/cache/format/Archive";
 

@@ -8,7 +8,7 @@ import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheSys
 import { CacheType, detectCacheType, getCacheTypeName } from "../../src/rs/cache/CacheType";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { readAllBytes } from "../../src/rs/cache/store/ByteSourceUtil";
+import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { Container } from "../../src/rs/cache/format/Container";
 import { Archive } from "../../src/rs/cache/format/Archive";

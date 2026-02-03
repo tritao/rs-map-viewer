@@ -7,11 +7,11 @@ import { DatIndexType } from "./IndexType";
 import { ArchiveReference } from "./reference/ArchiveReference";
 import { ReferenceTable } from "./reference/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
-import { readAllBytes } from "./store/ByteSourceUtil";
 import { IDX_ENTRY_SIZE } from "./store/DatLayout";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { readAllBytes } from "../io/ByteSourceUtil";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;

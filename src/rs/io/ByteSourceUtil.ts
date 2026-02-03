@@ -1,4 +1,4 @@
-import { ByteSource } from "../../io/ByteSource";
+import { ByteSource } from "./ByteSource";
 
 export function readAllBytes(source: ByteSource): Uint8Array {
     const out = new Uint8Array(source.size);
