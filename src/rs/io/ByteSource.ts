@@ -15,6 +15,8 @@ export interface ByteSource {
      *
      * Intended to avoid RTTI-style checks (`instanceof`) and to map cleanly to
      * native/WASM spans/slices.
+     *
+     * Important: the returned view must be treated as **read-only**. Callers must not mutate it.
      */
     tryGetUint8ArrayView(): Uint8Array | null;
 }
