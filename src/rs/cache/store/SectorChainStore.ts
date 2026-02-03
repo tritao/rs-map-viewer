@@ -3,8 +3,7 @@ import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
-
-const INDEX_ENTRY_SIZE: i32 = 6;
+import { IDX_ENTRY_SIZE } from "./IndexEntry";
 
 const SECTOR_HEADER_SIZE: i32 = 8;
 const SECTOR_DATA_SIZE: i32 = 512;
@@ -136,15 +135,15 @@ export class SectorChainStore implements CacheStore {
     }
 
     private readSectorCluster(indexFile: ByteSource, indexId: number, archiveId: number): SectorCluster {
-        const clusterPtr = archiveId * INDEX_ENTRY_SIZE;
+        const clusterPtr = archiveId * IDX_ENTRY_SIZE;
         const fileSize = indexFile.size;
-        if (clusterPtr < 0 || clusterPtr + INDEX_ENTRY_SIZE > fileSize) {
+        if (clusterPtr < 0 || clusterPtr + IDX_ENTRY_SIZE > fileSize) {
             throw new Error(
                 `Invalid ptr: ${clusterPtr}, fileSize: ${fileSize}, indexId: ${indexId}, archiveId: ${archiveId}`,
             );
         }
 
-        const buf = new Uint8Array(INDEX_ENTRY_SIZE);
+        const buf = new Uint8Array(IDX_ENTRY_SIZE);
         indexFile.readInto(clusterPtr, buf);
 
         const size = readU24BE(buf, 0);

@@ -12,7 +12,7 @@ import {
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 
-const INDEX_ENTRY_SIZE: number = 6;
+import { IDX_ENTRY_SIZE } from "../../src/rs/cache/store/IndexEntry";
 
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");
@@ -51,7 +51,7 @@ export function loadCacheFiles(cache: CacheInfo): CacheBundleTransfer {
 
         const dat2 = readFileArrayBuffer(dat2Path);
         const idx255 = readFileArrayBuffer(idx255Path);
-        const indexCount = (idx255.byteLength / INDEX_ENTRY_SIZE) | 0;
+        const indexCount = (idx255.byteLength / IDX_ENTRY_SIZE) | 0;
         const idx: Array<CacheBuffer | null> = Array.from({ length: indexCount }, () => null);
 
         for (const fileName of fs.readdirSync(cachePath)) {

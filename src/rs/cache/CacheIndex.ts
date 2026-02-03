@@ -8,11 +8,10 @@ import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { readAllBytes } from "./store/ByteSourceUtil";
+import { IDX_ENTRY_SIZE } from "./store/IndexEntry";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 import { ByteBuffer } from "../io/ByteBuffer";
-
-const INDEX_ENTRY_SIZE: i32 = 6;
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -120,10 +119,10 @@ export class DatCacheIndex extends CacheIndex {
         if (indexSize === null) {
             throw new Error("Index file not found: " + id);
         }
-        if (indexSize % INDEX_ENTRY_SIZE !== 0) {
-            throw new Error(`Invalid .idx size: ${indexSize} (not divisible by ${INDEX_ENTRY_SIZE})`);
+        if (indexSize % IDX_ENTRY_SIZE !== 0) {
+            throw new Error(`Invalid .idx size: ${indexSize} (not divisible by ${IDX_ENTRY_SIZE})`);
         }
-        const archiveCount = indexSize / INDEX_ENTRY_SIZE;
+        const archiveCount = indexSize / IDX_ENTRY_SIZE;
         return new DatCacheIndex(id, archiveCount, store, compressionHandler);
     }
 
