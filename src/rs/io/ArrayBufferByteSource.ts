@@ -1,7 +1,7 @@
 import { ByteSource } from "./ByteSource";
 
 export class ArrayBufferByteSource implements ByteSource {
-    constructor(readonly buffer: ArrayBuffer) {}
+    constructor(readonly buffer: ArrayBuffer | SharedArrayBuffer) {}
 
     get size(): number {
         return this.buffer.byteLength;
@@ -26,4 +26,3 @@ export class ArrayBufferByteSource implements ByteSource {
         target.set(new Uint8Array(this.buffer, offset, length), targetOffset);
     }
 }
-

@@ -5,7 +5,7 @@ import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { LegacyIndexType } from "../IndexType";
-import { CacheFiles } from "./CacheFiles";
+import { asByteSource, CacheFiles } from "./CacheFiles";
 import { createCacheStoreFromFiles } from "./CacheStoreFromFiles";
 import { ByteSource } from "../../io/ByteSource";
 
@@ -35,7 +35,8 @@ function readAll(source: ByteSource): Int8Array {
 }
 
 function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: CompressionHandler): CacheSystem {
-    const configData = cacheFiles.files.get("config");
+    const configDataRaw = cacheFiles.files.get("config");
+    const configData = configDataRaw ? asByteSource(configDataRaw) : null;
     if (!configData) {
         throw new Error("Missing config file");
     }
@@ -46,14 +47,16 @@ function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: Com
         compressionHandler,
     );
 
-    const mediaData = cacheFiles.files.get("media");
+    const mediaDataRaw = cacheFiles.files.get("media");
+    const mediaData = mediaDataRaw ? asByteSource(mediaDataRaw) : null;
     if (!mediaData) {
         throw new Error("Missing media file");
     }
     const mediaArchive = Archive.decodeOld(0, readAll(mediaData), true, compressionHandler);
     const mediaIndex = new LegacyCacheIndex(LegacyIndexType.media, [mediaArchive], compressionHandler);
 
-    const textureData = cacheFiles.files.get("textures");
+    const textureDataRaw = cacheFiles.files.get("textures");
+    const textureData = textureDataRaw ? asByteSource(textureDataRaw) : null;
     if (!textureData) {
         throw new Error("Missing textures file");
     }
@@ -64,7 +67,8 @@ function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: Com
         compressionHandler,
     );
 
-    const modelData = cacheFiles.files.get("models");
+    const modelDataRaw = cacheFiles.files.get("models");
+    const modelData = modelDataRaw ? asByteSource(modelDataRaw) : null;
     if (!modelData) {
         throw new Error("Missing models file");
     }
@@ -77,7 +81,7 @@ function createLegacyCacheSystem(cacheFiles: CacheFiles, compressionHandler: Com
     const entries = Array.from(cacheFiles.files.entries());
     for (let i = 0; i < entries.length; i++) {
         const name = entries[i][0];
-        const data = entries[i][1];
+        const data = asByteSource(entries[i][1]);
         if (name.startsWith(mapsPrefix)) {
             const archiveName = name.substring(mapsPrefix.length);
             const archiveId = mapArchives.length;

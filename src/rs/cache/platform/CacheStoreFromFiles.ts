@@ -1,7 +1,7 @@
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "../store/CacheStore";
 import { SectorChainStore } from "../store/SectorChainStore";
-import { CacheFiles } from "./CacheFiles";
+import { asByteSource, CacheFiles } from "./CacheFiles";
 import { ByteSource } from "../../io/ByteSource";
 
 export function createCacheStoreFromFiles(
@@ -13,12 +13,14 @@ export function createCacheStoreFromFiles(
 } {
     const files = cacheFiles.files;
 
-    const dataFile = files.get(CacheFiles.DAT2_FILE_NAME) ?? files.get(CacheFiles.DAT_FILE_NAME);
-    if (!dataFile) {
+    const dataFileRaw = files.get(CacheFiles.DAT2_FILE_NAME) ?? files.get(CacheFiles.DAT_FILE_NAME);
+    if (!dataFileRaw) {
         throw new Error("main_file_cache data file not found");
     }
+    const dataFile = asByteSource(dataFileRaw);
 
-    const metaFile = files.get(CacheFiles.META_FILE_NAME) ?? null;
+    const metaFileRaw = files.get(CacheFiles.META_FILE_NAME) ?? null;
+    const metaFile = metaFileRaw ? asByteSource(metaFileRaw) : null;
 
     const indicesSet = new Set(indicesToLoad);
     const indexSources: Array<ByteSource | null> = [];
@@ -34,7 +36,7 @@ export function createCacheStoreFromFiles(
                 continue;
             }
             if (indicesSet.size === 0 || indicesSet.has(indexId)) {
-                indexSources[indexId] = data;
+                indexSources[indexId] = asByteSource(data);
                 indexIds.push(indexId);
             }
         }
