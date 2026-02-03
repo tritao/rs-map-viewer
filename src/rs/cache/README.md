@@ -36,7 +36,7 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
   - `DatCacheIndex`: store-backed index implementation for Dat caches (archive count derived from `.idx` length).
   - `Dat2CacheIndex`: store-backed index implementation for Dat2 caches (uses `idx255` `ReferenceTable`).
   - `LegacyCacheIndex`: legacy single-file archives (no sector chain).
-- `ref/*`: `ReferenceTable` and archive/file metadata (counts, ids, name hashes, whirlpools, etc).
+- `reference/*`: `ReferenceTable` and archive/file metadata (counts, ids, name hashes, whirlpools, etc).
 
 ### Format decoding (pure “bytes → structures”)
 
