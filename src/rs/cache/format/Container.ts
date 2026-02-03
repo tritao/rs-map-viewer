@@ -4,7 +4,7 @@ import { CompressionType } from "../../compression/CompressionType";
 import { Xtea } from "../../crypto/Xtea";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { readI32BE } from "../../io/Endian";
+import { readU32BE } from "../../io/Endian";
 
 export class Container {
     static decodeFromSource(
@@ -46,7 +46,7 @@ export class Container {
             }
 
             const payload = source.slice(5, size);
-            const view = payload.tryGetUint8ArrayView?.();
+            const view = payload.tryGetUint8ArrayView();
             if (view) {
                 return new Container(compression, view);
             }
@@ -75,15 +75,21 @@ export class Container {
             source.readInto(5, encrypted);
             Xtea.decryptInPlace(encrypted, 0, encryptedSize, key);
 
-            actualSize = readI32BE(encrypted, 0) & 0xffffffff;
+            actualSize = readU32BE(encrypted, 0);
             compressed = encrypted.subarray(4, 4 + compressedSize);
         } else {
             reader.seek(5);
-            actualSize = reader.readInt() & 0xffffffff;
+            actualSize = reader.readUnsignedInt();
 
             // compressed payload starts at 9
-            compressed = new Uint8Array(compressedSize);
-            source.slice(9, compressedSize).readInto(0, compressed);
+            const payload = source.slice(9, compressedSize);
+            const view = payload.tryGetUint8ArrayView();
+            if (view) {
+                compressed = view;
+            } else {
+                compressed = new Uint8Array(compressedSize);
+                payload.readInto(0, compressed);
+            }
         }
 
         let decompressed: Uint8Array;

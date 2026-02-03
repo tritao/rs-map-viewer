@@ -1,6 +1,6 @@
 import { ByteSource } from "./ByteSource";
 import { ByteReader } from "./ByteReader";
-import { readI32BE, readU24BE } from "./Endian";
+import { readI32BE, readU24BE, readU32BE } from "./Endian";
 
 export class ByteSourceReader implements ByteReader {
     private position: number = 0;
@@ -101,6 +101,14 @@ export class ByteSourceReader implements ByteReader {
         return value;
     }
 
+    readUnsignedInt(): number {
+        this.ensure(4);
+        const off = this.position - this.windowStart;
+        const value = readU32BE(this.window, off);
+        this.position += 4;
+        return value;
+    }
+
     readBigSmart(): number {
         if (this.peekByte() < 0) {
             return this.readInt() & 0x7fffffff;
@@ -115,8 +123,23 @@ export class ByteSourceReader implements ByteReader {
 
     readBytes(amount: number): Uint8Array {
         const out = new Uint8Array(amount);
-        this.source.readInto(this.position, out);
-        this.position += amount;
+        this.readBytesInto(out);
         return out;
+    }
+
+    readBytesInto(
+        target: Uint8Array,
+        targetOffset: number = 0,
+        length: number = target.length - targetOffset,
+    ): void {
+        if (length < 0) {
+            throw new Error("Invalid length");
+        }
+        if (this.position + length > this.source.size) {
+            throw new Error(`Read out of bounds. position=${this.position}, length=${length}, size=${this.source.size}`);
+        }
+
+        this.source.readInto(this.position, target, targetOffset, length);
+        this.position += length;
     }
 }

@@ -138,7 +138,7 @@ export class Archive {
         const files: ArchiveFile[] = new Array(fileCount);
 
         if (fileCount === 1) {
-            const view = source.tryGetUint8ArrayView?.();
+            const view = source.tryGetUint8ArrayView();
             const data = view ?? (() => {
                 const copy = new Uint8Array(source.size);
                 source.readInto(0, copy);

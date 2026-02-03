@@ -14,8 +14,10 @@ export interface ByteReader {
     readUnsignedShort(): number;
     readMedium(): number;
     readInt(): number;
+    readUnsignedInt(): number;
 
     readBigSmart(): number;
 
     readBytes(amount: number): Uint8Array;
+    readBytesInto(target: Uint8Array, targetOffset?: number, length?: number): void;
 }

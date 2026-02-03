@@ -55,11 +55,29 @@ export class ByteBufferReader implements ByteReader {
         return this.buffer.readInt();
     }
 
+    readUnsignedInt(): number {
+        return this.buffer.readUnsignedInt();
+    }
+
     readBigSmart(): number {
         return this.buffer.readBigSmart();
     }
 
     readBytes(amount: number): Uint8Array {
         return this.buffer.readUnsignedBytes(amount);
+    }
+
+    readBytesInto(
+        target: Uint8Array,
+        targetOffset: number = 0,
+        length: number = target.length - targetOffset,
+    ): void {
+        if (length < 0) {
+            throw new Error("Invalid length");
+        }
+        if (this.buffer.offset + length > this.buffer.length) {
+            throw new Error("Buffer overflow");
+        }
+        target.set(this.buffer.readUnsignedBytes(length), targetOffset);
     }
 }

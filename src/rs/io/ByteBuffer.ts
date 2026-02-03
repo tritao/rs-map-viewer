@@ -1,5 +1,5 @@
 import { FloatUtil } from "../../util/FloatUtil";
-import { readI32BE, readU24BE } from "./Endian";
+import { readI32BE, readU24BE, readU32BE } from "./Endian";
 
 export class ByteBuffer {
     _data: Int8Array;
@@ -62,6 +62,15 @@ export class ByteBuffer {
             throw new Error("Buffer overflow");
         }
         const value = readI32BE(this._u8, this.offset);
+        this.offset += 4;
+        return value;
+    }
+
+    readUnsignedInt(): number {
+        if (this.offset > this._data.length - 4) {
+            throw new Error("Buffer overflow");
+        }
+        const value = readU32BE(this._u8, this.offset);
         this.offset += 4;
         return value;
     }

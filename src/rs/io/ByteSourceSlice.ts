@@ -37,7 +37,7 @@ export class ByteSourceSlice implements ByteSource {
     }
 
     tryGetUint8ArrayView(): Uint8Array | null {
-        const view = this.source.tryGetUint8ArrayView?.();
+        const view = this.source.tryGetUint8ArrayView();
         if (!view) {
             return null;
         }
