@@ -35,7 +35,7 @@ export class CacheLoaders {
 
     constructor(cache: LoadedCache, compressionHandler: CompressionHandler) {
         this.cache = cache;
-        this.cacheSystem = createCacheSystemFromFiles(cache.type, cache.files, compressionHandler);
+        this.cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
         this.loaderFactory = getCacheLoaderFactory(cache.info, this.cacheSystem);
 
         this.textureLoader = this.loaderFactory.getTextureLoader();

@@ -1,9 +1,9 @@
-import { CACHE_FILE, CacheFilesTransfer, CacheFileBuffer, DAT_INDEX_COUNT } from "./CacheFiles";
+import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT } from "./CacheFiles";
 import { CachedFile, CacheLoader, ProgressListener } from "../CacheLoader";
 import { CacheType } from "../CacheType";
 import { SectorCluster } from "../store/SectorCluster";
 
-function decodeJsonStringArray(buffer: CacheFileBuffer): string[] {
+function decodeJsonStringArray(buffer: CacheBuffer): string[] {
     const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [];
@@ -17,7 +17,7 @@ export async function fetchCacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFilesTransfer> {
+): Promise<CacheBundleTransfer> {
     switch (cacheType) {
         case CacheType.Classic:
             return fetchLegacyCacheFiles(loader, baseUrl, name, shared, signal, progressListener);
@@ -37,9 +37,8 @@ export async function fetchLegacyCacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFilesTransfer> {
+): Promise<CacheBundleTransfer> {
     const fileNames = ["models", "title", "config", "media", "textures"];
-    const files = new Map<string, CacheFileBuffer>();
 
     const filePromises = fileNames.map((name) =>
         loader.fetchCachedFile(baseUrl, name, shared, false, cacheName, signal, progressListener),
@@ -47,8 +46,9 @@ export async function fetchLegacyCacheFiles(
 
     const cachedFiles = await Promise.all(filePromises);
 
+    const byName = new Map<string, CachedFile>();
     for (const file of cachedFiles) {
-        files.set(file.name, file.data);
+        byName.set(file.name, file);
     }
 
     let mapNames: string[] = [];
@@ -66,6 +66,8 @@ export async function fetchLegacyCacheFiles(
         // optional
     }
 
+    const maps: CacheBuffer[] = [];
+    const fetchedMapNames: string[] = [];
     for (const mapName of mapNames) {
         const mapFile = await loader.fetchCachedFile(
             baseUrl,
@@ -75,10 +77,32 @@ export async function fetchLegacyCacheFiles(
             cacheName,
             signal,
         );
-        files.set(mapFile.name, mapFile.data);
+        maps.push(mapFile.data);
+        fetchedMapNames.push(mapName);
     }
 
-    return new CacheFilesTransfer(files);
+    const config = byName.get("config")?.data;
+    const media = byName.get("media")?.data;
+    const textures = byName.get("textures")?.data;
+    const models = byName.get("models")?.data;
+    const title = byName.get("title")?.data;
+
+    if (!config || !media || !textures || !models) {
+        throw new Error("Missing required legacy cache files");
+    }
+
+    return {
+        kind: "legacy",
+        legacy: {
+            config,
+            media,
+            textures,
+            models,
+            title,
+            maps,
+            mapNames: fetchedMapNames,
+        },
+    };
 }
 
 export async function fetchDatCacheFiles(
@@ -88,8 +112,7 @@ export async function fetchDatCacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFilesTransfer> {
-    const files = new Map<string, CacheFileBuffer>();
+): Promise<CacheBundleTransfer> {
 
     const dataFilePromise = loader.fetchCachedFile(
         baseUrl,
@@ -114,11 +137,17 @@ export async function fetchDatCacheFiles(
     }
 
     const dataAndIndices = await Promise.all([dataFilePromise, ...indexFilePromises]);
-    for (const file of dataAndIndices) {
-        files.set(file.name, file.data);
+    const dataFile = dataAndIndices[0];
+    const idx: CacheBuffer[] = [];
+    for (let i = 0; i < DAT_INDEX_COUNT; i++) {
+        idx[i] = dataAndIndices[i + 1].data;
     }
 
-    return new CacheFilesTransfer(files);
+    return {
+        kind: "dat",
+        dat: dataFile.data,
+        idx,
+    };
 }
 
 export async function fetchDat2CacheFiles(
@@ -129,8 +158,7 @@ export async function fetchDat2CacheFiles(
     shared: boolean = false,
     signal?: AbortSignal,
     progressListener?: ProgressListener,
-): Promise<CacheFilesTransfer> {
-    const files = new Map<string, CacheFileBuffer>();
+): Promise<CacheBundleTransfer> {
 
     const dataFilePromise = loader.fetchCachedFile(
         baseUrl,
@@ -154,25 +182,39 @@ export async function fetchDat2CacheFiles(
         indicesToLoad = Array.from({ length: indexCount }, (_, i) => i);
     }
 
-    const indexPromises = indicesToLoad.map((indexId) =>
-        loader
-            .fetchCachedFile(
+    const idx: Array<CacheBuffer | null> = Array.from({ length: indexCount }, () => null);
+
+    const indexPromises = indicesToLoad.map(async (indexId) => {
+        try {
+            const file = await loader.fetchCachedFile(
                 baseUrl,
                 CACHE_FILE.INDEX_PREFIX + indexId,
                 shared,
                 false,
                 cacheName,
-            )
-            .catch(console.error),
-    );
+            );
+            return { indexId, data: file.data };
+        } catch (err) {
+            console.error(err);
+            return null;
+        }
+    });
 
-    const dataAndIndices = await Promise.all([dataFilePromise, ...indexPromises]);
-    for (const file of dataAndIndices) {
-        if (file) {
-            files.set(file.name, file.data);
+    const dataFile = await dataFilePromise;
+    const indexResults = await Promise.all(indexPromises);
+    for (const entry of indexResults) {
+        if (!entry) {
+            continue;
+        }
+        if (entry.indexId >= 0 && entry.indexId < idx.length) {
+            idx[entry.indexId] = entry.data;
         }
     }
-    files.set(metaFile.name, metaFile.data);
 
-    return new CacheFilesTransfer(files);
+    return {
+        kind: "dat2",
+        dat2: dataFile.data,
+        idx255: metaFile.data,
+        idx,
+    };
 }

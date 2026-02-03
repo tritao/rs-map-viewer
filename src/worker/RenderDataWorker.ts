@@ -85,7 +85,7 @@ async function initWorker(
 ): Promise<WorkerState> {
     await hasherPromise;
 
-    const cacheSystem = createCacheSystemFromFiles(cache.type, cache.files, compressionHandler);
+    const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
 
     const loaderFactory = getCacheLoaderFactory(cache.info, cacheSystem);
     const underlayTypeLoader = loaderFactory.getUnderlayTypeLoader();

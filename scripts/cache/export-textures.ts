@@ -37,7 +37,7 @@ const cacheInfo = cacheList.latest;
 
 const loadedCache = loadCache(cacheInfo);
 
-const cacheSystem = createCacheSystemFromFiles(loadedCache.type, loadedCache.files, new JSCompressionHandler());
+const cacheSystem = createCacheSystemFromFiles(loadedCache.type, loadedCache.bundle, new JSCompressionHandler());
 const cacheLoaderFactory = getCacheLoaderFactory(cacheInfo, cacheSystem);
 
 const textureLoader = cacheLoaderFactory.getTextureLoader();

@@ -5,21 +5,25 @@ import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { LegacyIndexType } from "../IndexType";
-import { CacheFileBuffer, CacheFilesTransfer } from "./CacheFiles";
+import { CacheBuffer, CacheBundleTransfer, LegacyCacheBundleTransfer } from "./CacheFiles";
 import { createCacheStoreFromFiles } from "./CacheStoreFromFiles";
 
 export function createCacheSystemFromFiles(
     cacheType: CacheType,
-    cacheFiles: CacheFilesTransfer,
+    cacheBundle: CacheBundleTransfer,
     compressionHandler: CompressionHandler,
     indicesToLoad: number[] = [],
 ): CacheSystem {
     switch (cacheType) {
+        case CacheType.Classic:
         case CacheType.Legacy:
-            return createLegacyCacheSystem(cacheFiles, compressionHandler);
+            if (cacheBundle.kind !== "legacy") {
+                throw new Error(`Expected legacy bundle, got ${cacheBundle.kind}`);
+            }
+            return createLegacyCacheSystem(cacheBundle, compressionHandler);
         case CacheType.Dat:
         case CacheType.Dat2: {
-            const { store, indexIds } = createCacheStoreFromFiles(cacheFiles, indicesToLoad);
+            const { store, indexIds } = createCacheStoreFromFiles(cacheBundle, indicesToLoad);
             return CacheSystem.fromStore(cacheType, store, indexIds, compressionHandler);
         }
         default:
@@ -27,58 +31,44 @@ export function createCacheSystemFromFiles(
     }
 }
 
-function readAll(buffer: CacheFileBuffer): Int8Array {
+function readAll(buffer: CacheBuffer): Int8Array {
     return new Int8Array(buffer);
 }
 
-function createLegacyCacheSystem(cacheFiles: CacheFilesTransfer, compressionHandler: CompressionHandler): CacheSystem {
-    const configDataRaw = cacheFiles.files.get("config");
-    if (!configDataRaw) {
-        throw new Error("Missing config file");
-    }
-    const configArchive = Archive.decodeOld(0, readAll(configDataRaw), true, compressionHandler);
+function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compressionHandler: CompressionHandler): CacheSystem {
+    const { config, media, textures, models, maps, mapNames } = cacheBundle.legacy;
+
+    const configArchive = Archive.decodeOld(0, readAll(config), true, compressionHandler);
     const configIndex = new LegacyCacheIndex(
         LegacyIndexType.configs,
         [configArchive],
         compressionHandler,
     );
 
-    const mediaDataRaw = cacheFiles.files.get("media");
-    if (!mediaDataRaw) {
-        throw new Error("Missing media file");
-    }
-    const mediaArchive = Archive.decodeOld(0, readAll(mediaDataRaw), true, compressionHandler);
+    const mediaArchive = Archive.decodeOld(0, readAll(media), true, compressionHandler);
     const mediaIndex = new LegacyCacheIndex(LegacyIndexType.media, [mediaArchive], compressionHandler);
 
-    const textureDataRaw = cacheFiles.files.get("textures");
-    if (!textureDataRaw) {
-        throw new Error("Missing textures file");
-    }
-    const textureArchive = Archive.decodeOld(0, readAll(textureDataRaw), true, compressionHandler);
+    const textureArchive = Archive.decodeOld(0, readAll(textures), true, compressionHandler);
     const textureIndex = new LegacyCacheIndex(
         LegacyIndexType.textures,
         [textureArchive],
         compressionHandler,
     );
 
-    const modelDataRaw = cacheFiles.files.get("models");
-    if (!modelDataRaw) {
-        throw new Error("Missing models file");
-    }
-    const modelArchive = Archive.decodeOld(0, readAll(modelDataRaw), true, compressionHandler);
+    const modelArchive = Archive.decodeOld(0, readAll(models), true, compressionHandler);
     const modelIndex = new LegacyCacheIndex(LegacyIndexType.models, [modelArchive], compressionHandler);
 
-    const mapsPrefix = "maps/";
     const mapArchives: Archive[] = [];
     const mapArchiveNameHashes = new Map<number, number>();
-    const entries = Array.from(cacheFiles.files.entries());
-    for (let i = 0; i < entries.length; i++) {
-        const name = entries[i][0];
-        if (name.startsWith(mapsPrefix)) {
-            const data = entries[i][1];
-            const archiveName = name.substring(mapsPrefix.length);
+
+    if (maps.length > 0) {
+        if (!mapNames || mapNames.length !== maps.length) {
+            throw new Error("Legacy maps bundle is missing mapNames");
+        }
+        for (let i = 0; i < maps.length; i++) {
+            const archiveName = mapNames[i];
             const archiveId = mapArchives.length;
-            mapArchives.push(Archive.create(archiveId, readAll(data)));
+            mapArchives.push(Archive.create(archiveId, readAll(maps[i])));
             mapArchiveNameHashes.set(StringUtil.hashOld(archiveName), archiveId);
         }
     }
