@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-import { CacheInfoJson, CacheList, LoadedCache, XteaMap } from "../../src/util/Caches";
 import {
     CACHE_FILE,
     CacheBundleTransfer,
@@ -13,6 +12,31 @@ import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cac
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 
 import { IDX_ENTRY_SIZE } from "../../src/rs/cache/store/DatLayout";
+
+export class CacheInfoJson {
+    constructor(
+        public name: string,
+        public game: string,
+        public environment: string,
+        public revision: number,
+        public timestamp: string,
+        public size: number,
+    ) { }
+}
+
+export type CacheList = {
+    caches: CacheInfo[];
+    latest: CacheInfo;
+};
+
+export type XteaMap = Map<number, number[]>;
+
+export type LoadedCache = {
+    info: CacheInfo;
+    type: ReturnType<typeof detectCacheType>;
+    bundle: CacheBundleTransfer;
+    xteas: XteaMap;
+};
 
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");
