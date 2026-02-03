@@ -188,28 +188,45 @@ export class ReferenceTable {
         private readonly _archiveLastFileIds: Int32Array,
         private readonly _archiveFileIds: Int32Array[],
         private readonly _archiveFileNameHashes: Int32Array[],
-        private readonly _archiveNameHashIdMap: Map<number, number> = new Map(),
+        private _archiveNameHashIdMap: Map<number, number> | null = null,
     ) {
-        if (named) {
-            for (let i = 0; i < this.archiveIds.length; i++) {
-                this._archiveNameHashIdMap.set(this._archiveNameHashes[i], this.archiveIds[i]);
-            }
-        }
     }
 
     getArchiveId(name: string): number | null {
+        if (!this.named) {
+            return null;
+        }
+        if (!this._archiveNameHashIdMap) {
+            const map = new Map<number, number>();
+            for (let i = 0; i < this.archiveIds.length; i++) {
+                map.set(this._archiveNameHashes[i], this.archiveIds[i]);
+            }
+            this._archiveNameHashIdMap = map;
+        }
+
         const value = this._archiveNameHashIdMap.get(StringUtil.hashDjb2(name));
-        return value ? value : null;
+        return value ?? null;
     }
 
     archiveExists(id: number): boolean {
         return this._archiveIdIndexMap.has(id);
     }
 
+    private _archiveReferenceCache: Array<ArchiveReference | undefined> | null = null;
+
     getArchiveReference(id: number): ArchiveReference | null {
         const i = this._archiveIdIndexMap.get(id);
         if (i === undefined) {
             return null;
+        }
+
+        if (!this._archiveReferenceCache) {
+            this._archiveReferenceCache = new Array<ArchiveReference | undefined>(this.archiveIds.length);
+        }
+
+        const cached = this._archiveReferenceCache[i];
+        if (cached) {
+            return cached;
         }
 
         const nameHash = this._archiveNameHashes[i];
@@ -225,7 +242,7 @@ export class ReferenceTable {
         for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
             fileIdIndexMap.set(fileIds[fileIdx], fileIdx);
         }
-        return new ArchiveReference(
+        const ref = new ArchiveReference(
             id,
             nameHash,
             whirlpool,
@@ -237,15 +254,19 @@ export class ReferenceTable {
             fileIds,
             fileNameHashes,
         );
+        this._archiveReferenceCache[i] = ref;
+        return ref;
     }
 
     get archiveReferences(): ArchiveReference[] {
         const refs = new Array<ArchiveReference>(this.archiveIds.length);
         for (let i = 0; i < this.archiveIds.length; i++) {
-            const ref = this.getArchiveReference(this.archiveIds[i]);
-            if (ref) {
-                refs[i] = ref;
+            const archiveId = this.archiveIds[i];
+            const ref = this.getArchiveReference(archiveId);
+            if (!ref) {
+                throw new Error("Archive reference not found for: " + archiveId);
             }
+            refs[i] = ref;
         }
         return refs;
     }
