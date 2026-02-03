@@ -237,11 +237,6 @@ export class ReferenceTable {
         const lastFileId = this._archiveLastFileIds[i];
         const fileIds = this._archiveFileIds[i];
         const fileNameHashes = this._archiveFileNameHashes[i];
-
-        const fileIdIndexMap: Map<number, number> = new Map();
-        for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-            fileIdIndexMap.set(fileIds[fileIdx], fileIdx);
-        }
         const ref = new ArchiveReference(
             id,
             nameHash,
@@ -250,7 +245,6 @@ export class ReferenceTable {
             revision,
             fileCount,
             lastFileId,
-            fileIdIndexMap,
             fileIds,
             fileNameHashes,
         );
