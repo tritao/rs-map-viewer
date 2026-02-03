@@ -6,6 +6,63 @@ import { Sector } from "./Sector";
 import { SectorCluster } from "./SectorCluster";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
 
+class SectorChainArchiveSource implements ByteSource {
+    constructor(
+        private readonly dataFile: ByteSource,
+        private readonly sectorIds: number[],
+        readonly size: number,
+        private readonly headerSize: number,
+        private readonly dataSize: number,
+    ) {}
+
+    slice(start: number, size: number): ByteSource {
+        return new ByteSourceSlice(this, start, size);
+    }
+
+    tryGetUint8ArrayView(): Uint8Array | null {
+        return null;
+    }
+
+    readInto(
+        offset: number,
+        target: Uint8Array,
+        targetOffset: number = 0,
+        length: number = target.length - targetOffset,
+    ): void {
+        if (length < 0) {
+            throw new Error("Invalid length");
+        }
+        if (offset < 0 || offset + length > this.size) {
+            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`);
+        }
+        if (length === 0) {
+            return;
+        }
+
+        let remaining = length;
+        let inOff = offset;
+        let outOff = targetOffset;
+
+        while (remaining > 0) {
+            const sectorIndex = (inOff / this.dataSize) | 0;
+            const sectorOffset = inOff - sectorIndex * this.dataSize;
+            const take = Math.min(this.dataSize - sectorOffset, remaining);
+
+            const sectorId = this.sectorIds[sectorIndex];
+            if (sectorId === undefined) {
+                throw new Error(`Invalid sector index: ${sectorIndex}`);
+            }
+
+            const fileOffset = sectorId * Sector.SIZE + this.headerSize + sectorOffset;
+            this.dataFile.readInto(fileOffset, target, outOff, take);
+
+            remaining -= take;
+            inOff += take;
+            outOff += take;
+        }
+    }
+}
+
 export class SectorChainStore implements CacheStore {
     constructor(
         readonly dataFile: ByteSource,
@@ -51,50 +108,13 @@ export class SectorChainStore implements CacheStore {
             extended,
         );
 
-        const reader: ByteSource = {
+        return new SectorChainArchiveSource(
+            this.dataFile,
+            sectorIds,
             size,
-            slice: (start: number, sliceSize: number): ByteSource => new ByteSourceSlice(reader, start, sliceSize),
-            tryGetUint8ArrayView: (): Uint8Array | null => null,
-            readInto: (
-                offset: number,
-                target: Uint8Array,
-                targetOffset = 0,
-                length = target.length - targetOffset,
-            ): void => {
-                if (length < 0) {
-                    throw new Error("Invalid length");
-                }
-                if (offset < 0 || offset + length > size) {
-                    throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${size}`);
-                }
-                if (length === 0) {
-                    return;
-                }
-
-                let remaining = length;
-                let inOff = offset;
-                let outOff = targetOffset;
-
-                while (remaining > 0) {
-                    const sectorIndex = (inOff / dataSize) | 0;
-                    const sectorOffset = inOff - sectorIndex * dataSize;
-                    const take = Math.min(dataSize - sectorOffset, remaining);
-
-                    const sectorId = sectorIds[sectorIndex];
-                    if (sectorId === undefined) {
-                        throw new Error(`Invalid sector index: ${sectorIndex}`);
-                    }
-
-                    const fileOffset = sectorId * Sector.SIZE + headerSize + sectorOffset;
-                    this.dataFile.readInto(fileOffset, target, outOff, take);
-
-                    remaining -= take;
-                    inOff += take;
-                    outOff += take;
-                }
-            },
-        };
-        return reader;
+            headerSize,
+            dataSize,
+        );
     }
 
     private getIndexFile(indexId: number): ByteSource | null {
