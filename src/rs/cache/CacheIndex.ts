@@ -128,14 +128,14 @@ export class CacheIndexDat extends CacheStoreIndexSync {
 
 function decodeTable(data: Int8Array, compressionHandler: CompressionHandler): ReferenceTable {
     if (data.length) {
-        const source = new Uint8ArrayByteSource(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-        const container = Container.decodeFromSource(source, null, compressionHandler);
-        const payloadSource = new Uint8ArrayByteSource(
-            new Uint8Array(container.data.buffer, container.data.byteOffset, container.data.byteLength),
-        );
-        return ReferenceTable.decodeFromReader(new ByteSourceReader(payloadSource));
+        const container = Container.decodeFromSource(byteSourceFromInt8Array(data), null, compressionHandler);
+        return ReferenceTable.decodeFromReader(new ByteSourceReader(byteSourceFromInt8Array(container.data)));
     }
     return ReferenceTable.INVALID_TABLE;
+}
+
+function byteSourceFromInt8Array(data: Int8Array): ByteSource {
+    return new Uint8ArrayByteSource(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
 }
 
 function decodeArchiveDataFromSource(
@@ -149,14 +149,13 @@ function decodeArchiveDataFromSource(
         throw new Error("Archive reference not found for: " + id);
     }
     const container = Container.decodeFromSource(source, key, index.compressionHandler);
-    const payload = new Uint8Array(container.data.buffer, container.data.byteOffset, container.data.byteLength);
     return Archive.decodeFromSource(
         id,
         archiveRef.lastFileId,
         archiveRef.fileCount,
         archiveRef.fileIds,
         archiveRef.fileNameHashes,
-        new Uint8ArrayByteSource(payload),
+        byteSourceFromInt8Array(container.data),
     );
 }
 
