@@ -10,6 +10,7 @@ node_modules
 
 # production
 /build
+dist/
 
 # misc
 .DS_Store
@@ -24,3 +25,11 @@ yarn-error.log*
 
 caches/
 .aider*
+
+# generated
+.tmp/
+cpp-core/build/
+cpp-core/build-native/
+
+# vendored / nested repos (local dev)
+dockview/

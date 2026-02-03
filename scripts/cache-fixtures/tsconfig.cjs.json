@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "/tmp/rs-map-viewer-fixtures-gen",
+    "rootDir": "../..",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "types": ["node", "@webgpu/types"],
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": ["./generate-fixtures.ts", "../../types/index.d.ts"]
+}
