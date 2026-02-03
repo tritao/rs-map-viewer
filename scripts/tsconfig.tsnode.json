@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["es2020"],
+    "skipLibCheck": true
+  },
+  "ts-node": {
+    "esm": true,
+    "files": true,
+    "compilerOptions": {
+      "module": "ESNext",
+      "moduleResolution": "node"
+    }
+  },
+  "include": ["cache/**/*.ts", "../types/**/*.d.ts"]
+}

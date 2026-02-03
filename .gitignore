@@ -28,6 +28,7 @@ caches/
 
 # generated
 .tmp/
+.tools/
 cpp-core/build/
 cpp-core/build-native/
 
