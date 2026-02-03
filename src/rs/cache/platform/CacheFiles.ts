@@ -1,5 +1,9 @@
 export type CacheBuffer = ArrayBuffer | SharedArrayBuffer;
 
+export function toCacheBytes(buffer: CacheBuffer): Uint8Array {
+    return new Uint8Array(buffer);
+}
+
 export const CACHE_FILE = {
     DAT: "main_file_cache.dat",
     DAT2: "main_file_cache.dat2",

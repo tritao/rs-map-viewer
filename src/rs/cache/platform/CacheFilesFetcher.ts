@@ -1,10 +1,10 @@
-import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT } from "./CacheFiles";
+import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
 import { CachedFile, CacheLoader, ProgressListener } from "../CacheLoader";
 import { CacheType } from "../CacheType";
 import { SectorCluster } from "../store/SectorCluster";
 
 function decodeJsonStringArray(buffer: CacheBuffer): string[] {
-    const text = new TextDecoder("utf-8").decode(new Uint8Array(buffer));
+    const text = new TextDecoder("utf-8").decode(toCacheBytes(buffer));
     const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [];
 }
