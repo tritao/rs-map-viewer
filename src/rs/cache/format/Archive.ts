@@ -104,7 +104,7 @@ export class Archive {
         );
     }
 
-    static decode(
+    private static decodeFromBuffer(
         id: number,
         lastFileId: number,
         fileCount: number,
@@ -174,7 +174,7 @@ export class Archive {
     ): Archive {
         if (source instanceof Uint8ArrayByteSource) {
             const data = source.view;
-            return Archive.decode(
+            return Archive.decodeFromBuffer(
                 id,
                 lastFileId,
                 fileCount,

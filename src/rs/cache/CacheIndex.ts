@@ -128,7 +128,8 @@ export class CacheIndexDat extends CacheStoreIndexSync {
 
 function decodeTable(data: Int8Array, compressionHandler: CompressionHandler): ReferenceTable {
     if (data.length) {
-        const container = Container.decode(new ByteBuffer(data), null, compressionHandler);
+        const source = new Uint8ArrayByteSource(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        const container = Container.decodeFromSource(source, null, compressionHandler);
         return ReferenceTable.decode(new ByteBuffer(container.data));
     }
     return ReferenceTable.INVALID_TABLE;
