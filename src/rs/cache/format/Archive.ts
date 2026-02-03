@@ -216,7 +216,7 @@ export class Archive {
         );
     }
 
-    private readonly _fileNameHashIdMap: Map<number, number> = new Map();
+    private _fileNameHashIdMap: Map<number, number> | null = null;
 
     private constructor(
         private readonly _hashFunction: HashFunction,
@@ -228,12 +228,23 @@ export class Archive {
         private readonly _filesById: Array<ArchiveFile | undefined>,
         private readonly _files: ArchiveFile[],
     ) {
-        if (fileNameHashes.length !== 0) {
-            const count = Math.min(this.fileIds.length, this.fileNameHashes.length);
-            for (let i = 0; i < count; i++) {
-                this._fileNameHashIdMap.set(this.fileNameHashes[i], this.fileIds[i]);
-            }
+    }
+
+    private _getFileNameHashIdMap(): Map<number, number> | null {
+        if (this.fileNameHashes.length === 0) {
+            return null;
         }
+        if (this._fileNameHashIdMap) {
+            return this._fileNameHashIdMap;
+        }
+
+        const map = new Map<number, number>();
+        const count = Math.min(this.fileIds.length, this.fileNameHashes.length);
+        for (let i = 0; i < count; i++) {
+            map.set(this.fileNameHashes[i], this.fileIds[i]);
+        }
+        this._fileNameHashIdMap = map;
+        return map;
     }
 
     getFile(id: number): ArchiveFile | null {
@@ -243,7 +254,11 @@ export class Archive {
 
     getFileId(name: string): number {
         const hash = this._hashFunction(name);
-        const value = this._fileNameHashIdMap.get(hash);
+        const map = this._getFileNameHashIdMap();
+        if (!map) {
+            return -1;
+        }
+        const value = map.get(hash);
         return value ?? -1;
     }
 
