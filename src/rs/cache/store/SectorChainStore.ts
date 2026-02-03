@@ -1,4 +1,5 @@
 import { ByteSource } from "../../io/ByteSource";
+import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { Sector } from "./Sector";
@@ -50,9 +51,16 @@ export class SectorChainStore implements CacheStore {
             extended,
         );
 
-        return {
+        const reader: ByteSource = {
             size,
-            readInto: (offset: number, target: Uint8Array, targetOffset = 0, length = target.length - targetOffset): void => {
+            slice: (start: number, sliceSize: number): ByteSource => new ByteSourceSlice(reader, start, sliceSize),
+            tryGetUint8ArrayView: (): Uint8Array | null => null,
+            readInto: (
+                offset: number,
+                target: Uint8Array,
+                targetOffset = 0,
+                length = target.length - targetOffset,
+            ): void => {
                 if (length < 0) {
                     throw new Error("Invalid length");
                 }
@@ -86,6 +94,7 @@ export class SectorChainStore implements CacheStore {
                 }
             },
         };
+        return reader;
     }
 
     private getIndexFile(indexId: number): ByteSource | null {

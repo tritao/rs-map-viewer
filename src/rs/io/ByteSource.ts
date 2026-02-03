@@ -1,6 +1,8 @@
 export interface ByteSource {
     readonly size: number;
 
+    slice(start: number, size: number): ByteSource;
+
     readInto(
         offset: number,
         target: Uint8Array,

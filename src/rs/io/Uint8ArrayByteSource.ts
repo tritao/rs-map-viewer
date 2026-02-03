@@ -1,10 +1,15 @@
 import { ByteSource } from "./ByteSource";
+import { ByteSourceSlice } from "./ByteSourceSlice";
 
 export class Uint8ArrayByteSource implements ByteSource {
     constructor(readonly view: Uint8Array) {}
 
     get size(): number {
         return this.view.byteLength;
+    }
+
+    slice(start: number, size: number): ByteSource {
+        return new ByteSourceSlice(this, start, size);
     }
 
     tryGetUint8ArrayView(): Uint8Array {

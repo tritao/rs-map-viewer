@@ -17,6 +17,10 @@ export class ByteSourceSlice implements ByteSource {
         }
     }
 
+    slice(start: number, size: number): ByteSource {
+        return new ByteSourceSlice(this.source, this.start + start, size);
+    }
+
     readInto(
         offset: number,
         target: Uint8Array,
@@ -31,5 +35,15 @@ export class ByteSourceSlice implements ByteSource {
         }
         this.source.readInto(this.start + offset, target, targetOffset, length);
     }
-}
 
+    tryGetUint8ArrayView(): Uint8Array | null {
+        const view = this.source.tryGetUint8ArrayView?.();
+        if (!view) {
+            return null;
+        }
+        if (view.byteLength !== this.source.size) {
+            return null;
+        }
+        return view.subarray(this.start, this.start + this.size);
+    }
+}
