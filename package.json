@@ -49,7 +49,7 @@
     "preview": "vite preview",
     "lint": "prettier --write \"./**/*.{js,ts,jsx,tsx,css,md}\"",
     "prepare": "husky install",
-    "download-caches": "node scripts/download-caches.js",
+    "download-caches": "node scripts/download-caches.cjs",
     "rs:layer-check": "node scripts/rs-layer-check.mjs",
     "rs:portability-check": "node scripts/rs-portability-check.mjs",
     "cache:parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/cache-parity.ts",
