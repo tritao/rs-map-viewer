@@ -28,8 +28,8 @@ import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
 import { CacheType } from "../cache/CacheType";
-import { ConfigTypeDAT } from "../cache/ConfigType";
-import { DatIndexType } from "../cache/IndexType";
+import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
+import { DatIndexId } from "../cache/IndexId";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
 export function loadMapSprites(mediaArchive: Archive, name: string): IndexedSprite[] {
@@ -68,9 +68,9 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
         readonly cacheType: CacheType,
         readonly cacheSystem: CacheSystem,
     ) {
-        this.configIndex = cacheSystem.getIndex(DatIndexType.configs);
-        this.configArchive = this.configIndex.getArchive(ConfigTypeDAT.configs);
-        this.mediaArchive = this.configIndex.getArchive(ConfigTypeDAT.media);
+        this.configIndex = cacheSystem.getIndex(DatIndexId.configs);
+        this.configArchive = this.configIndex.getArchive(DatConfigArchiveId.configs);
+        this.mediaArchive = this.configIndex.getArchive(DatConfigArchiveId.media);
     }
 
     getFloTypeLoader(): OverlayFloorTypeLoader {
@@ -120,7 +120,7 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getTextureLoader(): TextureLoader {
-        const textureArchive = this.configIndex.getArchive(ConfigTypeDAT.textures);
+        const textureArchive = this.configIndex.getArchive(DatConfigArchiveId.textures);
         const animatedTextureIds = [DatTextureLoader.WATER_DROPLETS_TEXTURE_ID, 24];
         if (this.cacheInfo.revision > 289) {
             animatedTextureIds.push(34, 40);
@@ -129,12 +129,12 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getModelLoader(): ModelLoader {
-        const modelIndex = this.cacheSystem.getIndex(DatIndexType.models);
+        const modelIndex = this.cacheSystem.getIndex(DatIndexId.models);
         return new IndexModelLoader(modelIndex);
     }
 
     getSeqFrameLoader(): SeqFrameLoader {
-        const seqFrameIndex = this.cacheSystem.getIndex(DatIndexType.animations);
+        const seqFrameIndex = this.cacheSystem.getIndex(DatIndexId.animations);
         return DatSeqFrameLoader.load(seqFrameIndex);
     }
 
@@ -143,8 +143,8 @@ export class DatCacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getMapFileLoader(): MapFileLoader {
-        const mapIndex = this.cacheSystem.getIndex(DatIndexType.maps);
-        const versionListArchive = this.configIndex.getArchive(ConfigTypeDAT.versionList);
+        const mapIndex = this.cacheSystem.getIndex(DatIndexId.maps);
+        const versionListArchive = this.configIndex.getArchive(DatConfigArchiveId.versionList);
         const mapFileIndex = DatMapFileIndex.load(versionListArchive);
         return new MapFileLoader(mapIndex, mapFileIndex);
     }

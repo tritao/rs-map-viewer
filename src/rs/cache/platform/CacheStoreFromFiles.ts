@@ -8,7 +8,7 @@ import { Archive } from "../format/Archive";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
-import { LegacyIndexType } from "../IndexType";
+import { LegacyIndexId } from "../IndexId";
 import { CacheBundleTransfer, LegacyCacheBundleTransfer } from "./CacheFiles";
 import { CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
 
@@ -139,23 +139,23 @@ function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compres
 
     const configArchive = Archive.decodeOld(0, readAll(config), true, compressionHandler);
     const configIndex = new LegacyCacheIndex(
-        LegacyIndexType.configs,
+        LegacyIndexId.configs,
         [configArchive],
         compressionHandler,
     );
 
     const mediaArchive = Archive.decodeOld(0, readAll(media), true, compressionHandler);
-    const mediaIndex = new LegacyCacheIndex(LegacyIndexType.media, [mediaArchive], compressionHandler);
+    const mediaIndex = new LegacyCacheIndex(LegacyIndexId.media, [mediaArchive], compressionHandler);
 
     const textureArchive = Archive.decodeOld(0, readAll(textures), true, compressionHandler);
     const textureIndex = new LegacyCacheIndex(
-        LegacyIndexType.textures,
+        LegacyIndexId.textures,
         [textureArchive],
         compressionHandler,
     );
 
     const modelArchive = Archive.decodeOld(0, readAll(models), true, compressionHandler);
-    const modelIndex = new LegacyCacheIndex(LegacyIndexType.models, [modelArchive], compressionHandler);
+    const modelIndex = new LegacyCacheIndex(LegacyIndexId.models, [modelArchive], compressionHandler);
 
     const mapArchives: Archive[] = [];
     const mapArchiveNameHashes = new Map<number, number>();
@@ -172,7 +172,7 @@ function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compres
         }
     }
     const mapIndex = new LegacyCacheIndex(
-        LegacyIndexType.maps,
+        LegacyIndexId.maps,
         mapArchives,
         compressionHandler,
         mapArchiveNameHashes,

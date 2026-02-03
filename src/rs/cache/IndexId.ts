@@ -1,4 +1,4 @@
-export enum LegacyIndexType {
+export enum LegacyIndexId {
     configs = 0,
     media = 1,
     textures = 2,
@@ -6,7 +6,7 @@ export enum LegacyIndexType {
     maps = 4,
 }
 
-export enum DatIndexType {
+export enum DatIndexId {
     configs = 0,
     models = 1,
     animations = 2,
@@ -14,7 +14,7 @@ export enum DatIndexType {
     maps = 4,
 }
 
-export enum Dat2IndexType {
+export enum Dat2IndexId {
     animations = 0,
     skeletons = 1,
     configs = 2,
@@ -33,7 +33,7 @@ export enum Dat2IndexType {
     musicPatches = 15,
 }
 
-export enum OsrsIndexType {
+export enum OsrsIndexId {
     worldMapOld = 16,
     graphicDefaults = 17,
     worldMapGeography = 18,
@@ -42,7 +42,7 @@ export enum OsrsIndexType {
     dbTableIndex = 21,
 }
 
-export enum Rs2IndexType {
+export enum Rs2IndexId {
     locs = 16,
     enums = 17,
     npcs = 18,

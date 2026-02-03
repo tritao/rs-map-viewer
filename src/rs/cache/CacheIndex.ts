@@ -3,7 +3,7 @@ import { CompressionHandler } from "../compression/CompressionHandler";
 import { Archive } from "./format/Archive";
 import { ArchiveFile } from "./format/ArchiveFile";
 import { Container } from "./format/Container";
-import { DatIndexType } from "./IndexType";
+import { DatIndexId } from "./IndexId";
 import { ArchiveReference } from "./reference/ArchiveReference";
 import { ReferenceTable } from "./reference/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
@@ -170,7 +170,7 @@ export class DatCacheIndex extends CacheIndex {
         return Archive.decodeOld(
             archiveId,
             data,
-            this.id === DatIndexType.configs,
+            this.id === DatIndexId.configs,
             this.compressionHandler,
         );
     }

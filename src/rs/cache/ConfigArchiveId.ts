@@ -1,4 +1,4 @@
-export enum ConfigTypeDAT {
+export enum DatConfigArchiveId {
     title = 1,
     configs = 2,
     interfaces = 3,
@@ -7,7 +7,7 @@ export enum ConfigTypeDAT {
     textures = 6,
 }
 
-export enum ConfigTypeDAT2 {
+export enum Dat2ConfigArchiveId {
     underlays = 1,
     identkits = 3,
     overlays = 4,
@@ -20,13 +20,15 @@ export enum ConfigTypeDAT2 {
     seqs = 12,
     spotAnims = 13,
     varbits = 14,
+    // TODO(revision-dependent): 16 is "varps" in some revisions; this codebase also uses 16 for "varPlayer".
     varps = 16,
     varClient = 19,
     varClientString = 15,
+    // TODO(revision-dependent): 16 collides with `varps` here; confirm naming for the target revision(s).
     varPlayer = 16,
 }
 
-export enum ConfigTypeOSRS {
+export enum OsrsConfigArchiveId {
     hitSplat = 32,
     healthBar = 33,
     struct = 34,
@@ -35,7 +37,7 @@ export enum ConfigTypeOSRS {
     dbTable = 39,
 }
 
-export enum ConfigTypeRS2 {
+export enum Rs2ConfigArchiveId {
     bas = 32,
     mapScenes = 34,
     quests = 35,

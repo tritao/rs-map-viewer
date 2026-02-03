@@ -22,7 +22,7 @@ import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
-import { LegacyIndexType } from "../cache/IndexType";
+import { LegacyIndexId } from "../cache/IndexId";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 import { loadMapFunctions, loadMapScenes } from "./DatCacheLoaderFactory";
 
@@ -47,19 +47,19 @@ export class LegacyCacheLoaderFactory implements CacheLoaderFactory {
         readonly cacheInfo: CacheInfo,
         readonly cacheSystem: CacheSystem,
     ) {
-        this.configIndex = cacheSystem.getIndex(LegacyIndexType.configs);
+        this.configIndex = cacheSystem.getIndex(LegacyIndexId.configs);
         this.configArchive = this.configIndex.getArchive(0);
 
-        this.mediaIndex = cacheSystem.getIndex(LegacyIndexType.media);
+        this.mediaIndex = cacheSystem.getIndex(LegacyIndexId.media);
         this.mediaArchive = this.mediaIndex.getArchive(0);
 
-        this.textureIndex = cacheSystem.getIndex(LegacyIndexType.textures);
+        this.textureIndex = cacheSystem.getIndex(LegacyIndexId.textures);
         this.textureArchive = this.textureIndex.getArchive(0);
 
-        this.modelIndex = cacheSystem.getIndex(LegacyIndexType.models);
+        this.modelIndex = cacheSystem.getIndex(LegacyIndexId.models);
         this.modelArchive = this.modelIndex.getArchive(0);
 
-        this.mapIndex = cacheSystem.getIndex(LegacyIndexType.maps);
+        this.mapIndex = cacheSystem.getIndex(LegacyIndexId.maps);
     }
 
     getFloTypeLoader(): OverlayFloorTypeLoader {

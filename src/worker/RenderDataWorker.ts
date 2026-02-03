@@ -5,7 +5,7 @@ import { Transfer, expose } from "threads/worker";
 
 import { CacheSystem } from "../rs/cache/CacheSystem";
 import { createCacheSystemFromFiles } from "../rs/cache/platform/CacheStoreFromFiles";
-import { Dat2IndexType, DatIndexType } from "../rs/cache/IndexType";
+import { Dat2IndexId, DatIndexId } from "../rs/cache/IndexId";
 import {
     CacheLoaderFactory,
     getCacheLoaderFactory,
@@ -37,7 +37,7 @@ import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
-import { ConfigTypeDAT } from "../rs/cache/ConfigType";
+import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -431,7 +431,7 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
 }
 
 async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
-    const spriteIndex = cacheSystem.getIndex(Dat2IndexType.sprites);
+    const spriteIndex = cacheSystem.getIndex(Dat2IndexId.sprites);
 
     const promises: Promise<any>[] = [];
 
@@ -447,8 +447,8 @@ async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise
 }
 
 async function exportDatSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
-    const configIndex = cacheSystem.getIndex(DatIndexType.configs);
-    const mediaArchive = configIndex.getArchive(ConfigTypeDAT.media);
+    const configIndex = cacheSystem.getIndex(DatIndexId.configs);
+    const mediaArchive = configIndex.getArchive(DatConfigArchiveId.media);
 
     const indexDatId = mediaArchive.getFileId("index.dat");
 

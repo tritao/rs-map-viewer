@@ -12,7 +12,7 @@ import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { Container } from "../../src/rs/cache/format/Container";
 import { Archive } from "../../src/rs/cache/format/Archive";
-import { DatIndexType, LegacyIndexType } from "../../src/rs/cache/IndexType";
+import { DatIndexId, LegacyIndexId } from "../../src/rs/cache/IndexId";
 
 type Args = {
     cacheName?: string;
@@ -80,20 +80,20 @@ function legacyRawArchiveBytes(
     const legacy = bundle?.legacy;
     if (!legacy) return null;
 
-    if (archiveId !== 0 && indexId !== LegacyIndexType.maps) {
+    if (archiveId !== 0 && indexId !== LegacyIndexId.maps) {
         return null;
     }
 
     switch (indexId) {
-        case LegacyIndexType.configs:
+        case LegacyIndexId.configs:
             return bytesOf(legacy.config);
-        case LegacyIndexType.media:
+        case LegacyIndexId.media:
             return bytesOf(legacy.media);
-        case LegacyIndexType.textures:
+        case LegacyIndexId.textures:
             return bytesOf(legacy.textures);
-        case LegacyIndexType.models:
+        case LegacyIndexId.models:
             return bytesOf(legacy.models);
-        case LegacyIndexType.maps: {
+        case LegacyIndexId.maps: {
             const maps: ArrayBuffer[] = legacy.maps ?? [];
             if (archiveId < 0 || archiveId >= maps.length) return null;
             return bytesOf(maps[archiveId]);
@@ -194,7 +194,7 @@ async function main(): Promise<void> {
                         .sort((a, b) => a.fileId - b.fileId);
                 }
             } else if (cacheType === CacheType.Dat) {
-                const multipleFiles = indexId === DatIndexType.configs;
+                const multipleFiles = indexId === DatIndexId.configs;
                 let archive: Archive;
                 try {
                     archive = Archive.decodeOld(archiveId, raw, multipleFiles, compressionHandler);
