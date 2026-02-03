@@ -6,7 +6,7 @@ import { CacheType } from "../CacheType";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { LegacyIndexType } from "../IndexType";
 import { CacheBuffer, CacheBundleTransfer, LegacyCacheBundleTransfer, toCacheBytes } from "./CacheFiles";
-import { CacheStoreSources } from "./CacheBundleSources";
+import { CacheStoreSources } from "./CacheStoreSources";
 import { createCacheStoreFromBundleSources, createCacheStoreFromFiles } from "./CacheStoreFromFiles";
 
 export function createCacheSystemFromFiles(

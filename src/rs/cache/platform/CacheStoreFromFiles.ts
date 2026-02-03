@@ -2,7 +2,7 @@ import { CacheStore } from "../store/CacheStore";
 import { SectorChainStore } from "../store/SectorChainStore";
 import { ByteSource } from "../../io/ByteSource";
 import { CacheBundleTransfer } from "./CacheFiles";
-import { CacheStoreSources, hydrateCacheStoreSources } from "./CacheBundleSources";
+import { CacheStoreSources, hydrateCacheStoreSources } from "./CacheStoreSources";
 
 export function createCacheStoreFromBundleSources(
     bundle: CacheStoreSources,
