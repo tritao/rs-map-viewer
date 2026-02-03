@@ -4,7 +4,7 @@ import { registerSerializer } from "threads";
 import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
-import { DownloadProgress } from "../rs/cache/CacheLoader";
+import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";

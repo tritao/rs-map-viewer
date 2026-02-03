@@ -3,7 +3,7 @@ import { Leva, button, buttonGroup, folder, useControls } from "leva";
 import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useState } from "react";
 
-import { DownloadProgress } from "../rs/cache/CacheLoader";
+import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";

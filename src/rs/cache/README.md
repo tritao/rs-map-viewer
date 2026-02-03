@@ -14,7 +14,7 @@ For Dat/Dat2 caches, archive bytes live in a sector-chained data file (`main_fil
 
 ### Platform / fetching (not core decoding)
 
-- `platform/browser/BrowserCacheLoader.ts`: browser implementation of `CacheLoader` (HTTP + Cache API).
+- `platform/browser/BrowserCacheLoader.ts`: browser implementation of `platform/CacheLoader.ts` (HTTP + Cache API).
 - `platform/CacheFilesFetcher.ts`: fetches a cache “bundle” into `CacheBundleTransfer` using a `CacheLoader` (knows about the hosting layout like `maps.json`, `maps/…`, part caching, etc).
 - `platform/CacheFiles.ts`: a platform-layer transfer bundle (FFI/worker-friendly, no methods) plus cache filename constants.
 - `platform/CacheStoreFromFiles.ts`: adapts `CacheBundleTransfer` into a `CacheStore` via `SectorChainStore` by wrapping buffers into runtime `ByteSource`s.

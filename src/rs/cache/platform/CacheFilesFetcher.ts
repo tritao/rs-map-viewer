@@ -1,5 +1,5 @@
 import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
-import { CachedFile, CacheLoader, ProgressListener } from "../CacheLoader";
+import { CachedFile, CacheLoader, ProgressListener } from "./CacheLoader";
 import { CacheType } from "../CacheType";
 const INDEX_ENTRY_SIZE: number = 6;
 

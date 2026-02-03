@@ -1,6 +1,6 @@
 import { CacheBundleTransfer } from "../rs/cache/platform/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
-import { CacheLoader, ProgressListener } from "../rs/cache/CacheLoader";
+import { CacheLoader, ProgressListener } from "../rs/cache/platform/CacheLoader";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
 import { fetchCacheFiles } from "../rs/cache/platform/CacheFilesFetcher";
 
