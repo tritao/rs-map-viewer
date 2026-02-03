@@ -9,16 +9,15 @@ export class CacheSystem {
         store: CacheStore,
         indexIds: number[],
         compressionHandler: CompressionHandler,
-    ): Array<CacheIndex | null> {
-        const maxIndexId = indexIds.length ? Math.max(...indexIds) : -1;
-        const indices: Array<CacheIndex | null> = new Array(maxIndexId + 1).fill(null);
+    ): Map<number, CacheIndex> {
+        const indices: Map<number, CacheIndex> = new Map();
 
         for (const id of indexIds) {
-            if (cacheType === CacheType.Dat) {
-                indices[id] = CacheIndexDat.fromStore(id, store, compressionHandler);
-            } else {
-                indices[id] = CacheIndexDat2.fromStore(id, store, compressionHandler);
-            }
+            const index =
+                cacheType === CacheType.Dat
+                    ? CacheIndexDat.fromStore(id, store, compressionHandler)
+                    : CacheIndexDat2.fromStore(id, store, compressionHandler);
+            indices.set(id, index);
         }
 
         return indices;
@@ -35,16 +34,16 @@ export class CacheSystem {
     }
 
     constructor(
-        readonly indices: (CacheIndex | null)[],
+        readonly indices: ReadonlyMap<number, CacheIndex>,
         readonly compressionHandler: CompressionHandler,
     ) {}
 
     indexExists(indexId: number): boolean {
-        return !!this.indices[indexId];
+        return this.indices.has(indexId);
     }
 
     getIndex(indexId: number): CacheIndex {
-        const index = this.indices[indexId];
+        const index = this.indices.get(indexId);
         if (!index) {
             throw new Error("Index not found: " + indexId);
         }

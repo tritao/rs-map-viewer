@@ -90,5 +90,11 @@ function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compres
         mapArchiveNameHashes,
     );
 
-    return new CacheSystem([configIndex, mediaIndex, textureIndex, modelIndex, mapIndex], compressionHandler);
+    const indices = new Map<number, LegacyCacheIndex>();
+    indices.set(configIndex.id, configIndex);
+    indices.set(mediaIndex.id, mediaIndex);
+    indices.set(textureIndex.id, textureIndex);
+    indices.set(modelIndex.id, modelIndex);
+    indices.set(mapIndex.id, mapIndex);
+    return new CacheSystem(indices, compressionHandler);
 }
