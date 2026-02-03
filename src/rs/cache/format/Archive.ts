@@ -190,7 +190,7 @@ export class Archive {
                     const chunkSize = chunkSizes[chunk * fileCount + fileIdx];
                     const dst = fileData[fileIdx];
                     const dstOff = fileOffsets[fileIdx];
-                    payload.readInto(inputOffset, dst.subarray(dstOff, dstOff + chunkSize));
+                    payload.readInto(inputOffset, dst, dstOff, chunkSize);
                     fileOffsets[fileIdx] = dstOff + chunkSize;
                     inputOffset += chunkSize;
                 }
