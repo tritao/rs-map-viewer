@@ -85,7 +85,7 @@ export class DatSeqBase {
 }
 
 export class Dat2SeqBase {
-    static load(cacheInfo: CacheInfo, id: number, data: Int8Array): SeqBase {
+    static load(cacheInfo: CacheInfo, id: number, data: Uint8Array): SeqBase {
         const buf = new ByteBuffer(data);
         const count = buf.readUnsignedByte();
         const types: SeqTransformType[] = new Array(count);

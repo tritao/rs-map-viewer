@@ -14,7 +14,7 @@ export class SpriteLoader {
     height: number = 0;
     palette!: Int32Array;
 
-    load(data: Int8Array): this {
+    load(data: Uint8Array): this {
         const buffer = new ByteBuffer(data);
 
         buffer.offset = data.length - 2;

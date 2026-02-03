@@ -10,7 +10,7 @@ export class MapFileLoader {
         readonly mapFileIndex: MapFileIndex,
     ) {}
 
-    getTerrainData(mapX: number, mapY: number): Int8Array | undefined {
+    getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
         const archiveId = this.mapFileIndex.getTerrainArchiveId(mapX, mapY);
         if (archiveId === -1) {
             return undefined;
@@ -23,7 +23,7 @@ export class MapFileLoader {
         }
     }
 
-    getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Int8Array | undefined {
+    getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
         const archiveId = this.mapFileIndex.getLocArchiveId(mapX, mapY);
         if (archiveId === -1) {
             return undefined;
@@ -37,7 +37,7 @@ export class MapFileLoader {
         }
     }
 
-    getNpcSpawnData(mapX: number, mapY: number, xteasMap: XteaMap): Int8Array | undefined {
+    getNpcSpawnData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
         const locArchiveId = this.mapFileIndex.getLocArchiveId(mapX, mapY);
         const archiveId = this.mapIndex.getArchiveId(`n${mapX}_${mapY}`);
         if (locArchiveId === -1 || archiveId === -1) {
@@ -54,7 +54,7 @@ export class MapFileLoader {
 }
 
 export class LegacyMapFileLoader extends MapFileLoader {
-    decompress(data: Int8Array): Int8Array {
+    decompress(data: Uint8Array): Uint8Array {
         const buffer = new ByteBuffer(data);
         const actualSize = buffer.readInt();
         const compressed = buffer.readUnsignedBytes(buffer.remaining);
@@ -62,7 +62,7 @@ export class LegacyMapFileLoader extends MapFileLoader {
         return decompressed;
     }
 
-    override getTerrainData(mapX: number, mapY: number): Int8Array | undefined {
+    override getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
         const data = super.getTerrainData(mapX, mapY);
         if (!data) {
             return undefined;
@@ -75,7 +75,7 @@ export class LegacyMapFileLoader extends MapFileLoader {
         }
     }
 
-    override getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Int8Array | undefined {
+    override getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
         const data = super.getLocData(mapX, mapY, xteasMap);
         if (!data) {
             return undefined;

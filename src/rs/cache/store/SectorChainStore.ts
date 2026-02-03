@@ -75,10 +75,10 @@ export class SectorChainStore implements CacheStore {
         return file ? file.size : null;
     }
 
-    read(indexId: number, archiveId: number): Int8Array {
+    read(indexId: number, archiveId: number): Uint8Array {
         const reader = this.openArchiveReader(indexId, archiveId);
-        const out = new Int8Array(reader.size);
-        reader.readInto(0, new Uint8Array(out.buffer, out.byteOffset, out.byteLength));
+        const out = new Uint8Array(reader.size);
+        reader.readInto(0, out);
         return out;
     }
 

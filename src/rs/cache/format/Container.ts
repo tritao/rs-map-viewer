@@ -36,7 +36,7 @@ export class Container {
 
                 return new Container(
                     compression,
-                    new Int8Array(encrypted.buffer, encrypted.byteOffset, size),
+                    encrypted.subarray(0, size),
                 );
             }
 
@@ -48,11 +48,11 @@ export class Container {
             const payload = source.slice(5, size);
             const view = payload.tryGetUint8ArrayView?.();
             if (view) {
-                return new Container(compression, new Int8Array(view.buffer, view.byteOffset, view.byteLength));
+                return new Container(compression, view);
             }
 
-            const data = new Int8Array(size);
-            payload.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+            const data = new Uint8Array(size);
+            payload.readInto(0, data);
             return new Container(compression, data);
         }
 
@@ -86,7 +86,7 @@ export class Container {
             source.slice(9, compressedSize).readInto(0, compressed);
         }
 
-        let decompressed: Int8Array;
+        let decompressed: Uint8Array;
         if (compression === CompressionType.Bzip2) {
             decompressed = compressionHandler.decompressBzip2(compressed, actualSize);
         } else {
@@ -109,6 +109,6 @@ export class Container {
 
     constructor(
         readonly compression: CompressionType,
-        readonly data: Int8Array,
+        readonly data: Uint8Array,
     ) {}
 }

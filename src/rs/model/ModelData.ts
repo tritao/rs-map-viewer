@@ -138,7 +138,7 @@ export class ModelData extends Entity {
         return model;
     }
 
-    static decode(data: Int8Array): ModelData {
+    static decode(data: Uint8Array | Int8Array): ModelData {
         const model = new ModelData();
         model.decode(data);
         return model;
@@ -571,17 +571,18 @@ export class ModelData extends Entity {
         return newVertexCount;
     }
 
-    decode(data: Int8Array): void {
-        if (data[data.length - 1] === -3 && data[data.length - 2] === -1) {
-            this.decodeV3(data);
+    decode(data: Uint8Array | Int8Array): void {
+        const signed = new Int8Array(data.buffer, data.byteOffset, data.byteLength);
+        if (signed[signed.length - 1] === -3 && signed[signed.length - 2] === -1) {
+            this.decodeV3(signed);
             this.usedVertexCount = this.verticesCount;
-        } else if (data[data.length - 1] === -2 && data[data.length - 2] === -1) {
-            this.decodeV2(data);
+        } else if (signed[signed.length - 1] === -2 && signed[signed.length - 2] === -1) {
+            this.decodeV2(signed);
             this.usedVertexCount = this.verticesCount;
-        } else if (data[data.length - 1] === -1 && data[data.length - 2] === -1) {
-            this.decodeV1(data);
+        } else if (signed[signed.length - 1] === -1 && signed[signed.length - 2] === -1) {
+            this.decodeV1(signed);
         } else {
-            this.decodeOld(data);
+            this.decodeOld(signed);
         }
     }
 

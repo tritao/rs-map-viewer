@@ -5,7 +5,7 @@ import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { LegacyIndexType } from "../IndexType";
-import { CacheBuffer, CacheBundleTransfer, LegacyCacheBundleTransfer } from "./CacheFiles";
+import { CacheBuffer, CacheBundleTransfer, LegacyCacheBundleTransfer, toCacheBytes } from "./CacheFiles";
 import { CacheStoreSources } from "./CacheBundleSources";
 import { createCacheStoreFromBundleSources, createCacheStoreFromFiles } from "./CacheStoreFromFiles";
 
@@ -42,8 +42,8 @@ export function createCacheSystemFromStoreSources(
     return CacheSystem.fromStore(cacheType, store, indexIds, compressionHandler);
 }
 
-function readAll(buffer: CacheBuffer): Int8Array {
-    return new Int8Array(buffer);
+function readAll(buffer: CacheBuffer): Uint8Array {
+    return toCacheBytes(buffer);
 }
 
 function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compressionHandler: CompressionHandler): CacheSystem {

@@ -7,8 +7,8 @@ export class ByteBuffer {
 
     offset: number = 0;
 
-    constructor(data: Int8Array) {
-        this._data = data;
+    constructor(data: ArrayBufferView) {
+        this._data = new Int8Array(data.buffer, data.byteOffset, data.byteLength);
         this._u8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     }
 
@@ -174,7 +174,7 @@ export class ByteBuffer {
         return bytes;
     }
 
-    writeBytes(bytes: Int8Array): void {
+    writeBytes(bytes: Uint8Array | Int8Array): void {
         this._data.set(bytes, this.offset);
         this.offset += bytes.length;
     }

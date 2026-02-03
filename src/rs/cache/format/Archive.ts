@@ -8,7 +8,7 @@ import { ArchiveFile } from "./ArchiveFile";
 type HashFunction = (str: string) => number;
 
 export class Archive {
-    static create(id: number, data: Int8Array): Archive {
+    static create(id: number, data: Uint8Array): Archive {
         const fileCount = 1;
         const lastFileId = fileCount - 1;
 
@@ -31,7 +31,7 @@ export class Archive {
 
     static decodeOld(
         id: number,
-        data: Int8Array,
+        data: Uint8Array,
         multipleFiles: boolean,
         compressionHandler: CompressionHandler,
     ): Archive {
@@ -69,9 +69,10 @@ export class Archive {
                 const fileActualSize = metaBuffer.readMedium();
                 const fileSize = metaBuffer.readMedium();
 
-                let decompressedFile: Int8Array;
+                let decompressedFile: Uint8Array;
                 if (isCompressed) {
-                    decompressedFile = dataBuffer.readBytes(fileSize);
+                    const bytes = dataBuffer.readBytes(fileSize);
+                    decompressedFile = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
                 } else {
                     const data = dataBuffer.readUnsignedBytes(fileSize);
                     decompressedFile = compressionHandler.decompressBzip2(data, fileActualSize);
@@ -81,9 +82,7 @@ export class Archive {
                 fileNameHashes[i] = nameHash;
             }
         } else {
-            const decompressed = compressionHandler.decompressGzip(
-                buffer.readUnsignedBytes(buffer.remaining),
-            );
+            const decompressed = compressionHandler.decompressGzip(buffer.readUnsignedBytes(buffer.remaining));
 
             fileCount = 1;
             fileIds = new Int32Array(fileCount);
@@ -118,11 +117,11 @@ export class Archive {
             if (view) {
                 files.set(
                     lastFileId,
-                    new ArchiveFile(lastFileId, id, new Int8Array(view.buffer, view.byteOffset, view.byteLength)),
+                    new ArchiveFile(lastFileId, id, view),
                 );
             } else {
-                const data = new Int8Array(source.size);
-                source.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+                const data = new Uint8Array(source.size);
+                source.readInto(0, data);
                 files.set(lastFileId, new ArchiveFile(lastFileId, id, data));
             }
         } else {
@@ -153,10 +152,10 @@ export class Archive {
                 }
             }
 
-            const fileData = new Array<Int8Array>(fileCount);
+            const fileData = new Array<Uint8Array>(fileCount);
             const fileOffsets = new Int32Array(fileCount);
             for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                fileData[fileIdx] = new Int8Array(fileSizes[fileIdx]);
+                fileData[fileIdx] = new Uint8Array(fileSizes[fileIdx]);
             }
 
             const payload = source.slice(0, tableOffset);
@@ -166,10 +165,7 @@ export class Archive {
                     const chunkSize = chunkSizes[chunk * fileCount + fileIdx];
                     const dst = fileData[fileIdx];
                     const dstOff = fileOffsets[fileIdx];
-                    payload.readInto(
-                        inputOffset,
-                        new Uint8Array(dst.buffer, dst.byteOffset + dstOff, chunkSize),
-                    );
+                    payload.readInto(inputOffset, dst.subarray(dstOff, dstOff + chunkSize));
                     fileOffsets[fileIdx] = dstOff + chunkSize;
                     inputOffset += chunkSize;
                 }

@@ -63,15 +63,15 @@ export class SceneBuilder {
         return info.game === GameType.Runescape && info.revision <= 225;
     }
 
-    getTerrainData(mapX: number, mapY: number): Int8Array | undefined {
+    getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
         return this.mapFileLoader.getTerrainData(mapX, mapY);
     }
 
-    getLocData(mapX: number, mapY: number): Int8Array | undefined {
+    getLocData(mapX: number, mapY: number): Uint8Array | undefined {
         return this.mapFileLoader.getLocData(mapX, mapY, this.xteasMap);
     }
 
-    getNpcSpawnData(mapX: number, mapY: number): Int8Array | undefined {
+    getNpcSpawnData(mapX: number, mapY: number): Uint8Array | undefined {
         return this.mapFileLoader.getNpcSpawnData(mapX, mapY, this.xteasMap);
     }
 
@@ -229,7 +229,7 @@ export class SceneBuilder {
 
     decodeTerrain(
         scene: Scene,
-        data: Int8Array,
+        data: Uint8Array,
         offsetX: number,
         offsetY: number,
         baseX: number,
@@ -352,7 +352,7 @@ export class SceneBuilder {
 
     decodeLocs(
         scene: Scene,
-        data: Int8Array,
+        data: Uint8Array,
         offsetX: number,
         offsetY: number,
         locLoadType: LocLoadType,

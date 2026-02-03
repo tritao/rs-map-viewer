@@ -97,7 +97,7 @@ export abstract class CacheStoreIndex extends CacheIndex {
         super(id, table, compressionHandler);
     }
 
-    read(archiveId: number): Int8Array {
+    read(archiveId: number): Uint8Array {
         return this.store.read(this.id, archiveId);
     }
 }
@@ -122,16 +122,16 @@ export class CacheIndexDat extends CacheStoreIndex {
     }
 }
 
-function decodeTable(data: Int8Array, compressionHandler: CompressionHandler): ReferenceTable {
+function decodeTable(data: Uint8Array, compressionHandler: CompressionHandler): ReferenceTable {
     if (data.length) {
-        const container = Container.decodeFromSource(byteSourceFromInt8Array(data), null, compressionHandler);
-        return ReferenceTable.decodeFromReader(new ByteSourceReader(byteSourceFromInt8Array(container.data)));
+        const container = Container.decodeFromSource(byteSourceFromBytes(data), null, compressionHandler);
+        return ReferenceTable.decodeFromReader(new ByteSourceReader(byteSourceFromBytes(container.data)));
     }
     return ReferenceTable.INVALID_TABLE;
 }
 
-function byteSourceFromInt8Array(data: Int8Array): ByteSource {
-    return new Uint8ArrayByteSource(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+function byteSourceFromBytes(data: Uint8Array): ByteSource {
+    return new Uint8ArrayByteSource(data);
 }
 
 function decodeArchiveDataFromSource(
@@ -151,7 +151,7 @@ function decodeArchiveDataFromSource(
         archiveRef.fileCount,
         archiveRef.fileIds,
         archiveRef.fileNameHashes,
-        byteSourceFromInt8Array(container.data),
+        byteSourceFromBytes(container.data),
     );
 }
 

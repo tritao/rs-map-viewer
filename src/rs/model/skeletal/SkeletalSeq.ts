@@ -23,7 +23,7 @@ export class SkeletalSeq {
 
     hasAlphaTransform: boolean = false;
 
-    static load(baseLoader: SeqBaseLoader, id: number, data: Int8Array): SkeletalSeq {
+    static load(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq {
         const buffer = new ByteBuffer(data);
 
         const version = buffer.readUnsignedByte();

@@ -187,7 +187,7 @@ export class LegacySeqFrame {
 export class DatSeqFrame {
     static load(
         frames: Map<number, SeqFrame>,
-        data: Int8Array,
+        data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
     ): void {
         const footerBuffer = new ByteBuffer(data);
@@ -326,7 +326,7 @@ export class Dat2SeqFrame {
     static load(
         cacheInfo: CacheInfo,
         baseLoader: SeqBaseLoader,
-        data: Int8Array,
+        data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
     ): SeqFrame {
         const buf = new ByteBuffer(data);

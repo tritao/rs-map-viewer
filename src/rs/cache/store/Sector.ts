@@ -15,7 +15,7 @@ export class Sector {
     archiveId!: number;
     chunk!: number;
     nextSector!: number;
-    data!: Int8Array;
+    data!: Uint8Array;
 
     static decodeNew(buffer: ByteBuffer): Sector {
         return Sector.decode(new Sector(), buffer);
@@ -30,7 +30,7 @@ export class Sector {
         sector.chunk = buffer.readUnsignedShort();
         sector.nextSector = buffer.readMedium();
         sector.indexId = buffer.readUnsignedByte();
-        sector.data = buffer.readBytes(dataSize);
+        sector.data = buffer.readUnsignedBytes(dataSize);
         return sector;
     }
 
@@ -43,7 +43,7 @@ export class Sector {
         sector.chunk = buffer.readUnsignedShort();
         sector.nextSector = buffer.readMedium();
         sector.indexId = buffer.readUnsignedByte();
-        sector.data = buffer.readBytes(dataSize);
+        sector.data = buffer.readUnsignedBytes(dataSize);
         return sector;
     }
 }

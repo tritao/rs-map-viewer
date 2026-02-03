@@ -34,7 +34,7 @@ export class ReferenceTable {
         const lastArchiveId = archiveCount - 1;
 
         const archiveNameHashes = new Int32Array(archiveCount);
-        const archiveWhirlpools = new Array<Int8Array>(archiveCount);
+        const archiveWhirlpools = new Array<Uint8Array>(archiveCount);
 
         const archiveFileCounts = new Int32Array(archiveCount).fill(-1);
 
@@ -102,10 +102,10 @@ export class ReferenceTable {
             }
         }
 
-        const archiveWhirlpools = new Array<Int8Array>(archiveCount);
+        const archiveWhirlpools = new Array<Uint8Array>(archiveCount);
         if (usesWhirlpool) {
             for (let i = 0; i < archiveCount; i++) {
-                archiveWhirlpools[i] = reader.readBytes(64);
+                archiveWhirlpools[i] = reader.readUnsignedBytes(64);
             }
         }
 
@@ -181,7 +181,7 @@ export class ReferenceTable {
         private readonly _archiveIdIndexMap: Map<number, number>,
         readonly archiveIds: Int32Array,
         private readonly _archiveNameHashes: Int32Array,
-        private readonly _archiveWhirlpools: Int8Array[],
+        private readonly _archiveWhirlpools: Uint8Array[],
         private readonly _archiveCrcs: Int32Array,
         private readonly _archiveRevisions: Int32Array,
         private readonly _archiveFileCounts: Int32Array,

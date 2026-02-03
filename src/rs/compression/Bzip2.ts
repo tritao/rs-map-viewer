@@ -13,7 +13,7 @@ export class Bzip2 {
     //     return bzip;
     // }
 
-    static decompress(compressed: Uint8Array, actualSize: number): Int8Array {
+    static decompress(compressed: Uint8Array, actualSize: number): Uint8Array {
         const compressedBzip = new Uint8Array(compressed.length + 4);
         compressedBzip.set(Bzip2.bzip2Header, 0);
         compressedBzip.set(compressed, 4);
@@ -25,6 +25,6 @@ export class Bzip2 {
         //     return new Int8Array(decompressed.buffer);
         // }
 
-        return new Int8Array(bzip2.simple(bzip2.array(compressedBzip)).buffer);
+        return new Uint8Array(bzip2.simple(bzip2.array(compressedBzip)).buffer);
     }
 }

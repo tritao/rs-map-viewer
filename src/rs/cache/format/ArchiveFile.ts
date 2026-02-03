@@ -4,7 +4,7 @@ export class ArchiveFile {
     constructor(
         readonly id: number,
         readonly archiveId: number,
-        readonly data: Int8Array,
+        readonly data: Uint8Array,
     ) {}
 
     getDataAsBuffer(): ByteBuffer {
