@@ -113,14 +113,7 @@ function decodeArchiveDataFromSource(
         throw new Error("Archive reference not found for: " + archiveId);
     }
     const container = Container.decodeFromSource(source, key, compressionHandler);
-    return Archive.decodeFromSource(
-        archiveId,
-        archiveRef.lastFileId,
-        archiveRef.fileCount,
-        archiveRef.fileIds,
-        archiveRef.fileNameHashes,
-        byteSourceFromBytes(container.data),
-    );
+    return Archive.decodeFromSource(archiveRef, byteSourceFromBytes(container.data));
 }
 
 type ArchiveDecoder = (archiveId: number, key: number[] | null) => Archive;

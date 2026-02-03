@@ -54,7 +54,7 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
 
 1. `CacheIndexStore.getArchiveKey(archiveId, key)` calls `CacheStore.openArchiveReader(indexId, archiveId)` to obtain a seekable `ByteSource` for the archive.
 2. `format/Container.decodeFromSource(source, key, compressionHandler)` reads only what it needs and returns the decompressed payload.
-3. `format/Archive.decodeFromSource(..., payloadSource)` splits the payload into `ArchiveFile`s.
+3. `format/Archive.decodeFromSource(archiveRef, payloadSource)` splits the payload into `ArchiveFile`s.
 4. Higher-level loaders (models/config/etc) parse `ArchiveFile.data` with `ByteBuffer`.
 
 ## Extending for native / file-backed caches

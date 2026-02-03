@@ -7,6 +7,14 @@ import { ArchiveFile } from "./ArchiveFile";
 
 type HashFunction = (str: string) => number;
 
+export type ArchiveMeta = {
+    id: number;
+    lastFileId: number;
+    fileCount: number;
+    fileIds: Int32Array;
+    fileNameHashes: Int32Array;
+};
+
 export class Archive {
     static create(id: number, data: Uint8Array): Archive {
         const fileCount = 1;
@@ -123,14 +131,9 @@ export class Archive {
         );
     }
 
-    static decodeFromSource(
-        archiveId: number,
-        lastFileId: number,
-        fileCount: number,
-        fileIds: Int32Array,
-        fileNameHashes: Int32Array,
-        source: ByteSource,
-    ): Archive {
+    static decodeFromSource(meta: ArchiveMeta, source: ByteSource): Archive {
+        const { id: archiveId, lastFileId, fileCount, fileIds, fileNameHashes } = meta;
+
         const filesById: Array<ArchiveFile | undefined> = new Array(lastFileId + 1);
         const files: ArchiveFile[] = new Array(fileCount);
 
@@ -256,4 +259,3 @@ export class Archive {
         return this._files;
     }
 }
-

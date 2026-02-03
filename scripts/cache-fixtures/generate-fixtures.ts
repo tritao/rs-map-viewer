@@ -212,14 +212,14 @@ function genArchiveSplitFixture(): void {
     const payload = buildMultiFileArchivePayload([file0, file1], segmentSizesPerChunk);
 
     // Decode using TS logic for verification / expected output generation.
-    const fileIds = new Int32Array([0, 1]);
-    const fileNameHashes = new Int32Array([0, 0]);
     const archive = Archive.decodeFromSource(
-        0,
-        1,
-        2,
-        fileIds,
-        fileNameHashes,
+        {
+            id: 0,
+            lastFileId: 1,
+            fileCount: 2,
+            fileIds: new Int32Array([0, 1]),
+            fileNameHashes: new Int32Array([0, 0]),
+        },
         new Uint8ArrayByteSource(payload),
     );
     const out0 = archive.getFile(0);
