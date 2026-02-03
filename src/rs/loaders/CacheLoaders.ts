@@ -1,4 +1,5 @@
 import { CacheSystem } from "../cache/CacheSystem";
+import { createCacheSystemFromFiles } from "../cache/platform/CacheSystemFromFiles";
 import { CacheLoaderFactory, getCacheLoaderFactory } from "./CacheLoaderFactory";
 import { BasTypeLoader } from "../config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
@@ -34,7 +35,7 @@ export class CacheLoaders {
 
     constructor(cache: LoadedCache, compressionHandler: CompressionHandler) {
         this.cache = cache;
-        this.cacheSystem = CacheSystem.fromFiles(cache.type, cache.files, compressionHandler);
+        this.cacheSystem = createCacheSystemFromFiles(cache.type, cache.files, compressionHandler);
         this.loaderFactory = getCacheLoaderFactory(cache.info, this.cacheSystem);
 
         this.textureLoader = this.loaderFactory.getTextureLoader();

@@ -10,4 +10,3 @@ export class CacheFiles {
 
     constructor(readonly files: Map<string, ArrayBuffer>) {}
 }
-

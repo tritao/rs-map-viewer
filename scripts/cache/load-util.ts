@@ -1,7 +1,7 @@
 import fs from "fs";
 
 import { CacheInfoJson, CacheList, LoadedCache, XteaMap } from "../../src/util/Caches";
-import { CacheFiles } from "../../src/rs/cache/CacheFiles";
+import { CacheFiles } from "../../src/rs/cache/platform/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 

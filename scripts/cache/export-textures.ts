@@ -1,9 +1,9 @@
 import fs from "fs";
 import sharp from "sharp";
 
-import { CacheSystem } from "../../src/rs/cache/CacheSystem";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { getCacheLoaderFactory } from "../../src/rs/loaders/CacheLoaderFactory";
+import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheSystemFromFiles";
 import { loadCache, loadCacheInfos, loadCacheList } from "./load-util";
 
 function saveArgbArrayToPng(pixels: Int32Array, width: number, height: number, outputPath: string) {
@@ -37,11 +37,7 @@ const cacheInfo = cacheList.latest;
 
 const loadedCache = loadCache(cacheInfo);
 
-const cacheSystem = CacheSystem.fromFiles(
-    loadedCache.type,
-    loadedCache.files,
-    new JSCompressionHandler(),
-);
+const cacheSystem = createCacheSystemFromFiles(loadedCache.type, loadedCache.files, new JSCompressionHandler());
 const cacheLoaderFactory = getCacheLoaderFactory(cacheInfo, cacheSystem);
 
 const textureLoader = cacheLoaderFactory.getTextureLoader();

@@ -1,4 +1,4 @@
-import { CacheFiles } from "../CacheFiles";
+import { CacheFiles } from "./CacheFiles";
 import { CachedFile, CacheLoader, ProgressListener } from "../CacheLoader";
 import { CacheType } from "../CacheType";
 import { SectorCluster } from "../store/SectorCluster";

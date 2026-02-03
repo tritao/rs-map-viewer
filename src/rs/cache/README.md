@@ -16,7 +16,8 @@ For Dat/Dat2 caches, archive bytes live in a sector-chained data file (`main_fil
 
 - `platform/browser/BrowserCacheLoader.ts`: browser implementation of `CacheLoader` (HTTP + Cache API).
 - `platform/CacheFilesFetcher.ts`: fetches a cache “bundle” into `CacheFiles` using a `CacheLoader` (knows about the hosting layout like `maps.json`, `maps/…`, part caching, etc).
-- `CacheFiles.ts`: an in-memory bundle (`Map<string, ArrayBuffer>`) plus cache filename constants.
+- `platform/CacheFiles.ts`: an in-memory bundle (`Map<string, ArrayBuffer>`) plus cache filename constants.
+- `platform/CacheStoreFromFiles.ts`: adapts `CacheFiles` into a `CacheStore` (in-memory) via `SectorChainStore`.
 
 ### Store (raw archive byte access)
 
@@ -26,13 +27,12 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
   - `getIndexFileSize(indexId)`: supports Dat index construction without loading the whole `.idx` file.
   - `openArchiveReader(indexId, archiveId)`: returns a seekable `ByteSource` view over a single archive’s raw bytes.
   - `read(indexId, archiveId)`: convenience materialize-all wrapper.
-- `store/MemoryStore.ts`: `CacheStore` backed by in-memory `ArrayBuffer`s (typically from `CacheFiles`).
 - `store/SectorChainStore.ts`: `CacheStore` backed by seekable `ByteSource`s (a “native-shaped” implementation).
 - `store/Sector.ts` / `store/SectorCluster.ts`: structures for `.dat(2)` sectors and `.idx*` cluster entries.
 
 ### Indices and cache system
 
-- `CacheSystem.ts`: constructs indices from a `CacheStore` (`fromFiles` uses `MemoryStore`, `fromStore` accepts any `CacheStore`).
+- `CacheSystem.ts`: constructs indices from a `CacheStore` (`fromStore` accepts any `CacheStore`).
 - `CacheIndex.ts`:
   - `CacheIndexDat`: Dat (older) sector-chain decoding logic.
   - `CacheIndexDat2`: Dat2 (newer/OSRS) decoding logic (uses `idx255` `ReferenceTable`).
@@ -66,4 +66,3 @@ For a native/C++ port, you typically mirror:
 - `compression/CompressionHandler` backed by native zlib/bzip2
 
 The remaining code (type loaders, model loaders, etc) should not need to care whether bytes come from memory, disk, or network.
-

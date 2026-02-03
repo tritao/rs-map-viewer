@@ -4,6 +4,7 @@ import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import { CacheSystem } from "../rs/cache/CacheSystem";
+import { createCacheSystemFromFiles } from "../rs/cache/platform/CacheSystemFromFiles";
 import { Dat2IndexType, DatIndexType } from "../rs/cache/IndexType";
 import {
     CacheLoaderFactory,
@@ -84,7 +85,7 @@ async function initWorker(
 ): Promise<WorkerState> {
     await hasherPromise;
 
-    const cacheSystem = CacheSystem.fromFiles(cache.type, cache.files, compressionHandler);
+    const cacheSystem = createCacheSystemFromFiles(cache.type, cache.files, compressionHandler);
 
     const loaderFactory = getCacheLoaderFactory(cache.info, cacheSystem);
     const underlayTypeLoader = loaderFactory.getUnderlayTypeLoader();
