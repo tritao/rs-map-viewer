@@ -1,7 +1,7 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
+import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { getOrCopyBytes } from "../../io/ByteSourceUtil";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
@@ -48,8 +48,6 @@ export class Archive {
         multipleFiles: boolean,
         compressionHandler: CompressionHandler,
     ): Archive {
-        const readMediumBE = (buf: Uint8Array, off: number): number => readU24BE(buf, off);
-
         let fileCount: number;
         let fileIds: Int32Array;
         let fileNameHashes: Int32Array;
@@ -59,76 +57,45 @@ export class Archive {
         let filesById: Array<ArchiveFile | undefined>;
 
         if (multipleFiles) {
-            if (data.byteLength < 6) {
-                throw new Error("Archive.decodeOld: truncated header");
-            }
-
-            const actualSize = readMediumBE(data, 0);
-            const size = readMediumBE(data, 3);
+            const reader = new Uint8ArrayReader(data);
+            const actualSize = reader.readMedium();
+            const size = reader.readMedium();
 
             const isCompressed = actualSize !== size;
 
-            let metaBytes: Uint8Array;
-            let metaOffset: number;
-            let dataOffset: number;
+            let metaReader: Uint8ArrayReader;
+            let dataReader: Uint8ArrayReader;
 
             if (isCompressed) {
-                const start = 6;
-                const end = start + size;
-                if (end > data.byteLength) {
-                    throw new Error("Archive.decodeOld: truncated compressed payload");
-                }
-                const compressed = data.subarray(start, end);
+                const compressed = reader.readBytes(size);
                 const decompressed = compressionHandler.decompressBzip2(compressed, actualSize);
-                metaBytes = decompressed;
-                metaOffset = 0;
+                metaReader = new Uint8ArrayReader(decompressed);
+                dataReader = new Uint8ArrayReader(decompressed);
             } else {
-                metaBytes = data;
-                metaOffset = 6;
+                metaReader = reader;
+                dataReader = new Uint8ArrayReader(data, reader.offset);
             }
 
-            if (metaOffset + 2 > metaBytes.byteLength) {
-                throw new Error("Archive.decodeOld: truncated fileCount");
-            }
-            fileCount = readU16BE(metaBytes, metaOffset);
-            metaOffset += 2;
+            fileCount = metaReader.readUnsignedShort();
             lastFileId = fileCount - 1;
             filesById = new Array(lastFileId + 1);
 
-            dataOffset = metaOffset + fileCount * 10;
-            if (dataOffset < 0 || dataOffset > metaBytes.byteLength) {
-                throw new Error("Archive.decodeOld: invalid data offset");
-            }
+            // After the file table (10 bytes per file).
+            dataReader.seek(metaReader.offset + fileCount * 10);
 
             fileIds = new Int32Array(fileCount);
             fileNameHashes = new Int32Array(fileCount);
 
             for (let i = 0; i < fileCount; i++) {
-                if (metaOffset + 10 > metaBytes.byteLength) {
-                    throw new Error("Archive.decodeOld: truncated file entry");
-                }
-                const nameHash = readI32BE(metaBytes, metaOffset);
-                metaOffset += 4;
-                const fileActualSize = readMediumBE(metaBytes, metaOffset);
-                metaOffset += 3;
-                const fileSize = readMediumBE(metaBytes, metaOffset);
-                metaOffset += 3;
+                const nameHash = metaReader.readInt();
+                const fileActualSize = metaReader.readMedium();
+                const fileSize = metaReader.readMedium();
 
                 let fileData: Uint8Array;
                 if (isCompressed) {
-                    const end = dataOffset + fileSize;
-                    if (end > metaBytes.byteLength) {
-                        throw new Error("Archive.decodeOld: truncated file payload");
-                    }
-                    fileData = metaBytes.subarray(dataOffset, end);
-                    dataOffset = end;
+                    fileData = dataReader.readBytes(fileSize);
                 } else {
-                    const end = dataOffset + fileSize;
-                    if (end > metaBytes.byteLength) {
-                        throw new Error("Archive.decodeOld: truncated file payload");
-                    }
-                    const compressed = metaBytes.subarray(dataOffset, end);
-                    dataOffset = end;
+                    const compressed = dataReader.readBytes(fileSize);
                     fileData = compressionHandler.decompressBzip2(compressed, fileActualSize);
                 }
 
