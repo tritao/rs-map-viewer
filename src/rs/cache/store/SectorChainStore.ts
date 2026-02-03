@@ -210,5 +210,4 @@ export class SectorChainStore implements CacheStore {
         return sectorIds;
     }
 
-    // Note: forward chunk iteration can be implemented on top of `openArchiveReader` if/when needed.
 }
