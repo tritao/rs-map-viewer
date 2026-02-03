@@ -9,8 +9,8 @@ import { ReferenceTable } from "./reference/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { IDX_ENTRY_SIZE } from "./store/DatLayout";
 import { ByteSource } from "../io/ByteSource";
+import { ByteSourceReader } from "../io/ByteSourceReader";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
-import { ByteBuffer } from "../io/ByteBuffer";
 import { readAllBytes } from "../io/ByteSourceUtil";
 
 export abstract class CacheIndex {
@@ -80,7 +80,7 @@ function decodeTableFromSource(source: ByteSource, compressionHandler: Compressi
         return ReferenceTable.INVALID_TABLE;
     }
     const container = Container.decodeFromSource(source, null, compressionHandler);
-    return ReferenceTable.decode(new ByteBuffer(container.data));
+    return ReferenceTable.decodeFromReader(new ByteSourceReader(byteSourceFromBytes(container.data)));
 }
 
 function decodeArchiveDataFromSource(
