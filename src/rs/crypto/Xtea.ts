@@ -16,7 +16,7 @@ export class Xtea {
     }
 
     static decrypt(buf: ByteBuffer, start: number, end: number, key: number[] | null): void {
-        if (key == null || key.length !== 4) {
+        if (key === null || key.length !== 4) {
             throw new Error("Xtea: key is not 128 bits");
         }
 
@@ -37,7 +37,7 @@ export class Xtea {
     }
 
     static decryptInPlace(data: Uint8Array, start: number, end: number, key: number[] | null): void {
-        if (key == null || key.length !== 4) {
+        if (key === null || key.length !== 4) {
             throw new Error("Xtea: key is not 128 bits");
         }
         if (start < 0 || end < start || end > data.byteLength) {
