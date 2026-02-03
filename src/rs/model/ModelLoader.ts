@@ -74,20 +74,28 @@ export class LegacyModelLoader implements ModelLoader {
     }
 
     private constructor(modelArchive: Archive) {
-        this.head = modelArchive.getFileNamed("ob_head.dat")!.getDataAsBuffer();
-        this.face1 = modelArchive.getFileNamed("ob_face1.dat")!.getDataAsBuffer();
-        this.face2 = modelArchive.getFileNamed("ob_face2.dat")!.getDataAsBuffer();
-        this.face3 = modelArchive.getFileNamed("ob_face3.dat")!.getDataAsBuffer();
-        this.face4 = modelArchive.getFileNamed("ob_face4.dat")!.getDataAsBuffer();
-        this.face5 = modelArchive.getFileNamed("ob_face5.dat")!.getDataAsBuffer();
-        this.point1 = modelArchive.getFileNamed("ob_point1.dat")!.getDataAsBuffer();
-        this.point2 = modelArchive.getFileNamed("ob_point2.dat")!.getDataAsBuffer();
-        this.point3 = modelArchive.getFileNamed("ob_point3.dat")!.getDataAsBuffer();
-        this.point4 = modelArchive.getFileNamed("ob_point4.dat")!.getDataAsBuffer();
-        this.point5 = modelArchive.getFileNamed("ob_point5.dat")!.getDataAsBuffer();
-        this.vertex1 = modelArchive.getFileNamed("ob_vertex1.dat")!.getDataAsBuffer();
-        this.vertex2 = modelArchive.getFileNamed("ob_vertex2.dat")!.getDataAsBuffer();
-        this.axis = modelArchive.getFileNamed("ob_axis.dat")!.getDataAsBuffer();
+        const requireBuffer = (name: string): ByteBuffer => {
+            const file = modelArchive.getFileNamed(name);
+            if (!file) {
+                throw new Error(`Missing legacy model archive file: ${name}`);
+            }
+            return file.getDataAsBuffer();
+        };
+
+        this.head = requireBuffer("ob_head.dat");
+        this.face1 = requireBuffer("ob_face1.dat");
+        this.face2 = requireBuffer("ob_face2.dat");
+        this.face3 = requireBuffer("ob_face3.dat");
+        this.face4 = requireBuffer("ob_face4.dat");
+        this.face5 = requireBuffer("ob_face5.dat");
+        this.point1 = requireBuffer("ob_point1.dat");
+        this.point2 = requireBuffer("ob_point2.dat");
+        this.point3 = requireBuffer("ob_point3.dat");
+        this.point4 = requireBuffer("ob_point4.dat");
+        this.point5 = requireBuffer("ob_point5.dat");
+        this.vertex1 = requireBuffer("ob_vertex1.dat");
+        this.vertex2 = requireBuffer("ob_vertex2.dat");
+        this.axis = requireBuffer("ob_axis.dat");
 
         const count = (this.count = this.head.readUnsignedShort());
 
