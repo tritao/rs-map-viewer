@@ -22,6 +22,16 @@ type Args = {
     indices?: number[];
 };
 
+type HashInfo = { len: number; xxh64: string };
+type ParityFileEntry = { fileId: number; len: number; xxh64: string };
+type ParityEntry = {
+    indexId: number;
+    archiveId: number;
+    raw: HashInfo;
+    containerPayload?: HashInfo;
+    files?: ParityFileEntry[];
+};
+
 function parseArgs(argv: string[]): Args {
     const args: Args = {
         maxIndices: 5,
@@ -84,7 +94,7 @@ async function main(): Promise<void> {
         args.maxIndices,
     );
 
-    const entries: any[] = [];
+    const entries: ParityEntry[] = [];
 
     for (const indexId of selectedIndexIds) {
         if (!cacheSystem.indexExists(indexId)) {
@@ -92,17 +102,18 @@ async function main(): Promise<void> {
         }
 
         const index = cacheSystem.getIndex(indexId);
-        const archiveIds: number[] = Array.from(index.getArchiveIds());
-        const selectedArchiveIds: number[] = archiveIds.slice(0, args.maxArchivesPerIndex);
+        const selectedArchiveIds: number[] = Array.from(index.getArchiveIds())
+            .sort((a, b) => a - b)
+            .slice(0, args.maxArchivesPerIndex);
 
         // Only Dat/Dat2 indices are store-backed in this harness.
-        const store: any = (index as any).store;
+        const store: unknown = (index as any).store;
         if (!store) {
             continue;
         }
 
         for (const archiveId of selectedArchiveIds) {
-            const rawSource = store.openArchiveReader(indexId, archiveId);
+            const rawSource = (store as any).openArchiveReader(indexId, archiveId);
             if (rawSource.size === 0) {
                 continue;
             }
@@ -113,7 +124,7 @@ async function main(): Promise<void> {
             }
             const rawHash = h64Hex(hashApi.h64Raw(raw));
 
-            const entry: any = {
+            const entry: ParityEntry = {
                 indexId,
                 archiveId,
                 raw: { len: raw.byteLength, xxh64: rawHash },
@@ -133,11 +144,13 @@ async function main(): Promise<void> {
                 const archiveRef = index.getArchiveReference(archiveId);
                 if (archiveRef) {
                     const archive = Archive.decodeFromSource(archiveRef, new Uint8ArrayByteSource(container.data));
-                    entry.files = archive.files.map((f) => ({
-                        fileId: f.id,
-                        len: f.data.byteLength,
-                        xxh64: h64Hex(hashApi.h64Raw(f.data)),
-                    }));
+                    entry.files = archive.files
+                        .map((f) => ({
+                            fileId: f.id,
+                            len: f.data.byteLength,
+                            xxh64: h64Hex(hashApi.h64Raw(f.data)),
+                        }))
+                        .sort((a, b) => a.fileId - b.fileId);
                 }
             } else if (cacheType === CacheType.Dat) {
                 const multipleFiles = indexId === DatIndexType.configs;
@@ -148,11 +161,13 @@ async function main(): Promise<void> {
                     // Some dat indices contain empty/truncated entries; skip them.
                     continue;
                 }
-                entry.files = archive.files.map((f) => ({
-                    fileId: f.id,
-                    len: f.data.byteLength,
-                    xxh64: h64Hex(hashApi.h64Raw(f.data)),
-                }));
+                entry.files = archive.files
+                    .map((f) => ({
+                        fileId: f.id,
+                        len: f.data.byteLength,
+                        xxh64: h64Hex(hashApi.h64Raw(f.data)),
+                    }))
+                    .sort((a, b) => a.fileId - b.fileId);
             }
 
             entries.push(entry);

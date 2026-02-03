@@ -53,6 +53,7 @@
     "rs:layer-check": "node scripts/rs-layer-check.mjs",
     "rs:portability-check": "node scripts/rs-portability-check.mjs",
     "cache:parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/cache-parity.ts",
+    "cache:parity-compare": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/compare-parity.ts",
     "export-textures": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/export-textures.ts",
     "generate-fixtures": "npx tsc -p scripts/cache-fixtures/tsconfig.cjs.json && node /tmp/rs-map-viewer-fixtures-gen/scripts/cache-fixtures/generate-fixtures.js"
   },

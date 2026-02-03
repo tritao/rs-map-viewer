@@ -67,3 +67,15 @@ For a native/C++ port, you typically mirror:
 - `compression/CompressionHandler` backed by native zlib/bzip2
 
 The remaining code (type loaders, model loaders, etc) should not need to care whether bytes come from memory, disk, or network.
+
+## Cross-language parity testing (TS ↔ C++)
+
+The recommended way to validate a C++ port of the cache/IO stack is to compare hash manifests generated from the same cache files:
+
+1. Generate a TypeScript parity manifest (xxh64 of raw archive bytes + decoded file payloads):
+   - `npm run -s cache:parity -- --cache <cacheName> --out caches/<cacheName>/parity-ts.json --maxIndices 5 --maxArchives 200`
+2. Have the C++ port read the same cache files and emit a JSON manifest with the same `{ schema, entries[] }` shape (same selection and hashing).
+3. Compare the manifests:
+   - `npm run -s cache:parity-compare -- --a caches/<cacheName>/parity-ts.json --b <parity-cpp.json>`
+
+This avoids baking cache-specific “expected bytes” into the repo while still giving a high-signal correctness check for container/archive decoding and sector-chain reads.
