@@ -176,7 +176,7 @@ export class DatCacheIndex extends CacheIndex {
     }
 }
 
-export class CacheIndexStore extends CacheIndex {
+export class Dat2CacheIndex extends CacheIndex {
     private constructor(
         id: number,
         table: ReferenceTable,
@@ -193,10 +193,10 @@ export class CacheIndexStore extends CacheIndex {
         id: number,
         store: CacheStore,
         compressionHandler: CompressionHandler,
-    ): CacheIndexStore {
+    ): Dat2CacheIndex {
         const metaSource = store.openArchiveReader(CacheIndex.META_INDEX_ID, id);
         const table = decodeTableFromSource(metaSource, compressionHandler);
-        return new CacheIndexStore(
+        return new Dat2CacheIndex(
             id,
             table,
             store,

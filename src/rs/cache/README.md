@@ -34,7 +34,7 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
 - `CacheSystem.ts`: constructs indices from a `CacheStore` (`fromStore` accepts any `CacheStore`).
 - `CacheIndex.ts`:
   - `DatCacheIndex`: store-backed index implementation for Dat caches (archive count derived from `.idx` length).
-  - `CacheIndexStore`: store-backed index implementation for Dat2 caches (uses `idx255` `ReferenceTable`).
+  - `Dat2CacheIndex`: store-backed index implementation for Dat2 caches (uses `idx255` `ReferenceTable`).
   - `LegacyCacheIndex`: legacy single-file archives (no sector chain).
 - `ref/*`: `ReferenceTable` and archive/file metadata (counts, ids, name hashes, whirlpools, etc).
 
@@ -52,7 +52,7 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
 
 ## Dat2 archive decode path (typical)
 
-1. `CacheIndexStore.getArchiveKey(archiveId, key)` calls `CacheStore.openArchiveReader(indexId, archiveId)` to obtain a seekable `ByteSource` for the archive.
+1. `Dat2CacheIndex.getArchiveKey(archiveId, key)` calls `CacheStore.openArchiveReader(indexId, archiveId)` to obtain a seekable `ByteSource` for the archive.
 2. `format/Container.decodeFromSource(source, key, compressionHandler)` reads only what it needs and returns the decompressed payload.
 3. `format/Archive.decodeFromSource(archiveRef, payloadSource)` splits the payload into `ArchiveFile`s.
 4. Higher-level loaders (models/config/etc) parse `ArchiveFile.data` with `ByteBuffer`.
