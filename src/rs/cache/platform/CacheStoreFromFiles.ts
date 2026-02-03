@@ -3,31 +3,32 @@ import { CacheStore } from "../store/CacheStore";
 import { SectorChainStore } from "../store/SectorChainStore";
 import { ByteSource } from "../../io/ByteSource";
 import { CacheBundleTransfer } from "./CacheFiles";
-import { CacheStoreBundleSources, hydrateCacheStoreBundleSources } from "./CacheBundleSources";
+import { CacheStoreSources, hydrateCacheStoreSources } from "./CacheBundleSources";
 
 export function createCacheStoreFromBundleSources(
-    bundle: CacheStoreBundleSources,
+    bundle: CacheStoreSources,
     indicesToLoad: number[] = [],
 ): {
     store: CacheStore;
     indexIds: number[];
 } {
-    const dataFile = bundle.kind === "dat2" ? bundle.dat2 : bundle.dat;
-    const metaFile = bundle.kind === "dat2" ? bundle.idx255 : null;
+    const dataFile = bundle.dataFile;
+    const metaFile = bundle.metaIndexFile;
 
     const indicesSet = new Set(indicesToLoad);
-    const indexSources: Array<ByteSource | null> = [];
+    const indexSources: Array<ByteSource | null> = new Array(bundle.indexFiles.length);
     const indexIds: number[] = [];
 
-    const idx = bundle.idx;
-    for (let indexId = 0; indexId < idx.length; indexId++) {
-        const source = idx[indexId];
+    for (let indexId = 0; indexId < bundle.indexFiles.length; indexId++) {
+        const source = bundle.indexFiles[indexId];
         if (!source) {
             continue;
         }
         if (indicesSet.size === 0 || indicesSet.has(indexId)) {
             indexSources[indexId] = source;
             indexIds.push(indexId);
+        } else {
+            indexSources[indexId] = null;
         }
     }
 
@@ -54,5 +55,5 @@ export function createCacheStoreFromFiles(
     store: CacheStore;
     indexIds: number[];
 } {
-    return createCacheStoreFromBundleSources(hydrateCacheStoreBundleSources(bundle), indicesToLoad);
+    return createCacheStoreFromBundleSources(hydrateCacheStoreSources(bundle), indicesToLoad);
 }

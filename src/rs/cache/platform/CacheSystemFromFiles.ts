@@ -6,7 +6,7 @@ import { CacheType } from "../CacheType";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { LegacyIndexType } from "../IndexType";
 import { CacheBuffer, CacheBundleTransfer, LegacyCacheBundleTransfer } from "./CacheFiles";
-import { CacheStoreBundleSources, hydrateCacheStoreBundleSources } from "./CacheBundleSources";
+import { CacheStoreSources, hydrateCacheStoreSources } from "./CacheBundleSources";
 import { createCacheStoreFromBundleSources, createCacheStoreFromFiles } from "./CacheStoreFromFiles";
 
 export function createCacheSystemFromFiles(
@@ -34,7 +34,7 @@ export function createCacheSystemFromFiles(
 
 export function createCacheSystemFromBundleSources(
     cacheType: CacheType.Dat | CacheType.Dat2,
-    cacheBundle: CacheStoreBundleSources,
+    cacheBundle: CacheStoreSources,
     compressionHandler: CompressionHandler,
     indicesToLoad: number[] = [],
 ): CacheSystem {
@@ -42,8 +42,8 @@ export function createCacheSystemFromBundleSources(
     return CacheSystem.fromStore(cacheType, store, indexIds, compressionHandler);
 }
 
-export function hydrateCacheBundleForStore(cacheBundle: CacheBundleTransfer): CacheStoreBundleSources {
-    return hydrateCacheStoreBundleSources(cacheBundle);
+export function hydrateCacheBundleForStore(cacheBundle: CacheBundleTransfer): CacheStoreSources {
+    return hydrateCacheStoreSources(cacheBundle);
 }
 
 function readAll(buffer: CacheBuffer): Int8Array {
