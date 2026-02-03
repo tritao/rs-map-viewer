@@ -26,7 +26,7 @@ export class SpriteTextureLoader implements TextureLoader {
             const textureId = textureIds[i];
             const file = textureArchive.getFile(textureId);
             if (file) {
-                const buffer = file.getDataAsBuffer();
+                const buffer = new ByteBuffer(file.data);
                 const definition = TextureDefinition.decode(textureId, buffer);
                 definitions.set(textureId, definition);
             }

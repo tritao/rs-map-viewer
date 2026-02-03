@@ -79,7 +79,7 @@ export class LegacyModelLoader implements ModelLoader {
             if (!file) {
                 throw new Error(`Missing legacy model archive file: ${name}`);
             }
-            return file.getDataAsBuffer();
+            return new ByteBuffer(file.data);
         };
 
         this.head = requireBuffer("ob_head.dat");

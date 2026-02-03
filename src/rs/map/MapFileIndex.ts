@@ -1,5 +1,6 @@
 import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
+import { ByteBuffer } from "../io/ByteBuffer";
 
 export function getMapSquareId(mapX: number, mapY: number): number {
     return (mapX << 8) + mapY;
@@ -25,7 +26,7 @@ export class DatMapFileIndex implements MapFileIndex {
         if (!file) {
             throw new Error("map_index not found");
         }
-        const buffer = file.getDataAsBuffer();
+        const buffer = new ByteBuffer(file.data);
 
         const mapSquares = new Map<number, MapSquare>();
 

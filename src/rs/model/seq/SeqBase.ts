@@ -25,9 +25,9 @@ export class LegacySeqBase {
             throw new Error("Missing legacy base archive files (base_head/base_type/base_label)");
         }
 
-        const head = headFile.getDataAsBuffer();
-        const type = typeFile.getDataAsBuffer();
-        const label = labelFile.getDataAsBuffer();
+        const head = new ByteBuffer(headFile.data);
+        const type = new ByteBuffer(typeFile.data);
+        const label = new ByteBuffer(labelFile.data);
 
         const baseCount = head.readUnsignedShort();
         const lastBaseId = head.readUnsignedShort();

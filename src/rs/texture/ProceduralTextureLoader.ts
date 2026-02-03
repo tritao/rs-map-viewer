@@ -24,7 +24,7 @@ export class ProceduralTextureLoader implements TextureLoader {
         if (!materialsFile) {
             throw new Error("Materials file not found");
         }
-        const buffer = materialsFile.getDataAsBuffer();
+        const buffer = new ByteBuffer(materialsFile.data);
         const count = buffer.readUnsignedShort();
         const materials: (ProcTextureMaterial | undefined)[] = new Array(count);
         for (let i = 0; i < count; i++) {
@@ -191,7 +191,7 @@ export class ProceduralTextureLoader implements TextureLoader {
         if (!textureFile) {
             return undefined;
         }
-        const buffer = textureFile.getDataAsBuffer();
+        const buffer = new ByteBuffer(textureFile.data);
         const texture = new ProceduralTextureDefinition(id, buffer, this.hasAlphaOperation);
         this.textures.set(id, texture);
         return texture;

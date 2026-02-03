@@ -71,10 +71,10 @@ export class LegacySeqFrame {
             throw new Error("Missing legacy frame archive files (frame_head/frame_tran1/frame_tran2/frame_del)");
         }
 
-        const head = headFile.getDataAsBuffer();
-        const tran1 = tran1File.getDataAsBuffer();
-        const tran2 = tran2File.getDataAsBuffer();
-        const del = delFile.getDataAsBuffer();
+        const head = new ByteBuffer(headFile.data);
+        const tran1 = new ByteBuffer(tran1File.data);
+        const tran2 = new ByteBuffer(tran2File.data);
+        const del = new ByteBuffer(delFile.data);
 
         const frameCount = head.readUnsignedShort();
         const lastFrameId = head.readUnsignedShort();

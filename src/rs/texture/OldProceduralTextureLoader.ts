@@ -21,7 +21,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
             const id = textureIds[i];
             const file = texturesArchive.getFile(id);
             if (file) {
-                const buffer = file.getDataAsBuffer();
+                const buffer = new ByteBuffer(file.data);
                 const def = new ProceduralTextureDefinition(id, buffer);
                 definitions.set(id, def);
             }

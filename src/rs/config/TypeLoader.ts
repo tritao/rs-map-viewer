@@ -79,7 +79,8 @@ export class ArchiveTypeLoader<T extends Type> extends BaseTypeLoader<T> {
     }
 
     override getDataBuffer(id: number): ByteBuffer | undefined {
-        return this.archive.getFile(id)?.getDataAsBuffer();
+        const file = this.archive.getFile(id);
+        return file ? new ByteBuffer(file.data) : undefined;
     }
 
     override getCount(): number {
@@ -114,7 +115,8 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
             archive = this.index.getArchive(archiveId);
             this.archives.set(archiveId, archive);
         }
-        return archive.getFile(fileId)?.getDataAsBuffer();
+        const file = archive.getFile(fileId);
+        return file ? new ByteBuffer(file.data) : undefined;
     }
 
     override getCount(): number {
@@ -138,7 +140,7 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
         if (!file) {
             throw new Error(name + ".dat not found");
         }
-        const buffer = file.getDataAsBuffer();
+        const buffer = new ByteBuffer(file.data);
 
         const count = buffer.readUnsignedShort();
         const types = new Array<T>(count);
@@ -179,7 +181,7 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         if (!indexFile) {
             throw new Error(name + ".idx not found");
         }
-        const indexBuffer = indexFile.getDataAsBuffer();
+        const indexBuffer = new ByteBuffer(indexFile.data);
         const count = indexBuffer.readUnsignedShort();
 
         const dataOffsets = new Int32Array(count);
@@ -194,7 +196,7 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
             typeConstructor,
             cacheInfo,
             count,
-            dataFile.getDataAsBuffer(),
+            new ByteBuffer(dataFile.data),
             dataOffsets,
         );
     }
