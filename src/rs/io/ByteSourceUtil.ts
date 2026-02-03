@@ -1,6 +1,7 @@
 import { ByteSource } from "./ByteSource";
 
 export function readAllBytes(source: ByteSource): Uint8Array {
+    // Always copies.
     const out = new Uint8Array(source.size);
     source.readInto(0, out);
     return out;

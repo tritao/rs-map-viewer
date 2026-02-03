@@ -11,7 +11,7 @@ import { IDX_ENTRY_SIZE } from "./store/DatLayout";
 import { ByteSource } from "../io/ByteSource";
 import { ByteSourceReader } from "../io/ByteSourceReader";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
-import { readAllBytes } from "../io/ByteSourceUtil";
+import { getOrCopyBytes, readAllBytes } from "../io/ByteSourceUtil";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -166,7 +166,7 @@ export class DatCacheIndex extends CacheIndex {
         if (!this.archiveExists(archiveId)) {
             throw new Error("Archive not found: " + archiveId);
         }
-        const data = readAllBytes(this.store.openArchiveReader(this.id, archiveId));
+        const data = getOrCopyBytes(this.store.openArchiveReader(this.id, archiveId));
         return Archive.decodeOld(
             archiveId,
             data,
