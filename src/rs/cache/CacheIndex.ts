@@ -62,11 +62,13 @@ export abstract class CacheIndex {
         return this.getArchiveKey(archiveId, null)
     }
 
-    abstract getFileKey(
+    getFileKey(
         archiveId: number,
         fileId: number,
         key: number[] | null,
-    ): ArchiveFile | null;
+    ): ArchiveFile | null {
+        return this.getArchiveKey(archiveId, key).getFile(fileId);
+    }
 
     getFileSmart(id: number, key: number[] | null): ArchiveFile | null {
         if (this.getArchiveCount() === 1) {
@@ -100,13 +102,7 @@ export abstract class CacheStoreIndex extends CacheIndex {
     }
 }
 
-export abstract class CacheStoreIndexSync extends CacheStoreIndex {
-    override getFileKey(archiveId: number, fileId: number, key: number[] | null): ArchiveFile | null {
-        return this.getArchiveKey(archiveId, key).getFile(fileId);
-    }
-}
-
-export class CacheIndexDat extends CacheStoreIndexSync {
+export class CacheIndexDat extends CacheStoreIndex {
     static fromStore(
         id: number,
         store: CacheStore,
@@ -159,7 +155,7 @@ function decodeArchiveDataFromSource(
     );
 }
 
-export class CacheIndexDat2 extends CacheStoreIndexSync {
+export class CacheIndexDat2 extends CacheStoreIndex {
     static fromStore(id: number, store: CacheStore, compressionHandler: CompressionHandler): CacheIndexDat2 {
         const data = store.read(CacheIndex.META_INDEX_ID, id);
         try {
