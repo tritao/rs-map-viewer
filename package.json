@@ -51,6 +51,7 @@
     "prepare": "husky install",
     "download-caches": "node scripts/download-caches.js",
     "rs:layer-check": "node scripts/rs-layer-check.mjs",
+    "rs:portability-check": "node scripts/rs-portability-check.mjs",
     "export-textures": "npx ts-node scripts/cache/export-textures.ts",
     "generate-fixtures": "npx tsc -p scripts/cache-fixtures/tsconfig.cjs.json && node /tmp/rs-map-viewer-fixtures-gen/scripts/cache-fixtures/generate-fixtures.js"
   },
