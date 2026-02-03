@@ -158,13 +158,8 @@ function decodeArchiveDataFromSource(
 export class CacheIndexDat2 extends CacheStoreIndex {
     static fromStore(id: number, store: CacheStore, compressionHandler: CompressionHandler): CacheIndexDat2 {
         const data = store.read(CacheIndex.META_INDEX_ID, id);
-        try {
-            const table = decodeTable(data, compressionHandler);
-            return new CacheIndexDat2(id, table, store, compressionHandler);
-        } catch (e) {
-            console.error(data, e);
-            throw new Error("Failed to decode index: " + id);
-        }
+        const table = decodeTable(data, compressionHandler);
+        return new CacheIndexDat2(id, table, store, compressionHandler);
     }
 
     override getArchiveKey(id: number, key: number[] | null): Archive {
