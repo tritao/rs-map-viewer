@@ -102,26 +102,6 @@ export abstract class CacheStoreIndex extends CacheIndex {
     }
 }
 
-export class CacheIndexDat extends CacheStoreIndex {
-    static fromStore(
-        id: number,
-        store: CacheStore,
-        compressionHandler: CompressionHandler,
-    ): CacheIndexDat {
-        const indexSize = store.getIndexFileSize(id);
-        if (indexSize === null) {
-            throw new Error("Index file not found: " + id);
-        }
-        const table = ReferenceTable.fromArchiveCount(indexSize / SectorCluster.SIZE);
-        return new CacheIndexDat(id, table, store, compressionHandler);
-    }
-
-    override getArchiveKey(id: number, key: number[] | null): Archive {
-        const data = this.read(id);
-        return Archive.decodeOld(id, data, this.id === DatIndexType.configs, this.compressionHandler);
-    }
-}
-
 function decodeTable(data: Uint8Array, compressionHandler: CompressionHandler): ReferenceTable {
     if (data.length) {
         const container = Container.decodeFromSource(byteSourceFromBytes(data), null, compressionHandler);
@@ -135,18 +115,19 @@ function byteSourceFromBytes(data: Uint8Array): ByteSource {
 }
 
 function decodeArchiveDataFromSource(
-    index: CacheIndex,
-    id: number,
+    table: ReferenceTable,
+    compressionHandler: CompressionHandler,
+    archiveId: number,
     source: ByteSource,
     key: number[] | null,
 ): Archive {
-    const archiveRef = index.getArchiveReference(id);
+    const archiveRef = table.getArchiveReference(archiveId);
     if (!archiveRef) {
-        throw new Error("Archive reference not found for: " + id);
+        throw new Error("Archive reference not found for: " + archiveId);
     }
-    const container = Container.decodeFromSource(source, key, index.compressionHandler);
+    const container = Container.decodeFromSource(source, key, compressionHandler);
     return Archive.decodeFromSource(
-        id,
+        archiveId,
         archiveRef.lastFileId,
         archiveRef.fileCount,
         archiveRef.fileIds,
@@ -155,16 +136,62 @@ function decodeArchiveDataFromSource(
     );
 }
 
-export class CacheIndexDat2 extends CacheStoreIndex {
-    static fromStore(id: number, store: CacheStore, compressionHandler: CompressionHandler): CacheIndexDat2 {
-        const data = store.read(CacheIndex.META_INDEX_ID, id);
-        const table = decodeTable(data, compressionHandler);
-        return new CacheIndexDat2(id, table, store, compressionHandler);
+type ArchiveDecoder = (archiveId: number, key: number[] | null) => Archive;
+
+export class CacheIndexStore extends CacheStoreIndex {
+    private constructor(
+        id: number,
+        table: ReferenceTable,
+        store: CacheStore,
+        compressionHandler: CompressionHandler,
+        private readonly decodeArchive: ArchiveDecoder,
+    ) {
+        super(id, table, store, compressionHandler);
     }
 
-    override getArchiveKey(id: number, key: number[] | null): Archive {
-        const source = this.store.openArchiveReader(this.id, id);
-        return decodeArchiveDataFromSource(this, id, source, key);
+    static fromDatStore(
+        id: number,
+        store: CacheStore,
+        compressionHandler: CompressionHandler,
+    ): CacheIndexStore {
+        const indexSize = store.getIndexFileSize(id);
+        if (indexSize === null) {
+            throw new Error("Index file not found: " + id);
+        }
+        const table = ReferenceTable.fromArchiveCount(indexSize / SectorCluster.SIZE);
+        return new CacheIndexStore(
+            id,
+            table,
+            store,
+            compressionHandler,
+            (archiveId: number): Archive => {
+                const data = store.read(id, archiveId);
+                return Archive.decodeOld(archiveId, data, id === DatIndexType.configs, compressionHandler);
+            },
+        );
+    }
+
+    static fromDat2Store(
+        id: number,
+        store: CacheStore,
+        compressionHandler: CompressionHandler,
+    ): CacheIndexStore {
+        const metaTableBytes = store.read(CacheIndex.META_INDEX_ID, id);
+        const table = decodeTable(metaTableBytes, compressionHandler);
+        return new CacheIndexStore(
+            id,
+            table,
+            store,
+            compressionHandler,
+            (archiveId: number, key: number[] | null): Archive => {
+                const source = store.openArchiveReader(id, archiveId);
+                return decodeArchiveDataFromSource(table, compressionHandler, archiveId, source, key);
+            },
+        );
+    }
+
+    override getArchiveKey(archiveId: number, key: number[] | null): Archive {
+        return this.decodeArchive(archiveId, key);
     }
 }
 
