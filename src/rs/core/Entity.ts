@@ -5,6 +5,10 @@ export abstract class Entity {
         return false;
     }
 
+    tryGetXZRadius(): number | null {
+        return null;
+    }
+
     mergeNormals(
         entity: Entity,
         offsetX: number,

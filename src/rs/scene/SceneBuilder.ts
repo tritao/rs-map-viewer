@@ -560,8 +560,9 @@ export class SceneBuilder {
                 );
                 if (added && locType.clipped) {
                     let lightOcclusion = 15;
-                    if (entity instanceof Model) {
-                        lightOcclusion = (entity.getXZRadius() / 4) | 0;
+                    const xzRadius = entity.tryGetXZRadius();
+                    if (xzRadius !== null) {
+                        lightOcclusion = (xzRadius / 4) | 0;
                         if (lightOcclusion > 30) {
                             lightOcclusion = 30;
                         }

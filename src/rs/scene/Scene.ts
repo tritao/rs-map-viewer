@@ -556,10 +556,10 @@ export class Scene {
 
                                 const wall = tile.wall;
                                 if (wall) {
-                                    if (wall.entity0 instanceof ModelData) {
+                                    if (wall.entity0 && wall.entity0.canMergeNormals()) {
                                         ModelData.mergeNormals(
                                             model,
-                                            wall.entity0,
+                                            wall.entity0 as ModelData,
                                             (1 - sizeX) * 64 + (localX - tileX) * 128,
                                             deltaHeight,
                                             (localY - tileY) * 128 + (1 - sizeY) * 64,
@@ -567,10 +567,10 @@ export class Scene {
                                             this.mergeNormalsScratch,
                                         );
                                     }
-                                    if (wall.entity1 instanceof ModelData) {
+                                    if (wall.entity1 && wall.entity1.canMergeNormals()) {
                                         ModelData.mergeNormals(
                                             model,
-                                            wall.entity1,
+                                            wall.entity1 as ModelData,
                                             (1 - sizeX) * 64 + (localX - tileX) * 128,
                                             deltaHeight,
                                             (localY - tileY) * 128 + (1 - sizeY) * 64,
@@ -581,12 +581,12 @@ export class Scene {
                                 }
 
                                 for (const loc of tile.locs) {
-                                    if (loc.entity instanceof ModelData) {
+                                    if (loc.entity && loc.entity.canMergeNormals()) {
                                         const var21 = loc.endX - loc.startX + 1;
                                         const var22 = loc.endY - loc.startY + 1;
                                         ModelData.mergeNormals(
                                             model,
-                                            loc.entity,
+                                            loc.entity as ModelData,
                                             (var21 - sizeX) * 64 + (loc.startX - tileX) * 128,
                                             deltaHeight,
                                             (loc.startY - tileY) * 128 + (var22 - sizeY) * 64,
@@ -619,7 +619,8 @@ export class Scene {
                         if (
                             tile &&
                             tile.floorDecoration &&
-                            tile.floorDecoration.entity instanceof ModelData
+                            tile.floorDecoration.entity &&
+                            tile.floorDecoration.entity.canMergeNormals()
                         ) {
                             const deltaHeight = this.getDeltaHeight(
                                 level,
@@ -631,7 +632,7 @@ export class Scene {
                             );
                             ModelData.mergeNormals(
                                 model,
-                                tile.floorDecoration.entity,
+                                tile.floorDecoration.entity as ModelData,
                                 (x - tileX) * 128,
                                 deltaHeight,
                                 (y - tileY) * 128,
@@ -654,12 +655,12 @@ export class Scene {
                         continue;
                     }
                     const wall = tile.wall;
-                    if (wall && wall.entity0 instanceof ModelData) {
-                        const model0 = wall.entity0;
+                    if (wall && wall.entity0 && wall.entity0.canMergeNormals()) {
+                        const model0 = wall.entity0 as ModelData;
                         this.mergeLargeLocNormals(model0, level, tileX, tileY, 1, 1);
 
-                            if (wall.entity1 instanceof ModelData) {
-                                const model1 = wall.entity1;
+                            if (wall.entity1 && wall.entity1.canMergeNormals()) {
+                                const model1 = wall.entity1 as ModelData;
                                 this.mergeLargeLocNormals(model1, level, tileX, tileY, 1, 1);
                                 ModelData.mergeNormals(model0, model1, 0, 0, 0, false, this.mergeNormalsScratch);
                                 wall.entity1 = model1.light(
@@ -683,19 +684,20 @@ export class Scene {
                     }
 
                     for (const loc of tile.locs) {
-                        if (loc.entity instanceof ModelData) {
+                        if (loc.entity && loc.entity.canMergeNormals()) {
+                            const locEntity = loc.entity as ModelData;
                             this.mergeLargeLocNormals(
-                                loc.entity,
+                                locEntity,
                                 level,
                                 tileX,
                                 tileY,
                                 loc.endX - loc.startX + 1,
                                 loc.endY - loc.startY + 1,
                             );
-                            loc.entity = loc.entity.light(
+                            loc.entity = locEntity.light(
                                 textureLoader,
-                                loc.entity.ambient,
-                                loc.entity.contrast,
+                                locEntity.ambient,
+                                locEntity.contrast,
                                 lightX,
                                 lightY,
                                 lightZ,
@@ -704,12 +706,13 @@ export class Scene {
                     }
 
                     const floorDecoration = tile.floorDecoration;
-                    if (floorDecoration && floorDecoration.entity instanceof ModelData) {
-                        this.mergeFloorNormals(floorDecoration.entity, level, tileX, tileY);
-                        floorDecoration.entity = floorDecoration.entity.light(
+                    if (floorDecoration && floorDecoration.entity && floorDecoration.entity.canMergeNormals()) {
+                        const floorModel = floorDecoration.entity as ModelData;
+                        this.mergeFloorNormals(floorModel, level, tileX, tileY);
+                        floorDecoration.entity = floorModel.light(
                             textureLoader,
-                            floorDecoration.entity.ambient,
-                            floorDecoration.entity.contrast,
+                            floorModel.ambient,
+                            floorModel.contrast,
                             lightX,
                             lightY,
                             lightZ,

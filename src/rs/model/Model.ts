@@ -674,6 +674,9 @@ export class Model extends Entity {
                 }
             }
         } else if (type === ContourGroundType.WarpToPlaneAbove) {
+            if (heightMapAbove === undefined) {
+                return this;
+            }
             const deltaY = this.maxY - this.minY;
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
@@ -683,15 +686,18 @@ export class Model extends Entity {
                 const tx = vx >> 7;
                 const tz = vz >> 7;
                 const h0 =
-                    (heightMapAbove![tx][tz] * (128 - rx) + heightMapAbove![tx + 1][tz] * rx) >> 7;
+                    (heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx) >> 7;
                 const h1 =
-                    (heightMapAbove![tx][tz + 1] * (128 - rx) +
-                        heightMapAbove![tx + 1][tz + 1] * rx) >>
+                    (heightMapAbove[tx][tz + 1] * (128 - rx) +
+                        heightMapAbove[tx + 1][tz + 1] * rx) >>
                     7;
                 const height = (h0 * (128 - rz) + h1 * rz) >> 7;
                 model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight + deltaY;
             }
         } else if (type === ContourGroundType.WarpBetweenPlanes) {
+            if (heightMapAbove === undefined) {
+                return this;
+            }
             const deltaY = this.maxY - this.minY;
             for (let i = 0; i < model.usedVertexCount; i++) {
                 const vx = this.verticesX[i] + sceneX;
@@ -703,10 +709,10 @@ export class Model extends Entity {
                 let h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
                 let h1 = (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
                 const height = (h0 * (128 - rz) + h1 * rz) >> 7;
-                h0 = (heightMapAbove![tx][tz] * (128 - rx) + heightMapAbove![tx + 1][tz] * rx) >> 7;
+                h0 = (heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx) >> 7;
                 h1 =
-                    (heightMapAbove![tx][tz + 1] * (128 - rx) +
-                        heightMapAbove![tx + 1][tz + 1] * rx) >>
+                    (heightMapAbove[tx][tz + 1] * (128 - rx) +
+                        heightMapAbove[tx + 1][tz + 1] * rx) >>
                     7;
                 const heightAbove = (h0 * (128 - rz) + h1 * rz) >> 7;
                 const deltaHeight = height - heightAbove;
@@ -831,6 +837,10 @@ export class Model extends Entity {
     getXZRadius(): number {
         this.calculateBoundsCylinder();
         return this.xzRadius;
+    }
+
+    override tryGetXZRadius(): number {
+        return this.getXZRadius();
     }
 
     animateOld(frame: SeqFrame | undefined) {
