@@ -10,6 +10,7 @@ import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { SectorCluster } from "./store/SectorCluster";
 import { ByteSource } from "../io/ByteSource";
+import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -144,13 +145,14 @@ function decodeArchiveDataFromSource(
         throw new Error("Archive reference not found for: " + id);
     }
     const container = Container.decodeFromSource(source, key, index.compressionHandler);
-    return Archive.decode(
+    const payload = new Uint8Array(container.data.buffer, container.data.byteOffset, container.data.byteLength);
+    return Archive.decodeFromSource(
         id,
         archiveRef.lastFileId,
         archiveRef.fileCount,
         archiveRef.fileIds,
         archiveRef.fileNameHashes,
-        new ByteBuffer(container.data),
+        new Uint8ArrayByteSource(payload),
     );
 }
 

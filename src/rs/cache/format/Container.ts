@@ -64,17 +64,95 @@ export class Container {
         const size =
             ((header[1] << 24) | (header[2] << 16) | (header[3] << 8) | header[4]) | 0;
 
-        const needsExtraSize = compression !== CompressionType.None || Xtea.isValidKey(key);
-        const totalSize = 5 + size + (needsExtraSize ? 4 : 0);
-
-        if (totalSize < 5 || totalSize > source.size) {
-            throw new Error(`Truncated container. expected=${totalSize}, available=${source.size}`);
+        if (size < 0) {
+            throw new Error("Invalid container size: " + size);
         }
 
-        const data = new Int8Array(totalSize);
-        source.readInto(0, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        const hasKey = Xtea.isValidKey(key);
 
-        return Container.decode(new ByteBuffer(data), key, compressionHandler);
+        if (compression === CompressionType.None) {
+            if (hasKey) {
+                const encryptedSize = 4 + size;
+                const end = 5 + encryptedSize;
+                if (end > source.size) {
+                    throw new Error(`Truncated container. expected>=${end}, available=${source.size}`);
+                }
+
+                const encrypted = new Uint8Array(encryptedSize);
+                source.readInto(5, encrypted);
+                const buf = new ByteBuffer(new Int8Array(encrypted.buffer, encrypted.byteOffset, encrypted.byteLength));
+                Xtea.decrypt(buf, 0, encryptedSize, key);
+
+                return new Container(
+                    compression,
+                    new Int8Array(encrypted.buffer, encrypted.byteOffset, size),
+                );
+            }
+
+            const end = 5 + size;
+            if (end > source.size) {
+                throw new Error(`Truncated container. expected>=${end}, available=${source.size}`);
+            }
+
+            const data = new Int8Array(size);
+            source.readInto(5, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+            return new Container(compression, data);
+        }
+
+        if (compression !== CompressionType.Bzip2 && compression !== CompressionType.Gzip) {
+            throw new Error("Container: Unsupported compression: " + compression);
+        }
+
+        const compressedSize = size;
+        const expectedMinSize = 5 + 4 + compressedSize;
+        if (expectedMinSize > source.size) {
+            throw new Error(`Truncated container. expected>=${expectedMinSize}, available=${source.size}`);
+        }
+
+        let actualSize: number;
+        let compressed: Uint8Array;
+
+        if (hasKey) {
+            const encryptedSize = 4 + compressedSize;
+            const encrypted = new Uint8Array(encryptedSize);
+            source.readInto(5, encrypted);
+            const buf = new ByteBuffer(new Int8Array(encrypted.buffer, encrypted.byteOffset, encrypted.byteLength));
+            Xtea.decrypt(buf, 0, encryptedSize, key);
+
+            actualSize = buf.getInt(0) & 0xffffffff;
+            compressed = encrypted.subarray(4, 4 + compressedSize);
+        } else {
+            const actualSizeBytes = new Uint8Array(4);
+            source.readInto(5, actualSizeBytes);
+            actualSize =
+                (((actualSizeBytes[0] << 24) |
+                    (actualSizeBytes[1] << 16) |
+                    (actualSizeBytes[2] << 8) |
+                    actualSizeBytes[3]) as number) & 0xffffffff;
+
+            compressed = new Uint8Array(compressedSize);
+            source.readInto(9, compressed);
+        }
+
+        let decompressed: Int8Array;
+        if (compression === CompressionType.Bzip2) {
+            decompressed = compressionHandler.decompressBzip2(compressed, actualSize);
+        } else {
+            decompressed = compressionHandler.decompressGzip(compressed);
+        }
+
+        if (decompressed.length !== actualSize) {
+            throw new Error(
+                "Container: Size mismatch. Compressed: " +
+                    actualSize +
+                    ", Decompressed: " +
+                    decompressed.length +
+                    ", Type: " +
+                    CompressionType[compression],
+            );
+        }
+
+        return new Container(compression, decompressed);
     }
 
     constructor(
