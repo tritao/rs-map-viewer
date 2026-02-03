@@ -10,11 +10,11 @@ export function readU16BE(buf: Uint8Array, off: number): u16 {
 
 export function readU24BE(buf: Uint8Array, off: number): u32 {
     const dv = view(buf);
-    return (
+    return toU32(
         dv.getUint8(off) * 0x10000 +
         dv.getUint8(off + 1) * 0x100 +
         dv.getUint8(off + 2)
-    ) >>> 0;
+    );
 }
 
 export function readU32BE(buf: Uint8Array, off: number): u32 {
