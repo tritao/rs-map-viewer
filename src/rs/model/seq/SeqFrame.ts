@@ -63,10 +63,18 @@ export class LegacySeqFrame {
     static load(modelArchive: Archive, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
         const bases = LegacySeqBase.load(modelArchive);
 
-        const head = modelArchive.getFileNamed("frame_head.dat")!.getDataAsBuffer();
-        const tran1 = modelArchive.getFileNamed("frame_tran1.dat")!.getDataAsBuffer();
-        const tran2 = modelArchive.getFileNamed("frame_tran2.dat")!.getDataAsBuffer();
-        const del = modelArchive.getFileNamed("frame_del.dat")!.getDataAsBuffer();
+        const headFile = modelArchive.getFileNamed("frame_head.dat");
+        const tran1File = modelArchive.getFileNamed("frame_tran1.dat");
+        const tran2File = modelArchive.getFileNamed("frame_tran2.dat");
+        const delFile = modelArchive.getFileNamed("frame_del.dat");
+        if (!headFile || !tran1File || !tran2File || !delFile) {
+            throw new Error("Missing legacy frame archive files (frame_head/frame_tran1/frame_tran2/frame_del)");
+        }
+
+        const head = headFile.getDataAsBuffer();
+        const tran1 = tran1File.getDataAsBuffer();
+        const tran2 = tran2File.getDataAsBuffer();
+        const del = delFile.getDataAsBuffer();
 
         const frameCount = head.readUnsignedShort();
         const lastFrameId = head.readUnsignedShort();
