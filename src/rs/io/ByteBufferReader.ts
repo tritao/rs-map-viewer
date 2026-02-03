@@ -78,6 +78,10 @@ export class ByteBufferReader implements ByteReader {
         if (this.buffer.offset + length > this.buffer.length) {
             throw new Error("Buffer overflow");
         }
-        target.set(this.buffer.readUnsignedBytes(length), targetOffset);
+        if (length === 0) {
+            return;
+        }
+        target.set(this.buffer._u8.subarray(this.buffer.offset, this.buffer.offset + length), targetOffset);
+        this.buffer.offset += length;
     }
 }
