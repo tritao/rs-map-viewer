@@ -1,5 +1,3 @@
-import { ByteBuffer } from "../../io/ByteBuffer";
-import { ByteBufferReader } from "../../io/ByteBufferReader";
 import { ByteReader } from "../../io/ByteReader";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveReference } from "./ArchiveReference";
@@ -23,10 +21,6 @@ export class ReferenceTable {
         [],
         [],
     );
-
-    static decode(buffer: ByteBuffer): ReferenceTable {
-        return ReferenceTable.decodeFromReader(new ByteBufferReader(buffer));
-    }
 
     static decodeFromReader(reader: ByteReader): ReferenceTable {
         const protocol = reader.readUnsignedByte();
