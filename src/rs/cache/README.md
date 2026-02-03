@@ -28,7 +28,7 @@ The key goal is: decoders should not care *where* bytes come from (memory, file,
   - `openArchiveReader(indexId, archiveId)`: returns a seekable `ByteSource` view over a single archive’s raw bytes.
   - `read(indexId, archiveId)`: convenience materialize-all wrapper.
 - `store/SectorChainStore.ts`: `CacheStore` backed by seekable `ByteSource`s (a “native-shaped” implementation).
-- `store/Sector.ts` / `store/SectorCluster.ts`: structures for `.dat(2)` sectors and `.idx*` cluster entries.
+- `store/SectorChainStore.ts`: reads sector chains from `.dat(2)` using `.idx*` index entries.
 
 ### Indices and cache system
 

@@ -2,9 +2,20 @@ import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
-import { Sector } from "./Sector";
-import { SectorCluster } from "./SectorCluster";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
+
+const INDEX_ENTRY_SIZE: i32 = 6;
+
+const SECTOR_HEADER_SIZE: i32 = 8;
+const SECTOR_DATA_SIZE: i32 = 512;
+const SECTOR_EXTENDED_HEADER_SIZE: i32 = 10;
+const SECTOR_EXTENDED_DATA_SIZE: i32 = 510;
+const SECTOR_SIZE: i32 = SECTOR_HEADER_SIZE + SECTOR_DATA_SIZE;
+
+type SectorCluster = {
+    size: number;
+    sector: number;
+};
 
 class SectorChainArchiveSource implements ByteSource {
     constructor(
@@ -53,7 +64,7 @@ class SectorChainArchiveSource implements ByteSource {
                 throw new Error(`Invalid sector index: ${sectorIndex}`);
             }
 
-            const fileOffset = sectorId * Sector.SIZE + this.headerSize + sectorOffset;
+            const fileOffset = sectorId * SECTOR_SIZE + this.headerSize + sectorOffset;
             this.dataFile.readInto(fileOffset, target, outOff, take);
 
             remaining -= take;
@@ -90,8 +101,8 @@ export class SectorChainStore implements CacheStore {
         const size = cluster.size;
         const extended = archiveId > 65535;
 
-        const headerSize = extended ? Sector.EXTENDED_HEADER_SIZE : Sector.HEADER_SIZE;
-        const dataSize = extended ? Sector.EXTENDED_DATA_SIZE : Sector.DATA_SIZE;
+        const headerSize = extended ? SECTOR_EXTENDED_HEADER_SIZE : SECTOR_HEADER_SIZE;
+        const dataSize = extended ? SECTOR_EXTENDED_DATA_SIZE : SECTOR_DATA_SIZE;
 
         const sectorIds = this.walkSectorChain(
             sectorIndexId,
@@ -125,20 +136,20 @@ export class SectorChainStore implements CacheStore {
     }
 
     private readSectorCluster(indexFile: ByteSource, indexId: number, archiveId: number): SectorCluster {
-        const clusterPtr = archiveId * SectorCluster.SIZE;
+        const clusterPtr = archiveId * INDEX_ENTRY_SIZE;
         const fileSize = indexFile.size;
-        if (clusterPtr < 0 || clusterPtr + SectorCluster.SIZE > fileSize) {
+        if (clusterPtr < 0 || clusterPtr + INDEX_ENTRY_SIZE > fileSize) {
             throw new Error(
                 `Invalid ptr: ${clusterPtr}, fileSize: ${fileSize}, indexId: ${indexId}, archiveId: ${archiveId}`,
             );
         }
 
-        const buf = new Uint8Array(SectorCluster.SIZE);
+        const buf = new Uint8Array(INDEX_ENTRY_SIZE);
         indexFile.readInto(clusterPtr, buf);
 
         const size = readU24BE(buf, 0);
         const sector = readU24BE(buf, 3);
-        return new SectorCluster(size, sector);
+        return { size, sector };
     }
 
     private walkSectorChain(
@@ -148,8 +159,8 @@ export class SectorChainStore implements CacheStore {
         totalSize: number,
         extended: boolean,
     ): number[] {
-        const headerSize = extended ? Sector.EXTENDED_HEADER_SIZE : Sector.HEADER_SIZE;
-        const dataSize = extended ? Sector.EXTENDED_DATA_SIZE : Sector.DATA_SIZE;
+        const headerSize = extended ? SECTOR_EXTENDED_HEADER_SIZE : SECTOR_HEADER_SIZE;
+        const dataSize = extended ? SECTOR_EXTENDED_DATA_SIZE : SECTOR_DATA_SIZE;
 
         const header = new Uint8Array(headerSize);
 
@@ -159,7 +170,7 @@ export class SectorChainStore implements CacheStore {
         let sectorId = firstSectorId;
 
         while (remaining > 0) {
-            const sectorPtr = sectorId * Sector.SIZE;
+            const sectorPtr = sectorId * SECTOR_SIZE;
             this.dataFile.readInto(sectorPtr, header);
 
             let readArchiveId: number;

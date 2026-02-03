@@ -8,11 +8,12 @@ import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { readAllBytes } from "./store/ByteSourceUtil";
-import { SectorCluster } from "./store/SectorCluster";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 import { ByteSourceReader } from "../io/ByteSourceReader";
 import { ByteBuffer } from "../io/ByteBuffer";
+
+const INDEX_ENTRY_SIZE: i32 = 6;
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -138,7 +139,7 @@ export class CacheIndexStore extends CacheIndex {
         if (indexSize === null) {
             throw new Error("Index file not found: " + id);
         }
-        const table = ReferenceTable.fromArchiveCount(indexSize / SectorCluster.SIZE);
+        const table = ReferenceTable.fromArchiveCount(indexSize / INDEX_ENTRY_SIZE);
         return new CacheIndexStore(
             id,
             table,

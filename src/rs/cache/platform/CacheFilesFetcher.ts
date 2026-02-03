@@ -1,7 +1,7 @@
 import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
 import { CachedFile, CacheLoader, ProgressListener } from "../CacheLoader";
 import { CacheType } from "../CacheType";
-import { SectorCluster } from "../store/SectorCluster";
+const INDEX_ENTRY_SIZE: number = 6;
 
 function decodeJsonStringArray(buffer: CacheBuffer): string[] {
     const text = new TextDecoder("utf-8").decode(toCacheBytes(buffer));
@@ -176,7 +176,7 @@ export async function fetchDat2CacheFiles(
         false,
         cacheName,
     );
-    const indexCount = metaFile.data.byteLength / SectorCluster.SIZE;
+    const indexCount = metaFile.data.byteLength / INDEX_ENTRY_SIZE;
 
     if (indicesToLoad.length === 0) {
         indicesToLoad = Array.from({ length: indexCount }, (_, i) => i);
