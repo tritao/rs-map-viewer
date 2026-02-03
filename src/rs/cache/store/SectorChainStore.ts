@@ -4,6 +4,7 @@ import { ByteSourceAccess } from "../../io/ByteSourceAccess";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
+import { toU32 } from "../../util/U32";
 import {
     IDX_ENTRY_SIZE,
     SECTOR_DATA_SIZE,
@@ -56,7 +57,7 @@ class SectorChainArchiveSource implements ByteSource {
         let outOff = targetOffset;
 
         while (remaining > 0) {
-            const sectorIndex = (inOff / this.dataSize) | 0;
+            const sectorIndex = Math.floor(inOff / this.dataSize);
             const sectorOffset = inOff - sectorIndex * this.dataSize;
             const take = Math.min(this.dataSize - sectorOffset, remaining);
 
@@ -190,7 +191,7 @@ export class SectorChainStore implements CacheStore {
             let readIndexId: number;
 
             if (extended) {
-                readArchiveId = readI32BE(header, 0) >>> 0;
+                readArchiveId = toU32(readI32BE(header, 0));
                 readChunk = readU16BE(header, 4);
                 nextSector = readU24BE(header, 6);
                 readIndexId = header[9];
@@ -201,7 +202,7 @@ export class SectorChainStore implements CacheStore {
                 readIndexId = header[7];
             }
 
-            if ((readArchiveId >>> 0) !== (archiveId >>> 0)) {
+            if (toU32(readArchiveId) !== toU32(archiveId)) {
                 throw new Error(`Sector archive id mismatch. expected: ${archiveId} got: ${readArchiveId}`);
             }
             if (readIndexId !== sectorIndexId) {
