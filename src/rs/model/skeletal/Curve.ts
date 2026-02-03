@@ -93,11 +93,16 @@ export class Curve {
             return this.pointIndex;
         }
 
-        if (
-            this.pointIndex < 0 ||
-            this.points[this.pointIndex].x > t ||
-            (this.points[this.pointIndex].next && this.points[this.pointIndex].next!.x <= t)
-        ) {
+        let needsSearch: boolean;
+        if (this.pointIndex < 0) {
+            needsSearch = true;
+        } else {
+            const point = this.points[this.pointIndex];
+            const next = point.next;
+            needsSearch = point.x > t || (next !== undefined && next.x <= t);
+        }
+
+        if (needsSearch) {
             if (t >= this.startTick && t <= this.endTick) {
                 const pointCount = this.points.length;
                 let newPointIndex = this.pointIndex;

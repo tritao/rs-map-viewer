@@ -2,7 +2,7 @@ import { quat } from "gl-matrix";
 
 export class QuatPool {
     private count: number = 0;
-    private readonly pool: quat[];
+    private readonly pool: Array<quat | undefined>;
 
     constructor(private readonly capacity: number) {
         this.pool = new Array(capacity);
@@ -16,7 +16,10 @@ export class QuatPool {
         if (this.count === 0) {
             return quat.create();
         }
-        const q = this.pool[--this.count]!;
+        const q = this.pool[--this.count];
+        if (!q) {
+            throw new Error("QuatPool: corrupted pool state");
+        }
         quat.identity(q);
         return q;
     }

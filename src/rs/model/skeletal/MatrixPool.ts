@@ -2,7 +2,7 @@ import { mat4 } from "gl-matrix";
 
 export class MatrixPool {
     private count: number = 0;
-    private readonly pool: mat4[];
+    private readonly pool: Array<mat4 | undefined>;
 
     constructor(private readonly capacity: number) {
         this.pool = new Array(capacity);
@@ -16,7 +16,10 @@ export class MatrixPool {
         if (this.count === 0) {
             return mat4.create();
         }
-        const m = this.pool[--this.count]!;
+        const m = this.pool[--this.count];
+        if (!m) {
+            throw new Error("MatrixPool: corrupted pool state");
+        }
         mat4.identity(m);
         return m;
     }
