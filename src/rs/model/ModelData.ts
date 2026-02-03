@@ -9,6 +9,10 @@ import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
 import { VertexNormal } from "./VertexNormal";
 
+export function isModelData(entity: Entity | null | undefined): entity is ModelData {
+    return !!entity && entity.canMergeNormals();
+}
+
 export class MergeNormalsScratch {
     private stamp: number = 1;
 
@@ -322,12 +326,12 @@ export class ModelData extends Entity {
         hideOccluded: boolean,
         scratch?: MergeNormalsScratch,
     ): void {
-        if (!entity.canMergeNormals()) {
+        if (!isModelData(entity)) {
             return;
         }
         ModelData.mergeNormals(
             this,
-            entity as ModelData,
+            entity,
             offsetX,
             offsetY,
             offsetZ,

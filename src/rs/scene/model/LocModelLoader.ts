@@ -6,7 +6,7 @@ import { SeqType } from "../../config/seqtype/SeqType";
 import { SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
 import { ContourGroundType } from "../../model/ContourGroundType";
 import { Model } from "../../model/Model";
-import { ModelData } from "../../model/ModelData";
+import { isModelData, ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
 import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
@@ -237,7 +237,10 @@ export class LocModelLoader {
         }
 
         if (locType.mergeNormals) {
-            model = (model as ModelData).copy();
+            if (!isModelData(model)) {
+                throw new Error("Expected ModelData for mergeNormals loc model");
+            }
+            model = model.copy();
         }
 
         if (locType.contourGroundType !== 0 && contourGroundInfo) {
