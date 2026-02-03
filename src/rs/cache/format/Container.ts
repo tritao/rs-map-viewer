@@ -5,6 +5,7 @@ import { Xtea } from "../../crypto/Xtea";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
 import { readU32BE } from "../../io/Endian";
+import { getOrCopyBytes } from "../../io/ByteSourceUtil";
 
 export class Container {
     static decodeFromSource(
@@ -46,14 +47,7 @@ export class Container {
             }
 
             const payload = source.slice(5, size);
-            const view = payload.tryGetUint8ArrayView();
-            if (view) {
-                return new Container(compression, view);
-            }
-
-            const data = new Uint8Array(size);
-            payload.readInto(0, data);
-            return new Container(compression, data);
+            return new Container(compression, getOrCopyBytes(payload));
         }
 
         if (compression !== CompressionType.Bzip2 && compression !== CompressionType.Gzip) {
@@ -83,13 +77,7 @@ export class Container {
 
             // compressed payload starts at 9
             const payload = source.slice(9, compressedSize);
-            const view = payload.tryGetUint8ArrayView();
-            if (view) {
-                compressed = view;
-            } else {
-                compressed = new Uint8Array(compressedSize);
-                payload.readInto(0, compressed);
-            }
+            compressed = getOrCopyBytes(payload);
         }
 
         let decompressed: Uint8Array;

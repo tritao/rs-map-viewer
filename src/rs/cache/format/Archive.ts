@@ -2,6 +2,7 @@ import { CompressionHandler } from "../../compression/CompressionHandler";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
+import { getOrCopyBytes } from "../../io/ByteSourceUtil";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
 
@@ -138,12 +139,7 @@ export class Archive {
         const files: ArchiveFile[] = new Array(fileCount);
 
         if (fileCount === 1) {
-            const view = source.tryGetUint8ArrayView();
-            const data = view ?? (() => {
-                const copy = new Uint8Array(source.size);
-                source.readInto(0, copy);
-                return copy;
-            })();
+            const data = getOrCopyBytes(source);
 
             const fileId = lastFileId;
             const file = new ArchiveFile(fileId, archiveId, data);
