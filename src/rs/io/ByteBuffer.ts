@@ -1,12 +1,15 @@
 import { FloatUtil } from "../../util/FloatUtil";
+import { readI32BE, readU24BE } from "./Endian";
 
 export class ByteBuffer {
     _data: Int8Array;
+    _u8: Uint8Array;
 
     offset: number = 0;
 
     constructor(data: Int8Array) {
         this._data = data;
+        this._u8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     }
 
     static createWithSize(size: number): ByteBuffer {
@@ -42,11 +45,12 @@ export class ByteBuffer {
     }
 
     readMedium(): number {
-        return (
-            (this.readUnsignedByte() << 16) |
-            (this.readUnsignedByte() << 8) |
-            this.readUnsignedByte()
-        );
+        if (this.offset > this._data.length - 3) {
+            throw new Error("Buffer overflow");
+        }
+        const value = readU24BE(this._u8, this.offset);
+        this.offset += 3;
+        return value;
     }
 
     readUnsignedMedium(): number {
@@ -54,12 +58,12 @@ export class ByteBuffer {
     }
 
     readInt(): number {
-        return (
-            (this.readUnsignedByte() << 24) |
-            (this.readUnsignedByte() << 16) |
-            (this.readUnsignedByte() << 8) |
-            this.readUnsignedByte()
-        );
+        if (this.offset > this._data.length - 4) {
+            throw new Error("Buffer overflow");
+        }
+        const value = readI32BE(this._u8, this.offset);
+        this.offset += 4;
+        return value;
     }
 
     readFloat(): number {
@@ -155,12 +159,7 @@ export class ByteBuffer {
     }
 
     getInt(offset: number): number {
-        return (
-            (this.getUnsignedByte(offset) << 24) |
-            (this.getUnsignedByte(offset + 1) << 16) |
-            (this.getUnsignedByte(offset + 2) << 8) |
-            this.getUnsignedByte(offset + 3)
-        );
+        return readI32BE(this._u8, offset);
     }
 
     readBytes(amount: number): Int8Array {

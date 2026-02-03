@@ -1,5 +1,6 @@
 import { ByteSource } from "./ByteSource";
 import { ByteReader } from "./ByteReader";
+import { readI32BE, readU24BE } from "./Endian";
 
 export class ByteSourceReader implements ByteReader {
     private position: number = 0;
@@ -85,20 +86,19 @@ export class ByteSourceReader implements ByteReader {
     }
 
     readMedium(): number {
-        return (
-            (this.readUnsignedByte() << 16) |
-            (this.readUnsignedByte() << 8) |
-            this.readUnsignedByte()
-        );
+        this.ensure(3);
+        const off = this.position - this.windowStart;
+        const value = readU24BE(this.window, off);
+        this.position += 3;
+        return value;
     }
 
     readInt(): number {
-        return (
-            (this.readUnsignedByte() << 24) |
-            (this.readUnsignedByte() << 16) |
-            (this.readUnsignedByte() << 8) |
-            this.readUnsignedByte()
-        );
+        this.ensure(4);
+        const off = this.position - this.windowStart;
+        const value = readI32BE(this.window, off);
+        this.position += 4;
+        return value;
     }
 
     readBigSmart(): number {
@@ -127,4 +127,3 @@ export class ByteSourceReader implements ByteReader {
         return out;
     }
 }
-
