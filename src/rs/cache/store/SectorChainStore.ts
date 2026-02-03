@@ -3,18 +3,7 @@ import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { Sector } from "./Sector";
 import { SectorCluster } from "./SectorCluster";
-
-function readU16(buf: Uint8Array, off: number): number {
-    return (buf[off] << 8) | buf[off + 1];
-}
-
-function readU24(buf: Uint8Array, off: number): number {
-    return (buf[off] << 16) | (buf[off + 1] << 8) | buf[off + 2];
-}
-
-function readI32(buf: Uint8Array, off: number): number {
-    return (buf[off] << 24) | (buf[off + 1] << 16) | (buf[off + 2] << 8) | buf[off + 3];
-}
+import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
 
 export class SectorChainStore implements CacheStore {
     constructor(
@@ -125,8 +114,8 @@ export class SectorChainStore implements CacheStore {
         const buf = new Uint8Array(SectorCluster.SIZE);
         indexFile.readInto(clusterPtr, buf);
 
-        const size = readU24(buf, 0);
-        const sector = readU24(buf, 3);
+        const size = readU24BE(buf, 0);
+        const sector = readU24BE(buf, 3);
         return new SectorCluster(size, sector);
     }
 
@@ -157,14 +146,14 @@ export class SectorChainStore implements CacheStore {
             let readIndexId: number;
 
             if (extended) {
-                readArchiveId = readI32(header, 0) >>> 0;
-                readChunk = readU16(header, 4);
-                nextSector = readU24(header, 6);
+                readArchiveId = readI32BE(header, 0) >>> 0;
+                readChunk = readU16BE(header, 4);
+                nextSector = readU24BE(header, 6);
                 readIndexId = header[9];
             } else {
-                readArchiveId = readU16(header, 0);
-                readChunk = readU16(header, 2);
-                nextSector = readU24(header, 4);
+                readArchiveId = readU16BE(header, 0);
+                readChunk = readU16BE(header, 2);
+                nextSector = readU24BE(header, 4);
                 readIndexId = header[7];
             }
 
