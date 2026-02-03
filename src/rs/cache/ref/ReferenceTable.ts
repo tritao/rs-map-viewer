@@ -252,16 +252,4 @@ export class ReferenceTable {
         return ref;
     }
 
-    get archiveReferences(): ArchiveReference[] {
-        const refs = new Array<ArchiveReference>(this.archiveIds.length);
-        for (let i = 0; i < this.archiveIds.length; i++) {
-            const archiveId = this.archiveIds[i];
-            const ref = this.getArchiveReference(archiveId);
-            if (!ref) {
-                throw new Error("Archive reference not found for: " + archiveId);
-            }
-            refs[i] = ref;
-        }
-        return refs;
-    }
 }
