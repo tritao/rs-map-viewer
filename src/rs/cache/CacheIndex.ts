@@ -1,4 +1,3 @@
-import { ByteBuffer } from "../io/ByteBuffer";
 import { StringUtil } from "../util/StringUtil";
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { Archive } from "./format/Archive";
@@ -11,6 +10,7 @@ import { CacheStore } from "./store/CacheStore";
 import { SectorCluster } from "./store/SectorCluster";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
+import { ByteSourceReader } from "../io/ByteSourceReader";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -130,7 +130,10 @@ function decodeTable(data: Int8Array, compressionHandler: CompressionHandler): R
     if (data.length) {
         const source = new Uint8ArrayByteSource(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
         const container = Container.decodeFromSource(source, null, compressionHandler);
-        return ReferenceTable.decode(new ByteBuffer(container.data));
+        const payloadSource = new Uint8ArrayByteSource(
+            new Uint8Array(container.data.buffer, container.data.byteOffset, container.data.byteLength),
+        );
+        return ReferenceTable.decodeFromReader(new ByteSourceReader(payloadSource));
     }
     return ReferenceTable.INVALID_TABLE;
 }

@@ -1,4 +1,6 @@
 import { ByteBuffer } from "../../io/ByteBuffer";
+import { ByteBufferReader } from "../../io/ByteBufferReader";
+import { ByteReader } from "../../io/ByteReader";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveReference } from "./ArchiveReference";
 
@@ -14,8 +16,8 @@ export class ReferenceTable {
         new Int32Array(0),
         new Int32Array(0),
         [],
-        new DataView(new ArrayBuffer(0)),
-        new DataView(new ArrayBuffer(0)),
+        new Int32Array(0),
+        new Int32Array(0),
         new Int32Array(0),
         new Int32Array(0),
         [],
@@ -52,8 +54,8 @@ export class ReferenceTable {
             archiveIds,
             archiveNameHashes,
             archiveWhirlpools,
-            new DataView(new ArrayBuffer(archiveCount * 4)),
-            new DataView(new ArrayBuffer(archiveCount * 4)),
+            new Int32Array(archiveCount),
+            new Int32Array(archiveCount),
             archiveFileCounts,
             archiveLastFileIds,
             archiveFileIds,
@@ -62,28 +64,32 @@ export class ReferenceTable {
     }
 
     static decode(buffer: ByteBuffer): ReferenceTable {
-        const protocol = buffer.readUnsignedByte();
+        return ReferenceTable.decodeFromReader(new ByteBufferReader(buffer));
+    }
+
+    static decodeFromReader(reader: ByteReader): ReferenceTable {
+        const protocol = reader.readUnsignedByte();
         if (protocol < 5 || protocol > 7) {
             throw new Error("Invalid protocol: " + protocol);
         }
-        const revision = protocol > 5 ? buffer.readInt() : 0;
-        const flag = buffer.readUnsignedByte();
+        const revision = protocol > 5 ? reader.readInt() : 0;
+        const flag = reader.readUnsignedByte();
         const named = (flag & 0x1) !== 0;
         const usesWhirlpool = (flag & 0x2) !== 0;
-        const archiveCount = protocol === 7 ? buffer.readBigSmart() : buffer.readUnsignedShort();
+        const archiveCount = protocol === 7 ? reader.readBigSmart() : reader.readUnsignedShort();
 
         let lastArchiveId = 0;
         const archiveIds = new Int32Array(archiveCount);
         const archiveIdIndexMap: Map<number, number> = new Map();
         if (protocol === 7) {
             for (let i = 0; i < archiveCount; i++) {
-                lastArchiveId += buffer.readBigSmart();
+                lastArchiveId += reader.readBigSmart();
                 archiveIds[i] = lastArchiveId;
                 archiveIdIndexMap.set(lastArchiveId, i);
             }
         } else {
             for (let i = 0; i < archiveCount; i++) {
-                lastArchiveId += buffer.readUnsignedShort();
+                lastArchiveId += reader.readUnsignedShort();
                 archiveIds[i] = lastArchiveId;
                 archiveIdIndexMap.set(lastArchiveId, i);
             }
@@ -92,27 +98,31 @@ export class ReferenceTable {
         const archiveNameHashes = new Int32Array(archiveCount);
         if (named) {
             for (let i = 0; i < archiveCount; i++) {
-                archiveNameHashes[i] = buffer.readInt();
+                archiveNameHashes[i] = reader.readInt();
             }
         }
 
         const archiveWhirlpools = new Array<Int8Array>(archiveCount);
         if (usesWhirlpool) {
             for (let i = 0; i < archiveCount; i++) {
-                archiveWhirlpools[i] = buffer.readBytes(64);
+                archiveWhirlpools[i] = reader.readBytes(64);
             }
         }
 
-        const archiveCrcs = new DataView(buffer.data.buffer, buffer.offset, archiveCount * 4);
-        buffer.offset += archiveCrcs.byteLength;
+        const archiveCrcs = new Int32Array(archiveCount);
+        for (let i = 0; i < archiveCount; i++) {
+            archiveCrcs[i] = reader.readInt();
+        }
 
-        const archiveRevisions = new DataView(buffer.data.buffer, buffer.offset, archiveCount * 4);
-        buffer.offset += archiveRevisions.byteLength;
+        const archiveRevisions = new Int32Array(archiveCount);
+        for (let i = 0; i < archiveCount; i++) {
+            archiveRevisions[i] = reader.readInt();
+        }
 
         const archiveFileCounts = new Int32Array(archiveCount);
         for (let i = 0; i < archiveCount; i++) {
             archiveFileCounts[i] =
-                protocol === 7 ? buffer.readBigSmart() : buffer.readUnsignedShort();
+                protocol === 7 ? reader.readBigSmart() : reader.readUnsignedShort();
         }
 
         const archiveFileIds = new Array<Int32Array>(archiveCount);
@@ -123,7 +133,7 @@ export class ReferenceTable {
         for (let archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
             let lastFileId = 0;
             for (let fileIdx = 0; fileIdx < archiveFileCounts[archiveIdx]; fileIdx++) {
-                lastFileId += protocol === 7 ? buffer.readBigSmart() : buffer.readUnsignedShort();
+                lastFileId += protocol === 7 ? reader.readBigSmart() : reader.readUnsignedShort();
                 archiveFileIds[archiveIdx][fileIdx] = lastFileId;
             }
             archiveLastFileIds[archiveIdx] = lastFileId;
@@ -136,7 +146,7 @@ export class ReferenceTable {
             }
             for (let archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
                 for (let fileIdx = 0; fileIdx < archiveFileCounts[archiveIdx]; fileIdx++) {
-                    archiveFileNameHashes[archiveIdx][fileIdx] = buffer.readInt();
+                    archiveFileNameHashes[archiveIdx][fileIdx] = reader.readInt();
                 }
             }
         }
@@ -172,8 +182,8 @@ export class ReferenceTable {
         readonly archiveIds: Int32Array,
         private readonly _archiveNameHashes: Int32Array,
         private readonly _archiveWhirlpools: Int8Array[],
-        private readonly _archiveCrcs: DataView,
-        private readonly _archiveRevisions: DataView,
+        private readonly _archiveCrcs: Int32Array,
+        private readonly _archiveRevisions: Int32Array,
         private readonly _archiveFileCounts: Int32Array,
         private readonly _archiveLastFileIds: Int32Array,
         private readonly _archiveFileIds: Int32Array[],
@@ -204,8 +214,8 @@ export class ReferenceTable {
 
         const nameHash = this._archiveNameHashes[i];
         const whirlpool = this._archiveWhirlpools[i];
-        const crc = this._archiveCrcs.getInt32(i * 4, false);
-        const revision = this._archiveRevisions.getInt32(i * 4, false);
+        const crc = this._archiveCrcs[i];
+        const revision = this._archiveRevisions[i];
         const fileCount = this._archiveFileCounts[i];
         const lastFileId = this._archiveLastFileIds[i];
         const fileIds = this._archiveFileIds[i];
