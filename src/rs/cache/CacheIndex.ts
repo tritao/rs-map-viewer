@@ -41,7 +41,7 @@ export abstract class CacheIndex {
 
     getArchiveId(name: string): number {
         const value = this.table.getArchiveId(name);
-        return value ? value : -1;
+        return value ?? -1;
     }
 
     getFileIds(archiveId: number): Int32Array | null {
@@ -196,7 +196,7 @@ export class LegacyCacheIndex extends CacheIndex {
 
     override getArchiveId(name: string): number {
         const value = this.archiveNameHashes.get(StringUtil.hashOld(name));
-        return value ? value : -1;
+        return value ?? -1;
     }
 
     override getFileKey(archiveId: number, fileId: number, key: number[] | null): ArchiveFile | null {
