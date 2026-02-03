@@ -12,7 +12,7 @@ import {
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 
-import { IDX_ENTRY_SIZE } from "../../src/rs/cache/store/IndexEntry";
+import { IDX_ENTRY_SIZE } from "../../src/rs/cache/store/DatLayout";
 
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");

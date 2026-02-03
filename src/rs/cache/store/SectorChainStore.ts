@@ -3,13 +3,14 @@ import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { CacheIndex } from "../CacheIndex";
 import { CacheStore } from "./CacheStore";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
-import { IDX_ENTRY_SIZE } from "./IndexEntry";
-
-const SECTOR_HEADER_SIZE: i32 = 8;
-const SECTOR_DATA_SIZE: i32 = 512;
-const SECTOR_EXTENDED_HEADER_SIZE: i32 = 10;
-const SECTOR_EXTENDED_DATA_SIZE: i32 = 510;
-const SECTOR_SIZE: i32 = SECTOR_HEADER_SIZE + SECTOR_DATA_SIZE;
+import {
+    IDX_ENTRY_SIZE,
+    SECTOR_DATA_SIZE,
+    SECTOR_EXTENDED_DATA_SIZE,
+    SECTOR_EXTENDED_HEADER_SIZE,
+    SECTOR_HEADER_SIZE,
+    SECTOR_SIZE,
+} from "./DatLayout";
 
 type SectorCluster = {
     size: number;

@@ -1,7 +1,7 @@
 import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
 import { CachedFile, CacheLoader, ProgressListener } from "./CacheLoader";
 import { CacheType } from "../CacheType";
-import { IDX_ENTRY_SIZE } from "../store/IndexEntry";
+import { IDX_ENTRY_SIZE } from "../store/DatLayout";
 
 function decodeJsonStringArray(buffer: CacheBuffer): string[] {
     const text = new TextDecoder("utf-8").decode(toCacheBytes(buffer));

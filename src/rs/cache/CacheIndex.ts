@@ -8,7 +8,7 @@ import { ArchiveReference } from "./ref/ArchiveReference";
 import { ReferenceTable } from "./ref/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { readAllBytes } from "./store/ByteSourceUtil";
-import { IDX_ENTRY_SIZE } from "./store/IndexEntry";
+import { IDX_ENTRY_SIZE } from "./store/DatLayout";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 import { ByteBuffer } from "../io/ByteBuffer";
