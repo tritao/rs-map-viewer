@@ -12,6 +12,7 @@ import { SectorCluster } from "./store/SectorCluster";
 import { ByteSource } from "../io/ByteSource";
 import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 import { ByteSourceReader } from "../io/ByteSourceReader";
+import { ByteBuffer } from "../io/ByteBuffer";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -88,16 +89,16 @@ export abstract class CacheIndex {
     }
 }
 
-function decodeTable(data: Uint8Array, compressionHandler: CompressionHandler): ReferenceTable {
-    if (data.length) {
-        const container = Container.decodeFromSource(byteSourceFromBytes(data), null, compressionHandler);
-        return ReferenceTable.decodeFromReader(new ByteSourceReader(byteSourceFromBytes(container.data)));
-    }
-    return ReferenceTable.INVALID_TABLE;
-}
-
 function byteSourceFromBytes(data: Uint8Array): ByteSource {
     return new Uint8ArrayByteSource(data);
+}
+
+function decodeTableFromSource(source: ByteSource, compressionHandler: CompressionHandler): ReferenceTable {
+    if (source.size === 0) {
+        return ReferenceTable.INVALID_TABLE;
+    }
+    const container = Container.decodeFromSource(source, null, compressionHandler);
+    return ReferenceTable.decode(new ByteBuffer(container.data));
 }
 
 function decodeArchiveDataFromSource(
@@ -167,8 +168,8 @@ export class CacheIndexStore extends CacheIndex {
         store: CacheStore,
         compressionHandler: CompressionHandler,
     ): CacheIndexStore {
-        const metaTableBytes = readAllBytes(store.openArchiveReader(CacheIndex.META_INDEX_ID, id));
-        const table = decodeTable(metaTableBytes, compressionHandler);
+        const metaSource = store.openArchiveReader(CacheIndex.META_INDEX_ID, id);
+        const table = decodeTableFromSource(metaSource, compressionHandler);
         return new CacheIndexStore(
             id,
             table,
