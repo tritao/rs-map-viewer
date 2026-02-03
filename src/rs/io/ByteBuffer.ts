@@ -183,6 +183,24 @@ export class ByteBuffer {
         return bytes;
     }
 
+    readUnsignedBytesInto(
+        target: Uint8Array,
+        targetOffset: number = 0,
+        length: number = target.length - targetOffset,
+    ): void {
+        if (length < 0) {
+            throw new Error("Invalid length");
+        }
+        if (this.offset + length > this.length) {
+            throw new Error("Buffer overflow");
+        }
+        if (length === 0) {
+            return;
+        }
+        target.set(this._u8.subarray(this.offset, this.offset + length), targetOffset);
+        this.offset += length;
+    }
+
     writeBytes(bytes: Uint8Array | Int8Array): void {
         this._data.set(bytes, this.offset);
         this.offset += bytes.length;
