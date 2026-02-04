@@ -1,5 +1,6 @@
 #include "Container.hpp"
 
+#include <span>
 #include <stdexcept>
 
 #include "../../io/ByteSourceAccess.hpp"
@@ -70,6 +71,7 @@ Container Container::decodeFromSource(
 
     std::size_t actualSize = 0;
     std::vector<u8> compressed;
+    std::span<const u8> compressedView{};
 
     if (hasKey) {
         const std::size_t encryptedSize = 4 + compressedSize;
@@ -79,7 +81,20 @@ Container Container::decodeFromSource(
         Xtea::decryptInPlace(encrypted, 0, encryptedSize, *key);
 
         actualSize = static_cast<std::size_t>(readU32BE(encrypted.data()));
-        compressed.assign(encrypted.begin() + 4, encrypted.begin() + 4 + static_cast<std::ptrdiff_t>(compressedSize));
+        compressedView = std::span<const u8>(encrypted.data() + 4, compressedSize);
+
+        std::vector<u8> decompressed;
+        if (compression == CompressionType::Bzip2) {
+            decompressed = compressionHandler.decompressBzip2(compressedView, actualSize);
+        } else {
+            decompressed = compressionHandler.decompressGzip(compressedView);
+        }
+
+        if (decompressed.size() != actualSize) {
+            throw std::runtime_error("Container: decompressed size mismatch");
+        }
+
+        return Container(compression, std::move(decompressed));
     } else {
         u8 actualBuf[4];
         source.readInto(5, actualBuf, 4);
@@ -89,13 +104,14 @@ Container Container::decodeFromSource(
         if (compressedSize) {
             source.readInto(9, compressed.data(), compressedSize);
         }
+        compressedView = std::span<const u8>(compressed.data(), compressed.size());
     }
 
     std::vector<u8> decompressed;
     if (compression == CompressionType::Bzip2) {
-        decompressed = compressionHandler.decompressBzip2(compressed, actualSize);
+        decompressed = compressionHandler.decompressBzip2(compressedView, actualSize);
     } else {
-        decompressed = compressionHandler.decompressGzip(compressed);
+        decompressed = compressionHandler.decompressGzip(compressedView);
     }
 
     if (decompressed.size() != actualSize) {

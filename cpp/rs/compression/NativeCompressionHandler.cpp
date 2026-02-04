@@ -35,7 +35,7 @@ static u32 crc32(const u8* data, std::size_t len) {
     return c ^ 0xFFFFFFFFu;
 }
 
-std::vector<u8> NativeCompressionHandler::decompressGzip(const std::vector<u8>& input) const {
+std::vector<u8> NativeCompressionHandler::decompressGzip(std::span<const u8> input) const {
     // Keep this relatively low for wasm/fuzz-safety. Can be raised if we see real cache data exceed it.
     static constexpr std::size_t MAX_GZIP_OUTPUT_BYTES = 256u * 1024u * 1024u;
 
@@ -134,7 +134,7 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(const std::vector<u8>& 
     return out;
 }
 
-std::vector<u8> NativeCompressionHandler::decompressBzip2(const std::vector<u8>& compressed, std::size_t actualSize) const {
+std::vector<u8> NativeCompressionHandler::decompressBzip2(std::span<const u8> compressed, std::size_t actualSize) const {
     // RuneScape cache bzip2 data is missing the "BZh1" header; add it.
     const u8 header[4] = {'B', 'Z', 'h', '1'};
 

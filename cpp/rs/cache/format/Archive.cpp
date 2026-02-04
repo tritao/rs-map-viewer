@@ -30,11 +30,9 @@ static std::vector<u8> decompressDatGzip(const std::vector<u8>& data, const Comp
     const bool preferTrim = canTrim && looksLikeGzipWithTrailingU16(data);
 
     auto tryDecompress = [&](bool trim) -> std::vector<u8> {
-        if (!trim) {
-            return compressionHandler.decompressGzip(data);
-        }
-        std::vector<u8> sliced(data.begin(), data.end() - 2);
-        return compressionHandler.decompressGzip(sliced);
+        const std::size_t len = data.size();
+        const std::size_t useLen = (trim && len >= 2) ? (len - 2) : len;
+        return compressionHandler.decompressGzip(std::span<const u8>(data.data(), useLen));
     };
 
     try {
@@ -205,8 +203,7 @@ Archive Archive::decodeOld(i32 archiveId, const std::vector<u8>& data, bool mult
 
     if (isCompressed) {
         const std::span<const u8> compressedSpan = reader.readBytes(static_cast<std::size_t>(size));
-        std::vector<u8> compressed(compressedSpan.begin(), compressedSpan.end());
-        decompressed = compressionHandler.decompressBzip2(compressed, static_cast<std::size_t>(actualSize));
+        decompressed = compressionHandler.decompressBzip2(compressedSpan, static_cast<std::size_t>(actualSize));
         const std::span<const u8> decSpan(decompressed.data(), decompressed.size());
         metaReader = Uint8ArrayReader(decSpan);
         dataReader = Uint8ArrayReader(decSpan);
@@ -241,8 +238,7 @@ Archive Archive::decodeOld(i32 archiveId, const std::vector<u8>& data, bool mult
             fileData.assign(fileSpan.begin(), fileSpan.end());
         } else {
             const std::span<const u8> compressedSpan = dataReader.readBytes(static_cast<std::size_t>(fileSize));
-            std::vector<u8> compressed(compressedSpan.begin(), compressedSpan.end());
-            fileData = compressionHandler.decompressBzip2(compressed, static_cast<std::size_t>(fileActualSize));
+            fileData = compressionHandler.decompressBzip2(compressedSpan, static_cast<std::size_t>(fileActualSize));
         }
 
         files.emplace_back(i, archiveId, std::move(fileData));

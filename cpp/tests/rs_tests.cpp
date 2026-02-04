@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -37,7 +38,7 @@ int main() {
         };
 
         {
-            const std::vector<rs::u8> out = compression.decompressGzip(gz);
+            const std::vector<rs::u8> out = compression.decompressGzip(std::span<const rs::u8>(gz.data(), gz.size()));
             if (!eqBytes(out, payload)) {
                 return fail("decompressGzip: output mismatch");
             }
@@ -64,7 +65,7 @@ int main() {
             bad[bad.size() - 8] ^= 0x01; // corrupt CRC32
             bool threw = false;
             try {
-                (void)compression.decompressGzip(bad);
+                (void)compression.decompressGzip(std::span<const rs::u8>(bad.data(), bad.size()));
             } catch (...) {
                 threw = true;
             }
@@ -80,4 +81,3 @@ int main() {
         return 2;
     }
 }
-
