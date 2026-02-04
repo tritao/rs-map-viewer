@@ -60,16 +60,17 @@ import { CacheType } from "../cache/CacheType";
 import { Dat2ConfigArchiveId, OsrsConfigArchiveId, Rs2ConfigArchiveId } from "../cache/ConfigArchiveId";
 import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
+import { CacheRules, computeCacheRules } from "./CacheRules";
 
 export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
+    readonly rules: CacheRules;
+
     constructor(
         readonly cacheInfo: CacheInfo,
         readonly cacheType: CacheType,
         readonly cacheSystem: CacheSystem,
-    ) {}
-
-    isIndexConfigs(): boolean {
-        return this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 488;
+    ) {
+        this.rules = computeCacheRules(cacheInfo, cacheSystem);
     }
 
     getUnderlayTypeLoader(): FloorTypeLoader {
@@ -85,7 +86,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getVarBitTypeLoader(): VarBitTypeLoader {
-        if (this.isIndexConfigs()) {
+        if (this.rules.isIndexConfigs) {
             const varbitsIndex = this.cacheSystem.getIndex(Rs2IndexId.varbits);
             return new IndexVarBitTypeLoader(this.cacheInfo, varbitsIndex);
         } else {
@@ -96,7 +97,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getLocTypeLoader(): LocTypeLoader {
-        if (this.isIndexConfigs()) {
+        if (this.rules.isIndexConfigs) {
             const locsIndex = this.cacheSystem.getIndex(Rs2IndexId.locs);
             return new IndexLocTypeLoader(this.cacheInfo, locsIndex);
         } else {
@@ -107,7 +108,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getNpcTypeLoader(): NpcTypeLoader {
-        if (this.isIndexConfigs()) {
+        if (this.rules.isIndexConfigs) {
             const npcIndex = this.cacheSystem.getIndex(Rs2IndexId.npcs);
             return new IndexNpcTypeLoader(this.cacheInfo, npcIndex);
         } else {
@@ -118,7 +119,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getObjTypeLoader(): ObjTypeLoader {
-        if (this.isIndexConfigs()) {
+        if (this.rules.isIndexConfigs) {
             const objIndex = this.cacheSystem.getIndex(Rs2IndexId.objs);
             return new IndexObjTypeLoader(this.cacheInfo, objIndex);
         } else {
@@ -129,7 +130,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getSeqTypeLoader(): SeqTypeLoader {
-        if (this.isIndexConfigs()) {
+        if (this.rules.isIndexConfigs) {
             const seqIndex = this.cacheSystem.getIndex(Rs2IndexId.seqs);
             return new IndexSeqTypeLoader(this.cacheInfo, seqIndex);
         } else {
@@ -171,30 +172,21 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     getTextureLoader(): TextureLoader {
         const textureIndex = this.cacheSystem.getIndex(Dat2IndexId.textures);
         const spriteIndex = this.cacheSystem.getIndex(Dat2IndexId.sprites);
-        if (
-            this.cacheInfo.game === GameType.Oldschool ||
-            (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision < 474)
-        ) {
-            return SpriteTextureLoader.load(textureIndex, spriteIndex);
-        } else if (this.cacheSystem.indexExists(Rs2IndexId.materials)) {
-            // materials starting 499 or 500
-
-            // removed in 629
-            const hasAlphaMaterialField = this.cacheInfo.revision < 629;
-            // after 534
-            const hasAlphaOperation = this.cacheInfo.revision >= 537;
-
-            const materialIndex = this.cacheSystem.getIndex(Rs2IndexId.materials);
-
-            return ProceduralTextureLoader.load(
-                hasAlphaMaterialField,
-                hasAlphaOperation,
-                materialIndex,
-                textureIndex,
-                spriteIndex,
-            );
-        } else {
-            return OldProceduralTextureLoader.load(textureIndex, spriteIndex);
+        switch (this.rules.texture.mode) {
+            case "sprite":
+                return SpriteTextureLoader.load(textureIndex, spriteIndex);
+            case "materials": {
+                const materialIndex = this.cacheSystem.getIndex(Rs2IndexId.materials);
+                return ProceduralTextureLoader.load(
+                    this.rules.texture.hasAlphaMaterialField,
+                    this.rules.texture.hasAlphaOperation,
+                    materialIndex,
+                    textureIndex,
+                    spriteIndex,
+                );
+            }
+            case "old_procedural":
+                return OldProceduralTextureLoader.load(textureIndex, spriteIndex);
         }
     }
 
