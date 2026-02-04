@@ -20,9 +20,9 @@ export class WebGLRenderer extends WebGLMapRenderer {
     loadedRenderables: Map<number, WebGLRenderable> = new Map();
 
     constructor(
-        cacheLoaders: CacheContext, inputManager: InputManager,
+        cacheContext: CacheContext, inputManager: InputManager,
         workerPool: RenderDataWorkerPool, camera: Camera) {
-        super(cacheLoaders, workerPool, inputManager, DEFAULT_RENDER_DISTANCE, 0, 0, camera);
+        super(cacheContext, workerPool, inputManager, DEFAULT_RENDER_DISTANCE, 0, 0, camera);
         this.setSkyColor(255, 255, 255);
         this.setMaxLevel(0);
         this.setLoadLocs(false);
@@ -71,9 +71,9 @@ export class WebGLRenderer extends WebGLMapRenderer {
         this.loadedRenderables.set(
             id,
             WebGLRenderable.load(
-                this.cacheLoaders.seqTypeLoader,
-                this.cacheLoaders.npcTypeLoader,
-                this.cacheLoaders.basTypeLoader,
+                this.cacheContext.seqTypeLoader,
+                this.cacheContext.npcTypeLoader,
+                this.cacheContext.basTypeLoader,
                 this.app,
                 this.mainProgram!,
                 this.mainAlphaProgram!,

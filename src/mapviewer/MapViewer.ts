@@ -29,7 +29,7 @@ export class MapViewer {
     renderer: MapViewerRenderer;
 
     loadedCache: LoadedCache;
-    cacheLoaders: CacheContext;
+    cacheContext: CacheContext;
 
     // Settings
 
@@ -70,7 +70,7 @@ export class MapViewer {
         cache: LoadedCache,
     ) {
         this.loadedCache = cache;
-        this.cacheLoaders = new CacheContext(cache, new JSCompressionHandler());
+        this.cacheContext = new CacheContext(cache, new JSCompressionHandler());
         this.renderer = new MapViewerRenderer(this);
         this.initCache(cache);
     }
@@ -228,7 +228,7 @@ export class MapViewer {
     };
 
     updateVars(): void {
-        this.workerPool.setVars(this.cacheLoaders.varManager.values);
+        this.workerPool.setVars(this.cacheContext.varManager.values);
     }
 
     static getCachedMapImageUrl(mapX: number, mapY: number): string {
