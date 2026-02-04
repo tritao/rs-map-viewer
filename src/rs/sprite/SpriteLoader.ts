@@ -286,19 +286,27 @@ export class SpriteLoader {
     }
 
     static loadIntoIndexedSprite(spriteIndex: CacheIndex, id: number): IndexedSprite | undefined {
-        const loader = new SpriteLoader();
-        if (!loader.loadFromIndex(spriteIndex, id) || loader.spriteCount === 0) {
-            return undefined;
-        }
-        return loader.toIndexedSprite(0);
+        return this.loadIntoIndexedSpriteFromSource(new IndexFileBytesProvider(spriteIndex, 0), id);
     }
 
     static loadIntoIndexedSprites(
         spriteIndex: CacheIndex,
         id: number,
     ): IndexedSprite[] | undefined {
+        return this.loadIntoIndexedSpritesFromSource(new IndexFileBytesProvider(spriteIndex, 0), id);
+    }
+
+    static loadIntoIndexedSpriteFromSource(source: BytesProvider, id: number): IndexedSprite | undefined {
         const loader = new SpriteLoader();
-        if (!loader.loadFromIndex(spriteIndex, id) || loader.spriteCount === 0) {
+        if (!loader.loadFromSource(source, id) || loader.spriteCount === 0) {
+            return undefined;
+        }
+        return loader.toIndexedSprite(0);
+    }
+
+    static loadIntoIndexedSpritesFromSource(source: BytesProvider, id: number): IndexedSprite[] | undefined {
+        const loader = new SpriteLoader();
+        if (!loader.loadFromSource(source, id) || loader.spriteCount === 0) {
             return undefined;
         }
         return loader.toIndexedSprites();

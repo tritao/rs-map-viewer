@@ -53,6 +53,7 @@ import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoade
 import { ProceduralTextureLoader } from "../texture/ProceduralTextureLoader";
 import { SpriteTextureLoader } from "../texture/SpriteTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
+import { IndexFileBytesProvider } from "../io/BytesProvider";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
@@ -61,11 +62,13 @@ import { Dat2ConfigArchiveId, OsrsConfigArchiveId, Rs2ConfigArchiveId } from "..
 import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 import { CacheRules, computeCacheRules } from "./CacheRules";
 import { Loaders } from "./Loaders";
+import { IndexArchiveProvider } from "../io/ArchiveProvider";
 
 function loadMapElementSprites(
     spriteIndex: CacheIndex,
     mapElementTypeLoader: MapElementTypeLoader,
 ): IndexedSprite[] {
+    const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
     const mapElementSprites = new Array<IndexedSprite>(mapElementTypeLoader.getCount());
     for (let i = 0; i < mapElementSprites.length; i++) {
         const result = mapElementTypeLoader.tryLoad(i);
@@ -76,7 +79,7 @@ function loadMapElementSprites(
         if (mapElement.spriteId === -1) {
             continue;
         }
-        const sprite = SpriteLoader.loadIntoIndexedSprite(spriteIndex, mapElement.spriteId);
+        const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(spriteSource, mapElement.spriteId);
         if (sprite) {
             mapElementSprites[i] = sprite;
         }
@@ -93,6 +96,7 @@ export function createDat2Loaders(
 
     const configIndex = cacheSystem.getIndex(Dat2IndexId.configs);
     const spriteIndex = cacheSystem.getIndex(Dat2IndexId.sprites);
+    const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
 
     const underlayTypeLoader = new ArchiveUnderlayFloorTypeLoader(
         cacheInfo,
@@ -160,7 +164,11 @@ export function createDat2Loaders(
         cacheSystem.getIndex(Dat2IndexId.skeletons),
     );
     const animationsIndex = cacheSystem.getIndex(Dat2IndexId.animations);
-    const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(cacheInfo, animationsIndex, seqBaseLoader);
+    const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(
+        cacheInfo,
+        new IndexArchiveProvider(animationsIndex),
+        seqBaseLoader,
+    );
     const skeletalSeqLoader: SkeletalSeqLoader | undefined = new IndexSkeletalSeqLoader(
         animationsIndex,
         seqBaseLoader,
@@ -184,7 +192,7 @@ export function createDat2Loaders(
                 }
                 const mapScene = result.value;
                 if (mapScene.spriteId !== -1) {
-                    const sprite = SpriteLoader.loadIntoIndexedSprite(spriteIndex, mapScene.spriteId);
+                    const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(spriteSource, mapScene.spriteId);
                     if (sprite) {
                         mapSceneSprites[id] = sprite;
                     }
@@ -197,7 +205,7 @@ export function createDat2Loaders(
         if (graphicDefaults.mapScenes === -1) {
             return [];
         }
-        const sprites = SpriteLoader.loadIntoIndexedSprites(spriteIndex, graphicDefaults.mapScenes);
+        const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, graphicDefaults.mapScenes);
         if (!sprites) {
             throw new Error("Failed to load map scenes");
         }
@@ -222,7 +230,10 @@ export function createDat2Loaders(
                     return [];
                 }
 
-                const sprites = SpriteLoader.loadIntoIndexedSprites(spriteIndex, graphicDefaults.mapFunctions);
+                const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(
+                    spriteSource,
+                    graphicDefaults.mapFunctions,
+                );
                 if (!sprites) {
                     throw new Error("Failed to load map functions");
                 }

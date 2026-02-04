@@ -33,6 +33,7 @@ import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
 import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
 import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
+import { IndexFileBytesProvider } from "../rs/io/BytesProvider";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -385,11 +386,12 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
 
 async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
     const spriteIndex = session.cacheSystem.getIndex(Dat2IndexId.sprites);
+    const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
 
     const promises: Promise<any>[] = [];
 
     for (const id of spriteIndex.getArchiveIds()) {
-        const sprites = SpriteLoader.loadIntoIndexedSprites(spriteIndex, id);
+        const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, id);
         if (!sprites) {
             continue;
         }

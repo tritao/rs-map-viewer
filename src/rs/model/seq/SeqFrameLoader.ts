@@ -2,6 +2,7 @@ import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { CountedBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
+import { ArchiveProvider } from "../../io/ArchiveProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
@@ -64,7 +65,7 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
     constructor(
         readonly cacheInfo: CacheInfo,
-        readonly animIndex: CacheIndex,
+        readonly animArchiveProvider: ArchiveProvider,
         readonly baseLoader: SeqBaseLoader,
     ) {}
 
@@ -75,7 +76,10 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
         let frameMap = this.frameMaps.get(frameMapId);
         if (!frameMap) {
-            const archive = this.animIndex.getArchive(frameMapId);
+            const archive = this.animArchiveProvider.getArchive(frameMapId);
+            if (!archive) {
+                return undefined;
+            }
 
             const frames: SeqFrame[] = new Array(archive.lastFileId);
             const scratch = new SeqFrameDecodeScratch();
