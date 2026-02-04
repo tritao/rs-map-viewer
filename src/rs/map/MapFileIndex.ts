@@ -1,9 +1,10 @@
 import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { MapSquareId, asMapSquareId } from "../ids/Ids";
 
-export function getMapSquareId(mapX: number, mapY: number): number {
-    return (mapX << 8) + mapY;
+export function getMapSquareId(mapX: number, mapY: number): MapSquareId {
+    return asMapSquareId((mapX << 8) + mapY);
 }
 
 export interface MapFileIndex {
