@@ -13,10 +13,9 @@ From repo root:
 
 Example (dat2 / OSRS):
 
-- `./cpp/build/rs_cache_parity --cache osrs-221_2024-04-17 --indices 0 --maxIndices 1 --maxArchives 10 --out /tmp/parity-cpp.json`
+- `./cpp/build/rs_cli parity --cache osrs-221_2024-04-17 --indices 0 --maxIndices 1 --maxArchives 10 --out /tmp/parity-cpp.json`
 
 Compare against the TS implementation:
 
 - `npm run -s cache:parity -- --cache osrs-221_2024-04-17 --indices 0 --maxIndices 1 --maxArchives 10 --out /tmp/parity-ts.json`
 - `npm run -s cache:parity-compare -- --a /tmp/parity-ts.json --b /tmp/parity-cpp.json`
-

@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_executable(rs_cache_parity
-    tools/rs_cache_parity.cpp
+add_executable(rs_cli
+    tools/rs_cli.cpp
     rs/io/ByteSourceSlice.cpp
     rs/io/Uint8ArrayByteSource.cpp
     rs/io/ByteSourceAccess.cpp
@@ -32,11 +32,11 @@ add_executable(rs_cache_parity
     third_party/bzip2/bzip2_internal_error.c
 )
 
-target_include_directories(rs_cache_parity PRIVATE
+target_include_directories(rs_cli PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_definitions(rs_cache_parity PRIVATE
+target_compile_definitions(rs_cli PRIVATE
     BZ_NO_STDIO=1
     MINIZ_NO_STDIO=1
     MINIZ_NO_TIME=1
