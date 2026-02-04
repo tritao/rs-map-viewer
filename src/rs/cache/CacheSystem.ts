@@ -3,6 +3,7 @@ import { CacheIndex, Dat2CacheIndex, DatCacheIndex } from "./CacheIndex";
 import { CacheType } from "./CacheType";
 import { CacheStore } from "./store/CacheStore";
 import { Archive } from "./format/Archive";
+import { ArchiveReference } from "./reference/ArchiveReference";
 
 export class CacheSystem {
     static loadIndicesFromStore(
@@ -65,5 +66,37 @@ export class CacheSystem {
 
     getArchive(indexId: number, archiveId: number): Archive {
         return this.getIndex(indexId).getArchive(archiveId);
+    }
+
+    /**
+     * Dat2-only: returns the archive reference/metadata for splitting archive payload into files
+     * (and optional integrity/name fields). Returns null if not available.
+     */
+    getArchiveReference(indexId: number, archiveId: number): ArchiveReference | null {
+        return this.getIndex(indexId).getArchiveReference(archiveId);
+    }
+
+    /**
+     * Dat2-only: returns the subset of archive metadata required to split payload bytes into files.
+     * Returns null if not available.
+     */
+    getArchiveMeta(indexId: number, archiveId: number): {
+        id: number;
+        lastFileId: number;
+        fileCount: number;
+        fileIds: Int32Array;
+        fileNameHashes: Int32Array;
+    } | null {
+        const ref = this.getArchiveReference(indexId, archiveId);
+        if (!ref) {
+            return null;
+        }
+        return {
+            id: ref.id,
+            lastFileId: ref.lastFileId,
+            fileCount: ref.fileCount,
+            fileIds: ref.fileIds,
+            fileNameHashes: ref.fileNameHashes,
+        };
     }
 }

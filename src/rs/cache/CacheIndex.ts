@@ -53,11 +53,20 @@ export abstract class CacheIndex {
         if (!store) {
             throw new Error("readArchiveBytes() unsupported (no store)");
         }
-        const rawSource = (store as any).openArchiveReader(this.id, archiveId);
+        let rawSource: any;
+        try {
+            rawSource = (store as any).openArchiveReader(this.id, archiveId);
+        } catch {
+            return new Uint8Array(0);
+        }
         if (!rawSource || rawSource.size === 0) {
             return new Uint8Array(0);
         }
-        return readAllBytes(rawSource);
+        try {
+            return readAllBytes(rawSource);
+        } catch {
+            return new Uint8Array(0);
+        }
     }
 
     /**
