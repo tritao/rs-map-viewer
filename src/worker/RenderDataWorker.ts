@@ -34,7 +34,7 @@ import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader
 import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
 import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
-import { createCacheRuntime } from "../rs/runtime/createCacheRuntime";
+import { createCacheSession } from "../rs/runtime/createCacheSession";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -82,9 +82,9 @@ async function initWorker(
 ): Promise<WorkerState> {
     await hasherPromise;
 
-    const runtime = createCacheRuntime(cache, compressionHandler);
-    const cacheSystem = runtime.cacheSystem;
-    const loaders = runtime.loaders;
+    const session = createCacheSession(cache, compressionHandler);
+    const cacheSystem = session.cacheSystem;
+    const loaders = session.loaders;
     const underlayTypeLoader = loaders.underlayTypeLoader;
     const overlayTypeLoader = loaders.overlayTypeLoader;
 
@@ -102,7 +102,7 @@ async function initWorker(
     const skeletalSeqLoader = loaders.skeletalSeqLoader;
 
     const mapFileLoader = loaders.mapFileLoader;
-    const varManager = runtime.varManager;
+    const varManager = session.varManager;
 
     const locModelLoader = new LocModelLoader(
         locTypeLoader,

@@ -7,7 +7,7 @@ import { MapFileIndex } from "../map/MapFileIndex";
 import { createLoaders } from "../loaders/createLoaders";
 import { Loaders } from "../loaders/Loaders";
 
-export type CacheRuntime = {
+export type CacheSession = {
     cache: LoadedCache;
     cacheSystem: CacheSystem;
     loaders: Loaders;
@@ -15,7 +15,7 @@ export type CacheRuntime = {
     mapFileIndex: MapFileIndex;
 };
 
-export function createCacheRuntime(cache: LoadedCache, compressionHandler: CompressionHandler): CacheRuntime {
+export function createCacheSession(cache: LoadedCache, compressionHandler: CompressionHandler): CacheSession {
     const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
     const loaders = createLoaders(cache.info, cacheSystem);
 
