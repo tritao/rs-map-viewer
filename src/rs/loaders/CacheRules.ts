@@ -23,14 +23,14 @@ export type MapFunctionsRules =
     | { mode: "rs2_archive" }
     | { mode: "graphics_defaults" };
 
-export type CacheRules = {
+export type CacheRules = Readonly<{
     isIndexConfigs: boolean;
     texture: TextureRules;
     bas: BasRules;
     quests: QuestRules;
     mapScenes: MapScenesRules;
     mapFunctions: MapFunctionsRules;
-};
+}>;
 
 export function computeCacheRules(cacheInfo: CacheInfo, cacheSystem: CacheSystem): CacheRules {
     const isIndexConfigs = cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 488;
