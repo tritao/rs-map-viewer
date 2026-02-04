@@ -145,7 +145,7 @@ async function main(): Promise<void> {
             // Dat/Dat2 indices are store-backed; Legacy indices are decoded up-front (no store).
             const store: unknown = (index as any).store;
             if (store) {
-                raw = index.readArchiveBytes(archiveId);
+                raw = cacheSystem.readArchiveBytes(indexId, archiveId);
                 if (raw.byteLength === 0) {
                     continue;
                 }
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
             };
 
             if (cacheType === CacheType.Dat2) {
-                const payload = index.readContainerPayload(archiveId, null);
+                const payload = cacheSystem.readContainerPayload(indexId, archiveId, null);
                 entry.containerPayload = { len: payload.byteLength, xxh64: h64Hex(hashApi.h64Raw(payload)) };
 
                 const archiveRef = index.getArchiveReference(archiveId);

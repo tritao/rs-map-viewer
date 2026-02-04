@@ -2,6 +2,7 @@ import { CompressionHandler } from "../compression/CompressionHandler";
 import { CacheIndex, Dat2CacheIndex, DatCacheIndex } from "./CacheIndex";
 import { CacheType } from "./CacheType";
 import { CacheStore } from "./store/CacheStore";
+import { Archive } from "./format/Archive";
 
 export class CacheSystem {
     static loadIndicesFromStore(
@@ -48,5 +49,21 @@ export class CacheSystem {
             throw new Error("Index not found: " + indexId);
         }
         return index;
+    }
+
+    readArchiveBytes(indexId: number, archiveId: number): Uint8Array {
+        return this.getIndex(indexId).readArchiveBytes(archiveId);
+    }
+
+    readContainerPayload(indexId: number, archiveId: number, key: number[] | null): Uint8Array {
+        return this.getIndex(indexId).readContainerPayload(archiveId, key);
+    }
+
+    getArchiveKey(indexId: number, archiveId: number, key: number[] | null): Archive {
+        return this.getIndex(indexId).getArchiveKey(archiveId, key);
+    }
+
+    getArchive(indexId: number, archiveId: number): Archive {
+        return this.getIndex(indexId).getArchive(archiveId);
     }
 }
