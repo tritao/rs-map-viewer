@@ -33,7 +33,8 @@ set(RS_SOURCES
     rs/cache/format/Archive.cpp
     rs/cache/reference/ReferenceTable.cpp
     rs/cache/store/SectorChainStore.cpp
-    rs/cache/Dat2CacheIndex.cpp
+    rs/cache/CacheIndex.cpp
+    rs/cache/CacheSystem.cpp
     rs/util/XXHash64.cpp
 )
 

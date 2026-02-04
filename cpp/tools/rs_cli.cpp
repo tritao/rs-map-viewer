@@ -17,7 +17,8 @@
 #include <vector>
 
 #include "../rs/cache/ArchiveMeta.hpp"
-#include "../rs/cache/Dat2CacheIndex.hpp"
+#include "../rs/cache/CacheIndex.hpp"
+#include "../rs/cache/CacheType.hpp"
 #include "../rs/cache/format/Archive.hpp"
 #include "../rs/cache/format/ArchiveFile.hpp"
 #include "../rs/cache/format/Container.hpp"
@@ -396,11 +397,11 @@ static int cmdParity(int argc, char** argv) {
             }
 
             if (isDat2) {
-                auto indexRes = rs::Dat2CacheIndex::fromDat2Store(indexId, store, compression, alloc);
+                auto indexRes = rs::CacheIndex::fromStore(rs::CacheType::Dat2, indexId, store, compression, alloc);
                 if (!indexRes.isOk()) {
                     continue;
                 }
-                const rs::Dat2CacheIndex index = std::move(indexRes.value());
+                const rs::CacheIndex index = std::move(indexRes.value());
 
                 std::vector<int> archiveIds;
                 const rs::Span<const rs::i32> ids = index.archiveIds();
