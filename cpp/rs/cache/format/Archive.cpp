@@ -7,6 +7,7 @@
 #include "../../io/ByteSourceSlice.hpp"
 #include "../../io/ByteSourceUtil.hpp"
 #include "../../io/Endian.hpp"
+#include "../../io/Uint8ArrayReader.hpp"
 #include "../../io/Uint8ArrayByteSource.hpp"
 
 namespace rs {
@@ -137,6 +138,79 @@ Archive Archive::decodeFromSource(const ArchiveMeta& meta, const ByteSource& sou
             fileOffsets[static_cast<std::size_t>(fileIdx)] = dstOff + chunkSize;
             inputOffset += chunkSize;
         }
+    }
+
+    return Archive(archiveId, lastFileId, std::move(files));
+}
+
+Archive Archive::create(i32 archiveId, std::vector<u8> data) {
+    std::vector<ArchiveFile> files;
+    files.emplace_back(0, archiveId, std::move(data));
+    return Archive(archiveId, 0, std::move(files));
+}
+
+Archive Archive::decodeOld(i32 archiveId, const std::vector<u8>& data, bool multipleFiles, const CompressionHandler& compressionHandler) {
+    if (!multipleFiles) {
+        std::vector<u8> decompressed = compressionHandler.decompressGzip(data);
+        std::vector<ArchiveFile> files;
+        files.emplace_back(0, archiveId, std::move(decompressed));
+        return Archive(archiveId, 0, std::move(files));
+    }
+
+    const std::span<const u8> input(data.data(), data.size());
+    Uint8ArrayReader reader(input);
+
+    const u32 actualSize = reader.readMedium();
+    const u32 size = reader.readMedium();
+    const bool isCompressed = actualSize != size;
+
+    std::vector<u8> decompressed;
+    Uint8ArrayReader metaReader(std::span<const u8>{});
+    Uint8ArrayReader dataReader(std::span<const u8>{});
+
+    if (isCompressed) {
+        const std::span<const u8> compressedSpan = reader.readBytes(static_cast<std::size_t>(size));
+        std::vector<u8> compressed(compressedSpan.begin(), compressedSpan.end());
+        decompressed = compressionHandler.decompressBzip2(compressed, static_cast<std::size_t>(actualSize));
+        const std::span<const u8> decSpan(decompressed.data(), decompressed.size());
+        metaReader = Uint8ArrayReader(decSpan);
+        dataReader = Uint8ArrayReader(decSpan);
+    } else {
+        const std::size_t afterHeader = reader.tell();
+        metaReader = Uint8ArrayReader(input, afterHeader);
+        dataReader = Uint8ArrayReader(input, afterHeader);
+    }
+
+    const i32 fileCount = static_cast<i32>(metaReader.readUnsignedShort());
+    if (fileCount <= 0) {
+        return Archive(archiveId, -1, {});
+    }
+
+    const i32 lastFileId = fileCount - 1;
+
+    // After the file table (10 bytes per file).
+    const std::size_t tableStart = metaReader.tell();
+    dataReader.seek(tableStart + static_cast<std::size_t>(fileCount) * 10);
+
+    std::vector<ArchiveFile> files;
+    files.reserve(static_cast<std::size_t>(fileCount));
+
+    for (i32 i = 0; i < fileCount; i++) {
+        (void)metaReader.readInt(); // nameHash (unused in the C++ model)
+        const u32 fileActualSize = metaReader.readMedium();
+        const u32 fileSize = metaReader.readMedium();
+
+        std::vector<u8> fileData;
+        if (isCompressed) {
+            const std::span<const u8> fileSpan = dataReader.readBytes(static_cast<std::size_t>(fileSize));
+            fileData.assign(fileSpan.begin(), fileSpan.end());
+        } else {
+            const std::span<const u8> compressedSpan = dataReader.readBytes(static_cast<std::size_t>(fileSize));
+            std::vector<u8> compressed(compressedSpan.begin(), compressedSpan.end());
+            fileData = compressionHandler.decompressBzip2(compressed, static_cast<std::size_t>(fileActualSize));
+        }
+
+        files.emplace_back(i, archiveId, std::move(fileData));
     }
 
     return Archive(archiveId, lastFileId, std::move(files));

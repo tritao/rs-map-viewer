@@ -13,6 +13,28 @@ static u32 readU32LE(const u8* p) {
            (static_cast<u32>(p[3]) << 24);
 }
 
+static u32 crc32(const u8* data, std::size_t len) {
+    // Standard CRC-32 (IEEE 802.3), reflected.
+    static bool tableInit = false;
+    static u32 table[256];
+    if (!tableInit) {
+        for (u32 n = 0; n < 256; n++) {
+            u32 c = n;
+            for (int k = 0; k < 8; k++) {
+                c = (c & 1u) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            }
+            table[n] = c;
+        }
+        tableInit = true;
+    }
+
+    u32 c = 0xFFFFFFFFu;
+    for (std::size_t i = 0; i < len; i++) {
+        c = table[(c ^ data[i]) & 0xFFu] ^ (c >> 8);
+    }
+    return c ^ 0xFFFFFFFFu;
+}
+
 std::vector<u8> NativeCompressionHandler::decompressGzip(const std::vector<u8>& input) const {
     // gzip format: RFC1952
     if (input.size() < 18) {
@@ -81,22 +103,29 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(const std::vector<u8>& 
         throw std::runtime_error("Gzip: invalid offsets");
     }
 
-    const u32 isize = readU32LE(input.data() + input.size() - 4);
-
-    std::vector<u8> out;
-    out.resize(static_cast<std::size_t>(isize));
-
     const void* deflateBuf = static_cast<const void*>(input.data() + off);
     const std::size_t deflateLen = trailerOff - off;
 
-    const std::size_t wrote =
-        tinfl_decompress_mem_to_mem(out.data(), out.size(), deflateBuf, deflateLen, 0);
-    if (wrote == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED) {
+    std::size_t outLen = 0;
+    void* outMem = tinfl_decompress_mem_to_heap(deflateBuf, deflateLen, &outLen, 0);
+    if (!outMem) {
         throw std::runtime_error("Gzip: decompression failed");
     }
-    if (wrote != out.size()) {
-        // `tinfl_decompress_mem_to_mem` returns out.size() on success, but keep a guard.
-        out.resize(wrote);
+
+    std::vector<u8> out;
+    out.resize(outLen);
+    if (outLen) {
+        std::memcpy(out.data(), outMem, outLen);
+    }
+    MZ_FREE(outMem);
+
+    const u32 expectedCrc = readU32LE(input.data() + trailerOff);
+    const u32 expectedISize = readU32LE(input.data() + trailerOff + 4);
+    const u32 actualCrc = crc32(out.data(), out.size());
+    const u32 actualISize = static_cast<u32>(out.size() & 0xFFFFFFFFu);
+
+    if (expectedCrc != actualCrc || expectedISize != actualISize) {
+        throw std::runtime_error("Gzip: checksum mismatch");
     }
     return out;
 }
@@ -135,4 +164,3 @@ std::vector<u8> NativeCompressionHandler::decompressBzip2(const std::vector<u8>&
 }
 
 } // namespace rs
-

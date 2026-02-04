@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../../io/ByteSource.hpp"
+#include "../../compression/CompressionHandler.hpp"
 #include "../../types.hpp"
 #include "ArchiveFile.hpp"
 
@@ -25,6 +26,8 @@ struct ArchiveMeta {
 class Archive {
 public:
     static Archive decodeFromSource(const ArchiveMeta& meta, const ByteSource& source);
+    static Archive decodeOld(i32 archiveId, const std::vector<u8>& data, bool multipleFiles, const CompressionHandler& compressionHandler);
+    static Archive create(i32 archiveId, std::vector<u8> data);
 
     Archive(i32 id, i32 lastFileId, std::vector<ArchiveFile> files);
 
@@ -39,4 +42,3 @@ private:
 };
 
 } // namespace rs
-
