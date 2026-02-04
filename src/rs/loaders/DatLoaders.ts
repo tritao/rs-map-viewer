@@ -69,7 +69,7 @@ export function createDatLoaders(
 
     const mapIndex = cacheSystem.getIndex(DatIndexId.maps);
     const versionListArchive = configIndex.getArchive(DatConfigArchiveId.versionList);
-    const mapFileIndex = DatMapFileIndex.load(versionListArchive);
+    const mapFileIndex = DatMapFileIndex.create(versionListArchive);
 
     return {
         underlayTypeLoader: floTypeLoader,
@@ -90,7 +90,7 @@ export function createDatLoaders(
         textureLoader,
 
         modelLoader: new IndexModelLoader(cacheSystem.getIndex(DatIndexId.models)),
-        seqFrameLoader: DatSeqFrameLoader.load(cacheSystem.getIndex(DatIndexId.animations)),
+        seqFrameLoader: DatSeqFrameLoader.create(cacheSystem.getIndex(DatIndexId.animations)),
         skeletalSeqLoader: undefined,
 
         mapFileLoader: new MapFileLoader(mapIndex, mapFileIndex),

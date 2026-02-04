@@ -65,8 +65,8 @@ export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSyst
 
         textureLoader,
 
-        modelLoader: LegacyModelLoader.load(modelArchive),
-        seqFrameLoader: LegacySeqFrameLoader.load(modelArchive),
+        modelLoader: LegacyModelLoader.create(modelArchive),
+        seqFrameLoader: LegacySeqFrameLoader.create(modelArchive),
         skeletalSeqLoader: undefined,
 
         mapFileLoader: new LegacyMapFileLoader(mapIndex, new Dat2MapIndex(mapIndex)),

@@ -13,7 +13,7 @@ export class ProceduralTextureLoader implements TextureLoader {
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
-    static load(
+    static create(
         hasAlphaMaterialField: boolean,
         hasAlphaOperation: boolean,
         materialsIndex: CacheIndex,

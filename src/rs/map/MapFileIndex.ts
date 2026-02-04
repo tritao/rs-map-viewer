@@ -21,7 +21,7 @@ class MapSquare {
 }
 
 export class DatMapFileIndex implements MapFileIndex {
-    static load(versionListArchive: Archive): DatMapFileIndex {
+    static create(versionListArchive: Archive): DatMapFileIndex {
         const file = versionListArchive.getFileNamed("map_index");
         if (!file) {
             throw new Error("map_index not found");

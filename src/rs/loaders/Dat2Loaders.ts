@@ -137,10 +137,10 @@ export function createDat2Loaders(
     const textureLoader: TextureLoader = (() => {
         switch (rules.texture.mode) {
             case "sprite":
-                return SpriteTextureLoader.load(textureIndex, spriteIndex);
+                return SpriteTextureLoader.create(textureIndex, spriteIndex);
             case "materials": {
                 const materialIndex = cacheSystem.getIndex(Rs2IndexId.materials);
-                return ProceduralTextureLoader.load(
+                return ProceduralTextureLoader.create(
                     rules.texture.hasAlphaMaterialField,
                     rules.texture.hasAlphaOperation,
                     materialIndex,
@@ -149,7 +149,7 @@ export function createDat2Loaders(
                 );
             }
             case "old_procedural":
-                return OldProceduralTextureLoader.load(textureIndex, spriteIndex);
+                return OldProceduralTextureLoader.create(textureIndex, spriteIndex);
         }
     })();
 
@@ -193,7 +193,7 @@ export function createDat2Loaders(
             return mapSceneSprites;
         }
 
-        const graphicDefaults = GraphicsDefaults.load(cacheInfo, cacheSystem);
+        const graphicDefaults = GraphicsDefaults.create(cacheInfo, cacheSystem);
         if (graphicDefaults.mapScenes === -1) {
             return [];
         }
@@ -217,7 +217,7 @@ export function createDat2Loaders(
                 return loadMapElementSprites(spriteIndex, mapElementTypeLoader);
             }
             case "graphics_defaults": {
-                const graphicDefaults = GraphicsDefaults.load(cacheInfo, cacheSystem);
+                const graphicDefaults = GraphicsDefaults.create(cacheInfo, cacheSystem);
                 if (graphicDefaults.mapFunctions === -1) {
                     return [];
                 }

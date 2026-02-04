@@ -69,7 +69,7 @@ export class LegacyModelLoader implements ModelLoader {
 
     metadatas: LegacyModelMetadata[];
 
-    static load(modelArchive: Archive): LegacyModelLoader {
+    static create(modelArchive: Archive): LegacyModelLoader {
         return new LegacyModelLoader(modelArchive);
     }
 

@@ -17,7 +17,7 @@ export class SpriteTextureLoader implements TextureLoader {
 
     idIndexMap: Map<number, number>;
 
-    static load(textureIndex: CacheIndex, spriteIndex: CacheIndex): SpriteTextureLoader {
+    static create(textureIndex: CacheIndex, spriteIndex: CacheIndex): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
 
         const textureArchive = textureIndex.getArchive(0);

@@ -12,7 +12,7 @@ export interface SeqFrameLoader {
 }
 
 export class LegacySeqFrameLoader implements SeqFrameLoader {
-    static load(modelArchive: Archive): LegacySeqFrameLoader {
+    static create(modelArchive: Archive): LegacySeqFrameLoader {
         return new LegacySeqFrameLoader(LegacySeqFrame.load(modelArchive));
     }
 
@@ -26,7 +26,7 @@ export class LegacySeqFrameLoader implements SeqFrameLoader {
 }
 
 export class DatSeqFrameLoader implements SeqFrameLoader {
-    static load(frameMapIndex: CacheIndex): DatSeqFrameLoader {
+    static create(frameMapIndex: CacheIndex): DatSeqFrameLoader {
         const frames: Map<number, SeqFrame> = new Map();
         const scratch = new SeqFrameDecodeScratch();
 

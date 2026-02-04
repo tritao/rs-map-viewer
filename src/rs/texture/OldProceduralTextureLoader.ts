@@ -12,7 +12,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
-    static load(textureIndex: CacheIndex, spriteIndex: CacheIndex): OldProceduralTextureLoader {
+    static create(textureIndex: CacheIndex, spriteIndex: CacheIndex): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
         const texturesArchive = textureIndex.getArchive(0);
 

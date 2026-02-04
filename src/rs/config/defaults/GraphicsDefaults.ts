@@ -19,7 +19,7 @@ export class GraphicsDefaults extends Type {
     scrollBars: number = -1;
     modIcons: number = -1;
 
-    static load(cacheInfo: CacheInfo, fileSystem: CacheSystem): GraphicsDefaults {
+    static create(cacheInfo: CacheInfo, fileSystem: CacheSystem): GraphicsDefaults {
         if (
             cacheInfo.game === GameType.Oldschool &&
             fileSystem.indexExists(OsrsIndexId.graphicDefaults)
