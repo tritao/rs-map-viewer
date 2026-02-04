@@ -686,7 +686,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             mapX,
             mapY,
 
-            state.cache.info.name,
+            state.session.cache.info.name,
 
             maxLevel,
             loadObjs,

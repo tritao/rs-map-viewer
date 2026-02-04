@@ -3,9 +3,7 @@ import { TransferDescriptor } from "threads";
 import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import { CacheSystem } from "../rs/cache/CacheSystem";
 import { Dat2IndexId, DatIndexId } from "../rs/cache/IndexId";
-import { Loaders } from "../rs/loaders/Loaders";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
@@ -34,7 +32,7 @@ import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader
 import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
 import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
-import { createCacheSession } from "../rs/runtime/createCacheSession";
+import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -42,9 +40,7 @@ const compressionHandler = new JSCompressionHandler();
 const hasherPromise = Hasher.init();
 
 export type WorkerState = {
-    cache: LoadedCache;
-    cacheSystem: CacheSystem;
-    loaders: Loaders;
+    session: CacheSession;
 
     locTypeLoader: LocTypeLoader;
     objTypeLoader: ObjTypeLoader;
@@ -83,7 +79,6 @@ async function initWorker(
     await hasherPromise;
 
     const session = createCacheSession(cache, compressionHandler);
-    const cacheSystem = session.cacheSystem;
     const loaders = session.loaders;
     const underlayTypeLoader = loaders.underlayTypeLoader;
     const overlayTypeLoader = loaders.overlayTypeLoader;
@@ -145,9 +140,7 @@ async function initWorker(
     const mapImageCache = await caches.open("map-images");
 
     return {
-        cache,
-        cacheSystem,
-        loaders,
+        session,
 
         locTypeLoader,
         objTypeLoader,
@@ -267,7 +260,7 @@ const worker = {
             mapX,
             mapY,
             level,
-            cacheInfo: workerState.cache.info,
+            cacheInfo: workerState.session.cache.info,
             minimapBlob,
         };
     },
@@ -287,7 +280,7 @@ const worker = {
         const mapImageUrls = new Map<number, string>();
         const promises: Promise<void>[] = [];
         for (const key of keys) {
-            if (key.headers.get("RS-Cache-Name") !== workerState.cache.info.name) {
+            if (key.headers.get("RS-Cache-Name") !== workerState.session.cache.info.name) {
                 continue;
             }
             promises.push(initCachedMapImage(workerState.mapImageCache, mapImageUrls, key));
@@ -303,12 +296,12 @@ const worker = {
 
         const zip = new JSZip();
 
-        const cacheType = workerState.cache.type;
+        const cacheType = workerState.session.cache.type;
 
         if (cacheType === CacheType.Dat2) {
-            await exportSpritesToZip(workerState.cacheSystem, zip);
+            await exportSpritesToZip(workerState.session, zip);
         } else if (cacheType === CacheType.Dat) {
-            await exportDatSpritesToZip(workerState.cacheSystem, zip);
+            await exportDatSpritesToZip(workerState.session, zip);
         }
 
         return zip.generateAsync({ type: "blob" });
@@ -420,8 +413,8 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
     }
 }
 
-async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
-    const spriteIndex = cacheSystem.getIndex(Dat2IndexId.sprites);
+async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
+    const spriteIndex = session.cacheSystem.getIndex(Dat2IndexId.sprites);
 
     const promises: Promise<any>[] = [];
 
@@ -436,8 +429,8 @@ async function exportSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise
     await Promise.all(promises);
 }
 
-async function exportDatSpritesToZip(cacheSystem: CacheSystem, zip: JSZip): Promise<void> {
-    const configIndex = cacheSystem.getIndex(DatIndexId.configs);
+async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
+    const configIndex = session.cacheSystem.getIndex(DatIndexId.configs);
     const mediaArchive = configIndex.getArchive(DatConfigArchiveId.media);
 
     const indexDatId = mediaArchive.getFileId("index.dat");

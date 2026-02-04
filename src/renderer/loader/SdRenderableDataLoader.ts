@@ -452,7 +452,7 @@ export class SdRenderableDataLoader
                 type: type,
                 ids: id,
 
-                cacheName: state.cache.info.name,
+                cacheName: state.session.cache.info.name,
 
                 borderSize: 0,
                 tileRenderFlags: scene.tileRenderFlags,
