@@ -69,8 +69,8 @@ export class MapImageRenderer {
     constructor(
         readonly textureLoader: TextureLoader,
         readonly locTypeLoader: LocTypeLoader,
-        readonly mapScenes: IndexedSprite[],
-        readonly mapFunctions: IndexedSprite[],
+        readonly mapScenes: ReadonlyArray<IndexedSprite>,
+        readonly mapFunctions: ReadonlyArray<IndexedSprite>,
     ) {}
 
     renderMinimap(scene: Scene, level: number): Int32Array {
