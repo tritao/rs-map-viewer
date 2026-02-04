@@ -59,3 +59,17 @@ target_link_libraries(rs_cli PRIVATE rs)
 target_link_options(rs_cli PRIVATE
     -Wl,--gc-sections
 )
+
+enable_testing()
+
+add_executable(rs_tests
+    tests/rs_tests.cpp
+)
+
+target_link_libraries(rs_tests PRIVATE rs)
+
+target_link_options(rs_tests PRIVATE
+    -Wl,--gc-sections
+)
+
+add_test(NAME rs_tests COMMAND rs_tests)
