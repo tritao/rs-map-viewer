@@ -33,19 +33,7 @@ import { DatIndexId } from "../cache/IndexId";
 import { CacheLoaderFactory } from "./CacheLoaderFactory";
 
 export function loadMapSprites(mediaArchive: Archive, name: string): IndexedSprite[] {
-    // TODO: maybe there is a way to check how many sprites there are
-    const sprites = new Array<IndexedSprite>();
-    let i = 0;
-    while (true) {
-        try {
-            sprites[i] = SpriteLoader.loadIndexedSpriteDat(mediaArchive, name, i);
-            i++;
-        } catch (e) {
-            break;
-        }
-    }
-
-    return sprites;
+    return SpriteLoader.loadIndexedSpritesDat(mediaArchive, name);
 }
 
 export function loadMapScenes(mediaArchive: Archive): IndexedSprite[] {
