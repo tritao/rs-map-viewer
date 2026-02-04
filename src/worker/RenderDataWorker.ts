@@ -4,9 +4,7 @@ import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import { CacheSystem } from "../rs/cache/CacheSystem";
-import { createCacheSystemFromFiles } from "../rs/cache/platform/CacheStoreFromFiles";
 import { Dat2IndexId, DatIndexId } from "../rs/cache/IndexId";
-import { createLoaders } from "../rs/loaders/createLoaders";
 import { Loaders } from "../rs/loaders/Loaders";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
@@ -36,6 +34,7 @@ import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader
 import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
 import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
+import { createCacheRuntime } from "../rs/runtime/createCacheRuntime";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -83,13 +82,11 @@ async function initWorker(
 ): Promise<WorkerState> {
     await hasherPromise;
 
-    const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
-
-    const loaders = createLoaders(cache.info, cacheSystem);
+    const runtime = createCacheRuntime(cache, compressionHandler);
+    const cacheSystem = runtime.cacheSystem;
+    const loaders = runtime.loaders;
     const underlayTypeLoader = loaders.underlayTypeLoader;
     const overlayTypeLoader = loaders.overlayTypeLoader;
-
-    const varBitTypeLoader = loaders.varBitTypeLoader;
 
     const locTypeLoader = loaders.locTypeLoader;
     const objTypeLoader = loaders.objTypeLoader;
@@ -105,12 +102,7 @@ async function initWorker(
     const skeletalSeqLoader = loaders.skeletalSeqLoader;
 
     const mapFileLoader = loaders.mapFileLoader;
-
-    const varManager = new VarManager(varBitTypeLoader);
-    const questTypeLoader = loaders.questTypeLoader;
-    if (questTypeLoader) {
-        varManager.setQuestsCompleted(questTypeLoader);
-    }
+    const varManager = runtime.varManager;
 
     const locModelLoader = new LocModelLoader(
         locTypeLoader,

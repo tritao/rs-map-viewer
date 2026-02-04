@@ -1,11 +1,10 @@
-import { CacheSystem } from "../cache/CacheSystem";
-import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
-import { VarManager } from "../config/vartype/VarManager";
-import { MapFileIndex } from "../map/MapFileIndex";
 import { LoadedCache } from "../../util/Caches";
 import { CompressionHandler } from "../compression/CompressionHandler";
-import { createLoaders } from "./createLoaders";
 import { Loaders } from "./Loaders";
+import { CacheSystem } from "../cache/CacheSystem";
+import { MapFileIndex } from "../map/MapFileIndex";
+import { VarManager } from "../config/vartype/VarManager";
+import { createCacheRuntime } from "../runtime/createCacheRuntime";
 
 export class CacheContext {
     readonly cache: LoadedCache;
@@ -15,17 +14,11 @@ export class CacheContext {
     readonly mapFileIndex: MapFileIndex;
 
     constructor(cache: LoadedCache, compressionHandler: CompressionHandler) {
-        this.cache = cache;
-        this.cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
-        this.loaders = createLoaders(cache.info, this.cacheSystem);
-
-        this.varManager = new VarManager(this.loaders.varBitTypeLoader);
-        const questTypeLoader = this.loaders.questTypeLoader;
-        if (questTypeLoader) {
-            this.varManager.setQuestsCompleted(questTypeLoader);
-        }
-
-        const mapFileLoader = this.loaders.mapFileLoader;
-        this.mapFileIndex = mapFileLoader.mapFileIndex;
+        const runtime = createCacheRuntime(cache, compressionHandler);
+        this.cache = runtime.cache;
+        this.cacheSystem = runtime.cacheSystem;
+        this.loaders = runtime.loaders;
+        this.varManager = runtime.varManager;
+        this.mapFileIndex = runtime.mapFileIndex;
     }
 }
