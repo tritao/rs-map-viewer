@@ -9,6 +9,10 @@ import { Type } from "./Type";
 import { decodeTypeFromBytes } from "./decode/decodeType";
 
 export interface TypeLoader<T> {
+    /**
+     * @deprecated Use `tryLoad()` so callers must handle missing/invalid entries explicitly.
+     * This method returns a default-constructed type on failure, which can hide data issues.
+     */
     load(id: number): T;
 
     tryLoad(id: number): Result<T, DecodeError>;
@@ -16,6 +20,26 @@ export interface TypeLoader<T> {
     getCount(): number;
 
     clearCache(): void;
+}
+
+export function loadOrNull<T>(loader: TypeLoader<T>, id: number): T | undefined {
+    const result = loader.tryLoad(id);
+    return result.ok ? result.value : undefined;
+}
+
+export function loadOrThrow<T>(loader: TypeLoader<T>, id: number): T {
+    const result = loader.tryLoad(id);
+    if (result.ok) {
+        return result.value;
+    }
+    const e = result.error;
+    const opcode = e.kind === "decode_failed" ? e.opcode : undefined;
+    const offset = e.kind === "decode_failed" ? e.offset : undefined;
+    throw new Error(
+        `${e.typeName}: failed to load id=${e.id} (${e.kind})` +
+            (opcode !== undefined ? ` opcode=${opcode}` : "") +
+            (offset !== undefined ? ` offset=${offset}` : ""),
+    );
 }
 
 export type TypeConstructor<T extends Type> = new (id: number, cacheInfo: CacheInfo) => T;
