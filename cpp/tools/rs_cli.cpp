@@ -14,6 +14,7 @@
 #include "../rs/cache/store/SectorChainStore.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
 #include "../rs/io/ByteSourceUtil.hpp"
+#include "../rs/io/FileByteSource.hpp"
 #include "../rs/io/Uint8ArrayByteSource.hpp"
 #include "../rs/util/XXHash64.hpp"
 
@@ -32,6 +33,7 @@ static void printUsage() {
     std::cerr << "  --maxIndices <n>\n";
     std::cerr << "  --maxArchives <n>\n";
     std::cerr << "  --indices <comma-separated>\n";
+    std::cerr << "  --file (use file-backed ByteSource)\n";
 }
 
 struct ParityArgs {
@@ -40,6 +42,7 @@ struct ParityArgs {
     int maxIndices = 5;
     int maxArchivesPerIndex = 200;
     std::vector<int> indices;
+    bool fileBacked = false;
 };
 
 static bool startsWith(const std::string& s, const char* prefix) {
@@ -76,6 +79,8 @@ static ParityArgs parseParityArgs(int argc, char** argv) {
                 }
                 start = (comma == std::string::npos) ? raw.size() : comma + 1;
             }
+        } else if (a == "--file") {
+            args.fileBacked = true;
         }
     }
     return args;
@@ -139,9 +144,6 @@ static int cmdParity(int argc, char** argv) {
         throw std::runtime_error("Expected dat2 cache dir with main_file_cache.dat2 + main_file_cache.idx255");
     }
 
-    auto dat2Bytes = readFileBytes(dat2Path);
-    auto idx255Bytes = readFileBytes(idx255Path);
-
     int maxIdx = -1;
     for (const auto& ent : fs::directory_iterator(cacheDir)) {
         const auto name = ent.path().filename().string();
@@ -169,18 +171,34 @@ static int cmdParity(int argc, char** argv) {
     std::vector<std::optional<rs::ByteSourcePtr>> indexFiles;
     indexFiles.resize(static_cast<std::size_t>(maxIdx + 1));
 
-    for (int i = 0; i <= maxIdx; i++) {
-        const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
-        if (!fs::exists(idxPath)) {
-            continue;
-        }
-        auto idxBytes = readFileBytes(idxPath);
-        rs::ByteSourcePtr src = std::make_shared<rs::Uint8ArrayByteSource>(idxBytes);
-        indexFiles[static_cast<std::size_t>(i)] = src;
-    }
+    rs::ByteSourcePtr dat2Src;
+    rs::ByteSourcePtr idx255Src;
 
-    rs::ByteSourcePtr dat2Src = std::make_shared<rs::Uint8ArrayByteSource>(dat2Bytes);
-    rs::ByteSourcePtr idx255Src = std::make_shared<rs::Uint8ArrayByteSource>(idx255Bytes);
+    if (args.fileBacked) {
+        dat2Src = std::make_shared<rs::FileByteSource>(dat2Path.string());
+        idx255Src = std::make_shared<rs::FileByteSource>(idx255Path.string());
+        for (int i = 0; i <= maxIdx; i++) {
+            const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
+            if (!fs::exists(idxPath)) {
+                continue;
+            }
+            indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::FileByteSource>(idxPath.string());
+        }
+    } else {
+        auto dat2Bytes = readFileBytes(dat2Path);
+        auto idx255Bytes = readFileBytes(idx255Path);
+        dat2Src = std::make_shared<rs::Uint8ArrayByteSource>(dat2Bytes);
+        idx255Src = std::make_shared<rs::Uint8ArrayByteSource>(idx255Bytes);
+
+        for (int i = 0; i <= maxIdx; i++) {
+            const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
+            if (!fs::exists(idxPath)) {
+                continue;
+            }
+            auto idxBytes = readFileBytes(idxPath);
+            indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::Uint8ArrayByteSource>(idxBytes);
+        }
+    }
 
     rs::SectorChainStore store(dat2Src, indexFiles, idx255Src);
     rs::NativeCompressionHandler compression;
