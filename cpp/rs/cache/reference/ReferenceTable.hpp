@@ -16,7 +16,7 @@ public:
     static ReferenceTable decodeFromReader(ByteReader& reader);
 
     [[nodiscard]] bool archiveExists(i32 id) const;
-    [[nodiscard]] std::optional<ArchiveReference> getArchiveReference(i32 id) const;
+    [[nodiscard]] const ArchiveReference* getArchiveReference(i32 id) const;
 
     [[nodiscard]] const std::vector<i32>& archiveIds() const { return archiveIds_; }
     [[nodiscard]] i32 archiveCount() const { return archiveCount_; }
@@ -41,7 +41,8 @@ private:
     std::vector<i32> archiveLastFileIds_;
     std::vector<std::vector<i32>> archiveFileIds_;
     std::vector<std::vector<i32>> archiveFileNameHashes_;
+
+    mutable std::vector<std::optional<ArchiveReference>> archiveReferenceCache_;
 };
 
 } // namespace rs
-

@@ -16,7 +16,7 @@ std::size_t Uint8ArrayByteSource::size() const {
 }
 
 ByteSourcePtr Uint8ArrayByteSource::slice(std::size_t start, std::size_t size) const {
-    return std::make_shared<ByteSourceSlice>(std::make_shared<Uint8ArrayByteSource>(*this), start, size);
+    return std::make_shared<ByteSourceSlice>(shared_from_this(), start, size);
 }
 
 void Uint8ArrayByteSource::readInto(std::size_t offset, u8* target, std::size_t length) const {

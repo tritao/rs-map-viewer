@@ -250,17 +250,17 @@ static int cmdParity(int argc, char** argv) {
             e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
 
             auto rawOwned = std::make_shared<std::vector<rs::u8>>(std::move(raw));
-            rs::Uint8ArrayByteSource rawBytes(rawOwned);
-            rs::Container container = rs::Container::decodeFromSource(rawBytes, std::nullopt, compression);
+            rs::ByteSourcePtr rawBytes = std::make_shared<rs::Uint8ArrayByteSource>(rawOwned);
+            rs::Container container = rs::Container::decodeFromSource(*rawBytes, std::nullopt, compression);
 
             e.payloadLen = container.data.size();
             e.payloadHash = rs::h64Hex(rs::xxh64(container.data.data(), container.data.size()));
 
             const auto metaOpt = index.getArchiveMeta(archiveId);
             if (metaOpt) {
-                auto payloadOwned = std::make_shared<std::vector<rs::u8>>(container.data);
-                rs::Uint8ArrayByteSource payloadBytes(payloadOwned);
-                rs::Archive archive = rs::Archive::decodeFromSource(*metaOpt, payloadBytes);
+                auto payloadOwned = std::make_shared<std::vector<rs::u8>>(std::move(container.data));
+                rs::ByteSourcePtr payloadBytes = std::make_shared<rs::Uint8ArrayByteSource>(payloadOwned);
+                rs::Archive archive = rs::Archive::decodeFromSource(*metaOpt, *payloadBytes);
                 for (const auto& f : archive.files()) {
                     ParityFileEntry fe;
                     fe.fileId = static_cast<int>(f.id);
@@ -351,4 +351,3 @@ int main(int argc, char** argv) {
         return 1;
     }
 }
-

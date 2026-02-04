@@ -113,25 +113,33 @@ bool ReferenceTable::archiveExists(i32 id) const {
     return archiveIdIndexMap_.find(id) != archiveIdIndexMap_.end();
 }
 
-std::optional<ArchiveReference> ReferenceTable::getArchiveReference(i32 id) const {
+const ArchiveReference* ReferenceTable::getArchiveReference(i32 id) const {
     const auto it = archiveIdIndexMap_.find(id);
     if (it == archiveIdIndexMap_.end()) {
-        return std::nullopt;
+        return nullptr;
     }
     const i32 idx = it->second;
 
-    ArchiveReference r;
-    r.id = id;
-    r.nameHash = (named_ ? archiveNameHashes_[static_cast<std::size_t>(idx)] : 0);
-    r.whirlpool = (usesWhirlpool_ ? archiveWhirlpools_[static_cast<std::size_t>(idx)] : std::vector<u8>{});
-    r.crc = archiveCrcs_[static_cast<std::size_t>(idx)];
-    r.revision = archiveRevisions_[static_cast<std::size_t>(idx)];
-    r.fileCount = archiveFileCounts_[static_cast<std::size_t>(idx)];
-    r.lastFileId = archiveLastFileIds_[static_cast<std::size_t>(idx)];
-    r.fileIds = archiveFileIds_[static_cast<std::size_t>(idx)];
-    r.fileNameHashes = (named_ ? archiveFileNameHashes_[static_cast<std::size_t>(idx)] : std::vector<i32>{});
-    return r;
+    if (archiveReferenceCache_.empty()) {
+        archiveReferenceCache_.resize(archiveIds_.size());
+    }
+
+    auto& slot = archiveReferenceCache_[static_cast<std::size_t>(idx)];
+    if (!slot) {
+        ArchiveReference r;
+        r.id = id;
+        r.nameHash = (named_ ? archiveNameHashes_[static_cast<std::size_t>(idx)] : 0);
+        r.whirlpool = (usesWhirlpool_ ? archiveWhirlpools_[static_cast<std::size_t>(idx)] : std::vector<u8>{});
+        r.crc = archiveCrcs_[static_cast<std::size_t>(idx)];
+        r.revision = archiveRevisions_[static_cast<std::size_t>(idx)];
+        r.fileCount = archiveFileCounts_[static_cast<std::size_t>(idx)];
+        r.lastFileId = archiveLastFileIds_[static_cast<std::size_t>(idx)];
+        r.fileIds = archiveFileIds_[static_cast<std::size_t>(idx)];
+        r.fileNameHashes = (named_ ? archiveFileNameHashes_[static_cast<std::size_t>(idx)] : std::vector<i32>{});
+        slot = std::move(r);
+    }
+
+    return &(*slot);
 }
 
 } // namespace rs
-

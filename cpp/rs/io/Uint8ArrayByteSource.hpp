@@ -8,7 +8,7 @@
 
 namespace rs {
 
-class Uint8ArrayByteSource final : public ByteSource {
+class Uint8ArrayByteSource final : public ByteSource, public std::enable_shared_from_this<Uint8ArrayByteSource> {
 public:
     explicit Uint8ArrayByteSource(std::shared_ptr<std::vector<u8>> bytes);
 

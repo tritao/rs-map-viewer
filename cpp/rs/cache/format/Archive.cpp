@@ -99,14 +99,16 @@ Archive Archive::decodeFromSource(const ArchiveMeta& meta, const ByteSource& sou
         }
     }
 
-    std::vector<std::vector<u8>> fileData;
-    fileData.resize(static_cast<std::size_t>(fileCount));
-    std::vector<std::size_t> fileOffsets;
-    fileOffsets.assign(static_cast<std::size_t>(fileCount), 0);
+    std::vector<ArchiveFile> files;
+    files.resize(static_cast<std::size_t>(fileCount));
+    std::vector<std::size_t> fileOffsets(static_cast<std::size_t>(fileCount), 0);
 
     for (i32 fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-        const std::size_t sz = static_cast<std::size_t>(fileSizes[static_cast<std::size_t>(fileIdx)]);
-        fileData[static_cast<std::size_t>(fileIdx)].resize(sz);
+        const auto idx = static_cast<std::size_t>(fileIdx);
+        files[idx].id = meta.fileIds[idx];
+        files[idx].archiveId = archiveId;
+        const std::size_t sz = static_cast<std::size_t>(fileSizes[idx]);
+        files[idx].data.resize(sz);
     }
 
     // Payload is everything before tableOffset.
@@ -122,7 +124,7 @@ Archive Archive::decodeFromSource(const ArchiveMeta& meta, const ByteSource& sou
             const std::size_t chunkSize = static_cast<std::size_t>(chunkSizeI32);
 
             const std::size_t dstOff = fileOffsets[static_cast<std::size_t>(fileIdx)];
-            auto& dst = fileData[static_cast<std::size_t>(fileIdx)];
+            auto& dst = files[static_cast<std::size_t>(fileIdx)].data;
             if (dstOff + chunkSize > dst.size()) {
                 throw std::runtime_error("Archive: chunk write out of bounds");
             }
@@ -137,14 +139,7 @@ Archive Archive::decodeFromSource(const ArchiveMeta& meta, const ByteSource& sou
         }
     }
 
-    std::vector<ArchiveFile> files;
-    files.reserve(static_cast<std::size_t>(fileCount));
-    for (i32 fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-        const i32 fileId = meta.fileIds[static_cast<std::size_t>(fileIdx)];
-        files.emplace_back(fileId, archiveId, std::move(fileData[static_cast<std::size_t>(fileIdx)]));
-    }
     return Archive(archiveId, lastFileId, std::move(files));
 }
 
 } // namespace rs
-

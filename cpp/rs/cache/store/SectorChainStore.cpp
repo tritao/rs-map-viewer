@@ -1,6 +1,7 @@
 #include "SectorChainStore.hpp"
 
 #include <algorithm>
+#include <memory>
 #include <stdexcept>
 
 #include "../../io/ByteSourceSlice.hpp"
@@ -10,7 +11,7 @@
 
 namespace rs {
 
-class SectorChainArchiveSource final : public ByteSource {
+class SectorChainArchiveSource final : public ByteSource, public std::enable_shared_from_this<SectorChainArchiveSource> {
 public:
     SectorChainArchiveSource(
         ByteSourcePtr dataFile,
@@ -27,7 +28,7 @@ public:
     [[nodiscard]] std::size_t size() const override { return size_; }
 
     [[nodiscard]] ByteSourcePtr slice(std::size_t start, std::size_t size) const override {
-        return std::make_shared<ByteSourceSlice>(std::make_shared<SectorChainArchiveSource>(*this), start, size);
+        return std::make_shared<ByteSourceSlice>(shared_from_this(), start, size);
     }
 
     void readInto(std::size_t offset, u8* target, std::size_t length) const override {
@@ -223,4 +224,3 @@ ByteSourcePtr SectorChainStore::openArchiveReader(i32 indexId, i32 archiveId) co
 }
 
 } // namespace rs
-

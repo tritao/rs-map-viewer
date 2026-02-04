@@ -11,6 +11,7 @@ add_executable(rs_cli
     rs/io/ByteSourceSlice.cpp
     rs/io/Uint8ArrayByteSource.cpp
     rs/io/ByteSourceAccess.cpp
+    rs/io/ByteSourceReader.cpp
     rs/io/Uint8ArrayReader.cpp
     rs/crypto/Xtea.cpp
     rs/compression/NativeCompressionHandler.cpp
@@ -22,9 +23,7 @@ add_executable(rs_cli
     rs/util/XXHash64.cpp
 
     third_party/miniz/miniz_tinfl.c
-    third_party/bzip2/blocksort.c
     third_party/bzip2/bzlib.c
-    third_party/bzip2/compress.c
     third_party/bzip2/crctable.c
     third_party/bzip2/decompress.c
     third_party/bzip2/huffman.c
@@ -43,4 +42,13 @@ target_compile_definitions(rs_cli PRIVATE
     MINIZ_NO_ARCHIVE_APIS=1
     MINIZ_NO_ZLIB_APIS=1
     MINIZ_NO_ZLIB_COMPATIBLE_NAMES=1
+)
+
+# Allow dead-stripping of unused library code (notably bzip2 compression paths).
+target_compile_options(rs_cli PRIVATE
+    -ffunction-sections
+    -fdata-sections
+)
+target_link_options(rs_cli PRIVATE
+    -Wl,--gc-sections
 )
