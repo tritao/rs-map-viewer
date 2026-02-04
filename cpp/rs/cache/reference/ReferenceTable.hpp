@@ -18,6 +18,7 @@ public:
     static Result<ReferenceTable> decodeFromReader(ByteSourceReader& reader, Allocator& alloc) noexcept;
 
     [[nodiscard]] bool archiveExists(i32 id) const noexcept;
+    [[nodiscard]] i32 getArchiveIdByNameHash(i32 nameHash) const noexcept;
     Status getArchiveMeta(i32 id, ArchiveMeta* out) const noexcept;
 
     [[nodiscard]] Span<const i32> archiveIds() const noexcept { return archiveIds_.span(); }
@@ -33,6 +34,7 @@ private:
     i32 lastArchiveId_ = 0;
 
     Vec<i32> archiveIds_;
+    Vec<i32> archiveNameHashes_;
     Vec<i32> archiveFileCounts_;
     Vec<i32> archiveLastFileIds_;
     Vec<Vec<i32>> archiveFileIds_;

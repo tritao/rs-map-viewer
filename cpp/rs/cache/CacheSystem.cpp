@@ -94,6 +94,15 @@ Status CacheSystem::getArchiveMeta(i32 indexId, i32 archiveId, ArchiveMeta* out)
     return index->getArchiveMeta(archiveId, out);
 }
 
+i32 CacheSystem::getArchiveId(i32 indexId, const char* name) const noexcept {
+    const CacheIndex* index = nullptr;
+    const Status s = getIndex(indexId, &index);
+    if (!ok(s) || !index) {
+        return -1;
+    }
+    return index->getArchiveId(name);
+}
+
 Result<Archive> CacheSystem::getArchiveKey(i32 indexId, i32 archiveId, const XteaKey* key, Allocator& alloc) const noexcept {
     const CacheIndex* index = nullptr;
     const Status s = getIndex(indexId, &index);

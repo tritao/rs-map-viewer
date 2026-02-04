@@ -32,6 +32,7 @@ public:
     Status readArchiveBytes(i32 indexId, i32 archiveId, Vec<u8>* out, Allocator& alloc) const noexcept;
     Status readContainerPayload(i32 indexId, i32 archiveId, const XteaKey* key, Vec<u8>* out, Allocator& alloc) const noexcept;
     Status getArchiveMeta(i32 indexId, i32 archiveId, ArchiveMeta* out) const noexcept;
+    [[nodiscard]] i32 getArchiveId(i32 indexId, const char* name) const noexcept;
 
     Result<Archive> getArchiveKey(i32 indexId, i32 archiveId, const XteaKey* key, Allocator& alloc) const noexcept;
     Result<Archive> getArchive(i32 indexId, i32 archiveId, Allocator& alloc) const noexcept {

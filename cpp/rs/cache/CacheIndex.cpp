@@ -20,6 +20,7 @@
 #include "../cache/store/DatLayout.hpp"
 #include "../io/ByteSourceReader.hpp"
 #include "../io/Uint8ArrayByteSource.hpp"
+#include "../util/StringHash.hpp"
 
 namespace rs {
 
@@ -228,6 +229,17 @@ i32 CacheIndex::fileCount(i32 archiveId) const noexcept {
         return 0;
     }
     return meta.fileCount;
+}
+
+i32 CacheIndex::getArchiveId(const char* name) const noexcept {
+    if (cacheType_ != CacheType::Dat2) {
+        return -1;
+    }
+    if (!name) {
+        return -1;
+    }
+    const i32 h = hashDjb2(name);
+    return storage_.dat2.table.getArchiveIdByNameHash(h);
 }
 
 Status CacheIndex::getArchiveMeta(i32 archiveId, ArchiveMeta* out) const noexcept {

@@ -31,6 +31,7 @@ static std::size_t lowerBoundIndex(Span<const i32> ids, i32 needle) noexcept {
 Result<ReferenceTable> ReferenceTable::decodeFromReader(ByteSourceReader& reader, Allocator& alloc) noexcept {
     ReferenceTable t;
     t.archiveIds_ = Vec<i32>(alloc);
+    t.archiveNameHashes_ = Vec<i32>(alloc);
     t.archiveFileCounts_ = Vec<i32>(alloc);
     t.archiveLastFileIds_ = Vec<i32>(alloc);
     t.archiveFileIds_ = Vec<Vec<i32>>(alloc);
@@ -113,14 +114,19 @@ Result<ReferenceTable> ReferenceTable::decodeFromReader(ByteSourceReader& reader
     }
     t.lastArchiveId_ = lastArchiveId;
 
-    // Optional archive name hashes (unused by our current model, but must consume).
+    // Optional archive name hashes (used for `getArchiveId(name)` lookups).
     if (t.named_) {
+        r = t.archiveNameHashes_.resize(static_cast<std::size_t>(archiveCount));
+        if (!r.isOk()) {
+            return Result<ReferenceTable>::err(r.status());
+        }
         for (i32 i = 0; i < archiveCount; i++) {
-            i32 ignore = 0;
-            s = reader.readInt(&ignore);
+            i32 h = 0;
+            s = reader.readInt(&h);
             if (!ok(s)) {
                 return Result<ReferenceTable>::err(s);
             }
+            t.archiveNameHashes_[static_cast<std::size_t>(i)] = h;
         }
     }
 
@@ -252,6 +258,23 @@ bool ReferenceTable::archiveExists(i32 id) const noexcept {
     const Span<const i32> ids = archiveIds();
     const std::size_t idx = lowerBoundIndex(ids, id);
     return idx < ids.size() && ids[idx] == id;
+}
+
+i32 ReferenceTable::getArchiveIdByNameHash(i32 nameHash) const noexcept {
+    if (!named_) {
+        return -1;
+    }
+    // Linear scan: name lookups are infrequent, and this keeps the core STL-free.
+    const std::size_t n = archiveIds_.size();
+    if (archiveNameHashes_.size() != n) {
+        return -1;
+    }
+    for (std::size_t i = 0; i < n; i++) {
+        if (archiveNameHashes_[i] == nameHash) {
+            return archiveIds_[i];
+        }
+    }
+    return -1;
 }
 
 Status ReferenceTable::getArchiveMeta(i32 id, ArchiveMeta* out) const noexcept {

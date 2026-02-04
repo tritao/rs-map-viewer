@@ -45,6 +45,9 @@ public:
     [[nodiscard]] bool archiveExists(i32 archiveId) const noexcept;
     [[nodiscard]] i32 fileCount(i32 archiveId) const noexcept;
 
+    // Dat2-only: name-based archive lookup (returns -1 when not supported or not found).
+    [[nodiscard]] i32 getArchiveId(const char* name) const noexcept;
+
     Status getArchiveMeta(i32 archiveId, ArchiveMeta* out) const noexcept;
 
     // Reads the raw archive bytes (container/packed format as stored on disk) into `out`.
