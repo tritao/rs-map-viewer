@@ -405,7 +405,11 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const interactId = interactBuffer[index];
                 const interactType = interactBuffer[index + 2];
                 if (interactType === InteractType.LOC) {
-                    const locType = this.mapViewer.cacheContext.loaders.locTypeLoader.load(interactId);
+                    const locResult = this.mapViewer.cacheContext.loaders.locTypeLoader.tryLoad(interactId);
+                    if (!locResult.ok) {
+                        continue;
+                    }
+                    const locType = locResult.value;
                     if (locType.name === "null" && !this.mapViewer.debugId) {
                         continue;
                     }
@@ -437,7 +441,11 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.OBJ) {
-                    const objType = this.mapViewer.cacheContext.loaders.objTypeLoader.load(interactId);
+                    const objResult = this.mapViewer.cacheContext.loaders.objTypeLoader.tryLoad(interactId);
+                    if (!objResult.ok) {
+                        continue;
+                    }
+                    const objType = objResult.value;
                     if (objType.name === "null" && !this.mapViewer.debugId) {
                         continue;
                     }
@@ -469,7 +477,11 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.NPC) {
-                    let npcType = this.mapViewer.cacheContext.loaders.npcTypeLoader.load(interactId);
+                    const npcResult = this.mapViewer.cacheContext.loaders.npcTypeLoader.tryLoad(interactId);
+                    if (!npcResult.ok) {
+                        continue;
+                    }
+                    let npcType = npcResult.value;
                     if (npcType.transforms) {
                         const transformed = npcType.transform(
                             this.mapViewer.cacheContext.varManager,
