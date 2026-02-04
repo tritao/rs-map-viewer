@@ -29,3 +29,14 @@ Compare against the TS implementation:
 
 - `npm run -s cache:parity -- --cache osrs-221_2024-04-17 --indices 0 --maxIndices 1 --maxArchives 10 --out /tmp/parity-ts.json`
 - `npm run -s cache:parity-compare -- --a /tmp/parity-ts.json --b /tmp/parity-cpp.json`
+
+## Wasm build (smoke)
+
+This is a build-only target (no TS/Wasm FFI yet). It exists to ensure the `rs` core compiles + links under Emscripten.
+
+- `bash cpp/tools/build-wasm.sh`
+
+Artifacts:
+
+- `cpp/build-wasm/rs_wasm_smoke.wasm`
+- `cpp/build-wasm/rs_wasm_smoke.js`

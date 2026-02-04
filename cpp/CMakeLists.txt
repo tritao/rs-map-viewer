@@ -9,6 +9,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Needed for clang-tidy / include-cleaner linting.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(RS_BUILD_TOOLS "Build command-line tools (native only by default)" ON)
+option(RS_BUILD_TESTS "Build tests (native only by default)" ON)
+option(RS_BUILD_WASM_SMOKE "Build a minimal wasm smoke target" OFF)
+
+if (EMSCRIPTEN)
+    # No CLI/tests for wasm yet (they depend on native filesystem + host execution).
+    set(RS_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(RS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(RS_BUILD_WASM_SMOKE ON CACHE BOOL "" FORCE)
+endif()
+
 add_library(rs STATIC
     rs/io/ByteSourceSlice.cpp
     rs/io/Uint8ArrayByteSource.cpp
@@ -53,26 +64,44 @@ target_compile_options(rs PRIVATE
     -fdata-sections
 )
 
-add_executable(rs_cli
-    tools/rs_cli.cpp
-)
+if (RS_BUILD_TOOLS)
+    add_executable(rs_cli
+        tools/rs_cli.cpp
+    )
 
-target_link_libraries(rs_cli PRIVATE rs)
+    target_link_libraries(rs_cli PRIVATE rs)
 
-target_link_options(rs_cli PRIVATE
-    -Wl,--gc-sections
-)
+    target_link_options(rs_cli PRIVATE
+        -Wl,--gc-sections
+    )
+endif()
 
-enable_testing()
+if (RS_BUILD_TESTS)
+    enable_testing()
 
-add_executable(rs_tests
-    tests/rs_tests.cpp
-)
+    add_executable(rs_tests
+        tests/rs_tests.cpp
+    )
 
-target_link_libraries(rs_tests PRIVATE rs)
+    target_link_libraries(rs_tests PRIVATE rs)
 
-target_link_options(rs_tests PRIVATE
-    -Wl,--gc-sections
-)
+    target_link_options(rs_tests PRIVATE
+        -Wl,--gc-sections
+    )
 
-add_test(NAME rs_tests COMMAND rs_tests)
+    add_test(NAME rs_tests COMMAND rs_tests)
+endif()
+
+if (RS_BUILD_WASM_SMOKE)
+    add_executable(rs_wasm_smoke
+        tools/rs_wasm_smoke.cpp
+    )
+
+    target_link_libraries(rs_wasm_smoke PRIVATE rs)
+
+    # Keep the output small-ish and fail fast on missing symbols.
+    target_link_options(rs_wasm_smoke PRIVATE
+        -Wl,--gc-sections
+        -sERROR_ON_UNDEFINED_SYMBOLS=1
+    )
+endif()
