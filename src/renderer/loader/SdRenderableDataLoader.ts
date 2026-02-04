@@ -190,7 +190,11 @@ function addLocAnimationFrames(
     entity: LocEntity,
     locType: LocType,
 ): AnimationFrames | undefined {
-    const seqType = locModelLoader.seqTypeLoader.load(entity.seqId);
+    const seqResult = locModelLoader.seqTypeLoader.tryLoad(entity.seqId);
+    if (!seqResult.ok) {
+        return undefined;
+    }
+    const seqType = seqResult.value;
     let frameCount: number;
     if (seqType.hasAnimMayaSeq()) {
         frameCount = seqType.getAnimMayaDuration();
@@ -238,10 +242,11 @@ export function addNpcAnimationFrames(
     npcType: NpcType,
     seqId: number,
 ): AnimationFrames | undefined {
-    const seqType = npcModelLoader.seqTypeLoader.load(seqId);
-    if (!seqType) {
+    const seqResult = npcModelLoader.seqTypeLoader.tryLoad(seqId);
+    if (!seqResult.ok) {
         return undefined;
     }
+    const seqType = seqResult.value;
     let frameCount: number;
     if (seqType.hasAnimMayaSeq()) {
         frameCount = seqType.getAnimMayaDuration();
@@ -324,7 +329,11 @@ export class SdRenderableDataLoader
         const npcs: NpcData[] = [];
         if (type == RenderableType.NPC) {
             for (const npcId of [id]) {
-                const npcType = npcTypeLoader.load(npcId);
+                const npcResult = npcTypeLoader.tryLoad(npcId);
+                if (!npcResult.ok) {
+                    continue;
+                }
+                const npcType = npcResult.value;
 
                 const idleSeqId = npcType.getIdleSeqId(basTypeLoader);
                 const walkSeqId = npcType.getWalkSeqId(basTypeLoader);

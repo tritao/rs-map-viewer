@@ -381,7 +381,11 @@ export class MapImageRenderer {
             const type = getLocPlacementType(locFlags);
 
             const locId = getIdFromTag(wallTag);
-            const locType = this.locTypeLoader.load(locId);
+            const locResult = this.locTypeLoader.tryLoad(locId);
+            if (!locResult.ok) {
+                return;
+            }
+            const locType = locResult.value;
 
             if (locType.mapSceneId !== -1) {
                 const mapScene = this.mapScenes[locType.mapSceneId];

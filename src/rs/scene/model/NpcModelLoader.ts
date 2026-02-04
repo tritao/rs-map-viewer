@@ -79,10 +79,13 @@ export class NpcModelLoader {
 
         const hasScale = npcType.widthScale !== 128 || npcType.heightScale !== 128;
 
-        const seqType = this.seqTypeLoader.load(seqId);
-        if (seqType && seqId !== -1 && frame !== -1) {
-            model = this.transformNpcModel(model, seqType, frame);
-            // model = Model.copyAnimated(model, true, true);
+        if (seqId !== -1 && frame !== -1) {
+            const seqResult = this.seqTypeLoader.tryLoad(seqId);
+            if (seqResult.ok) {
+                model = this.transformNpcModel(model, seqResult.value, frame);
+            } else if (hasScale) {
+                model = Model.copyAnimated(model, true, true);
+            }
         } else if (hasScale) {
             model = Model.copyAnimated(model, true, true);
         }

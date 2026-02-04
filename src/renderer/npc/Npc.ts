@@ -257,7 +257,11 @@ export class Npc {
 
     updateMovementSeq(seqTypeLoader: SeqTypeLoader, seqFrameLoader: SeqFrameLoader) {
         if (this.movementSeqId !== -1) {
-            const seqType = seqTypeLoader.load(this.movementSeqId);
+            const seqResult = seqTypeLoader.tryLoad(this.movementSeqId);
+            if (!seqResult.ok) {
+                return;
+            }
+            const seqType = seqResult.value;
             if (!seqType.hasAnimMayaSeq() && seqType.frameIds) {
                 this.movementFrameTick++;
                 if (

@@ -424,7 +424,11 @@ export class SceneBuilder {
         collisionMap: CollisionMap | undefined,
         locLoadType: LocLoadType,
     ): void {
-        const locType = this.locTypeLoader.load(id);
+        const locResult = this.locTypeLoader.tryLoad(id);
+        if (!locResult.ok) {
+            return;
+        }
+        const locType = locResult.value;
 
         let sizeX = locType.sizeX;
         let sizeY = locType.sizeY;
@@ -852,7 +856,10 @@ export class SceneBuilder {
             let displacement = LocType.DEFAULT_DECOR_DISPLACEMENT;
             const wallTag = scene.getWallTag(level, tileX, tileY);
             if (wallTag !== 0n) {
-                displacement = this.locTypeLoader.load(getIdFromTag(wallTag)).decorDisplacement;
+                const wallLocResult = this.locTypeLoader.tryLoad(getIdFromTag(wallTag));
+                if (wallLocResult.ok) {
+                    displacement = wallLocResult.value.decorDisplacement;
+                }
             }
 
             let entity: Entity | undefined;
@@ -895,8 +902,10 @@ export class SceneBuilder {
             let displacement = LocType.DEFAULT_DECOR_DISPLACEMENT / 2;
             const wallTag = scene.getWallTag(level, tileX, tileY);
             if (wallTag !== 0n) {
-                displacement =
-                    (this.locTypeLoader.load(getIdFromTag(wallTag)).decorDisplacement / 2) | 0;
+                const wallLocResult = this.locTypeLoader.tryLoad(getIdFromTag(wallTag));
+                if (wallLocResult.ok) {
+                    displacement = (wallLocResult.value.decorDisplacement / 2) | 0;
+                }
             }
 
             let entity: Entity | undefined;
@@ -975,8 +984,10 @@ export class SceneBuilder {
             let displacement = LocType.DEFAULT_DECOR_DISPLACEMENT / 2;
             const wallTag = scene.getWallTag(level, tileX, tileY);
             if (wallTag !== 0n) {
-                displacement =
-                    (this.locTypeLoader.load(getIdFromTag(wallTag)).decorDisplacement / 2) | 0;
+                const wallLocResult = this.locTypeLoader.tryLoad(getIdFromTag(wallTag));
+                if (wallLocResult.ok) {
+                    displacement = (wallLocResult.value.decorDisplacement / 2) | 0;
+                }
             }
 
             const insideRotation = (rotation + 2) & 3;
@@ -1062,24 +1073,30 @@ export class SceneBuilder {
                 if (xEast >= 0 && xEast < scene.sizeX) {
                     const underlayId = scene.tileUnderlays[level][xEast][yi];
                     if (underlayId > 0) {
-                        const underlay = this.underlayTypeLoader.load(underlayId - 1);
-                        hues[yi] += underlay.getHueBlend();
-                        sats[yi] += underlay.saturation;
-                        light[yi] += underlay.lightness;
-                        mul[yi] += underlay.getHueMultiplier();
-                        num[yi]++;
+                        const underlayResult = this.underlayTypeLoader.tryLoad(underlayId - 1);
+                        if (underlayResult.ok) {
+                            const underlay = underlayResult.value;
+                            hues[yi] += underlay.getHueBlend();
+                            sats[yi] += underlay.saturation;
+                            light[yi] += underlay.lightness;
+                            mul[yi] += underlay.getHueMultiplier();
+                            num[yi]++;
+                        }
                     }
                 }
                 const xWest = xi - SceneBuilder.BLEND_RADIUS;
                 if (xWest >= 0 && xWest < scene.sizeX) {
                     const underlayId = scene.tileUnderlays[level][xWest][yi];
                     if (underlayId > 0) {
-                        const underlay = this.underlayTypeLoader.load(underlayId - 1);
-                        hues[yi] -= underlay.getHueBlend();
-                        sats[yi] -= underlay.saturation;
-                        light[yi] -= underlay.lightness;
-                        mul[yi] -= underlay.getHueMultiplier();
-                        num[yi]--;
+                        const underlayResult = this.underlayTypeLoader.tryLoad(underlayId - 1);
+                        if (underlayResult.ok) {
+                            const underlay = underlayResult.value;
+                            hues[yi] -= underlay.getHueBlend();
+                            sats[yi] -= underlay.saturation;
+                            light[yi] -= underlay.lightness;
+                            mul[yi] -= underlay.getHueMultiplier();
+                            num[yi]--;
+                        }
                     }
                 }
             }
@@ -1215,8 +1232,33 @@ export class SceneBuilder {
                     } else {
                         const shape = (tileShapes[level][x][y] + 1) as TileShapeId;
                         const rotation = tileRotations[level][x][y] as TileRotation;
-
-                        const overlay = this.overlayTypeLoader.load(overlayId);
+                        const overlayResult = this.overlayTypeLoader.tryLoad(overlayId);
+                        if (!overlayResult.ok) {
+                            tileModel = new SceneTileModel(
+                                0 as TileShapeId,
+                                0 as TileRotation,
+                                -1,
+                                x,
+                                y,
+                                heightSw,
+                                heightSe,
+                                heightNe,
+                                heightNw,
+                                lightSw,
+                                lightSe,
+                                lightNe,
+                                lightNw,
+                                underlayHslSw,
+                                underlayHslSe,
+                                underlayHslNe,
+                                underlayHslNw,
+                                0,
+                                0,
+                                underlayRgb,
+                                0,
+                            );
+                        } else {
+                            const overlay = overlayResult.value;
 
                         let overlayHsl: number;
                         let overlayMinimapHsl: number;
@@ -1278,6 +1320,7 @@ export class SceneBuilder {
                             underlayRgb,
                             overlayRgb,
                         );
+                        }
                     }
 
                     scene.newTileModel(level, x, y, tileModel);

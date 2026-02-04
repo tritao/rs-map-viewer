@@ -509,14 +509,16 @@ export class NpcType extends Type {
 
     getIdleSeqId(basTypeLoader: BasTypeLoader): number {
         if (this.basTypeId !== -1) {
-            return basTypeLoader.load(this.basTypeId).idleSeqId;
+            const result = basTypeLoader.tryLoad(this.basTypeId);
+            return result.ok ? result.value.idleSeqId : -1;
         }
         return this.idleSeqId;
     }
 
     getWalkSeqId(basTypeLoader: BasTypeLoader): number {
         if (this.basTypeId !== -1) {
-            return basTypeLoader.load(this.basTypeId).walkSeqId;
+            const result = basTypeLoader.tryLoad(this.basTypeId);
+            return result.ok ? result.value.walkSeqId : -1;
         }
         return this.walkSeqId;
     }

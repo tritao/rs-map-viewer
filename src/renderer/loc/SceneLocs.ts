@@ -1,6 +1,7 @@
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
+import { loadOrNull } from "../../rs/config/TypeLoader";
 import { Model } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneLoc } from "../../rs/scene/SceneLoc";
@@ -69,7 +70,7 @@ export function createSceneModel(
 ): SceneModel {
     const id = getIdFromTag(sceneLoc.tag);
     const type: LocModelType = sceneLoc.flags & 0x3f;
-    const locType = locTypeLoader.load(id);
+    const locType = loadOrNull(locTypeLoader, id);
 
     const sceneX = sceneLoc.x + offsetX;
     const sceneZ = sceneLoc.y + offsetY;
@@ -82,8 +83,8 @@ export function createSceneModel(
     return {
         model,
         sceneHeight,
-        lowDetail: isLowDetail(scene, level, tileX, tileY, locType, type),
-        forceMerge: locType.contourGroundType > 1,
+        lowDetail: locType ? isLowDetail(scene, level, tileX, tileY, locType, type) : false,
+        forceMerge: (locType?.contourGroundType ?? 0) > 1,
 
         sceneX,
         sceneZ,
@@ -106,10 +107,10 @@ export function createSceneLocEntity(
     priority: number,
 ): SceneLocEntity {
     const id = getIdFromTag(sceneLoc.tag);
-    const locType = locTypeLoader.load(id);
+    const locType = loadOrNull(locTypeLoader, id);
 
     const contourGroundType =
-        locType.contourGroundType > 0 ? ContourGroundType.VERTEX : ContourGroundType.CENTER_TILE;
+        (locType?.contourGroundType ?? 0) > 0 ? ContourGroundType.VERTEX : ContourGroundType.CENTER_TILE;
 
     const sceneX = sceneLoc.x + offsetX;
     const sceneZ = sceneLoc.y + offsetY;

@@ -198,7 +198,11 @@ export class WebGLRenderable {
 
         this.locsAnimated = [];
         for (const loc of data.locsAnimated) {
-            const seqType = seqTypeLoader.load(loc.seqId);
+            const seqResult = seqTypeLoader.tryLoad(loc.seqId);
+            if (!seqResult.ok) {
+                continue;
+            }
+            const seqType = seqResult.value;
             this.locsAnimated.push(
                 new LocAnimated(
                     loc.drawRangeIndex,
@@ -226,7 +230,11 @@ export class WebGLRenderable {
         createDrawCall: CreateDrawCallFunction, npcProgram: Program) {
         this.npcs = [];
         for (const npc of data.npcs) {
-            const npcType = npcTypeLoader.load(npc.id);
+            const npcResult = npcTypeLoader.tryLoad(npc.id);
+            if (!npcResult.ok) {
+                continue;
+            }
+            const npcType = npcResult.value;
 
             this.npcs.push(
                 new Npc(

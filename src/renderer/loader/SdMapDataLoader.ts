@@ -74,7 +74,11 @@ function createObjSceneModel(
     borderSize: number,
     spawn: ObjSpawn,
 ): void {
-    const objType = objModelLoader.objTypeLoader.load(spawn.id);
+    const objResult = objModelLoader.objTypeLoader.tryLoad(spawn.id);
+    if (!objResult.ok) {
+        return;
+    }
+    const objType = objResult.value;
     if (objType.name === "null") {
         return;
     }
@@ -295,7 +299,11 @@ function addLocAnimationFrames(
     entity: LocEntity,
     locType: LocType,
 ): AnimationFrames | undefined {
-    const seqType = locModelLoader.seqTypeLoader.load(entity.seqId);
+    const seqResult = locModelLoader.seqTypeLoader.tryLoad(entity.seqId);
+    if (!seqResult.ok) {
+        return undefined;
+    }
+    const seqType = seqResult.value;
     let frameCount: number;
     if (seqType.hasAnimMayaSeq()) {
         frameCount = seqType.getAnimMayaDuration();
@@ -356,7 +364,11 @@ function addLocEntities(
         const tileY = entity.tileY;
         const level = entity.level;
 
-        let locType = locModelLoader.locTypeLoader.load(id);
+        const locResult = locModelLoader.locTypeLoader.tryLoad(id);
+        if (!locResult.ok) {
+            continue;
+        }
+        let locType = locResult.value;
         let sizeX = locType.sizeX;
         let sizeY = locType.sizeY;
         if (rotation === 1 || rotation === 3) {
@@ -470,7 +482,11 @@ function createNpcSpawnGroups(
     const groups: NpcSpawnGroup[] = [];
 
     for (const spawns of groupedSpawns.values()) {
-        const npcType = npcModelLoader.npcTypeLoader.load(spawns[0].id);
+        const npcResult = npcModelLoader.npcTypeLoader.tryLoad(spawns[0].id);
+        if (!npcResult.ok) {
+            continue;
+        }
+        const npcType = npcResult.value;
 
         const idleSeqId = npcType.getIdleSeqId(basTypeLoader);
         const walkSeqId = npcType.getWalkSeqId(basTypeLoader);
@@ -603,15 +619,20 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             );
             if (cacheNpcSpawns) {
                 npcSpawns = cacheNpcSpawns.filter((spawn) => {
-                    const npcType = npcTypeLoader.load(spawn.id);
-                    return (npcType.loginScreenProps & 0x1) > 0;
+                    const npcResult = npcTypeLoader.tryLoad(spawn.id);
+                    if (!npcResult.ok) {
+                        return false;
+                    }
+                    return (npcResult.value.loginScreenProps & 0x1) > 0;
                 });
             } else {
                 npcSpawns = getMapNpcSpawns(state.npcSpawns, maxLevel, mapX, mapY);
                 npcSpawns = npcSpawns.filter((spawn) => {
-                    return (
-                        spawn.name === undefined || spawn.name === npcTypeLoader.load(spawn.id).name
-                    );
+                    if (spawn.name === undefined) {
+                        return true;
+                    }
+                    const npcResult = npcTypeLoader.tryLoad(spawn.id);
+                    return npcResult.ok && spawn.name === npcResult.value.name;
                 });
             }
         }

@@ -293,8 +293,10 @@ export class LocModelLoader {
         }
 
         if (seqId !== -1 && frame !== -1) {
-            const seqType = this.seqTypeLoader.load(seqId);
-            model = this.transformModel(model, seqType, frame, rotation);
+            const seqResult = this.seqTypeLoader.tryLoad(seqId);
+            if (seqResult.ok) {
+                model = this.transformModel(model, seqResult.value, frame, rotation);
+            }
         }
 
         const isDiagonal = type === LocModelType.NORMAL && rotation > 3;

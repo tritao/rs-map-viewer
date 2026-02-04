@@ -23,7 +23,11 @@ export class ObjModelLoader {
             return undefined;
         }
 
-        const objType = this.objTypeLoader.load(id);
+        const objResult = this.objTypeLoader.tryLoad(id);
+        if (!objResult.ok) {
+            return undefined;
+        }
+        const objType = objResult.value;
         if (objType.model === undefined) {
             return undefined;
         }
