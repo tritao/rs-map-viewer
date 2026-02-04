@@ -141,8 +141,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
 
-        const seqFrameLoader = this.cacheContext.seqFrameLoader;
-        const seqTypeLoader = this.cacheContext.seqTypeLoader;
+        const seqFrameLoader = this.cacheContext.loaders.seqFrameLoader;
+        const seqTypeLoader = this.cacheContext.loaders.seqTypeLoader;
 
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
@@ -405,7 +405,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const interactId = interactBuffer[index];
                 const interactType = interactBuffer[index + 2];
                 if (interactType === InteractType.LOC) {
-                    const locType = this.mapViewer.cacheContext.locTypeLoader.load(interactId);
+                    const locType = this.mapViewer.cacheContext.loaders.locTypeLoader.load(interactId);
                     if (locType.name === "null" && !this.mapViewer.debugId) {
                         continue;
                     }
@@ -437,7 +437,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.OBJ) {
-                    const objType = this.mapViewer.cacheContext.objTypeLoader.load(interactId);
+                    const objType = this.mapViewer.cacheContext.loaders.objTypeLoader.load(interactId);
                     if (objType.name === "null" && !this.mapViewer.debugId) {
                         continue;
                     }
@@ -469,11 +469,11 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.NPC) {
-                    let npcType = this.mapViewer.cacheContext.npcTypeLoader.load(interactId);
+                    let npcType = this.mapViewer.cacheContext.loaders.npcTypeLoader.load(interactId);
                     if (npcType.transforms) {
                         const transformed = npcType.transform(
                             this.mapViewer.cacheContext.varManager,
-                            this.mapViewer.cacheContext.npcTypeLoader,
+                            this.mapViewer.cacheContext.loaders.npcTypeLoader,
                         );
                         if (!transformed) {
                             continue;

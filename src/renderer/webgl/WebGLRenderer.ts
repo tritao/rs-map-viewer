@@ -71,9 +71,9 @@ export class WebGLRenderer extends WebGLMapRenderer {
         this.loadedRenderables.set(
             id,
             WebGLRenderable.load(
-                this.cacheContext.seqTypeLoader,
-                this.cacheContext.npcTypeLoader,
-                this.cacheContext.basTypeLoader,
+                this.cacheContext.loaders.seqTypeLoader,
+                this.cacheContext.loaders.npcTypeLoader,
+                this.cacheContext.loaders.basTypeLoader,
                 this.app,
                 this.mainProgram!,
                 this.mainAlphaProgram!,

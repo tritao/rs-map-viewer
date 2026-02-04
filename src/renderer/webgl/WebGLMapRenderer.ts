@@ -267,7 +267,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initTextures(): void {
-        const textureLoader = this.cacheContext.textureLoader;
+        const textureLoader = this.cacheContext.loaders.textureLoader;
 
         const allTextureIds = textureLoader.getTextureIds();
 
@@ -309,7 +309,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = 0; i < Math.min(textureCount, maxPreloadTextures); i++) {
             const textureId = this.textureIds[i];
             try {
-                const texturePixels = this.cacheContext.textureLoader.getPixelsArgb(
+                const texturePixels = this.cacheContext.loaders.textureLoader.getPixelsArgb(
                     textureId,
                     TEXTURE_SIZE,
                     true,
@@ -435,7 +435,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = 0; i < this.textureIds.length; i++) {
             const id = this.textureIds[i];
             try {
-                const material = this.cacheContext.textureLoader.getMaterial(id);
+                const material = this.cacheContext.loaders.textureLoader.getMaterial(id);
 
                 const index = (i + 1) * 4;
                 data[index] = material.animU;
@@ -481,9 +481,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.loadedMaps.set(
             getMapSquareId(mapX, mapY),
             WebGLMapSquare.load(
-                this.cacheContext.seqTypeLoader,
-                this.cacheContext.npcTypeLoader,
-                this.cacheContext.basTypeLoader,
+                this.cacheContext.loaders.seqTypeLoader,
+                this.cacheContext.loaders.npcTypeLoader,
+                this.cacheContext.loaders.basTypeLoader,
                 this.app,
                 this.mainProgram!,
                 this.mainAlphaProgram!,
