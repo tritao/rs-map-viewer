@@ -8,9 +8,7 @@ import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheSto
 import { CacheType, detectCacheType, getCacheTypeName } from "../../src/rs/cache/CacheType";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
-import { Container } from "../../src/rs/cache/format/Container";
 import { Archive } from "../../src/rs/cache/format/Archive";
 import { DatIndexId, LegacyIndexId } from "../../src/rs/cache/IndexId";
 
@@ -147,12 +145,7 @@ async function main(): Promise<void> {
             // Dat/Dat2 indices are store-backed; Legacy indices are decoded up-front (no store).
             const store: unknown = (index as any).store;
             if (store) {
-                const rawSource = (store as any).openArchiveReader(indexId, archiveId);
-                if (rawSource.size === 0) {
-                    continue;
-                }
-
-                raw = readAllBytes(rawSource);
+                raw = index.readArchiveBytes(archiveId);
                 if (raw.byteLength === 0) {
                     continue;
                 }
@@ -172,19 +165,12 @@ async function main(): Promise<void> {
             };
 
             if (cacheType === CacheType.Dat2) {
-                const container = Container.decodeFromSource(
-                    new Uint8ArrayByteSource(raw),
-                    null,
-                    compressionHandler,
-                );
-                entry.containerPayload = {
-                    len: container.data.byteLength,
-                    xxh64: h64Hex(hashApi.h64Raw(container.data)),
-                };
+                const payload = index.readContainerPayload(archiveId, null);
+                entry.containerPayload = { len: payload.byteLength, xxh64: h64Hex(hashApi.h64Raw(payload)) };
 
                 const archiveRef = index.getArchiveReference(archiveId);
                 if (archiveRef) {
-                    const archive = Archive.decodeFromSource(archiveRef, new Uint8ArrayByteSource(container.data));
+                    const archive = Archive.decodeFromSource(archiveRef, new Uint8ArrayByteSource(payload));
                     entry.files = archive.files
                         .map((f) => ({
                             fileId: f.id,

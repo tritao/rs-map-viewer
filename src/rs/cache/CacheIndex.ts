@@ -42,6 +42,31 @@ export abstract class CacheIndex {
 
     abstract getArchiveKey(archiveId: number, key: number[] | null): Archive;
 
+    /**
+     * Reads the raw on-disk bytes for this archive (container/packed format as stored in the cache).
+     *
+     * Note: only available for store-backed indices (Dat/Dat2). Legacy/Classic indices are decoded
+     * up-front and do not retain raw archive bytes.
+     */
+    readArchiveBytes(archiveId: number): Uint8Array {
+        const store: unknown = (this as any).store;
+        if (!store) {
+            throw new Error("readArchiveBytes() unsupported (no store)");
+        }
+        const rawSource = (store as any).openArchiveReader(this.id, archiveId);
+        if (!rawSource || rawSource.size === 0) {
+            return new Uint8Array(0);
+        }
+        return readAllBytes(rawSource);
+    }
+
+    /**
+     * Dat2-only: decodes the container and returns the payload bytes (archive format bytes).
+     */
+    readContainerPayload(_archiveId: number, _key: number[] | null): Uint8Array {
+        throw new Error("readContainerPayload() unsupported");
+    }
+
     getArchive(archiveId: number): Archive {
         return this.getArchiveKey(archiveId, null)
     }
@@ -237,6 +262,19 @@ export class Dat2CacheIndex extends CacheIndex {
     override getArchiveKey(archiveId: number, key: number[] | null): Archive {
         const source = this.store.openArchiveReader(this.id, archiveId);
         return decodeArchiveDataFromSource(this.table, this.compressionHandler, archiveId, source, key);
+    }
+
+    override readContainerPayload(archiveId: number, key: number[] | null): Uint8Array {
+        const raw = this.readArchiveBytes(archiveId);
+        if (raw.byteLength === 0) {
+            return new Uint8Array(0);
+        }
+        const container = Container.decodeFromSource(
+            new Uint8ArrayByteSource(raw),
+            key,
+            this.compressionHandler,
+        );
+        return container.data;
     }
 }
 
