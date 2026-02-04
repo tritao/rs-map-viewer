@@ -24,7 +24,7 @@ class TestType extends Type {
 }
 
 class MissingDataLoader extends BaseTypeLoader<TestType> {
-    override getDataBuffer(_id: number): ByteBuffer | undefined {
+    override getData(_id: number): Uint8Array | undefined {
         return undefined;
     }
 
@@ -46,8 +46,8 @@ class FixedBufferLoader extends BaseTypeLoader<FailingDecodeType> {
         super(FailingDecodeType, cacheInfo);
     }
 
-    override getDataBuffer(_id: number): ByteBuffer | undefined {
-        return new ByteBuffer(this.bytes);
+    override getData(_id: number): Uint8Array | undefined {
+        return this.bytes;
     }
 
     override getCount(): number {
@@ -92,11 +92,10 @@ function testIndexedDatLoaderSlices(): void {
     const b = loader.tryLoad(1);
     assert(b.ok, "expected entry1 to decode");
     assert(b.value.value === 99, `expected entry1 value=99, got ${b.value.value}`);
-
-    const buf0 = loader.getDataBuffer(0);
-    const buf1 = loader.getDataBuffer(1);
-    assert(!!buf0 && !!buf1, "expected getDataBuffer to return buffers");
-    assert(buf0.offset === 0 && buf1.offset === 0, "expected independent buffers with offset=0");
+    const bytes0 = loader.getData(0);
+    const bytes1 = loader.getData(1);
+    assert(!!bytes0 && !!bytes1, "expected getData to return bytes");
+    assert(bytes0.length === 3 && bytes1.length === 3, "expected independent slices");
 }
 
 function testDecodeErrorIncludesOpcodeAndOffset(): void {

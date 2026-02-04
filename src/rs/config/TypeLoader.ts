@@ -6,7 +6,7 @@ import { ByteBuffer } from "../io/ByteBuffer";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { Result, err, ok } from "../../util/Result";
 import { Type } from "./Type";
-import { decodeTypeFromBuffer } from "./decode/decodeType";
+import { decodeTypeFromBytes } from "./decode/decodeType";
 
 export interface TypeLoader<T> {
     load(id: number): T;
@@ -51,7 +51,7 @@ export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
         readonly cacheInfo: CacheInfo,
     ) {}
 
-    abstract getDataBuffer(id: number): ByteBuffer | undefined;
+    abstract getData(id: number): Uint8Array | undefined;
 
     load(id: number): T {
         const result = this.tryLoad(id);
@@ -73,27 +73,27 @@ export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
 
         const typeName = this.typeConstructor.name || "Type";
 
-        let buffer: ByteBuffer | undefined;
+        let data: Uint8Array | undefined;
         try {
-            buffer = this.getDataBuffer(id);
+            data = this.getData(id);
         } catch (cause) {
             const e = decodeFailedError({
                 typeName,
                 id,
-                message: `${typeName}: failed to obtain data buffer for id=${id}`,
+                message: `${typeName}: failed to obtain data for id=${id}`,
                 cause,
             });
             this.errors.set(id, e);
             return err(e);
         }
 
-        if (!buffer) {
+        if (!data) {
             const e = notFoundError(typeName, id);
             this.errors.set(id, e);
             return err(e);
         }
 
-        const decoded = decodeTypeFromBuffer(this.typeConstructor, this.cacheInfo, id, buffer);
+        const decoded = decodeTypeFromBytes(this.typeConstructor, this.cacheInfo, id, data);
         if (!decoded.ok) {
             this.errors.set(id, decoded.error);
             return decoded;
@@ -121,20 +121,15 @@ export class ArchiveTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         super(typeConstructor, cacheInfo);
     }
 
-    override getDataBuffer(id: number): ByteBuffer | undefined {
-        const file = this.archive.getFile(id);
-        return file ? new ByteBuffer(file.data) : undefined;
+    override getData(id: number): Uint8Array | undefined {
+        return this.archive.getFile(id)?.data;
     }
 
     override getCount(): number {
         return this.archive.fileCount;
     }
 
-    override tryLoad(id: number): Result<T, DecodeError> {
-        // Fast path: Archive.getFile performs bounds checks; use BaseTypeLoader implementation for
-        // caching + error handling.
-        return super.tryLoad(id);
-    }
+    // Inherit BaseTypeLoader.tryLoad for caching + error handling.
 }
 
 export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
@@ -155,7 +150,7 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
             index.getFileCount(index.getLastArchiveId());
     }
 
-    override getDataBuffer(id: number): ByteBuffer | undefined {
+    override getData(id: number): Uint8Array | undefined {
         const archiveId = id >> this.fileIdBits;
         const fileId = id & BIT_MASKS[this.fileIdBits - 1];
 
@@ -164,8 +159,7 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
             archive = this.index.getArchive(archiveId);
             this.archives.set(archiveId, archive);
         }
-        const file = archive.getFile(fileId);
-        return file ? new ByteBuffer(file.data) : undefined;
+        return archive.getFile(fileId)?.data;
     }
 
     override getCount(): number {
@@ -274,7 +268,7 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         super(typeConstructor, cacheInfo);
     }
 
-    override getDataBuffer(id: number): ByteBuffer | undefined {
+    override getData(id: number): Uint8Array | undefined {
         if (id < 0 || id >= this.count) {
             return undefined;
         }
@@ -283,8 +277,7 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         if (start < 0 || length < 0 || start + length > this.data.length) {
             return undefined;
         }
-        const slice = this.data.subarray(start, start + length);
-        return new ByteBuffer(slice);
+        return this.data.subarray(start, start + length);
     }
 
     getCount(): number {
