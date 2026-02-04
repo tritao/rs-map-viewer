@@ -11,6 +11,7 @@
 #include "../rs/cache/Dat2CacheIndex.hpp"
 #include "../rs/cache/format/Archive.hpp"
 #include "../rs/cache/format/Container.hpp"
+#include "../rs/cache/store/DatLayout.hpp"
 #include "../rs/cache/store/SectorChainStore.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
 #include "../rs/io/ByteSourceUtil.hpp"
@@ -26,7 +27,7 @@ static void printUsage() {
     std::cerr << "Usage:\n";
     std::cerr << "  rs_cli <command> [args]\n\n";
     std::cerr << "Commands:\n";
-    std::cerr << "  parity   Emit parity JSON (dat2 only for now)\n\n";
+    std::cerr << "  parity   Emit parity JSON (dat2/dat/legacy)\n\n";
     std::cerr << "parity args:\n";
     std::cerr << "  --cache <name-or-path>\n";
     std::cerr << "  --out <path>\n";
@@ -134,87 +135,122 @@ static void writeJsonEscaped(std::ostream& os, const std::string& s) {
     os << '"';
 }
 
+enum class CacheKind {
+    Dat2,
+    Dat,
+    Legacy,
+};
+
+static bool fileExists(const fs::path& p) {
+    std::error_code ec;
+    return fs::exists(p, ec);
+}
+
+static std::optional<CacheKind> detectCacheKind(const fs::path& cacheDir) {
+    const fs::path dat2Path = cacheDir / "main_file_cache.dat2";
+    const fs::path idx255Path = cacheDir / "main_file_cache.idx255";
+    if (fileExists(dat2Path) && fileExists(idx255Path)) {
+        return CacheKind::Dat2;
+    }
+
+    const fs::path datPath = cacheDir / "main_file_cache.dat";
+    if (fileExists(datPath)) {
+        // Consider it a Dat cache if idx0 exists; we’ll validate more strictly while loading.
+        const fs::path idx0Path = cacheDir / "main_file_cache.idx0";
+        if (fileExists(idx0Path)) {
+            return CacheKind::Dat;
+        }
+    }
+
+    const fs::path configPath = cacheDir / "config";
+    const fs::path mediaPath = cacheDir / "media";
+    const fs::path texturesPath = cacheDir / "textures";
+    const fs::path modelsPath = cacheDir / "models";
+    if (fileExists(configPath) && fileExists(mediaPath) && fileExists(texturesPath) && fileExists(modelsPath)) {
+        return CacheKind::Legacy;
+    }
+
+    return std::nullopt;
+}
+
+static std::vector<std::string> parseJsonStringArray(std::string_view s) {
+    // Minimal JSON array-of-strings parser: ["a","b",...]
+    std::vector<std::string> out;
+
+    std::size_t i = 0;
+    const auto skipWs = [&]() {
+        while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) i++;
+    };
+
+    skipWs();
+    if (i >= s.size() || s[i] != '[') {
+        throw std::runtime_error("maps.json: expected '['");
+    }
+    i++;
+    skipWs();
+    if (i < s.size() && s[i] == ']') {
+        return out;
+    }
+
+    while (i < s.size()) {
+        skipWs();
+        if (i >= s.size() || s[i] != '"') {
+            throw std::runtime_error("maps.json: expected string");
+        }
+        i++; // opening quote
+        std::string value;
+        while (i < s.size()) {
+            const char c = s[i++];
+            if (c == '"') {
+                break;
+            }
+            if (c == '\\') {
+                if (i >= s.size()) {
+                    throw std::runtime_error("maps.json: truncated escape");
+                }
+                const char e = s[i++];
+                switch (e) {
+                    case '"': value.push_back('"'); break;
+                    case '\\': value.push_back('\\'); break;
+                    case '/': value.push_back('/'); break;
+                    case 'b': value.push_back('\b'); break;
+                    case 'f': value.push_back('\f'); break;
+                    case 'n': value.push_back('\n'); break;
+                    case 'r': value.push_back('\r'); break;
+                    case 't': value.push_back('\t'); break;
+                    default: throw std::runtime_error("maps.json: unsupported escape");
+                }
+                continue;
+            }
+            value.push_back(c);
+        }
+        out.push_back(std::move(value));
+
+        skipWs();
+        if (i >= s.size()) {
+            throw std::runtime_error("maps.json: truncated");
+        }
+        if (s[i] == ',') {
+            i++;
+            continue;
+        }
+        if (s[i] == ']') {
+            i++;
+            break;
+        }
+        throw std::runtime_error("maps.json: expected ',' or ']'");
+    }
+
+    return out;
+}
+
 static int cmdParity(int argc, char** argv) {
     const ParityArgs args = parseParityArgs(argc, argv);
     const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
 
-    const fs::path dat2Path = cacheDir / "main_file_cache.dat2";
-    const fs::path idx255Path = cacheDir / "main_file_cache.idx255";
-    if (!fs::exists(dat2Path) || !fs::exists(idx255Path)) {
-        throw std::runtime_error("Expected dat2 cache dir with main_file_cache.dat2 + main_file_cache.idx255");
-    }
-
-    int maxIdx = -1;
-    for (const auto& ent : fs::directory_iterator(cacheDir)) {
-        const auto name = ent.path().filename().string();
-        if (!startsWith(name, "main_file_cache.idx")) {
-            continue;
-        }
-        const std::string suffix = name.substr(std::strlen("main_file_cache.idx"));
-        if (suffix == "255" || suffix.empty()) {
-            continue;
-        }
-        bool ok = true;
-        for (char c : suffix) {
-            if (!std::isdigit(static_cast<unsigned char>(c))) {
-                ok = false;
-                break;
-            }
-        }
-        if (!ok) {
-            continue;
-        }
-        const int id = std::stoi(suffix);
-        maxIdx = std::max(maxIdx, id);
-    }
-
-    std::vector<std::optional<rs::ByteSourcePtr>> indexFiles;
-    indexFiles.resize(static_cast<std::size_t>(maxIdx + 1));
-
-    rs::ByteSourcePtr dat2Src;
-    rs::ByteSourcePtr idx255Src;
-
-    if (args.fileBacked) {
-        dat2Src = std::make_shared<rs::FileByteSource>(dat2Path.string());
-        idx255Src = std::make_shared<rs::FileByteSource>(idx255Path.string());
-        for (int i = 0; i <= maxIdx; i++) {
-            const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
-            if (!fs::exists(idxPath)) {
-                continue;
-            }
-            indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::FileByteSource>(idxPath.string());
-        }
-    } else {
-        auto dat2Bytes = readFileBytes(dat2Path);
-        auto idx255Bytes = readFileBytes(idx255Path);
-        dat2Src = std::make_shared<rs::Uint8ArrayByteSource>(dat2Bytes);
-        idx255Src = std::make_shared<rs::Uint8ArrayByteSource>(idx255Bytes);
-
-        for (int i = 0; i <= maxIdx; i++) {
-            const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
-            if (!fs::exists(idxPath)) {
-                continue;
-            }
-            auto idxBytes = readFileBytes(idxPath);
-            indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::Uint8ArrayByteSource>(idxBytes);
-        }
-    }
-
-    rs::SectorChainStore store(dat2Src, indexFiles, idx255Src);
     rs::NativeCompressionHandler compression;
 
     std::vector<int> selectedIndexIds;
-    if (!args.indices.empty()) {
-        selectedIndexIds = args.indices;
-    } else {
-        for (int i = 0; i <= maxIdx; i++) {
-            selectedIndexIds.push_back(i);
-        }
-    }
-    std::sort(selectedIndexIds.begin(), selectedIndexIds.end());
-    if (static_cast<int>(selectedIndexIds.size()) > args.maxIndices) {
-        selectedIndexIds.resize(static_cast<std::size_t>(args.maxIndices));
-    }
 
     struct ParityFileEntry {
         int fileId;
@@ -233,52 +269,278 @@ static int cmdParity(int argc, char** argv) {
 
     std::vector<Entry> entries;
 
-    for (const int indexId : selectedIndexIds) {
-        const auto idxSizeOpt = store.getIndexFileSize(indexId);
-        if (!idxSizeOpt) {
-            continue;
+    const auto kindOpt = detectCacheKind(cacheDir);
+    if (!kindOpt) {
+        throw std::runtime_error("Could not detect cache kind (expected dat2, dat, or legacy layout)");
+    }
+    const CacheKind kind = *kindOpt;
+
+    if (kind == CacheKind::Dat2 || kind == CacheKind::Dat) {
+        const bool isDat2 = kind == CacheKind::Dat2;
+        const fs::path dataPath = cacheDir / (isDat2 ? "main_file_cache.dat2" : "main_file_cache.dat");
+        const fs::path metaPath = cacheDir / "main_file_cache.idx255";
+
+        // Determine index count.
+        int maxIdx = -1;
+        if (isDat2) {
+            for (const auto& ent : fs::directory_iterator(cacheDir)) {
+                const auto name = ent.path().filename().string();
+                if (!startsWith(name, "main_file_cache.idx")) {
+                    continue;
+                }
+                const std::string suffix = name.substr(std::strlen("main_file_cache.idx"));
+                if (suffix == "255" || suffix.empty()) {
+                    continue;
+                }
+                bool ok = true;
+                for (char c : suffix) {
+                    if (!std::isdigit(static_cast<unsigned char>(c))) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) {
+                    continue;
+                }
+                const int id = std::stoi(suffix);
+                maxIdx = std::max(maxIdx, id);
+            }
+        } else {
+            maxIdx = 4; // DAT_INDEX_COUNT = 5 (idx0..idx4)
         }
 
-        const rs::Dat2CacheIndex index = rs::Dat2CacheIndex::fromDat2Store(indexId, store, compression);
-        std::vector<int> archiveIds;
-        archiveIds.reserve(index.getArchiveIds().size());
-        for (const rs::i32 a : index.getArchiveIds()) {
-            archiveIds.push_back(static_cast<int>(a));
-        }
-        std::sort(archiveIds.begin(), archiveIds.end());
-        if (static_cast<int>(archiveIds.size()) > args.maxArchivesPerIndex) {
-            archiveIds.resize(static_cast<std::size_t>(args.maxArchivesPerIndex));
+        std::vector<std::optional<rs::ByteSourcePtr>> indexFiles;
+        indexFiles.resize(static_cast<std::size_t>(maxIdx + 1));
+
+        rs::ByteSourcePtr dataSrc;
+        std::optional<rs::ByteSourcePtr> metaSrc;
+        if (isDat2) {
+            metaSrc = args.fileBacked ? std::make_shared<rs::FileByteSource>(metaPath.string())
+                                      : rs::ByteSourcePtr(std::make_shared<rs::Uint8ArrayByteSource>(readFileBytes(metaPath)));
+        } else {
+            metaSrc = std::nullopt;
         }
 
-        for (const int archiveId : archiveIds) {
-            rs::ByteSourcePtr rawSource = store.openArchiveReader(indexId, archiveId);
-            if (!rawSource || rawSource->size() == 0) {
+        if (args.fileBacked) {
+            dataSrc = std::make_shared<rs::FileByteSource>(dataPath.string());
+            for (int i = 0; i <= maxIdx; i++) {
+                const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
+                if (!fileExists(idxPath)) {
+                    if (!isDat2) {
+                        throw std::runtime_error("Missing dat idx file: " + idxPath.string());
+                    }
+                    continue;
+                }
+                indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::FileByteSource>(idxPath.string());
+            }
+        } else {
+            auto dataBytes = readFileBytes(dataPath);
+            dataSrc = std::make_shared<rs::Uint8ArrayByteSource>(dataBytes);
+
+            for (int i = 0; i <= maxIdx; i++) {
+                const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
+                if (!fileExists(idxPath)) {
+                    if (!isDat2) {
+                        throw std::runtime_error("Missing dat idx file: " + idxPath.string());
+                    }
+                    continue;
+                }
+                auto idxBytes = readFileBytes(idxPath);
+                indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::Uint8ArrayByteSource>(idxBytes);
+            }
+        }
+
+        rs::SectorChainStore store(dataSrc, indexFiles, metaSrc);
+
+        if (!args.indices.empty()) {
+            selectedIndexIds = args.indices;
+        } else {
+            for (int i = 0; i <= maxIdx; i++) {
+                selectedIndexIds.push_back(i);
+            }
+        }
+        std::sort(selectedIndexIds.begin(), selectedIndexIds.end());
+        if (static_cast<int>(selectedIndexIds.size()) > args.maxIndices) {
+            selectedIndexIds.resize(static_cast<std::size_t>(args.maxIndices));
+        }
+
+        for (const int indexId : selectedIndexIds) {
+            const auto idxSizeOpt = store.getIndexFileSize(indexId);
+            if (!idxSizeOpt) {
                 continue;
             }
 
-            std::vector<rs::u8> raw = rs::readAllBytes(*rawSource);
-            if (raw.empty()) {
-                continue;
+            if (isDat2) {
+                const rs::Dat2CacheIndex index = rs::Dat2CacheIndex::fromDat2Store(indexId, store, compression);
+                std::vector<int> archiveIds;
+                archiveIds.reserve(index.getArchiveIds().size());
+                for (const rs::i32 a : index.getArchiveIds()) {
+                    archiveIds.push_back(static_cast<int>(a));
+                }
+                std::sort(archiveIds.begin(), archiveIds.end());
+                if (static_cast<int>(archiveIds.size()) > args.maxArchivesPerIndex) {
+                    archiveIds.resize(static_cast<std::size_t>(args.maxArchivesPerIndex));
+                }
+
+                for (const int archiveId : archiveIds) {
+                    rs::ByteSourcePtr rawSource = store.openArchiveReader(indexId, archiveId);
+                    if (!rawSource || rawSource->size() == 0) {
+                        continue;
+                    }
+
+                    std::vector<rs::u8> raw = rs::readAllBytes(*rawSource);
+                    if (raw.empty()) {
+                        continue;
+                    }
+
+                    Entry e;
+                    e.indexId = indexId;
+                    e.archiveId = archiveId;
+                    e.rawLen = raw.size();
+                    e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+
+                    auto rawOwned = std::make_shared<std::vector<rs::u8>>(std::move(raw));
+                    rs::ByteSourcePtr rawBytes = std::make_shared<rs::Uint8ArrayByteSource>(rawOwned);
+                    rs::Container container = rs::Container::decodeFromSource(*rawBytes, std::nullopt, compression);
+
+                    e.payloadLen = container.data.size();
+                    e.payloadHash = rs::h64Hex(rs::xxh64(container.data.data(), container.data.size()));
+
+                    const auto metaOpt = index.getArchiveMeta(archiveId);
+                    if (metaOpt) {
+                        auto payloadOwned = std::make_shared<std::vector<rs::u8>>(std::move(container.data));
+                        rs::ByteSourcePtr payloadBytes = std::make_shared<rs::Uint8ArrayByteSource>(payloadOwned);
+                        rs::Archive archive = rs::Archive::decodeFromSource(*metaOpt, *payloadBytes);
+                        for (const auto& f : archive.files()) {
+                            ParityFileEntry fe;
+                            fe.fileId = static_cast<int>(f.id);
+                            fe.len = f.data.size();
+                            fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                            e.files.push_back(std::move(fe));
+                        }
+                        std::sort(e.files.begin(), e.files.end(), [](const ParityFileEntry& a, const ParityFileEntry& b) {
+                            return a.fileId < b.fileId;
+                        });
+                    }
+
+                    entries.push_back(std::move(e));
+                }
+            } else {
+                // Dat: idx is 6-byte (size+sector). Archive ids are dense: 0..(idxSize/6)-1.
+                const std::size_t idxSize = *idxSizeOpt;
+                const std::size_t archiveCount = idxSize / rs::IDX_ENTRY_SIZE;
+                const std::size_t takeCount = std::min<std::size_t>(archiveCount, static_cast<std::size_t>(args.maxArchivesPerIndex));
+
+                for (std::size_t archiveId = 0; archiveId < takeCount; archiveId++) {
+                    rs::ByteSourcePtr rawSource = store.openArchiveReader(indexId, static_cast<int>(archiveId));
+                    if (!rawSource || rawSource->size() == 0) {
+                        continue;
+                    }
+                    std::vector<rs::u8> raw = rs::readAllBytes(*rawSource);
+                    if (raw.empty()) {
+                        continue;
+                    }
+
+                    Entry e;
+                    e.indexId = indexId;
+                    e.archiveId = static_cast<int>(archiveId);
+                    e.rawLen = raw.size();
+                    e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+
+                    const bool multipleFiles = indexId == 0; // DatIndexId.configs
+                    try {
+                        rs::Archive archive =
+                            rs::Archive::decodeOld(static_cast<rs::i32>(archiveId), raw, multipleFiles, compression);
+                        for (const auto& f : archive.files()) {
+                            ParityFileEntry fe;
+                            fe.fileId = static_cast<int>(f.id);
+                            fe.len = f.data.size();
+                            fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                            e.files.push_back(std::move(fe));
+                        }
+                        std::sort(e.files.begin(), e.files.end(),
+                                  [](const ParityFileEntry& a, const ParityFileEntry& b) { return a.fileId < b.fileId; });
+                    } catch (...) {
+                        // Some dat indices contain empty/truncated entries; skip them.
+                        continue;
+                    }
+
+                    entries.push_back(std::move(e));
+                }
             }
+        }
+    } else {
+        // Legacy: config/media/textures/models as multi-file old format; maps are raw single-file archives.
+        const fs::path configPath = cacheDir / "config";
+        const fs::path mediaPath = cacheDir / "media";
+        const fs::path texturesPath = cacheDir / "textures";
+        const fs::path modelsPath = cacheDir / "models";
 
-            Entry e;
-            e.indexId = indexId;
-            e.archiveId = archiveId;
-            e.rawLen = raw.size();
-            e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+        struct LegacyIndex {
+            int indexId;
+            fs::path filePath;
+        };
+        const std::vector<LegacyIndex> legacyFiles = {
+            {0, configPath},
+            {1, mediaPath},
+            {2, texturesPath},
+            {3, modelsPath},
+        };
 
-            auto rawOwned = std::make_shared<std::vector<rs::u8>>(std::move(raw));
-            rs::ByteSourcePtr rawBytes = std::make_shared<rs::Uint8ArrayByteSource>(rawOwned);
-            rs::Container container = rs::Container::decodeFromSource(*rawBytes, std::nullopt, compression);
+        if (!args.indices.empty()) {
+            selectedIndexIds = args.indices;
+        } else {
+            selectedIndexIds = {0, 1, 2, 3, 4};
+        }
+        std::sort(selectedIndexIds.begin(), selectedIndexIds.end());
+        if (static_cast<int>(selectedIndexIds.size()) > args.maxIndices) {
+            selectedIndexIds.resize(static_cast<std::size_t>(args.maxIndices));
+        }
 
-            e.payloadLen = container.data.size();
-            e.payloadHash = rs::h64Hex(rs::xxh64(container.data.data(), container.data.size()));
+        // Read maps.json if present.
+        std::vector<std::string> mapNames;
+        const fs::path mapsJsonPath = cacheDir / "maps.json";
+        if (fileExists(mapsJsonPath)) {
+            std::ifstream f(mapsJsonPath, std::ios::binary);
+            std::string json((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            if (!json.empty()) {
+                mapNames = parseJsonStringArray(json);
+            }
+        }
 
-            const auto metaOpt = index.getArchiveMeta(archiveId);
-            if (metaOpt) {
-                auto payloadOwned = std::make_shared<std::vector<rs::u8>>(std::move(container.data));
-                rs::ByteSourcePtr payloadBytes = std::make_shared<rs::Uint8ArrayByteSource>(payloadOwned);
-                rs::Archive archive = rs::Archive::decodeFromSource(*metaOpt, *payloadBytes);
+        const fs::path mapsDir = cacheDir / "maps";
+        std::vector<std::string> fetchedMapNames;
+        if (!mapNames.empty() && fileExists(mapsDir)) {
+            fetchedMapNames.reserve(mapNames.size());
+            for (const auto& name : mapNames) {
+                const fs::path mapPath = mapsDir / name;
+                if (fileExists(mapPath)) {
+                    fetchedMapNames.push_back(name);
+                }
+            }
+        }
+
+        for (const int indexId : selectedIndexIds) {
+            if (indexId >= 0 && indexId <= 3) {
+                const auto it = std::find_if(legacyFiles.begin(), legacyFiles.end(), [&](const LegacyIndex& e) {
+                    return e.indexId == indexId;
+                });
+                if (it == legacyFiles.end()) {
+                    continue;
+                }
+                auto rawOwned = readFileBytes(it->filePath);
+                if (!rawOwned || rawOwned->empty()) {
+                    continue;
+                }
+                const std::vector<rs::u8>& raw = *rawOwned;
+
+                Entry e;
+                e.indexId = indexId;
+                e.archiveId = 0;
+                e.rawLen = raw.size();
+                e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+
+                rs::Archive archive = rs::Archive::decodeOld(0, raw, true, compression);
                 for (const auto& f : archive.files()) {
                     ParityFileEntry fe;
                     fe.fileId = static_cast<int>(f.id);
@@ -289,9 +551,46 @@ static int cmdParity(int argc, char** argv) {
                 std::sort(e.files.begin(), e.files.end(), [](const ParityFileEntry& a, const ParityFileEntry& b) {
                     return a.fileId < b.fileId;
                 });
+                entries.push_back(std::move(e));
+                continue;
             }
 
-            entries.push_back(std::move(e));
+            if (indexId == 4) {
+                // maps
+                if (fetchedMapNames.empty() || !fileExists(mapsDir)) {
+                    continue;
+                }
+                const std::size_t takeCount =
+                    std::min<std::size_t>(fetchedMapNames.size(), static_cast<std::size_t>(args.maxArchivesPerIndex));
+                for (std::size_t archiveId = 0; archiveId < takeCount; archiveId++) {
+                    const fs::path mapPath = mapsDir / fetchedMapNames[archiveId];
+                    auto rawOwned = readFileBytes(mapPath);
+                    if (!rawOwned || rawOwned->empty()) {
+                        continue;
+                    }
+                    const std::vector<rs::u8>& raw = *rawOwned;
+
+                    Entry e;
+                    e.indexId = indexId;
+                    e.archiveId = static_cast<int>(archiveId);
+                    e.rawLen = raw.size();
+                    e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+
+                    rs::Archive archive = rs::Archive::create(static_cast<rs::i32>(archiveId),
+                                                              std::vector<rs::u8>(raw.begin(), raw.end()));
+                    for (const auto& f : archive.files()) {
+                        ParityFileEntry fe;
+                        fe.fileId = static_cast<int>(f.id);
+                        fe.len = f.data.size();
+                        fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                        e.files.push_back(std::move(fe));
+                    }
+                    std::sort(e.files.begin(), e.files.end(), [](const ParityFileEntry& a, const ParityFileEntry& b) {
+                        return a.fileId < b.fileId;
+                    });
+                    entries.push_back(std::move(e));
+                }
+            }
         }
     }
 
