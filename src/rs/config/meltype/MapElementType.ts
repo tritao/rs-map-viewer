@@ -128,7 +128,7 @@ export class MapElementType extends Type {
         } else if (opcode === 30) {
             const vAlign = buffer.readUnsignedByte();
         } else if (opcode === 249) {
-            const params = Type.readParamsMap(buffer);
+            this.params = Type.readParamsMap(buffer, this.params);
         } else {
             throw new Error("MapElementType: Unrecognized opcode: " + opcode);
         }
