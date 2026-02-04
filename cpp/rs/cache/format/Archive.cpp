@@ -151,7 +151,33 @@ Archive Archive::create(i32 archiveId, std::vector<u8> data) {
 
 Archive Archive::decodeOld(i32 archiveId, const std::vector<u8>& data, bool multipleFiles, const CompressionHandler& compressionHandler) {
     if (!multipleFiles) {
-        std::vector<u8> decompressed = compressionHandler.decompressGzip(data);
+        auto tryGunzip = [&](const std::vector<u8>& buf) -> std::vector<u8> {
+            return compressionHandler.decompressGzip(buf);
+        };
+
+        std::vector<u8> decompressed;
+        try {
+            decompressed = tryGunzip(data);
+        } catch (...) {
+            // Some old .dat caches include a few trailing bytes after the gzip member.
+            // Recover by trimming a small suffix and retrying.
+            constexpr std::size_t MAX_TRIM = 32;
+            const std::size_t maxTrim = std::min<std::size_t>(MAX_TRIM, data.size() ? (data.size() - 1) : 0);
+            bool ok = false;
+            for (std::size_t trim = 1; trim <= maxTrim; trim++) {
+                std::vector<u8> sliced(data.begin(), data.end() - static_cast<std::ptrdiff_t>(trim));
+                try {
+                    decompressed = tryGunzip(sliced);
+                    ok = true;
+                    break;
+                } catch (...) {
+                    // keep trying
+                }
+            }
+            if (!ok) {
+                throw;
+            }
+        }
         std::vector<ArchiveFile> files;
         files.emplace_back(0, archiveId, std::move(decompressed));
         return Archive(archiveId, 0, std::move(files));
