@@ -13,7 +13,7 @@ export type LocTypeLoader = TypeLoader<LocType>;
 
 export class DatLocTypeLoader {
     static load(cacheInfo: CacheInfo, configArchive: Archive): LocTypeLoader {
-        return IndexedDatTypeLoader.load(LocType, cacheInfo, configArchive, "loc");
+        return IndexedDatTypeLoader.create(LocType, cacheInfo, configArchive, "loc");
     }
 }
 

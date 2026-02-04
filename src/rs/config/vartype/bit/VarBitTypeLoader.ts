@@ -20,7 +20,7 @@ export class DummyVarBitTypeLoader extends DummyTypeLoader<VarBitType> {
 
 export class DatVarBitTypeLoader {
     static load(cacheInfo: CacheInfo, configArchive: Archive): VarBitTypeLoader {
-        return DatTypeLoader.load(VarBitType, cacheInfo, configArchive, "varbit");
+        return DatTypeLoader.create(VarBitType, cacheInfo, configArchive, "varbit");
     }
 }
 

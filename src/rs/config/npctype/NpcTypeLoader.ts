@@ -13,7 +13,7 @@ export type NpcTypeLoader = TypeLoader<NpcType>;
 
 export class DatNpcTypeLoader {
     static load(cacheInfo: CacheInfo, configArchive: Archive): NpcTypeLoader {
-        return IndexedDatTypeLoader.load(NpcType, cacheInfo, configArchive, "npc");
+        return IndexedDatTypeLoader.create(NpcType, cacheInfo, configArchive, "npc");
     }
 }
 

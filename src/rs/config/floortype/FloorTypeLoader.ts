@@ -30,6 +30,6 @@ export class ArchiveOverlayFloorTypeLoader
 
 export class DatFloorTypeLoader {
     static load(cacheInfo: CacheInfo, configArchive: Archive): OverlayFloorTypeLoader {
-        return DatTypeLoader.load(OverlayFloorType, cacheInfo, configArchive, "flo");
+        return DatTypeLoader.create(OverlayFloorType, cacheInfo, configArchive, "flo");
     }
 }

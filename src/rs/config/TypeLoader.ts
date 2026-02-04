@@ -192,7 +192,7 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
 }
 
 export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
-    static load<T extends Type>(
+    static create<T extends Type>(
         typeConstructor: TypeConstructor<T>,
         cacheInfo: CacheInfo,
         configArchive: Archive,
@@ -237,7 +237,7 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
 }
 
 export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
-    static load<T extends Type>(
+    static create<T extends Type>(
         typeConstructor: TypeConstructor<T>,
         cacheInfo: CacheInfo,
         configArchive: Archive,

@@ -13,7 +13,7 @@ export type ObjTypeLoader = TypeLoader<ObjType>;
 
 export class DatObjTypeLoader {
     static load(cacheInfo: CacheInfo, configArchive: Archive): ObjTypeLoader {
-        return IndexedDatTypeLoader.load(ObjType, cacheInfo, configArchive, "obj");
+        return IndexedDatTypeLoader.create(ObjType, cacheInfo, configArchive, "obj");
     }
 }
 

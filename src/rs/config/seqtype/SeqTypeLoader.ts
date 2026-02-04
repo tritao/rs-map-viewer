@@ -8,7 +8,7 @@ export type SeqTypeLoader = TypeLoader<SeqType>;
 
 export class DatSeqTypeLoader {
     static load(cacheInfo: CacheInfo, configArchive: Archive): SeqTypeLoader {
-        return DatTypeLoader.load(SeqType, cacheInfo, configArchive, "seq");
+        return DatTypeLoader.create(SeqType, cacheInfo, configArchive, "seq");
     }
 }
 
