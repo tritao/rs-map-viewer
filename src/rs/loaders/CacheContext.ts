@@ -13,7 +13,7 @@ import { LoadedCache } from "../../util/Caches";
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { createLoaders } from "./createLoaders";
 
-export class CacheLoaders {
+export class CacheContext {
     // Cache
     cache: LoadedCache;
     cacheSystem!: CacheSystem;

@@ -1,6 +1,6 @@
 import Denque from "denque";
 import PicoGL, { Texture } from "picogl";
-import { CacheLoaders } from "../../rs/loaders/CacheLoaders";
+import { CacheContext } from "../../rs/loaders/CacheContext";
 import { InputManager } from "../../util/InputManager";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { Camera } from "../Camera";
@@ -20,7 +20,7 @@ export class WebGLRenderer extends WebGLMapRenderer {
     loadedRenderables: Map<number, WebGLRenderable> = new Map();
 
     constructor(
-        cacheLoaders: CacheLoaders, inputManager: InputManager,
+        cacheLoaders: CacheContext, inputManager: InputManager,
         workerPool: RenderDataWorkerPool, camera: Camera) {
         super(cacheLoaders, workerPool, inputManager, DEFAULT_RENDER_DISTANCE, 0, 0, camera);
         this.setSkyColor(255, 255, 255);

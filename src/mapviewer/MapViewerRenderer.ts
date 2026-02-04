@@ -13,7 +13,7 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { InputManager } from "../util/InputManager";
-import { CacheLoaders } from "../rs/loaders/CacheLoaders";
+import { CacheContext } from "../rs/loaders/CacheContext";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
@@ -21,7 +21,7 @@ import { MapData } from "../renderer/loader/MapData";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
-    cacheLoaders: CacheLoaders;
+    cacheLoaders: CacheContext;
     workerPool: RenderDataWorkerPool;
 
     camera: Camera;

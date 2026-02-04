@@ -24,7 +24,7 @@ import {
     createMainProgram,
     createNpcProgram,
 } from "./shaders/Shaders";
-import { CacheLoaders } from "../../rs/loaders/CacheLoaders";
+import { CacheContext } from "../../rs/loaders/CacheContext";
 import { InputManager } from "../../util/InputManager";
 import { Camera } from "../Camera";
 import { RendererStats } from "./RendererStats";
@@ -97,7 +97,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     isNewTextureAnim: boolean = false;
 
     constructor(
-        readonly cacheLoaders: CacheLoaders, readonly workerPool: RenderDataWorkerPool,
+        readonly cacheLoaders: CacheContext, readonly workerPool: RenderDataWorkerPool,
         readonly inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
         readonly camera: Camera) {
