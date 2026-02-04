@@ -6,10 +6,8 @@ import { Transfer, expose } from "threads/worker";
 import { CacheSystem } from "../rs/cache/CacheSystem";
 import { createCacheSystemFromFiles } from "../rs/cache/platform/CacheStoreFromFiles";
 import { Dat2IndexId, DatIndexId } from "../rs/cache/IndexId";
-import {
-    CacheLoaderFactory,
-    getCacheLoaderFactory,
-} from "../rs/loaders/CacheLoaderFactory";
+import { createLoaders } from "../rs/loaders/createLoaders";
+import { Loaders } from "../rs/loaders/Loaders";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
@@ -47,7 +45,7 @@ const hasherPromise = Hasher.init();
 export type WorkerState = {
     cache: LoadedCache;
     cacheSystem: CacheSystem;
-    cacheLoaderFactory: CacheLoaderFactory;
+    loaders: Loaders;
 
     locTypeLoader: LocTypeLoader;
     objTypeLoader: ObjTypeLoader;
@@ -87,29 +85,29 @@ async function initWorker(
 
     const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
 
-    const loaderFactory = getCacheLoaderFactory(cache.info, cacheSystem);
-    const underlayTypeLoader = loaderFactory.getUnderlayTypeLoader();
-    const overlayTypeLoader = loaderFactory.getOverlayTypeLoader();
+    const loaders = createLoaders(cache.info, cacheSystem);
+    const underlayTypeLoader = loaders.underlayTypeLoader;
+    const overlayTypeLoader = loaders.overlayTypeLoader;
 
-    const varBitTypeLoader = loaderFactory.getVarBitTypeLoader();
+    const varBitTypeLoader = loaders.varBitTypeLoader;
 
-    const locTypeLoader = loaderFactory.getLocTypeLoader();
-    const objTypeLoader = loaderFactory.getObjTypeLoader();
-    const npcTypeLoader = loaderFactory.getNpcTypeLoader();
+    const locTypeLoader = loaders.locTypeLoader;
+    const objTypeLoader = loaders.objTypeLoader;
+    const npcTypeLoader = loaders.npcTypeLoader;
 
-    const basTypeLoader = loaderFactory.getBasTypeLoader();
+    const basTypeLoader = loaders.basTypeLoader;
 
-    const modelLoader = loaderFactory.getModelLoader();
-    const textureLoader = loaderFactory.getTextureLoader();
+    const modelLoader = loaders.modelLoader;
+    const textureLoader = loaders.textureLoader;
 
-    const seqTypeLoader = loaderFactory.getSeqTypeLoader();
-    const seqFrameLoader = loaderFactory.getSeqFrameLoader();
-    const skeletalSeqLoader = loaderFactory.getSkeletalSeqLoader();
+    const seqTypeLoader = loaders.seqTypeLoader;
+    const seqFrameLoader = loaders.seqFrameLoader;
+    const skeletalSeqLoader = loaders.skeletalSeqLoader;
 
-    const mapFileLoader = loaderFactory.getMapFileLoader();
+    const mapFileLoader = loaders.mapFileLoader;
 
     const varManager = new VarManager(varBitTypeLoader);
-    const questTypeLoader = loaderFactory.getQuestTypeLoader();
+    const questTypeLoader = loaders.questTypeLoader;
     if (questTypeLoader) {
         varManager.setQuestsCompleted(questTypeLoader);
     }
@@ -148,8 +146,8 @@ async function initWorker(
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,
-        loaderFactory.getMapScenes(),
-        loaderFactory.getMapFunctions(),
+        loaders.mapScenes,
+        loaders.mapFunctions,
     );
 
     const mapImageCache = await caches.open("map-images");
@@ -157,7 +155,7 @@ async function initWorker(
     return {
         cache,
         cacheSystem,
-        cacheLoaderFactory: loaderFactory,
+        loaders,
 
         locTypeLoader,
         objTypeLoader,

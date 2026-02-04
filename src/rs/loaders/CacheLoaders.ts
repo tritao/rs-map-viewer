@@ -1,6 +1,5 @@
 import { CacheSystem } from "../cache/CacheSystem";
 import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
-import { CacheLoaderFactory, getCacheLoaderFactory } from "./CacheLoaderFactory";
 import { BasTypeLoader } from "../config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../config/npctype/NpcTypeLoader";
@@ -12,12 +11,12 @@ import { SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { TextureLoader } from "../texture/TextureLoader";
 import { LoadedCache } from "../../util/Caches";
 import { CompressionHandler } from "../compression/CompressionHandler";
+import { createLoaders } from "./createLoaders";
 
 export class CacheLoaders {
     // Cache
     cache: LoadedCache;
     cacheSystem!: CacheSystem;
-    loaderFactory!: CacheLoaderFactory;
 
     textureLoader!: TextureLoader;
     seqTypeLoader!: SeqTypeLoader;
@@ -36,23 +35,23 @@ export class CacheLoaders {
     constructor(cache: LoadedCache, compressionHandler: CompressionHandler) {
         this.cache = cache;
         this.cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
-        this.loaderFactory = getCacheLoaderFactory(cache.info, this.cacheSystem);
+        const loaders = createLoaders(cache.info, this.cacheSystem);
 
-        this.textureLoader = this.loaderFactory.getTextureLoader();
-        this.seqTypeLoader = this.loaderFactory.getSeqTypeLoader();
-        this.seqFrameLoader = this.loaderFactory.getSeqFrameLoader();
-        this.locTypeLoader = this.loaderFactory.getLocTypeLoader();
-        this.objTypeLoader = this.loaderFactory.getObjTypeLoader();
-        this.npcTypeLoader = this.loaderFactory.getNpcTypeLoader();
-        this.basTypeLoader = this.loaderFactory.getBasTypeLoader();
+        this.textureLoader = loaders.textureLoader;
+        this.seqTypeLoader = loaders.seqTypeLoader;
+        this.seqFrameLoader = loaders.seqFrameLoader;
+        this.locTypeLoader = loaders.locTypeLoader;
+        this.objTypeLoader = loaders.objTypeLoader;
+        this.npcTypeLoader = loaders.npcTypeLoader;
+        this.basTypeLoader = loaders.basTypeLoader;
 
-        this.varManager = new VarManager(this.loaderFactory.getVarBitTypeLoader());
-        const questTypeLoader = this.loaderFactory.getQuestTypeLoader();
+        this.varManager = new VarManager(loaders.varBitTypeLoader);
+        const questTypeLoader = loaders.questTypeLoader;
         if (questTypeLoader) {
             this.varManager.setQuestsCompleted(questTypeLoader);
         }
 
-        const mapFileLoader = this.loaderFactory.getMapFileLoader();
+        const mapFileLoader = loaders.mapFileLoader;
         this.mapFileIndex = mapFileLoader.mapFileIndex;
     }
 }
