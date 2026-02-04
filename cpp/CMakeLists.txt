@@ -17,7 +17,9 @@ if (EMSCRIPTEN)
     # No CLI/tests for wasm yet (they depend on native filesystem + host execution).
     set(RS_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
     set(RS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(RS_BUILD_WASM_SMOKE ON CACHE BOOL "" FORCE)
+    # Default wasm bootstrap: build only the core static library (`librs.a`).
+    # Enable RS_BUILD_WASM_SMOKE manually if you want a linked wasm executable wrapper.
+    set(RS_BUILD_WASM_SMOKE OFF CACHE BOOL "" FORCE)
 endif()
 
 set(RS_SOURCES

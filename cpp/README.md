@@ -30,13 +30,18 @@ Compare against the TS implementation:
 - `npm run -s cache:parity -- --cache osrs-221_2024-04-17 --indices 0 --maxIndices 1 --maxArchives 10 --out /tmp/parity-ts.json`
 - `npm run -s cache:parity-compare -- --a /tmp/parity-ts.json --b /tmp/parity-cpp.json`
 
-## Wasm build (smoke)
+## Wasm build (library-only)
 
-This is a build-only target (no TS/Wasm FFI yet). It exists to ensure the `rs` core compiles + links under Emscripten.
+This is a build-only target (no TS/Wasm FFI yet). It exists to ensure the `rs` core compiles under Emscripten and produces a static library suitable for later linking.
 
 - `bash cpp/tools/build-wasm.sh`
 
 Artifacts:
 
-- `cpp/build-wasm/rs_wasm_smoke.wasm`
-- `cpp/build-wasm/rs_wasm_smoke.js`
+- `cpp/build-wasm/librs.a`
+
+Optional smoke executable wrapper (disabled by default):
+
+- `BUILD_DIR=cpp/build-wasm-smoke bash -c 'emcmake cmake -S cpp -B cpp/build-wasm-smoke -DCMAKE_BUILD_TYPE=Release -DRS_BUILD_WASM_SMOKE=ON && cmake --build cpp/build-wasm-smoke -j'`
+- `cpp/build-wasm-smoke/rs_wasm_smoke.wasm`
+- `cpp/build-wasm-smoke/rs_wasm_smoke.js`

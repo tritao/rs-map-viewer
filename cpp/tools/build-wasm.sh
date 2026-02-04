@@ -10,5 +10,4 @@ mkdir -p "$BUILD_DIR"
 emcmake cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
 cmake --build "$BUILD_DIR" -j
 
-echo "Built wasm artifacts in: $BUILD_DIR"
-
+echo "Built wasm static library in: $BUILD_DIR (librs.a)"
