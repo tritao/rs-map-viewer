@@ -89,7 +89,7 @@ export function createDatLoaders(
 
         textureLoader,
 
-        modelLoader: new IndexModelLoader(cacheSystem.getIndex(DatIndexId.models)),
+        modelLoader: IndexModelLoader.create(cacheSystem.getIndex(DatIndexId.models)),
         seqFrameLoader: DatSeqFrameLoader.create(cacheSystem.getIndex(DatIndexId.animations)),
         skeletalSeqLoader: undefined,
 

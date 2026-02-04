@@ -1,6 +1,7 @@
 import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
+import { CountedBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
@@ -27,16 +28,20 @@ export class LegacySeqFrameLoader implements SeqFrameLoader {
 
 export class DatSeqFrameLoader implements SeqFrameLoader {
     static create(frameMapIndex: CacheIndex): DatSeqFrameLoader {
+        return DatSeqFrameLoader.createFromSource(new IndexFileBytesProvider(frameMapIndex, 0));
+    }
+
+    static createFromSource(frameMapSource: CountedBytesProvider): DatSeqFrameLoader {
         const frames: Map<number, SeqFrame> = new Map();
         const scratch = new SeqFrameDecodeScratch();
 
-        for (let i = 0; i < frameMapIndex.getArchiveCount(); i++) {
+        for (let i = 0; i < frameMapSource.getCount(); i++) {
             try {
-                const file = frameMapIndex.getFile(i, 0);
-                if (!file) {
+                const bytes = frameMapSource.getBytes(i);
+                if (!bytes) {
                     continue;
                 }
-                DatSeqFrame.load(frames, file.data, scratch);
+                DatSeqFrame.load(frames, bytes, scratch);
             } catch (e) {
                 console.error("Failed loading frame map " + i, e);
             }

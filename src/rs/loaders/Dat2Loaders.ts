@@ -153,7 +153,7 @@ export function createDat2Loaders(
         }
     })();
 
-    const modelLoader: ModelLoader = new IndexModelLoader(cacheSystem.getIndex(Dat2IndexId.models));
+    const modelLoader: ModelLoader = IndexModelLoader.create(cacheSystem.getIndex(Dat2IndexId.models));
 
     const seqBaseLoader: SeqBaseLoader = new IndexSeqBaseLoader(
         cacheInfo,

@@ -1,6 +1,7 @@
 import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { CountedBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ModelData } from "./ModelData";
 
 export interface ModelLoader {
@@ -9,22 +10,25 @@ export interface ModelLoader {
 }
 
 export class IndexModelLoader implements ModelLoader {
-    modelIndex: CacheIndex;
-
-    constructor(modelIndex: CacheIndex) {
-        this.modelIndex = modelIndex;
+    static create(modelIndex: CacheIndex): IndexModelLoader {
+        return new IndexModelLoader(new IndexFileBytesProvider(modelIndex, 0));
     }
 
+    constructor(readonly modelSource: CountedBytesProvider) {}
+
     getCount(): number {
-        return this.modelIndex.getArchiveCount()
+        return this.modelSource.getCount();
     }
 
     getModel(id: number): ModelData | undefined {
+        const bytes = this.modelSource.getBytes(id);
+        if (!bytes) {
+            return undefined;
+        }
         try {
-            const file = this.modelIndex.getFile(id, 0);
-            return (file && ModelData.decode(file.data)) ?? undefined;
+            return ModelData.decode(bytes);
         } catch (e) {
-            console.error("Failed loading model file", id, e);
+            console.error("Failed decoding model file", id, e);
             return undefined;
         }
     }

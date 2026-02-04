@@ -1,6 +1,7 @@
 import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { BytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { IndexedSprite } from "./IndexedSprite";
 
 export class SpriteLoader {
@@ -84,12 +85,16 @@ export class SpriteLoader {
     }
 
     loadFromIndex(spriteIndex: CacheIndex, id: number): boolean {
-        const file = spriteIndex.getFile(id, 0);
-        if (file) {
-            this.load(file.data);
-            return true;
+        return this.loadFromSource(new IndexFileBytesProvider(spriteIndex, 0), id);
+    }
+
+    loadFromSource(source: BytesProvider, id: number): boolean {
+        const bytes = source.getBytes(id);
+        if (!bytes) {
+            return false;
         }
-        return false;
+        this.load(bytes);
+        return true;
     }
 
     static loadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite {
