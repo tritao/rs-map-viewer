@@ -17,38 +17,43 @@ export type ArchiveMeta = {
 };
 
 export class Archive {
-    private static _decompressGzipAllowTrailing(
-        data: Uint8Array,
-        decompress: (data: Uint8Array) => Uint8Array,
-        maxTrimBytes: number = 32,
-    ): Uint8Array {
+    private static _looksLikeGzipWithTrailingU16(data: Uint8Array): boolean {
+        // Heuristic for old `.dat` gzip entries that append a u16 after the gzip member:
+        // the gzip trailer (CRC32+ISIZE) is located at `len-10`, but strict decoders read it at `len-8`,
+        // causing ISIZE to look like `version<<24` (low 24 bits are zero).
+        if (data.byteLength < 10) {
+            return false;
+        }
+        if (data[0] !== 0x1f || data[1] !== 0x8b) {
+            return false;
+        }
+
+        const len = data.byteLength;
+        // Little-endian u32 from last 4 bytes.
+        const isize =
+            (data[len - 4] |
+                (data[len - 3] << 8) |
+                (data[len - 2] << 16) |
+                (data[len - 1] << 24)) >>> 0;
+
+        return data[len - 2] === 0 && (isize & 0x00ff_ffff) === 0 && isize !== 0;
+    }
+
+    private static _decompressDatGzip(data: Uint8Array, compressionHandler: CompressionHandler): Uint8Array {
+        const len = data.byteLength;
+        const canTrim = len >= 2;
+        const preferTrim = canTrim && Archive._looksLikeGzipWithTrailingU16(data);
+
+        const preferred = preferTrim ? data.subarray(0, len - 2) : data;
+        const fallback = !canTrim ? null : preferTrim ? data : data.subarray(0, len - 2);
+
         try {
-            return decompress(data);
+            return compressionHandler.decompressGzip(preferred);
         } catch (e) {
-            // Some old .dat caches appear to append a few trailing bytes after the gzip member
-            // (e.g. 0x00 0x06), which breaks strict gzip trailer validation.
-            //
-            // We recover by trimming a small suffix and retrying.
-            const msg = e && typeof e === "object" && "message" in e ? String((e as any).message) : String(e);
-            const shouldRetry =
-                msg.includes("Checksum does not match") ||
-                msg.includes("Size of decompressed file not correct") ||
-                msg.includes("Not a GZIP file");
-            if (!shouldRetry) {
+            if (!fallback) {
                 throw e;
             }
-
-            const maxTrim = Math.min(maxTrimBytes, Math.max(0, data.byteLength - 1));
-            for (let trim = 1; trim <= maxTrim; trim++) {
-                const sliced = data.subarray(0, data.byteLength - trim);
-                try {
-                    return decompress(sliced);
-                } catch {
-                    // continue
-                }
-            }
-
-            throw e;
+            return compressionHandler.decompressGzip(fallback);
         }
     }
 
@@ -149,10 +154,7 @@ export class Archive {
             fileIds = new Int32Array(fileCount);
             fileNameHashes = new Int32Array(fileCount);
 
-            const decompressed = Archive._decompressGzipAllowTrailing(
-                data,
-                (d) => compressionHandler.decompressGzip(d),
-            );
+            const decompressed = Archive._decompressDatGzip(data, compressionHandler);
             const file = new ArchiveFile(0, id, decompressed);
             files[0] = file;
             filesById[0] = file;
