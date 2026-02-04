@@ -53,12 +53,12 @@ export function createDatLoaders(
     const configArchive = configIndex.getArchive(DatConfigArchiveId.configs);
     const mediaArchive = configIndex.getArchive(DatConfigArchiveId.media);
 
-    const floTypeLoader = DatFloorTypeLoader.load(cacheInfo, configArchive);
+    const floTypeLoader = DatFloorTypeLoader.create(cacheInfo, configArchive);
 
     const varBitTypeLoader =
         cacheInfo.revision < 254
             ? new DummyVarBitTypeLoader(cacheInfo)
-            : DatVarBitTypeLoader.load(cacheInfo, configArchive);
+            : DatVarBitTypeLoader.create(cacheInfo, configArchive);
 
     const textureArchive = configIndex.getArchive(DatConfigArchiveId.textures);
     const animatedTextureIds = [DatTextureLoader.WATER_DROPLETS_TEXTURE_ID, 24];
@@ -77,11 +77,11 @@ export function createDatLoaders(
 
         varBitTypeLoader,
 
-        locTypeLoader: DatLocTypeLoader.load(cacheInfo, configArchive),
-        npcTypeLoader: DatNpcTypeLoader.load(cacheInfo, configArchive),
-        objTypeLoader: DatObjTypeLoader.load(cacheInfo, configArchive),
+        locTypeLoader: DatLocTypeLoader.create(cacheInfo, configArchive),
+        npcTypeLoader: DatNpcTypeLoader.create(cacheInfo, configArchive),
+        objTypeLoader: DatObjTypeLoader.create(cacheInfo, configArchive),
 
-        seqTypeLoader: DatSeqTypeLoader.load(cacheInfo, configArchive),
+        seqTypeLoader: DatSeqTypeLoader.create(cacheInfo, configArchive),
 
         basTypeLoader: new DummyBasTypeLoader(cacheInfo),
 

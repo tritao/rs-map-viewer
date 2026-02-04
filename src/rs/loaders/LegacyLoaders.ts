@@ -41,7 +41,7 @@ export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSyst
 
     const mapIndex = cacheSystem.getIndex(LegacyIndexId.maps);
 
-    const floTypeLoader = DatFloorTypeLoader.load(cacheInfo, configArchive);
+    const floTypeLoader = DatFloorTypeLoader.create(cacheInfo, configArchive);
     const textureLoader = new DatTextureLoader(textureArchive, [
         DatTextureLoader.WATER_DROPLETS_TEXTURE_ID,
         24,
@@ -53,11 +53,11 @@ export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSyst
 
         varBitTypeLoader: new DummyVarBitTypeLoader(cacheInfo),
 
-        locTypeLoader: DatLocTypeLoader.load(cacheInfo, configArchive),
-        npcTypeLoader: DatNpcTypeLoader.load(cacheInfo, configArchive),
-        objTypeLoader: DatObjTypeLoader.load(cacheInfo, configArchive),
+        locTypeLoader: DatLocTypeLoader.create(cacheInfo, configArchive),
+        npcTypeLoader: DatNpcTypeLoader.create(cacheInfo, configArchive),
+        objTypeLoader: DatObjTypeLoader.create(cacheInfo, configArchive),
 
-        seqTypeLoader: DatSeqTypeLoader.load(cacheInfo, configArchive),
+        seqTypeLoader: DatSeqTypeLoader.create(cacheInfo, configArchive),
 
         basTypeLoader: new DummyBasTypeLoader(cacheInfo),
 

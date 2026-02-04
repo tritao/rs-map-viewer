@@ -29,7 +29,7 @@ export class ArchiveOverlayFloorTypeLoader
 }
 
 export class DatFloorTypeLoader {
-    static load(cacheInfo: CacheInfo, configArchive: Archive): OverlayFloorTypeLoader {
+    static create(cacheInfo: CacheInfo, configArchive: Archive): OverlayFloorTypeLoader {
         return DatTypeLoader.create(OverlayFloorType, cacheInfo, configArchive, "flo");
     }
 }
