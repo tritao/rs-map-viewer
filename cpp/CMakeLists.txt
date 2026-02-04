@@ -61,7 +61,91 @@ target_compile_definitions(rs PRIVATE
 target_compile_options(rs PRIVATE
     -ffunction-sections
     -fdata-sections
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
 )
+
+# Guardrail: keep the core library STL-free (containers/strings/streams/etc.).
+# Tools and tests may use STL, but `cpp/rs/**` should stay freestanding-friendly.
+set(RS_CORE_STL_GUARD_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/rs_core_stl_guard.cmake")
+file(WRITE "${RS_CORE_STL_GUARD_SCRIPT}" [=[
+cmake_minimum_required(VERSION 3.20)
+
+if (NOT DEFINED CORE_DIR)
+  message(FATAL_ERROR "CORE_DIR not provided")
+endif()
+
+set(banned_headers
+  algorithm
+  any
+  array
+  deque
+  exception
+  filesystem
+  forward_list
+  fstream
+  functional
+  future
+  iostream
+  istream
+  iterator
+  list
+  map
+  memory
+  mutex
+  optional
+  ostream
+  queue
+  random
+  regex
+  set
+  shared_mutex
+  sstream
+  stack
+  stdexcept
+  streambuf
+  string
+  string_view
+  thread
+  tuple
+  typeinfo
+  unordered_map
+  unordered_set
+  utility
+  variant
+  vector
+)
+
+file(GLOB_RECURSE core_files
+  "${CORE_DIR}/*.hpp"
+  "${CORE_DIR}/*.cpp"
+  "${CORE_DIR}/*.c"
+)
+
+set(found "")
+foreach(f IN LISTS core_files)
+  file(READ "${f}" content)
+  foreach(h IN LISTS banned_headers)
+    # Allow whitespace variations: # include <vector>
+    if (content MATCHES "#[ \t]*include[ \t]*<${h}>")
+      string(APPEND found "  ${f}: includes <${h}>\n")
+    endif()
+  endforeach()
+endforeach()
+
+if (NOT "${found}" STREQUAL "")
+  message(FATAL_ERROR
+    "STL headers are not allowed in cpp/rs/** (freestanding core contract):\n${found}"
+  )
+endif()
+]=])
+
+add_custom_target(rs_core_stl_guard
+    COMMAND ${CMAKE_COMMAND} -DCORE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/rs -P "${RS_CORE_STL_GUARD_SCRIPT}"
+    VERBATIM
+)
+
+add_dependencies(rs rs_core_stl_guard)
 
 if (RS_BUILD_TOOLS)
     add_executable(rs_cli
