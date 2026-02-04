@@ -1,6 +1,7 @@
 #include "NativeCompressionHandler.hpp"
 
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 
 #include "../../third_party/bzip2/bzlib.h"
@@ -15,9 +16,9 @@ static u32 readU32LE(const u8* p) {
 
 static u32 crc32(const u8* data, std::size_t len) {
     // Standard CRC-32 (IEEE 802.3), reflected.
-    static bool tableInit = false;
     static u32 table[256];
-    if (!tableInit) {
+    static std::once_flag once;
+    std::call_once(once, []() {
         for (u32 n = 0; n < 256; n++) {
             u32 c = n;
             for (int k = 0; k < 8; k++) {
@@ -25,8 +26,7 @@ static u32 crc32(const u8* data, std::size_t len) {
             }
             table[n] = c;
         }
-        tableInit = true;
-    }
+    });
 
     u32 c = 0xFFFFFFFFu;
     for (std::size_t i = 0; i < len; i++) {
@@ -36,6 +36,9 @@ static u32 crc32(const u8* data, std::size_t len) {
 }
 
 std::vector<u8> NativeCompressionHandler::decompressGzip(const std::vector<u8>& input) const {
+    // Keep this relatively low for wasm/fuzz-safety. Can be raised if we see real cache data exceed it.
+    static constexpr std::size_t MAX_GZIP_OUTPUT_BYTES = 256u * 1024u * 1024u;
+
     // gzip format: RFC1952
     if (input.size() < 18) {
         throw std::runtime_error("Gzip: truncated input");
@@ -103,28 +106,29 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(const std::vector<u8>& 
         throw std::runtime_error("Gzip: invalid offsets");
     }
 
+    const u32 expectedCrc = readU32LE(input.data() + trailerOff);
+    const u32 expectedISize = readU32LE(input.data() + trailerOff + 4);
+    const std::size_t outSize = static_cast<std::size_t>(expectedISize);
+    if (outSize > MAX_GZIP_OUTPUT_BYTES) {
+        throw std::runtime_error("Gzip: output too large");
+    }
+
     const void* deflateBuf = static_cast<const void*>(input.data() + off);
     const std::size_t deflateLen = trailerOff - off;
 
-    std::size_t outLen = 0;
-    void* outMem = tinfl_decompress_mem_to_heap(deflateBuf, deflateLen, &outLen, 0);
-    if (!outMem) {
+    std::vector<u8> out;
+    out.resize(outSize);
+
+    const std::size_t wrote = tinfl_decompress_mem_to_mem(out.data(), out.size(), deflateBuf, deflateLen, 0);
+    if (wrote == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED) {
         throw std::runtime_error("Gzip: decompression failed");
     }
-
-    std::vector<u8> out;
-    out.resize(outLen);
-    if (outLen) {
-        std::memcpy(out.data(), outMem, outLen);
+    if (wrote != out.size()) {
+        throw std::runtime_error("Gzip: size mismatch");
     }
-    MZ_FREE(outMem);
 
-    const u32 expectedCrc = readU32LE(input.data() + trailerOff);
-    const u32 expectedISize = readU32LE(input.data() + trailerOff + 4);
     const u32 actualCrc = crc32(out.data(), out.size());
-    const u32 actualISize = static_cast<u32>(out.size() & 0xFFFFFFFFu);
-
-    if (expectedCrc != actualCrc || expectedISize != actualISize) {
+    if (expectedCrc != actualCrc) {
         throw std::runtime_error("Gzip: checksum mismatch");
     }
     return out;

@@ -1,14 +1,9 @@
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "../../io/ByteSource.hpp"
 #include "../../compression/CompressionHandler.hpp"
+#include "../../io/ByteSource.hpp"
 #include "../../types.hpp"
 #include "ArchiveFile.hpp"
 
