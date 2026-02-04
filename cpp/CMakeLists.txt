@@ -44,7 +44,7 @@ target_compile_definitions(rs_cli PRIVATE
     MINIZ_NO_ZLIB_COMPATIBLE_NAMES=1
 )
 
-# Allow dead-stripping of unused library code (notably bzip2 compression paths).
+# Allow dead-stripping of unused library code.
 target_compile_options(rs_cli PRIVATE
     -ffunction-sections
     -fdata-sections
