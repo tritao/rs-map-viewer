@@ -23,6 +23,10 @@
 
 namespace rs {
 
+CacheIndex::CacheIndex() noexcept : cacheType_(CacheType::Dat2), id_(-1), store_(nullptr), compressionHandler_(nullptr) {
+    new (&storage_.dat2) Dat2IndexImpl();
+}
+
 CacheIndex::CacheIndex(
     CacheType cacheType,
     i32 id,
@@ -34,10 +38,90 @@ CacheIndex::CacheIndex(
     : cacheType_(cacheType),
       id_(id),
       store_(&store),
-      compressionHandler_(&compressionHandler),
-      archiveCount_(archiveCount),
-      archiveIds_(rs::move(archiveIds)),
-      table_(rs::move(table)) {
+      compressionHandler_(&compressionHandler) {
+    if (cacheType_ == CacheType::Dat) {
+        new (&storage_.dat) DatIndexImpl();
+        storage_.dat.archiveCount = archiveCount;
+        storage_.dat.archiveIds = rs::move(archiveIds);
+        storage_.dat.archiveIdsBuilt = false;
+    } else {
+        new (&storage_.dat2) Dat2IndexImpl();
+        storage_.dat2.table = rs::move(table);
+    }
+}
+
+CacheIndex::~CacheIndex() {
+    if (cacheType_ == CacheType::Dat) {
+        storage_.dat.~DatIndexImpl();
+    } else {
+        storage_.dat2.~Dat2IndexImpl();
+    }
+}
+
+CacheIndex::CacheIndex(CacheIndex&& other) noexcept
+    : cacheType_(other.cacheType_), id_(other.id_), store_(other.store_), compressionHandler_(other.compressionHandler_) {
+    if (cacheType_ == CacheType::Dat) {
+        new (&storage_.dat) DatIndexImpl();
+        storage_.dat.archiveCount = other.storage_.dat.archiveCount;
+        storage_.dat.archiveIds = rs::move(other.storage_.dat.archiveIds);
+        storage_.dat.archiveIdsBuilt = other.storage_.dat.archiveIdsBuilt;
+    } else {
+        new (&storage_.dat2) Dat2IndexImpl();
+        storage_.dat2.table = rs::move(other.storage_.dat2.table);
+    }
+
+    // Leave `other` in a valid, destructible state.
+    other.id_ = -1;
+    other.store_ = nullptr;
+    other.compressionHandler_ = nullptr;
+    if (other.cacheType_ == CacheType::Dat) {
+        other.storage_.dat.~DatIndexImpl();
+    } else {
+        other.storage_.dat2.~Dat2IndexImpl();
+    }
+    other.cacheType_ = CacheType::Dat2;
+    new (&other.storage_.dat2) Dat2IndexImpl();
+}
+
+CacheIndex& CacheIndex::operator=(CacheIndex&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+
+    // Destroy current.
+    if (cacheType_ == CacheType::Dat) {
+        storage_.dat.~DatIndexImpl();
+    } else {
+        storage_.dat2.~Dat2IndexImpl();
+    }
+
+    cacheType_ = other.cacheType_;
+    id_ = other.id_;
+    store_ = other.store_;
+    compressionHandler_ = other.compressionHandler_;
+
+    if (cacheType_ == CacheType::Dat) {
+        new (&storage_.dat) DatIndexImpl();
+        storage_.dat.archiveCount = other.storage_.dat.archiveCount;
+        storage_.dat.archiveIds = rs::move(other.storage_.dat.archiveIds);
+        storage_.dat.archiveIdsBuilt = other.storage_.dat.archiveIdsBuilt;
+    } else {
+        new (&storage_.dat2) Dat2IndexImpl();
+        storage_.dat2.table = rs::move(other.storage_.dat2.table);
+    }
+
+    // Leave `other` valid.
+    other.id_ = -1;
+    other.store_ = nullptr;
+    other.compressionHandler_ = nullptr;
+    if (other.cacheType_ == CacheType::Dat) {
+        other.storage_.dat.~DatIndexImpl();
+    } else {
+        other.storage_.dat2.~Dat2IndexImpl();
+    }
+    other.cacheType_ = CacheType::Dat2;
+    new (&other.storage_.dat2) Dat2IndexImpl();
+    return *this;
 }
 
 Result<CacheIndex> CacheIndex::fromStore(
@@ -98,40 +182,40 @@ Result<CacheIndex> CacheIndex::fromStore(
 
 Span<const i32> CacheIndex::archiveIds() const noexcept {
     if (cacheType_ == CacheType::Dat2) {
-        return table_.archiveIds();
+        return storage_.dat2.table.archiveIds();
     }
-    if (!archiveIdsBuilt_) {
-        archiveIds_.clear();
-        auto r = archiveIds_.reserve(static_cast<std::size_t>(archiveCount_));
+    if (!storage_.dat.archiveIdsBuilt) {
+        storage_.dat.archiveIds.clear();
+        auto r = storage_.dat.archiveIds.reserve(static_cast<std::size_t>(storage_.dat.archiveCount));
         if (r.isOk()) {
-            for (i32 i = 0; i < archiveCount_; i++) {
-                (void)archiveIds_.pushBack(i);
+            for (i32 i = 0; i < storage_.dat.archiveCount; i++) {
+                (void)storage_.dat.archiveIds.pushBack(i);
             }
         }
-        archiveIdsBuilt_ = true;
+        storage_.dat.archiveIdsBuilt = true;
     }
-    return Span<const i32>(archiveIds_.data(), archiveIds_.size());
+    return Span<const i32>(storage_.dat.archiveIds.data(), storage_.dat.archiveIds.size());
 }
 
 i32 CacheIndex::archiveCount() const noexcept {
     if (cacheType_ == CacheType::Dat2) {
-        return table_.archiveCount();
+        return storage_.dat2.table.archiveCount();
     }
-    return archiveCount_;
+    return storage_.dat.archiveCount;
 }
 
 i32 CacheIndex::lastArchiveId() const noexcept {
     if (cacheType_ == CacheType::Dat2) {
-        return table_.lastArchiveId();
+        return storage_.dat2.table.lastArchiveId();
     }
-    return archiveCount_ > 0 ? (archiveCount_ - 1) : -1;
+    return storage_.dat.archiveCount > 0 ? (storage_.dat.archiveCount - 1) : -1;
 }
 
 bool CacheIndex::archiveExists(i32 archiveId) const noexcept {
     if (cacheType_ == CacheType::Dat2) {
-        return table_.archiveExists(archiveId);
+        return storage_.dat2.table.archiveExists(archiveId);
     }
-    return archiveId >= 0 && archiveId < archiveCount_;
+    return archiveId >= 0 && archiveId < storage_.dat.archiveCount;
 }
 
 i32 CacheIndex::fileCount(i32 archiveId) const noexcept {
@@ -139,7 +223,7 @@ i32 CacheIndex::fileCount(i32 archiveId) const noexcept {
         return 0;
     }
     ArchiveMeta meta;
-    const Status s = table_.getArchiveMeta(archiveId, &meta);
+    const Status s = storage_.dat2.table.getArchiveMeta(archiveId, &meta);
     if (!ok(s)) {
         return 0;
     }
@@ -150,7 +234,43 @@ Status CacheIndex::getArchiveMeta(i32 archiveId, ArchiveMeta* out) const noexcep
     if (cacheType_ != CacheType::Dat2) {
         return Status::Unsupported;
     }
-    return table_.getArchiveMeta(archiveId, out);
+    return storage_.dat2.table.getArchiveMeta(archiveId, out);
+}
+
+Status CacheIndex::readArchiveBytes(i32 archiveId, Vec<u8>* out, Allocator& alloc) const noexcept {
+    (void)alloc;
+    if (!store_ || !out) {
+        return Status::InvalidArgument;
+    }
+    if (!archiveExists(archiveId)) {
+        return Status::NotFound;
+    }
+    return store_->readArchive(id_, archiveId, out);
+}
+
+Status CacheIndex::readContainerPayload(i32 archiveId, const XteaKey* key, Vec<u8>* out, Allocator& alloc) const noexcept {
+    if (cacheType_ != CacheType::Dat2) {
+        return Status::Unsupported;
+    }
+    if (!compressionHandler_ || !out) {
+        return Status::InvalidArgument;
+    }
+
+    Vec<u8> raw(alloc);
+    const Status s = readArchiveBytes(archiveId, &raw, alloc);
+    if (!ok(s)) {
+        return s;
+    }
+
+    Uint8ArrayByteSource source(raw.data(), raw.size());
+    auto containerRes = Container::decodeFromSource(source, key, *compressionHandler_, alloc);
+    if (!containerRes.isOk()) {
+        return containerRes.status();
+    }
+    Container container = rs::move(containerRes.value());
+
+    *out = rs::move(container.data);
+    return Status::Ok;
 }
 
 Result<Archive> CacheIndex::getArchiveKey(i32 archiveId, const XteaKey* key, Allocator& alloc) const noexcept {
@@ -162,7 +282,7 @@ Result<Archive> CacheIndex::getArchiveKey(i32 archiveId, const XteaKey* key, All
     }
 
     Vec<u8> bytes(alloc);
-    const Status s = store_->readArchive(id_, archiveId, &bytes);
+    const Status s = readArchiveBytes(archiveId, &bytes, alloc);
     if (!ok(s)) {
         return Result<Archive>::err(s);
     }
@@ -180,19 +300,18 @@ Result<Archive> CacheIndex::getArchiveKey(i32 archiveId, const XteaKey* key, All
     }
 
     ArchiveMeta meta;
-    const Status m = table_.getArchiveMeta(archiveId, &meta);
+    const Status m = getArchiveMeta(archiveId, &meta);
     if (!ok(m)) {
         return Result<Archive>::err(m);
     }
 
-    Uint8ArrayByteSource source(bytes.data(), bytes.size());
-    auto containerRes = Container::decodeFromSource(source, key, *compressionHandler_, alloc);
-    if (!containerRes.isOk()) {
-        return Result<Archive>::err(containerRes.status());
+    Vec<u8> payload(alloc);
+    const Status ps = readContainerPayload(archiveId, key, &payload, alloc);
+    if (!ok(ps)) {
+        return Result<Archive>::err(ps);
     }
-    Container container = rs::move(containerRes.value());
 
-    return Archive::decodeFromBytes(meta, Span<const u8>(container.data.data(), container.data.size()), alloc);
+    return Archive::decodeFromBytes(meta, Span<const u8>(payload.data(), payload.size()), alloc);
 }
 
 } // namespace rs

@@ -26,7 +26,14 @@ public:
         const CompressionHandler& compressionHandler,
         Allocator& alloc) noexcept;
 
-    CacheIndex() = default;
+    CacheIndex() noexcept;
+    ~CacheIndex();
+
+    CacheIndex(const CacheIndex&) = delete;
+    CacheIndex& operator=(const CacheIndex&) = delete;
+
+    CacheIndex(CacheIndex&& other) noexcept;
+    CacheIndex& operator=(CacheIndex&& other) noexcept;
 
     [[nodiscard]] i32 id() const noexcept { return id_; }
     [[nodiscard]] CacheType cacheType() const noexcept { return cacheType_; }
@@ -40,10 +47,37 @@ public:
 
     Status getArchiveMeta(i32 archiveId, ArchiveMeta* out) const noexcept;
 
+    // Reads the raw archive bytes (container/packed format as stored on disk) into `out`.
+    Status readArchiveBytes(i32 archiveId, Vec<u8>* out, Allocator& alloc) const noexcept;
+
+    // Dat2-only: decodes the container and returns the payload bytes (archive format bytes).
+    Status readContainerPayload(i32 archiveId, const XteaKey* key, Vec<u8>* out, Allocator& alloc) const noexcept;
+
     Result<Archive> getArchiveKey(i32 archiveId, const XteaKey* key, Allocator& alloc) const noexcept;
     Result<Archive> getArchive(i32 archiveId, Allocator& alloc) const noexcept { return getArchiveKey(archiveId, nullptr, alloc); }
 
 private:
+    struct DatIndexImpl {
+        i32 archiveCount = 0;
+        mutable Vec<i32> archiveIds;
+        mutable bool archiveIdsBuilt = false;
+
+        DatIndexImpl() = default;
+        explicit DatIndexImpl(Allocator& alloc) noexcept : archiveIds(alloc) {}
+    };
+
+    struct Dat2IndexImpl {
+        ReferenceTable table;
+    };
+
+    union Storage {
+        DatIndexImpl dat;
+        Dat2IndexImpl dat2;
+
+        Storage() {}
+        ~Storage() {}
+    };
+
     CacheIndex(
         CacheType cacheType,
         i32 id,
@@ -58,13 +92,7 @@ private:
     const CacheStore* store_ = nullptr;
     const CompressionHandler* compressionHandler_ = nullptr;
 
-    // Dat-only.
-    i32 archiveCount_ = 0;
-    mutable Vec<i32> archiveIds_;
-    mutable bool archiveIdsBuilt_ = false;
-
-    // Dat2-only.
-    ReferenceTable table_;
+    Storage storage_;
 };
 
 } // namespace rs

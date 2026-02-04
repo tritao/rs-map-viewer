@@ -1,9 +1,14 @@
 #include <cstddef>
+#include <cstring>
 #include <exception>
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include "../rs/cache/CacheIndex.hpp"
+#include "../rs/cache/CacheType.hpp"
+#include "../rs/cache/store/CacheStore.hpp"
+#include "../rs/cache/store/DatLayout.hpp"
 #include "../rs/cache/format/Archive.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
 #include "../rs/core/Allocator.hpp"
@@ -32,6 +37,57 @@ static bool eqBytes(const rs::Span<const rs::u8> a, const rs::Span<const rs::u8>
     }
     return true;
 }
+
+class FakeStore final : public rs::CacheStore {
+public:
+    std::size_t idxSize = 0;
+    std::vector<rs::u8> datArchive0;
+    std::vector<rs::u8> datArchive1;
+    std::vector<rs::u8> dat2Meta; // meta index (255), archive id = index id
+
+    rs::Status getIndexFileSize(rs::i32 indexId, std::size_t* outSize) const noexcept override {
+        if (!outSize) {
+            return rs::Status::InvalidArgument;
+        }
+        if (indexId < 0) {
+            return rs::Status::OutOfRange;
+        }
+        *outSize = idxSize;
+        return rs::Status::Ok;
+    }
+
+    rs::Status readArchive(rs::i32 indexId, rs::i32 archiveId, rs::Vec<rs::u8>* out) const noexcept override {
+        if (!out) {
+            return rs::Status::InvalidArgument;
+        }
+
+        const std::vector<rs::u8>* src = nullptr;
+
+        if (indexId == 255) {
+            // Dat2 meta index: archive id is the index id.
+            (void)archiveId;
+            src = &dat2Meta;
+        } else {
+            if (archiveId == 0) {
+                src = &datArchive0;
+            } else if (archiveId == 1) {
+                src = &datArchive1;
+            } else {
+                return rs::Status::NotFound;
+            }
+        }
+
+        out->clear();
+        auto r = out->resize(src->size());
+        if (!r.isOk()) {
+            return r.status();
+        }
+        if (!src->empty()) {
+            std::memcpy(out->data(), src->data(), src->size());
+        }
+        return rs::Status::Ok;
+    }
+};
 
 } // namespace
 
@@ -89,6 +145,61 @@ int main() {
             auto outRes = compression.decompressGzip(rs::Span<const rs::u8>(bad.data(), bad.size()), alloc);
             if (outRes.isOk() || outRes.status() != rs::Status::ChecksumMismatch) {
                 return fail("decompressGzip: expected checksum failure");
+            }
+        }
+
+        {
+            // CacheIndex Dat: dense archive ids and raw byte reads.
+            FakeStore store;
+            store.idxSize = 2 * rs::IDX_ENTRY_SIZE;
+            store.datArchive0 = {0x01, 0x02, 0x03};
+            store.datArchive1 = {0x10, 0x20};
+
+            auto idxRes = rs::CacheIndex::fromStore(rs::CacheType::Dat, 5, store, compression, alloc);
+            if (!idxRes.isOk()) {
+                return fail("CacheIndex::fromStore(Dat): expected Ok");
+            }
+            rs::CacheIndex idx = rs::move(idxRes.value());
+
+            if (idx.archiveCount() != 2) {
+                return fail("CacheIndex(Dat): archiveCount mismatch");
+            }
+            const rs::Span<const rs::i32> ids = idx.archiveIds();
+            if (ids.size() != 2 || ids[0] != 0 || ids[1] != 1) {
+                return fail("CacheIndex(Dat): archiveIds mismatch");
+            }
+
+            rs::Vec<rs::u8> raw(alloc);
+            const rs::Status s = idx.readArchiveBytes(1, &raw, alloc);
+            if (!rs::ok(s) || !eqBytes(rs::Span<const rs::u8>(raw.data(), raw.size()),
+                                       rs::Span<const rs::u8>(store.datArchive1.data(), store.datArchive1.size()))) {
+                return fail("CacheIndex(Dat): readArchiveBytes mismatch");
+            }
+
+            rs::Vec<rs::u8> payload(alloc);
+            const rs::Status ps = idx.readContainerPayload(0, nullptr, &payload, alloc);
+            if (ps != rs::Status::Unsupported) {
+                return fail("CacheIndex(Dat): readContainerPayload expected Unsupported");
+            }
+        }
+
+        {
+            // CacheIndex Dat2: empty meta => empty reference table.
+            FakeStore store;
+            store.dat2Meta = {}; // no meta bytes => invalid/empty table
+            auto idxRes = rs::CacheIndex::fromStore(rs::CacheType::Dat2, 2, store, compression, alloc);
+            if (!idxRes.isOk()) {
+                return fail("CacheIndex::fromStore(Dat2): expected Ok");
+            }
+            rs::CacheIndex idx = rs::move(idxRes.value());
+            if (idx.archiveCount() != 0 || idx.archiveIds().size() != 0) {
+                return fail("CacheIndex(Dat2 empty): expected 0 archives");
+            }
+
+            rs::Vec<rs::u8> raw(alloc);
+            const rs::Status s = idx.readArchiveBytes(0, &raw, alloc);
+            if (s != rs::Status::NotFound) {
+                return fail("CacheIndex(Dat2 empty): readArchiveBytes expected NotFound");
             }
         }
 
