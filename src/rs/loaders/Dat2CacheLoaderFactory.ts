@@ -141,30 +141,19 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
     }
 
     getBasTypeLoader(): BasTypeLoader {
-        if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 530) {
+        if (this.rules.bas.mode === "archive") {
             const configIndex = this.cacheSystem.getIndex(Dat2IndexId.configs);
-            try {
-                const basArchive = configIndex.getArchive(Rs2ConfigArchiveId.bas);
-                return new ArchiveBasTypeLoader(this.cacheInfo, basArchive);
-            } catch (e) {
-                console.error("Failed to load bastype archive", e);
-            }
+            const basArchive = configIndex.getArchive(Rs2ConfigArchiveId.bas);
+            return new ArchiveBasTypeLoader(this.cacheInfo, basArchive);
         }
         return new DummyBasTypeLoader(this.cacheInfo);
     }
 
     getQuestTypeLoader(): QuestTypeLoader | undefined {
-        const configIndex = this.cacheSystem.getIndex(Dat2IndexId.configs);
-        if (
-            this.cacheInfo.game === GameType.Runescape &&
-            configIndex.archiveExists(Rs2ConfigArchiveId.quests)
-        ) {
-            try {
-                const questArchive = configIndex.getArchive(Rs2ConfigArchiveId.quests);
-                return new ArchiveQuestTypeLoader(this.cacheInfo, questArchive);
-            } catch (e) {
-                console.error("Failed to load questtype archive", e);
-            }
+        if (this.rules.quests.mode === "archive") {
+            const configIndex = this.cacheSystem.getIndex(Dat2IndexId.configs);
+            const questArchive = configIndex.getArchive(Rs2ConfigArchiveId.quests);
+            return new ArchiveQuestTypeLoader(this.cacheInfo, questArchive);
         }
         return undefined;
     }
@@ -220,10 +209,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         const configIndex = this.cacheSystem.getIndex(Dat2IndexId.configs);
         const spriteIndex = this.cacheSystem.getIndex(Dat2IndexId.sprites);
 
-        if (
-            this.cacheInfo.game === GameType.Runescape &&
-            configIndex.archiveExists(Rs2ConfigArchiveId.mapScenes)
-        ) {
+        if (this.rules.mapScenes.mode === "archive") {
             const mapScenesArchive = configIndex.getArchive(Rs2ConfigArchiveId.mapScenes);
             const mapSceneTypeLoader = new MapSceneTypeLoader(this.cacheInfo, mapScenesArchive);
 
@@ -279,29 +265,24 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
         const configIndex = this.cacheSystem.getIndex(Dat2IndexId.configs);
         const spriteIndex = this.cacheSystem.getIndex(Dat2IndexId.sprites);
 
-        if (
-            this.cacheInfo.game === GameType.Oldschool &&
-            configIndex.archiveExists(OsrsConfigArchiveId.mapFunctions)
-        ) {
-            const mapElementArchive = configIndex.getArchive(OsrsConfigArchiveId.mapFunctions);
-            const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
-                this.cacheInfo,
-                mapElementArchive,
-            );
-
-            return this.loadMapElementSprites(spriteIndex, mapElementTypeLoader);
-        } else if (
-            this.cacheInfo.game === GameType.Runescape &&
-            configIndex.archiveExists(Rs2ConfigArchiveId.mapFunctions)
-        ) {
-            const mapElementArchive = configIndex.getArchive(Rs2ConfigArchiveId.mapFunctions);
-            const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
-                this.cacheInfo,
-                mapElementArchive,
-            );
-
-            return this.loadMapElementSprites(spriteIndex, mapElementTypeLoader);
-        } else {
+        switch (this.rules.mapFunctions.mode) {
+            case "osrs_archive": {
+                const mapElementArchive = configIndex.getArchive(OsrsConfigArchiveId.mapFunctions);
+                const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
+                    this.cacheInfo,
+                    mapElementArchive,
+                );
+                return this.loadMapElementSprites(spriteIndex, mapElementTypeLoader);
+            }
+            case "rs2_archive": {
+                const mapElementArchive = configIndex.getArchive(Rs2ConfigArchiveId.mapFunctions);
+                const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
+                    this.cacheInfo,
+                    mapElementArchive,
+                );
+                return this.loadMapElementSprites(spriteIndex, mapElementTypeLoader);
+            }
+            case "graphics_defaults": {
             const graphicDefaults = GraphicsDefaults.load(this.cacheInfo, this.cacheSystem);
             if (graphicDefaults.mapFunctions === -1) {
                 return [];
@@ -317,6 +298,7 @@ export class Dat2CacheLoaderFactory implements CacheLoaderFactory {
             }
 
             return mapFunctions;
+            }
         }
     }
 }
