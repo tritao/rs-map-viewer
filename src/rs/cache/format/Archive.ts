@@ -17,6 +17,41 @@ export type ArchiveMeta = {
 };
 
 export class Archive {
+    private static _decompressGzipAllowTrailing(
+        data: Uint8Array,
+        decompress: (data: Uint8Array) => Uint8Array,
+        maxTrimBytes: number = 32,
+    ): Uint8Array {
+        try {
+            return decompress(data);
+        } catch (e) {
+            // Some old .dat caches appear to append a few trailing bytes after the gzip member
+            // (e.g. 0x00 0x06), which breaks strict gzip trailer validation.
+            //
+            // We recover by trimming a small suffix and retrying.
+            const msg = e && typeof e === "object" && "message" in e ? String((e as any).message) : String(e);
+            const shouldRetry =
+                msg.includes("Checksum does not match") ||
+                msg.includes("Size of decompressed file not correct") ||
+                msg.includes("Not a GZIP file");
+            if (!shouldRetry) {
+                throw e;
+            }
+
+            const maxTrim = Math.min(maxTrimBytes, Math.max(0, data.byteLength - 1));
+            for (let trim = 1; trim <= maxTrim; trim++) {
+                const sliced = data.subarray(0, data.byteLength - trim);
+                try {
+                    return decompress(sliced);
+                } catch {
+                    // continue
+                }
+            }
+
+            throw e;
+        }
+    }
+
     static create(id: number, data: Uint8Array): Archive {
         const fileCount = 1;
         const lastFileId = 0;
@@ -114,7 +149,10 @@ export class Archive {
             fileIds = new Int32Array(fileCount);
             fileNameHashes = new Int32Array(fileCount);
 
-            const decompressed = compressionHandler.decompressGzip(data);
+            const decompressed = Archive._decompressGzipAllowTrailing(
+                data,
+                (d) => compressionHandler.decompressGzip(d),
+            );
             const file = new ArchiveFile(0, id, decompressed);
             files[0] = file;
             filesById[0] = file;
