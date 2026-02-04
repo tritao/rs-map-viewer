@@ -31,6 +31,7 @@ caches/
 .tools/
 cpp-core/build/
 cpp-core/build-native/
+cpp/build/
 
 # vendored / nested repos (local dev)
 dockview/
