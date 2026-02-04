@@ -215,7 +215,11 @@ export class MapImageRenderer {
                     );
                     if (floorDecorationTag !== 0n) {
                         const locId = getIdFromTag(floorDecorationTag);
-                        const locType = this.locTypeLoader.load(locId);
+                        const locResult = this.locTypeLoader.tryLoad(locId);
+                        if (!locResult.ok) {
+                            continue;
+                        }
+                        const locType = locResult.value;
 
                         if (locType.mapFunctionId !== -1) {
                             const mapFunction = this.mapFunctions[locType.mapFunctionId];
@@ -462,7 +466,11 @@ export class MapImageRenderer {
             const type = getLocPlacementType(locFlags);
 
             const locId = getIdFromTag(locTag);
-            const locType = this.locTypeLoader.load(locId);
+            const locResult = this.locTypeLoader.tryLoad(locId);
+            if (!locResult.ok) {
+                return;
+            }
+            const locType = locResult.value;
 
             if (locType.mapSceneId !== -1) {
                 const mapScene = this.mapScenes[locType.mapSceneId];
@@ -495,7 +503,11 @@ export class MapImageRenderer {
         const floorDecorationTag = scene.getFloorDecorationTag(level, tileX, tileY);
         if (floorDecorationTag !== 0n) {
             const locId = getIdFromTag(floorDecorationTag);
-            const locType = this.locTypeLoader.load(locId);
+            const locResult = this.locTypeLoader.tryLoad(locId);
+            if (!locResult.ok) {
+                return;
+            }
+            const locType = locResult.value;
 
             if (locType.mapSceneId !== -1) {
                 const mapScene = this.mapScenes[locType.mapSceneId];
