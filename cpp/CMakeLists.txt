@@ -20,11 +20,10 @@ if (EMSCRIPTEN)
     set(RS_BUILD_WASM_SMOKE ON CACHE BOOL "" FORCE)
 endif()
 
-add_library(rs STATIC
+set(RS_SOURCES
     rs/io/ByteSourceSlice.cpp
     rs/io/Uint8ArrayByteSource.cpp
     rs/io/ByteSourceReader.cpp
-    rs/io/FileByteSource.cpp
     rs/io/Uint8ArrayReader.cpp
     rs/crypto/Xtea.cpp
     rs/compression/NativeCompressionHandler.cpp
@@ -34,6 +33,16 @@ add_library(rs STATIC
     rs/cache/store/SectorChainStore.cpp
     rs/cache/Dat2CacheIndex.cpp
     rs/util/XXHash64.cpp
+)
+
+if (NOT EMSCRIPTEN)
+    list(APPEND RS_SOURCES
+        rs/io/FileByteSource.cpp
+    )
+endif()
+
+add_library(rs STATIC
+    ${RS_SOURCES}
 
     third_party/miniz/miniz_tinfl.c
     third_party/bzip2/bzlib.c
@@ -187,4 +196,12 @@ if (RS_BUILD_WASM_SMOKE)
         -Wl,--gc-sections
         -sERROR_ON_UNDEFINED_SYMBOLS=1
     )
+
+    if (EMSCRIPTEN)
+        # Browser-only: no filesystem, and explicitly export the C API surface.
+        target_link_options(rs_wasm_smoke PRIVATE
+            -sENVIRONMENT=web
+            -sFILESYSTEM=0
+        )
+    endif()
 endif()
