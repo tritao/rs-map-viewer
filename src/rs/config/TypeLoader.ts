@@ -3,10 +3,14 @@ import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { Result, err, ok } from "../../util/Result";
 import { Type } from "./Type";
 
 export interface TypeLoader<T> {
     load(id: number): T;
+
+    tryLoad(id: number): Result<T, DecodeError>;
 
     getCount(): number;
 
@@ -25,6 +29,10 @@ export class DummyTypeLoader<T extends Type> implements TypeLoader<T> {
         return new this.typeConstructor(id, this.cacheInfo);
     }
 
+    tryLoad(id: number): Result<T, DecodeError> {
+        return ok(this.load(id));
+    }
+
     getCount(): number {
         return 0;
     }
@@ -35,6 +43,7 @@ export class DummyTypeLoader<T extends Type> implements TypeLoader<T> {
 export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
     // TODO: maybe don't cache by default
     cache: Map<number, T> = new Map();
+    errors: Map<number, DecodeError> = new Map();
 
     constructor(
         readonly typeConstructor: TypeConstructor<T>,
@@ -44,28 +53,71 @@ export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
     abstract getDataBuffer(id: number): ByteBuffer | undefined;
 
     load(id: number): T {
+        const result = this.tryLoad(id);
+        if (result.ok) {
+            return result.value;
+        }
+        return new this.typeConstructor(id, this.cacheInfo);
+    }
+
+    tryLoad(id: number): Result<T, DecodeError> {
         const cached = this.cache.get(id);
         if (cached) {
-            return cached;
+            return ok(cached);
         }
+        const cachedError = this.errors.get(id);
+        if (cachedError) {
+            return err(cachedError);
+        }
+
+        const typeName = this.typeConstructor.name || "Type";
+
+        let buffer: ByteBuffer | undefined;
+        try {
+            buffer = this.getDataBuffer(id);
+        } catch (cause) {
+            const e = decodeFailedError({
+                typeName,
+                id,
+                message: `${typeName}: failed to obtain data buffer for id=${id}`,
+                cause,
+            });
+            this.errors.set(id, e);
+            return err(e);
+        }
+
+        if (!buffer) {
+            const e = notFoundError(typeName, id);
+            this.errors.set(id, e);
+            return err(e);
+        }
+
         const type = new this.typeConstructor(id, this.cacheInfo);
         try {
-            const buffer = this.getDataBuffer(id);
-            if (buffer) {
-                type.decode(buffer);
-                type.post();
-            }
-        } catch (e) {
-            console.error("Failed loading type " + id, e);
+            type.decode(buffer);
+            type.post();
+        } catch (cause) {
+            const e = decodeFailedError({
+                typeName,
+                id,
+                message: `${typeName}: decode failed for id=${id}`,
+                cause,
+                offset: buffer.offset,
+            });
+            this.errors.set(id, e);
+            return err(e);
         }
+
         this.cache.set(id, type);
-        return type;
+        this.errors.delete(id);
+        return ok(type);
     }
 
     abstract getCount(): number;
 
     clearCache(): void {
         this.cache.clear();
+        this.errors.clear();
     }
 }
 
@@ -85,6 +137,12 @@ export class ArchiveTypeLoader<T extends Type> extends BaseTypeLoader<T> {
 
     override getCount(): number {
         return this.archive.fileCount;
+    }
+
+    override tryLoad(id: number): Result<T, DecodeError> {
+        // Fast path: Archive.getFile performs bounds checks; use BaseTypeLoader implementation for
+        // caching + error handling.
+        return super.tryLoad(id);
     }
 }
 
@@ -159,6 +217,14 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
         return this.types[id];
     }
 
+    tryLoad(id: number): Result<T, DecodeError> {
+        const type = this.types[id];
+        if (!type) {
+            return err(notFoundError("DatTypeLoader", id));
+        }
+        return ok(type);
+    }
+
     getCount(): number {
         return this.types.length;
     }
@@ -185,19 +251,24 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         const count = indexBuffer.readUnsignedShort();
 
         const dataOffsets = new Int32Array(count);
+        const dataLengths = new Int32Array(count);
 
+        // Data entries start after the leading u16 count.
         let offset = indexBuffer.offset;
         for (let i = 0; i < count; i++) {
+            const length = indexBuffer.readUnsignedShort();
             dataOffsets[i] = offset;
-            offset += indexBuffer.readUnsignedShort();
+            dataLengths[i] = length;
+            offset += length;
         }
 
         return new IndexedDatTypeLoader(
             typeConstructor,
             cacheInfo,
             count,
-            new ByteBuffer(dataFile.data),
+            dataFile.data,
             dataOffsets,
+            dataLengths,
         );
     }
 
@@ -205,8 +276,9 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         typeConstructor: TypeConstructor<T>,
         cacheInfo: CacheInfo,
         readonly count: number,
-        readonly dataBuffer: ByteBuffer,
+        readonly data: Uint8Array,
         readonly dataOffsets: Int32Array,
+        readonly dataLengths: Int32Array,
     ) {
         super(typeConstructor, cacheInfo);
     }
@@ -215,13 +287,20 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         if (id < 0 || id >= this.count) {
             return undefined;
         }
-        this.dataBuffer.offset = this.dataOffsets[id];
-        return this.dataBuffer;
+        const start = this.dataOffsets[id];
+        const length = this.dataLengths[id];
+        if (start < 0 || length < 0 || start + length > this.data.length) {
+            return undefined;
+        }
+        const slice = this.data.subarray(start, start + length);
+        return new ByteBuffer(slice);
     }
 
     getCount(): number {
         return this.count;
     }
 
-    clearCache(): void {}
+    override clearCache(): void {
+        super.clearCache();
+    }
 }
