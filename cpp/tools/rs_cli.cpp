@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -54,6 +55,12 @@ struct ParityArgs {
     std::vector<int> indices;
     bool fileBacked = false;
 };
+
+static std::string h64Hex(rs::u64 v) {
+    char buf[17];
+    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(v));
+    return std::string(buf);
+}
 
 static bool startsWith(const std::string& s, const char* prefix) {
     const std::size_t n = std::strlen(prefix);
@@ -406,14 +413,14 @@ static int cmdParity(int argc, char** argv) {
                     e.indexId = indexId;
                     e.archiveId = archiveId;
                     e.rawLen = raw.size();
-                    e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+                    e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
                     auto rawOwned = std::make_shared<std::vector<rs::u8>>(std::move(raw));
                     rs::ByteSourcePtr rawBytes = std::make_shared<rs::Uint8ArrayByteSource>(rawOwned);
                     rs::Container container = rs::Container::decodeFromSource(*rawBytes, std::nullopt, compression);
 
                     e.payloadLen = container.data.size();
-                    e.payloadHash = rs::h64Hex(rs::xxh64(container.data.data(), container.data.size()));
+                    e.payloadHash = h64Hex(rs::xxh64(container.data.data(), container.data.size()));
 
                     const auto metaOpt = index.getArchiveMeta(archiveId);
                     if (metaOpt) {
@@ -424,7 +431,7 @@ static int cmdParity(int argc, char** argv) {
                             ParityFileEntry fe;
                             fe.fileId = static_cast<int>(f.id);
                             fe.len = f.data.size();
-                            fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                            fe.xxh64 = h64Hex(rs::xxh64(f.data.data(), f.data.size()));
                             e.files.push_back(std::move(fe));
                         }
                         std::sort(e.files.begin(), e.files.end(), [](const ParityFileEntry& a, const ParityFileEntry& b) {
@@ -454,7 +461,7 @@ static int cmdParity(int argc, char** argv) {
                     e.indexId = indexId;
                     e.archiveId = static_cast<int>(archiveId);
                     e.rawLen = raw.size();
-                    e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+                    e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
                     const bool multipleFiles = indexId == 0; // DatIndexId.configs
                     try {
@@ -464,7 +471,7 @@ static int cmdParity(int argc, char** argv) {
                             ParityFileEntry fe;
                             fe.fileId = static_cast<int>(f.id);
                             fe.len = f.data.size();
-                            fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                            fe.xxh64 = h64Hex(rs::xxh64(f.data.data(), f.data.size()));
                             e.files.push_back(std::move(fe));
                         }
                         std::sort(e.files.begin(), e.files.end(),
@@ -547,14 +554,14 @@ static int cmdParity(int argc, char** argv) {
                 e.indexId = indexId;
                 e.archiveId = 0;
                 e.rawLen = raw.size();
-                e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+                e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
                 rs::Archive archive = rs::Archive::decodeOld(0, raw, true, compression);
                 for (const auto& f : archive.files()) {
                     ParityFileEntry fe;
                     fe.fileId = static_cast<int>(f.id);
                     fe.len = f.data.size();
-                    fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                    fe.xxh64 = h64Hex(rs::xxh64(f.data.data(), f.data.size()));
                     e.files.push_back(std::move(fe));
                 }
                 std::sort(e.files.begin(), e.files.end(), [](const ParityFileEntry& a, const ParityFileEntry& b) {
@@ -583,7 +590,7 @@ static int cmdParity(int argc, char** argv) {
                     e.indexId = indexId;
                     e.archiveId = static_cast<int>(archiveId);
                     e.rawLen = raw.size();
-                    e.rawHash = rs::h64Hex(rs::xxh64(raw.data(), raw.size()));
+                    e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
                     rs::Archive archive = rs::Archive::create(static_cast<rs::i32>(archiveId),
                                                               std::vector<rs::u8>(raw.begin(), raw.end()));
@@ -591,7 +598,7 @@ static int cmdParity(int argc, char** argv) {
                         ParityFileEntry fe;
                         fe.fileId = static_cast<int>(f.id);
                         fe.len = f.data.size();
-                        fe.xxh64 = rs::h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                        fe.xxh64 = h64Hex(rs::xxh64(f.data.data(), f.data.size()));
                         e.files.push_back(std::move(fe));
                     }
                     std::sort(e.files.begin(), e.files.end(), [](const ParityFileEntry& a, const ParityFileEntry& b) {
