@@ -175,7 +175,7 @@ export function createDat2Loaders(
             const mapScenesArchive = configIndex.getArchive(Rs2ConfigArchiveId.mapScenes);
             const mapSceneTypeLoader = new MapSceneTypeLoader(cacheInfo, mapScenesArchive);
 
-            const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId);
+            const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId + 1);
             for (let i = 0; i < mapScenesArchive.fileIds.length; i++) {
                 const id = mapScenesArchive.fileIds[i];
                 const result = mapSceneTypeLoader.tryLoad(id);
