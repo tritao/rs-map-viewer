@@ -301,17 +301,17 @@ export class SdRenderableDataLoader
     ): Promise<RenderDataResult<SdRenderableData | undefined>> {
         this.init();
 
-        const locTypeLoader = state.locTypeLoader;
-        const npcTypeLoader = state.npcTypeLoader;
-        const basTypeLoader = state.basTypeLoader;
-        const textureLoader = state.textureLoader;
+        const locTypeLoader = state.session.loaders.locTypeLoader;
+        const npcTypeLoader = state.session.loaders.npcTypeLoader;
+        const basTypeLoader = state.session.loaders.basTypeLoader;
+        const textureLoader = state.session.loaders.textureLoader;
 
-        const modelLoader = state.modelLoader;
+        const modelLoader = state.session.loaders.modelLoader;
         const locModelLoader = state.locModelLoader;
         const objModelLoader = state.objModelLoader;
         const npcModelLoader = state.npcModelLoader;
 
-        const varManager = state.varManager;
+        const varManager = state.session.varManager;
 
         const id = ids[0];
 

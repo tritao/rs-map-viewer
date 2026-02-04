@@ -543,16 +543,16 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         console.time(`load map ${mapX},${mapY}`);
         this.init();
 
-        const locTypeLoader = state.locTypeLoader;
-        const npcTypeLoader = state.npcTypeLoader;
-        const basTypeLoader = state.basTypeLoader;
-        const textureLoader = state.textureLoader;
+        const locTypeLoader = state.session.loaders.locTypeLoader;
+        const npcTypeLoader = state.session.loaders.npcTypeLoader;
+        const basTypeLoader = state.session.loaders.basTypeLoader;
+        const textureLoader = state.session.loaders.textureLoader;
 
         const locModelLoader = state.locModelLoader;
         const objModelLoader = state.objModelLoader;
         const npcModelLoader = state.npcModelLoader;
 
-        const varManager = state.varManager;
+        const varManager = state.session.varManager;
 
         let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
         textureIds = textureIds.slice(0, 2047);

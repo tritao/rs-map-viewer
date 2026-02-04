@@ -41,26 +41,11 @@ const hasherPromise = Hasher.init();
 
 export type WorkerState = {
     session: CacheSession;
-
-    locTypeLoader: LocTypeLoader;
-    objTypeLoader: ObjTypeLoader;
-    npcTypeLoader: NpcTypeLoader;
-
-    seqTypeLoader: SeqTypeLoader;
-    basTypeLoader: BasTypeLoader;
-
-    textureLoader: TextureLoader;
-    seqFrameLoader: SeqFrameLoader;
-    skeletalSeqLoader: SkeletalSeqLoader | undefined;
-
-    modelLoader: ModelLoader;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
     npcModelLoader: NpcModelLoader;
 
     sceneBuilder: SceneBuilder;
-
-    varManager: VarManager;
 
     mapImageRenderer: MapImageRenderer;
     mapImageCache: Cache;
@@ -141,26 +126,11 @@ async function initWorker(
 
     return {
         session,
-
-        locTypeLoader,
-        objTypeLoader,
-        npcTypeLoader,
-
-        seqTypeLoader,
-        basTypeLoader,
-
-        textureLoader,
-        seqFrameLoader,
-        skeletalSeqLoader,
-
-        modelLoader,
         locModelLoader,
         objModelLoader,
         npcModelLoader,
 
         sceneBuilder,
-
-        varManager,
 
         mapImageRenderer,
         mapImageCache,
@@ -174,8 +144,8 @@ function clearCache(workerState: WorkerState): void {
     workerState.locModelLoader.clearCache();
     workerState.objModelLoader.clearCache();
     workerState.npcModelLoader.clearCache();
-    workerState.seqFrameLoader.clearCache();
-    workerState.skeletalSeqLoader?.clearCache();
+    workerState.session.loaders.seqFrameLoader.clearCache();
+    workerState.session.loaders.skeletalSeqLoader?.clearCache();
 }
 
 const worker = {
@@ -218,7 +188,7 @@ const worker = {
             throw new Error("Worker not initialized");
         }
 
-        const pixels = workerState.textureLoader.getPixelsArgb(id, size, flipH, brightness);
+        const pixels = workerState.session.loaders.textureLoader.getPixelsArgb(id, size, flipH, brightness);
 
         return Transfer(pixels, [pixels.buffer]);
     },
@@ -269,7 +239,7 @@ const worker = {
         if (!workerState) {
             throw new Error("Worker not initialized");
         }
-        workerState.varManager.set(values);
+        workerState.session.varManager.set(values);
     },
     async loadCachedMapImages(): Promise<Map<number, string>> {
         const workerState = await workerStatePromise;
@@ -314,7 +284,7 @@ const worker = {
 
         const zip = new JSZip();
 
-        const textureLoader = workerState.textureLoader;
+        const textureLoader = workerState.session.loaders.textureLoader;
 
         const textureSize = 128;
 
