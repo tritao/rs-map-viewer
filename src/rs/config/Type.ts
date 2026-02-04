@@ -1,6 +1,7 @@
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheType, detectCacheType } from "../cache/CacheType";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { TypeDecodeError } from "../errors/TypeDecodeError";
 
 export type ParamsMap = Map<number, number | string>;
 
@@ -49,7 +50,15 @@ export abstract class Type {
             if (opcode === 0) {
                 break;
             }
-            this.decodeOpcode(opcode, buffer);
+            try {
+                this.decodeOpcode(opcode, buffer);
+            } catch (cause) {
+                throw new TypeDecodeError(`${this.constructor.name}: opcode ${opcode} failed`, {
+                    opcode,
+                    offset: buffer.offset,
+                    cause,
+                });
+            }
         }
     }
 

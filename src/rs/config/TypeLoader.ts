@@ -4,6 +4,7 @@ import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { TypeDecodeError } from "../errors/TypeDecodeError";
 import { Result, err, ok } from "../../util/Result";
 import { Type } from "./Type";
 
@@ -97,12 +98,15 @@ export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
             type.decode(buffer);
             type.post();
         } catch (cause) {
+            const opcode = cause instanceof TypeDecodeError ? cause.opcode : undefined;
+            const offset = cause instanceof TypeDecodeError ? cause.offset : buffer.offset;
             const e = decodeFailedError({
                 typeName,
                 id,
                 message: `${typeName}: decode failed for id=${id}`,
                 cause,
-                offset: buffer.offset,
+                opcode,
+                offset,
             });
             this.errors.set(id, e);
             return err(e);
