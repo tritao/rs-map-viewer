@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include "../../io/ByteReader.hpp"
@@ -30,7 +29,6 @@ private:
     i32 archiveCount_ = 0;
     i32 lastArchiveId_ = 0;
 
-    std::unordered_map<i32, i32> archiveIdIndexMap_;
     std::vector<i32> archiveIds_;
 
     std::vector<i32> archiveNameHashes_;

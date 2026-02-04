@@ -1,5 +1,6 @@
 #include "ByteSourceReader.hpp"
 
+#include <cstring>
 #include <stdexcept>
 
 namespace rs {
@@ -138,5 +139,27 @@ std::span<const u8> ByteSourceReader::readBytes(std::size_t amount) {
     return std::span<const u8>(owned_.data(), owned_.size());
 }
 
-} // namespace rs
+void ByteSourceReader::readBytesInto(u8* target, std::size_t length) {
+    if (!target && length != 0) {
+        throw std::invalid_argument("ByteSourceReader: target is null");
+    }
+    if (position_ + length > source_->size()) {
+        throw std::out_of_range("ByteSourceReader: readBytesInto out of bounds");
+    }
+    if (length == 0) {
+        return;
+    }
 
+    // Fast path: entirely within current window.
+    if (position_ >= windowStart_ && position_ + length <= windowEnd_) {
+        const std::size_t off = position_ - windowStart_;
+        std::memcpy(target, window_.data() + off, length);
+        position_ += length;
+        return;
+    }
+
+    source_->readInto(position_, target, length);
+    position_ += length;
+}
+
+} // namespace rs

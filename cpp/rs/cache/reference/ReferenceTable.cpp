@@ -1,5 +1,6 @@
 #include "ReferenceTable.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace rs {
@@ -22,20 +23,17 @@ ReferenceTable ReferenceTable::decodeFromReader(ByteReader& reader) {
     t.archiveCount_ = archiveCount;
 
     t.archiveIds_.resize(static_cast<std::size_t>(archiveCount));
-    t.archiveIdIndexMap_.reserve(static_cast<std::size_t>(archiveCount));
 
     i32 lastArchiveId = 0;
     if (protocol == 7) {
         for (i32 i = 0; i < archiveCount; i++) {
             lastArchiveId += reader.readBigSmart();
             t.archiveIds_[static_cast<std::size_t>(i)] = lastArchiveId;
-            t.archiveIdIndexMap_.emplace(lastArchiveId, i);
         }
     } else {
         for (i32 i = 0; i < archiveCount; i++) {
             lastArchiveId += static_cast<i32>(reader.readUnsignedShort());
             t.archiveIds_[static_cast<std::size_t>(i)] = lastArchiveId;
-            t.archiveIdIndexMap_.emplace(lastArchiveId, i);
         }
     }
     t.lastArchiveId_ = lastArchiveId;
@@ -50,8 +48,9 @@ ReferenceTable ReferenceTable::decodeFromReader(ByteReader& reader) {
     t.archiveWhirlpools_.resize(static_cast<std::size_t>(archiveCount));
     if (t.usesWhirlpool_) {
         for (i32 i = 0; i < archiveCount; i++) {
-            const auto bytes = reader.readBytes(64);
-            t.archiveWhirlpools_[static_cast<std::size_t>(i)] = std::vector<u8>(bytes.begin(), bytes.end());
+            auto& dst = t.archiveWhirlpools_[static_cast<std::size_t>(i)];
+            dst.resize(64);
+            reader.readBytesInto(dst.data(), dst.size());
         }
     }
 
@@ -110,32 +109,33 @@ ReferenceTable ReferenceTable::decodeFromReader(ByteReader& reader) {
 }
 
 bool ReferenceTable::archiveExists(i32 id) const {
-    return archiveIdIndexMap_.find(id) != archiveIdIndexMap_.end();
+    const auto it = std::lower_bound(archiveIds_.begin(), archiveIds_.end(), id);
+    return it != archiveIds_.end() && *it == id;
 }
 
 const ArchiveReference* ReferenceTable::getArchiveReference(i32 id) const {
-    const auto it = archiveIdIndexMap_.find(id);
-    if (it == archiveIdIndexMap_.end()) {
+    const auto it = std::lower_bound(archiveIds_.begin(), archiveIds_.end(), id);
+    if (it == archiveIds_.end() || *it != id) {
         return nullptr;
     }
-    const i32 idx = it->second;
+    const auto idx = static_cast<std::size_t>(it - archiveIds_.begin());
 
     if (archiveReferenceCache_.empty()) {
         archiveReferenceCache_.resize(archiveIds_.size());
     }
 
-    auto& slot = archiveReferenceCache_[static_cast<std::size_t>(idx)];
+    auto& slot = archiveReferenceCache_[idx];
     if (!slot) {
         ArchiveReference r;
         r.id = id;
-        r.nameHash = (named_ ? archiveNameHashes_[static_cast<std::size_t>(idx)] : 0);
-        r.whirlpool = (usesWhirlpool_ ? archiveWhirlpools_[static_cast<std::size_t>(idx)] : std::vector<u8>{});
-        r.crc = archiveCrcs_[static_cast<std::size_t>(idx)];
-        r.revision = archiveRevisions_[static_cast<std::size_t>(idx)];
-        r.fileCount = archiveFileCounts_[static_cast<std::size_t>(idx)];
-        r.lastFileId = archiveLastFileIds_[static_cast<std::size_t>(idx)];
-        r.fileIds = archiveFileIds_[static_cast<std::size_t>(idx)];
-        r.fileNameHashes = (named_ ? archiveFileNameHashes_[static_cast<std::size_t>(idx)] : std::vector<i32>{});
+        r.nameHash = (named_ ? archiveNameHashes_[idx] : 0);
+        r.whirlpool = (usesWhirlpool_ ? archiveWhirlpools_[idx] : std::vector<u8>{});
+        r.crc = archiveCrcs_[idx];
+        r.revision = archiveRevisions_[idx];
+        r.fileCount = archiveFileCounts_[idx];
+        r.lastFileId = archiveLastFileIds_[idx];
+        r.fileIds = archiveFileIds_[idx];
+        r.fileNameHashes = (named_ ? archiveFileNameHashes_[idx] : std::vector<i32>{});
         slot = std::move(r);
     }
 

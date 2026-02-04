@@ -31,7 +31,8 @@ public:
     [[nodiscard]] virtual i32 readBigSmart() = 0;
 
     [[nodiscard]] virtual std::span<const u8> readBytes(std::size_t amount) = 0;
+
+    virtual void readBytesInto(u8* target, std::size_t length) = 0;
 };
 
 } // namespace rs
-

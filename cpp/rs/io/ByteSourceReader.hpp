@@ -35,6 +35,7 @@ public:
     [[nodiscard]] i32 readBigSmart() override;
 
     [[nodiscard]] std::span<const u8> readBytes(std::size_t amount) override;
+    void readBytesInto(u8* target, std::size_t length) override;
 
 private:
     ByteSourcePtr source_;
@@ -50,4 +51,3 @@ private:
 };
 
 } // namespace rs
-

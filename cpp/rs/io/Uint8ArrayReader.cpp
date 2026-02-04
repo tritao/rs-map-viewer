@@ -1,5 +1,6 @@
 #include "Uint8ArrayReader.hpp"
 
+#include <cstring>
 #include <stdexcept>
 
 namespace rs {
@@ -103,5 +104,16 @@ std::span<const u8> Uint8ArrayReader::readBytes(std::size_t amount) {
     return data_.subspan(start, amount);
 }
 
-} // namespace rs
+void Uint8ArrayReader::readBytesInto(u8* target, std::size_t length) {
+    if (!target && length != 0) {
+        throw std::invalid_argument("Uint8ArrayReader: target is null");
+    }
+    ensure(length);
+    if (length == 0) {
+        return;
+    }
+    std::memcpy(target, data_.data() + offset_, length);
+    offset_ += length;
+}
 
+} // namespace rs
