@@ -2,6 +2,7 @@
 
 #include <cstddef>
 
+#include "../cache/ArchiveMeta.hpp"
 #include "../compression/CompressionHandler.hpp"
 #include "../core/Allocator.hpp"
 #include "../core/Move.hpp"
@@ -9,9 +10,11 @@
 #include "../core/Span.hpp"
 #include "../core/Status.hpp"
 #include "../core/Vec.hpp"
+#include "../crypto/Xtea.hpp"
 #include "../types.hpp"
 #include "CacheIndex.hpp"
 #include "CacheType.hpp"
+#include "format/Archive.hpp"
 #include "store/CacheStore.hpp"
 
 namespace rs {
@@ -62,6 +65,42 @@ Status CacheSystem::getIndex(i32 indexId, const CacheIndex** out) const noexcept
     }
     *out = nullptr;
     return Status::NotFound;
+}
+
+Status CacheSystem::readArchiveBytes(i32 indexId, i32 archiveId, Vec<u8>* out, Allocator& alloc) const noexcept {
+    const CacheIndex* index = nullptr;
+    const Status s = getIndex(indexId, &index);
+    if (!ok(s)) {
+        return s;
+    }
+    return index->readArchiveBytes(archiveId, out, alloc);
+}
+
+Status CacheSystem::readContainerPayload(i32 indexId, i32 archiveId, const XteaKey* key, Vec<u8>* out, Allocator& alloc) const noexcept {
+    const CacheIndex* index = nullptr;
+    const Status s = getIndex(indexId, &index);
+    if (!ok(s)) {
+        return s;
+    }
+    return index->readContainerPayload(archiveId, key, out, alloc);
+}
+
+Status CacheSystem::getArchiveMeta(i32 indexId, i32 archiveId, ArchiveMeta* out) const noexcept {
+    const CacheIndex* index = nullptr;
+    const Status s = getIndex(indexId, &index);
+    if (!ok(s)) {
+        return s;
+    }
+    return index->getArchiveMeta(archiveId, out);
+}
+
+Result<Archive> CacheSystem::getArchiveKey(i32 indexId, i32 archiveId, const XteaKey* key, Allocator& alloc) const noexcept {
+    const CacheIndex* index = nullptr;
+    const Status s = getIndex(indexId, &index);
+    if (!ok(s)) {
+        return Result<Archive>::err(s);
+    }
+    return index->getArchiveKey(archiveId, key, alloc);
 }
 
 } // namespace rs

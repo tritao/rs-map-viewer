@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../rs/cache/CacheIndex.hpp"
+#include "../rs/cache/CacheSystem.hpp"
 #include "../rs/cache/CacheType.hpp"
 #include "../rs/cache/store/CacheStore.hpp"
 #include "../rs/cache/store/DatLayout.hpp"
@@ -200,6 +201,39 @@ int main() {
             const rs::Status s = idx.readArchiveBytes(0, &raw, alloc);
             if (s != rs::Status::NotFound) {
                 return fail("CacheIndex(Dat2 empty): readArchiveBytes expected NotFound");
+            }
+        }
+
+        {
+            // CacheSystem convenience helpers.
+            FakeStore store;
+            store.idxSize = 2 * rs::IDX_ENTRY_SIZE;
+            store.datArchive0 = {0x01, 0x02, 0x03};
+            store.datArchive1 = {0x10, 0x20};
+            store.dat2Meta = {};
+
+            const rs::i32 indexIds[] = {5};
+            auto sysRes = rs::CacheSystem::fromStore(
+                rs::CacheType::Dat,
+                store,
+                rs::Span<const rs::i32>(indexIds, 1),
+                compression,
+                alloc);
+            if (!sysRes.isOk()) {
+                return fail("CacheSystem::fromStore(Dat): expected Ok");
+            }
+            rs::CacheSystem sys = rs::move(sysRes.value());
+
+            rs::Vec<rs::u8> raw(alloc);
+            const rs::Status s = sys.readArchiveBytes(5, 1, &raw, alloc);
+            if (!rs::ok(s) || raw.size() != store.datArchive1.size()) {
+                return fail("CacheSystem(Dat): readArchiveBytes expected Ok");
+            }
+
+            rs::Vec<rs::u8> payload(alloc);
+            const rs::Status ps = sys.readContainerPayload(5, 0, nullptr, &payload, alloc);
+            if (ps != rs::Status::Unsupported) {
+                return fail("CacheSystem(Dat): readContainerPayload expected Unsupported");
             }
         }
 
