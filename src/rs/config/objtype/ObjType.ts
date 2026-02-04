@@ -405,7 +405,8 @@ export class ObjType extends Type {
             }
 
             if (newId !== -1) {
-                return loader.load(newId);
+                const result = loader.tryLoad(newId);
+                return result.ok ? result.value : this;
             }
         }
 

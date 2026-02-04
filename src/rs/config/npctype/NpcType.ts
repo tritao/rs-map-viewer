@@ -541,6 +541,7 @@ export class NpcType extends Type {
         if (transformId === -1) {
             return undefined;
         }
-        return loader.load(transformId);
+        const result = loader.tryLoad(transformId);
+        return result.ok ? result.value : undefined;
     }
 }

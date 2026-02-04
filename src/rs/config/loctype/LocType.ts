@@ -581,7 +581,7 @@ export class LocType extends Type {
         if (transformId === -1) {
             return undefined;
         }
-        const transformed = loader.load(transformId);
-        return transformed;
+        const result = loader.tryLoad(transformId);
+        return result.ok ? result.value : undefined;
     }
 }
