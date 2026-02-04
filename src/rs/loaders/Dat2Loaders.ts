@@ -68,7 +68,11 @@ function loadMapElementSprites(
 ): IndexedSprite[] {
     const mapElementSprites = new Array<IndexedSprite>(mapElementTypeLoader.getCount());
     for (let i = 0; i < mapElementSprites.length; i++) {
-        const mapElement = mapElementTypeLoader.load(i);
+        const result = mapElementTypeLoader.tryLoad(i);
+        if (!result.ok) {
+            continue;
+        }
+        const mapElement = result.value;
         if (mapElement.spriteId === -1) {
             continue;
         }
@@ -174,7 +178,11 @@ export function createDat2Loaders(
             const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId);
             for (let i = 0; i < mapScenesArchive.fileIds.length; i++) {
                 const id = mapScenesArchive.fileIds[i];
-                const mapScene = mapSceneTypeLoader.load(id);
+                const result = mapSceneTypeLoader.tryLoad(id);
+                if (!result.ok) {
+                    continue;
+                }
+                const mapScene = result.value;
                 if (mapScene.spriteId !== -1) {
                     const sprite = SpriteLoader.loadIntoIndexedSprite(spriteIndex, mapScene.spriteId);
                     if (sprite) {

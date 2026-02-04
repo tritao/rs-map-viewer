@@ -23,10 +23,11 @@ export class VarManager {
 
     setQuestsCompleted(questTypeLoader: QuestTypeLoader): void {
         for (let i = 0; i < questTypeLoader.getCount(); i++) {
-            const quest = questTypeLoader.load(i);
-            if (!quest) {
+            const result = questTypeLoader.tryLoad(i);
+            if (!result.ok) {
                 continue;
             }
+            const quest = result.value;
             if (quest.varps) {
                 for (const varp of quest.varps) {
                     this.setVarp(varp.id, varp.completedValue);
