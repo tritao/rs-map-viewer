@@ -1,63 +1,52 @@
 #include "ByteSourceSlice.hpp"
 
 #include <cstddef>
-#include <memory>
-#include <optional>
-#include <span>
-#include <stdexcept>
-#include <utility>
 
-#include "ByteSource.hpp"
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
+#include "../io/ByteSource.hpp"
 #include "../types.hpp"
 
 namespace rs {
 
-ByteSourceSlice::ByteSourceSlice(ByteSourcePtr source, std::size_t start, std::size_t size)
-    : source_(std::move(source)), start_(start), size_(size) {
+ByteSourceSlice::ByteSourceSlice(const ByteSource* source, std::size_t start, std::size_t size) noexcept
+    : source_(source), start_(start), size_(size) {
     if (!source_) {
-        throw std::invalid_argument("ByteSourceSlice: source is null");
-    }
-    if (start_ > source_->size()) {
-        throw std::out_of_range("ByteSourceSlice: invalid start");
-    }
-    if (size_ > source_->size() - start_) {
-        throw std::out_of_range("ByteSourceSlice: slice out of bounds");
-    }
-}
-
-ByteSourcePtr ByteSourceSlice::slice(std::size_t start, std::size_t size) const {
-    if (start > size_) {
-        throw std::out_of_range("ByteSourceSlice: nested start out of bounds");
-    }
-    if (size > size_ - start) {
-        throw std::out_of_range("ByteSourceSlice: nested slice out of bounds");
-    }
-    return std::make_shared<ByteSourceSlice>(source_, start_ + start, size);
-}
-
-void ByteSourceSlice::readInto(std::size_t offset, u8* target, std::size_t length) const {
-    if (offset > size_) {
-        throw std::out_of_range("ByteSourceSlice: read offset out of bounds");
-    }
-    if (length > size_ - offset) {
-        throw std::out_of_range("ByteSourceSlice: read length out of bounds");
-    }
-    if (length == 0) {
+        start_ = 0;
+        size_ = 0;
         return;
     }
-    source_->readInto(start_ + offset, target, length);
+    const std::size_t baseSize = source_->size();
+    if (start_ > baseSize || size_ > baseSize - start_) {
+        source_ = nullptr;
+        start_ = 0;
+        size_ = 0;
+    }
 }
 
-std::optional<std::span<const u8>> ByteSourceSlice::tryGetUint8ArrayView() const {
-    const auto view = source_->tryGetUint8ArrayView();
-    if (!view) {
-        return std::nullopt;
+Status ByteSourceSlice::readInto(std::size_t offset, Span<u8> target) const noexcept {
+    if (!source_) {
+        return Status::InvalidArgument;
     }
-    const auto v = *view;
-    if (start_ > v.size() || size_ > v.size() - start_) {
-        return std::nullopt;
+    if (offset > size_ || target.size() > size_ - offset) {
+        return Status::OutOfRange;
     }
-    return v.subspan(start_, size_);
+    return source_->readInto(start_ + offset, target);
+}
+
+bool ByteSourceSlice::tryGetView(Span<const u8>* out) const noexcept {
+    if (!source_ || !out) {
+        return false;
+    }
+    Span<const u8> base;
+    if (!source_->tryGetView(&base)) {
+        return false;
+    }
+    if (start_ > base.size() || size_ > base.size() - start_) {
+        return false;
+    }
+    *out = base.subspan(start_, size_);
+    return true;
 }
 
 } // namespace rs

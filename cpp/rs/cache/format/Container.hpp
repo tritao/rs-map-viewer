@@ -1,28 +1,28 @@
 #pragma once
 
-#include <array>
-#include <optional>
-#include <vector>
-
 #include "../../compression/CompressionHandler.hpp"
 #include "../../compression/CompressionType.hpp"
 #include "../../crypto/Xtea.hpp"
+#include "../../core/Allocator.hpp"
+#include "../../core/Result.hpp"
+#include "../../core/Vec.hpp"
 #include "../../io/ByteSource.hpp"
 
 namespace rs {
 
 class Container {
 public:
-    static Container decodeFromSource(
+    static Result<Container> decodeFromSource(
         const ByteSource& source,
-        const std::optional<std::array<u32, 4>>& key,
-        const CompressionHandler& compressionHandler);
+        const XteaKey* key,
+        const CompressionHandler& compressionHandler,
+        Allocator& alloc) noexcept;
 
-    Container(CompressionType compression, std::vector<u8> data) : compression(compression), data(std::move(data)) {}
+    Container() : data() {}
+    Container(CompressionType compression, Vec<u8> data) : compression(compression), data(rs::move(data)) {}
 
     CompressionType compression;
-    std::vector<u8> data;
+    Vec<u8> data;
 };
 
 } // namespace rs
-

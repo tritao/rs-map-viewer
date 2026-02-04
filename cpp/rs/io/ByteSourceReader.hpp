@@ -1,53 +1,52 @@
 #pragma once
 
 #include <cstddef>
-#include <memory>
-#include <span>
-#include <vector>
 
-#include "ByteReader.hpp"
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
+#include "../core/Vec.hpp"
 #include "ByteSource.hpp"
 #include "Endian.hpp"
 
 namespace rs {
 
-class ByteSourceReader final : public ByteReader {
+class ByteSourceReader final {
 public:
-    explicit ByteSourceReader(ByteSourcePtr source, std::size_t windowSize = 4096);
+    explicit ByteSourceReader(const ByteSource* source, std::size_t windowSize = 4096);
 
-    [[nodiscard]] std::size_t tell() const override { return position_; }
-    void seek(std::size_t position) override;
-    void skip(std::size_t amount) override;
+    [[nodiscard]] std::size_t tell() const noexcept { return position_; }
+    Status seek(std::size_t position) noexcept;
+    Status skip(std::size_t amount) noexcept;
 
-    [[nodiscard]] std::size_t remaining() const override;
+    [[nodiscard]] std::size_t remaining() const noexcept;
 
-    [[nodiscard]] i8 peekByte() override;
-    [[nodiscard]] u8 peekUnsignedByte() override;
+    Status peekByte(i8* out) noexcept;
+    Status peekUnsignedByte(u8* out) noexcept;
 
-    [[nodiscard]] i8 readByte() override;
-    [[nodiscard]] u8 readUnsignedByte() override;
-    [[nodiscard]] i16 readShort() override;
-    [[nodiscard]] u16 readUnsignedShort() override;
-    [[nodiscard]] u32 readMedium() override;
-    [[nodiscard]] i32 readInt() override;
-    [[nodiscard]] u32 readUnsignedInt() override;
+    Status readByte(i8* out) noexcept;
+    Status readUnsignedByte(u8* out) noexcept;
+    Status readShort(i16* out) noexcept;
+    Status readUnsignedShort(u16* out) noexcept;
+    Status readMedium(u32* out) noexcept;
+    Status readInt(i32* out) noexcept;
+    Status readUnsignedInt(u32* out) noexcept;
 
-    [[nodiscard]] i32 readBigSmart() override;
+    Status readBigSmart(i32* out) noexcept;
 
-    [[nodiscard]] std::span<const u8> readBytes(std::size_t amount) override;
-    void readBytesInto(u8* target, std::size_t length) override;
+    Status readBytes(std::size_t amount, Span<const u8>* out) noexcept;
+    Status readBytesInto(Span<u8> target) noexcept;
 
 private:
-    ByteSourcePtr source_;
+    const ByteSource* source_ = nullptr;
     std::size_t position_ = 0;
 
     std::size_t windowStart_ = 0;
     std::size_t windowEnd_ = 0;
-    std::vector<u8> window_;
+    Vec<u8> window_;
 
-    std::vector<u8> owned_;
+    Vec<u8> owned_;
 
-    void ensure(std::size_t amount);
+    Status ensure(std::size_t amount) noexcept;
 };
 
 } // namespace rs

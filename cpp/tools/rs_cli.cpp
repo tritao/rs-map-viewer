@@ -16,14 +16,20 @@
 #include <utility>
 #include <vector>
 
+#include "../rs/cache/ArchiveMeta.hpp"
 #include "../rs/cache/Dat2CacheIndex.hpp"
 #include "../rs/cache/format/Archive.hpp"
+#include "../rs/cache/format/ArchiveFile.hpp"
 #include "../rs/cache/format/Container.hpp"
 #include "../rs/cache/store/DatLayout.hpp"
 #include "../rs/cache/store/SectorChainStore.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
+#include "../rs/core/Allocator.hpp"
+#include "../rs/core/Result.hpp"
+#include "../rs/core/Span.hpp"
+#include "../rs/core/Status.hpp"
+#include "../rs/core/Vec.hpp"
 #include "../rs/io/ByteSource.hpp"
-#include "../rs/io/ByteSourceUtil.hpp"
 #include "../rs/io/FileByteSource.hpp"
 #include "../rs/io/Uint8ArrayByteSource.hpp"
 #include "../rs/types.hpp"
@@ -264,6 +270,7 @@ static int cmdParity(int argc, char** argv) {
     const ParityArgs args = parseParityArgs(argc, argv);
     const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
 
+    rs::Allocator& alloc = rs::defaultAllocator();
     rs::NativeCompressionHandler compression;
 
     std::vector<int> selectedIndexIds;
@@ -325,48 +332,49 @@ static int cmdParity(int argc, char** argv) {
             maxIdx = 4; // DAT_INDEX_COUNT = 5 (idx0..idx4)
         }
 
-        std::vector<std::optional<rs::ByteSourcePtr>> indexFiles;
-        indexFiles.resize(static_cast<std::size_t>(maxIdx + 1));
+        std::vector<std::unique_ptr<rs::ByteSource>> ownedSources;
+        std::vector<std::shared_ptr<std::vector<rs::u8>>> ownedBuffers;
 
-        rs::ByteSourcePtr dataSrc;
-        std::optional<rs::ByteSourcePtr> metaSrc;
-        if (isDat2) {
-            metaSrc = args.fileBacked ? std::make_shared<rs::FileByteSource>(metaPath.string())
-                                      : rs::ByteSourcePtr(std::make_shared<rs::Uint8ArrayByteSource>(readFileBytes(metaPath)));
-        } else {
-            metaSrc = std::nullopt;
+        auto addSource = [&](const fs::path& p) -> const rs::ByteSource* {
+            if (args.fileBacked) {
+                const std::string pathStr = p.string();
+                auto opened = rs::FileByteSource::open(pathStr.c_str());
+                if (!opened.isOk()) {
+                    throw std::runtime_error("Failed to open file: " + pathStr);
+                }
+                ownedSources.push_back(std::make_unique<rs::FileByteSource>(std::move(opened.value())));
+                return ownedSources.back().get();
+            }
+
+            auto bytes = readFileBytes(p);
+            ownedBuffers.push_back(bytes);
+            ownedSources.push_back(std::make_unique<rs::Uint8ArrayByteSource>(bytes->data(), bytes->size()));
+            return ownedSources.back().get();
+        };
+
+        rs::Vec<const rs::ByteSource*> indexFiles(rs::defaultAllocator());
+        if (!indexFiles.resize(static_cast<std::size_t>(maxIdx + 1)).isOk()) {
+            throw std::runtime_error("Out of memory");
+        }
+        for (std::size_t i = 0; i < indexFiles.size(); i++) {
+            indexFiles[i] = nullptr;
         }
 
-        if (args.fileBacked) {
-            dataSrc = std::make_shared<rs::FileByteSource>(dataPath.string());
-            for (int i = 0; i <= maxIdx; i++) {
-                const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
-                if (!fileExists(idxPath)) {
-                    if (!isDat2) {
-                        throw std::runtime_error("Missing dat idx file: " + idxPath.string());
-                    }
-                    continue;
-                }
-                indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::FileByteSource>(idxPath.string());
-            }
-        } else {
-            auto dataBytes = readFileBytes(dataPath);
-            dataSrc = std::make_shared<rs::Uint8ArrayByteSource>(dataBytes);
+        const rs::ByteSource* dataSrc = addSource(dataPath);
+        const rs::ByteSource* metaSrc = isDat2 ? addSource(metaPath) : nullptr;
 
-            for (int i = 0; i <= maxIdx; i++) {
-                const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
-                if (!fileExists(idxPath)) {
-                    if (!isDat2) {
-                        throw std::runtime_error("Missing dat idx file: " + idxPath.string());
-                    }
-                    continue;
+        for (int i = 0; i <= maxIdx; i++) {
+            const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(i));
+            if (!fileExists(idxPath)) {
+                if (!isDat2) {
+                    throw std::runtime_error("Missing dat idx file: " + idxPath.string());
                 }
-                auto idxBytes = readFileBytes(idxPath);
-                indexFiles[static_cast<std::size_t>(i)] = std::make_shared<rs::Uint8ArrayByteSource>(idxBytes);
+                continue;
             }
+            indexFiles[static_cast<std::size_t>(i)] = addSource(idxPath);
         }
 
-        rs::SectorChainStore store(dataSrc, indexFiles, metaSrc);
+        rs::SectorChainStore store(dataSrc, std::move(indexFiles), metaSrc);
 
         if (!args.indices.empty()) {
             selectedIndexIds = args.indices;
@@ -381,16 +389,25 @@ static int cmdParity(int argc, char** argv) {
         }
 
         for (const int indexId : selectedIndexIds) {
-            const auto idxSizeOpt = store.getIndexFileSize(indexId);
-            if (!idxSizeOpt) {
+            std::size_t idxSize = 0;
+            const rs::Status idxStatus = store.getIndexFileSize(indexId, &idxSize);
+            if (!rs::ok(idxStatus)) {
                 continue;
             }
 
             if (isDat2) {
-                const rs::Dat2CacheIndex index = rs::Dat2CacheIndex::fromDat2Store(indexId, store, compression);
+                auto indexRes = rs::Dat2CacheIndex::fromDat2Store(indexId, store, compression, alloc);
+                if (!indexRes.isOk()) {
+                    continue;
+                }
+                const rs::Dat2CacheIndex index = std::move(indexRes.value());
+
                 std::vector<int> archiveIds;
-                archiveIds.reserve(index.getArchiveIds().size());
-                for (const rs::i32 a : index.getArchiveIds()) {
+                const rs::Span<const rs::i32> ids = index.archiveIds();
+                archiveIds.reserve(ids.size());
+                for (std::size_t i = 0; i < ids.size(); i++) {
+                    const rs::i32 a = ids[i];
+                    if (a < 0) continue;
                     archiveIds.push_back(static_cast<int>(a));
                 }
                 std::sort(archiveIds.begin(), archiveIds.end());
@@ -399,13 +416,9 @@ static int cmdParity(int argc, char** argv) {
                 }
 
                 for (const int archiveId : archiveIds) {
-                    rs::ByteSourcePtr rawSource = store.openArchiveReader(indexId, archiveId);
-                    if (!rawSource || rawSource->size() == 0) {
-                        continue;
-                    }
-
-                    std::vector<rs::u8> raw = rs::readAllBytes(*rawSource);
-                    if (raw.empty()) {
+                    rs::Vec<rs::u8> raw(alloc);
+                    const rs::Status readStatus = store.readArchive(indexId, archiveId, &raw);
+                    if (!rs::ok(readStatus) || raw.size() == 0) {
                         continue;
                     }
 
@@ -415,19 +428,27 @@ static int cmdParity(int argc, char** argv) {
                     e.rawLen = raw.size();
                     e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
-                    auto rawOwned = std::make_shared<std::vector<rs::u8>>(std::move(raw));
-                    rs::ByteSourcePtr rawBytes = std::make_shared<rs::Uint8ArrayByteSource>(rawOwned);
-                    rs::Container container = rs::Container::decodeFromSource(*rawBytes, std::nullopt, compression);
+                    rs::Uint8ArrayByteSource rawBytes(raw.data(), raw.size());
+                    auto containerRes = rs::Container::decodeFromSource(rawBytes, nullptr, compression, alloc);
+                    if (!containerRes.isOk()) {
+                        continue;
+                    }
+                    rs::Container container = std::move(containerRes.value());
 
                     e.payloadLen = container.data.size();
                     e.payloadHash = h64Hex(rs::xxh64(container.data.data(), container.data.size()));
 
-                    const auto metaOpt = index.getArchiveMeta(archiveId);
-                    if (metaOpt) {
-                        auto payloadOwned = std::make_shared<std::vector<rs::u8>>(std::move(container.data));
-                        rs::ByteSourcePtr payloadBytes = std::make_shared<rs::Uint8ArrayByteSource>(payloadOwned);
-                        rs::Archive archive = rs::Archive::decodeFromSource(*metaOpt, *payloadBytes);
-                        for (const auto& f : archive.files()) {
+                    rs::ArchiveMeta meta;
+                    if (rs::ok(index.getArchiveMeta(archiveId, &meta))) {
+                        rs::Uint8ArrayByteSource payloadBytes(container.data.data(), container.data.size());
+                        auto archiveRes = rs::Archive::decodeFromSource(meta, payloadBytes, alloc);
+                        if (!archiveRes.isOk()) {
+                            continue;
+                        }
+                        rs::Archive archive = std::move(archiveRes.value());
+                        const rs::Span<const rs::ArchiveFile> fs = archive.files();
+                        for (std::size_t i = 0; i < fs.size(); i++) {
+                            const auto& f = fs[i];
                             ParityFileEntry fe;
                             fe.fileId = static_cast<int>(f.id);
                             fe.len = f.data.size();
@@ -443,17 +464,13 @@ static int cmdParity(int argc, char** argv) {
                 }
             } else {
                 // Dat: idx is 6-byte (size+sector). Archive ids are dense: 0..(idxSize/6)-1.
-                const std::size_t idxSize = *idxSizeOpt;
                 const std::size_t archiveCount = idxSize / rs::IDX_ENTRY_SIZE;
                 const std::size_t takeCount = std::min<std::size_t>(archiveCount, static_cast<std::size_t>(args.maxArchivesPerIndex));
 
                 for (std::size_t archiveId = 0; archiveId < takeCount; archiveId++) {
-                    rs::ByteSourcePtr rawSource = store.openArchiveReader(indexId, static_cast<int>(archiveId));
-                    if (!rawSource || rawSource->size() == 0) {
-                        continue;
-                    }
-                    std::vector<rs::u8> raw = rs::readAllBytes(*rawSource);
-                    if (raw.empty()) {
+                    rs::Vec<rs::u8> raw(alloc);
+                    const rs::Status readStatus = store.readArchive(indexId, static_cast<int>(archiveId), &raw);
+                    if (!rs::ok(readStatus) || raw.size() == 0) {
                         continue;
                     }
 
@@ -464,22 +481,27 @@ static int cmdParity(int argc, char** argv) {
                     e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
                     const bool multipleFiles = indexId == 0; // DatIndexId.configs
-                    try {
-                        rs::Archive archive =
-                            rs::Archive::decodeOld(static_cast<rs::i32>(archiveId), raw, multipleFiles, compression);
-                        for (const auto& f : archive.files()) {
-                            ParityFileEntry fe;
-                            fe.fileId = static_cast<int>(f.id);
-                            fe.len = f.data.size();
-                            fe.xxh64 = h64Hex(rs::xxh64(f.data.data(), f.data.size()));
-                            e.files.push_back(std::move(fe));
-                        }
-                        std::sort(e.files.begin(), e.files.end(),
-                                  [](const ParityFileEntry& a, const ParityFileEntry& b) { return a.fileId < b.fileId; });
-                    } catch (...) {
-                        // Some dat indices contain empty/truncated entries; skip them.
+                    auto archiveRes = rs::Archive::decodeOld(
+                        static_cast<rs::i32>(archiveId),
+                        rs::Span<const rs::u8>(raw.data(), raw.size()),
+                        multipleFiles,
+                        compression,
+                        alloc);
+                    if (!archiveRes.isOk()) {
                         continue;
                     }
+                    rs::Archive archive = std::move(archiveRes.value());
+                    const rs::Span<const rs::ArchiveFile> fs = archive.files();
+                    for (std::size_t i = 0; i < fs.size(); i++) {
+                        const auto& f = fs[i];
+                        ParityFileEntry fe;
+                        fe.fileId = static_cast<int>(f.id);
+                        fe.len = f.data.size();
+                        fe.xxh64 = h64Hex(rs::xxh64(f.data.data(), f.data.size()));
+                        e.files.push_back(std::move(fe));
+                    }
+                    std::sort(e.files.begin(), e.files.end(),
+                              [](const ParityFileEntry& a, const ParityFileEntry& b) { return a.fileId < b.fileId; });
 
                     entries.push_back(std::move(e));
                 }
@@ -556,8 +578,19 @@ static int cmdParity(int argc, char** argv) {
                 e.rawLen = raw.size();
                 e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
-                rs::Archive archive = rs::Archive::decodeOld(0, raw, true, compression);
-                for (const auto& f : archive.files()) {
+                auto archiveRes = rs::Archive::decodeOld(
+                    0,
+                    rs::Span<const rs::u8>(raw.data(), raw.size()),
+                    true,
+                    compression,
+                    alloc);
+                if (!archiveRes.isOk()) {
+                    continue;
+                }
+                rs::Archive archive = std::move(archiveRes.value());
+                const rs::Span<const rs::ArchiveFile> fs = archive.files();
+                for (std::size_t i = 0; i < fs.size(); i++) {
+                    const auto& f = fs[i];
                     ParityFileEntry fe;
                     fe.fileId = static_cast<int>(f.id);
                     fe.len = f.data.size();
@@ -592,9 +625,20 @@ static int cmdParity(int argc, char** argv) {
                     e.rawLen = raw.size();
                     e.rawHash = h64Hex(rs::xxh64(raw.data(), raw.size()));
 
-                    rs::Archive archive = rs::Archive::create(static_cast<rs::i32>(archiveId),
-                                                              std::vector<rs::u8>(raw.begin(), raw.end()));
-                    for (const auto& f : archive.files()) {
+                    rs::Vec<rs::u8> data(alloc);
+                    if (!data.resize(raw.size()).isOk()) {
+                        continue;
+                    }
+                    std::memcpy(data.data(), raw.data(), raw.size());
+
+                    auto archiveRes = rs::Archive::create(static_cast<rs::i32>(archiveId), std::move(data), alloc);
+                    if (!archiveRes.isOk()) {
+                        continue;
+                    }
+                    rs::Archive archive = std::move(archiveRes.value());
+                    const rs::Span<const rs::ArchiveFile> fs = archive.files();
+                    for (std::size_t i = 0; i < fs.size(); i++) {
+                        const auto& f = fs[i];
                         ParityFileEntry fe;
                         fe.fileId = static_cast<int>(f.id);
                         fe.len = f.data.size();

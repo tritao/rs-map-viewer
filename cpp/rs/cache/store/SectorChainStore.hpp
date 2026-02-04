@@ -1,10 +1,10 @@
 #pragma once
 
-#include <optional>
-#include <vector>
+#include <cstddef>
 
+#include "../../core/Status.hpp"
+#include "../../core/Vec.hpp"
 #include "../../io/ByteSource.hpp"
-#include "../../io/ByteSourceAccess.hpp"
 #include "CacheStore.hpp"
 
 namespace rs {
@@ -12,29 +12,34 @@ namespace rs {
 class SectorChainStore final : public CacheStore {
 public:
     SectorChainStore(
-        ByteSourcePtr dataFile,
-        std::vector<std::optional<ByteSourcePtr>> indexFiles,
-        std::optional<ByteSourcePtr> metaFile);
+        const ByteSource* dataFile,
+        Vec<const ByteSource*> indexFiles,
+        const ByteSource* metaFile) noexcept;
 
-    [[nodiscard]] std::optional<std::size_t> getIndexFileSize(i32 indexId) const override;
-    [[nodiscard]] ByteSourcePtr openArchiveReader(i32 indexId, i32 archiveId) const override;
+    Status getIndexFileSize(i32 indexId, std::size_t* outSize) const noexcept override;
+    Status readArchive(i32 indexId, i32 archiveId, Vec<u8>* out) const noexcept override;
 
 private:
-    ByteSourcePtr dataFile_;
-    std::vector<std::optional<ByteSourcePtr>> indexFiles_;
-    std::optional<ByteSourcePtr> metaFile_;
+    const ByteSource* dataFile_ = nullptr;
+    Vec<const ByteSource*> indexFiles_;
+    const ByteSource* metaFile_ = nullptr;
 
-    const ByteSource* getIndexFile(i32 indexId) const;
-    [[nodiscard]] i32 getSectorIndexId(i32 indexId) const;
+    const ByteSource* getIndexFile(i32 indexId) const noexcept;
+    [[nodiscard]] i32 getSectorIndexId(i32 indexId) const noexcept;
 
     struct SectorCluster {
         u32 size = 0;
         u32 sector = 0;
     };
 
-    SectorCluster readSectorCluster(const ByteSource& indexFile, i32 indexId, i32 archiveId) const;
-    std::vector<u32> walkSectorChain(i32 sectorIndexId, u32 archiveId, u32 firstSectorId, u32 totalSize, bool extended) const;
+    Status readSectorCluster(const ByteSource& indexFile, i32 archiveId, SectorCluster* out) const noexcept;
+    Status walkSectorChain(
+        i32 sectorIndexId,
+        u32 archiveId,
+        u32 firstSectorId,
+        u32 totalSize,
+        bool extended,
+        Vec<u32>* outSectorIds) const noexcept;
 };
 
 } // namespace rs
-

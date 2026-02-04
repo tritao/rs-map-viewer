@@ -1,11 +1,9 @@
 #include "Xtea.hpp"
 
-#include <array>
 #include <cstddef>
-#include <optional>
-#include <span>
-#include <stdexcept>
 
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
 #include "../io/Endian.hpp"
 #include "../types.hpp"
 
@@ -15,17 +13,23 @@ static u32 mulU32(u32 a, u32 b) {
     return static_cast<u32>(static_cast<u64>(a) * static_cast<u64>(b));
 }
 
-bool Xtea::isValidKey(const std::optional<std::array<u32, 4>>& key) {
+bool Xtea::isValidKey(const XteaKey* key) noexcept {
     if (!key) {
         return false;
     }
-    const auto& k = *key;
+    const u32* k = key->k;
     return !(k[0] == 0 && k[1] == 0 && k[2] == 0 && k[3] == 0);
 }
 
-void Xtea::decryptInPlace(std::span<u8> data, std::size_t start, std::size_t end, const std::array<u32, 4>& key) {
-    if (start > end || end > data.size()) {
-        throw std::out_of_range("Xtea: invalid range");
+Status Xtea::decryptInPlace(Span<u8> data, std::size_t start, std::size_t end, const XteaKey& key) noexcept {
+    if (start > end) {
+        return Status::InvalidArgument;
+    }
+    if (end > data.size()) {
+        return Status::OutOfRange;
+    }
+    if (((end - start) & 7u) != 0u) {
+        return Status::BadFormat;
     }
 
     const std::size_t n = (end - start) / 8;
@@ -40,20 +44,22 @@ void Xtea::decryptInPlace(std::span<u8> data, std::size_t start, std::size_t end
         for (int j = 0; j < ROUNDS; j++) {
             // v1 -= (((v0<<4 ^ v0>>>5) + v0) ^ (sum + key[(sum>>>11)&3]))
             const u32 v0Mix = ((v0 << 4) ^ (v0 >> 5)) + v0;
-            const u32 k1 = key[(sum >> 11) & 3u];
+            const u32 k1 = key.k[(sum >> 11) & 3u];
             v1 -= (v0Mix ^ (sum + k1));
 
             sum -= static_cast<u32>(GOLDEN_RATIO);
 
             // v0 -= (((v1<<4 ^ v1>>>5) + v1) ^ (sum + key[sum&3]))
             const u32 v1Mix = ((v1 << 4) ^ (v1 >> 5)) + v1;
-            const u32 k2 = key[sum & 3u];
+            const u32 k2 = key.k[sum & 3u];
             v0 -= (v1Mix ^ (sum + k2));
         }
 
         writeU32BE(data.data() + off, v0);
         writeU32BE(data.data() + off + 4, v1);
     }
+
+    return Status::Ok;
 }
 
 } // namespace rs

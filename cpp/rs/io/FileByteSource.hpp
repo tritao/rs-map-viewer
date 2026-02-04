@@ -1,32 +1,36 @@
 #pragma once
 
-#include <memory>
-#include <optional>
-#include <span>
-#include <string>
+#include <cstddef>
 
+#include "../core/Result.hpp"
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
 #include "ByteSource.hpp"
 
 namespace rs {
 
-class FileByteSource final : public ByteSource, public std::enable_shared_from_this<FileByteSource> {
+class FileByteSource final : public ByteSource {
 public:
-    explicit FileByteSource(std::string path);
+    static Result<FileByteSource> open(const char* path) noexcept;
+
+    FileByteSource() = default;
     ~FileByteSource() override;
 
     FileByteSource(const FileByteSource&) = delete;
     FileByteSource& operator=(const FileByteSource&) = delete;
 
-    [[nodiscard]] std::size_t size() const override { return size_; }
-    [[nodiscard]] ByteSourcePtr slice(std::size_t start, std::size_t size) const override;
-    void readInto(std::size_t offset, u8* target, std::size_t length) const override;
-    [[nodiscard]] std::optional<std::span<const u8>> tryGetUint8ArrayView() const override { return std::nullopt; }
+    FileByteSource(FileByteSource&& other) noexcept;
+    FileByteSource& operator=(FileByteSource&& other) noexcept;
+
+    [[nodiscard]] std::size_t size() const noexcept override { return size_; }
+    Status readInto(std::size_t offset, Span<u8> target) const noexcept override;
+    [[nodiscard]] bool tryGetView(Span<const u8>*) const noexcept override { return false; }
 
 private:
-    std::string path_;
+    explicit FileByteSource(int fd, std::size_t size) noexcept : fd_(fd), size_(size) {}
+
     int fd_ = -1;
     std::size_t size_ = 0;
 };
 
 } // namespace rs
-

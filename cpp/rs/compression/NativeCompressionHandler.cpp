@@ -2,13 +2,16 @@
 
 #include <cstddef>
 #include <cstring>
-#include <span>
-#include <stdexcept>
-#include <vector>
 
 #include "../../third_party/bzip2/bzlib.h"
 #include "../../third_party/miniz/miniz_tinfl.h"
 
+#include "../core/Allocator.hpp"
+#include "../core/Move.hpp"
+#include "../core/Result.hpp"
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
+#include "../core/Vec.hpp"
 #include "../types.hpp"
 
 namespace rs {
@@ -62,19 +65,19 @@ static u32 crc32(const u8* data, std::size_t len) {
     return c ^ 0xFFFFFFFFu;
 }
 
-std::vector<u8> NativeCompressionHandler::decompressGzip(std::span<const u8> input) const {
+Result<Vec<u8>> NativeCompressionHandler::decompressGzip(Span<const u8> input, Allocator& alloc) const noexcept {
     // Keep this relatively low for wasm/fuzz-safety. Can be raised if we see real cache data exceed it.
     static constexpr std::size_t MAX_GZIP_OUTPUT_BYTES = 256u * 1024u * 1024u;
 
     // gzip format: RFC1952
     if (input.size() < 18) {
-        throw std::runtime_error("Gzip: truncated input");
+        return Result<Vec<u8>>::err(Status::Truncated);
     }
     if (input[0] != 0x1F || input[1] != 0x8B) {
-        throw std::runtime_error("Gzip: invalid magic");
+        return Result<Vec<u8>>::err(Status::BadFormat);
     }
     if (input[2] != 8) {
-        throw std::runtime_error("Gzip: unsupported compression method");
+        return Result<Vec<u8>>::err(Status::Unsupported);
     }
 
     const u8 flg = input[3];
@@ -84,12 +87,12 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(std::span<const u8> inp
     // FEXTRA
     if (flg & 0x04) {
         if (off + 2 > input.size()) {
-            throw std::runtime_error("Gzip: truncated FEXTRA");
+            return Result<Vec<u8>>::err(Status::Truncated);
         }
         const u16 xlen = static_cast<u16>(input[off] | (static_cast<u16>(input[off + 1]) << 8));
         off += 2;
         if (off + xlen > input.size()) {
-            throw std::runtime_error("Gzip: truncated FEXTRA data");
+            return Result<Vec<u8>>::err(Status::Truncated);
         }
         off += xlen;
     }
@@ -100,7 +103,7 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(std::span<const u8> inp
             off++;
         }
         if (off >= input.size()) {
-            throw std::runtime_error("Gzip: unterminated FNAME");
+            return Result<Vec<u8>>::err(Status::Truncated);
         }
         off++;
     }
@@ -111,7 +114,7 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(std::span<const u8> inp
             off++;
         }
         if (off >= input.size()) {
-            throw std::runtime_error("Gzip: unterminated FCOMMENT");
+            return Result<Vec<u8>>::err(Status::Truncated);
         }
         off++;
     }
@@ -119,61 +122,81 @@ std::vector<u8> NativeCompressionHandler::decompressGzip(std::span<const u8> inp
     // FHCRC
     if (flg & 0x02) {
         if (off + 2 > input.size()) {
-            throw std::runtime_error("Gzip: truncated FHCRC");
+            return Result<Vec<u8>>::err(Status::Truncated);
         }
         off += 2;
     }
 
     if (off >= input.size() || input.size() < off + 8) {
-        throw std::runtime_error("Gzip: truncated");
+        return Result<Vec<u8>>::err(Status::Truncated);
     }
 
     const std::size_t trailerOff = input.size() - 8;
     if (trailerOff <= off) {
-        throw std::runtime_error("Gzip: invalid offsets");
+        return Result<Vec<u8>>::err(Status::BadFormat);
     }
 
     const u32 expectedCrc = readU32LE(input.data() + trailerOff);
     const u32 expectedISize = readU32LE(input.data() + trailerOff + 4);
     const std::size_t outSize = static_cast<std::size_t>(expectedISize);
     if (outSize > MAX_GZIP_OUTPUT_BYTES) {
-        throw std::runtime_error("Gzip: output too large");
+        return Result<Vec<u8>>::err(Status::OutOfRange);
     }
 
     const void* deflateBuf = static_cast<const void*>(input.data() + off);
     const std::size_t deflateLen = trailerOff - off;
 
-    std::vector<u8> out;
-    out.resize(outSize);
+    Vec<u8> out(alloc);
+    auto resizeRes = out.resize(outSize);
+    if (!resizeRes.isOk()) {
+        return Result<Vec<u8>>::err(resizeRes.status());
+    }
 
     const std::size_t wrote = tinfl_decompress_mem_to_mem(out.data(), out.size(), deflateBuf, deflateLen, 0);
     if (wrote == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED) {
-        throw std::runtime_error("Gzip: decompression failed");
+        return Result<Vec<u8>>::err(Status::DecompressFailed);
     }
     if (wrote != out.size()) {
-        throw std::runtime_error("Gzip: size mismatch");
+        return Result<Vec<u8>>::err(Status::SizeMismatch);
     }
 
     const u32 actualCrc = crc32(out.data(), out.size());
     if (expectedCrc != actualCrc) {
-        throw std::runtime_error("Gzip: checksum mismatch");
+        return Result<Vec<u8>>::err(Status::ChecksumMismatch);
     }
-    return out;
+    return Result<Vec<u8>>::ok(rs::move(out));
 }
 
-std::vector<u8> NativeCompressionHandler::decompressBzip2(std::span<const u8> compressed, std::size_t actualSize) const {
+Result<Vec<u8>> NativeCompressionHandler::decompressBzip2(
+    Span<const u8> compressed,
+    std::size_t actualSize,
+    Allocator& alloc) const noexcept {
     // RuneScape cache bzip2 data is missing the "BZh1" header; add it.
     const u8 header[4] = {'B', 'Z', 'h', '1'};
 
-    std::vector<u8> combined;
-    combined.resize(4 + compressed.size());
+    if (compressed.size() > static_cast<std::size_t>(0xFFFF'FFFFu) - 4u) {
+        return Result<Vec<u8>>::err(Status::OutOfRange);
+    }
+
+    Vec<u8> combined(alloc);
+    auto combinedResize = combined.resize(4 + compressed.size());
+    if (!combinedResize.isOk()) {
+        return Result<Vec<u8>>::err(combinedResize.status());
+    }
     std::memcpy(combined.data(), header, 4);
     if (!compressed.empty()) {
         std::memcpy(combined.data() + 4, compressed.data(), compressed.size());
     }
 
-    std::vector<u8> out;
-    out.resize(actualSize);
+    if (actualSize > static_cast<std::size_t>(0xFFFF'FFFFu)) {
+        return Result<Vec<u8>>::err(Status::OutOfRange);
+    }
+
+    Vec<u8> out(alloc);
+    auto outResize = out.resize(actualSize);
+    if (!outResize.isOk()) {
+        return Result<Vec<u8>>::err(outResize.status());
+    }
 
     unsigned int destLen = static_cast<unsigned int>(out.size());
     unsigned int srcLen = static_cast<unsigned int>(combined.size());
@@ -186,12 +209,12 @@ std::vector<u8> NativeCompressionHandler::decompressBzip2(std::span<const u8> co
         0,
         0);
     if (rc != BZ_OK) {
-        throw std::runtime_error("Bzip2: decompression failed");
+        return Result<Vec<u8>>::err(Status::DecompressFailed);
     }
     if (destLen != actualSize) {
-        throw std::runtime_error("Bzip2: size mismatch");
+        return Result<Vec<u8>>::err(Status::SizeMismatch);
     }
-    return out;
+    return Result<Vec<u8>>::ok(rs::move(out));
 }
 
 } // namespace rs

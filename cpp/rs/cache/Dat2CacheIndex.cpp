@@ -1,50 +1,46 @@
 #include "Dat2CacheIndex.hpp"
 
-#include <memory>
-#include <optional>
-#include <stdexcept>
-#include <utility>
-#include <vector>
-
+#include "../cache/format/Container.hpp"
+#include "../cache/store/CacheStore.hpp"
 #include "../compression/CompressionHandler.hpp"
-#include "../io/ByteSource.hpp"
+#include "../core/Allocator.hpp"
+#include "../core/Move.hpp"
+#include "../core/Result.hpp"
+#include "../core/Status.hpp"
+#include "../core/Vec.hpp"
 #include "../io/ByteSourceReader.hpp"
 #include "../io/Uint8ArrayByteSource.hpp"
 #include "../types.hpp"
-#include "format/Archive.hpp"
-#include "format/Container.hpp"
 #include "reference/ReferenceTable.hpp"
-#include "store/CacheStore.hpp"
 
 namespace rs {
 
-Dat2CacheIndex Dat2CacheIndex::fromDat2Store(i32 id, const CacheStore& store, const CompressionHandler& compressionHandler) {
-    const ByteSourcePtr metaSource = store.openArchiveReader(255, id);
-    if (!metaSource || metaSource->size() == 0) {
-        throw std::runtime_error("Dat2CacheIndex: meta source missing");
+Result<Dat2CacheIndex> Dat2CacheIndex::fromDat2Store(
+    i32 id,
+    const CacheStore& store,
+    const CompressionHandler& compressionHandler,
+    Allocator& alloc) noexcept {
+    Vec<u8> metaBytes(alloc);
+    const Status s = store.readArchive(255, id, &metaBytes);
+    if (!ok(s) || metaBytes.size() == 0) {
+        return Result<Dat2CacheIndex>::err(ok(s) ? Status::NotFound : s);
     }
 
-    Container container = Container::decodeFromSource(*metaSource, std::nullopt, compressionHandler);
-    auto tableBytes = std::make_shared<std::vector<u8>>(std::move(container.data));
-    ByteSourcePtr tableSource = std::make_shared<Uint8ArrayByteSource>(tableBytes);
-    ByteSourceReader reader(tableSource);
-    ReferenceTable table = ReferenceTable::decodeFromReader(reader);
-    return Dat2CacheIndex(id, std::move(table), store, compressionHandler);
-}
+    Uint8ArrayByteSource metaSource(metaBytes.data(), metaBytes.size());
+    auto containerRes = Container::decodeFromSource(metaSource, nullptr, compressionHandler, alloc);
+    if (!containerRes.isOk()) {
+        return Result<Dat2CacheIndex>::err(containerRes.status());
+    }
+    Container container = rs::move(containerRes.value());
 
-std::optional<ArchiveMeta> Dat2CacheIndex::getArchiveMeta(i32 archiveId) const {
-    const auto* ref = table_.getArchiveReference(archiveId);
-    if (!ref) {
-        return std::nullopt;
+    Uint8ArrayByteSource tableSource(container.data.data(), container.data.size());
+    ByteSourceReader reader(&tableSource);
+    auto tableRes = ReferenceTable::decodeFromReader(reader, alloc);
+    if (!tableRes.isOk()) {
+        return Result<Dat2CacheIndex>::err(tableRes.status());
     }
 
-    ArchiveMeta meta;
-    meta.id = ref->id;
-    meta.lastFileId = ref->lastFileId;
-    meta.fileCount = ref->fileCount;
-    meta.fileIds = ref->fileIds;
-    meta.fileNameHashes = ref->fileNameHashes;
-    return meta;
+    return Result<Dat2CacheIndex>::ok(Dat2CacheIndex(id, rs::move(tableRes.value()), store, compressionHandler));
 }
 
 } // namespace rs

@@ -1,48 +1,33 @@
 #include "Uint8ArrayByteSource.hpp"
 
 #include <cstring>
-#include <memory>
-#include <optional>
-#include <span>
-#include <stdexcept>
-#include <utility>
-#include <vector>
 
-#include "ByteSource.hpp"
-#include "ByteSourceSlice.hpp"
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
 #include "../types.hpp"
 
 namespace rs {
 
-Uint8ArrayByteSource::Uint8ArrayByteSource(std::shared_ptr<std::vector<u8>> bytes) : bytes_(std::move(bytes)) {
-    if (!bytes_) {
-        throw std::invalid_argument("Uint8ArrayByteSource: bytes is null");
+Status Uint8ArrayByteSource::readInto(std::size_t offset, Span<u8> target) const noexcept {
+    if (!data_ && size_ != 0) {
+        return Status::InvalidArgument;
     }
+    if (offset > size_ || target.size() > size_ - offset) {
+        return Status::OutOfRange;
+    }
+    if (target.size() == 0) {
+        return Status::Ok;
+    }
+    std::memcpy(target.data(), data_ + offset, target.size());
+    return Status::Ok;
 }
 
-std::size_t Uint8ArrayByteSource::size() const {
-    return bytes_->size();
-}
-
-ByteSourcePtr Uint8ArrayByteSource::slice(std::size_t start, std::size_t size) const {
-    return std::make_shared<ByteSourceSlice>(shared_from_this(), start, size);
-}
-
-void Uint8ArrayByteSource::readInto(std::size_t offset, u8* target, std::size_t length) const {
-    if (!target && length != 0) {
-        throw std::invalid_argument("Uint8ArrayByteSource: target is null");
+bool Uint8ArrayByteSource::tryGetView(Span<const u8>* out) const noexcept {
+    if (!out || (!data_ && size_ != 0)) {
+        return false;
     }
-    if (offset > bytes_->size() || length > bytes_->size() - offset) {
-        throw std::out_of_range("Uint8ArrayByteSource: read out of bounds");
-    }
-    if (length == 0) {
-        return;
-    }
-    std::memcpy(target, bytes_->data() + offset, length);
-}
-
-std::optional<std::span<const u8>> Uint8ArrayByteSource::tryGetUint8ArrayView() const {
-    return std::span<const u8>(bytes_->data(), bytes_->size());
+    *out = Span<const u8>(data_, size_);
+    return true;
 }
 
 } // namespace rs

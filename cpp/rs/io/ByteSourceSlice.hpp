@@ -1,23 +1,25 @@
 #pragma once
 
+#include <cstddef>
+
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
 #include "ByteSource.hpp"
 
 namespace rs {
 
 class ByteSourceSlice final : public ByteSource {
 public:
-    ByteSourceSlice(ByteSourcePtr source, std::size_t start, std::size_t size);
+    ByteSourceSlice(const ByteSource* source, std::size_t start, std::size_t size) noexcept;
 
-    [[nodiscard]] std::size_t size() const override { return size_; }
-    [[nodiscard]] ByteSourcePtr slice(std::size_t start, std::size_t size) const override;
-    void readInto(std::size_t offset, u8* target, std::size_t length) const override;
-    [[nodiscard]] std::optional<std::span<const u8>> tryGetUint8ArrayView() const override;
+    [[nodiscard]] std::size_t size() const noexcept override { return size_; }
+    Status readInto(std::size_t offset, Span<u8> target) const noexcept override;
+    [[nodiscard]] bool tryGetView(Span<const u8>* out) const noexcept override;
 
 private:
-    ByteSourcePtr source_;
+    const ByteSource* source_ = nullptr;
     std::size_t start_;
     std::size_t size_;
 };
 
 } // namespace rs
-

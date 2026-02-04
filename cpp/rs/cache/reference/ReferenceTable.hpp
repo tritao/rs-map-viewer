@@ -1,25 +1,28 @@
 #pragma once
 
 #include <cstddef>
-#include <optional>
-#include <vector>
 
-#include "../../io/ByteReader.hpp"
+#include "../../cache/ArchiveMeta.hpp"
+#include "../../core/Allocator.hpp"
+#include "../../core/Result.hpp"
+#include "../../core/Span.hpp"
+#include "../../core/Status.hpp"
+#include "../../core/Vec.hpp"
+#include "../../io/ByteSourceReader.hpp"
 #include "../../types.hpp"
-#include "ArchiveReference.hpp"
 
 namespace rs {
 
 class ReferenceTable {
 public:
-    static ReferenceTable decodeFromReader(ByteReader& reader);
+    static Result<ReferenceTable> decodeFromReader(ByteSourceReader& reader, Allocator& alloc) noexcept;
 
-    [[nodiscard]] bool archiveExists(i32 id) const;
-    [[nodiscard]] const ArchiveReference* getArchiveReference(i32 id) const;
+    [[nodiscard]] bool archiveExists(i32 id) const noexcept;
+    Status getArchiveMeta(i32 id, ArchiveMeta* out) const noexcept;
 
-    [[nodiscard]] const std::vector<i32>& archiveIds() const { return archiveIds_; }
-    [[nodiscard]] i32 archiveCount() const { return archiveCount_; }
-    [[nodiscard]] i32 lastArchiveId() const { return lastArchiveId_; }
+    [[nodiscard]] Span<const i32> archiveIds() const noexcept { return archiveIds_.span(); }
+    [[nodiscard]] i32 archiveCount() const noexcept { return archiveCount_; }
+    [[nodiscard]] i32 lastArchiveId() const noexcept { return lastArchiveId_; }
 
 private:
     i32 protocol_ = 0;
@@ -29,18 +32,11 @@ private:
     i32 archiveCount_ = 0;
     i32 lastArchiveId_ = 0;
 
-    std::vector<i32> archiveIds_;
-
-    std::vector<i32> archiveNameHashes_;
-    std::vector<std::vector<u8>> archiveWhirlpools_;
-    std::vector<i32> archiveCrcs_;
-    std::vector<i32> archiveRevisions_;
-    std::vector<i32> archiveFileCounts_;
-    std::vector<i32> archiveLastFileIds_;
-    std::vector<std::vector<i32>> archiveFileIds_;
-    std::vector<std::vector<i32>> archiveFileNameHashes_;
-
-    mutable std::vector<std::optional<ArchiveReference>> archiveReferenceCache_;
+    Vec<i32> archiveIds_;
+    Vec<i32> archiveFileCounts_;
+    Vec<i32> archiveLastFileIds_;
+    Vec<Vec<i32>> archiveFileIds_;
+    Vec<Vec<i32>> archiveFileNameHashes_;
 };
 
 } // namespace rs

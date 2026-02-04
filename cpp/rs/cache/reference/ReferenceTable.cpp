@@ -1,152 +1,281 @@
 #include "ReferenceTable.hpp"
 
-#include <algorithm>
 #include <cstddef>
-#include <stdexcept>
-#include <utility>
-#include <vector>
 
-#include "../../io/ByteReader.hpp"
+#include "../ArchiveMeta.hpp"
+#include "../../core/Allocator.hpp"
+#include "../../core/Move.hpp"
+#include "../../core/Result.hpp"
+#include "../../core/Span.hpp"
+#include "../../core/Status.hpp"
+#include "../../core/Vec.hpp"
+#include "../../io/ByteSourceReader.hpp"
 #include "../../types.hpp"
-#include "ArchiveReference.hpp"
 
 namespace rs {
 
-ReferenceTable ReferenceTable::decodeFromReader(ByteReader& reader) {
-    ReferenceTable t;
-
-    const u8 protocol = reader.readUnsignedByte();
-    if (protocol < 5 || protocol > 7) {
-        throw std::runtime_error("ReferenceTable: invalid protocol");
+static std::size_t lowerBoundIndex(Span<const i32> ids, i32 needle) noexcept {
+    std::size_t lo = 0;
+    std::size_t hi = ids.size();
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        if (ids[mid] < needle) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
     }
-    t.protocol_ = protocol;
-    t.revision_ = (protocol > 5) ? reader.readInt() : 0;
+    return lo;
+}
 
-    const u8 flag = reader.readUnsignedByte();
-    t.named_ = (flag & 0x1) != 0;
-    t.usesWhirlpool_ = (flag & 0x2) != 0;
+Result<ReferenceTable> ReferenceTable::decodeFromReader(ByteSourceReader& reader, Allocator& alloc) noexcept {
+    ReferenceTable t;
+    t.archiveIds_ = Vec<i32>(alloc);
+    t.archiveFileCounts_ = Vec<i32>(alloc);
+    t.archiveLastFileIds_ = Vec<i32>(alloc);
+    t.archiveFileIds_ = Vec<Vec<i32>>(alloc);
+    t.archiveFileNameHashes_ = Vec<Vec<i32>>(alloc);
 
-    const i32 archiveCount = (protocol == 7) ? reader.readBigSmart() : static_cast<i32>(reader.readUnsignedShort());
+    u8 protocolU8 = 0;
+    Status s = reader.readUnsignedByte(&protocolU8);
+    if (!ok(s)) {
+        return Result<ReferenceTable>::err(s);
+    }
+    if (protocolU8 < 5 || protocolU8 > 7) {
+        return Result<ReferenceTable>::err(Status::BadFormat);
+    }
+    t.protocol_ = static_cast<i32>(protocolU8);
+
+    if (protocolU8 > 5) {
+        i32 revision = 0;
+        s = reader.readInt(&revision);
+        if (!ok(s)) {
+            return Result<ReferenceTable>::err(s);
+        }
+        t.revision_ = revision;
+    } else {
+        t.revision_ = 0;
+    }
+
+    u8 flag = 0;
+    s = reader.readUnsignedByte(&flag);
+    if (!ok(s)) {
+        return Result<ReferenceTable>::err(s);
+    }
+    t.named_ = (flag & 0x1u) != 0;
+    t.usesWhirlpool_ = (flag & 0x2u) != 0;
+
+    i32 archiveCount = 0;
+    if (protocolU8 == 7) {
+        s = reader.readBigSmart(&archiveCount);
+        if (!ok(s)) {
+            return Result<ReferenceTable>::err(s);
+        }
+    } else {
+        u16 v = 0;
+        s = reader.readUnsignedShort(&v);
+        if (!ok(s)) {
+            return Result<ReferenceTable>::err(s);
+        }
+        archiveCount = static_cast<i32>(v);
+    }
+    if (archiveCount < 0) {
+        return Result<ReferenceTable>::err(Status::BadFormat);
+    }
     t.archiveCount_ = archiveCount;
 
-    t.archiveIds_.resize(static_cast<std::size_t>(archiveCount));
+    auto r = t.archiveIds_.resize(static_cast<std::size_t>(archiveCount));
+    if (!r.isOk()) {
+        return Result<ReferenceTable>::err(r.status());
+    }
 
     i32 lastArchiveId = 0;
-    if (protocol == 7) {
+    if (protocolU8 == 7) {
         for (i32 i = 0; i < archiveCount; i++) {
-            lastArchiveId += reader.readBigSmart();
+            i32 delta = 0;
+            s = reader.readBigSmart(&delta);
+            if (!ok(s)) {
+                return Result<ReferenceTable>::err(s);
+            }
+            lastArchiveId += delta;
             t.archiveIds_[static_cast<std::size_t>(i)] = lastArchiveId;
         }
     } else {
         for (i32 i = 0; i < archiveCount; i++) {
-            lastArchiveId += static_cast<i32>(reader.readUnsignedShort());
+            u16 delta = 0;
+            s = reader.readUnsignedShort(&delta);
+            if (!ok(s)) {
+                return Result<ReferenceTable>::err(s);
+            }
+            lastArchiveId += static_cast<i32>(delta);
             t.archiveIds_[static_cast<std::size_t>(i)] = lastArchiveId;
         }
     }
     t.lastArchiveId_ = lastArchiveId;
 
-    t.archiveNameHashes_.assign(static_cast<std::size_t>(archiveCount), 0);
+    // Optional archive name hashes (unused by our current model, but must consume).
     if (t.named_) {
         for (i32 i = 0; i < archiveCount; i++) {
-            t.archiveNameHashes_[static_cast<std::size_t>(i)] = reader.readInt();
-        }
-    }
-
-    t.archiveWhirlpools_.resize(static_cast<std::size_t>(archiveCount));
-    if (t.usesWhirlpool_) {
-        for (i32 i = 0; i < archiveCount; i++) {
-            auto& dst = t.archiveWhirlpools_[static_cast<std::size_t>(i)];
-            dst.resize(64);
-            reader.readBytesInto(dst.data(), dst.size());
-        }
-    }
-
-    t.archiveCrcs_.assign(static_cast<std::size_t>(archiveCount), 0);
-    for (i32 i = 0; i < archiveCount; i++) {
-        t.archiveCrcs_[static_cast<std::size_t>(i)] = reader.readInt();
-    }
-
-    t.archiveRevisions_.assign(static_cast<std::size_t>(archiveCount), 0);
-    for (i32 i = 0; i < archiveCount; i++) {
-        t.archiveRevisions_[static_cast<std::size_t>(i)] = reader.readInt();
-    }
-
-    t.archiveFileCounts_.assign(static_cast<std::size_t>(archiveCount), 0);
-    for (i32 i = 0; i < archiveCount; i++) {
-        t.archiveFileCounts_[static_cast<std::size_t>(i)] =
-            (protocol == 7) ? reader.readBigSmart() : static_cast<i32>(reader.readUnsignedShort());
-    }
-
-    t.archiveFileIds_.resize(static_cast<std::size_t>(archiveCount));
-    t.archiveLastFileIds_.assign(static_cast<std::size_t>(archiveCount), 0);
-
-    for (i32 i = 0; i < archiveCount; i++) {
-        t.archiveFileIds_[static_cast<std::size_t>(i)].assign(
-            static_cast<std::size_t>(t.archiveFileCounts_[static_cast<std::size_t>(i)]),
-            0);
-    }
-
-    for (i32 archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
-        i32 lastFileId = 0;
-        const i32 fileCount = t.archiveFileCounts_[static_cast<std::size_t>(archiveIdx)];
-        for (i32 fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-            lastFileId += (protocol == 7) ? reader.readBigSmart() : static_cast<i32>(reader.readUnsignedShort());
-            t.archiveFileIds_[static_cast<std::size_t>(archiveIdx)][static_cast<std::size_t>(fileIdx)] = lastFileId;
-        }
-        t.archiveLastFileIds_[static_cast<std::size_t>(archiveIdx)] = lastFileId;
-    }
-
-    if (t.named_) {
-        t.archiveFileNameHashes_.resize(static_cast<std::size_t>(archiveCount));
-        for (i32 i = 0; i < archiveCount; i++) {
-            t.archiveFileNameHashes_[static_cast<std::size_t>(i)].assign(
-                static_cast<std::size_t>(t.archiveFileCounts_[static_cast<std::size_t>(i)]),
-                0);
-        }
-        for (i32 archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
-            const i32 fileCount = t.archiveFileCounts_[static_cast<std::size_t>(archiveIdx)];
-            for (i32 fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                t.archiveFileNameHashes_[static_cast<std::size_t>(archiveIdx)][static_cast<std::size_t>(fileIdx)] =
-                    reader.readInt();
+            i32 ignore = 0;
+            s = reader.readInt(&ignore);
+            if (!ok(s)) {
+                return Result<ReferenceTable>::err(s);
             }
         }
     }
 
-    return t;
+    // Optional whirlpool digests (unused by our current model, but must consume).
+    if (t.usesWhirlpool_) {
+        u8 tmp[64];
+        for (i32 i = 0; i < archiveCount; i++) {
+            s = reader.readBytesInto(Span<u8>(tmp, sizeof(tmp)));
+            if (!ok(s)) {
+                return Result<ReferenceTable>::err(s);
+            }
+        }
+    }
+
+    // CRCs (unused) + revisions (unused).
+    for (i32 i = 0; i < archiveCount; i++) {
+        i32 ignore = 0;
+        s = reader.readInt(&ignore);
+        if (!ok(s)) {
+            return Result<ReferenceTable>::err(s);
+        }
+    }
+    for (i32 i = 0; i < archiveCount; i++) {
+        i32 ignore = 0;
+        s = reader.readInt(&ignore);
+        if (!ok(s)) {
+            return Result<ReferenceTable>::err(s);
+        }
+    }
+
+    r = t.archiveFileCounts_.resize(static_cast<std::size_t>(archiveCount));
+    if (!r.isOk()) {
+        return Result<ReferenceTable>::err(r.status());
+    }
+    r = t.archiveLastFileIds_.resize(static_cast<std::size_t>(archiveCount));
+    if (!r.isOk()) {
+        return Result<ReferenceTable>::err(r.status());
+    }
+    r = t.archiveFileIds_.resize(static_cast<std::size_t>(archiveCount));
+    if (!r.isOk()) {
+        return Result<ReferenceTable>::err(r.status());
+    }
+    if (t.named_) {
+        r = t.archiveFileNameHashes_.resize(static_cast<std::size_t>(archiveCount));
+        if (!r.isOk()) {
+            return Result<ReferenceTable>::err(r.status());
+        }
+    }
+
+    for (i32 i = 0; i < archiveCount; i++) {
+        i32 fileCount = 0;
+        if (protocolU8 == 7) {
+            s = reader.readBigSmart(&fileCount);
+        } else {
+            u16 v = 0;
+            s = reader.readUnsignedShort(&v);
+            fileCount = static_cast<i32>(v);
+        }
+        if (!ok(s)) {
+            return Result<ReferenceTable>::err(s);
+        }
+        if (fileCount < 0) {
+            return Result<ReferenceTable>::err(Status::BadFormat);
+        }
+        t.archiveFileCounts_[static_cast<std::size_t>(i)] = fileCount;
+    }
+
+    // File ids per archive (delta-coded).
+    for (i32 archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
+        const std::size_t a = static_cast<std::size_t>(archiveIdx);
+        const i32 fileCount = t.archiveFileCounts_[a];
+
+        Vec<i32> ids(alloc);
+        r = ids.resize(static_cast<std::size_t>(fileCount));
+        if (!r.isOk()) {
+            return Result<ReferenceTable>::err(r.status());
+        }
+
+        i32 lastFileId = 0;
+        for (i32 fileIdx = 0; fileIdx < fileCount; fileIdx++) {
+            i32 delta = 0;
+            if (protocolU8 == 7) {
+                s = reader.readBigSmart(&delta);
+            } else {
+                u16 v = 0;
+                s = reader.readUnsignedShort(&v);
+                delta = static_cast<i32>(v);
+            }
+            if (!ok(s)) {
+                return Result<ReferenceTable>::err(s);
+            }
+            lastFileId += delta;
+            ids[static_cast<std::size_t>(fileIdx)] = lastFileId;
+        }
+
+        t.archiveLastFileIds_[a] = lastFileId;
+        t.archiveFileIds_[a] = rs::move(ids);
+    }
+
+    // File name hashes per archive (optional).
+    if (t.named_) {
+        for (i32 archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
+            const std::size_t a = static_cast<std::size_t>(archiveIdx);
+            const i32 fileCount = t.archiveFileCounts_[a];
+
+            Vec<i32> hashes(alloc);
+            r = hashes.resize(static_cast<std::size_t>(fileCount));
+            if (!r.isOk()) {
+                return Result<ReferenceTable>::err(r.status());
+            }
+
+            for (i32 fileIdx = 0; fileIdx < fileCount; fileIdx++) {
+                i32 h = 0;
+                s = reader.readInt(&h);
+                if (!ok(s)) {
+                    return Result<ReferenceTable>::err(s);
+                }
+                hashes[static_cast<std::size_t>(fileIdx)] = h;
+            }
+
+            t.archiveFileNameHashes_[a] = rs::move(hashes);
+        }
+    }
+
+    return Result<ReferenceTable>::ok(rs::move(t));
 }
 
-bool ReferenceTable::archiveExists(i32 id) const {
-    const auto it = std::lower_bound(archiveIds_.begin(), archiveIds_.end(), id);
-    return it != archiveIds_.end() && *it == id;
+bool ReferenceTable::archiveExists(i32 id) const noexcept {
+    const Span<const i32> ids = archiveIds();
+    const std::size_t idx = lowerBoundIndex(ids, id);
+    return idx < ids.size() && ids[idx] == id;
 }
 
-const ArchiveReference* ReferenceTable::getArchiveReference(i32 id) const {
-    const auto it = std::lower_bound(archiveIds_.begin(), archiveIds_.end(), id);
-    if (it == archiveIds_.end() || *it != id) {
-        return nullptr;
+Status ReferenceTable::getArchiveMeta(i32 id, ArchiveMeta* out) const noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
     }
-    const auto idx = static_cast<std::size_t>(it - archiveIds_.begin());
-
-    if (archiveReferenceCache_.empty()) {
-        archiveReferenceCache_.resize(archiveIds_.size());
-    }
-
-    auto& slot = archiveReferenceCache_[idx];
-    if (!slot) {
-        ArchiveReference r;
-        r.id = id;
-        r.nameHash = (named_ ? archiveNameHashes_[idx] : 0);
-        r.whirlpool = (usesWhirlpool_ ? archiveWhirlpools_[idx] : std::vector<u8>{});
-        r.crc = archiveCrcs_[idx];
-        r.revision = archiveRevisions_[idx];
-        r.fileCount = archiveFileCounts_[idx];
-        r.lastFileId = archiveLastFileIds_[idx];
-        r.fileIds = archiveFileIds_[idx];
-        r.fileNameHashes = (named_ ? archiveFileNameHashes_[idx] : std::vector<i32>{});
-        slot = std::move(r);
+    const Span<const i32> ids = archiveIds();
+    const std::size_t idx = lowerBoundIndex(ids, id);
+    if (idx >= ids.size() || ids[idx] != id) {
+        return Status::NotFound;
     }
 
-    return &(*slot);
+    ArchiveMeta m;
+    m.id = id;
+    m.fileCount = archiveFileCounts_[idx];
+    m.lastFileId = archiveLastFileIds_[idx];
+    m.fileIds = archiveFileIds_[idx].span();
+    if (named_ && idx < archiveFileNameHashes_.size()) {
+        m.fileNameHashes = archiveFileNameHashes_[idx].span();
+    } else {
+        m.fileNameHashes = Span<const i32>();
+    }
+    *out = m;
+    return Status::Ok;
 }
 
 } // namespace rs

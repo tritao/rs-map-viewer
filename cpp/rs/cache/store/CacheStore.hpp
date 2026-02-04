@@ -1,8 +1,8 @@
 #pragma once
 
-#include <optional>
-
 #include "../../io/ByteSource.hpp"
+#include "../../core/Status.hpp"
+#include "../../core/Vec.hpp"
 
 namespace rs {
 
@@ -10,9 +10,10 @@ class CacheStore {
 public:
     virtual ~CacheStore() = default;
 
-    [[nodiscard]] virtual std::optional<std::size_t> getIndexFileSize(i32 indexId) const = 0;
-    [[nodiscard]] virtual ByteSourcePtr openArchiveReader(i32 indexId, i32 archiveId) const = 0;
+    virtual Status getIndexFileSize(i32 indexId, std::size_t* outSize) const noexcept = 0;
+
+    // Reads the raw archive bytes (container/packed format as stored on disk) into `out`.
+    virtual Status readArchive(i32 indexId, i32 archiveId, Vec<u8>* out) const noexcept = 0;
 };
 
 } // namespace rs
-

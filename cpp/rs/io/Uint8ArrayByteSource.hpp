@@ -1,24 +1,25 @@
 #pragma once
 
-#include <memory>
-#include <span>
-#include <vector>
+#include <cstddef>
 
-#include "ByteSourceSlice.hpp"
+#include "../core/Span.hpp"
+#include "../core/Status.hpp"
+#include "../types.hpp"
+#include "ByteSource.hpp"
 
 namespace rs {
 
-class Uint8ArrayByteSource final : public ByteSource, public std::enable_shared_from_this<Uint8ArrayByteSource> {
+class Uint8ArrayByteSource final : public ByteSource {
 public:
-    explicit Uint8ArrayByteSource(std::shared_ptr<std::vector<u8>> bytes);
+    Uint8ArrayByteSource(const u8* data, std::size_t size) noexcept : data_(data), size_(size) {}
 
-    [[nodiscard]] std::size_t size() const override;
-    [[nodiscard]] ByteSourcePtr slice(std::size_t start, std::size_t size) const override;
-    void readInto(std::size_t offset, u8* target, std::size_t length) const override;
-    [[nodiscard]] std::optional<std::span<const u8>> tryGetUint8ArrayView() const override;
+    [[nodiscard]] std::size_t size() const noexcept override { return size_; }
+    Status readInto(std::size_t offset, Span<u8> target) const noexcept override;
+    [[nodiscard]] bool tryGetView(Span<const u8>* out) const noexcept override;
 
 private:
-    std::shared_ptr<std::vector<u8>> bytes_;
+    const u8* data_ = nullptr;
+    std::size_t size_ = 0;
 };
 
 } // namespace rs

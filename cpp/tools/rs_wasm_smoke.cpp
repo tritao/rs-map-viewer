@@ -1,23 +1,23 @@
 #include "../rs/cache/format/Archive.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
+#include "../rs/core/Allocator.hpp"
+#include "../rs/core/Vec.hpp"
 #include "../rs/crypto/Xtea.hpp"
 #include "../rs/types.hpp"
 
-#include <array>
-#include <optional>
-#include <vector>
+#include <utility>
 
 int main() {
+    rs::Allocator& alloc = rs::defaultAllocator();
     rs::NativeCompressionHandler compression;
     (void)compression;
 
-    const std::optional<std::array<rs::u32, 4>> key = std::nullopt;
-    const bool hasKey = rs::Xtea::isValidKey(key);
+    const bool hasKey = rs::Xtea::isValidKey(nullptr);
     (void)hasKey;
 
-    rs::Archive archive = rs::Archive::create(0, std::vector<rs::u8>{});
-    (void)archive;
+    rs::Vec<rs::u8> empty(alloc);
+    auto archRes = rs::Archive::create(0, std::move(empty), alloc);
+    (void)archRes;
 
     return 0;
 }
-

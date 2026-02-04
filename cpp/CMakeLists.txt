@@ -23,7 +23,6 @@ endif()
 add_library(rs STATIC
     rs/io/ByteSourceSlice.cpp
     rs/io/Uint8ArrayByteSource.cpp
-    rs/io/ByteSourceAccess.cpp
     rs/io/ByteSourceReader.cpp
     rs/io/FileByteSource.cpp
     rs/io/Uint8ArrayReader.cpp
