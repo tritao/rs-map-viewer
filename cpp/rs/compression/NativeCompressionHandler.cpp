@@ -1,11 +1,16 @@
 #include "NativeCompressionHandler.hpp"
 
+#include <cstddef>
 #include <cstring>
 #include <mutex>
+#include <span>
 #include <stdexcept>
+#include <vector>
 
 #include "../../third_party/bzip2/bzlib.h"
 #include "../../third_party/miniz/miniz_tinfl.h"
+
+#include "../types.hpp"
 
 namespace rs {
 

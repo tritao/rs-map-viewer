@@ -1,7 +1,11 @@
 #include "Uint8ArrayReader.hpp"
 
 #include <cstring>
+#include <span>
 #include <stdexcept>
+
+#include "Endian.hpp"
+#include "../types.hpp"
 
 namespace rs {
 

@@ -1,6 +1,14 @@
 #include "ByteSourceSlice.hpp"
 
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <span>
 #include <stdexcept>
+#include <utility>
+
+#include "ByteSource.hpp"
+#include "../types.hpp"
 
 namespace rs {
 
@@ -53,4 +61,3 @@ std::optional<std::span<const u8>> ByteSourceSlice::tryGetUint8ArrayView() const
 }
 
 } // namespace rs
-

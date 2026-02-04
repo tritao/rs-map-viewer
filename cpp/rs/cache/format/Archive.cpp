@@ -1,14 +1,18 @@
 #include "Archive.hpp"
 
-#include <algorithm>
+#include <cstddef>
+#include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
-#include "../../io/ByteSourceAccess.hpp"
-#include "../../io/ByteSourceSlice.hpp"
+#include "../../compression/CompressionHandler.hpp"
+#include "../../io/ByteSource.hpp"
 #include "../../io/ByteSourceUtil.hpp"
 #include "../../io/Endian.hpp"
 #include "../../io/Uint8ArrayReader.hpp"
-#include "../../io/Uint8ArrayByteSource.hpp"
+#include "../../types.hpp"
+#include "ArchiveFile.hpp"
 
 namespace rs {
 

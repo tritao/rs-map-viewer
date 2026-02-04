@@ -1,7 +1,14 @@
 #include "ReferenceTable.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <stdexcept>
+#include <utility>
+#include <vector>
+
+#include "../../io/ByteReader.hpp"
+#include "../../types.hpp"
+#include "ArchiveReference.hpp"
 
 namespace rs {
 

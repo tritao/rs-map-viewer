@@ -1,11 +1,18 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 #include "../rs/cache/Dat2CacheIndex.hpp"
@@ -14,9 +21,11 @@
 #include "../rs/cache/store/DatLayout.hpp"
 #include "../rs/cache/store/SectorChainStore.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
+#include "../rs/io/ByteSource.hpp"
 #include "../rs/io/ByteSourceUtil.hpp"
 #include "../rs/io/FileByteSource.hpp"
 #include "../rs/io/Uint8ArrayByteSource.hpp"
+#include "../rs/types.hpp"
 #include "../rs/util/XXHash64.hpp"
 
 namespace fs = std::filesystem;

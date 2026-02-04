@@ -1,7 +1,16 @@
 #include "Uint8ArrayByteSource.hpp"
 
 #include <cstring>
+#include <memory>
+#include <optional>
+#include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
+
+#include "ByteSource.hpp"
+#include "ByteSourceSlice.hpp"
+#include "../types.hpp"
 
 namespace rs {
 

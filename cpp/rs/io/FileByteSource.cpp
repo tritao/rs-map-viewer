@@ -2,13 +2,19 @@
 
 #include <cerrno>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
+#include "ByteSource.hpp"
 #include "ByteSourceSlice.hpp"
+#include "../types.hpp"
 
 namespace rs {
 
@@ -71,4 +77,3 @@ void FileByteSource::readInto(std::size_t offset, u8* target, std::size_t length
 }
 
 } // namespace rs
-

@@ -1,5 +1,4 @@
 #include <cstddef>
-#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <span>
@@ -8,6 +7,7 @@
 
 #include "../rs/cache/format/Archive.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
+#include "../rs/types.hpp"
 
 namespace {
 

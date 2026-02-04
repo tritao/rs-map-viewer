@@ -1,8 +1,13 @@
 #include "Xtea.hpp"
 
+#include <array>
+#include <cstddef>
+#include <optional>
+#include <span>
 #include <stdexcept>
 
 #include "../io/Endian.hpp"
+#include "../types.hpp"
 
 namespace rs {
 
@@ -52,4 +57,3 @@ void Xtea::decryptInPlace(std::span<u8> data, std::size_t start, std::size_t end
 }
 
 } // namespace rs
-

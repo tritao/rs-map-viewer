@@ -1,12 +1,19 @@
 #include "SectorChainStore.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <memory>
+#include <optional>
+#include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
+#include "../../io/ByteSource.hpp"
 #include "../../io/ByteSourceSlice.hpp"
 #include "../../io/Endian.hpp"
 #include "../../util/U32.hpp"
+#include "../../types.hpp"
 #include "DatLayout.hpp"
 
 namespace rs {

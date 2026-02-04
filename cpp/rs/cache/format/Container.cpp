@@ -1,10 +1,19 @@
 #include "Container.hpp"
 
+#include <array>
+#include <cstddef>
+#include <optional>
 #include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
-#include "../../io/ByteSourceAccess.hpp"
+#include "../../compression/CompressionHandler.hpp"
+#include "../../compression/CompressionType.hpp"
+#include "../../crypto/Xtea.hpp"
+#include "../../io/ByteSource.hpp"
 #include "../../io/Endian.hpp"
+#include "../../types.hpp"
 
 namespace rs {
 

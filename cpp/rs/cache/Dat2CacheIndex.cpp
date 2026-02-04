@@ -1,9 +1,20 @@
 #include "Dat2CacheIndex.hpp"
 
+#include <memory>
+#include <optional>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
+#include "../compression/CompressionHandler.hpp"
+#include "../io/ByteSource.hpp"
 #include "../io/ByteSourceReader.hpp"
 #include "../io/Uint8ArrayByteSource.hpp"
+#include "../types.hpp"
+#include "format/Archive.hpp"
+#include "format/Container.hpp"
+#include "reference/ReferenceTable.hpp"
+#include "store/CacheStore.hpp"
 
 namespace rs {
 

@@ -1,6 +1,14 @@
 #include "ByteSourceAccess.hpp"
 
+#include <cstddef>
+#include <optional>
+#include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
+
+#include "ByteSource.hpp"
+#include "../types.hpp"
 
 namespace rs {
 
@@ -45,4 +53,3 @@ void ByteSourceAccess::readInto(std::size_t offset, u8* target, std::size_t leng
 }
 
 } // namespace rs
-

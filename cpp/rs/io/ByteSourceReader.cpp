@@ -1,7 +1,15 @@
 #include "ByteSourceReader.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstring>
+#include <span>
 #include <stdexcept>
+#include <utility>
+
+#include "ByteSource.hpp"
+#include "Endian.hpp"
+#include "../types.hpp"
 
 namespace rs {
 

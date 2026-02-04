@@ -4,7 +4,12 @@
 
 #include "XXHash64.hpp"
 
+#include <cstddef>
+#include <ios>
 #include <sstream>
+#include <string>
+
+#include "../types.hpp"
 
 namespace rs {
 
