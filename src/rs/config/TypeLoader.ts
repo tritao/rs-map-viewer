@@ -180,7 +180,10 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
 
         let archive = this.archives.get(archiveId);
         if (!archive) {
-            archive = this.index.getArchive(archiveId);
+            archive = this.index.tryGetArchive(archiveId);
+            if (!archive) {
+                return undefined;
+            }
             this.archives.set(archiveId, archive);
         }
         return archive.getFile(fileId)?.data;
