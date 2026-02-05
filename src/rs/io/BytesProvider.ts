@@ -32,6 +32,25 @@ export class IndexFileBytesProvider implements EnumeratingBytesProvider {
     }
 }
 
+export class IndexSmartFileBytesProvider implements EnumeratingBytesProvider {
+    constructor(
+        readonly index: CacheIndex,
+        readonly key: number[] | null,
+    ) {}
+
+    getBytes(id: number): Uint8Array | undefined {
+        return this.index.tryGetFileSmart(id, this.key)?.data;
+    }
+
+    getCount(): number {
+        return this.index.getArchiveCount();
+    }
+
+    getIds(): Int32Array {
+        return this.index.getArchiveIds();
+    }
+}
+
 export class ArchiveBytesProvider implements CountedBytesProvider {
     constructor(readonly archive: Archive) {}
 
