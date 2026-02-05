@@ -1,6 +1,6 @@
 import JavaRandom from "../../../util/JavaRandom";
 import { nextIntJagex } from "../../../util/MathUtil";
-import { CacheIndex } from "../../cache/CacheIndex";
+import { BytesProvider } from "../../io/BytesProvider";
 import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpriteLoader } from "../../sprite/SpriteLoader";
 import { TextureLoader } from "../TextureLoader";
@@ -51,7 +51,7 @@ export class TextureGenerator {
 
     private readonly permutationCache: Map<number, Int8Array>;
 
-    spriteIndex: CacheIndex;
+    spriteSource: BytesProvider;
     textureLoader: TextureLoader;
 
     width: number = 0;
@@ -73,11 +73,11 @@ export class TextureGenerator {
     debug: boolean = false;
 
     constructor(
-        spriteIndex: CacheIndex,
+        spriteSource: BytesProvider,
         textureLoader: TextureLoader,
         permutationCache: Map<number, Int8Array> = new Map(),
     ) {
-        this.spriteIndex = spriteIndex;
+        this.spriteSource = spriteSource;
         this.textureLoader = textureLoader;
         this.permutationCache = permutationCache;
     }
@@ -129,7 +129,7 @@ export class TextureGenerator {
     }
 
     loadSprite(spriteId: number): IndexedSprite {
-        const sprite = SpriteLoader.loadIntoIndexedSprite(this.spriteIndex, spriteId);
+        const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId);
         if (!sprite) {
             throw new Error("Sprite not found: " + spriteId);
         }

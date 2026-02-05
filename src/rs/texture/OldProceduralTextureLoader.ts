@@ -1,5 +1,6 @@
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { BytesProvider } from "../io/BytesProvider";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 import { ProceduralTexture } from "./procedural/ProceduralTexture";
@@ -12,7 +13,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
-    static create(textureIndex: CacheIndex, spriteIndex: CacheIndex): OldProceduralTextureLoader {
+    static create(textureIndex: CacheIndex, spriteSource: BytesProvider): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
         const texturesArchive = textureIndex.getArchive(0);
 
@@ -27,15 +28,15 @@ export class OldProceduralTextureLoader implements TextureLoader {
             }
         }
 
-        return new OldProceduralTextureLoader(spriteIndex, textureIds, definitions);
+        return new OldProceduralTextureLoader(spriteSource, textureIds, definitions);
     }
 
     constructor(
-        readonly spriteIndex: CacheIndex,
+        readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly definitions: Map<number, ProceduralTextureDefinition>,
     ) {
-        this.textureGenerator = new TextureGenerator(spriteIndex, this);
+        this.textureGenerator = new TextureGenerator(spriteSource, this);
         for (let i = 0; i < textureIds.length; i++) {
             this.idIndexMap.set(textureIds[i], i);
         }

@@ -1,5 +1,6 @@
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { BytesProvider } from "../io/BytesProvider";
 import { TextureCombineMode } from "./TextureCombineMode";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
@@ -18,7 +19,7 @@ export class ProceduralTextureLoader implements TextureLoader {
         hasAlphaOperation: boolean,
         materialsIndex: CacheIndex,
         textureIndex: CacheIndex,
-        spriteIndex: CacheIndex,
+        spriteSource: BytesProvider,
     ): ProceduralTextureLoader {
         const materialsFile = materialsIndex.getFile(0, 0);
         if (!materialsFile) {
@@ -165,7 +166,7 @@ export class ProceduralTextureLoader implements TextureLoader {
         return new ProceduralTextureLoader(
             hasAlphaOperation,
             textureIndex,
-            spriteIndex,
+            spriteSource,
             textureIds,
             materials,
         );
@@ -174,11 +175,11 @@ export class ProceduralTextureLoader implements TextureLoader {
     constructor(
         readonly hasAlphaOperation: boolean,
         readonly textureIndex: CacheIndex,
-        readonly spriteIndex: CacheIndex,
+        readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly materials: (ProcTextureMaterial | undefined)[],
     ) {
-        this.textureGenerator = new TextureGenerator(spriteIndex, this);
+        this.textureGenerator = new TextureGenerator(spriteSource, this);
     }
 
     getTexture(id: number): ProceduralTextureDefinition | undefined {

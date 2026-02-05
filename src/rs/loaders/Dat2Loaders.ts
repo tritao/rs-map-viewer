@@ -149,11 +149,11 @@ export function createDat2Loaders(
                     rules.texture.hasAlphaOperation,
                     materialIndex,
                     textureIndex,
-                    spriteIndex,
+                    new IndexFileBytesProvider(spriteIndex, 0),
                 );
             }
             case "old_procedural":
-                return OldProceduralTextureLoader.create(textureIndex, spriteIndex);
+                return OldProceduralTextureLoader.create(textureIndex, new IndexFileBytesProvider(spriteIndex, 0));
         }
     })();
 
