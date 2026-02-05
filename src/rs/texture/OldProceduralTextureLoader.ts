@@ -126,17 +126,22 @@ export class OldProceduralTextureLoader implements TextureLoader {
     }
 
     tryGetMaterial(id: number): TextureMaterial | undefined {
-        try {
-            return this.getMaterial(id);
-        } catch {
-            return undefined;
-        }
-    }
-
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
         const def = this.definitions.get(id);
         if (!def) {
-            throw new Error("Texture definition not found: " + id);
+            return undefined;
+        }
+        return this.getMaterial(id);
+    }
+
+    private tryGetPixelsRgbInternal(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
+        const def = this.definitions.get(id);
+        if (!def) {
+            return undefined;
         }
 
         this.textureGenerator.debug = id === 10;
@@ -154,10 +159,15 @@ export class OldProceduralTextureLoader implements TextureLoader {
         return pixels;
     }
 
-    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+    private tryGetPixelsArgbInternal(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const def = this.definitions.get(id);
         if (!def) {
-            throw new Error("Texture definition not found: " + id);
+            return undefined;
         }
 
         this.textureGenerator.debug = id === 10;
@@ -175,20 +185,28 @@ export class OldProceduralTextureLoader implements TextureLoader {
         return pixels;
     }
 
-    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsRgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
+    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+        const pixels = this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        if (!pixels) {
+            throw new Error("Failed decoding texture pixels: " + id);
         }
+        return pixels;
+    }
+
+    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+        const pixels = this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
+        if (!pixels) {
+            throw new Error("Failed decoding texture pixels: " + id);
+        }
+        return pixels;
+    }
+
+    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsArgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
-        }
+        return this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
     }
 }
 
