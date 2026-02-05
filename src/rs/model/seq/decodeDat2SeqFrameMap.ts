@@ -10,9 +10,12 @@ export function decodeDat2SeqFrameMapFromArchive(
     archive: Archive,
     scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
 ): SeqFrameMap {
-    const frames: SeqFrame[] = new Array(archive.lastFileId);
+    const frames: Array<SeqFrame | undefined> = new Array(archive.lastFileId);
     for (const file of archive.files) {
-        frames[file.id] = Dat2SeqFrame.load(cacheInfo, baseLoader, file.data, scratch);
+        const frame = Dat2SeqFrame.tryLoad(cacheInfo, baseLoader, file.data, scratch);
+        if (frame) {
+            frames[file.id] = frame;
+        }
     }
     return new SeqFrameMap(frames);
 }

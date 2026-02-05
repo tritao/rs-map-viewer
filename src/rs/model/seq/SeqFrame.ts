@@ -323,151 +323,158 @@ export class DatSeqFrame {
 }
 
 export class Dat2SeqFrame {
+    static tryLoad(
+        cacheInfo: CacheInfo,
+        baseLoader: SeqBaseLoader,
+        data: Uint8Array,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): SeqFrame | undefined {
+        try {
+            const buf = new ByteBuffer(data);
+            const dataBuf = new ByteBuffer(data);
+
+            if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
+                buf.readUnsignedByte();
+            }
+
+            const baseId = buf.readUnsignedShort();
+
+            const base = baseLoader.load(baseId);
+            if (!base) {
+                return undefined;
+            }
+
+            const count = buf.readUnsignedByte();
+
+            scratch.ensureCapacity(count);
+
+            dataBuf.offset = buf.offset + count;
+
+            let transformCount = 0;
+            let resetOriginGroup = -1;
+            let lastResetOriginGroup = -1;
+
+            let hasAlphaTransform = false;
+            let hasColorTransform = false;
+
+            for (let i = 0; i < count; i++) {
+                const type = base.types[i];
+
+                if (type === SeqTransformType.ORIGIN) {
+                    resetOriginGroup = i;
+                }
+
+                const flag = buf.readUnsignedByte();
+                if (flag === 0) {
+                    continue;
+                }
+
+                if (type === SeqTransformType.ORIGIN) {
+                    lastResetOriginGroup = i;
+                }
+
+                scratch.transformGroupCache[transformCount] = i;
+
+                let defaultValue = 0;
+                if (type === SeqTransformType.SCALE || type === SeqTransformType.TYPE_10) {
+                    defaultValue = 128;
+                }
+
+                if ((flag & 0x1) !== 0) {
+                    scratch.transformXCache[transformCount] = dataBuf.readSmart2();
+                } else {
+                    scratch.transformXCache[transformCount] = defaultValue;
+                }
+
+                if ((flag & 0x2) !== 0) {
+                    scratch.transformYCache[transformCount] = dataBuf.readSmart2();
+                } else {
+                    scratch.transformYCache[transformCount] = defaultValue;
+                }
+
+                if ((flag & 0x4) !== 0) {
+                    scratch.transformZCache[transformCount] = dataBuf.readSmart2();
+                } else {
+                    scratch.transformZCache[transformCount] = defaultValue;
+                }
+
+                if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
+                    if (type === SeqTransformType.ORIGIN || type === SeqTransformType.TRANSLATE) {
+                        scratch.transformXCache[transformCount] >>= 2;
+                        scratch.transformYCache[transformCount] >>= 2;
+                        scratch.transformZCache[transformCount] >>= 2;
+                    } else if (type === SeqTransformType.ROTATE) {
+                        scratch.transformXCache[transformCount] >>= 4;
+                        scratch.transformYCache[transformCount] >>= 4;
+                        scratch.transformZCache[transformCount] >>= 4;
+                    } else if (type === SeqTransformType.SCALE) {
+                        // See original `load()` implementation.
+                    }
+                }
+
+                scratch.resetOriginGroupsCache[transformCount] = -1;
+                if (
+                    type === SeqTransformType.TRANSLATE ||
+                    type === SeqTransformType.ROTATE ||
+                    type === SeqTransformType.SCALE
+                ) {
+                    if (resetOriginGroup > lastResetOriginGroup) {
+                        scratch.resetOriginGroupsCache[transformCount] = resetOriginGroup;
+                        lastResetOriginGroup = resetOriginGroup;
+                    }
+                } else if (type === SeqTransformType.ALPHA) {
+                    hasAlphaTransform = true;
+                } else if (type === SeqTransformType.LIGHT) {
+                    hasColorTransform = true;
+                }
+                transformCount++;
+            }
+
+            if (count !== 0 && dataBuf.offset !== data.length) {
+                return undefined;
+            }
+
+            const transformGroups: number[] = new Array(transformCount);
+            const transformX: number[] = new Array(transformCount);
+            const transformY: number[] = new Array(transformCount);
+            const transformZ: number[] = new Array(transformCount);
+            const resetOriginGroups: number[] = new Array(transformCount);
+            for (let i = 0; i < transformCount; i++) {
+                transformGroups[i] = scratch.transformGroupCache[i];
+                transformX[i] = scratch.transformXCache[i];
+                transformY[i] = scratch.transformYCache[i];
+                transformZ[i] = scratch.transformZCache[i];
+                resetOriginGroups[i] = scratch.resetOriginGroupsCache[i];
+            }
+
+            return new SeqFrame(
+                0,
+                base,
+                transformCount,
+                transformGroups,
+                transformX,
+                transformY,
+                transformZ,
+                resetOriginGroups,
+                hasAlphaTransform,
+                hasColorTransform,
+            );
+        } catch (e) {
+            console.error("Failed decoding Dat2 seq frame", e);
+            return undefined;
+        }
+    }
+
     static load(
         cacheInfo: CacheInfo,
         baseLoader: SeqBaseLoader,
         data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
     ): SeqFrame {
-        const buf = new ByteBuffer(data);
-        const dataBuf = new ByteBuffer(data);
-
-        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
-            buf.readUnsignedByte();
+        const decoded = this.tryLoad(cacheInfo, baseLoader, data, scratch);
+        if (!decoded) {
+            throw new Error("Failed decoding Dat2 seq frame");
         }
-
-        const baseId = buf.readUnsignedShort();
-
-        const base = baseLoader.load(baseId);
-        if (!base) {
-            throw new Error("Invalid frame base id: " + baseId);
-        }
-
-        const count = buf.readUnsignedByte();
-
-        scratch.ensureCapacity(count);
-
-        dataBuf.offset = buf.offset + count;
-
-        let transformCount = 0;
-        let resetOriginGroup = -1;
-        let lastResetOriginGroup = -1;
-
-        let hasAlphaTransform = false;
-        let hasColorTransform = false;
-
-        for (let i = 0; i < count; i++) {
-            const type = base.types[i];
-
-            if (type === SeqTransformType.ORIGIN) {
-                resetOriginGroup = i;
-            }
-
-            const flag = buf.readUnsignedByte();
-            if (flag === 0) {
-                continue;
-            }
-
-            if (type === SeqTransformType.ORIGIN) {
-                lastResetOriginGroup = i;
-            }
-
-            scratch.transformGroupCache[transformCount] = i;
-
-            let defaultValue = 0;
-            if (type === SeqTransformType.SCALE || type === SeqTransformType.TYPE_10) {
-                defaultValue = 128;
-            }
-
-            if ((flag & 0x1) !== 0) {
-                scratch.transformXCache[transformCount] = dataBuf.readSmart2();
-            } else {
-                scratch.transformXCache[transformCount] = defaultValue;
-            }
-
-            if ((flag & 0x2) !== 0) {
-                scratch.transformYCache[transformCount] = dataBuf.readSmart2();
-            } else {
-                scratch.transformYCache[transformCount] = defaultValue;
-            }
-
-            if ((flag & 0x4) !== 0) {
-                scratch.transformZCache[transformCount] = dataBuf.readSmart2();
-            } else {
-                scratch.transformZCache[transformCount] = defaultValue;
-            }
-
-            if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 610) {
-                if (type === SeqTransformType.ORIGIN || type === SeqTransformType.TRANSLATE) {
-                    scratch.transformXCache[transformCount] >>= 2;
-                    scratch.transformYCache[transformCount] >>= 2;
-                    scratch.transformZCache[transformCount] >>= 2;
-                } else if (type === SeqTransformType.ROTATE) {
-                    scratch.transformXCache[transformCount] >>= 4;
-                    scratch.transformYCache[transformCount] >>= 4;
-                    scratch.transformZCache[transformCount] >>= 4;
-                } else if (type === SeqTransformType.SCALE) {
-                    // SeqFrame.transformXCache[transformCount] >>= 1;
-                    // SeqFrame.transformYCache[transformCount] >>= 1;
-                    // SeqFrame.transformZCache[transformCount] >>= 1;
-                }
-            }
-
-            scratch.resetOriginGroupsCache[transformCount] = -1;
-            if (
-                type === SeqTransformType.TRANSLATE ||
-                type === SeqTransformType.ROTATE ||
-                type === SeqTransformType.SCALE
-            ) {
-                if (resetOriginGroup > lastResetOriginGroup) {
-                    scratch.resetOriginGroupsCache[transformCount] = resetOriginGroup;
-                    lastResetOriginGroup = resetOriginGroup;
-                }
-            } else if (type === SeqTransformType.ALPHA) {
-                hasAlphaTransform = true;
-            } else if (type === SeqTransformType.LIGHT) {
-                hasColorTransform = true;
-            }
-            transformCount++;
-        }
-
-        if (count !== 0 && dataBuf.offset !== data.length) {
-            throw new Error(
-                "SeqFrame: Mismatched buffer offset: " +
-                    data.length +
-                    ", " +
-                    dataBuf.offset +
-                    ", " +
-                    count +
-                    ", " +
-                    baseId,
-            );
-        }
-
-        const transformGroups: number[] = new Array(transformCount);
-        const transformX: number[] = new Array(transformCount);
-        const transformY: number[] = new Array(transformCount);
-        const transformZ: number[] = new Array(transformCount);
-        const resetOriginGroups: number[] = new Array(transformCount);
-        for (let i = 0; i < transformCount; i++) {
-            transformGroups[i] = scratch.transformGroupCache[i];
-            transformX[i] = scratch.transformXCache[i];
-            transformY[i] = scratch.transformYCache[i];
-            transformZ[i] = scratch.transformZCache[i];
-            resetOriginGroups[i] = scratch.resetOriginGroupsCache[i];
-        }
-
-        return new SeqFrame(
-            0,
-            base,
-            transformCount,
-            transformGroups,
-            transformX,
-            transformY,
-            transformZ,
-            resetOriginGroups,
-            hasAlphaTransform,
-            hasColorTransform,
-        );
+        return decoded;
     }
 }
