@@ -9,6 +9,7 @@ import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoa
 import { formatBytes } from "../util/BytesUtil";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { fetchCacheList, loadCacheFiles } from "../util/Caches";
+import { errorToString } from "../util/ErrorUtil";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
 import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
@@ -82,7 +83,10 @@ function MapViewerApp() {
         if (isIos) {
             setErrorMessage("iOS is not supported.");
         } else {
-            load().catch(console.error);
+            load().catch((e) => {
+                console.error(e);
+                setErrorMessage(errorToString(e));
+            });
         }
 
         return () => {

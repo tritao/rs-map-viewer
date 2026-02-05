@@ -22,9 +22,10 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { CacheType } from "../rs/cache/CacheType";
-import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
+import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
 import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import { errorToString } from "../util/ErrorUtil";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -48,7 +49,22 @@ export type WorkerState = {
     npcSpawns: NpcSpawn[];
 };
 
-let workerStatePromise: Promise<WorkerState> | undefined;
+type WorkerStateInit =
+    | { ok: true; state: WorkerState }
+    | { ok: false; error: string };
+
+let workerStatePromise: Promise<WorkerStateInit> | undefined;
+
+async function requireWorkerState(): Promise<WorkerState> {
+    const init = await workerStatePromise;
+    if (!init) {
+        throw new Error("Worker not initialized");
+    }
+    if (!init.ok) {
+        throw new Error(init.error);
+    }
+    return init.state;
+}
 
 async function initWorker(
     cache: LoadedCache,
@@ -57,7 +73,11 @@ async function initWorker(
 ): Promise<WorkerState> {
     await hasherPromise;
 
-    const session = createCacheSession(cache, compressionHandler);
+    const sessionResult = tryCreateCacheSession(cache, compressionHandler);
+    if (!sessionResult.ok) {
+        throw new Error(sessionResult.error);
+    }
+    const session = sessionResult.value;
     const { loaders } = session;
     const {
         underlayTypeLoader,
@@ -148,7 +168,9 @@ function clearCache(workerState: WorkerState): void {
 const worker = {
     initCache(cache: LoadedCache, objSpawns: ObjSpawn[], npcSpawns: NpcSpawn[]) {
         console.log("init worker", cache.info);
-        workerStatePromise = initWorker(cache, objSpawns, npcSpawns);
+        workerStatePromise = initWorker(cache, objSpawns, npcSpawns)
+            .then((state) => ({ ok: true, state } as const))
+            .catch((e) => ({ ok: false, error: errorToString(e) } as const));
     },
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.init();
@@ -160,10 +182,7 @@ const worker = {
         dataLoader: RenderDataLoader<I, D>,
         input: I,
     ): Promise<TransferDescriptor<D> | undefined> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
 
         const { data, transferables } = await dataLoader.load(workerState, input);
 
@@ -180,10 +199,7 @@ const worker = {
         flipH: boolean,
         brightness: number,
     ): Promise<TransferDescriptor<Int32Array>> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
 
         const pixels = workerState.session.loaders.textureLoader.getPixelsArgb(id, size, flipH, brightness);
 
@@ -195,10 +211,7 @@ const worker = {
         level: number,
         drawMapFunctions: boolean,
     ): Promise<MinimapData | undefined> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
 
         const borderSize = 6;
 
@@ -234,17 +247,11 @@ const worker = {
         };
     },
     async setVars(values: Int32Array): Promise<void> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
         workerState.varProvider.set(values);
     },
     async loadCachedMapImages(): Promise<Map<number, string>> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
         const keys = await workerState.mapImageCache.keys();
         const mapImageUrls = new Map<number, string>();
         const promises: Promise<void>[] = [];
@@ -258,10 +265,7 @@ const worker = {
         return mapImageUrls;
     },
     async exportSpritesToZip(): Promise<Blob> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
 
         const zip = new JSZip();
 
@@ -276,10 +280,7 @@ const worker = {
         return zip.generateAsync({ type: "blob" });
     },
     async exportTexturesToZip(): Promise<Blob> {
-        const workerState = await workerStatePromise;
-        if (!workerState) {
-            throw new Error("Worker not initialized");
-        }
+        const workerState = await requireWorkerState();
 
         const zip = new JSZip();
 
