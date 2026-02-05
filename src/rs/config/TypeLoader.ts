@@ -9,12 +9,6 @@ import { Type } from "./Type";
 import { decodeTypeFromBytes } from "./decode/decodeType";
 
 export interface TypeLoader<T> {
-    /**
-     * @deprecated Use `tryLoad()` so callers must handle missing/invalid entries explicitly.
-     * This method returns a default-constructed type on failure, which can hide data issues.
-     */
-    load(id: number): T;
-
     tryLoad(id: number): Result<T, DecodeError>;
 
     getCount(): number;
@@ -50,12 +44,8 @@ export class DummyTypeLoader<T extends Type> implements TypeLoader<T> {
         readonly typeConstructor: TypeConstructor<T>,
     ) {}
 
-    load(id: number): T {
-        return new this.typeConstructor(id, this.cacheInfo);
-    }
-
     tryLoad(id: number): Result<T, DecodeError> {
-        return ok(this.load(id));
+        return ok(new this.typeConstructor(id, this.cacheInfo));
     }
 
     getCount(): number {
@@ -76,14 +66,6 @@ export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
     ) {}
 
     abstract getData(id: number): Uint8Array | undefined;
-
-    load(id: number): T {
-        const result = this.tryLoad(id);
-        if (result.ok) {
-            return result.value;
-        }
-        return new this.typeConstructor(id, this.cacheInfo);
-    }
 
     tryLoad(id: number): Result<T, DecodeError> {
         const cached = this.cache.get(id);
@@ -224,10 +206,6 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
     }
 
     constructor(readonly types: T[]) {}
-
-    load(id: number): T {
-        return this.types[id];
-    }
 
     tryLoad(id: number): Result<T, DecodeError> {
         const type = this.types[id];
