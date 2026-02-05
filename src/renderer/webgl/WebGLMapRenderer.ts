@@ -282,6 +282,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initTextureArray() {
+        const textureLoader = this.session.loaders.textureLoader;
+
         if (this.textureArray) {
             this.textureArray.delete();
             this.textureArray = undefined;
@@ -308,16 +310,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         for (let i = 0; i < Math.min(textureCount, maxPreloadTextures); i++) {
             const textureId = this.textureIds[i];
-            try {
-                const texturePixels = this.session.loaders.textureLoader.getPixelsArgb(
-                    textureId,
-                    TEXTURE_SIZE,
-                    true,
-                    1.0,
-                );
+            const texturePixels = textureLoader.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0);
+            if (texturePixels) {
                 pixels.set(texturePixels, (i + 1) * pixelCount);
-            } catch (e) {
-                console.error("Failed loading texture", textureId, e);
+            } else {
+                console.error("Failed loading texture", textureId);
             }
             this.loadedTextureIds.add(textureId);
         }
@@ -424,6 +421,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initMaterialsTexture(): void {
+        const textureLoader = this.session.loaders.textureLoader;
+
         if (this.textureMaterials) {
             this.textureMaterials.delete();
             this.textureMaterials = undefined;
@@ -434,16 +433,16 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         const data = new Int8Array(textureCount * 4);
         for (let i = 0; i < this.textureIds.length; i++) {
             const id = this.textureIds[i];
-            try {
-                const material = this.session.loaders.textureLoader.getMaterial(id);
-
-                const index = (i + 1) * 4;
-                data[index] = material.animU;
-                data[index + 1] = material.animV;
-                data[index + 2] = material.alphaCutOff * 255;
-            } catch (e) {
-                console.error("Failed loading texture", id, e);
+            const material = textureLoader.tryGetMaterial(id);
+            if (!material) {
+                console.error("Failed loading texture material", id);
+                continue;
             }
+
+            const index = (i + 1) * 4;
+            data[index] = material.animU;
+            data[index + 1] = material.animV;
+            data[index + 2] = material.alphaCutOff * 255;
         }
 
         this.textureMaterials = this.app.createTexture2D(data, textureCount, 1, {

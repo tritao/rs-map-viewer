@@ -299,32 +299,32 @@ const worker = {
         const textureIds = textureLoader.getTextureIds();
         for (let i = 0; i < textureIds.length; i++) {
             const id = textureIds[i];
-            try {
-                const pixels = textureLoader.getPixelsArgb(id, textureSize, true, 1.0);
+            const pixels = textureLoader.tryGetPixelsArgb(id, textureSize, true, 1.0);
+            if (!pixels) {
+                console.error("Failed to export texture", id);
+                continue;
+            }
 
-                const canvas = new OffscreenCanvas(textureSize, textureSize);
-                const ctx = canvas.getContext("2d");
+            const canvas = new OffscreenCanvas(textureSize, textureSize);
+            const ctx = canvas.getContext("2d");
 
-                if (ctx) {
-                    const imageData = ctx.createImageData(textureSize, textureSize);
+            if (ctx) {
+                const imageData = ctx.createImageData(textureSize, textureSize);
 
-                    const rgbaPixels = imageData.data;
-                    for (let j = 0; j < pixels.length; j++) {
-                        rgbaPixels[j * 4 + 0] = (pixels[j] >> 16) & 0xff; // R
-                        rgbaPixels[j * 4 + 1] = (pixels[j] >> 8) & 0xff; // G
-                        rgbaPixels[j * 4 + 2] = pixels[j] & 0xff; // B
-                        rgbaPixels[j * 4 + 3] = (pixels[j] >> 24) & 0xff; // A
-                    }
-
-                    ctx.putImageData(imageData, 0, 0);
-
-                    const dataUrl = await offscreenCanvasToPng(canvas);
-
-                    const pngData = atob(dataUrl.split(",")[1]);
-                    zip.file(id + ".png", pngData, { binary: true });
+                const rgbaPixels = imageData.data;
+                for (let j = 0; j < pixels.length; j++) {
+                    rgbaPixels[j * 4 + 0] = (pixels[j] >> 16) & 0xff; // R
+                    rgbaPixels[j * 4 + 1] = (pixels[j] >> 8) & 0xff; // G
+                    rgbaPixels[j * 4 + 2] = pixels[j] & 0xff; // B
+                    rgbaPixels[j * 4 + 3] = (pixels[j] >> 24) & 0xff; // A
                 }
-            } catch (e) {
-                console.error("Failed to export texture", id, e);
+
+                ctx.putImageData(imageData, 0, 0);
+
+                const dataUrl = await offscreenCanvasToPng(canvas);
+
+                const pngData = atob(dataUrl.split(",")[1]);
+                zip.file(id + ".png", pngData, { binary: true });
             }
         }
 

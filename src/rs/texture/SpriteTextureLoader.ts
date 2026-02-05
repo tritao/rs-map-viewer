@@ -119,6 +119,14 @@ export class SpriteTextureLoader implements TextureLoader {
         };
     }
 
+    tryGetMaterial(id: number): TextureMaterial | undefined {
+        try {
+            return this.getMaterial(id);
+        } catch {
+            return undefined;
+        }
+    }
+
     loadTextureSprite(id: number): IndexedSprite {
         const def = this.definitions.get(id);
         if (!def) {
@@ -224,6 +232,22 @@ export class SpriteTextureLoader implements TextureLoader {
 
     getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
         return this.getPixelsRgb(id, size, flipH, brightness);
+    }
+
+    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+        try {
+            return this.getPixelsRgb(id, size, flipH, brightness);
+        } catch {
+            return undefined;
+        }
+    }
+
+    tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+        try {
+            return this.getPixelsArgb(id, size, flipH, brightness);
+        } catch {
+            return undefined;
+        }
     }
 }
 

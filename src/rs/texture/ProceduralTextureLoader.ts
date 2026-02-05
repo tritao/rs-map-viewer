@@ -265,6 +265,14 @@ export class ProceduralTextureLoader implements TextureLoader {
         };
     }
 
+    tryGetMaterial(id: number): TextureMaterial | undefined {
+        try {
+            return this.getMaterial(id);
+        } catch {
+            return undefined;
+        }
+    }
+
     getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
         const texture = this.getTexture(id);
         if (!texture) {
@@ -306,6 +314,22 @@ export class ProceduralTextureLoader implements TextureLoader {
         this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
 
         return pixels;
+    }
+
+    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+        try {
+            return this.getPixelsRgb(id, size, flipH, brightness);
+        } catch {
+            return undefined;
+        }
+    }
+
+    tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+        try {
+            return this.getPixelsArgb(id, size, flipH, brightness);
+        } catch {
+            return undefined;
+        }
     }
 }
 

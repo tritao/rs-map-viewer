@@ -672,10 +672,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const loadedTextures = new Map<number, Int32Array>();
         for (const textureId of sceneBuf.usedTextureIds) {
             if (!loadedTextureIds.has(textureId)) {
-                try {
-                    const pixels = textureLoader.getPixelsArgb(textureId, 128, true, 1.0);
+                const pixels = textureLoader.tryGetPixelsArgb(textureId, 128, true, 1.0);
+                if (pixels) {
                     loadedTextures.set(textureId, pixels);
-                } catch (e) {}
+                }
             }
         }
 
