@@ -185,6 +185,19 @@ export class LegacySeqFrame {
 }
 
 export class DatSeqFrame {
+    static tryLoad(
+        frames: Map<number, SeqFrame>,
+        data: Uint8Array,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): boolean {
+        try {
+            DatSeqFrame.load(frames, data, scratch);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     static load(
         frames: Map<number, SeqFrame>,
         data: Uint8Array,

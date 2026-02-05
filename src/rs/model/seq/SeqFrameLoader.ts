@@ -1,7 +1,7 @@
 import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { CountedBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
+import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { ArchiveProvider } from "../../io/ArchiveProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
@@ -33,19 +33,17 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
         return DatSeqFrameLoader.createFromSource(new IndexFileBytesProvider(frameMapIndex, 0));
     }
 
-    static createFromSource(frameMapSource: CountedBytesProvider): DatSeqFrameLoader {
+    static createFromSource(frameMapSource: EnumeratingBytesProvider): DatSeqFrameLoader {
         const frames: Map<number, SeqFrame> = new Map();
         const scratch = new SeqFrameDecodeScratch();
 
-        for (let i = 0; i < frameMapSource.getCount(); i++) {
-            try {
-                const bytes = frameMapSource.getBytes(i);
-                if (!bytes) {
-                    continue;
-                }
-                DatSeqFrame.load(frames, bytes, scratch);
-            } catch (e) {
-                console.error("Failed loading frame map " + i, e);
+        for (const frameMapId of frameMapSource.getIds()) {
+            const bytes = frameMapSource.getBytes(frameMapId);
+            if (!bytes) {
+                continue;
+            }
+            if (!DatSeqFrame.tryLoad(frames, bytes, scratch)) {
+                console.error("Failed loading frame map " + frameMapId);
             }
         }
 
