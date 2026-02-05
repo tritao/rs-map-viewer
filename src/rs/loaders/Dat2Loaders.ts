@@ -171,7 +171,7 @@ export function createDat2Loaders(
     const textureLoader: TextureLoader = (() => {
         switch (rules.texture.mode) {
             case "sprite":
-                return SpriteTextureLoader.create(textureIndex, new IndexFileBytesProvider(spriteIndex, 0));
+                return SpriteTextureLoader.create(textureIndex.tryGetArchive(0), new IndexFileBytesProvider(spriteIndex, 0));
             case "materials": {
                 const materialIndex = cacheSystem.getIndex(Rs2IndexId.materials);
                 return ProceduralTextureLoader.create(
@@ -183,7 +183,7 @@ export function createDat2Loaders(
                 );
             }
             case "old_procedural":
-                return OldProceduralTextureLoader.create(textureIndex, new IndexFileBytesProvider(spriteIndex, 0));
+                return OldProceduralTextureLoader.create(textureIndex.tryGetArchive(0), new IndexFileBytesProvider(spriteIndex, 0));
         }
     })();
 

@@ -1,4 +1,4 @@
-import { CacheIndex } from "../cache/CacheIndex";
+import { Archive } from "../cache/format/Archive";
 import { BytesProvider } from "../io/BytesProvider";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { IndexedSprite } from "../sprite/IndexedSprite";
@@ -18,10 +18,9 @@ export class SpriteTextureLoader implements TextureLoader {
 
     idIndexMap: Map<number, number>;
 
-    static create(textureIndex: CacheIndex, spriteSource: BytesProvider): SpriteTextureLoader {
+    static create(textureArchive: Archive | undefined, spriteSource: BytesProvider): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
 
-        const textureArchive = textureIndex.tryGetArchive(0);
         if (!textureArchive) {
             console.error("SpriteTextureLoader: missing texture archive 0");
             return new SpriteTextureLoader(spriteSource, [], definitions);

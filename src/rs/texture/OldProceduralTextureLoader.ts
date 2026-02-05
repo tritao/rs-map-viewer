@@ -1,4 +1,4 @@
-import { CacheIndex } from "../cache/CacheIndex";
+import { Archive } from "../cache/format/Archive";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider } from "../io/BytesProvider";
 import { TextureLoader } from "./TextureLoader";
@@ -13,9 +13,8 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
-    static create(textureIndex: CacheIndex, spriteSource: BytesProvider): OldProceduralTextureLoader {
+    static create(texturesArchive: Archive | undefined, spriteSource: BytesProvider): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
-        const texturesArchive = textureIndex.tryGetArchive(0);
         if (!texturesArchive) {
             console.error("OldProceduralTextureLoader: missing texture archive 0");
             return new OldProceduralTextureLoader(spriteSource, [], definitions);
