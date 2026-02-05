@@ -197,14 +197,6 @@ export class DatTextureLoader implements TextureLoader {
         return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 
-    loadTextureSprite(id: number): IndexedSprite {
-        const sprite = this.tryLoadTextureSprite(id);
-        if (!sprite) {
-            throw new Error("Texture sprite not found: " + id);
-        }
-        return sprite;
-    }
-
     tryLoadTextureSprite(id: number): IndexedSprite | undefined {
         if (this.missingTextureSpriteIds.has(id)) {
             return undefined;

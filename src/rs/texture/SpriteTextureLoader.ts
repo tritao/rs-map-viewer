@@ -136,23 +136,6 @@ export class SpriteTextureLoader implements TextureLoader {
         return this.getMaterial(id);
     }
 
-    loadTextureSprite(id: number): IndexedSprite {
-        const def = this.definitions.get(id);
-        if (!def) {
-            throw new Error("Texture definition not found: " + id);
-        }
-
-        for (let i = 0; i < def.spriteIds.length; i++) {
-            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
-            if (!sprite) {
-                throw new Error("Texture references invalid sprite");
-            }
-            sprite.normalize();
-            return sprite;
-        }
-        throw new Error("Texture has no sprites");
-    }
-
     tryLoadTextureSprite(id: number): IndexedSprite | undefined {
         if (this.errors.has(id)) {
             return undefined;

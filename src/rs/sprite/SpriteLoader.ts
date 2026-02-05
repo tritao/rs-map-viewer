@@ -97,73 +97,12 @@ export class SpriteLoader {
         return true;
     }
 
-    static loadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite {
-        return this.loadIndexedSpriteDatId(archive, archive.getFileId(name + ".dat"), offset);
-    }
-
     static tryLoadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite | undefined {
         const id = archive.getFileId(name + ".dat");
         if (id === -1) {
             return undefined;
         }
         return this.tryLoadIndexedSpriteDatId(archive, id, offset);
-    }
-
-    static loadIndexedSpriteDatId(archive: Archive, id: number, offset: number): IndexedSprite {
-        const dataFile = archive.getFile(id);
-        const indexFile = archive.getFileNamed("index.dat");
-        if (!dataFile) {
-            throw new Error(id + " sprite not found");
-        }
-        if (!indexFile) {
-            throw new Error("index.dat not found");
-        }
-
-        const dataBuffer = new ByteBuffer(dataFile.data);
-        const indexBuffer = new ByteBuffer(indexFile.data);
-
-        indexBuffer.offset = dataBuffer.readUnsignedShort();
-
-        const sprite = new IndexedSprite();
-
-        sprite.width = indexBuffer.readUnsignedShort();
-        sprite.height = indexBuffer.readUnsignedShort();
-
-        let paletteSize = indexBuffer.readUnsignedByte();
-
-        sprite.palette = new Int32Array(paletteSize);
-        for (let i = 0; i < paletteSize - 1; i++) {
-            sprite.palette[i + 1] = indexBuffer.readMedium();
-        }
-
-        for (let i = 0; i < offset; i++) {
-            indexBuffer.offset += 2;
-            dataBuffer.offset += indexBuffer.readUnsignedShort() * indexBuffer.readUnsignedShort();
-            indexBuffer.offset++;
-        }
-
-        sprite.xOffset = indexBuffer.readUnsignedByte();
-        sprite.yOffset = indexBuffer.readUnsignedByte();
-        sprite.subWidth = indexBuffer.readUnsignedShort();
-        sprite.subHeight = indexBuffer.readUnsignedShort();
-
-        const pixelCount = sprite.subWidth * sprite.subHeight;
-        sprite.pixels = new Uint8Array(pixelCount);
-
-        const type = indexBuffer.readUnsignedByte();
-        if (type === 0) {
-            for (let i = 0; i < pixelCount; i++) {
-                sprite.pixels[i] = dataBuffer.readByte();
-            }
-        } else if (type === 1) {
-            for (let x = 0; x < sprite.subWidth; x++) {
-                for (let y = 0; y < sprite.subHeight; y++) {
-                    sprite.pixels[x + y * sprite.subWidth] = dataBuffer.readByte();
-                }
-            }
-        }
-
-        return sprite;
     }
 
     static tryLoadIndexedSpriteDatId(

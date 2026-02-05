@@ -128,14 +128,6 @@ export class TextureGenerator {
         return permutations;
     }
 
-    loadSprite(spriteId: number): IndexedSprite {
-        const sprite = this.tryLoadSprite(spriteId);
-        if (!sprite) {
-            throw new Error("Sprite not found: " + spriteId);
-        }
-        return sprite;
-    }
-
     tryLoadSprite(spriteId: number): IndexedSprite | undefined {
         return SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId) ?? undefined;
     }
