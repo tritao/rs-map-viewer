@@ -16,11 +16,16 @@ export class IndexModelLoader implements ModelLoader {
 
     constructor(readonly modelSource: CountedBytesProvider) {}
 
+    private readonly errors: Set<number> = new Set();
+
     getCount(): number {
         return this.modelSource.getCount();
     }
 
     getModel(id: number): ModelData | undefined {
+        if (this.errors.has(id)) {
+            return undefined;
+        }
         const bytes = this.modelSource.getBytes(id);
         if (!bytes) {
             return undefined;
@@ -28,7 +33,10 @@ export class IndexModelLoader implements ModelLoader {
         try {
             return ModelData.decode(bytes);
         } catch (e) {
-            console.error("Failed decoding model file", id, e);
+            if (!this.errors.has(id)) {
+                console.error("Failed decoding model file", id, e);
+                this.errors.add(id);
+            }
             return undefined;
         }
     }
