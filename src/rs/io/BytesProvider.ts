@@ -9,7 +9,11 @@ export interface CountedBytesProvider extends BytesProvider {
     getCount(): number;
 }
 
-export class IndexFileBytesProvider implements CountedBytesProvider {
+export interface EnumeratingBytesProvider extends CountedBytesProvider {
+    getIds(): Int32Array;
+}
+
+export class IndexFileBytesProvider implements EnumeratingBytesProvider {
     constructor(
         readonly index: CacheIndex,
         readonly fileId: number,
@@ -21,6 +25,10 @@ export class IndexFileBytesProvider implements CountedBytesProvider {
 
     getCount(): number {
         return this.index.getArchiveCount();
+    }
+
+    getIds(): Int32Array {
+        return this.index.getArchiveIds();
     }
 }
 

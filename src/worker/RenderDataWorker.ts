@@ -3,7 +3,6 @@ import { TransferDescriptor } from "threads";
 import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import { Dat2IndexId, DatIndexId } from "../rs/cache/IndexId";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
@@ -32,9 +31,8 @@ import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
-import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
 import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
-import { IndexFileBytesProvider } from "../rs/io/BytesProvider";
+import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
 import { MapBytesProvider } from "../rs/map/MapBytesProvider";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 
@@ -394,12 +392,14 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
 }
 
 async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
-    const spriteIndex = session.getIndex(Dat2IndexId.sprites);
-    const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
+    const spriteSource = tryGetDat2SpriteSource(session);
+    if (!spriteSource) {
+        return;
+    }
 
     const promises: Promise<any>[] = [];
 
-    for (const id of spriteIndex.getArchiveIds()) {
+    for (const id of spriteSource.getIds()) {
         const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, id);
         if (!sprites) {
             continue;
@@ -411,8 +411,10 @@ async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<vo
 }
 
 async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
-    const configIndex = session.getIndex(DatIndexId.configs);
-    const mediaArchive = configIndex.getArchive(DatConfigArchiveId.media);
+    const mediaArchive = tryGetDatMediaArchive(session);
+    if (!mediaArchive) {
+        return;
+    }
 
     const indexDatId = mediaArchive.getFileId("index.dat");
 
