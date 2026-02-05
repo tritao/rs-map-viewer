@@ -1,4 +1,5 @@
 import { CacheIndex } from "../cache/CacheIndex";
+import { BytesProvider } from "../io/BytesProvider";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
@@ -17,7 +18,7 @@ export class SpriteTextureLoader implements TextureLoader {
 
     idIndexMap: Map<number, number>;
 
-    static create(textureIndex: CacheIndex, spriteIndex: CacheIndex): SpriteTextureLoader {
+    static create(textureIndex: CacheIndex, spriteSource: BytesProvider): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
 
         const textureArchive = textureIndex.getArchive(0);
@@ -32,11 +33,11 @@ export class SpriteTextureLoader implements TextureLoader {
             }
         }
 
-        return new SpriteTextureLoader(spriteIndex, textureIds, definitions);
+        return new SpriteTextureLoader(spriteSource, textureIds, definitions);
     }
 
     constructor(
-        readonly spriteIndex: CacheIndex,
+        readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly definitions: Map<number, TextureDefinition>,
     ) {
@@ -125,7 +126,7 @@ export class SpriteTextureLoader implements TextureLoader {
         }
 
         for (let i = 0; i < def.spriteIds.length; i++) {
-            const sprite = SpriteLoader.loadIntoIndexedSprite(this.spriteIndex, def.spriteIds[i]);
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
             if (!sprite) {
                 throw new Error("Texture references invalid sprite");
             }
@@ -145,7 +146,7 @@ export class SpriteTextureLoader implements TextureLoader {
         const pixels = new Int32Array(pixelCount);
 
         for (let i = 0; i < def.spriteIds.length; i++) {
-            const sprite = SpriteLoader.loadIntoIndexedSprite(this.spriteIndex, def.spriteIds[i]);
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
             if (!sprite) {
                 throw new Error("Texture references invalid sprite");
             }
