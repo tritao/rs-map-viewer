@@ -38,6 +38,7 @@ import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDataLoader, addNpcAnimationFrames } from "./SdRenderableDataLoader";
+import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 
 function loadHeightMapTextureData(scene: Scene): Int16Array {
     const heightMapTextureData = new Int16Array(Scene.MAX_LEVELS * scene.sizeX * scene.sizeY);
@@ -568,7 +569,15 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
         console.time(`build scene ${mapX},${mapY}`);
-        const scene = state.sceneBuilder.buildScene(baseX, baseY, mapSize, mapSize, smoothTerrain);
+        const scene = buildSceneFromMapBytesProvider(
+            state.sceneBuilder,
+            state.mapBytesProvider,
+            baseX,
+            baseY,
+            mapSize,
+            mapSize,
+            smoothTerrain,
+        );
         console.timeEnd(`build scene ${mapX},${mapY}`);
 
         const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
@@ -611,12 +620,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         let npcSpawns: NpcSpawn[] = [];
         if (loadNpcs) {
-            const cacheNpcSpawns = state.sceneBuilder.decodeNpcSpawns(
-                scene,
-                borderSize,
-                mapX,
-                mapY,
-            );
+            const npcSpawnBytes = state.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
+            const cacheNpcSpawns = npcSpawnBytes
+                ? state.sceneBuilder.decodeNpcSpawnsFromBytes(scene, borderSize, mapX, mapY, npcSpawnBytes)
+                : undefined;
             if (cacheNpcSpawns) {
                 npcSpawns = cacheNpcSpawns.filter((spawn) => {
                     const npcResult = npcTypeLoader.tryLoad(spawn.id);

@@ -6,7 +6,6 @@ import { LocType } from "../config/loctype/LocType";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { getMapSquareId } from "../map/MapFileIndex";
-import { MapBytesProvider } from "../map/MapBytesProvider";
 import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
@@ -48,7 +47,6 @@ export class SceneBuilder {
 
     constructor(
         readonly cacheInfo: CacheInfo,
-        readonly mapBytesProvider: MapBytesProvider,
         readonly underlayTypeLoader: FloorTypeLoader,
         readonly overlayTypeLoader: OverlayFloorTypeLoader,
         readonly locTypeLoader: LocTypeLoader,
@@ -60,90 +58,6 @@ export class SceneBuilder {
 
     static fillEmptyTerrain(info: CacheInfo): boolean {
         return info.game === GameType.Runescape && info.revision <= 225;
-    }
-
-    getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapBytesProvider.getTerrainBytes(mapX, mapY);
-    }
-
-    getLocData(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapBytesProvider.getLocBytes(mapX, mapY);
-    }
-
-    getNpcSpawnData(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
-    }
-
-    buildScene(
-        baseX: number,
-        baseY: number,
-        sizeX: number,
-        sizeY: number,
-        smoothUnderlays: boolean = false,
-        locLoadType: LocLoadType = LocLoadType.MODELS,
-    ): Scene {
-        const scene = new Scene(Scene.MAX_LEVELS, sizeX, sizeY);
-
-        const mapStartX = Math.floor(baseX / Scene.MAP_SQUARE_SIZE);
-        const mapStartY = Math.floor(baseY / Scene.MAP_SQUARE_SIZE);
-
-        const mapEndX = Math.ceil((baseX + sizeX) / Scene.MAP_SQUARE_SIZE);
-        const mapEndY = Math.ceil((baseY + sizeY) / Scene.MAP_SQUARE_SIZE);
-
-        const emptyTerrainIds = new Set<number>();
-
-        for (let mx = mapStartX; mx < mapEndX; mx++) {
-            for (let my = mapStartY; my < mapEndY; my++) {
-                const terrainData = this.getTerrainData(mx, my);
-                if (terrainData) {
-                    const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
-                    const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-                    this.decodeTerrain(scene, terrainData, offsetX, offsetY, baseX, baseY);
-                } else {
-                    emptyTerrainIds.add(getMapSquareId(mx, my));
-                }
-            }
-        }
-
-        for (let mx = mapStartX; mx < mapEndX; mx++) {
-            for (let my = mapStartY; my < mapEndY; my++) {
-                if (!emptyTerrainIds.has(getMapSquareId(mx, my))) {
-                    continue;
-                }
-                const endX = (mx + 1) * Scene.MAP_SQUARE_SIZE;
-                const endY = (my + 1) * Scene.MAP_SQUARE_SIZE;
-                const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
-                const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-                const tileX = Math.max(offsetX, 0);
-                const tileY = Math.max(offsetY, 0);
-                const emptySizeX = endX - baseX - tileX;
-                const emptySizeY = endY - baseY - tileY;
-                for (let level = 0; level < scene.levels; level++) {
-                    this.loadEmptyTerrain(scene, level, tileX, tileY, emptySizeX, emptySizeY);
-                }
-            }
-        }
-
-        for (let mx = mapStartX; mx < mapEndX; mx++) {
-            for (let my = mapStartY; my < mapEndY; my++) {
-                const locData = this.getLocData(mx, my);
-                if (!locData) {
-                    continue;
-                }
-                const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
-                const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-                this.decodeLocs(scene, locData, offsetX, offsetY, locLoadType);
-            }
-        }
-
-        this.addTileModels(scene, smoothUnderlays);
-        scene.setTileMinLevels();
-
-        if (locLoadType === LocLoadType.MODELS) {
-            scene.light(this.locModelLoader.textureLoader, -50, -10, -50);
-        }
-
-        return scene;
     }
 
     loadEmptyTerrain(
@@ -1328,16 +1242,13 @@ export class SceneBuilder {
         }
     }
 
-    decodeNpcSpawns(
+    decodeNpcSpawnsFromBytes(
         scene: Scene,
         borderSize: number,
         mapX: number,
         mapY: number,
+        data: Uint8Array,
     ): NpcSpawn[] | undefined {
-        const data = this.getNpcSpawnData(mapX, mapY);
-        if (!data) {
-            return undefined;
-        }
         const spawns: NpcSpawn[] = [];
 
         const buffer = new ByteBuffer(data);

@@ -35,6 +35,8 @@ import { CacheType } from "../rs/cache/CacheType";
 import { DatConfigArchiveId } from "../rs/cache/ConfigArchiveId";
 import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
 import { IndexFileBytesProvider } from "../rs/io/BytesProvider";
+import { MapBytesProvider } from "../rs/map/MapBytesProvider";
+import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -44,6 +46,7 @@ const hasherPromise = Hasher.init();
 export type WorkerState = {
     session: CacheSession;
     varProvider: VarStateProvider;
+    mapBytesProvider: MapBytesProvider;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
     npcModelLoader: NpcModelLoader;
@@ -112,7 +115,6 @@ async function initWorker(
 
     const sceneBuilder = new SceneBuilder(
         cache.info,
-        mapBytesProvider,
         underlayTypeLoader,
         overlayTypeLoader,
         locTypeLoader,
@@ -131,6 +133,7 @@ async function initWorker(
     return {
         session,
         varProvider,
+        mapBytesProvider,
         locModelLoader,
         objModelLoader,
         npcModelLoader,
@@ -214,7 +217,9 @@ const worker = {
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
-        const scene = workerState.sceneBuilder.buildScene(
+        const scene = buildSceneFromMapBytesProvider(
+            workerState.sceneBuilder,
+            workerState.mapBytesProvider,
             baseX,
             baseY,
             mapSize,
