@@ -1,9 +1,9 @@
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
 import { CacheType, detectCacheType } from "../cache/CacheType";
-import { createDat2Loaders } from "./Dat2Loaders";
-import { createDatLoaders } from "./DatLoaders";
-import { createLegacyLoaders } from "./LegacyLoaders";
+import { tryCreateDat2Loaders } from "./Dat2Loaders";
+import { tryCreateDatLoaders } from "./DatLoaders";
+import { tryCreateLegacyLoaders } from "./LegacyLoaders";
 import { Loaders } from "./Loaders";
 import { err, ok, Result } from "../../util/Result";
 import { errorToString } from "../../util/ErrorUtil";
@@ -21,11 +21,11 @@ export function tryCreateLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem)
         const cacheType = detectCacheType(cacheInfo);
         switch (cacheType) {
             case CacheType.Legacy:
-                return ok(createLegacyLoaders(cacheInfo, cacheSystem));
+                return tryCreateLegacyLoaders(cacheInfo, cacheSystem);
             case CacheType.Dat:
-                return ok(createDatLoaders(cacheInfo, cacheType, cacheSystem));
+                return tryCreateDatLoaders(cacheInfo, cacheType, cacheSystem);
             case CacheType.Dat2:
-                return ok(createDat2Loaders(cacheInfo, cacheType, cacheSystem));
+                return tryCreateDat2Loaders(cacheInfo, cacheType, cacheSystem);
         }
         return err("Not implemented");
     } catch (e) {

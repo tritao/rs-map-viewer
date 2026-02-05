@@ -25,49 +25,112 @@ import { CacheSystem } from "../cache/CacheSystem";
 import { LegacyIndexId } from "../cache/IndexId";
 import { loadMapFunctions, loadMapScenes } from "./DatLoaders";
 import { Loaders } from "./Loaders";
+import { err, ok, Result } from "../../util/Result";
+import { errorToString } from "../../util/ErrorUtil";
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Archive {
+function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, string> {
+    const index = cacheSystem.tryGetIndex(indexId);
+    if (!index) {
+        return err(`Missing ${description} index (index=${indexId})`);
+    }
+    return ok(index);
+}
+
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, string> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
-        throw new Error(
-            `Missing ${description} archive (index=${index.id} archive=${archiveId})`,
-        );
+        return err(`Missing ${description} archive (index=${index.id} archive=${archiveId})`);
     }
-    return archive;
+    return ok(archive);
 }
 
 export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Loaders {
-    const configIndex = cacheSystem.getIndex(LegacyIndexId.configs);
-    const configArchive = requireArchive(configIndex, 0, "legacy config");
+    const result = tryCreateLegacyLoaders(cacheInfo, cacheSystem);
+    if (!result.ok) {
+        throw new Error(result.error);
+    }
+    return result.value;
+}
 
-    const mediaIndex = cacheSystem.getIndex(LegacyIndexId.media);
-    const mediaArchive = requireArchive(mediaIndex, 0, "legacy media");
+export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, string> {
+    const configIndexResult = requireIndex(cacheSystem, LegacyIndexId.configs, "legacy configs");
+    if (!configIndexResult.ok) {
+        return configIndexResult;
+    }
+    const configIndex = configIndexResult.value;
+    const configArchiveResult = requireArchive(configIndex, 0, "legacy config");
+    if (!configArchiveResult.ok) {
+        return configArchiveResult;
+    }
+    const configArchive = configArchiveResult.value;
 
-    const textureIndex = cacheSystem.getIndex(LegacyIndexId.textures);
-    const textureArchive = requireArchive(textureIndex, 0, "legacy texture");
+    const mediaIndexResult = requireIndex(cacheSystem, LegacyIndexId.media, "legacy media");
+    if (!mediaIndexResult.ok) {
+        return mediaIndexResult;
+    }
+    const mediaArchiveResult = requireArchive(mediaIndexResult.value, 0, "legacy media");
+    if (!mediaArchiveResult.ok) {
+        return mediaArchiveResult;
+    }
+    const mediaArchive = mediaArchiveResult.value;
 
-    const modelIndex = cacheSystem.getIndex(LegacyIndexId.models);
-    const modelArchive = requireArchive(modelIndex, 0, "legacy model");
+    const textureIndexResult = requireIndex(cacheSystem, LegacyIndexId.textures, "legacy textures");
+    if (!textureIndexResult.ok) {
+        return textureIndexResult;
+    }
+    const textureArchiveResult = requireArchive(textureIndexResult.value, 0, "legacy texture");
+    if (!textureArchiveResult.ok) {
+        return textureArchiveResult;
+    }
+    const textureArchive = textureArchiveResult.value;
 
-    const mapIndex = cacheSystem.getIndex(LegacyIndexId.maps);
+    const modelIndexResult = requireIndex(cacheSystem, LegacyIndexId.models, "legacy models");
+    if (!modelIndexResult.ok) {
+        return modelIndexResult;
+    }
+    const modelArchiveResult = requireArchive(modelIndexResult.value, 0, "legacy model");
+    if (!modelArchiveResult.ok) {
+        return modelArchiveResult;
+    }
+    const modelArchive = modelArchiveResult.value;
 
-    const floTypeLoader = DatFloorTypeLoader.create(cacheInfo, configArchive);
+    const mapIndexResult = requireIndex(cacheSystem, LegacyIndexId.maps, "legacy maps");
+    if (!mapIndexResult.ok) {
+        return mapIndexResult;
+    }
+    const mapIndex = mapIndexResult.value;
+
+    let floTypeLoader: OverlayFloorTypeLoader;
+    let locTypeLoader: LocTypeLoader;
+    let npcTypeLoader: NpcTypeLoader;
+    let objTypeLoader: ObjTypeLoader;
+    let seqTypeLoader: SeqTypeLoader;
+    try {
+        floTypeLoader = DatFloorTypeLoader.create(cacheInfo, configArchive);
+        locTypeLoader = DatLocTypeLoader.create(cacheInfo, configArchive);
+        npcTypeLoader = DatNpcTypeLoader.create(cacheInfo, configArchive);
+        objTypeLoader = DatObjTypeLoader.create(cacheInfo, configArchive);
+        seqTypeLoader = DatSeqTypeLoader.create(cacheInfo, configArchive);
+    } catch (e) {
+        return err(`Failed creating legacy dat type loaders: ${errorToString(e)}`);
+    }
+
     const textureLoader = new DatTextureLoader(textureArchive, [
         DatTextureLoader.WATER_DROPLETS_TEXTURE_ID,
         24,
     ]);
 
-    return {
+    return ok({
         underlayTypeLoader: floTypeLoader,
         overlayTypeLoader: floTypeLoader,
 
         varBitTypeLoader: new DummyVarBitTypeLoader(cacheInfo),
 
-        locTypeLoader: DatLocTypeLoader.create(cacheInfo, configArchive),
-        npcTypeLoader: DatNpcTypeLoader.create(cacheInfo, configArchive),
-        objTypeLoader: DatObjTypeLoader.create(cacheInfo, configArchive),
+        locTypeLoader,
+        npcTypeLoader,
+        objTypeLoader,
 
-        seqTypeLoader: DatSeqTypeLoader.create(cacheInfo, configArchive),
+        seqTypeLoader,
 
         basTypeLoader: new DummyBasTypeLoader(cacheInfo),
 
@@ -83,5 +146,5 @@ export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSyst
 
         mapScenes: loadMapScenes(mediaArchive),
         mapFunctions: loadMapFunctions(mediaArchive),
-    };
+    });
 }
