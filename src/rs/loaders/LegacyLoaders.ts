@@ -120,6 +120,15 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
         24,
     ]);
 
+    let modelLoader: LegacyModelLoader;
+    let seqFrameLoader: SeqFrameLoader;
+    try {
+        modelLoader = LegacyModelLoader.create(modelArchive);
+        seqFrameLoader = LegacySeqFrameLoader.create(modelArchive);
+    } catch (e) {
+        return err(`Failed creating legacy model/seq loaders: ${errorToString(e)}`);
+    }
+
     return ok({
         underlayTypeLoader: floTypeLoader,
         overlayTypeLoader: floTypeLoader,
@@ -138,8 +147,8 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
 
         textureLoader,
 
-        modelLoader: LegacyModelLoader.create(modelArchive),
-        seqFrameLoader: LegacySeqFrameLoader.create(modelArchive),
+        modelLoader,
+        seqFrameLoader,
         skeletalSeqLoader: undefined,
 
         mapFileLoader: new LegacyMapFileLoader(mapIndex, new Dat2MapIndex(mapIndex)),

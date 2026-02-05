@@ -275,13 +275,17 @@ export function tryCreateDat2Loaders(
             if (!materialsIndexResult.ok) {
                 return materialsIndexResult;
             }
-            textureLoader = ProceduralTextureLoader.create(
-                rules.texture.hasAlphaMaterialField,
-                rules.texture.hasAlphaOperation,
-                materialsIndexResult.value,
-                new IndexSmartFileBytesProvider(textureIndex, null),
-                new IndexFileBytesProvider(spriteIndex, 0),
-            );
+            try {
+                textureLoader = ProceduralTextureLoader.create(
+                    rules.texture.hasAlphaMaterialField,
+                    rules.texture.hasAlphaOperation,
+                    materialsIndexResult.value,
+                    new IndexSmartFileBytesProvider(textureIndex, null),
+                    new IndexFileBytesProvider(spriteIndex, 0),
+                );
+            } catch (e) {
+                return err(`Failed creating procedural texture loader: ${errorToString(e)}`);
+            }
             break;
         }
         case "old_procedural":
