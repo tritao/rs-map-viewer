@@ -6,11 +6,6 @@ import { SkeletalSeq } from "./SkeletalSeq";
 export interface SkeletalSeqLoader {
     tryLoad(id: number): SkeletalSeq | undefined;
 
-    /**
-     * @deprecated Use `tryLoad()` for explicit non-throwing semantics.
-     */
-    load(id: number): SkeletalSeq | undefined;
-
     clearCache(): void;
 }
 
@@ -53,10 +48,6 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
         }
         this.seqs.set(id, skeletalSeq);
         return skeletalSeq;
-    }
-
-    load(id: number): SkeletalSeq | undefined {
-        return this.tryLoad(id);
     }
 
     clearCache(): void {

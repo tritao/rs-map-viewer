@@ -5,11 +5,6 @@ import { Type } from "../Type";
 
 export type SeqFrameLengthLoader = {
     tryLoad(id: number): { frameLength: number } | undefined;
-
-    /**
-     * @deprecated Use `tryLoad()`.
-     */
-    load(id: number): { frameLength: number } | undefined;
 };
 
 export class SeqSoundEffect {
