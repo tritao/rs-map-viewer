@@ -65,7 +65,7 @@ function MapViewerApp() {
 
             const mapImageCache = await caches.open("map-images");
 
-            const mapViewer = new MapViewer(
+            const mapViewerResult = MapViewer.tryCreate(
                 workerPool,
                 cacheList,
                 objSpawns,
@@ -73,6 +73,11 @@ function MapViewerApp() {
                 mapImageCache,
                 cache,
             );
+            if (!mapViewerResult.ok) {
+                setErrorMessage(mapViewerResult.error);
+                return;
+            }
+            const mapViewer = mapViewerResult.value;
             mapViewer.applySearchParams(searchParams);
             mapViewer.init();
 
