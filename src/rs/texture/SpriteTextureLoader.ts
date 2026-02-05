@@ -184,34 +184,7 @@ export class SpriteTextureLoader implements TextureLoader {
             sprite.normalize();
 
             const palettePixels = sprite.pixels;
-            const palette = sprite.palette;
             const transform = def.transforms[i];
-
-            // not used by any texture but who knows
-            if ((transform & -0x1000000) === 0x3000000) {
-                // red, 0, blue
-                const r_b = transform & 0xff00ff;
-                // green
-                const green = (transform >> 8) & 0xff;
-
-                for (let pi = 0; pi < palette.length; pi++) {
-                    const color = palette[pi];
-                    const rg = color >> 8;
-                    const gb = color & 0xffff;
-                    if (rg === gb) {
-                        const blue = color & 0xff;
-                        palette[pi] = (((r_b * blue) >> 8) & 0xff00ff) | ((green * blue) & 0xff00);
-                    }
-                }
-            }
-
-            for (let pi = 0; pi < palette.length; pi++) {
-                let alpha = 0xff;
-                if (palette[pi] === 0) {
-                    alpha = 0;
-                }
-                palette[pi] = (alpha << 24) | brightenRgb(palette[pi], brightness);
-            }
 
             let index = 0;
             if (i > 0 && def.spriteTypes) {
@@ -219,10 +192,37 @@ export class SpriteTextureLoader implements TextureLoader {
             }
 
             if (index === 0) {
+                const sourcePalette = sprite.palette;
+                const paletteArgb = new Int32Array(sourcePalette.length);
+
+                // not used by any texture but who knows
+                const hasTransform = (transform & -0x1000000) === 0x3000000;
+                const r_b = transform & 0xff00ff;
+                const green = (transform >> 8) & 0xff;
+
+                for (let pi = 0; pi < sourcePalette.length; pi++) {
+                    let rgb = sourcePalette[pi];
+
+                    if (hasTransform) {
+                        const rg = rgb >> 8;
+                        const gb = rgb & 0xffff;
+                        if (rg === gb) {
+                            const blue = rgb & 0xff;
+                            rgb = (((r_b * blue) >> 8) & 0xff00ff) | ((green * blue) & 0xff00);
+                        }
+                    }
+
+                    let alpha = 0xff;
+                    if (rgb === 0) {
+                        alpha = 0;
+                    }
+                    paletteArgb[pi] = (alpha << 24) | brightenRgb(rgb, brightness);
+                }
+
                 if (size === sprite.subWidth) {
                     for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++) {
                         const paletteIndex = palettePixels[pixelIndex];
-                        pixels[pixelIndex] = palette[paletteIndex];
+                        pixels[pixelIndex] = paletteArgb[paletteIndex];
                     }
                 } else if (sprite.subWidth === 64 && size === 128) {
                     let pixelIndex = 0;
@@ -230,7 +230,7 @@ export class SpriteTextureLoader implements TextureLoader {
                     for (let x = 0; x < size; x++) {
                         for (let y = 0; y < size; y++) {
                             const paletteIndex = palettePixels[((x >> 1) << 6) + (y >> 1)];
-                            pixels[pixelIndex++] = palette[paletteIndex];
+                            pixels[pixelIndex++] = paletteArgb[paletteIndex];
                         }
                     }
                 } else {
@@ -243,7 +243,7 @@ export class SpriteTextureLoader implements TextureLoader {
                     for (let x = 0; x < size; x++) {
                         for (let y = 0; y < size; y++) {
                             const paletteIndex = palettePixels[(y << 1) + ((x << 1) << 7)];
-                            pixels[pixelIndex++] = palette[paletteIndex];
+                            pixels[pixelIndex++] = paletteArgb[paletteIndex];
                         }
                     }
                 }

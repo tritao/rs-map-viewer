@@ -135,14 +135,15 @@ export class DatTextureLoader implements TextureLoader {
         }
 
         const palettePixels = sprite.pixels;
-        const palette = sprite.palette;
-
-        for (let pi = 0; pi < palette.length; pi++) {
+        const sourcePalette = sprite.palette;
+        const paletteArgb = new Int32Array(sourcePalette.length);
+        for (let pi = 0; pi < sourcePalette.length; pi++) {
+            const rgb = sourcePalette[pi];
             let alpha = 0xff;
-            if (palette[pi] === 0) {
+            if (rgb === 0) {
                 alpha = 0;
             }
-            palette[pi] = (alpha << 24) | brightenRgb(palette[pi], brightness);
+            paletteArgb[pi] = (alpha << 24) | brightenRgb(rgb, brightness);
         }
 
         const pixelCount = size * size;
@@ -151,7 +152,7 @@ export class DatTextureLoader implements TextureLoader {
         if (size === sprite.subWidth) {
             for (let pixelIndex = 0; pixelIndex < pixelCount; pixelIndex++) {
                 const paletteIndex = palettePixels[pixelIndex];
-                pixels[pixelIndex] = palette[paletteIndex];
+                pixels[pixelIndex] = paletteArgb[paletteIndex];
             }
         } else if (sprite.subWidth === 64 && size === 128) {
             let pixelIndex = 0;
@@ -159,7 +160,7 @@ export class DatTextureLoader implements TextureLoader {
             for (let x = 0; x < size; x++) {
                 for (let y = 0; y < size; y++) {
                     const paletteIndex = palettePixels[((x >> 1) << 6) + (y >> 1)];
-                    pixels[pixelIndex++] = palette[paletteIndex];
+                    pixels[pixelIndex++] = paletteArgb[paletteIndex];
                 }
             }
         } else {
@@ -172,7 +173,7 @@ export class DatTextureLoader implements TextureLoader {
             for (let x = 0; x < size; x++) {
                 for (let y = 0; y < size; y++) {
                     const paletteIndex = palettePixels[(y << 1) + ((x << 1) << 7)];
-                    pixels[pixelIndex++] = palette[paletteIndex];
+                    pixels[pixelIndex++] = paletteArgb[paletteIndex];
                 }
             }
         }
