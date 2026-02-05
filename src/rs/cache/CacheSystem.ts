@@ -44,6 +44,10 @@ export class CacheSystem {
         return this.indices.has(indexId);
     }
 
+    tryGetIndex(indexId: number): CacheIndex | undefined {
+        return this.indices.get(indexId);
+    }
+
     getIndex(indexId: number): CacheIndex {
         const index = this.indices.get(indexId);
         if (!index) {
@@ -60,12 +64,20 @@ export class CacheSystem {
         return this.getIndex(indexId).readContainerPayload(archiveId, key);
     }
 
+    tryReadContainerPayload(indexId: number, archiveId: number, key: number[] | null): Uint8Array | undefined {
+        return this.indices.get(indexId)?.tryReadContainerPayload(archiveId, key);
+    }
+
     getArchiveKey(indexId: number, archiveId: number, key: number[] | null): Archive {
         return this.getIndex(indexId).getArchiveKey(archiveId, key);
     }
 
     getArchive(indexId: number, archiveId: number): Archive {
         return this.getIndex(indexId).getArchive(archiveId);
+    }
+
+    tryGetArchive(indexId: number, archiveId: number): Archive | undefined {
+        return this.indices.get(indexId)?.tryGetArchive(archiveId);
     }
 
     /**

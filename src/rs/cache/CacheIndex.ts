@@ -42,6 +42,14 @@ export abstract class CacheIndex {
 
     abstract getArchiveKey(archiveId: number, key: number[] | null): Archive;
 
+    tryGetArchiveKey(archiveId: number, key: number[] | null): Archive | undefined {
+        try {
+            return this.getArchiveKey(archiveId, key);
+        } catch {
+            return undefined;
+        }
+    }
+
     /**
      * Reads the raw on-disk bytes for this archive (container/packed format as stored in the cache).
      *
@@ -76,8 +84,20 @@ export abstract class CacheIndex {
         throw new Error("readContainerPayload() unsupported");
     }
 
+    tryReadContainerPayload(archiveId: number, key: number[] | null): Uint8Array | undefined {
+        try {
+            return this.readContainerPayload(archiveId, key);
+        } catch {
+            return undefined;
+        }
+    }
+
     getArchive(archiveId: number): Archive {
         return this.getArchiveKey(archiveId, null)
+    }
+
+    tryGetArchive(archiveId: number): Archive | undefined {
+        return this.tryGetArchiveKey(archiveId, null);
     }
 
     getFileKey(
@@ -97,11 +117,33 @@ export abstract class CacheIndex {
         throw new Error("Invalid archive");
     }
 
+    tryGetFileKey(
+        archiveId: number,
+        fileId: number,
+        key: number[] | null,
+    ): ArchiveFile | undefined {
+        const archive = this.tryGetArchiveKey(archiveId, key);
+        return archive?.getFile(fileId) ?? undefined;
+    }
+
+    tryGetFileSmart(id: number, key: number[] | null): ArchiveFile | undefined {
+        if (this.getArchiveCount() === 1) {
+            return this.tryGetFileKey(0, id, key);
+        } else if (this.getFileCount(id) === 1) {
+            return this.tryGetFileKey(id, 0, key);
+        }
+        return undefined;
+    }
+
     getFile(
         archiveId: number,
         fileId: number,
     ): ArchiveFile | null {
         return this.getFileKey(archiveId, fileId, null)
+    }
+
+    tryGetFile(archiveId: number, fileId: number): ArchiveFile | undefined {
+        return this.tryGetFileKey(archiveId, fileId, null);
     }
 }
 
