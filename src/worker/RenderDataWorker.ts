@@ -418,12 +418,11 @@ async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise
 
         const sprites: IndexedSprite[] = [];
         for (let i = 0; i < 256; i++) {
-            try {
-                const sprite = SpriteLoader.loadIndexedSpriteDatId(mediaArchive, fileId, i);
-                sprites.push(sprite);
-            } catch (e) {
+            const sprite = SpriteLoader.tryLoadIndexedSpriteDatId(mediaArchive, fileId, i);
+            if (!sprite) {
                 break;
             }
+            sprites.push(sprite);
         }
         promises.push(addSpritesToZip(zip, fileId, sprites));
     }

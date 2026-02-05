@@ -158,6 +158,18 @@ export class SpriteLoader {
         return sprite;
     }
 
+    static tryLoadIndexedSpriteDatId(
+        archive: Archive,
+        id: number,
+        offset: number,
+    ): IndexedSprite | undefined {
+        try {
+            return this.loadIndexedSpriteDatId(archive, id, offset);
+        } catch {
+            return undefined;
+        }
+    }
+
     static loadIndexedSpritesDat(archive: Archive, name: string): IndexedSprite[] {
         const id = archive.getFileId(name + ".dat");
         if (id === -1) {
