@@ -18,6 +18,7 @@ import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
 import { LocEntity } from "./entity/LocEntity";
 import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
+import { decodeLocPlacementsFromBytes } from "./decodeLocPlacements";
 
 export enum LocLoadType {
     MODELS,
@@ -269,58 +270,38 @@ export class SceneBuilder {
         offsetY: number,
         locLoadType: LocLoadType,
     ): void {
-        const buffer = new ByteBuffer(data);
+        const placements = decodeLocPlacementsFromBytes(data);
+        for (const placement of placements) {
+            const sceneX = placement.localX + offsetX;
+            const sceneY = placement.localY + offsetY;
 
-        let id = -1;
-        let idDelta: number;
-        while ((idDelta = buffer.readSmart3()) !== 0) {
-            id += idDelta;
-
-            let pos = 0;
-            let posDelta: number;
-            while ((posDelta = buffer.readUnsignedSmart()) !== 0) {
-                pos += posDelta - 1;
-
-                const localX = (pos >> 6) & 0x3f;
-                const localY = pos & 0x3f;
-                const level = pos >> 12;
-
-                const attributes = buffer.readUnsignedByte();
-
-                const type: LocModelType = attributes >> 2;
-                const rotation = attributes & 0x3;
-
-                const sceneX = localX + offsetX;
-                const sceneY = localY + offsetY;
-
-                if (
-                    sceneX > 0 &&
-                    sceneY > 0 &&
-                    sceneX < scene.sizeX - 1 &&
-                    sceneY < scene.sizeY - 1
-                ) {
-                    let transformedLevel = level;
-                    if ((scene.tileRenderFlags[1][sceneX][sceneY] & TileRenderFlag.Bridge) !== 0) {
-                        transformedLevel = level - 1;
-                    }
-
-                    let collisionMap: CollisionMap | undefined = undefined;
-                    if (transformedLevel >= 0) {
-                        collisionMap = scene.collisionMaps[transformedLevel];
-                    }
-
-                    this.addLoc(
-                        scene,
-                        level,
-                        sceneX,
-                        sceneY,
-                        id,
-                        type,
-                        rotation,
-                        collisionMap,
-                        locLoadType,
-                    );
+            if (
+                sceneX > 0 &&
+                sceneY > 0 &&
+                sceneX < scene.sizeX - 1 &&
+                sceneY < scene.sizeY - 1
+            ) {
+                let transformedLevel = placement.level;
+                if ((scene.tileRenderFlags[1][sceneX][sceneY] & TileRenderFlag.Bridge) !== 0) {
+                    transformedLevel = placement.level - 1;
                 }
+
+                let collisionMap: CollisionMap | undefined = undefined;
+                if (transformedLevel >= 0) {
+                    collisionMap = scene.collisionMaps[transformedLevel];
+                }
+
+                this.addLoc(
+                    scene,
+                    placement.level,
+                    sceneX,
+                    sceneY,
+                    placement.id,
+                    placement.type,
+                    placement.rotation,
+                    collisionMap,
+                    locLoadType,
+                );
             }
         }
     }
