@@ -3,7 +3,7 @@ import { NpcType } from "../../config/npctype/NpcType";
 import { NpcTypeLoader } from "../../config/npctype/NpcTypeLoader";
 import { SeqType } from "../../config/seqtype/SeqType";
 import { SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
-import { VarManager } from "../../config/vartype/VarManager";
+import { VarProvider } from "../../config/vartype/VarProvider";
 import { Model } from "../../model/Model";
 import { ModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
@@ -21,14 +21,14 @@ export class NpcModelLoader {
         readonly seqTypeLoader: SeqTypeLoader,
         readonly seqFrameLoader: SeqFrameLoader,
         readonly skeletalSeqLoader: SkeletalSeqLoader | undefined,
-        readonly varManager: VarManager,
+        readonly varProvider: VarProvider,
     ) {
         this.modelCache = new Map();
     }
 
     getModel(npcType: NpcType, seqId: number, frame: number): Model | undefined {
         if (npcType.transforms) {
-            const transformed = npcType.transform(this.varManager, this.npcTypeLoader);
+            const transformed = npcType.transform(this.varProvider, this.npcTypeLoader);
             if (!transformed) {
                 return undefined;
             }

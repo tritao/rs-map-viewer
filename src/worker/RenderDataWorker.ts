@@ -10,7 +10,7 @@ import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
-import { VarManager } from "../rs/config/vartype/VarManager";
+import { VarStateProvider } from "../rs/config/vartype/VarProvider";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { MapFileBytesProvider } from "../rs/map/MapBytesProvider";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
@@ -43,6 +43,7 @@ const hasherPromise = Hasher.init();
 
 export type WorkerState = {
     session: CacheSession;
+    varProvider: VarStateProvider;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
     npcModelLoader: NpcModelLoader;
@@ -84,7 +85,7 @@ async function initWorker(
     const skeletalSeqLoader = loaders.skeletalSeqLoader;
 
     const mapFileLoader = loaders.mapFileLoader;
-    const varManager = session.varManager;
+    const varProvider = new VarStateProvider(loaders.varBitTypeLoader, session.varManager.values);
 
     const mapBytesProvider = new MapFileBytesProvider(mapFileLoader, cache.xteas);
 
@@ -106,7 +107,7 @@ async function initWorker(
         seqTypeLoader,
         seqFrameLoader,
         skeletalSeqLoader,
-        varManager,
+        varProvider,
     );
 
     const sceneBuilder = new SceneBuilder(
@@ -129,6 +130,7 @@ async function initWorker(
 
     return {
         session,
+        varProvider,
         locModelLoader,
         objModelLoader,
         npcModelLoader,
@@ -242,7 +244,7 @@ const worker = {
         if (!workerState) {
             throw new Error("Worker not initialized");
         }
-        workerState.session.varManager.set(values);
+        workerState.varProvider.set(values);
     },
     async loadCachedMapImages(): Promise<Map<number, string>> {
         const workerState = await workerStatePromise;

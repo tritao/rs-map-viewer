@@ -2,7 +2,7 @@ import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
 import { BasTypeLoader } from "../bastype/BasTypeLoader";
-import { VarManager } from "../vartype/VarManager";
+import { VarProvider } from "../vartype/VarProvider";
 import { NpcTypeLoader } from "./NpcTypeLoader";
 
 export class NpcType extends Type {
@@ -523,7 +523,7 @@ export class NpcType extends Type {
         return this.walkSeqId;
     }
 
-    transform(varManager: VarManager, loader: NpcTypeLoader): NpcType | undefined {
+    transform(varManager: VarProvider, loader: NpcTypeLoader): NpcType | undefined {
         if (!this.transforms) {
             return undefined;
         }

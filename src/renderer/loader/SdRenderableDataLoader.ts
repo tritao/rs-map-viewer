@@ -311,8 +311,6 @@ export class SdRenderableDataLoader
         const objModelLoader = state.objModelLoader;
         const npcModelLoader = state.npcModelLoader;
 
-        const varManager = state.session.varManager;
-
         const id = ids[0];
 
         let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));

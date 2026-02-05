@@ -3,7 +3,7 @@ import { ObjSpawn, getMapObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { NpcType } from "../../rs/config/npctype/NpcType";
-import { VarManager } from "../../rs/config/vartype/VarManager";
+import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
@@ -347,7 +347,7 @@ function addLocAnimationFrames(
 
 function addLocEntities(
     locModelLoader: LocModelLoader,
-    varManager: VarManager,
+    varManager: VarProvider,
     scene: Scene,
     sceneModels: SceneModel[],
     sceneBuf: SceneBuffer,
@@ -552,7 +552,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const objModelLoader = state.objModelLoader;
         const npcModelLoader = state.npcModelLoader;
 
-        const varManager = state.session.varManager;
+        const varManager = state.varProvider;
 
         let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
         textureIds = textureIds.slice(0, 2047);

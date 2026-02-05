@@ -2,7 +2,7 @@ import { toSigned16bit } from "../../../util/MathUtil";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ParamsMap, Type } from "../Type";
-import { VarManager } from "../vartype/VarManager";
+import { VarProvider } from "../vartype/VarProvider";
 import { LocModelType } from "./LocModelType";
 import { LocTypeLoader } from "./LocTypeLoader";
 
@@ -555,7 +555,7 @@ export class LocType extends Type {
         // }
     }
 
-    transform(varManager: VarManager, loader: LocTypeLoader): LocType | undefined {
+    transform(varManager: VarProvider, loader: LocTypeLoader): LocType | undefined {
         if (!this.transforms) {
             return undefined;
         }
