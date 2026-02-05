@@ -59,37 +59,29 @@ export function computeCacheRules(cacheInfo: CacheInfo, cacheSystem: CacheSystem
     let mapScenes: MapScenesRules = { mode: "graphics_defaults" };
     let mapFunctions: MapFunctionsRules = { mode: "graphics_defaults" };
 
-    try {
-        if (cacheSystem.indexExists(Dat2IndexId.configs)) {
-            const configIndex = cacheSystem.getIndex(Dat2IndexId.configs);
-
-            if (
-                cacheInfo.game === GameType.Runescape &&
-                cacheInfo.revision >= 530 &&
-                configIndex.archiveExists(Rs2ConfigArchiveId.bas)
-            ) {
-                bas = { mode: "archive" };
-            }
-
-            if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.quests)) {
-                quests = { mode: "archive" };
-            }
-
-            if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.mapScenes)) {
-                mapScenes = { mode: "archive" };
-            }
-
-            if (cacheInfo.game === GameType.Oldschool && configIndex.archiveExists(OsrsConfigArchiveId.mapFunctions)) {
-                mapFunctions = { mode: "osrs_archive" };
-            } else if (
-                cacheInfo.game === GameType.Runescape &&
-                configIndex.archiveExists(Rs2ConfigArchiveId.mapFunctions)
-            ) {
-                mapFunctions = { mode: "rs2_archive" };
-            }
+    const configIndex = cacheSystem.tryGetIndex(Dat2IndexId.configs);
+    if (configIndex) {
+        if (
+            cacheInfo.game === GameType.Runescape &&
+            cacheInfo.revision >= 530 &&
+            configIndex.archiveExists(Rs2ConfigArchiveId.bas)
+        ) {
+            bas = { mode: "archive" };
         }
-    } catch {
-        // Leave default rules when probing cache structure fails.
+
+        if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.quests)) {
+            quests = { mode: "archive" };
+        }
+
+        if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.mapScenes)) {
+            mapScenes = { mode: "archive" };
+        }
+
+        if (cacheInfo.game === GameType.Oldschool && configIndex.archiveExists(OsrsConfigArchiveId.mapFunctions)) {
+            mapFunctions = { mode: "osrs_archive" };
+        } else if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.mapFunctions)) {
+            mapFunctions = { mode: "rs2_archive" };
+        }
     }
 
     return { isIndexConfigs, texture, bas, quests, mapScenes, mapFunctions };

@@ -20,12 +20,9 @@ export class GraphicsDefaults extends Type {
     modIcons: number = -1;
 
     static create(cacheInfo: CacheInfo, fileSystem: CacheSystem): GraphicsDefaults {
-        if (
-            cacheInfo.game === GameType.Oldschool &&
-            fileSystem.indexExists(OsrsIndexId.graphicDefaults)
-        ) {
-            const defaultsIndex = fileSystem.getIndex(OsrsIndexId.graphicDefaults);
-            const defaultsFile = defaultsIndex.tryGetFile(DefaultsGroup.GRAPHICS, 0);
+        const osrsDefaultsIndex = fileSystem.tryGetIndex(OsrsIndexId.graphicDefaults);
+        if (cacheInfo.game === GameType.Oldschool && osrsDefaultsIndex) {
+            const defaultsFile = osrsDefaultsIndex.tryGetFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
                 console.error("GraphicsDefaults: file not found");
                 return new GraphicsDefaults(-1, cacheInfo);
@@ -35,10 +32,9 @@ export class GraphicsDefaults extends Type {
             defaults.decode(new ByteBuffer(defaultsFile.data));
 
             return defaults;
-        } else if (
-            cacheInfo.game === GameType.Runescape &&
-            fileSystem.indexExists(Rs2IndexId.defaults)
-        ) {
+        }
+
+        if (cacheInfo.game === GameType.Runescape && fileSystem.tryGetIndex(Rs2IndexId.defaults)) {
             const defaults = new GraphicsDefaults(-1, cacheInfo);
 
             return defaults;
