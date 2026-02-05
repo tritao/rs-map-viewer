@@ -42,11 +42,14 @@ export class VarManager {
     }
 
     getVarp(id: number): number {
-        return this.values[id];
+        return this.values[id] ?? 0;
     }
 
     setVarp(id: number, value: number): boolean {
-        if (this.getVarp(id) === value || id >= this.values.length) {
+        if (id >= this.values.length) {
+            return false;
+        }
+        if (this.values[id] === value) {
             return false;
         }
         this.values[id] = value;
@@ -54,14 +57,25 @@ export class VarManager {
     }
 
     getVarbit(id: number): number {
-        const { baseVar, startBit, endBit } = this.varbitLoader.load(id);
+        const result = this.varbitLoader.tryLoad(id);
+        if (!result.ok) {
+            return 0;
+        }
+        const { baseVar, startBit, endBit } = result.value;
+        if (baseVar >= this.values.length) {
+            return 0;
+        }
         const mask = BIT_MASKS[endBit - startBit];
         const value = (this.values[baseVar] >> startBit) & mask;
         return value;
     }
 
     setVarbit(id: number, value: number): boolean {
-        const { baseVar, startBit, endBit } = this.varbitLoader.load(id);
+        const result = this.varbitLoader.tryLoad(id);
+        if (!result.ok) {
+            return false;
+        }
+        const { baseVar, startBit, endBit } = result.value;
         if (baseVar >= this.values.length) {
             return false;
         }

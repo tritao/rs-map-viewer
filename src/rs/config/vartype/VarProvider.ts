@@ -29,10 +29,13 @@ export class VarStateProvider implements VarProvider {
     }
 
     getVarbit(id: number): number {
-        const { baseVar, startBit, endBit } = this.varbitLoader.load(id);
+        const result = this.varbitLoader.tryLoad(id);
+        if (!result.ok) {
+            return 0;
+        }
+        const { baseVar, startBit, endBit } = result.value;
         const mask = BIT_MASKS[endBit - startBit];
         const baseValue = this.values[baseVar] ?? 0;
         return (baseValue >> startBit) & mask;
     }
 }
-
