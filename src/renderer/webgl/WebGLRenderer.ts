@@ -1,8 +1,8 @@
 import Denque from "denque";
 import PicoGL, { Texture } from "picogl";
-import { CacheContext } from "../../rs/loaders/CacheContext";
 import { InputManager } from "../../util/InputManager";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
+import { CacheSession } from "../../rs/runtime/createCacheSession";
 import { Camera } from "../Camera";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { SdRenderableDataLoader } from "../loader/SdRenderableDataLoader";
@@ -20,9 +20,9 @@ export class WebGLRenderer extends WebGLMapRenderer {
     loadedRenderables: Map<number, WebGLRenderable> = new Map();
 
     constructor(
-        cacheContext: CacheContext, inputManager: InputManager,
+        session: CacheSession, inputManager: InputManager,
         workerPool: RenderDataWorkerPool, camera: Camera) {
-        super(cacheContext, workerPool, inputManager, DEFAULT_RENDER_DISTANCE, 0, 0, camera);
+        super(session, workerPool, inputManager, DEFAULT_RENDER_DISTANCE, 0, 0, camera);
         this.setSkyColor(255, 255, 255);
         this.setMaxLevel(0);
         this.setLoadLocs(false);
@@ -71,9 +71,9 @@ export class WebGLRenderer extends WebGLMapRenderer {
         this.loadedRenderables.set(
             id,
             WebGLRenderable.load(
-                this.cacheContext.loaders.seqTypeLoader,
-                this.cacheContext.loaders.npcTypeLoader,
-                this.cacheContext.loaders.basTypeLoader,
+                this.session.loaders.seqTypeLoader,
+                this.session.loaders.npcTypeLoader,
+                this.session.loaders.basTypeLoader,
                 this.app,
                 this.mainProgram!,
                 this.mainAlphaProgram!,

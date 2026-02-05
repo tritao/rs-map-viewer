@@ -14,8 +14,8 @@ import { MapViewerRenderer } from "./MapViewerRenderer";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import { CacheContext } from "../rs/loaders/CacheContext";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
+import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -29,7 +29,7 @@ export class MapViewer {
     renderer: MapViewerRenderer;
 
     loadedCache: LoadedCache;
-    cacheContext: CacheContext;
+    session: CacheSession;
 
     // Settings
 
@@ -70,7 +70,7 @@ export class MapViewer {
         cache: LoadedCache,
     ) {
         this.loadedCache = cache;
-        this.cacheContext = new CacheContext(cache, new JSCompressionHandler());
+        this.session = createCacheSession(cache, new JSCompressionHandler());
         this.renderer = new MapViewerRenderer(this);
         this.initCache(cache);
     }
@@ -228,7 +228,7 @@ export class MapViewer {
     };
 
     updateVars(): void {
-        this.workerPool.setVars(this.cacheContext.varManager.values);
+        this.workerPool.setVars(this.session.varManager.values);
     }
 
     static getCachedMapImageUrl(mapX: number, mapY: number): string {

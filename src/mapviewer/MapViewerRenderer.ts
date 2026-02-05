@@ -13,15 +13,15 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { InputManager } from "../util/InputManager";
-import { CacheContext } from "../rs/loaders/CacheContext";
 import { Camera } from "../renderer/Camera";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
+import { CacheSession } from "../rs/runtime/createCacheSession";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
-    cacheContext: CacheContext;
+    session: CacheSession;
     workerPool: RenderDataWorkerPool;
 
     camera: Camera;
@@ -39,12 +39,12 @@ export class MapViewerRenderer extends RendererMainLoop {
     constructor(public mapViewer: MapViewer) {
         super();
         this.inputManager = mapViewer.inputManager;
-        this.cacheContext = mapViewer.cacheContext;
+        this.session = mapViewer.session;
         this.workerPool = mapViewer.workerPool;
         this.camera = mapViewer.camera;
         this.pathfinder = mapViewer.pathfinder;
         this.renderer = new WebGLMapRenderer(
-            this.cacheContext, this.workerPool, this.inputManager, mapViewer.renderDistance,
+            this.session, this.workerPool, this.inputManager, mapViewer.renderDistance,
             mapViewer.unloadDistance, mapViewer.lodDistance, this.camera)
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
@@ -85,8 +85,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     initCache(): void {
         this.renderer.initCache();
         this.mapManager.init(
-            this.cacheContext.mapFileIndex,
-            SceneBuilder.fillEmptyTerrain(this.cacheContext.cache.info),
+            this.session.mapFileIndex,
+            SceneBuilder.fillEmptyTerrain(this.session.cache.info),
         );
         this.mapManager.update(
             this.camera,
@@ -141,8 +141,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
 
-        const seqFrameLoader = this.cacheContext.loaders.seqFrameLoader;
-        const seqTypeLoader = this.cacheContext.loaders.seqTypeLoader;
+        const seqFrameLoader = this.session.loaders.seqFrameLoader;
+        const seqTypeLoader = this.session.loaders.seqTypeLoader;
 
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
@@ -405,7 +405,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const interactId = interactBuffer[index];
                 const interactType = interactBuffer[index + 2];
                 if (interactType === InteractType.LOC) {
-                    const locResult = this.mapViewer.cacheContext.loaders.locTypeLoader.tryLoad(interactId);
+                    const locResult = this.mapViewer.session.loaders.locTypeLoader.tryLoad(interactId);
                     if (!locResult.ok) {
                         continue;
                     }
@@ -441,7 +441,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.OBJ) {
-                    const objResult = this.mapViewer.cacheContext.loaders.objTypeLoader.tryLoad(interactId);
+                    const objResult = this.mapViewer.session.loaders.objTypeLoader.tryLoad(interactId);
                     if (!objResult.ok) {
                         continue;
                     }
@@ -477,15 +477,15 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.NPC) {
-                    const npcResult = this.mapViewer.cacheContext.loaders.npcTypeLoader.tryLoad(interactId);
+                    const npcResult = this.mapViewer.session.loaders.npcTypeLoader.tryLoad(interactId);
                     if (!npcResult.ok) {
                         continue;
                     }
                     let npcType = npcResult.value;
                     if (npcType.transforms) {
                         const transformed = npcType.transform(
-                            this.mapViewer.cacheContext.varManager,
-                            this.mapViewer.cacheContext.loaders.npcTypeLoader,
+                            this.mapViewer.session.varManager,
+                            this.mapViewer.session.loaders.npcTypeLoader,
                         );
                         if (!transformed) {
                             continue;

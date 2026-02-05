@@ -24,7 +24,6 @@ import {
     createMainProgram,
     createNpcProgram,
 } from "./shaders/Shaders";
-import { CacheContext } from "../../rs/loaders/CacheContext";
 import { InputManager } from "../../util/InputManager";
 import { Camera } from "../Camera";
 import { RendererStats } from "./RendererStats";
@@ -37,6 +36,7 @@ import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { TileRenderFlag } from "../../rs/scene/Scene";
 import { WebGLRenderable } from "./WebGLRenderable";
 import { GameType } from "../../rs/cache/CacheInfo";
+import { CacheSession } from "../../rs/runtime/createCacheSession";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -97,11 +97,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     isNewTextureAnim: boolean = false;
 
     constructor(
-        readonly cacheContext: CacheContext, readonly workerPool: RenderDataWorkerPool,
+        readonly session: CacheSession, readonly workerPool: RenderDataWorkerPool,
         readonly inputManager: InputManager,
         renderDistance: number, unloadDistance: number, lodDistance: number,
         readonly camera: Camera) {
-        super(cacheContext.cache, renderDistance, unloadDistance, lodDistance);
+        super(session.cache, renderDistance, unloadDistance, lodDistance);
         this.dataLoader = new SdMapDataLoader();
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
@@ -257,7 +257,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initCache(): void {
-        const cache = this.cacheContext.cache;
+        const cache = this.session.cache;
         this.isNewTextureAnim = cache.info.game === GameType.Runescape && cache.info.revision >= 681;
 
         if (this.app) {
@@ -267,7 +267,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initTextures(): void {
-        const textureLoader = this.cacheContext.loaders.textureLoader;
+        const textureLoader = this.session.loaders.textureLoader;
 
         const allTextureIds = textureLoader.getTextureIds();
 
@@ -298,7 +298,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         // White texture
         pixels.fill(0xffffffff, 0, pixelCount);
 
-        const cacheInfo = this.cacheContext.cache.info;
+        const cacheInfo = this.session.cache.info;
 
         let maxPreloadTextures = textureCount;
         // we should check if the texture loader is procedural instead
@@ -309,7 +309,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = 0; i < Math.min(textureCount, maxPreloadTextures); i++) {
             const textureId = this.textureIds[i];
             try {
-                const texturePixels = this.cacheContext.loaders.textureLoader.getPixelsArgb(
+                const texturePixels = this.session.loaders.textureLoader.getPixelsArgb(
                     textureId,
                     TEXTURE_SIZE,
                     true,
@@ -435,7 +435,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = 0; i < this.textureIds.length; i++) {
             const id = this.textureIds[i];
             try {
-                const material = this.cacheContext.loaders.textureLoader.getMaterial(id);
+                const material = this.session.loaders.textureLoader.getMaterial(id);
 
                 const index = (i + 1) * 4;
                 data[index] = material.animU;
@@ -481,9 +481,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.loadedMaps.set(
             getMapSquareId(mapX, mapY),
             WebGLMapSquare.load(
-                this.cacheContext.loaders.seqTypeLoader,
-                this.cacheContext.loaders.npcTypeLoader,
-                this.cacheContext.loaders.basTypeLoader,
+                this.session.loaders.seqTypeLoader,
+                this.session.loaders.npcTypeLoader,
+                this.session.loaders.basTypeLoader,
                 this.app,
                 this.mainProgram!,
                 this.mainAlphaProgram!,
