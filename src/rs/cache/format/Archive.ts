@@ -298,6 +298,11 @@ export class Archive {
         return value ?? -1;
     }
 
+    tryGetFileId(name: string): number | undefined {
+        const id = this.getFileId(name);
+        return id === -1 ? undefined : id;
+    }
+
     getFileNamed(name: string): ArchiveFile | null {
         const id = this.getFileId(name);
         if (id === -1) {

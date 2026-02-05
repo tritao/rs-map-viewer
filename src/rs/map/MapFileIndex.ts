@@ -10,6 +10,9 @@ export function getMapSquareId(mapX: number, mapY: number): MapSquareId {
 export interface MapFileIndex {
     getTerrainArchiveId(mapX: number, mapY: number): number;
     getLocArchiveId(mapX: number, mapY: number): number;
+
+    tryGetTerrainArchiveId(mapX: number, mapY: number): number | undefined;
+    tryGetLocArchiveId(mapX: number, mapY: number): number | undefined;
 }
 
 class MapSquare {
@@ -52,6 +55,16 @@ export class DatMapFileIndex implements MapFileIndex {
     getLocArchiveId(mapX: number, mapY: number): number {
         return this.mapSquares.get(getMapSquareId(mapX, mapY))?.locArchiveId ?? -1;
     }
+
+    tryGetTerrainArchiveId(mapX: number, mapY: number): number | undefined {
+        const id = this.getTerrainArchiveId(mapX, mapY);
+        return id === -1 ? undefined : id;
+    }
+
+    tryGetLocArchiveId(mapX: number, mapY: number): number | undefined {
+        const id = this.getLocArchiveId(mapX, mapY);
+        return id === -1 ? undefined : id;
+    }
 }
 
 export class Dat2MapIndex implements MapFileIndex {
@@ -63,5 +76,13 @@ export class Dat2MapIndex implements MapFileIndex {
 
     getLocArchiveId(mapX: number, mapY: number): number {
         return this.mapIndex.getArchiveId(`l${mapX}_${mapY}`);
+    }
+
+    tryGetTerrainArchiveId(mapX: number, mapY: number): number | undefined {
+        return this.mapIndex.tryGetArchiveId(`m${mapX}_${mapY}`);
+    }
+
+    tryGetLocArchiveId(mapX: number, mapY: number): number | undefined {
+        return this.mapIndex.tryGetArchiveId(`l${mapX}_${mapY}`);
     }
 }

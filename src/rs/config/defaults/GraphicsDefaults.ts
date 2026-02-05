@@ -46,18 +46,18 @@ export class GraphicsDefaults extends Type {
             }
 
             const defaults = new GraphicsDefaults(-1, cacheInfo);
-            defaults.compass = spriteIndex.getArchiveId("compass");
-            defaults.mapEdge = spriteIndex.getArchiveId("mapedge");
-            defaults.mapScenes = spriteIndex.getArchiveId("mapscene");
-            defaults.mapFunctions = spriteIndex.getArchiveId("mapfunction");
-            defaults.headIconsPk = spriteIndex.getArchiveId("headicons_pk");
-            defaults.headIconsPrayer = spriteIndex.getArchiveId("headicons_prayer");
-            defaults.headIconsHint = spriteIndex.getArchiveId("headicons_hint");
-            defaults.mapMarkers = spriteIndex.getArchiveId("mapmarker");
-            defaults.crosses = spriteIndex.getArchiveId("cross");
-            defaults.mapDots = spriteIndex.getArchiveId("mapdots");
-            defaults.scrollBars = spriteIndex.getArchiveId("scrollbar");
-            defaults.modIcons = spriteIndex.getArchiveId("mod_icons");
+            defaults.compass = spriteIndex.tryGetArchiveId("compass") ?? -1;
+            defaults.mapEdge = spriteIndex.tryGetArchiveId("mapedge") ?? -1;
+            defaults.mapScenes = spriteIndex.tryGetArchiveId("mapscene") ?? -1;
+            defaults.mapFunctions = spriteIndex.tryGetArchiveId("mapfunction") ?? -1;
+            defaults.headIconsPk = spriteIndex.tryGetArchiveId("headicons_pk") ?? -1;
+            defaults.headIconsPrayer = spriteIndex.tryGetArchiveId("headicons_prayer") ?? -1;
+            defaults.headIconsHint = spriteIndex.tryGetArchiveId("headicons_hint") ?? -1;
+            defaults.mapMarkers = spriteIndex.tryGetArchiveId("mapmarker") ?? -1;
+            defaults.crosses = spriteIndex.tryGetArchiveId("cross") ?? -1;
+            defaults.mapDots = spriteIndex.tryGetArchiveId("mapdots") ?? -1;
+            defaults.scrollBars = spriteIndex.tryGetArchiveId("scrollbar") ?? -1;
+            defaults.modIcons = spriteIndex.tryGetArchiveId("mod_icons") ?? -1;
 
             return defaults;
         }

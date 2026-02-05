@@ -11,26 +11,22 @@ export class MapFileLoader {
     ) {}
 
     getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
-        const archiveId = this.mapFileIndex.getTerrainArchiveId(mapX, mapY);
-        if (archiveId === -1) {
-            return undefined;
-        }
+        const archiveId = this.mapFileIndex.tryGetTerrainArchiveId(mapX, mapY);
+        if (archiveId === undefined) return undefined;
         return this.mapIndex.tryGetFile(archiveId, 0)?.data;
     }
 
     getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
-        const archiveId = this.mapFileIndex.getLocArchiveId(mapX, mapY);
-        if (archiveId === -1) {
-            return undefined;
-        }
+        const archiveId = this.mapFileIndex.tryGetLocArchiveId(mapX, mapY);
+        if (archiveId === undefined) return undefined;
         const key = xteasMap.get(archiveId);
         return this.mapIndex.tryGetFileKey(archiveId, 0, key ? key : null)?.data;
     }
 
     getNpcSpawnData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
-        const locArchiveId = this.mapFileIndex.getLocArchiveId(mapX, mapY);
-        const archiveId = this.mapIndex.getArchiveId(`n${mapX}_${mapY}`);
-        if (locArchiveId === -1 || archiveId === -1) {
+        const locArchiveId = this.mapFileIndex.tryGetLocArchiveId(mapX, mapY);
+        const archiveId = this.mapIndex.tryGetArchiveId(`n${mapX}_${mapY}`);
+        if (locArchiveId === undefined || archiveId === undefined) {
             return undefined;
         }
         const key = xteasMap.get(locArchiveId);

@@ -31,6 +31,11 @@ export abstract class CacheIndex {
 
     abstract getArchiveId(name: string): number;
 
+    tryGetArchiveId(name: string): number | undefined {
+        const id = this.getArchiveId(name);
+        return id === -1 ? undefined : id;
+    }
+
     getFileIds(archiveId: number): Int32Array | null {
         const ref = this.getArchiveReference(archiveId);
         return ref ? ref.fileIds : null;
