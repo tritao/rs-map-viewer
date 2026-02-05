@@ -12,6 +12,7 @@ import { ObjTypeLoader } from "../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import { VarManager } from "../rs/config/vartype/VarManager";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
+import { MapFileBytesProvider } from "../rs/map/MapBytesProvider";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
@@ -85,6 +86,8 @@ async function initWorker(
     const mapFileLoader = loaders.mapFileLoader;
     const varManager = session.varManager;
 
+    const mapBytesProvider = new MapFileBytesProvider(mapFileLoader, cache.xteas);
+
     const locModelLoader = new LocModelLoader(
         locTypeLoader,
         modelLoader,
@@ -108,12 +111,11 @@ async function initWorker(
 
     const sceneBuilder = new SceneBuilder(
         cache.info,
-        mapFileLoader,
+        mapBytesProvider,
         underlayTypeLoader,
         overlayTypeLoader,
         locTypeLoader,
         locModelLoader,
-        cache.xteas,
     );
 
     const mapImageRenderer = new MapImageRenderer(

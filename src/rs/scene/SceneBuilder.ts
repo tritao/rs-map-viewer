@@ -6,7 +6,7 @@ import { LocType } from "../config/loctype/LocType";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { getMapSquareId } from "../map/MapFileIndex";
-import { MapFileLoader } from "../map/MapFileLoader";
+import { MapBytesProvider } from "../map/MapBytesProvider";
 import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
@@ -48,12 +48,11 @@ export class SceneBuilder {
 
     constructor(
         readonly cacheInfo: CacheInfo,
-        readonly mapFileLoader: MapFileLoader,
+        readonly mapBytesProvider: MapBytesProvider,
         readonly underlayTypeLoader: FloorTypeLoader,
         readonly overlayTypeLoader: OverlayFloorTypeLoader,
         readonly locTypeLoader: LocTypeLoader,
         readonly locModelLoader: LocModelLoader,
-        readonly xteasMap: Map<number, number[]>,
     ) {
         this.newTerrainFormat =
             this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision >= 209;
@@ -64,15 +63,15 @@ export class SceneBuilder {
     }
 
     getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapFileLoader.getTerrainData(mapX, mapY);
+        return this.mapBytesProvider.getTerrainBytes(mapX, mapY);
     }
 
     getLocData(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapFileLoader.getLocData(mapX, mapY, this.xteasMap);
+        return this.mapBytesProvider.getLocBytes(mapX, mapY);
     }
 
     getNpcSpawnData(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapFileLoader.getNpcSpawnData(mapX, mapY, this.xteasMap);
+        return this.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
     }
 
     buildScene(
