@@ -23,7 +23,7 @@ export class TextureSourceOperation extends TextureOperation {
         super.initCaches(textureGenerator, width, height);
         if (this.textureId >= 0) {
             const width = textureGenerator.textureLoader.isSmall(this.textureId) ? 64 : 128;
-            this.pixels = textureGenerator.textureLoader.getPixelsRgb(
+            this.pixels = textureGenerator.textureLoader.tryGetPixelsRgb(
                 this.textureId,
                 width,
                 false,
@@ -50,8 +50,11 @@ export class TextureSourceOperation extends TextureOperation {
         const output = this.colourImageCache.get(line);
         if (this.colourImageCache.dirty) {
             const pixels = this.pixels;
-            if (!pixels) {
-                throw new Error("TextureSourceOperation: pixels not initialized");
+            if (!pixels || this.width <= 0 || this.height <= 0) {
+                output[0].fill(0);
+                output[1].fill(0);
+                output[2].fill(0);
+                return output;
             }
             let start =
                 (textureGenerator.height === this.height

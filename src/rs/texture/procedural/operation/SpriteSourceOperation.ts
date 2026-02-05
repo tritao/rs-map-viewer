@@ -28,7 +28,14 @@ export class SpriteSourceOperation extends TextureOperation {
             throw new Error("Colour image cache not initialized");
         }
         const output = this.colourImageCache.get(line);
-        if (this.colourImageCache.dirty && this.loadSprite(textureGenerator) && this.pixels) {
+        if (this.colourImageCache.dirty) {
+            if (!this.loadSprite(textureGenerator) || !this.pixels || this.width <= 0 || this.height <= 0) {
+                output[0].fill(0);
+                output[1].fill(0);
+                output[2].fill(0);
+                return output;
+            }
+
             const outputR = output[0];
             const outputG = output[1];
             const outputB = output[2];
@@ -64,7 +71,10 @@ export class SpriteSourceOperation extends TextureOperation {
             return true;
         }
         if (this.spriteId >= 0) {
-            const sprite = textureGenerator.loadSprite(this.spriteId);
+            const sprite = textureGenerator.tryLoadSprite(this.spriteId);
+            if (!sprite) {
+                return false;
+            }
             sprite.normalize();
 
             this.pixels = sprite.getPixelsRgb();

@@ -129,10 +129,14 @@ export class TextureGenerator {
     }
 
     loadSprite(spriteId: number): IndexedSprite {
-        const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId);
+        const sprite = this.tryLoadSprite(spriteId);
         if (!sprite) {
             throw new Error("Sprite not found: " + spriteId);
         }
         return sprite;
+    }
+
+    tryLoadSprite(spriteId: number): IndexedSprite | undefined {
+        return SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId) ?? undefined;
     }
 }

@@ -7,7 +7,13 @@ export class TilingSpriteOperation extends SpriteSourceOperation {
             throw new Error("Colour image cache is not initialized");
         }
         const output = this.colourImageCache.get(line);
-        if (this.colourImageCache.dirty && super.loadSprite(textureGenerator) && this.pixels) {
+        if (this.colourImageCache.dirty) {
+            if (!super.loadSprite(textureGenerator) || !this.pixels || this.width <= 0 || this.height <= 0) {
+                output[0].fill(0);
+                output[1].fill(0);
+                output[2].fill(0);
+                return output;
+            }
             const outputR = output[0];
             const outputG = output[1];
             const outputB = output[2];
