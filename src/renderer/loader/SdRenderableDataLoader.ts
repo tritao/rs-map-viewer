@@ -1,12 +1,12 @@
 import { ObjSpawn } from "../../data/obj/ObjSpawn";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { NpcType } from "../../rs/config/npctype/NpcType";
+import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { Model } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
-import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { RenderDataLoader, RenderDataResult } from "../../worker/RenderDataLoader";
 import { WorkerState } from "../../worker/RenderDataWorker";
@@ -186,11 +186,12 @@ function addSceneModels(
 
 function addLocAnimationFrames(
     locModelLoader: LocModelLoader,
+    seqTypeLoader: SeqTypeLoader,
     sceneBuf: SceneBuffer,
     entity: LocEntity,
     locType: LocType,
 ): AnimationFrames | undefined {
-    const seqResult = locModelLoader.seqTypeLoader.tryLoad(entity.seqId);
+    const seqResult = seqTypeLoader.tryLoad(entity.seqId);
     if (!seqResult.ok) {
         return undefined;
     }
@@ -238,11 +239,12 @@ function addLocAnimationFrames(
 
 export function addNpcAnimationFrames(
     npcModelLoader: NpcModelLoader,
+    seqTypeLoader: SeqTypeLoader,
     sceneBuf: SceneBuffer,
     npcType: NpcType,
     seqId: number,
 ): AnimationFrames | undefined {
-    const seqResult = npcModelLoader.seqTypeLoader.tryLoad(seqId);
+    const seqResult = seqTypeLoader.tryLoad(seqId);
     if (!seqResult.ok) {
         return undefined;
     }
@@ -304,11 +306,11 @@ export class SdRenderableDataLoader
         const locTypeLoader = state.session.loaders.locTypeLoader;
         const npcTypeLoader = state.session.loaders.npcTypeLoader;
         const basTypeLoader = state.session.loaders.basTypeLoader;
+        const seqTypeLoader = state.session.loaders.seqTypeLoader;
         const textureLoader = state.session.loaders.textureLoader;
 
         const modelLoader = state.session.loaders.modelLoader;
         const locModelLoader = state.locModelLoader;
-        const objModelLoader = state.objModelLoader;
         const npcModelLoader = state.npcModelLoader;
 
         const id = ids[0];
@@ -342,13 +344,14 @@ export class SdRenderableDataLoader
 
                 const idleAnim = addNpcAnimationFrames(
                     npcModelLoader,
+                    seqTypeLoader,
                     sceneBuf,
                     npcType,
                     idleSeqId,
                 );
                 let walkAnim = idleAnim;
                 if (walkSeqId !== -1 && walkSeqId !== idleSeqId) {
-                    walkAnim = addNpcAnimationFrames(npcModelLoader, sceneBuf, npcType, walkSeqId);
+                    walkAnim = addNpcAnimationFrames(npcModelLoader, seqTypeLoader, sceneBuf, npcType, walkSeqId);
                 }
 
                 npcs.push({
@@ -369,7 +372,7 @@ export class SdRenderableDataLoader
             }
 
             const model = modelData!.light(
-                objModelLoader.textureLoader,
+                textureLoader,
                 0 + 64,
                 0 + 768,
                 -50,

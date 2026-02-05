@@ -15,13 +15,13 @@ export class NpcModelLoader {
     modelCache: Map<number, Model>;
 
     constructor(
-        readonly npcTypeLoader: NpcTypeLoader,
-        readonly modelLoader: ModelLoader,
-        readonly textureLoader: TextureLoader,
-        readonly seqTypeLoader: SeqTypeLoader,
-        readonly seqFrameLoader: SeqFrameLoader,
-        readonly skeletalSeqLoader: SkeletalSeqLoader | undefined,
-        readonly varProvider: VarProvider,
+        private readonly npcTypeLoader: NpcTypeLoader,
+        private readonly modelLoader: ModelLoader,
+        private readonly textureLoader: TextureLoader,
+        private readonly seqTypeLoader: SeqTypeLoader,
+        private readonly seqFrameLoader: SeqFrameLoader,
+        private readonly skeletalSeqLoader: SkeletalSeqLoader | undefined,
+        private readonly varProvider: VarProvider,
     ) {
         this.modelCache = new Map();
     }

@@ -106,6 +106,7 @@ async function initWorker(
         underlayTypeLoader,
         overlayTypeLoader,
         locTypeLoader,
+        textureLoader,
         locModelLoader,
     );
 

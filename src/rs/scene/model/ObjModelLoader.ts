@@ -8,13 +8,10 @@ export class ObjModelLoader {
     modelCache: Map<number, Model>;
 
     constructor(
-        readonly objTypeLoader: ObjTypeLoader,
-        readonly modelLoader: ModelLoader,
-        readonly textureLoader: TextureLoader,
+        private readonly objTypeLoader: ObjTypeLoader,
+        private readonly modelLoader: ModelLoader,
+        private readonly textureLoader: TextureLoader,
     ) {
-        this.objTypeLoader = objTypeLoader;
-        this.modelLoader = modelLoader;
-        this.textureLoader = textureLoader;
         this.modelCache = new Map();
     }
 

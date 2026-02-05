@@ -71,9 +71,8 @@ export function buildSceneFromMapBytesProvider(
     scene.setTileMinLevels();
 
     if (locLoadType === LocLoadType.MODELS) {
-        scene.light(sceneBuilder.locModelLoader.textureLoader, -50, -10, -50);
+        scene.light(sceneBuilder.textureLoader, -50, -10, -50);
     }
 
     return scene;
 }
-

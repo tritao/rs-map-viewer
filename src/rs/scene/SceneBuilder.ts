@@ -8,6 +8,7 @@ import { getMapSquareId } from "../map/MapFileIndex";
 import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
 import { packHsl } from "../util/ColorUtil";
+import { TextureLoader } from "../texture/TextureLoader";
 import { CollisionMap } from "./CollisionMap";
 import { packLocPlacement } from "./LocPlacementFlag";
 import { Scene, TileRenderFlag } from "./Scene";
@@ -47,6 +48,7 @@ export class SceneBuilder {
         readonly underlayTypeLoader: FloorTypeLoader,
         readonly overlayTypeLoader: OverlayFloorTypeLoader,
         readonly locTypeLoader: LocTypeLoader,
+        readonly textureLoader: TextureLoader,
         readonly locModelLoader: LocModelLoader,
     ) {
         this.newTerrainFormat =
@@ -966,7 +968,7 @@ export class SceneBuilder {
                         smoothUnderlays,
                         blendedColors,
                         overlayTypeLoader: this.overlayTypeLoader,
-                        textureLoader: this.locModelLoader.textureLoader,
+                        textureLoader: this.textureLoader,
                     });
                     if (!tileModel) {
                         continue;

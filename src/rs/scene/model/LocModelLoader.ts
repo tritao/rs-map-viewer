@@ -30,12 +30,12 @@ export class LocModelLoader {
     modelCache: Map<number, Model>;
 
     constructor(
-        readonly locTypeLoader: LocTypeLoader,
-        readonly modelLoader: ModelLoader,
-        readonly textureLoader: TextureLoader,
-        readonly seqTypeLoader: SeqTypeLoader,
-        readonly seqFrameLoader: SeqFrameLoader,
-        readonly skeletalSeqLoader: SkeletalSeqLoader | undefined,
+        private readonly locTypeLoader: LocTypeLoader,
+        private readonly modelLoader: ModelLoader,
+        private readonly textureLoader: TextureLoader,
+        private readonly seqTypeLoader: SeqTypeLoader,
+        private readonly seqFrameLoader: SeqFrameLoader,
+        private readonly skeletalSeqLoader: SkeletalSeqLoader | undefined,
     ) {
         this.modelDataCache = new Map();
         this.entityCache = new Map();

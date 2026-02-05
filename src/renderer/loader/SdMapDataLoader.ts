@@ -2,7 +2,11 @@ import { NpcSpawn, getMapNpcSpawns } from "../../data/npc/NpcSpawn";
 import { ObjSpawn, getMapObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocType } from "../../rs/config/loctype/LocType";
+import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
 import { NpcType } from "../../rs/config/npctype/NpcType";
+import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
+import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
+import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
@@ -58,6 +62,7 @@ function loadHeightMapTextureData(scene: Scene): Int16Array {
 }
 
 function createObjSceneModels(
+    objTypeLoader: ObjTypeLoader,
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
     scene: Scene,
@@ -65,18 +70,19 @@ function createObjSceneModels(
     spawns: ObjSpawn[],
 ): void {
     for (const spawn of spawns) {
-        createObjSceneModel(objModelLoader, sceneModels, scene, borderSize, spawn);
+        createObjSceneModel(objTypeLoader, objModelLoader, sceneModels, scene, borderSize, spawn);
     }
 }
 
 function createObjSceneModel(
+    objTypeLoader: ObjTypeLoader,
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
     scene: Scene,
     borderSize: number,
     spawn: ObjSpawn,
 ): void {
-    const objResult = objModelLoader.objTypeLoader.tryLoad(spawn.id);
+    const objResult = objTypeLoader.tryLoad(spawn.id);
     if (!objResult.ok) {
         return;
     }
@@ -297,11 +303,12 @@ function addSceneModels(
 
 function addLocAnimationFrames(
     locModelLoader: LocModelLoader,
+    seqTypeLoader: SeqTypeLoader,
     sceneBuf: SceneBuffer,
     entity: LocEntity,
     locType: LocType,
 ): AnimationFrames | undefined {
-    const seqResult = locModelLoader.seqTypeLoader.tryLoad(entity.seqId);
+    const seqResult = seqTypeLoader.tryLoad(entity.seqId);
     if (!seqResult.ok) {
         return undefined;
     }
@@ -349,6 +356,8 @@ function addLocAnimationFrames(
 
 function addLocEntities(
     locModelLoader: LocModelLoader,
+    locTypeLoader: LocTypeLoader,
+    seqTypeLoader: SeqTypeLoader,
     varManager: VarProvider,
     scene: Scene,
     sceneModels: SceneModel[],
@@ -366,7 +375,7 @@ function addLocEntities(
         const tileY = entity.tileY;
         const level = entity.level;
 
-        const locResult = locModelLoader.locTypeLoader.tryLoad(id);
+        const locResult = locTypeLoader.tryLoad(id);
         if (!locResult.ok) {
             continue;
         }
@@ -379,7 +388,7 @@ function addLocEntities(
         }
 
         if (locType.transforms) {
-            const transformed = locType.transform(varManager, locModelLoader.locTypeLoader);
+            const transformed = locType.transform(varManager, locTypeLoader);
             if (!transformed) {
                 continue;
             }
@@ -428,7 +437,7 @@ function addLocEntities(
             if (group) {
                 group.locs.push(loc);
             } else {
-                const anim = addLocAnimationFrames(locModelLoader, sceneBuf, entity, locType);
+                const anim = addLocAnimationFrames(locModelLoader, seqTypeLoader, sceneBuf, entity, locType);
                 if (!anim) {
                     continue;
                 }
@@ -467,6 +476,8 @@ function addLocEntities(
 
 function createNpcSpawnGroups(
     npcModelLoader: NpcModelLoader,
+    npcTypeLoader: NpcTypeLoader,
+    seqTypeLoader: SeqTypeLoader,
     basTypeLoader: BasTypeLoader,
     sceneBuf: SceneBuffer,
     npcSpawns: NpcSpawn[],
@@ -484,7 +495,7 @@ function createNpcSpawnGroups(
     const groups: NpcSpawnGroup[] = [];
 
     for (const spawns of groupedSpawns.values()) {
-        const npcResult = npcModelLoader.npcTypeLoader.tryLoad(spawns[0].id);
+        const npcResult = npcTypeLoader.tryLoad(spawns[0].id);
         if (!npcResult.ok) {
             continue;
         }
@@ -497,10 +508,10 @@ function createNpcSpawnGroups(
             continue;
         }
 
-        const idleAnim = addNpcAnimationFrames(npcModelLoader, sceneBuf, npcType, idleSeqId);
+        const idleAnim = addNpcAnimationFrames(npcModelLoader, seqTypeLoader, sceneBuf, npcType, idleSeqId);
         let walkAnim = idleAnim;
         if (walkSeqId !== -1 && walkSeqId !== idleSeqId) {
-            walkAnim = addNpcAnimationFrames(npcModelLoader, sceneBuf, npcType, walkSeqId);
+            walkAnim = addNpcAnimationFrames(npcModelLoader, seqTypeLoader, sceneBuf, npcType, walkSeqId);
         }
 
         if (!idleAnim) {
@@ -547,7 +558,9 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         const locTypeLoader = state.session.loaders.locTypeLoader;
         const npcTypeLoader = state.session.loaders.npcTypeLoader;
+        const objTypeLoader = state.session.loaders.objTypeLoader;
         const basTypeLoader = state.session.loaders.basTypeLoader;
+        const seqTypeLoader = state.session.loaders.seqTypeLoader;
         const textureLoader = state.session.loaders.textureLoader;
 
         const locModelLoader = state.locModelLoader;
@@ -590,6 +603,8 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         // Create loc animated groups and add transformed locs
         const locAnimatedGroups = addLocEntities(
             locModelLoader,
+            locTypeLoader,
+            seqTypeLoader,
             varManager,
             scene,
             sceneModels,
@@ -599,7 +614,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         if (loadObjs) {
             const objSpawns = getMapObjSpawns(state.objSpawns, maxLevel, mapX, mapY);
-            createObjSceneModels(objModelLoader, sceneModels, scene, borderSize, objSpawns);
+            createObjSceneModels(objTypeLoader, objModelLoader, sceneModels, scene, borderSize, objSpawns);
         }
 
         let locsAnimated: LocAnimatedData[] = [];
@@ -646,6 +661,8 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         }
         const npcSpawnGroups = createNpcSpawnGroups(
             npcModelLoader,
+            npcTypeLoader,
+            seqTypeLoader,
             basTypeLoader,
             sceneBuf,
             npcSpawns,
