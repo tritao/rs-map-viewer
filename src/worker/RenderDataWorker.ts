@@ -4,36 +4,26 @@ import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
-import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
-import { LocTypeLoader } from "../rs/config/loctype/LocTypeLoader";
-import { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
-import { ObjTypeLoader } from "../rs/config/objtype/ObjTypeLoader";
-import { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import { VarStateProvider } from "../rs/config/vartype/VarProvider";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
-import { MapFileBytesProvider } from "../rs/map/MapBytesProvider";
+import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { SeqFrameLoader } from "../rs/model/seq/SeqFrameLoader";
-import { SkeletalSeqLoader } from "../rs/model/skeletal/SkeletalSeqLoader";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { IndexedSprite } from "../rs/sprite/IndexedSprite";
 import { SpriteLoader } from "../rs/sprite/SpriteLoader";
-import { TextureLoader } from "../rs/texture/TextureLoader";
 import { Hasher } from "../util/Hasher";
 import { LoadedCache } from "../util/Caches";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
-import { ModelLoader } from "../rs/model/ModelLoader";
 import { CacheType } from "../rs/cache/CacheType";
 import { CacheSession, createCacheSession } from "../rs/runtime/createCacheSession";
 import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
-import { MapBytesProvider } from "../rs/map/MapBytesProvider";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 
 registerSerializer(renderDataLoaderSerializer);
@@ -68,25 +58,25 @@ async function initWorker(
     await hasherPromise;
 
     const session = createCacheSession(cache, compressionHandler);
-    const loaders = session.loaders;
-    const underlayTypeLoader = loaders.underlayTypeLoader;
-    const overlayTypeLoader = loaders.overlayTypeLoader;
+    const { loaders } = session;
+    const {
+        underlayTypeLoader,
+        overlayTypeLoader,
+        locTypeLoader,
+        objTypeLoader,
+        npcTypeLoader,
+        modelLoader,
+        textureLoader,
+        seqTypeLoader,
+        seqFrameLoader,
+        skeletalSeqLoader,
+        mapFileLoader,
+        varBitTypeLoader,
+        mapScenes,
+        mapFunctions,
+    } = loaders;
 
-    const locTypeLoader = loaders.locTypeLoader;
-    const objTypeLoader = loaders.objTypeLoader;
-    const npcTypeLoader = loaders.npcTypeLoader;
-
-    const basTypeLoader = loaders.basTypeLoader;
-
-    const modelLoader = loaders.modelLoader;
-    const textureLoader = loaders.textureLoader;
-
-    const seqTypeLoader = loaders.seqTypeLoader;
-    const seqFrameLoader = loaders.seqFrameLoader;
-    const skeletalSeqLoader = loaders.skeletalSeqLoader;
-
-    const mapFileLoader = loaders.mapFileLoader;
-    const varProvider = new VarStateProvider(loaders.varBitTypeLoader, session.varManager.values);
+    const varProvider = new VarStateProvider(varBitTypeLoader, session.varManager.values);
 
     const mapBytesProvider = new MapFileBytesProvider(mapFileLoader, cache.xteas);
 
@@ -122,8 +112,8 @@ async function initWorker(
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,
-        loaders.mapScenes,
-        loaders.mapFunctions,
+        mapScenes,
+        mapFunctions,
     );
 
     const mapImageCache = await caches.open("map-images");
