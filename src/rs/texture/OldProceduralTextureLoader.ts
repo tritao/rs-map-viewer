@@ -15,7 +15,11 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
     static create(textureIndex: CacheIndex, spriteSource: BytesProvider): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
-        const texturesArchive = textureIndex.getArchive(0);
+        const texturesArchive = textureIndex.tryGetArchive(0);
+        if (!texturesArchive) {
+            console.error("OldProceduralTextureLoader: missing texture archive 0");
+            return new OldProceduralTextureLoader(spriteSource, [], definitions);
+        }
 
         const textureIds = Array.from(texturesArchive.fileIds);
         for (let i = 0; i < textureIds.length; i++) {

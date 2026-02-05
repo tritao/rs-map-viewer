@@ -22,9 +22,10 @@ export class ProceduralTextureLoader implements TextureLoader {
         textureIndex: CacheIndex,
         spriteSource: BytesProvider,
     ): ProceduralTextureLoader {
-        const materialsFile = materialsIndex.getFile(0, 0);
+        const materialsFile = materialsIndex.tryGetFile(0, 0);
         if (!materialsFile) {
-            throw new Error("Materials file not found");
+            console.error("ProceduralTextureLoader: materials file not found (archive=0 file=0)");
+            return new ProceduralTextureLoader(hasAlphaOperation, textureIndex, spriteSource, [], []);
         }
         const buffer = new ByteBuffer(materialsFile.data);
         const count = buffer.readUnsignedShort();

@@ -21,7 +21,11 @@ export class SpriteTextureLoader implements TextureLoader {
     static create(textureIndex: CacheIndex, spriteSource: BytesProvider): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
 
-        const textureArchive = textureIndex.getArchive(0);
+        const textureArchive = textureIndex.tryGetArchive(0);
+        if (!textureArchive) {
+            console.error("SpriteTextureLoader: missing texture archive 0");
+            return new SpriteTextureLoader(spriteSource, [], definitions);
+        }
         const textureIds = Array.from(textureArchive.fileIds);
         for (let i = 0; i < textureIds.length; i++) {
             const textureId = textureIds[i];

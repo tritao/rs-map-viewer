@@ -58,11 +58,20 @@ import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
 import { CacheType } from "../cache/CacheType";
+import { Archive } from "../cache/format/Archive";
 import { Dat2ConfigArchiveId, OsrsConfigArchiveId, Rs2ConfigArchiveId } from "../cache/ConfigArchiveId";
 import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 import { CacheRules, computeCacheRules } from "./CacheRules";
 import { Loaders } from "./Loaders";
 import { IndexArchiveProvider } from "../io/ArchiveProvider";
+
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Archive {
+    const archive = index.tryGetArchive(archiveId);
+    if (!archive) {
+        throw new Error(`Missing ${description} archive (index=${index.id} archive=${archiveId})`);
+    }
+    return archive;
+}
 
 function loadMapElementSprites(
     spriteIndex: CacheIndex,
@@ -100,41 +109,62 @@ export function createDat2Loaders(
 
     const underlayTypeLoader = new ArchiveUnderlayFloorTypeLoader(
         cacheInfo,
-        configIndex.getArchive(Dat2ConfigArchiveId.underlays),
+        requireArchive(configIndex, Dat2ConfigArchiveId.underlays, "dat2 underlays"),
     );
     const overlayTypeLoader = new ArchiveOverlayFloorTypeLoader(
         cacheInfo,
-        configIndex.getArchive(Dat2ConfigArchiveId.overlays),
+        requireArchive(configIndex, Dat2ConfigArchiveId.overlays, "dat2 overlays"),
     );
 
     const varBitTypeLoader: VarBitTypeLoader = rules.isIndexConfigs
         ? new IndexVarBitTypeLoader(cacheInfo, cacheSystem.getIndex(Rs2IndexId.varbits))
-        : new ArchiveVarBitTypeLoader(cacheInfo, configIndex.getArchive(Dat2ConfigArchiveId.varbits));
+        : new ArchiveVarBitTypeLoader(
+              cacheInfo,
+              requireArchive(configIndex, Dat2ConfigArchiveId.varbits, "dat2 varbits"),
+          );
 
     const locTypeLoader: LocTypeLoader = rules.isIndexConfigs
         ? new IndexLocTypeLoader(cacheInfo, cacheSystem.getIndex(Rs2IndexId.locs))
-        : new ArchiveLocTypeLoader(cacheInfo, configIndex.getArchive(Dat2ConfigArchiveId.locs));
+        : new ArchiveLocTypeLoader(
+              cacheInfo,
+              requireArchive(configIndex, Dat2ConfigArchiveId.locs, "dat2 locs"),
+          );
 
     const npcTypeLoader: NpcTypeLoader = rules.isIndexConfigs
         ? new IndexNpcTypeLoader(cacheInfo, cacheSystem.getIndex(Rs2IndexId.npcs))
-        : new ArchiveNpcTypeLoader(cacheInfo, configIndex.getArchive(Dat2ConfigArchiveId.npcs));
+        : new ArchiveNpcTypeLoader(
+              cacheInfo,
+              requireArchive(configIndex, Dat2ConfigArchiveId.npcs, "dat2 npcs"),
+          );
 
     const objTypeLoader: ObjTypeLoader = rules.isIndexConfigs
         ? new IndexObjTypeLoader(cacheInfo, cacheSystem.getIndex(Rs2IndexId.objs))
-        : new ArchiveObjTypeLoader(cacheInfo, configIndex.getArchive(Dat2ConfigArchiveId.objs));
+        : new ArchiveObjTypeLoader(
+              cacheInfo,
+              requireArchive(configIndex, Dat2ConfigArchiveId.objs, "dat2 objs"),
+          );
 
     const seqTypeLoader: SeqTypeLoader = rules.isIndexConfigs
         ? new IndexSeqTypeLoader(cacheInfo, cacheSystem.getIndex(Rs2IndexId.seqs))
-        : new ArchiveSeqTypeLoader(cacheInfo, configIndex.getArchive(Dat2ConfigArchiveId.seqs));
+        : new ArchiveSeqTypeLoader(
+              cacheInfo,
+              requireArchive(configIndex, Dat2ConfigArchiveId.seqs, "dat2 seqs"),
+          );
 
     const basTypeLoader: BasTypeLoader =
         rules.bas.mode === "archive"
-            ? new ArchiveBasTypeLoader(cacheInfo, configIndex.getArchive(Rs2ConfigArchiveId.bas))
+            ? new ArchiveBasTypeLoader(
+                  cacheInfo,
+                  requireArchive(configIndex, Rs2ConfigArchiveId.bas, "bas"),
+              )
             : new DummyBasTypeLoader(cacheInfo);
 
     const questTypeLoader: QuestTypeLoader | undefined =
         rules.quests.mode === "archive"
-            ? new ArchiveQuestTypeLoader(cacheInfo, configIndex.getArchive(Rs2ConfigArchiveId.quests))
+            ? new ArchiveQuestTypeLoader(
+                  cacheInfo,
+                  requireArchive(configIndex, Rs2ConfigArchiveId.quests, "quests"),
+              )
             : undefined;
 
     const textureIndex = cacheSystem.getIndex(Dat2IndexId.textures);
@@ -181,7 +211,7 @@ export function createDat2Loaders(
 
     const mapScenes: IndexedSprite[] = (() => {
         if (rules.mapScenes.mode === "archive") {
-            const mapScenesArchive = configIndex.getArchive(Rs2ConfigArchiveId.mapScenes);
+            const mapScenesArchive = requireArchive(configIndex, Rs2ConfigArchiveId.mapScenes, "map scenes");
             const mapSceneTypeLoader = new MapSceneTypeLoader(cacheInfo, mapScenesArchive);
 
             const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId + 1);
@@ -216,12 +246,20 @@ export function createDat2Loaders(
     const mapFunctions: IndexedSprite[] = (() => {
         switch (rules.mapFunctions.mode) {
             case "osrs_archive": {
-                const mapElementArchive = configIndex.getArchive(OsrsConfigArchiveId.mapFunctions);
+                const mapElementArchive = requireArchive(
+                    configIndex,
+                    OsrsConfigArchiveId.mapFunctions,
+                    "osrs map functions",
+                );
                 const mapElementTypeLoader = new ArchiveMapElementTypeLoader(cacheInfo, mapElementArchive);
                 return loadMapElementSprites(spriteIndex, mapElementTypeLoader);
             }
             case "rs2_archive": {
-                const mapElementArchive = configIndex.getArchive(Rs2ConfigArchiveId.mapFunctions);
+                const mapElementArchive = requireArchive(
+                    configIndex,
+                    Rs2ConfigArchiveId.mapFunctions,
+                    "rs2 map functions",
+                );
                 const mapElementTypeLoader = new ArchiveMapElementTypeLoader(cacheInfo, mapElementArchive);
                 return loadMapElementSprites(spriteIndex, mapElementTypeLoader);
             }

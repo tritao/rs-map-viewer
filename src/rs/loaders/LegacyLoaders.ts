@@ -26,18 +26,28 @@ import { LegacyIndexId } from "../cache/IndexId";
 import { loadMapFunctions, loadMapScenes } from "./DatLoaders";
 import { Loaders } from "./Loaders";
 
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Archive {
+    const archive = index.tryGetArchive(archiveId);
+    if (!archive) {
+        throw new Error(
+            `Missing ${description} archive (index=${index.id} archive=${archiveId})`,
+        );
+    }
+    return archive;
+}
+
 export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Loaders {
     const configIndex = cacheSystem.getIndex(LegacyIndexId.configs);
-    const configArchive = configIndex.getArchive(0);
+    const configArchive = requireArchive(configIndex, 0, "legacy config");
 
     const mediaIndex = cacheSystem.getIndex(LegacyIndexId.media);
-    const mediaArchive = mediaIndex.getArchive(0);
+    const mediaArchive = requireArchive(mediaIndex, 0, "legacy media");
 
     const textureIndex = cacheSystem.getIndex(LegacyIndexId.textures);
-    const textureArchive = textureIndex.getArchive(0);
+    const textureArchive = requireArchive(textureIndex, 0, "legacy texture");
 
     const modelIndex = cacheSystem.getIndex(LegacyIndexId.models);
-    const modelArchive = modelIndex.getArchive(0);
+    const modelArchive = requireArchive(modelIndex, 0, "legacy model");
 
     const mapIndex = cacheSystem.getIndex(LegacyIndexId.maps);
 

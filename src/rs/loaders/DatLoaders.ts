@@ -32,6 +32,16 @@ import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { DatIndexId } from "../cache/IndexId";
 import { Loaders } from "./Loaders";
 
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Archive {
+    const archive = index.tryGetArchive(archiveId);
+    if (!archive) {
+        throw new Error(
+            `Missing ${description} archive (index=${index.id} archive=${archiveId})`,
+        );
+    }
+    return archive;
+}
+
 export function loadMapSprites(mediaArchive: Archive, name: string): IndexedSprite[] {
     return SpriteLoader.loadIndexedSpritesDat(mediaArchive, name);
 }
@@ -50,8 +60,8 @@ export function createDatLoaders(
     cacheSystem: CacheSystem,
 ): Loaders {
     const configIndex = cacheSystem.getIndex(DatIndexId.configs);
-    const configArchive = configIndex.getArchive(DatConfigArchiveId.configs);
-    const mediaArchive = configIndex.getArchive(DatConfigArchiveId.media);
+    const configArchive = requireArchive(configIndex, DatConfigArchiveId.configs, "dat config");
+    const mediaArchive = requireArchive(configIndex, DatConfigArchiveId.media, "dat media");
 
     const floTypeLoader = DatFloorTypeLoader.create(cacheInfo, configArchive);
 
@@ -60,7 +70,7 @@ export function createDatLoaders(
             ? new DummyVarBitTypeLoader(cacheInfo)
             : DatVarBitTypeLoader.create(cacheInfo, configArchive);
 
-    const textureArchive = configIndex.getArchive(DatConfigArchiveId.textures);
+    const textureArchive = requireArchive(configIndex, DatConfigArchiveId.textures, "dat textures");
     const animatedTextureIds = [DatTextureLoader.WATER_DROPLETS_TEXTURE_ID, 24];
     if (cacheInfo.revision > 289) {
         animatedTextureIds.push(34, 40);
@@ -68,7 +78,11 @@ export function createDatLoaders(
     const textureLoader = new DatTextureLoader(textureArchive, animatedTextureIds);
 
     const mapIndex = cacheSystem.getIndex(DatIndexId.maps);
-    const versionListArchive = configIndex.getArchive(DatConfigArchiveId.versionList);
+    const versionListArchive = requireArchive(
+        configIndex,
+        DatConfigArchiveId.versionList,
+        "dat version list",
+    );
     const mapFileIndex = DatMapFileIndex.create(versionListArchive);
 
     return {
