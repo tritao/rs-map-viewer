@@ -44,14 +44,6 @@ export class SkeletalSeq {
         }
     }
 
-    static load(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq {
-        const decoded = this.tryLoad(baseLoader, id, data);
-        if (!decoded) {
-            throw new Error("Failed decoding skeletal seq");
-        }
-        return decoded;
-    }
-
     constructor(
         readonly id: number,
         readonly version: number,

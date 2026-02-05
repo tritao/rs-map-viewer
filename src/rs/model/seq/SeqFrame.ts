@@ -477,16 +477,4 @@ export class Dat2SeqFrame {
         }
     }
 
-    static load(
-        cacheInfo: CacheInfo,
-        baseLoader: SeqBaseLoader,
-        data: Uint8Array,
-        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
-    ): SeqFrame {
-        const decoded = this.tryLoad(cacheInfo, baseLoader, data, scratch);
-        if (!decoded) {
-            throw new Error("Failed decoding Dat2 seq frame");
-        }
-        return decoded;
-    }
 }
