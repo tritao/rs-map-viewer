@@ -60,7 +60,8 @@ export class SpriteTextureLoader implements TextureLoader {
     }
 
     isSmall(id: number): boolean {
-        return this.loadTextureSprite(id).subWidth === 64;
+        const sprite = this.tryLoadTextureSprite(id);
+        return sprite?.subWidth === 64;
     }
 
     getAverageHsl(id: number): number {
@@ -120,11 +121,11 @@ export class SpriteTextureLoader implements TextureLoader {
     }
 
     tryGetMaterial(id: number): TextureMaterial | undefined {
-        try {
-            return this.getMaterial(id);
-        } catch {
+        const def = this.definitions.get(id);
+        if (!def) {
             return undefined;
         }
+        return this.getMaterial(id);
     }
 
     loadTextureSprite(id: number): IndexedSprite {
@@ -144,10 +145,32 @@ export class SpriteTextureLoader implements TextureLoader {
         throw new Error("Texture has no sprites");
     }
 
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+    tryLoadTextureSprite(id: number): IndexedSprite | undefined {
         const def = this.definitions.get(id);
         if (!def) {
-            throw new Error("Texture definition not found: " + id);
+            return undefined;
+        }
+
+        for (let i = 0; i < def.spriteIds.length; i++) {
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
+            if (!sprite) {
+                return undefined;
+            }
+            sprite.normalize();
+            return sprite;
+        }
+        return undefined;
+    }
+
+    private tryGetPixelsRgbInternal(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
+        const def = this.definitions.get(id);
+        if (!def) {
+            return undefined;
         }
 
         const pixelCount = size * size;
@@ -156,7 +179,7 @@ export class SpriteTextureLoader implements TextureLoader {
         for (let i = 0; i < def.spriteIds.length; i++) {
             const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
             if (!sprite) {
-                throw new Error("Texture references invalid sprite");
+                return undefined;
             }
             sprite.normalize();
 
@@ -212,7 +235,7 @@ export class SpriteTextureLoader implements TextureLoader {
                     }
                 } else {
                     if (sprite.subWidth !== 128 || size !== 64) {
-                        throw new Error("Texture sprite has unexpected size");
+                        return undefined;
                     }
 
                     let pixelIndex = 0;
@@ -230,24 +253,24 @@ export class SpriteTextureLoader implements TextureLoader {
         return pixels;
     }
 
+    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+        const pixels = this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        if (!pixels) {
+            throw new Error("Failed decoding texture pixels: " + id);
+        }
+        return pixels;
+    }
+
     getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
         return this.getPixelsRgb(id, size, flipH, brightness);
     }
 
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsRgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
-        }
+        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsArgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
-        }
+        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 }
 
