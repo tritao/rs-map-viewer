@@ -412,8 +412,7 @@ async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise
 
     const promises: Promise<any>[] = [];
 
-    for (let i = 0; i < mediaArchive.fileIds.length; i++) {
-        const fileId = mediaArchive.fileIds[i];
+    for (const fileId of mediaArchive.fileIds) {
         if (fileId === indexDatId) {
             continue;
         }
