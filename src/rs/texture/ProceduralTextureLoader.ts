@@ -188,7 +188,7 @@ export class ProceduralTextureLoader implements TextureLoader {
             return cached;
         }
 
-        const textureFile = this.textureIndex.getFileSmart(id, null);
+        const textureFile = this.textureIndex.tryGetFileSmart(id, null);
         if (!textureFile) {
             return undefined;
         }
