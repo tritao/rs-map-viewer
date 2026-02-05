@@ -1,6 +1,6 @@
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
-import { BytesProvider } from "../io/BytesProvider";
+import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { TextureCombineMode } from "./TextureCombineMode";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
@@ -19,13 +19,13 @@ export class ProceduralTextureLoader implements TextureLoader {
         hasAlphaMaterialField: boolean,
         hasAlphaOperation: boolean,
         materialsIndex: CacheIndex,
-        textureIndex: CacheIndex,
+        textureSource: EnumeratingBytesProvider,
         spriteSource: BytesProvider,
     ): ProceduralTextureLoader {
         const materialsFile = materialsIndex.tryGetFile(0, 0);
         if (!materialsFile) {
             console.error("ProceduralTextureLoader: materials file not found (archive=0 file=0)");
-            return new ProceduralTextureLoader(hasAlphaOperation, textureIndex, spriteSource, [], []);
+            return new ProceduralTextureLoader(hasAlphaOperation, textureSource, spriteSource, [], []);
         }
         const buffer = new ByteBuffer(materialsFile.data);
         const count = buffer.readUnsignedShort();
@@ -163,11 +163,11 @@ export class ProceduralTextureLoader implements TextureLoader {
             }
         }
 
-        const textureIds = Array.from(textureIndex.getArchiveIds());
+        const textureIds = Array.from(textureSource.getIds());
 
         return new ProceduralTextureLoader(
             hasAlphaOperation,
-            textureIndex,
+            textureSource,
             spriteSource,
             textureIds,
             materials,
@@ -176,7 +176,7 @@ export class ProceduralTextureLoader implements TextureLoader {
 
     constructor(
         readonly hasAlphaOperation: boolean,
-        readonly textureIndex: CacheIndex,
+        readonly textureSource: BytesProvider,
         readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly materials: (ProcTextureMaterial | undefined)[],
@@ -193,12 +193,12 @@ export class ProceduralTextureLoader implements TextureLoader {
             return undefined;
         }
 
-        const textureFile = this.textureIndex.tryGetFileSmart(id, null);
-        if (!textureFile) {
+        const bytes = this.textureSource.getBytes(id);
+        if (!bytes) {
             return undefined;
         }
         try {
-            const buffer = new ByteBuffer(textureFile.data);
+            const buffer = new ByteBuffer(bytes);
             const texture = new ProceduralTextureDefinition(id, buffer, this.hasAlphaOperation);
             this.textures.set(id, texture);
             this.textureDecodeErrors.delete(id);

@@ -53,7 +53,7 @@ import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoade
 import { ProceduralTextureLoader } from "../texture/ProceduralTextureLoader";
 import { SpriteTextureLoader } from "../texture/SpriteTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
-import { IndexFileBytesProvider } from "../io/BytesProvider";
+import { IndexFileBytesProvider, IndexSmartFileBytesProvider } from "../io/BytesProvider";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
@@ -178,7 +178,7 @@ export function createDat2Loaders(
                     rules.texture.hasAlphaMaterialField,
                     rules.texture.hasAlphaOperation,
                     materialIndex,
-                    textureIndex,
+                    new IndexSmartFileBytesProvider(textureIndex, null),
                     new IndexFileBytesProvider(spriteIndex, 0),
                 );
             }
