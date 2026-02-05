@@ -8,7 +8,6 @@ import { getMapSquareId } from "../map/MapFileIndex";
 import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
-import { generateHeight } from "../util/HeightCalc";
 import { CollisionMap } from "./CollisionMap";
 import { packLocPlacement } from "./LocPlacementFlag";
 import { Scene, TileRenderFlag } from "./Scene";
@@ -19,18 +18,11 @@ import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag
 import { LocEntity } from "./entity/LocEntity";
 import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
 import { decodeLocPlacementsFromBytes } from "./decodeLocPlacements";
+import { applyDecodedTerrainSquareToScene, decodeTerrainSquareFromBytes } from "./decodeTerrainSquare";
 
 export enum LocLoadType {
     MODELS,
     NO_MODELS,
-}
-
-function readTerrainValue(buffer: ByteBuffer, newFormat: boolean, signed: boolean = false): number {
-    if (newFormat) {
-        return signed ? buffer.readShort() : buffer.readUnsignedShort();
-    } else {
-        return signed ? buffer.readByte() : buffer.readUnsignedByte();
-    }
 }
 
 export class SceneBuilder {
@@ -148,119 +140,13 @@ export class SceneBuilder {
         baseX: number,
         baseY: number,
     ): void {
-        const buffer = new ByteBuffer(data);
-
-        for (let level = 0; level < Scene.MAX_LEVELS; level++) {
-            for (let x = 0; x < Scene.MAP_SQUARE_SIZE; x++) {
-                for (let y = 0; y < Scene.MAP_SQUARE_SIZE; y++) {
-                    this.decodeTerrainTile(
-                        scene,
-                        buffer,
-                        level,
-                        x + offsetX,
-                        y + offsetY,
-                        baseX,
-                        baseY,
-                        0,
-                    );
-                }
-            }
-        }
-
-        for (let level = 0; level < Scene.MAX_LEVELS; level++) {
-            for (let x = 0; x < Scene.MAP_SQUARE_SIZE; x++) {
-                for (let y = 0; y < Scene.MAP_SQUARE_SIZE; y++) {
-                    const sceneX = x + offsetX;
-                    const sceneY = y + offsetY;
-                    if (!scene.isWithinBounds(level, sceneX, sceneY)) {
-                        continue;
-                    }
-                    if ((scene.tileRenderFlags[level][x][y] & TileRenderFlag.Blocked) !== 0) {
-                        let realLevel = level;
-                        if ((scene.tileRenderFlags[1][x][y] & TileRenderFlag.Bridge) !== 0) {
-                            realLevel = level - 1;
-                        }
-
-                        if (realLevel >= 0) {
-                            scene.collisionMaps[realLevel].setBlockedByFloor(x, y);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    decodeTerrainTile(
-        scene: Scene,
-        buffer: ByteBuffer,
-        level: number,
-        x: number,
-        y: number,
-        baseX: number,
-        baseY: number,
-        rotOffset: number,
-    ): void {
-        if (scene.isWithinBounds(level, x, y)) {
-            scene.tileRenderFlags[level][x][y] = 0;
-
-            while (true) {
-                const v = readTerrainValue(buffer, this.newTerrainFormat);
-                if (v === 0) {
-                    if (level === 0) {
-                        const worldX = baseX + x + 932731;
-                        const worldY = baseY + y + 556238;
-                        scene.tileHeights[level][x][y] = -generateHeight(worldX, worldY) * Scene.UNITS_TILE_HEIGHT_BASIS;
-                    } else {
-                        scene.tileHeights[level][x][y] = scene.tileHeights[level - 1][x][y] - Scene.UNITS_LEVEL_HEIGHT;
-                    }
-                    break;
-                }
-
-                if (v === 1) {
-                    let height = buffer.readUnsignedByte();
-                    if (height === 1) {
-                        height = 0;
-                    }
-
-                    if (level === 0) {
-                        scene.tileHeights[0][x][y] = -height * Scene.UNITS_TILE_HEIGHT_BASIS;
-                    } else {
-                        scene.tileHeights[level][x][y] =
-                            scene.tileHeights[level - 1][x][y] - height * Scene.UNITS_TILE_HEIGHT_BASIS;
-                    }
-                    break;
-                }
-
-                if (v <= 49) {
-                    scene.tileOverlays[level][x][y] = readTerrainValue(
-                        buffer,
-                        this.newTerrainFormat,
-                    );
-                    scene.tileShapes[level][x][y] = ((v - 2) >> 2) as TileShapeId;
-                    scene.tileRotations[level][x][y] = ((v - 2 + rotOffset) & 3) as TileRotation;
-                } else if (v <= 81) {
-                    scene.tileRenderFlags[level][x][y] = v - 49;
-                } else {
-                    scene.tileUnderlays[level][x][y] = v - 81;
-                }
-            }
-        } else {
-            while (true) {
-                const v = readTerrainValue(buffer, this.newTerrainFormat);
-                if (v === 0) {
-                    break;
-                }
-
-                if (v === 1) {
-                    buffer.readUnsignedByte();
-                    break;
-                }
-
-                if (v <= 49) {
-                    readTerrainValue(buffer, this.newTerrainFormat);
-                }
-            }
-        }
+        const decoded = decodeTerrainSquareFromBytes(
+            data,
+            this.newTerrainFormat,
+            baseX + offsetX,
+            baseY + offsetY,
+        );
+        applyDecodedTerrainSquareToScene(scene, decoded, offsetX, offsetY);
     }
 
     decodeLocs(
