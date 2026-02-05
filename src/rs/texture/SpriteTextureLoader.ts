@@ -1,5 +1,4 @@
-import { Archive } from "../cache/format/Archive";
-import { BytesProvider } from "../io/BytesProvider";
+import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
@@ -18,22 +17,23 @@ export class SpriteTextureLoader implements TextureLoader {
 
     idIndexMap: Map<number, number>;
 
-    static create(textureArchive: Archive | undefined, spriteSource: BytesProvider): SpriteTextureLoader {
+    static create(textureDefinitionSource: EnumeratingBytesProvider | undefined, spriteSource: BytesProvider): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
 
-        if (!textureArchive) {
+        if (!textureDefinitionSource) {
             console.error("SpriteTextureLoader: missing texture archive 0");
             return new SpriteTextureLoader(spriteSource, [], definitions);
         }
-        const textureIds = Array.from(textureArchive.fileIds);
+        const textureIds = Array.from(textureDefinitionSource.getIds());
         for (let i = 0; i < textureIds.length; i++) {
             const textureId = textureIds[i];
-            const file = textureArchive.getFile(textureId);
-            if (file) {
-                const buffer = new ByteBuffer(file.data);
-                const definition = TextureDefinition.decode(textureId, buffer);
-                definitions.set(textureId, definition);
+            const bytes = textureDefinitionSource.getBytes(textureId);
+            if (!bytes) {
+                continue;
             }
+            const buffer = new ByteBuffer(bytes);
+            const definition = TextureDefinition.decode(textureId, buffer);
+            definitions.set(textureId, definition);
         }
 
         return new SpriteTextureLoader(spriteSource, textureIds, definitions);

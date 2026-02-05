@@ -62,3 +62,19 @@ export class ArchiveBytesProvider implements CountedBytesProvider {
         return this.archive.fileCount;
     }
 }
+
+export class EnumeratingArchiveBytesProvider implements EnumeratingBytesProvider {
+    constructor(readonly archive: Archive) {}
+
+    getBytes(fileId: number): Uint8Array | undefined {
+        return this.archive.getFile(fileId)?.data;
+    }
+
+    getCount(): number {
+        return this.archive.fileCount;
+    }
+
+    getIds(): Int32Array {
+        return this.archive.fileIds;
+    }
+}

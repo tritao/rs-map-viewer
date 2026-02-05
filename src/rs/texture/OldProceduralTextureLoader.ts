@@ -1,6 +1,5 @@
-import { Archive } from "../cache/format/Archive";
 import { ByteBuffer } from "../io/ByteBuffer";
-import { BytesProvider } from "../io/BytesProvider";
+import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 import { ProceduralTexture } from "./procedural/ProceduralTexture";
@@ -13,22 +12,26 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
-    static create(texturesArchive: Archive | undefined, spriteSource: BytesProvider): OldProceduralTextureLoader {
+    static create(
+        textureDefinitionSource: EnumeratingBytesProvider | undefined,
+        spriteSource: BytesProvider,
+    ): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
-        if (!texturesArchive) {
+        if (!textureDefinitionSource) {
             console.error("OldProceduralTextureLoader: missing texture archive 0");
             return new OldProceduralTextureLoader(spriteSource, [], definitions);
         }
 
-        const textureIds = Array.from(texturesArchive.fileIds);
+        const textureIds = Array.from(textureDefinitionSource.getIds());
         for (let i = 0; i < textureIds.length; i++) {
             const id = textureIds[i];
-            const file = texturesArchive.getFile(id);
-            if (file) {
-                const buffer = new ByteBuffer(file.data);
-                const def = new ProceduralTextureDefinition(id, buffer);
-                definitions.set(id, def);
+            const bytes = textureDefinitionSource.getBytes(id);
+            if (!bytes) {
+                continue;
             }
+            const buffer = new ByteBuffer(bytes);
+            const def = new ProceduralTextureDefinition(id, buffer);
+            definitions.set(id, def);
         }
 
         return new OldProceduralTextureLoader(spriteSource, textureIds, definitions);

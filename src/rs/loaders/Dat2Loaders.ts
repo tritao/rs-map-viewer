@@ -53,7 +53,7 @@ import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoade
 import { ProceduralTextureLoader } from "../texture/ProceduralTextureLoader";
 import { SpriteTextureLoader } from "../texture/SpriteTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
-import { IndexFileBytesProvider, IndexSmartFileBytesProvider } from "../io/BytesProvider";
+import { IndexFileBytesProvider, IndexSmartFileBytesProvider, EnumeratingArchiveBytesProvider } from "../io/BytesProvider";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
@@ -171,7 +171,13 @@ export function createDat2Loaders(
     const textureLoader: TextureLoader = (() => {
         switch (rules.texture.mode) {
             case "sprite":
-                return SpriteTextureLoader.create(textureIndex.tryGetArchive(0), new IndexFileBytesProvider(spriteIndex, 0));
+                return SpriteTextureLoader.create(
+                    (() => {
+                        const archive = textureIndex.tryGetArchive(0);
+                        return archive ? new EnumeratingArchiveBytesProvider(archive) : undefined;
+                    })(),
+                    new IndexFileBytesProvider(spriteIndex, 0),
+                );
             case "materials": {
                 const materialIndex = cacheSystem.getIndex(Rs2IndexId.materials);
                 return ProceduralTextureLoader.create(
@@ -183,7 +189,13 @@ export function createDat2Loaders(
                 );
             }
             case "old_procedural":
-                return OldProceduralTextureLoader.create(textureIndex.tryGetArchive(0), new IndexFileBytesProvider(spriteIndex, 0));
+                return OldProceduralTextureLoader.create(
+                    (() => {
+                        const archive = textureIndex.tryGetArchive(0);
+                        return archive ? new EnumeratingArchiveBytesProvider(archive) : undefined;
+                    })(),
+                    new IndexFileBytesProvider(spriteIndex, 0),
+                );
         }
     })();
 
