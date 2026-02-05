@@ -24,7 +24,7 @@ export class IndexFileBytesProvider implements EnumeratingBytesProvider {
     }
 
     getCount(): number {
-        return this.index.getArchiveCount();
+        return Math.max(this.index.getLastArchiveId() + 1, 0);
     }
 
     getIds(): Int32Array {
@@ -43,7 +43,7 @@ export class IndexSmartFileBytesProvider implements EnumeratingBytesProvider {
     }
 
     getCount(): number {
-        return this.index.getArchiveCount();
+        return Math.max(this.index.getLastArchiveId() + 1, 0);
     }
 
     getIds(): Int32Array {
@@ -59,7 +59,7 @@ export class ArchiveBytesProvider implements CountedBytesProvider {
     }
 
     getCount(): number {
-        return this.archive.fileCount;
+        return this.archive.lastFileId + 1;
     }
 }
 
@@ -71,7 +71,7 @@ export class EnumeratingArchiveBytesProvider implements EnumeratingBytesProvider
     }
 
     getCount(): number {
-        return this.archive.fileCount;
+        return this.archive.lastFileId + 1;
     }
 
     getIds(): Int32Array {

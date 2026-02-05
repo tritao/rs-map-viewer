@@ -132,7 +132,7 @@ export class ArchiveTypeLoader<T extends Type> extends BaseTypeLoader<T> {
     }
 
     override getCount(): number {
-        return this.archive.fileCount;
+        return this.archive.lastFileId + 1;
     }
 
     // Inherit BaseTypeLoader.tryLoad for caching + error handling.
