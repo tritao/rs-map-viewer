@@ -385,7 +385,7 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
 }
 
 async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
-    const spriteIndex = session.cacheSystem.getIndex(Dat2IndexId.sprites);
+    const spriteIndex = session.getIndex(Dat2IndexId.sprites);
     const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
 
     const promises: Promise<any>[] = [];
@@ -402,7 +402,7 @@ async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<vo
 }
 
 async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
-    const configIndex = session.cacheSystem.getIndex(DatIndexId.configs);
+    const configIndex = session.getIndex(DatIndexId.configs);
     const mediaArchive = configIndex.getArchive(DatConfigArchiveId.media);
 
     const indexDatId = mediaArchive.getFileId("index.dat");

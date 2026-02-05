@@ -1,4 +1,5 @@
 import { LoadedCache } from "../../util/Caches";
+import { CacheIndex } from "../cache/CacheIndex";
 import { CacheSystem } from "../cache/CacheSystem";
 import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
 import { CompressionHandler } from "../compression/CompressionHandler";
@@ -13,6 +14,8 @@ export type CacheSession = {
     loaders: Loaders;
     varManager: VarManager;
     mapFileIndex: MapFileIndex;
+    tryGetIndex(indexId: number): CacheIndex | undefined;
+    getIndex(indexId: number): CacheIndex;
 };
 
 export function createCacheSession(cache: LoadedCache, compressionHandler: CompressionHandler): CacheSession {
@@ -31,6 +34,7 @@ export function createCacheSession(cache: LoadedCache, compressionHandler: Compr
         loaders,
         varManager,
         mapFileIndex: loaders.mapFileLoader.mapFileIndex,
+        tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
+        getIndex: (indexId: number) => cacheSystem.getIndex(indexId),
     };
 }
-
