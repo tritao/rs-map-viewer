@@ -25,7 +25,7 @@ export class GraphicsDefaults extends Type {
             fileSystem.indexExists(OsrsIndexId.graphicDefaults)
         ) {
             const defaultsIndex = fileSystem.getIndex(OsrsIndexId.graphicDefaults);
-            const defaultsFile = defaultsIndex.getFile(DefaultsGroup.GRAPHICS, 0);
+            const defaultsFile = defaultsIndex.tryGetFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
                 console.error("GraphicsDefaults: file not found");
                 return new GraphicsDefaults(-1, cacheInfo);
