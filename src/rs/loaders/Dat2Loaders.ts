@@ -44,9 +44,9 @@ import {
 import { Dat2MapIndex, MapFileIndex } from "../map/MapFileIndex";
 import { MapFileLoader } from "../map/MapFileLoader";
 import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
-import { IndexSeqBaseLoader, SeqBaseLoader } from "../model/seq/SeqBaseLoader";
+import { Dat2SeqBaseLoader, SeqBaseLoader } from "../model/seq/SeqBaseLoader";
 import { Dat2SeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
-import { IndexSkeletalSeqLoader, SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
+import { ArchiveSkeletalSeqLoader, SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoader";
@@ -159,18 +159,19 @@ export function createDat2Loaders(
 
     const modelLoader: ModelLoader = IndexModelLoader.create(cacheSystem.getIndex(Dat2IndexId.models));
 
-    const seqBaseLoader: SeqBaseLoader = new IndexSeqBaseLoader(
+    const seqBaseLoader: SeqBaseLoader = Dat2SeqBaseLoader.create(
         cacheInfo,
         cacheSystem.getIndex(Dat2IndexId.skeletons),
     );
     const animationsIndex = cacheSystem.getIndex(Dat2IndexId.animations);
+    const animationsArchiveProvider = new IndexArchiveProvider(animationsIndex);
     const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(
         cacheInfo,
-        new IndexArchiveProvider(animationsIndex),
+        animationsArchiveProvider,
         seqBaseLoader,
     );
-    const skeletalSeqLoader: SkeletalSeqLoader | undefined = new IndexSkeletalSeqLoader(
-        animationsIndex,
+    const skeletalSeqLoader: SkeletalSeqLoader | undefined = new ArchiveSkeletalSeqLoader(
+        animationsArchiveProvider,
         seqBaseLoader,
     );
 

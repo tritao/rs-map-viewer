@@ -1,5 +1,5 @@
 import { Archive } from "../../cache/format/Archive";
-import { CacheIndex } from "../../cache/CacheIndex";
+import { ArchiveProvider } from "../../io/ArchiveProvider";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { SkeletalSeq } from "./SkeletalSeq";
 
@@ -9,13 +9,13 @@ export interface SkeletalSeqLoader {
     clearCache(): void;
 }
 
-export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
+export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
     seqs: Map<number, SkeletalSeq> = new Map();
 
     archiveCache: Map<number, Archive> = new Map();
 
     constructor(
-        readonly animIndex: CacheIndex,
+        readonly animArchiveProvider: ArchiveProvider,
         readonly baseLoader: SeqBaseLoader,
     ) {}
 
@@ -30,7 +30,10 @@ export class IndexSkeletalSeqLoader implements SkeletalSeqLoader {
 
         let archive = this.archiveCache.get(archiveId);
         if (!archive) {
-            archive = this.animIndex.getArchive(archiveId);
+            archive = this.animArchiveProvider.getArchive(archiveId);
+            if (!archive) {
+                return undefined;
+            }
             this.archiveCache.set(archiveId, archive);
         }
 

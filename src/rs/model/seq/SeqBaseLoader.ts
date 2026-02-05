@@ -1,5 +1,6 @@
-import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
+import { CacheIndex } from "../../cache/CacheIndex";
+import { BytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { Dat2SeqBase, SeqBase } from "./SeqBase";
 
 export interface SeqBaseLoader {
@@ -8,13 +9,14 @@ export interface SeqBaseLoader {
     clearCache(): void;
 }
 
-export class IndexSeqBaseLoader implements SeqBaseLoader {
+export class Dat2SeqBaseLoader implements SeqBaseLoader {
     bases: Map<number, SeqBase> = new Map();
 
-    constructor(
-        readonly cacheInfo: CacheInfo,
-        readonly index: CacheIndex,
-    ) {}
+    static create(cacheInfo: CacheInfo, index: CacheIndex): Dat2SeqBaseLoader {
+        return new Dat2SeqBaseLoader(cacheInfo, new IndexFileBytesProvider(index, 0));
+    }
+
+    constructor(readonly cacheInfo: CacheInfo, readonly baseSource: BytesProvider) {}
 
     load(id: number): SeqBase | undefined {
         const cached = this.bases.get(id);
@@ -22,11 +24,11 @@ export class IndexSeqBaseLoader implements SeqBaseLoader {
             return cached;
         }
 
-        const file = this.index.getFile(id, 0);
-        if (!file) {
+        const bytes = this.baseSource.getBytes(id);
+        if (!bytes) {
             return undefined;
         }
-        const base = Dat2SeqBase.load(this.cacheInfo, id, file.data);
+        const base = Dat2SeqBase.load(this.cacheInfo, id, bytes);
         this.bases.set(id, base);
         return base;
     }
