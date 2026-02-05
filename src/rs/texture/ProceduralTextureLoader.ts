@@ -216,13 +216,9 @@ export class ProceduralTextureLoader implements TextureLoader {
 
     isTransparent(id: number): boolean {
         if (!this.transparentTextureMap.has(id)) {
-            try {
-                if (!this.getTexture(id)) {
-                    return false;
-                }
-                this.getPixelsArgb(id, 128, false, 1.0);
-            } catch (e) {
-                console.error("Error loading texture", e);
+            if (!this.getTexture(id)) {
+                this.transparentTextureMap.set(id, false);
+            } else if (!this.tryGetPixelsArgb(id, 128, false, 1.0)) {
                 this.transparentTextureMap.set(id, false);
             }
         }
