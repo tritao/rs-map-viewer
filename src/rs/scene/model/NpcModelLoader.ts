@@ -99,7 +99,7 @@ export class NpcModelLoader {
 
     transformNpcModel(model: Model, seqType: SeqType, frame: number): Model {
         if (seqType.hasAnimMayaSeq()) {
-            const skeletalSeq = this.skeletalSeqLoader?.load(seqType.animMayaId);
+            const skeletalSeq = this.skeletalSeqLoader?.tryLoad(seqType.animMayaId);
             if (!skeletalSeq) {
                 return Model.copyAnimated(model, true, true);
             }
@@ -111,7 +111,7 @@ export class NpcModelLoader {
                 return Model.copyAnimated(model, true, true);
             }
 
-            const seqFrame = this.seqFrameLoader.load(seqType.frameIds[frame]);
+            const seqFrame = this.seqFrameLoader.tryLoad(seqType.frameIds[frame]);
 
             if (seqFrame) {
                 model = Model.copyAnimated(

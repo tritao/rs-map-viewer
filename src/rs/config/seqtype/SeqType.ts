@@ -4,6 +4,11 @@ import { ByteBuffer } from "../../io/ByteBuffer";
 import { Type } from "../Type";
 
 export type SeqFrameLengthLoader = {
+    tryLoad(id: number): { frameLength: number } | undefined;
+
+    /**
+     * @deprecated Use `tryLoad()`.
+     */
     load(id: number): { frameLength: number } | undefined;
 };
 
@@ -92,7 +97,7 @@ export class SeqType extends Type {
 
         if (this.cacheType === CacheType.Legacy || this.cacheType === CacheType.Dat) {
             if (frameLength === 0) {
-                const animFrame = seqFrameLoader.load(this.frameIds[frame]);
+                const animFrame = seqFrameLoader.tryLoad(this.frameIds[frame]);
                 if (animFrame) {
                     frameLength = this.frameLengths[frame] = animFrame.frameLength;
                 }

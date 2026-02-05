@@ -4,6 +4,11 @@ import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { SkeletalSeq } from "./SkeletalSeq";
 
 export interface SkeletalSeqLoader {
+    tryLoad(id: number): SkeletalSeq | undefined;
+
+    /**
+     * @deprecated Use `tryLoad()` for explicit non-throwing semantics.
+     */
     load(id: number): SkeletalSeq | undefined;
 
     clearCache(): void;
@@ -19,7 +24,7 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
         readonly baseLoader: SeqBaseLoader,
     ) {}
 
-    load(id: number): SkeletalSeq | undefined {
+    tryLoad(id: number): SkeletalSeq | undefined {
         const cached = this.seqs.get(id);
         if (cached) {
             return cached;
@@ -48,6 +53,10 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
         }
         this.seqs.set(id, skeletalSeq);
         return skeletalSeq;
+    }
+
+    load(id: number): SkeletalSeq | undefined {
+        return this.tryLoad(id);
     }
 
     clearCache(): void {

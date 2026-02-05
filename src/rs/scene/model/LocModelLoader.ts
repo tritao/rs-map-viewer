@@ -321,7 +321,7 @@ export class LocModelLoader {
 
     transformModel(model: Model, seqType: SeqType, frame: number, rotation: number): Model {
         if (seqType.hasAnimMayaSeq()) {
-            const skeletalSeq = this.skeletalSeqLoader?.load(seqType.animMayaId);
+            const skeletalSeq = this.skeletalSeqLoader?.tryLoad(seqType.animMayaId);
             if (!skeletalSeq) {
                 return Model.copyAnimated(model, true, true);
             }
@@ -352,7 +352,7 @@ export class LocModelLoader {
                 return model;
             }
 
-            const seqFrame = this.seqFrameLoader.load(seqType.frameIds[frame]);
+            const seqFrame = this.seqFrameLoader.tryLoad(seqType.frameIds[frame]);
 
             if (seqFrame) {
                 model = Model.copyAnimated(

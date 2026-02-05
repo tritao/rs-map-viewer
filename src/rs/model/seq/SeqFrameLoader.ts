@@ -9,6 +9,11 @@ import { SeqFrameMap } from "./SeqFrameMap";
 import { decodeDat2SeqFrameMapFromArchive } from "./decodeDat2SeqFrameMap";
 
 export interface SeqFrameLoader {
+    tryLoad(id: number): SeqFrame | undefined;
+
+    /**
+     * @deprecated Use `tryLoad()` for explicit non-throwing semantics.
+     */
     load(id: number): SeqFrame | undefined;
 
     clearCache(): void;
@@ -21,8 +26,12 @@ export class LegacySeqFrameLoader implements SeqFrameLoader {
 
     constructor(readonly frames: SeqFrame[]) {}
 
-    load(id: number): SeqFrame | undefined {
+    tryLoad(id: number): SeqFrame | undefined {
         return this.frames[id];
+    }
+
+    load(id: number): SeqFrame | undefined {
+        return this.tryLoad(id);
     }
 
     clearCache(): void {}
@@ -52,8 +61,12 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
 
     constructor(readonly frames: Map<number, SeqFrame>) {}
 
-    load(id: number): SeqFrame | undefined {
+    tryLoad(id: number): SeqFrame | undefined {
         return this.frames.get(id);
+    }
+
+    load(id: number): SeqFrame | undefined {
+        return this.tryLoad(id);
     }
 
     clearCache(): void {}
@@ -70,7 +83,7 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
     ) {}
 
     // changed 610
-    load(id: number): SeqFrame | undefined {
+    tryLoad(id: number): SeqFrame | undefined {
         const frameMapId = id >> 16;
         const frameId = id & 0xffff;
 
@@ -91,6 +104,10 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
         }
 
         return frameMap.frames[frameId];
+    }
+
+    load(id: number): SeqFrame | undefined {
+        return this.tryLoad(id);
     }
 
     clearCache(): void {
