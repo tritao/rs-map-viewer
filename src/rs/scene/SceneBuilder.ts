@@ -7,12 +7,10 @@ import { ByteBuffer } from "../io/ByteBuffer";
 import { getMapSquareId } from "../map/MapFileIndex";
 import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
-import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
+import { packHsl } from "../util/ColorUtil";
 import { CollisionMap } from "./CollisionMap";
 import { packLocPlacement } from "./LocPlacementFlag";
 import { Scene, TileRenderFlag } from "./Scene";
-import type { TileRotation, TileShapeId } from "./Scene";
-import { SceneTileModel } from "./SceneTileModel";
 import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
 import { LocEntity } from "./entity/LocEntity";
@@ -23,6 +21,7 @@ import {
     decodeTerrainSquareFromBytesInto,
     TerrainSquareDecodeScratch,
 } from "./decodeTerrainSquare";
+import { computeSceneTileModelForTile } from "./computeSceneTileModel";
 
 export enum LocLoadType {
     MODELS,
@@ -948,165 +947,29 @@ export class SceneBuilder {
             for (let x = 1; x < scene.sizeX - 1; x++) {
                 for (let y = 1; y < scene.sizeY - 1; y++) {
                     const underlayId = underlayIds[level][x][y] - 1;
-
                     const overlayId = overlayIds[level][x][y] - 1;
-
-                    if (underlayId === -1 && overlayId === -1) {
+                    const tileModel = computeSceneTileModelForTile({
+                        x,
+                        y,
+                        heightSw: heights[level][x][y],
+                        heightSe: heights[level][x + 1][y],
+                        heightNe: heights[level][x + 1][y + 1],
+                        heightNw: heights[level][x][y + 1],
+                        lightSw: lights[x][y],
+                        lightSe: lights[x + 1][y],
+                        lightNe: lights[x + 1][y + 1],
+                        lightNw: lights[x][y + 1],
+                        underlayId,
+                        overlayId,
+                        tileShape: tileShapes[level][x][y],
+                        tileRotation: tileRotations[level][x][y],
+                        smoothUnderlays,
+                        blendedColors,
+                        overlayTypeLoader: this.overlayTypeLoader,
+                        textureLoader: this.locModelLoader.textureLoader,
+                    });
+                    if (!tileModel) {
                         continue;
-                    }
-
-                    const heightSw = heights[level][x][y];
-                    const heightSe = heights[level][x + 1][y];
-                    const heightNe = heights[level][x + 1][y + 1];
-                    const heightNw = heights[level][x][y + 1];
-
-                    const lightSw = lights[x][y];
-                    const lightSe = lights[x + 1][y];
-                    const lightNe = lights[x + 1][y + 1];
-                    const lightNw = lights[x][y + 1];
-
-                    let underlayHslSw = -1;
-                    let underlayHslSe = -1;
-                    let underlayHslNe = -1;
-                    let underlayHslNw = -1;
-                    if (underlayId !== -1) {
-                        underlayHslSw = blendedColors[x][y];
-                        underlayHslSe = blendedColors[x + 1][y];
-                        underlayHslNe = blendedColors[x + 1][y + 1];
-                        underlayHslNw = blendedColors[x][y + 1];
-                        if (underlayHslSe === -1 || !smoothUnderlays) {
-                            underlayHslSe = underlayHslSw;
-                        }
-                        if (underlayHslNe === -1 || !smoothUnderlays) {
-                            underlayHslNe = underlayHslSw;
-                        }
-                        if (underlayHslNw === -1 || !smoothUnderlays) {
-                            underlayHslNw = underlayHslSw;
-                        }
-                    }
-
-                    let underlayRgb = 0;
-                    if (underlayHslSw !== -1) {
-                        underlayRgb = HSL_RGB_MAP[adjustUnderlayLight(underlayHslSw, 96)];
-                    }
-
-                    let tileModel: SceneTileModel;
-                    if (overlayId === -1) {
-                        tileModel = new SceneTileModel(
-                            0 as TileShapeId,
-                            0 as TileRotation,
-                            -1,
-                            x,
-                            y,
-                            heightSw,
-                            heightSe,
-                            heightNe,
-                            heightNw,
-                            lightSw,
-                            lightSe,
-                            lightNe,
-                            lightNw,
-                            underlayHslSw,
-                            underlayHslSe,
-                            underlayHslNe,
-                            underlayHslNw,
-                            0,
-                            0,
-                            underlayRgb,
-                            0,
-                        );
-                    } else {
-                        const shape = (tileShapes[level][x][y] + 1) as TileShapeId;
-                        const rotation = tileRotations[level][x][y] as TileRotation;
-                        const overlayResult = this.overlayTypeLoader.tryLoad(overlayId);
-                        if (!overlayResult.ok) {
-                            tileModel = new SceneTileModel(
-                                0 as TileShapeId,
-                                0 as TileRotation,
-                                -1,
-                                x,
-                                y,
-                                heightSw,
-                                heightSe,
-                                heightNe,
-                                heightNw,
-                                lightSw,
-                                lightSe,
-                                lightNe,
-                                lightNw,
-                                underlayHslSw,
-                                underlayHslSe,
-                                underlayHslNe,
-                                underlayHslNw,
-                                0,
-                                0,
-                                underlayRgb,
-                                0,
-                            );
-                        } else {
-                            const overlay = overlayResult.value;
-
-                        let overlayHsl: number;
-                        let overlayMinimapHsl: number;
-                        if (
-                            overlay.textureId !== -1 &&
-                            this.locModelLoader.textureLoader.isSd(overlay.textureId)
-                        ) {
-                            overlayMinimapHsl = this.locModelLoader.textureLoader.getAverageHsl(
-                                overlay.textureId,
-                            );
-                            overlayHsl = -1;
-                        } else if (overlay.primaryRgb === 0xff00ff) {
-                            overlayHsl = overlayMinimapHsl = -2;
-                        } else {
-                            overlayHsl = overlayMinimapHsl = packHsl(
-                                overlay.hue,
-                                overlay.saturation,
-                                overlay.lightness,
-                            );
-                        }
-
-                        if (overlay.secondaryRgb !== -1) {
-                            overlayMinimapHsl = packHsl(
-                                overlay.secondaryHue,
-                                overlay.secondarySaturation,
-                                overlay.secondaryLightness,
-                            );
-                        }
-
-                        let overlayRgb = 0;
-                        if (overlayMinimapHsl !== -2) {
-                            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(overlayMinimapHsl, 96)];
-                        }
-
-                        // if (overlayMinimapHsl === -2) {
-                        //     overlayMinimapHsl = overlayHsl;
-                        // }
-
-                        tileModel = new SceneTileModel(
-                            shape,
-                            rotation,
-                            overlay.textureId,
-                            x,
-                            y,
-                            heightSw,
-                            heightSe,
-                            heightNe,
-                            heightNw,
-                            lightSw,
-                            lightSe,
-                            lightNe,
-                            lightNw,
-                            underlayHslSw,
-                            underlayHslSe,
-                            underlayHslNe,
-                            underlayHslNw,
-                            overlayHsl,
-                            overlayMinimapHsl,
-                            underlayRgb,
-                            overlayRgb,
-                        );
-                        }
                     }
 
                     scene.newTileModel(level, x, y, tileModel);
