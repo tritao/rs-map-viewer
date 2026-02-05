@@ -151,9 +151,8 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
     ) {
         super(typeConstructor, cacheInfo);
         const filesPerArchive = 1 << fileIdBits;
-        this.count =
-            Math.max((index.getArchiveCount() - 1) * filesPerArchive, 0) +
-            index.getFileCount(index.getLastArchiveId());
+        const lastArchiveId = index.getLastArchiveId();
+        this.count = lastArchiveId < 0 ? 0 : lastArchiveId * filesPerArchive + index.getFileCount(lastArchiveId);
     }
 
     override getData(id: number): Uint8Array | undefined {
