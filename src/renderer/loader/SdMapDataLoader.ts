@@ -39,6 +39,7 @@ import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDataLoader, addNpcAnimationFrames } from "./SdRenderableDataLoader";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
+import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
 
 function loadHeightMapTextureData(scene: Scene): Int16Array {
     const heightMapTextureData = new Int16Array(Scene.MAX_LEVELS * scene.sizeX * scene.sizeY);
@@ -622,7 +623,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         if (loadNpcs) {
             const npcSpawnBytes = state.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
             const cacheNpcSpawns = npcSpawnBytes
-                ? state.sceneBuilder.decodeNpcSpawnsFromBytes(scene, borderSize, mapX, mapY, npcSpawnBytes)
+                ? decodeNpcSpawnsFromBytes(scene.tileRenderFlags[1], borderSize, mapX, mapY, npcSpawnBytes)
                 : undefined;
             if (cacheNpcSpawns) {
                 npcSpawns = cacheNpcSpawns.filter((spawn) => {
