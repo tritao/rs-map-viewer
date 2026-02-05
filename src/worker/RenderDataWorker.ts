@@ -27,6 +27,7 @@ import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/ses
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { errorToString } from "../util/ErrorUtil";
 import { Loaders } from "../rs/loaders/Loaders";
+import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -411,11 +412,15 @@ async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise
         return;
     }
 
-    const indexDatId = mediaArchive.getFileId("index.dat");
+    const indexDatId = mediaArchive.tryGetFileId("index.dat");
+    if (indexDatId === undefined) {
+        return;
+    }
 
     const promises: Promise<any>[] = [];
 
-    for (const fileId of mediaArchive.fileIds) {
+    const mediaSource = new EnumeratingArchiveBytesProvider(mediaArchive);
+    for (const fileId of mediaSource.getIds()) {
         if (fileId === indexDatId) {
             continue;
         }

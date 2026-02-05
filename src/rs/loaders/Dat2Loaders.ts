@@ -227,7 +227,8 @@ export function createDat2Loaders(
             const mapSceneTypeLoader = new MapSceneTypeLoader(cacheInfo, mapScenesArchive);
 
             const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId + 1);
-            for (const id of mapScenesArchive.fileIds) {
+            const mapScenesSource = new EnumeratingArchiveBytesProvider(mapScenesArchive);
+            for (const id of mapScenesSource.getIds()) {
                 const result = mapSceneTypeLoader.tryLoad(id);
                 if (!result.ok) {
                     continue;
