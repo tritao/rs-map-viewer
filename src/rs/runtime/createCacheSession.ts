@@ -5,7 +5,7 @@ import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFile
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { VarManager } from "../config/vartype/VarManager";
 import { MapFileIndex } from "../map/MapFileIndex";
-import { createLoaders } from "../loaders/createLoaders";
+import { tryCreateLoaders } from "../loaders/createLoaders";
 import { Loaders } from "../loaders/Loaders";
 import { err, ok, Result } from "../../util/Result";
 import { errorToString } from "../../util/ErrorUtil";
@@ -18,6 +18,11 @@ export type CacheSession = {
     mapFileIndex: MapFileIndex;
     tryGetIndex(indexId: number): CacheIndex | undefined;
     getIndex(indexId: number): CacheIndex;
+    /**
+     * Creates a new session that shares the same cache store/index tables, but has
+     * fresh loader caches. This mirrors a "thread-local context" in a future C++ port.
+     */
+    tryFork(): Result<CacheSession, string>;
 };
 
 export function createCacheSession(cache: LoadedCache, compressionHandler: CompressionHandler): CacheSession {
@@ -34,24 +39,38 @@ export function tryCreateCacheSession(
 ): Result<CacheSession, string> {
     try {
         const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
-        const loaders = createLoaders(cache.info, cacheSystem);
-
-        const varManager = new VarManager(loaders.varBitTypeLoader);
-        const questTypeLoader = loaders.questTypeLoader;
-        if (questTypeLoader) {
-            varManager.setQuestsCompleted(questTypeLoader);
-        }
-
-        return ok({
-            cache,
-            cacheSystem,
-            loaders,
-            varManager,
-            mapFileIndex: loaders.mapFileLoader.mapFileIndex,
-            tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
-            getIndex: (indexId: number) => cacheSystem.getIndex(indexId),
-        });
+        return tryCreateCacheSessionFromSystem(cache, cacheSystem);
     } catch (e) {
         return err(errorToString(e));
     }
+}
+
+export function tryCreateCacheSessionFromSystem(
+    cache: LoadedCache,
+    cacheSystem: CacheSystem,
+): Result<CacheSession, string> {
+    const loadersResult = tryCreateLoaders(cache.info, cacheSystem);
+    if (!loadersResult.ok) {
+        return loadersResult;
+    }
+    const loaders = loadersResult.value;
+
+    const varManager = new VarManager(loaders.varBitTypeLoader);
+    const questTypeLoader = loaders.questTypeLoader;
+    if (questTypeLoader) {
+        varManager.setQuestsCompleted(questTypeLoader);
+    }
+
+    const session: CacheSession = {
+        cache,
+        cacheSystem,
+        loaders,
+        varManager,
+        mapFileIndex: loaders.mapFileLoader.mapFileIndex,
+        tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
+        getIndex: (indexId: number) => cacheSystem.getIndex(indexId),
+        tryFork: () => tryCreateCacheSessionFromSystem(cache, cacheSystem),
+    };
+
+    return ok(session);
 }
