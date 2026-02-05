@@ -11,6 +11,7 @@ export class ProceduralTextureLoader implements TextureLoader {
     textureGenerator: TextureGenerator;
 
     textures: Map<number, ProceduralTextureDefinition> = new Map();
+    private readonly textureDecodeErrors: Set<number> = new Set();
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
@@ -187,15 +188,25 @@ export class ProceduralTextureLoader implements TextureLoader {
         if (cached) {
             return cached;
         }
+        if (this.textureDecodeErrors.has(id)) {
+            return undefined;
+        }
 
         const textureFile = this.textureIndex.tryGetFileSmart(id, null);
         if (!textureFile) {
             return undefined;
         }
-        const buffer = new ByteBuffer(textureFile.data);
-        const texture = new ProceduralTextureDefinition(id, buffer, this.hasAlphaOperation);
-        this.textures.set(id, texture);
-        return texture;
+        try {
+            const buffer = new ByteBuffer(textureFile.data);
+            const texture = new ProceduralTextureDefinition(id, buffer, this.hasAlphaOperation);
+            this.textures.set(id, texture);
+            this.textureDecodeErrors.delete(id);
+            return texture;
+        } catch (e) {
+            console.error("Failed decoding procedural texture definition", id, e);
+            this.textureDecodeErrors.add(id);
+            return undefined;
+        }
     }
 
     getTextureIds(): number[] {
@@ -262,19 +273,34 @@ export class ProceduralTextureLoader implements TextureLoader {
     }
 
     tryGetMaterial(id: number): TextureMaterial | undefined {
-        try {
-            return this.getMaterial(id);
-        } catch {
+        const texture = this.getTexture(id);
+        const material = this.materials[id];
+        if (!texture || !material) {
             return undefined;
         }
+
+        let alphaCutOff = 0.9;
+        if (texture.animU !== 0 || texture.animV !== 0 || material.alphaMode === 2) {
+            alphaCutOff = 0.01;
+        }
+
+        return {
+            animU: texture.animU,
+            animV: texture.animV,
+            alphaCutOff,
+        };
     }
 
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+    private tryGetPixelsRgbInternal(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const texture = this.getTexture(id);
         if (!texture) {
-            throw new Error("Texture not found: " + id);
+            return undefined;
         }
-        // this.textureGenerator.debug = id === 922 || id === 925 || id === 10;
 
         const pixels = texture.proceduralTexture.getPixelsRgb(
             this.textureGenerator,
@@ -290,13 +316,16 @@ export class ProceduralTextureLoader implements TextureLoader {
         return pixels;
     }
 
-    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+    private tryGetPixelsArgbInternal(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const texture = this.getTexture(id);
         if (!texture) {
-            throw new Error("Texture not found: " + id);
+            return undefined;
         }
-
-        // this.textureGenerator.debug = id === 922 || id === 925 || id === 110;
 
         const pixels = texture.proceduralTexture.getPixelsArgb(
             this.textureGenerator,
@@ -312,20 +341,28 @@ export class ProceduralTextureLoader implements TextureLoader {
         return pixels;
     }
 
-    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsRgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
+    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+        const pixels = this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        if (!pixels) {
+            throw new Error("Texture not found: " + id);
         }
+        return pixels;
+    }
+
+    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+        const pixels = this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
+        if (!pixels) {
+            throw new Error("Texture not found: " + id);
+        }
+        return pixels;
+    }
+
+    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsArgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
-        }
+        return this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
     }
 }
 
