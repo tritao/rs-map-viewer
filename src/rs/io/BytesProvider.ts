@@ -16,7 +16,7 @@ export class IndexFileBytesProvider implements CountedBytesProvider {
     ) {}
 
     getBytes(archiveId: number): Uint8Array | undefined {
-        return this.index.getFile(archiveId, this.fileId)?.data;
+        return this.index.tryGetFile(archiveId, this.fileId)?.data;
     }
 
     getCount(): number {
@@ -35,4 +35,3 @@ export class ArchiveBytesProvider implements CountedBytesProvider {
         return this.archive.fileCount;
     }
 }
-

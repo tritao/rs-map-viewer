@@ -14,11 +14,7 @@ export class IndexArchiveProvider implements EnumeratingArchiveProvider {
     constructor(readonly index: CacheIndex) {}
 
     getArchive(id: number): Archive | undefined {
-        try {
-            return this.index.getArchive(id);
-        } catch {
-            return undefined;
-        }
+        return this.index.tryGetArchive(id);
     }
 
     getArchiveIds(): Int32Array {
@@ -29,4 +25,3 @@ export class IndexArchiveProvider implements EnumeratingArchiveProvider {
         return this.index.getArchiveCount();
     }
 }
-
