@@ -287,18 +287,6 @@ export class SpriteTextureLoader implements TextureLoader {
         return pixels;
     }
 
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
-        const pixels = this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
-        if (!pixels) {
-            throw new Error("Failed decoding texture pixels: " + id);
-        }
-        return pixels;
-    }
-
-    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
-        return this.getPixelsRgb(id, size, flipH, brightness);
-    }
-
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
         return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }

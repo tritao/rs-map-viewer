@@ -220,22 +220,6 @@ export class OldProceduralTextureLoader implements TextureLoader {
         }
     }
 
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
-        const pixels = this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
-        if (!pixels) {
-            throw new Error("Failed decoding texture pixels: " + id);
-        }
-        return pixels;
-    }
-
-    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
-        const pixels = this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
-        if (!pixels) {
-            throw new Error("Failed decoding texture pixels: " + id);
-        }
-        return pixels;
-    }
-
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
         return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }

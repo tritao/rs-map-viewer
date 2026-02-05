@@ -45,7 +45,10 @@ const textureLoader = cacheLoaderFactory.getTextureLoader();
 fs.mkdirSync("./textures", { recursive: true });
 
 for (const id of textureLoader.getTextureIds()) {
-    const pixels = textureLoader.getPixelsArgb(id, SIZE, false, 1.0);
+    const pixels = textureLoader.tryGetPixelsArgb(id, SIZE, false, 1.0);
+    if (!pixels) {
+        continue;
+    }
 
     const outputPath = `./textures/${id}.png`;
     saveArgbArrayToPng(pixels, SIZE, SIZE, outputPath);

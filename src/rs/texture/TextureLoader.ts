@@ -22,9 +22,6 @@ export interface TextureLoader {
     getMaterial(id: number): TextureMaterial;
     tryGetMaterial(id: number): TextureMaterial | undefined;
 
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array;
-    getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array;
-
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined;
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined;
 }
