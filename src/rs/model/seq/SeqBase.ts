@@ -135,4 +135,12 @@ export class Dat2SeqBase {
         }
         return new SeqBase(id, count, types, transformActor, masks, labels, skeletalBase);
     }
+
+    static tryLoad(cacheInfo: CacheInfo, id: number, data: Uint8Array): SeqBase | undefined {
+        try {
+            return Dat2SeqBase.load(cacheInfo, id, data);
+        } catch {
+            return undefined;
+        }
+    }
 }

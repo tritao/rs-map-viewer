@@ -29,7 +29,7 @@ export class SkeletalSeq {
 
             const version = buffer.readUnsignedByte();
             const baseId = buffer.readUnsignedShort();
-            const base = baseLoader.load(baseId);
+            const base = baseLoader.tryLoad(baseId);
             if (!base) {
                 return undefined;
             }
