@@ -39,8 +39,7 @@ export class SkeletalSeq {
             }
 
             return new SkeletalSeq(id, version, base, skeletalBase, buffer);
-        } catch (e) {
-            console.error("Failed decoding skeletal seq", id, e);
+        } catch {
             return undefined;
         }
     }

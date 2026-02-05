@@ -61,6 +61,7 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
 
 export class Dat2SeqFrameLoader implements SeqFrameLoader {
     frameMaps: Map<number, SeqFrameMap> = new Map();
+    private readonly errors: Set<number> = new Set();
     private readonly scratch = new SeqFrameDecodeScratch();
 
     constructor(
@@ -71,6 +72,9 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
     // changed 610
     tryLoad(id: number): SeqFrame | undefined {
+        if (this.errors.has(id)) {
+            return undefined;
+        }
         const frameMapId = id >> 16;
         const frameId = id & 0xffff;
 
@@ -78,6 +82,7 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
         if (!frameMap) {
             const archive = this.animArchiveProvider.getArchive(frameMapId);
             if (!archive) {
+                this.errors.add(id);
                 return undefined;
             }
 
@@ -90,11 +95,20 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
             this.frameMaps.set(frameMapId, frameMap);
         }
 
-        return frameMap.frames[frameId];
+        const frame = frameMap.frames[frameId];
+        if (!frame) {
+            if (!this.errors.has(id)) {
+                console.error("Failed decoding seq frame", id);
+                this.errors.add(id);
+            }
+            return undefined;
+        }
+        return frame;
     }
 
     clearCache(): void {
         this.frameMaps.clear();
         this.baseLoader.clearCache();
+        this.errors.clear();
     }
 }

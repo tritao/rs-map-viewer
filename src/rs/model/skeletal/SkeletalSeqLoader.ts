@@ -11,6 +11,7 @@ export interface SkeletalSeqLoader {
 
 export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
     seqs: Map<number, SkeletalSeq> = new Map();
+    private readonly errors: Set<number> = new Set();
 
     archiveCache: Map<number, Archive> = new Map();
 
@@ -20,6 +21,9 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
     ) {}
 
     tryLoad(id: number): SkeletalSeq | undefined {
+        if (this.errors.has(id)) {
+            return undefined;
+        }
         const cached = this.seqs.get(id);
         if (cached) {
             return cached;
@@ -44,6 +48,10 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
 
         const skeletalSeq = SkeletalSeq.tryLoad(this.baseLoader, id, file.data);
         if (!skeletalSeq) {
+            if (!this.errors.has(id)) {
+                console.error("Failed decoding skeletal seq", id);
+                this.errors.add(id);
+            }
             return undefined;
         }
         this.seqs.set(id, skeletalSeq);
@@ -53,5 +61,6 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
     clearCache(): void {
         this.seqs.clear();
         this.archiveCache.clear();
+        this.errors.clear();
     }
 }

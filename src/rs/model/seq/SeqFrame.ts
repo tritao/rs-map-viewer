@@ -473,7 +473,6 @@ export class Dat2SeqFrame {
                 hasColorTransform,
             );
         } catch (e) {
-            console.error("Failed decoding Dat2 seq frame", e);
             return undefined;
         }
     }
