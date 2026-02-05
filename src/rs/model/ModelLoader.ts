@@ -190,7 +190,7 @@ export class LegacyModelLoader implements ModelLoader {
     }
 
     getCount(): number {
-        throw new Error("Method not implemented.");
+        return this.count;
     }
 
     getModel(id: number): ModelData | undefined {
