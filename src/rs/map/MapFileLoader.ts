@@ -15,12 +15,7 @@ export class MapFileLoader {
         if (archiveId === -1) {
             return undefined;
         }
-        try {
-            const file = this.mapIndex.getFile(archiveId, 0);
-            return file?.data;
-        } catch (e) {
-            return undefined;
-        }
+        return this.mapIndex.tryGetFile(archiveId, 0)?.data;
     }
 
     getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
@@ -29,12 +24,7 @@ export class MapFileLoader {
             return undefined;
         }
         const key = xteasMap.get(archiveId);
-        try {
-            const file = this.mapIndex.getFileKey(archiveId, 0, key ? key : null);
-            return file?.data;
-        } catch (e) {
-            return undefined;
-        }
+        return this.mapIndex.tryGetFileKey(archiveId, 0, key ? key : null)?.data;
     }
 
     getNpcSpawnData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
@@ -44,12 +34,7 @@ export class MapFileLoader {
             return undefined;
         }
         const key = xteasMap.get(locArchiveId);
-        try {
-            const file = this.mapIndex.getFileKey(archiveId, 0, key ? key : null);
-            return file?.data;
-        } catch (e) {
-            return undefined;
-        }
+        return this.mapIndex.tryGetFileKey(archiveId, 0, key ? key : null)?.data;
     }
 }
 
