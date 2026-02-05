@@ -6,6 +6,7 @@ import { ArchiveProvider } from "../../io/ArchiveProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
+import { decodeDat2SeqFrameMapFromArchive } from "./decodeDat2SeqFrameMap";
 
 export interface SeqFrameLoader {
     load(id: number): SeqFrame | undefined;
@@ -62,6 +63,7 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
 
 export class Dat2SeqFrameLoader implements SeqFrameLoader {
     frameMaps: Map<number, SeqFrameMap> = new Map();
+    private readonly scratch = new SeqFrameDecodeScratch();
 
     constructor(
         readonly cacheInfo: CacheInfo,
@@ -81,14 +83,12 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
                 return undefined;
             }
 
-            const frames: SeqFrame[] = new Array(archive.lastFileId);
-            const scratch = new SeqFrameDecodeScratch();
-
-            for (const file of archive.files) {
-                frames[file.id] = Dat2SeqFrame.load(this.cacheInfo, this.baseLoader, file.data, scratch);
-            }
-
-            frameMap = new SeqFrameMap(frames);
+            frameMap = decodeDat2SeqFrameMapFromArchive(
+                this.cacheInfo,
+                this.baseLoader,
+                archive,
+                this.scratch,
+            );
             this.frameMaps.set(frameMapId, frameMap);
         }
 
