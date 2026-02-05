@@ -23,21 +23,34 @@ export class SkeletalSeq {
 
     hasAlphaTransform: boolean = false;
 
+    static tryLoad(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq | undefined {
+        try {
+            const buffer = new ByteBuffer(data);
+
+            const version = buffer.readUnsignedByte();
+            const baseId = buffer.readUnsignedShort();
+            const base = baseLoader.load(baseId);
+            if (!base) {
+                return undefined;
+            }
+            const skeletalBase = base.skeletalBase;
+            if (!skeletalBase) {
+                return undefined;
+            }
+
+            return new SkeletalSeq(id, version, base, skeletalBase, buffer);
+        } catch (e) {
+            console.error("Failed decoding skeletal seq", id, e);
+            return undefined;
+        }
+    }
+
     static load(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq {
-        const buffer = new ByteBuffer(data);
-
-        const version = buffer.readUnsignedByte();
-        const baseId = buffer.readUnsignedShort();
-        const base = baseLoader.load(baseId);
-        if (!base) {
-            throw new Error("Invalid skeletal base id: " + baseId);
+        const decoded = this.tryLoad(baseLoader, id, data);
+        if (!decoded) {
+            throw new Error("Failed decoding skeletal seq");
         }
-        const skeletalBase = base.skeletalBase;
-        if (!skeletalBase) {
-            throw new Error("Missing skeletal base: " + baseId);
-        }
-
-        return new SkeletalSeq(id, version, base, skeletalBase, buffer);
+        return decoded;
     }
 
     constructor(

@@ -42,7 +42,10 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
             return undefined;
         }
 
-        const skeletalSeq = SkeletalSeq.load(this.baseLoader, id, file.data);
+        const skeletalSeq = SkeletalSeq.tryLoad(this.baseLoader, id, file.data);
+        if (!skeletalSeq) {
+            return undefined;
+        }
         this.seqs.set(id, skeletalSeq);
         return skeletalSeq;
     }
