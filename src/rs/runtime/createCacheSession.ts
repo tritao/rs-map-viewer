@@ -7,6 +7,8 @@ import { VarManager } from "../config/vartype/VarManager";
 import { MapFileIndex } from "../map/MapFileIndex";
 import { createLoaders } from "../loaders/createLoaders";
 import { Loaders } from "../loaders/Loaders";
+import { err, ok, Result } from "../../util/Result";
+import { errorToString } from "../../util/ErrorUtil";
 
 export type CacheSession = {
     cache: LoadedCache;
@@ -19,22 +21,37 @@ export type CacheSession = {
 };
 
 export function createCacheSession(cache: LoadedCache, compressionHandler: CompressionHandler): CacheSession {
-    const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
-    const loaders = createLoaders(cache.info, cacheSystem);
-
-    const varManager = new VarManager(loaders.varBitTypeLoader);
-    const questTypeLoader = loaders.questTypeLoader;
-    if (questTypeLoader) {
-        varManager.setQuestsCompleted(questTypeLoader);
+    const result = tryCreateCacheSession(cache, compressionHandler);
+    if (!result.ok) {
+        throw new Error(result.error);
     }
+    return result.value;
+}
 
-    return {
-        cache,
-        cacheSystem,
-        loaders,
-        varManager,
-        mapFileIndex: loaders.mapFileLoader.mapFileIndex,
-        tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
-        getIndex: (indexId: number) => cacheSystem.getIndex(indexId),
-    };
+export function tryCreateCacheSession(
+    cache: LoadedCache,
+    compressionHandler: CompressionHandler,
+): Result<CacheSession, string> {
+    try {
+        const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
+        const loaders = createLoaders(cache.info, cacheSystem);
+
+        const varManager = new VarManager(loaders.varBitTypeLoader);
+        const questTypeLoader = loaders.questTypeLoader;
+        if (questTypeLoader) {
+            varManager.setQuestsCompleted(questTypeLoader);
+        }
+
+        return ok({
+            cache,
+            cacheSystem,
+            loaders,
+            varManager,
+            mapFileIndex: loaders.mapFileLoader.mapFileIndex,
+            tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
+            getIndex: (indexId: number) => cacheSystem.getIndex(indexId),
+        });
+    } catch (e) {
+        return err(errorToString(e));
+    }
 }
