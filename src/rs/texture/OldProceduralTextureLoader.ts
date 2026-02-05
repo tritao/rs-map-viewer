@@ -11,6 +11,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
     idIndexMap: Map<number, number> = new Map();
 
     transparentTextureMap: Map<number, boolean> = new Map();
+    private readonly pixelDecodeErrors: Set<number> = new Set();
 
     static create(
         textureDefinitionSource: EnumeratingBytesProvider | undefined,
@@ -29,9 +30,13 @@ export class OldProceduralTextureLoader implements TextureLoader {
             if (!bytes) {
                 continue;
             }
-            const buffer = new ByteBuffer(bytes);
-            const def = new ProceduralTextureDefinition(id, buffer);
-            definitions.set(id, def);
+            try {
+                const buffer = new ByteBuffer(bytes);
+                const def = new ProceduralTextureDefinition(id, buffer);
+                definitions.set(id, def);
+            } catch (e) {
+                console.error("OldProceduralTextureLoader: failed decoding texture definition", id, e);
+            }
         }
 
         return new OldProceduralTextureLoader(spriteSource, textureIds, definitions);
@@ -69,7 +74,9 @@ export class OldProceduralTextureLoader implements TextureLoader {
             if (!this.definitions.has(id)) {
                 return false;
             }
-            this.getPixelsRgb(id, 128, false, 1.0);
+            if (!this.tryGetPixelsRgb(id, 128, false, 1.0)) {
+                this.transparentTextureMap.set(id, false);
+            }
         }
         return this.transparentTextureMap.get(id) ?? false;
     }
@@ -145,24 +152,35 @@ export class OldProceduralTextureLoader implements TextureLoader {
         flipH: boolean,
         brightness: number,
     ): Int32Array | undefined {
+        if (this.pixelDecodeErrors.has(id)) {
+            return undefined;
+        }
         const def = this.definitions.get(id);
         if (!def) {
             return undefined;
         }
 
-        this.textureGenerator.debug = id === 10;
-        const pixels = def.proceduralTexture.getPixelsRgb(
-            this.textureGenerator,
-            size,
-            size,
-            flipH,
-            false,
-            brightness,
-        );
+        try {
+            this.textureGenerator.debug = id === 10;
+            const pixels = def.proceduralTexture.getPixelsRgb(
+                this.textureGenerator,
+                size,
+                size,
+                flipH,
+                false,
+                brightness,
+            );
 
-        this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
+            this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
 
-        return pixels;
+            return pixels;
+        } catch (e) {
+            if (!this.pixelDecodeErrors.has(id)) {
+                console.error("OldProceduralTextureLoader: failed decoding texture pixels", id, e);
+                this.pixelDecodeErrors.add(id);
+            }
+            return undefined;
+        }
     }
 
     private tryGetPixelsArgbInternal(
@@ -171,24 +189,35 @@ export class OldProceduralTextureLoader implements TextureLoader {
         flipH: boolean,
         brightness: number,
     ): Int32Array | undefined {
+        if (this.pixelDecodeErrors.has(id)) {
+            return undefined;
+        }
         const def = this.definitions.get(id);
         if (!def) {
             return undefined;
         }
 
-        this.textureGenerator.debug = id === 10;
-        const pixels = def.proceduralTexture.getPixelsArgb(
-            this.textureGenerator,
-            size,
-            size,
-            flipH,
-            false,
-            brightness,
-        );
+        try {
+            this.textureGenerator.debug = id === 10;
+            const pixels = def.proceduralTexture.getPixelsArgb(
+                this.textureGenerator,
+                size,
+                size,
+                flipH,
+                false,
+                brightness,
+            );
 
-        this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
+            this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
 
-        return pixels;
+            return pixels;
+        } catch (e) {
+            if (!this.pixelDecodeErrors.has(id)) {
+                console.error("OldProceduralTextureLoader: failed decoding texture pixels", id, e);
+                this.pixelDecodeErrors.add(id);
+            }
+            return undefined;
+        }
     }
 
     getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {

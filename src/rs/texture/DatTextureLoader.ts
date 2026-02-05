@@ -17,6 +17,7 @@ export class DatTextureLoader implements TextureLoader {
 
     idAverageHslMap: Map<number, number>;
     transparentTextureMap: Map<number, boolean> = new Map();
+    private readonly pixelErrors: Set<number> = new Set();
 
     constructor(
         readonly textureArchive: Archive,
@@ -129,6 +130,9 @@ export class DatTextureLoader implements TextureLoader {
         flipH: boolean,
         brightness: number,
     ): Int32Array | undefined {
+        if (this.pixelErrors.has(id)) {
+            return undefined;
+        }
         const sprite = this.tryLoadTextureSprite(id);
         if (!sprite) {
             return undefined;
@@ -165,6 +169,10 @@ export class DatTextureLoader implements TextureLoader {
             }
         } else {
             if (sprite.subWidth !== 128 || size !== 64) {
+                if (!this.pixelErrors.has(id)) {
+                    console.error("DatTextureLoader: unsupported sprite size for texture", id, sprite.subWidth, size);
+                    this.pixelErrors.add(id);
+                }
                 return undefined;
             }
 
@@ -223,6 +231,7 @@ export class DatTextureLoader implements TextureLoader {
             );
             if (!sprite) {
                 this.transparentTextureMap.set(id, false);
+                console.error("DatTextureLoader: missing texture sprite", id);
                 this.missingTextureSpriteIds.add(id);
                 return undefined;
             }

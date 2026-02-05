@@ -205,7 +205,9 @@ const worker = {
     ): Promise<TransferDescriptor<Int32Array>> {
         const workerState = await requireWorkerState();
 
-        const pixels = workerState.loaders.textureLoader.getPixelsArgb(id, size, flipH, brightness);
+        const pixels =
+            workerState.loaders.textureLoader.tryGetPixelsArgb(id, size, flipH, brightness) ??
+            new Int32Array(size * size);
 
         return Transfer(pixels, [pixels.buffer]);
     },
