@@ -11,6 +11,7 @@ export interface SeqBaseLoader {
 
 export class Dat2SeqBaseLoader implements SeqBaseLoader {
     bases: Map<number, SeqBase> = new Map();
+    errors: Set<number> = new Set();
 
     static create(cacheInfo: CacheInfo, index: CacheIndex): Dat2SeqBaseLoader {
         return new Dat2SeqBaseLoader(cacheInfo, new IndexFileBytesProvider(index, 0));
@@ -23,17 +24,28 @@ export class Dat2SeqBaseLoader implements SeqBaseLoader {
         if (cached) {
             return cached;
         }
+        if (this.errors.has(id)) {
+            return undefined;
+        }
 
         const bytes = this.baseSource.getBytes(id);
         if (!bytes) {
             return undefined;
         }
-        const base = Dat2SeqBase.load(this.cacheInfo, id, bytes);
-        this.bases.set(id, base);
-        return base;
+        try {
+            const base = Dat2SeqBase.load(this.cacheInfo, id, bytes);
+            this.bases.set(id, base);
+            this.errors.delete(id);
+            return base;
+        } catch (e) {
+            console.error("Failed decoding seq base", id, e);
+            this.errors.add(id);
+            return undefined;
+        }
     }
 
     clearCache(): void {
         this.bases.clear();
+        this.errors.clear();
     }
 }
