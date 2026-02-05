@@ -26,6 +26,7 @@ import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSe
 import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { errorToString } from "../util/ErrorUtil";
+import { Loaders } from "../rs/loaders/Loaders";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -34,6 +35,7 @@ const hasherPromise = Hasher.init();
 
 export type WorkerState = {
     session: CacheSession;
+    loaders: Loaders;
     varProvider: VarStateProvider;
     mapBytesProvider: MapBytesProvider;
     locModelLoader: LocModelLoader;
@@ -78,7 +80,7 @@ async function initWorker(
         throw new Error(sessionResult.error);
     }
     const session = sessionResult.value;
-    const { loaders } = session;
+    const loaders = session.loaders;
     const {
         underlayTypeLoader,
         overlayTypeLoader,
@@ -141,6 +143,7 @@ async function initWorker(
 
     return {
         session,
+        loaders,
         varProvider,
         mapBytesProvider,
         locModelLoader,
@@ -161,8 +164,8 @@ function clearCache(workerState: WorkerState): void {
     workerState.locModelLoader.clearCache();
     workerState.objModelLoader.clearCache();
     workerState.npcModelLoader.clearCache();
-    workerState.session.loaders.seqFrameLoader.clearCache();
-    workerState.session.loaders.skeletalSeqLoader?.clearCache();
+    workerState.loaders.seqFrameLoader.clearCache();
+    workerState.loaders.skeletalSeqLoader?.clearCache();
 }
 
 const worker = {
@@ -201,7 +204,7 @@ const worker = {
     ): Promise<TransferDescriptor<Int32Array>> {
         const workerState = await requireWorkerState();
 
-        const pixels = workerState.session.loaders.textureLoader.getPixelsArgb(id, size, flipH, brightness);
+        const pixels = workerState.loaders.textureLoader.getPixelsArgb(id, size, flipH, brightness);
 
         return Transfer(pixels, [pixels.buffer]);
     },

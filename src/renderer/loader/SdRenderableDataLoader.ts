@@ -303,13 +303,14 @@ export class SdRenderableDataLoader
     ): Promise<RenderDataResult<SdRenderableData | undefined>> {
         this.init();
 
-        const locTypeLoader = state.session.loaders.locTypeLoader;
-        const npcTypeLoader = state.session.loaders.npcTypeLoader;
-        const basTypeLoader = state.session.loaders.basTypeLoader;
-        const seqTypeLoader = state.session.loaders.seqTypeLoader;
-        const textureLoader = state.session.loaders.textureLoader;
+        const loaders = state.loaders;
+        const locTypeLoader = loaders.locTypeLoader;
+        const npcTypeLoader = loaders.npcTypeLoader;
+        const basTypeLoader = loaders.basTypeLoader;
+        const seqTypeLoader = loaders.seqTypeLoader;
+        const textureLoader = loaders.textureLoader;
 
-        const modelLoader = state.session.loaders.modelLoader;
+        const modelLoader = loaders.modelLoader;
         const locModelLoader = state.locModelLoader;
         const npcModelLoader = state.npcModelLoader;
 
