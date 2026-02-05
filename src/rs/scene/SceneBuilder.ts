@@ -18,7 +18,11 @@ import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag
 import { LocEntity } from "./entity/LocEntity";
 import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
 import { decodeLocPlacementsFromBytes } from "./decodeLocPlacements";
-import { applyDecodedTerrainSquareToScene, decodeTerrainSquareFromBytes } from "./decodeTerrainSquare";
+import {
+    applyDecodedTerrainSquareToScene,
+    decodeTerrainSquareFromBytesInto,
+    TerrainSquareDecodeScratch,
+} from "./decodeTerrainSquare";
 
 export enum LocLoadType {
     MODELS,
@@ -34,6 +38,8 @@ export class SceneBuilder {
     private static readonly diagonalDisplacementY: number[] = [-1, -1, 1, 1];
 
     static readonly WATER_OVERLAY_ID = 5;
+
+    private readonly terrainSquareScratch = new TerrainSquareDecodeScratch();
 
     newTerrainFormat: boolean;
 
@@ -140,13 +146,14 @@ export class SceneBuilder {
         baseX: number,
         baseY: number,
     ): void {
-        const decoded = decodeTerrainSquareFromBytes(
+        decodeTerrainSquareFromBytesInto(
+            this.terrainSquareScratch,
             data,
             this.newTerrainFormat,
             baseX + offsetX,
             baseY + offsetY,
         );
-        applyDecodedTerrainSquareToScene(scene, decoded, offsetX, offsetY);
+        applyDecodedTerrainSquareToScene(scene, this.terrainSquareScratch, offsetX, offsetY);
     }
 
     decodeLocs(
