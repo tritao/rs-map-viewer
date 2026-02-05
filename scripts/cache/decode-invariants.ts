@@ -4,10 +4,22 @@ import {
     decodeTerrainSquareFromBytesInto,
 } from "../../src/rs/scene/decodeTerrainSquare";
 import { computeSceneTileModelForTile } from "../../src/rs/scene/computeSceneTileModel";
+import { Dat2SeqFrame, DatSeqFrame } from "../../src/rs/model/seq/SeqFrame";
+import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
         throw new Error(message);
+    }
+}
+
+function withSilencedConsoleError<T>(fn: () => T): T {
+    const prev = console.error;
+    console.error = () => {};
+    try {
+        return fn();
+    } finally {
+        console.error = prev;
     }
 }
 
@@ -122,9 +134,35 @@ function testComputeSceneTileModelInvariants(): void {
     assert(underlayOnly.shape === 0, "expected underlay-only tile model to use shape=0");
 }
 
+function testTryLoadNeverThrows(): void {
+    // Dat seq frames: `tryLoad` should never throw even for invalid/truncated bytes.
+    const frames = new Map<number, any>();
+    const ok = DatSeqFrame.tryLoad(frames as any, new Uint8Array());
+    assert(ok === false, "expected DatSeqFrame.tryLoad to return false on invalid data");
+
+    // Dat2 seq frames: also should never throw; base loader can be missing.
+    const dat2 = withSilencedConsoleError(() =>
+        Dat2SeqFrame.tryLoad(
+            {} as any,
+            { load: () => undefined, clearCache: () => {} } as any,
+            new Uint8Array(),
+        ),
+    );
+    assert(dat2 === undefined, "expected Dat2SeqFrame.tryLoad to return undefined on invalid data");
+
+    // Dat sprites: tryLoad should never throw on missing files.
+    const archiveStub = {
+        getFile: () => undefined,
+        getFileNamed: () => undefined,
+    } as any;
+    const sprite = withSilencedConsoleError(() => SpriteLoader.tryLoadIndexedSpriteDatId(archiveStub, 123, 0));
+    assert(sprite === undefined, "expected SpriteLoader.tryLoadIndexedSpriteDatId to return undefined on missing files");
+}
+
 function main(): void {
     testTerrainDecodeScratchReuse();
     testComputeSceneTileModelInvariants();
+    testTryLoadNeverThrows();
     console.log("decode-invariants: ok");
 }
 
