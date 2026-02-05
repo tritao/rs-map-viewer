@@ -117,15 +117,22 @@ export class DatTextureLoader implements TextureLoader {
     }
 
     tryGetMaterial(id: number): TextureMaterial | undefined {
-        try {
-            return this.getMaterial(id);
-        } catch {
+        if (id < 0 || id > this.getLastTextureId()) {
             return undefined;
         }
+        return this.getMaterial(id);
     }
 
-    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
-        const sprite = this.loadTextureSprite(id);
+    private tryGetPixelsRgbInternal(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
+        const sprite = this.tryLoadTextureSprite(id);
+        if (!sprite) {
+            return undefined;
+        }
 
         const palettePixels = sprite.pixels;
         const palette = sprite.palette;
@@ -157,7 +164,7 @@ export class DatTextureLoader implements TextureLoader {
             }
         } else {
             if (sprite.subWidth !== 128 || size !== 64) {
-                throw new Error("Texture sprite has unexpected size");
+                return undefined;
             }
 
             let pixelIndex = 0;
@@ -173,24 +180,24 @@ export class DatTextureLoader implements TextureLoader {
         return pixels;
     }
 
+    getPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
+        const pixels = this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        if (!pixels) {
+            throw new Error("Failed decoding texture pixels: " + id);
+        }
+        return pixels;
+    }
+
     getPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array {
         return this.getPixelsRgb(id, size, flipH, brightness);
     }
 
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsRgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
-        }
+        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        try {
-            return this.getPixelsArgb(id, size, flipH, brightness);
-        } catch {
-            return undefined;
-        }
+        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
 
     loadTextureSprite(id: number): IndexedSprite {
