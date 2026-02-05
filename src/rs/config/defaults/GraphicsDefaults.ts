@@ -27,7 +27,8 @@ export class GraphicsDefaults extends Type {
             const defaultsIndex = fileSystem.getIndex(OsrsIndexId.graphicDefaults);
             const defaultsFile = defaultsIndex.getFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
-                throw new Error("GraphicsDefaults: File not found");
+                console.error("GraphicsDefaults: file not found");
+                return new GraphicsDefaults(-1, cacheInfo);
             }
 
             const defaults = new GraphicsDefaults(defaultsFile.archiveId, cacheInfo);
@@ -42,7 +43,11 @@ export class GraphicsDefaults extends Type {
 
             return defaults;
         } else {
-            const spriteIndex = fileSystem.getIndex(Dat2IndexId.sprites);
+            const spriteIndex = fileSystem.tryGetIndex(Dat2IndexId.sprites);
+            if (!spriteIndex) {
+                console.error("GraphicsDefaults: missing sprite index");
+                return new GraphicsDefaults(-1, cacheInfo);
+            }
 
             const defaults = new GraphicsDefaults(-1, cacheInfo);
             defaults.compass = spriteIndex.getArchiveId("compass");
