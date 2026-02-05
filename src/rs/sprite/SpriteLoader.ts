@@ -101,6 +101,14 @@ export class SpriteLoader {
         return this.loadIndexedSpriteDatId(archive, archive.getFileId(name + ".dat"), offset);
     }
 
+    static tryLoadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite | undefined {
+        const id = archive.getFileId(name + ".dat");
+        if (id === -1) {
+            return undefined;
+        }
+        return this.tryLoadIndexedSpriteDatId(archive, id, offset);
+    }
+
     static loadIndexedSpriteDatId(archive: Archive, id: number, offset: number): IndexedSprite {
         const dataFile = archive.getFile(id);
         const indexFile = archive.getFileNamed("index.dat");

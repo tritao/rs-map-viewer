@@ -12,7 +12,8 @@ export class DatTextureLoader implements TextureLoader {
 
     textureIds: number[];
 
-    textureSprites: IndexedSprite[];
+    textureSprites: Array<IndexedSprite | undefined>;
+    missingTextureSpriteIds: Set<number> = new Set();
 
     idAverageHslMap: Map<number, number>;
     transparentTextureMap: Map<number, boolean> = new Map();
@@ -52,11 +53,12 @@ export class DatTextureLoader implements TextureLoader {
     }
 
     isSmall(id: number): boolean {
-        return this.loadTextureSprite(id).subWidth === 64;
+        const sprite = this.tryLoadTextureSprite(id);
+        return sprite?.subWidth === 64;
     }
 
     isTransparent(id: number): boolean {
-        this.loadTextureSprite(id);
+        this.tryLoadTextureSprite(id);
         return this.transparentTextureMap.get(id) ?? false;
     }
 
@@ -66,7 +68,10 @@ export class DatTextureLoader implements TextureLoader {
             return averageHsl;
         }
 
-        const sprite = this.loadTextureSprite(id);
+        const sprite = this.tryLoadTextureSprite(id);
+        if (!sprite) {
+            return 0;
+        }
 
         let red = 0;
         let green = 0;
@@ -189,13 +194,31 @@ export class DatTextureLoader implements TextureLoader {
     }
 
     loadTextureSprite(id: number): IndexedSprite {
+        const sprite = this.tryLoadTextureSprite(id);
+        if (!sprite) {
+            throw new Error("Texture sprite not found: " + id);
+        }
+        return sprite;
+    }
+
+    tryLoadTextureSprite(id: number): IndexedSprite | undefined {
+        if (this.missingTextureSpriteIds.has(id)) {
+            return undefined;
+        }
+
         let sprite = this.textureSprites[id];
         if (!sprite) {
-            sprite = this.textureSprites[id] = SpriteLoader.loadIndexedSpriteDat(
+            sprite = SpriteLoader.tryLoadIndexedSpriteDat(
                 this.textureArchive,
                 id.toString(),
                 0,
             );
+            if (!sprite) {
+                this.transparentTextureMap.set(id, false);
+                this.missingTextureSpriteIds.add(id);
+                return undefined;
+            }
+            this.textureSprites[id] = sprite;
             sprite.normalize();
 
             const palette = sprite.palette;
