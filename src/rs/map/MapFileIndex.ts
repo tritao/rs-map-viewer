@@ -8,9 +8,6 @@ export function getMapSquareId(mapX: number, mapY: number): MapSquareId {
 }
 
 export interface MapFileIndex {
-    getTerrainArchiveId(mapX: number, mapY: number): number;
-    getLocArchiveId(mapX: number, mapY: number): number;
-
     tryGetTerrainArchiveId(mapX: number, mapY: number): number | undefined;
     tryGetLocArchiveId(mapX: number, mapY: number): number | undefined;
 }
@@ -48,35 +45,17 @@ export class DatMapFileIndex implements MapFileIndex {
 
     constructor(readonly mapSquares: Map<number, MapSquare>) {}
 
-    getTerrainArchiveId(mapX: number, mapY: number): number {
-        return this.mapSquares.get(getMapSquareId(mapX, mapY))?.terrainArchiveId ?? -1;
-    }
-
-    getLocArchiveId(mapX: number, mapY: number): number {
-        return this.mapSquares.get(getMapSquareId(mapX, mapY))?.locArchiveId ?? -1;
-    }
-
     tryGetTerrainArchiveId(mapX: number, mapY: number): number | undefined {
-        const id = this.getTerrainArchiveId(mapX, mapY);
-        return id === -1 ? undefined : id;
+        return this.mapSquares.get(getMapSquareId(mapX, mapY))?.terrainArchiveId;
     }
 
     tryGetLocArchiveId(mapX: number, mapY: number): number | undefined {
-        const id = this.getLocArchiveId(mapX, mapY);
-        return id === -1 ? undefined : id;
+        return this.mapSquares.get(getMapSquareId(mapX, mapY))?.locArchiveId;
     }
 }
 
 export class Dat2MapIndex implements MapFileIndex {
     constructor(readonly mapIndex: CacheIndex) {}
-
-    getTerrainArchiveId(mapX: number, mapY: number): number {
-        return this.mapIndex.getArchiveId(`m${mapX}_${mapY}`);
-    }
-
-    getLocArchiveId(mapX: number, mapY: number): number {
-        return this.mapIndex.getArchiveId(`l${mapX}_${mapY}`);
-    }
 
     tryGetTerrainArchiveId(mapX: number, mapY: number): number | undefined {
         return this.mapIndex.tryGetArchiveId(`m${mapX}_${mapY}`);

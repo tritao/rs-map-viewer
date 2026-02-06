@@ -71,7 +71,7 @@ export class MapManager {
         this.cleanUp();
         for (let x = 0; x < MapManager.MAX_MAP_X; x++) {
             for (let y = 0; y < MapManager.MAX_MAP_Y; y++) {
-                const exists = mapFileIndex.getTerrainArchiveId(x, y) !== -1;
+                const exists = mapFileIndex.tryGetTerrainArchiveId(x, y) !== undefined;
                 if (exists) {
                     continue;
                 }
@@ -79,7 +79,7 @@ export class MapManager {
                     let hasNeighbour = false;
                     loop: for (let nx = x - 2; nx <= x + 2; nx++) {
                         for (let ny = y - 2; ny <= y + 2; ny++) {
-                            const neighbourExists = mapFileIndex.getTerrainArchiveId(nx, ny) !== -1;
+                            const neighbourExists = mapFileIndex.tryGetTerrainArchiveId(nx, ny) !== undefined;
                             if (neighbourExists) {
                                 hasNeighbour = true;
                                 break loop;
