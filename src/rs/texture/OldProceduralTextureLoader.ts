@@ -227,6 +227,12 @@ export class OldProceduralTextureLoader implements TextureLoader {
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
         return this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
     }
+
+    clearCache(): void {
+        this.textureGenerator.clearCache();
+        this.transparentTextureMap.clear();
+        this.pixelDecodeErrors.clear();
+    }
 }
 
 class ProceduralTextureDefinition {

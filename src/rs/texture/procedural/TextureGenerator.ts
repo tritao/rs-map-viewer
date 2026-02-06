@@ -131,4 +131,9 @@ export class TextureGenerator {
     tryLoadSprite(spriteId: number): IndexedSprite | undefined {
         return SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId) ?? undefined;
     }
+
+    clearCache(): void {
+        this.permutationCache.clear();
+        this.brightness = -1.0;
+    }
 }

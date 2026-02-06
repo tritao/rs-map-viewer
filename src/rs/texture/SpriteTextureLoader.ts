@@ -277,6 +277,10 @@ export class SpriteTextureLoader implements TextureLoader {
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
         return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
     }
+
+    clearCache(): void {
+        this.errors.clear();
+    }
 }
 
 class TextureDefinition {

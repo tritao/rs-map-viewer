@@ -234,4 +234,12 @@ export class DatTextureLoader implements TextureLoader {
         }
         return sprite;
     }
+
+    clearCache(): void {
+        this.textureSprites = new Array(this.getLastTextureId());
+        this.missingTextureSpriteIds.clear();
+        this.idAverageHslMap.clear();
+        this.transparentTextureMap.clear();
+        this.pixelErrors.clear();
+    }
 }

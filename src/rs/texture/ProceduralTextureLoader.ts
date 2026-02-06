@@ -372,6 +372,14 @@ export class ProceduralTextureLoader implements TextureLoader {
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
         return this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
     }
+
+    clearCache(): void {
+        this.textureGenerator.clearCache();
+        this.textures.clear();
+        this.textureDecodeErrors.clear();
+        this.pixelDecodeErrors.clear();
+        this.transparentTextureMap.clear();
+    }
 }
 
 class ProcTextureMaterial {

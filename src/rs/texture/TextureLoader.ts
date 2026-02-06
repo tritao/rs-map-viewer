@@ -24,4 +24,6 @@ export interface TextureLoader {
 
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined;
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined;
+
+    clearCache(): void;
 }
