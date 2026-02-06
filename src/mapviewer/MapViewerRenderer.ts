@@ -21,7 +21,6 @@ import { CacheSession } from "../rs/runtime/createCacheSession";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
-    session: CacheSession;
     workerPool: RenderDataWorkerPool;
 
     camera: Camera;
@@ -36,15 +35,16 @@ export class MapViewerRenderer extends RendererMainLoop {
     lastClientTick: number = 0;
     lastTick: number = 0;
 
+    private isInitialized: boolean = false;
+
     constructor(public mapViewer: MapViewer) {
         super();
         this.inputManager = mapViewer.inputManager;
-        this.session = mapViewer.session;
         this.workerPool = mapViewer.workerPool;
         this.camera = mapViewer.camera;
         this.pathfinder = mapViewer.pathfinder;
         this.renderer = new WebGLMapRenderer(
-            this.session, this.workerPool, this.inputManager, mapViewer.renderDistance,
+            mapViewer.session, this.workerPool, this.inputManager, mapViewer.renderDistance,
             mapViewer.unloadDistance, mapViewer.lodDistance, this.camera)
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
@@ -80,13 +80,14 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async init() {
         super.init();
         this.inputManager.init(this.canvas);
+        this.isInitialized = true;
     }
 
     initCache(): void {
         this.renderer.initCache();
         this.mapManager.init(
-            this.session.mapFileIndex,
-            SceneBuilder.fillEmptyTerrain(this.session.cache.info),
+            this.mapViewer.session.mapFileIndex,
+            SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
         );
         this.mapManager.update(
             this.camera,
@@ -94,6 +95,57 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.renderer.renderDistance,
             this.renderer.unloadDistance,
         );
+    }
+
+    private pauseLoop(): boolean {
+        const wasRunning = this.running;
+        this.running = false;
+        if (this.animationId !== undefined) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = undefined;
+        }
+        return wasRunning;
+    }
+
+    private resumeLoop(): void {
+        if (this.running) {
+            return;
+        }
+        this.running = true;
+        this.animationId = requestAnimationFrame(this.frameCallback);
+    }
+
+    async applyCacheContext(): Promise<void> {
+        const wasRunning = this.pauseLoop();
+
+        try {
+            await Promise.resolve(this.renderer.cleanUp());
+            this.mapManager.cleanUp();
+
+            this.renderer = new WebGLMapRenderer(
+                this.mapViewer.session,
+                this.workerPool,
+                this.inputManager,
+                this.mapViewer.renderDistance,
+                this.mapViewer.unloadDistance,
+                this.mapViewer.lodDistance,
+                this.camera,
+            );
+            this.mapManager = new MapManager(
+                this.workerPool.size * 2,
+                this.queueLoadMap.bind(this),
+                this.removeLoadedMap.bind(this),
+            );
+
+            if (this.isInitialized) {
+                await this.renderer.init(this.canvas);
+            }
+            this.initCache();
+        } finally {
+            if (wasRunning) {
+                this.resumeLoop();
+            }
+        }
     }
 
     override async cleanUp(): Promise<void> {
@@ -141,8 +193,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
 
-        const seqFrameLoader = this.session.loaders.seqFrameLoader;
-        const seqTypeLoader = this.session.loaders.seqTypeLoader;
+        const seqFrameLoader = this.mapViewer.session.loaders.seqFrameLoader;
+        const seqTypeLoader = this.mapViewer.session.loaders.seqTypeLoader;
 
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];

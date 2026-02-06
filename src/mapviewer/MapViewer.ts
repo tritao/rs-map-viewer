@@ -2,7 +2,7 @@ import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { ProgressListener } from "../rs/cache/platform/CacheLoader";
+import { DownloadProgress, ProgressListener } from "../rs/cache/platform/CacheLoader";
 import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
@@ -27,15 +27,24 @@ const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
 const CACHED_MAP_IMAGE_PREFIX = "/map-images/";
 
+type CacheContext = {
+    readonly loadedCache: LoadedCache;
+    readonly session: CacheSession;
+    readonly npcSpawns: NpcSpawn[];
+};
+
+export type CacheSwitchStatus =
+    | { state: "idle" }
+    | { state: "switching"; cacheName: string; progress?: DownloadProgress }
+    | { state: "error"; cacheName: string; message: string };
+
 export class MapViewer {
     inputManager: InputManager = new InputManager();
     camera: Camera = new Camera(3242, -26, 3202, -245, 1862);
     pathfinder: Pathfinder = new Pathfinder();
 
     renderer!: MapViewerRenderer;
-
-    loadedCache: LoadedCache;
-    session: CacheSession;
+    private cacheContext: CacheContext;
 
     // Settings
 
@@ -49,9 +58,12 @@ export class MapViewer {
     tooltips: boolean = !isTouchDevice;
     debugId: boolean = false;
 
-    // State
-    needsSearchParamUpdate: boolean = false;
-    lastTimeSearchParamsUpdated: number = 0;
+    // Events/state
+    private readonly searchParamsListeners = new Set<(params: URLSearchParamsInit) => void>();
+    private searchParamsDebounceTimer?: number;
+
+    private readonly cacheSwitchListeners = new Set<(status: CacheSwitchStatus) => void>();
+    private cacheSwitchStatus: CacheSwitchStatus = { state: "idle" };
 
     private cacheSwitchNonce: number = 0;
     private cacheSwitchAbort?: AbortController;
@@ -74,39 +86,61 @@ export class MapViewer {
         workerPool: RenderDataWorkerPool,
         cacheList: CacheList,
         objSpawns: ObjSpawn[],
-        npcSpawns: NpcSpawn[],
         mapImageCache: Cache,
-        cache: LoadedCache,
+        context: CacheContext,
     ): Result<MapViewer, string> {
-        const sessionResult = tryCreateCacheSession(cache, new JSCompressionHandler());
+        return ok(new MapViewer(workerPool, cacheList, objSpawns, mapImageCache, context));
+    }
+
+    static async loadCacheContext(
+        cacheInfo: CacheInfo,
+        signal?: AbortSignal,
+        progressListener?: ProgressListener,
+    ): Promise<CacheContext> {
+        const [loadedCache, npcSpawns] = await Promise.all([
+            loadCacheFiles(new BrowserCacheLoader(), cacheInfo, signal, progressListener),
+            fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
+        ]);
+
+        const sessionResult = tryCreateCacheSession(loadedCache, new JSCompressionHandler());
         if (!sessionResult.ok) {
-            return err(initErrorToString(sessionResult.error));
+            throw new Error(initErrorToString(sessionResult.error));
         }
-        return ok(
-            new MapViewer(
-                workerPool,
-                cacheList,
-                objSpawns,
-                npcSpawns,
-                mapImageCache,
-                cache,
-                sessionResult.value,
-            ),
-        );
+
+        return {
+            loadedCache,
+            session: sessionResult.value,
+            npcSpawns,
+        };
     }
 
     private constructor(
         readonly workerPool: RenderDataWorkerPool,
         readonly cacheList: CacheList,
         readonly objSpawns: ObjSpawn[],
-        public npcSpawns: NpcSpawn[],
         readonly mapImageCache: Cache,
-        cache: LoadedCache,
-        session: CacheSession,
+        context: CacheContext,
     ) {
-        this.loadedCache = cache;
-        this.session = session;
-        this.applyLoadedCache(cache, npcSpawns, session);
+        this.cacheContext = context;
+        this.renderer = new MapViewerRenderer(this);
+
+        this.workerPool.initCache(context.loadedCache, this.objSpawns, context.npcSpawns);
+        this.clearMapImageUrls();
+        this.renderer.initCache();
+        this.resetMenu();
+        this.updateSearchParams();
+    }
+
+    get loadedCache(): LoadedCache {
+        return this.cacheContext.loadedCache;
+    }
+
+    get session(): CacheSession {
+        return this.cacheContext.session;
+    }
+
+    get npcSpawns(): NpcSpawn[] {
+        return this.cacheContext.npcSpawns;
     }
 
     getSearchParams(): URLSearchParamsInit {
@@ -139,6 +173,41 @@ export class MapViewer {
         params["v"] = 1;
 
         return params;
+    }
+
+    subscribeSearchParams(listener: (params: URLSearchParamsInit) => void): () => void {
+        this.searchParamsListeners.add(listener);
+        return () => this.searchParamsListeners.delete(listener);
+    }
+
+    subscribeCacheSwitchStatus(listener: (status: CacheSwitchStatus) => void): () => void {
+        this.cacheSwitchListeners.add(listener);
+        listener(this.cacheSwitchStatus);
+        return () => this.cacheSwitchListeners.delete(listener);
+    }
+
+    getCacheSwitchStatus(): CacheSwitchStatus {
+        return this.cacheSwitchStatus;
+    }
+
+    private setCacheSwitchStatus(status: CacheSwitchStatus): void {
+        this.cacheSwitchStatus = status;
+        for (const listener of this.cacheSwitchListeners) {
+            listener(status);
+        }
+    }
+
+    private scheduleSearchParamsEmit(): void {
+        if (this.searchParamsDebounceTimer !== undefined) {
+            window.clearTimeout(this.searchParamsDebounceTimer);
+        }
+        this.searchParamsDebounceTimer = window.setTimeout(() => {
+            this.searchParamsDebounceTimer = undefined;
+            const params = this.getSearchParams();
+            for (const listener of this.searchParamsListeners) {
+                listener(params);
+            }
+        }, 200);
     }
 
     applySearchParams(searchParams: URLSearchParams) {
@@ -184,12 +253,9 @@ export class MapViewer {
         });
     }
 
-    async switchCache(
-        cacheInfo: CacheInfo,
-        progressListener?: ProgressListener,
-    ): Promise<MapViewerRenderer> {
+    async switchCache(cacheInfo: CacheInfo): Promise<void> {
         if (cacheInfo.name === this.loadedCache.info.name) {
-            return this.renderer;
+            return;
         }
 
         this.cacheSwitchAbort?.abort();
@@ -197,52 +263,48 @@ export class MapViewer {
         this.cacheSwitchAbort = abortController;
         const nonce = ++this.cacheSwitchNonce;
 
-        const [loadedCache, npcSpawns] = await Promise.all([
-            loadCacheFiles(
-                new BrowserCacheLoader(),
+        this.setCacheSwitchStatus({ state: "switching", cacheName: cacheInfo.name });
+
+        try {
+            const context = await MapViewer.loadCacheContext(
                 cacheInfo,
                 abortController.signal,
-                progressListener,
-            ),
-            fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
-        ]);
+                (progress) => {
+                    this.setCacheSwitchStatus({
+                        state: "switching",
+                        cacheName: cacheInfo.name,
+                        progress,
+                    });
+                },
+            );
 
-        if (nonce !== this.cacheSwitchNonce) {
-            return this.renderer;
+            if (nonce !== this.cacheSwitchNonce) {
+                this.setCacheSwitchStatus({ state: "idle" });
+                return;
+            }
+
+            await this.applySwitchedCacheContext(context);
+            this.setCacheSwitchStatus({ state: "idle" });
+        } catch (e) {
+            if (nonce !== this.cacheSwitchNonce) {
+                this.setCacheSwitchStatus({ state: "idle" });
+                return;
+            }
+            const message = e instanceof Error ? e.message : String(e);
+            this.setCacheSwitchStatus({ state: "error", cacheName: cacheInfo.name, message });
         }
-
-        this.applyLoadedCache(loadedCache, npcSpawns);
-
-        return this.renderer;
     }
 
-    applyLoadedCache(cache: LoadedCache, npcSpawns: NpcSpawn[], sessionOverride?: CacheSession): void {
-        const sessionResult = sessionOverride
-            ? ok(sessionOverride)
-            : tryCreateCacheSession(cache, new JSCompressionHandler());
-        if (!sessionResult.ok) {
-            throw new Error(initErrorToString(sessionResult.error));
-        }
+    private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
+        this.cacheContext = context;
 
-        this.loadedCache = cache;
-        this.session = sessionResult.value;
-        this.npcSpawns = npcSpawns;
-
-        this.workerPool.initCache(cache, this.objSpawns, npcSpawns);
+        this.workerPool.initCache(context.loadedCache, this.objSpawns, context.npcSpawns);
         this.clearMapImageUrls();
 
-        // Recreate renderer to ensure all GPU-side and loader-side state matches the new cache.
-        this.renderer = new MapViewerRenderer(this);
-        this.renderer.initCache();
+        await this.renderer.applyCacheContext();
         this.resetMenu();
 
         this.updateSearchParams();
-    }
-
-    setRenderer(renderer: MapViewerRenderer): void {
-        this.renderer = renderer;
-        this.renderer.initCache();
-        this.resetMenu();
     }
 
     /**
@@ -269,8 +331,7 @@ export class MapViewer {
     }
 
     updateSearchParams(): void {
-        this.needsSearchParamUpdate = true;
-        this.lastTimeSearchParamsUpdated = performance.now();
+        this.scheduleSearchParamsEmit();
     }
 
     closeMenu = () => {

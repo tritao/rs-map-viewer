@@ -5,14 +5,12 @@ import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
-import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
-import { fetchCacheList, loadCacheFiles } from "../util/Caches";
+import { fetchCacheList } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
-import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { renderDataLoaderSerializer } from "../worker/RenderDataLoader";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
@@ -57,10 +55,9 @@ function MapViewerApp() {
                 }
             }
 
-            const [cache, objSpawns, npcSpawns] = await Promise.all([
-                loadCacheFiles(new BrowserCacheLoader(), cacheInfo, abortController.signal, setDownloadProgress),
+            const [context, objSpawns] = await Promise.all([
+                MapViewer.loadCacheContext(cacheInfo, abortController.signal, setDownloadProgress),
                 objSpawnsPromise,
-                fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
             ]);
 
             const mapImageCache = await caches.open("map-images");
@@ -69,9 +66,8 @@ function MapViewerApp() {
                 workerPool,
                 cacheList,
                 objSpawns,
-                npcSpawns,
                 mapImageCache,
-                cache,
+                context,
             );
             if (!mapViewerResult.ok) {
                 setErrorMessage(mapViewerResult.error);

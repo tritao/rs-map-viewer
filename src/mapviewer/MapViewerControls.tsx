@@ -3,7 +3,6 @@ import { Leva, button, buttonGroup, folder, useControls } from "leva";
 import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useState } from "react";
 
-import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
 import { CameraView, ProjectionType } from "../renderer/Camera";
@@ -14,9 +13,7 @@ import FileSaver from "file-saver";
 interface MapViewerControlsProps {
     renderer: MapViewerRenderer;
     hideUi: boolean;
-    setRenderer: (renderer: MapViewerRenderer) => void;
     setHideUi: (hideUi: boolean | ((hideUi: boolean) => boolean)) => void;
-    setDownloadProgress: (progress: DownloadProgress | undefined) => void;
 }
 
 enum VarType {
@@ -28,9 +25,7 @@ export const MapViewerControls = memo(
     ({
         renderer: rendererMainLoop,
         hideUi: hidden,
-        setRenderer,
         setHideUi,
-        setDownloadProgress,
     }: MapViewerControlsProps): JSX.Element => {
         const mapViewer = rendererMainLoop.mapViewer;
 
@@ -291,12 +286,7 @@ export const MapViewerControls = memo(
                                     (cache) => cache.name === v,
                                 );
                                 if (v !== mapViewer.loadedCache.info.name && cacheInfo) {
-                                    const newRenderer = await mapViewer.switchCache(
-                                        cacheInfo,
-                                        setDownloadProgress,
-                                    );
-                                    setRenderer(newRenderer);
-                                    setDownloadProgress(undefined);
+                                    await mapViewer.switchCache(cacheInfo);
                                 }
                             },
                         },

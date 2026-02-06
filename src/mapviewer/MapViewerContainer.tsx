@@ -8,24 +8,21 @@ import { OsrsMenu, OsrsMenuProps } from "../components/rs/menu/OsrsMenu";
 import { MinimapContainer } from "../components/rs/minimap/MinimapContainer";
 import { WorldMapModal } from "../components/rs/worldmap/WorldMapModal";
 import { RS_TO_DEGREES } from "../rs/MathConstants";
-import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { MapViewer } from "./MapViewer";
 import "./MapViewerContainer.css";
 import { MapViewerControls } from "./MapViewerControls";
-import { MapViewerRenderer } from "./MapViewerRenderer";
 
 interface MapViewerContainerProps {
     mapViewer: MapViewer;
 }
 
 export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.Element {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [, setSearchParams] = useSearchParams();
+    const renderer = mapViewer.renderer;
 
-    const [renderer, setRenderer] = useState<MapViewerRenderer>(mapViewer.renderer);
-
-    const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>();
+    const [cacheSwitchStatus, setCacheSwitchStatus] = useState(mapViewer.getCacheSwitchStatus());
 
     const [hideUi, setHideUi] = useState(false);
     const [fps, setFps] = useState(0);
@@ -37,16 +34,6 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
     const requestRef = useRef<number | undefined>();
 
     const animate = (time: DOMHighResTimeStamp) => {
-        // Wait for 200ms before updating search params
-        if (
-            mapViewer.needsSearchParamUpdate &&
-            performance.now() - mapViewer.lastTimeSearchParamsUpdated > 200
-        ) {
-            setSearchParams(mapViewer.getSearchParams(), { replace: true });
-            mapViewer.needsSearchParamUpdate = false;
-            console.log("Updated search params");
-        }
-
         if (!hideUi) {
             setFps(Math.round(renderer.renderer.stats.frameTimeFps));
             setCameraYaw(mapViewer.camera.getYaw());
@@ -70,7 +57,17 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
     useEffect(() => {
         requestRef.current = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(requestRef.current!);
-    }, [searchParams, hideUi]);
+    }, [hideUi]);
+
+    useEffect(() => {
+        return mapViewer.subscribeSearchParams((params) => {
+            setSearchParams(params, { replace: true });
+        });
+    }, [mapViewer, setSearchParams]);
+
+    useEffect(() => {
+        return mapViewer.subscribeCacheSwitchStatus(setCacheSwitchStatus);
+    }, [mapViewer]);
 
     const resetCameraYaw = useCallback(() => {
         mapViewer.camera.setYaw(0);
@@ -120,9 +117,10 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
     );
 
     let loadingBarOverlay: JSX.Element | undefined = undefined;
-    if (downloadProgress) {
-        const formattedCacheSize = formatBytes(downloadProgress.total);
-        const progress = ((downloadProgress.current / downloadProgress.total) * 100) | 0;
+    if (cacheSwitchStatus.state === "switching" && cacheSwitchStatus.progress) {
+        const formattedCacheSize = formatBytes(cacheSwitchStatus.progress.total);
+        const progress =
+            ((cacheSwitchStatus.progress.current / cacheSwitchStatus.progress.total) * 100) | 0;
         loadingBarOverlay = (
             <div className="overlay-container max-height">
                 <OsrsLoadingBar
@@ -142,9 +140,7 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
             <MapViewerControls
                 renderer={renderer}
                 hideUi={hideUi}
-                setRenderer={setRenderer}
                 setHideUi={setHideUi}
-                setDownloadProgress={setDownloadProgress}
             />
 
             {!hideUi && (
