@@ -22,6 +22,7 @@
 #include "../rs/config/floortype/FloorTypeLoaders.hpp"
 #include "../rs/config/floortype/OverlayFloorType.hpp"
 #include "../rs/config/floortype/UnderlayFloorType.hpp"
+#include "../rs/config/idktype/IdkTypeLoader.hpp"
 #include "../rs/config/vartype/VarBitType.hpp"
 #include "../rs/config/vartype/VarBitTypeLoader.hpp"
 #include "../rs/types.hpp"
@@ -390,6 +391,81 @@ int main() {
             }
             if (t->primaryHsl != rs::rgbToHsl(t->primaryRgb)) {
                 return fail("OverlayFloorType primaryHsl mismatch");
+            }
+        }
+
+        {
+            // Config decode: IdkType (Identity Kit) with arrays.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes:
+            // [1][bodyPart=7]
+            // [2][modelCount=2][0x0102][0x0304]
+            // [40][count=1][from=0x0011][to=0x0022]
+            // [60][if0=0x0A0B]
+            // [3] nonSelectable
+            // [0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 1 + (1 + 1 + 2 + 2) + (1 + 1 + 2 + 2) + (1 + 2) + 1 + 1);
+            if (!rr.isOk()) {
+                return fail("IdkType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 7;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 0x01;
+            fileBytes[off++] = 0x02;
+            fileBytes[off++] = 0x03;
+            fileBytes[off++] = 0x04;
+            fileBytes[off++] = 40;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x11;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x22;
+            fileBytes[off++] = 60;
+            fileBytes[off++] = 0x0A;
+            fileBytes[off++] = 0x0B;
+            fileBytes[off++] = 3;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("IdkType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::IdkTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("IdkTypeLoader::fromArchive failed");
+            }
+            rs::IdkTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::IdkType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("IdkTypeLoader.get(0) expected Ok");
+            }
+            if (t->bodyPartId != 7 || !t->nonSelectable) {
+                return fail("IdkType scalar fields mismatch");
+            }
+            if (t->modelIds.size() != 2 || t->modelIds[0] != 0x0102 || t->modelIds[1] != 0x0304) {
+                return fail("IdkType modelIds mismatch");
+            }
+            if (t->recolorFrom.size() != 1 || t->recolorTo.size() != 1 || t->recolorFrom[0] != 0x0011 || t->recolorTo[0] != 0x0022) {
+                return fail("IdkType recolor mismatch");
+            }
+            if (t->ifModelIds[0] != 0x0A0B) {
+                return fail("IdkType ifModelIds mismatch");
             }
         }
 
