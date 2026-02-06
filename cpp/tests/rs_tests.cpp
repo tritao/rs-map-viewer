@@ -19,6 +19,9 @@
 #include "../rs/core/Status.hpp"
 #include "../rs/core/Vec.hpp"
 #include "../rs/config/TypeDecode.hpp"
+#include "../rs/config/floortype/FloorTypeLoaders.hpp"
+#include "../rs/config/floortype/OverlayFloorType.hpp"
+#include "../rs/config/floortype/UnderlayFloorType.hpp"
 #include "../rs/config/vartype/VarBitType.hpp"
 #include "../rs/config/vartype/VarBitTypeLoader.hpp"
 #include "../rs/types.hpp"
@@ -283,6 +286,107 @@ int main() {
             }
             if (t->baseVar != 0x0123 || t->startBit != 4 || t->endBit != 9) {
                 return fail("VarBitType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: UnderlayFloorType (opcode=1 rgb) + post() derived HSL fields.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes: [opcode=1][rgb=0x112233][opcode=0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(5);
+            if (!rr.isOk()) {
+                return fail("UnderlayFloorType: OOM");
+            }
+            fileBytes[0] = 1;
+            fileBytes[1] = 0x11;
+            fileBytes[2] = 0x22;
+            fileBytes[3] = 0x33;
+            fileBytes[4] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("UnderlayFloorType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::UnderlayFloorTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("UnderlayFloorTypeLoader::fromArchive failed");
+            }
+            rs::UnderlayFloorTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::UnderlayFloorType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("UnderlayFloorTypeLoader.get(0) expected Ok");
+            }
+            if (t->rgbColor != 0x112233) {
+                return fail("UnderlayFloorType rgbColor mismatch");
+            }
+            if (t->hueMultiplier < 1) {
+                return fail("UnderlayFloorType post() not applied (hueMultiplier)");
+            }
+        }
+
+        {
+            // Config decode: OverlayFloorType (opcode=1 rgb, opcode=6 name) + post() primaryHsl.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes: [1][0x22 0x44 0x66][6]["abc" 0][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(10);
+            if (!rr.isOk()) {
+                return fail("OverlayFloorType: OOM");
+            }
+            fileBytes[0] = 1;
+            fileBytes[1] = 0x22;
+            fileBytes[2] = 0x44;
+            fileBytes[3] = 0x66;
+            fileBytes[4] = 6;
+            fileBytes[5] = static_cast<rs::u8>('a');
+            fileBytes[6] = static_cast<rs::u8>('b');
+            fileBytes[7] = static_cast<rs::u8>('c');
+            fileBytes[8] = 0; // Dat2 string terminator
+            fileBytes[9] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("OverlayFloorType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::OverlayFloorTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("OverlayFloorTypeLoader::fromArchive failed");
+            }
+            rs::OverlayFloorTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::OverlayFloorType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("OverlayFloorTypeLoader.get(0) expected Ok");
+            }
+            if (t->primaryRgb != 0x224466) {
+                return fail("OverlayFloorType primaryRgb mismatch");
+            }
+            if (t->primaryHsl != rs::rgbToHsl(t->primaryRgb)) {
+                return fail("OverlayFloorType primaryHsl mismatch");
             }
         }
 
