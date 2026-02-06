@@ -36,19 +36,14 @@ export class Dat2SeqBaseLoader implements SeqBaseLoader {
         if (!bytes) {
             return err(notFoundError("SeqBase", id));
         }
-        const base = Dat2SeqBase.tryLoad(this.cacheInfo, id, bytes);
-        if (!base) {
-            const e = decodeFailedError({
-                typeName: "SeqBase",
-                id,
-                message: `SeqBase: failed decoding id=${id}`,
-            });
-            this.errors.set(id, e);
-            return err(e);
+        const baseResult = Dat2SeqBase.tryLoadResult(this.cacheInfo, id, bytes);
+        if (!baseResult.ok) {
+            this.errors.set(id, baseResult.error);
+            return err(baseResult.error);
         }
-        this.bases.set(id, base);
+        this.bases.set(id, baseResult.value);
         this.errors.delete(id);
-        return ok(base);
+        return ok(baseResult.value);
     }
 
     tryGet(id: number): SeqBase | undefined {

@@ -2,8 +2,10 @@ import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { Archive } from "../../cache/format/Archive";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
+import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { SkeletalBase } from "../skeletal/SkeletalBase";
 import { SeqTransformType } from "./SeqTransformType";
+import { err, ok, Result } from "../../../util/Result";
 
 export class SeqBase {
     constructor(
@@ -142,10 +144,22 @@ export class Dat2SeqBase {
     }
 
     static tryLoad(cacheInfo: CacheInfo, id: number, data: Uint8Array): SeqBase | undefined {
+        const result = Dat2SeqBase.tryLoadResult(cacheInfo, id, data);
+        return result.ok ? result.value : undefined;
+    }
+
+    static tryLoadResult(cacheInfo: CacheInfo, id: number, data: Uint8Array): Result<SeqBase, DecodeError> {
         try {
-            return Dat2SeqBase.load(cacheInfo, id, data);
-        } catch {
-            return undefined;
+            return ok(Dat2SeqBase.load(cacheInfo, id, data));
+        } catch (cause) {
+            return err(
+                decodeFailedError({
+                    typeName: "SeqBase",
+                    id,
+                    message: `SeqBase: failed decoding id=${id}`,
+                    cause,
+                }),
+            );
         }
     }
 }

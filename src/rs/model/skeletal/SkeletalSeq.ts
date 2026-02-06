@@ -3,6 +3,7 @@ import { mat4, quat, vec3 } from "gl-matrix";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SeqBase } from "../seq/SeqBase";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
+import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { Curve } from "./Curve";
 import { getCurveIndex, getCurveTypeForId } from "./CurveType";
 import { SkeletalBase } from "./SkeletalBase";
@@ -13,6 +14,7 @@ import {
     getCurveCount,
     getTransformTypeForId,
 } from "./SkeletalTransformType";
+import { err, ok, Result } from "../../../util/Result";
 
 export class SkeletalSeq {
     poseId: number;
@@ -23,25 +25,45 @@ export class SkeletalSeq {
 
     hasAlphaTransform: boolean = false;
 
-    static tryLoad(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq | undefined {
+    static tryLoadResult(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): Result<SkeletalSeq, DecodeError> {
         try {
             const buffer = new ByteBuffer(data);
 
             const version = buffer.readUnsignedByte();
             const baseId = buffer.readUnsignedShort();
-            const base = baseLoader.tryGet(baseId);
-            if (!base) {
-                return undefined;
+            const baseResult = baseLoader.tryLoad(baseId);
+            if (!baseResult.ok) {
+                return err(baseResult.error);
             }
+            const base = baseResult.value;
+
             const skeletalBase = base.skeletalBase;
             if (!skeletalBase) {
-                return undefined;
+                return err(
+                    decodeFailedError({
+                        typeName: "SkeletalSeq",
+                        id,
+                        message: `SkeletalSeq: missing skeletal base for id=${id} baseId=${baseId}`,
+                    }),
+                );
             }
 
-            return new SkeletalSeq(id, version, base, skeletalBase, buffer);
-        } catch {
-            return undefined;
+            return ok(new SkeletalSeq(id, version, base, skeletalBase, buffer));
+        } catch (cause) {
+            return err(
+                decodeFailedError({
+                    typeName: "SkeletalSeq",
+                    id,
+                    message: `SkeletalSeq: failed decoding id=${id}`,
+                    cause,
+                }),
+            );
         }
+    }
+
+    static tryLoad(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq | undefined {
+        const result = SkeletalSeq.tryLoadResult(baseLoader, id, data);
+        return result.ok ? result.value : undefined;
     }
 
     constructor(

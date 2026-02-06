@@ -1,6 +1,6 @@
 import { BytesProvider } from "../../io/BytesProvider";
 import { GroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
-import { DecodeError, decodeFailedError, notFoundError } from "../../errors/DecodeError";
+import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { SkeletalSeq } from "./SkeletalSeq";
 import { err, ok, Result } from "../../../util/Result";
@@ -54,18 +54,13 @@ export class ProviderSkeletalSeqLoader implements SkeletalSeqLoader {
             return err(e);
         }
 
-        const skeletalSeq = SkeletalSeq.tryLoad(this.baseLoader, id, bytes);
-        if (!skeletalSeq) {
-            const e = decodeFailedError({
-                typeName: "SkeletalSeq",
-                id,
-                message: `SkeletalSeq: failed decoding id=${id}`,
-            });
-            this.errors.set(id, e);
-            return err(e);
+        const result = SkeletalSeq.tryLoadResult(this.baseLoader, id, bytes);
+        if (!result.ok) {
+            this.errors.set(id, result.error);
+            return err(result.error);
         }
-        this.seqs.set(id, skeletalSeq);
-        return ok(skeletalSeq);
+        this.seqs.set(id, result.value);
+        return ok(result.value);
     }
 
     tryGet(id: number): SkeletalSeq | undefined {
