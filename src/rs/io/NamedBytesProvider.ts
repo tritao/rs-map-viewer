@@ -1,8 +1,7 @@
 import { Archive } from "../cache/format/Archive";
+import { BytesProvider } from "./BytesProvider";
 
-export interface NamedBytesProvider {
-    getBytes(name: string): Uint8Array | undefined;
-}
+export type NamedBytesProvider = BytesProvider<string>;
 
 export class ArchiveNamedBytesProvider implements NamedBytesProvider {
     constructor(readonly archive: Archive) {}
@@ -11,4 +10,3 @@ export class ArchiveNamedBytesProvider implements NamedBytesProvider {
         return this.archive.getFileNamed(name)?.data ?? undefined;
     }
 }
-

@@ -42,7 +42,7 @@ import {
     VarBitTypeLoader,
 } from "../config/vartype/bit/VarBitTypeLoader";
 import { Dat2MapIndex, MapFileIndex } from "../map/MapFileIndex";
-import { CacheIndexMapIndexSource, MapFileLoader } from "../map/MapFileLoader";
+import { CacheIndexMapBytesProvider, MapFileLoader } from "../map/MapFileLoader";
 import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
 import { Dat2SeqBaseLoader, SeqBaseLoader } from "../model/seq/SeqBaseLoader";
 import { Dat2SeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
@@ -334,7 +334,7 @@ export function tryCreateDat2Loaders(
     }
     const mapIndex = mapsIndexResult.value;
     const mapFileIndex: MapFileIndex = new Dat2MapIndex(mapIndex);
-    const mapFileLoader: MapFileLoader = new MapFileLoader(new CacheIndexMapIndexSource(mapIndex), mapFileIndex);
+    const mapFileLoader: MapFileLoader = new MapFileLoader(new CacheIndexMapBytesProvider(mapIndex), mapFileIndex);
 
     let mapScenes: IndexedSprite[];
     if (rules.mapScenes.mode === "archive") {

@@ -4,13 +4,14 @@ import { Bzip2 } from "../compression/Bzip2";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { MapFileIndex } from "./MapFileIndex";
 
-export interface MapIndexSource {
+export interface MapIndexBytesProvider {
     tryGetArchiveId(name: string): number | undefined;
     tryGetFile(archiveId: number, fileId: number): Uint8Array | undefined;
     tryGetFileKey(archiveId: number, fileId: number, key: number[] | null): Uint8Array | undefined;
 }
 
-export class CacheIndexMapIndexSource implements MapIndexSource {
+/** Adapter for when you still have a `CacheIndex` at the boundary. */
+export class CacheIndexMapBytesProvider implements MapIndexBytesProvider {
     constructor(readonly index: CacheIndex) {}
 
     tryGetArchiveId(name: string): number | undefined {
@@ -28,7 +29,7 @@ export class CacheIndexMapIndexSource implements MapIndexSource {
 
 export class MapFileLoader {
     constructor(
-        readonly mapSource: MapIndexSource,
+        readonly mapSource: MapIndexBytesProvider,
         readonly mapFileIndex: MapFileIndex,
     ) {}
 

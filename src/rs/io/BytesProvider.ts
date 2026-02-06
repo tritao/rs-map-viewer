@@ -1,11 +1,11 @@
 import { CacheIndex } from "../cache/CacheIndex";
 import { Archive } from "../cache/format/Archive";
 
-export interface BytesProvider {
-    getBytes(id: number): Uint8Array | undefined;
+export interface BytesProvider<K = number> {
+    getBytes(id: K): Uint8Array | undefined;
 }
 
-export interface CountedBytesProvider extends BytesProvider {
+export interface CountedBytesProvider extends BytesProvider<number> {
     getCount(): number;
 }
 
