@@ -67,7 +67,10 @@ export class Archive {
         const fileNameHashes = new Int32Array(fileCount);
 
         const file = new ArchiveFile(lastFileId, id, data);
-        const filesById: Array<ArchiveFile | undefined> = new Array(lastFileId + 1);
+        const filesById: Array<ArchiveFile | undefined> = Array.from(
+            { length: lastFileId + 1 },
+            () => undefined,
+        );
         filesById[lastFileId] = file;
 
         return new Archive(
@@ -118,7 +121,7 @@ export class Archive {
 
             fileCount = metaReader.readUnsignedShort();
             lastFileId = fileCount - 1;
-            filesById = new Array(lastFileId + 1);
+            filesById = Array.from({ length: lastFileId + 1 }, () => undefined);
 
             // After the file table (10 bytes per file).
             dataReader.seek(metaReader.offset + fileCount * 10);
@@ -149,7 +152,7 @@ export class Archive {
         } else {
             fileCount = 1;
             lastFileId = 0;
-            filesById = new Array(lastFileId + 1);
+            filesById = Array.from({ length: lastFileId + 1 }, () => undefined);
 
             fileIds = new Int32Array(fileCount);
             fileNameHashes = new Int32Array(fileCount);
@@ -175,8 +178,8 @@ export class Archive {
     static decodeFromSource(meta: ArchiveMeta, source: ByteSource): Archive {
         const { id: archiveId, lastFileId, fileCount, fileIds, fileNameHashes } = meta;
 
-        const filesById: Array<ArchiveFile | undefined> = new Array(lastFileId + 1);
-        const files: ArchiveFile[] = new Array(fileCount);
+        const filesById: Array<ArchiveFile | undefined> = Array.from({ length: lastFileId + 1 }, () => undefined);
+        const files: ArchiveFile[] = [];
 
         if (fileCount === 1) {
             const data = getOrCopyBytes(source);
@@ -213,11 +216,11 @@ export class Archive {
                 }
             }
 
-            const fileData = new Array<Uint8Array>(fileCount);
             const fileOffsets = new Int32Array(fileCount);
-            for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                fileData[fileIdx] = new Uint8Array(fileSizes[fileIdx]);
-            }
+            const fileData = Array.from(
+                { length: fileCount },
+                (_, fileIdx) => new Uint8Array(fileSizes[fileIdx]),
+            );
 
             const payload = source.slice(0, tableOffset);
             let inputOffset = 0;

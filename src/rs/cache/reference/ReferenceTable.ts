@@ -57,7 +57,7 @@ export class ReferenceTable {
             }
         }
 
-        const archiveWhirlpools = new Array<Uint8Array>(archiveCount);
+        const archiveWhirlpools = Array.from({ length: archiveCount }, () => new Uint8Array(0));
         if (usesWhirlpool) {
             for (let i = 0; i < archiveCount; i++) {
                 archiveWhirlpools[i] = reader.readBytes(64);
@@ -80,11 +80,11 @@ export class ReferenceTable {
                 protocol === 7 ? reader.readBigSmart() : reader.readUnsignedShort();
         }
 
-        const archiveFileIds = new Array<Int32Array>(archiveCount);
+        const archiveFileIds = Array.from(
+            { length: archiveCount },
+            (_, i) => new Int32Array(archiveFileCounts[i]),
+        );
         const archiveLastFileIds = new Int32Array(archiveCount);
-        for (let i = 0; i < archiveCount; i++) {
-            archiveFileIds[i] = new Int32Array(archiveFileCounts[i]);
-        }
         for (let archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
             let lastFileId = 0;
             for (let fileIdx = 0; fileIdx < archiveFileCounts[archiveIdx]; fileIdx++) {
@@ -94,11 +94,11 @@ export class ReferenceTable {
             archiveLastFileIds[archiveIdx] = lastFileId;
         }
 
-        const archiveFileNameHashes = new Array<Int32Array>(archiveCount);
+        const archiveFileNameHashes = Array.from(
+            { length: archiveCount },
+            (_, i) => new Int32Array(archiveFileCounts[i]),
+        );
         if (named) {
-            for (let i = 0; i < archiveCount; i++) {
-                archiveFileNameHashes[i] = new Int32Array(archiveFileCounts[i]);
-            }
             for (let archiveIdx = 0; archiveIdx < archiveCount; archiveIdx++) {
                 for (let fileIdx = 0; fileIdx < archiveFileCounts[archiveIdx]; fileIdx++) {
                     archiveFileNameHashes[archiveIdx][fileIdx] = reader.readInt();
@@ -176,7 +176,10 @@ export class ReferenceTable {
         }
 
         if (!this._archiveReferenceCache) {
-            this._archiveReferenceCache = new Array<ArchiveReference | undefined>(this.archiveIds.length);
+            this._archiveReferenceCache = Array.from(
+                { length: this.archiveIds.length },
+                () => undefined,
+            );
         }
 
         const cached = this._archiveReferenceCache[i];

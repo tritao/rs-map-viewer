@@ -28,10 +28,10 @@ export function hydrateCacheStoreSources(bundle: CacheBundleTransfer): CacheStor
     }
 
     if (bundle.kind === "dat") {
-        const indexFiles = new Array<ByteSource | null>(DAT_INDEX_COUNT);
-        for (let i = 0; i < DAT_INDEX_COUNT; i++) {
-            indexFiles[i] = sourceFromBuffer(bundle.idx[i]);
-        }
+        const indexFiles = Array.from(
+            { length: DAT_INDEX_COUNT },
+            (_, i) => sourceFromBuffer(bundle.idx[i]),
+        );
         return {
             dataFile: sourceFromBuffer(bundle.dat),
             metaIndexFile: null,
@@ -39,11 +39,10 @@ export function hydrateCacheStoreSources(bundle: CacheBundleTransfer): CacheStor
         };
     }
 
-    const indexFiles = new Array<ByteSource | null>(bundle.idx.length);
-    for (let i = 0; i < bundle.idx.length; i++) {
+    const indexFiles = Array.from({ length: bundle.idx.length }, (_, i) => {
         const buf = bundle.idx[i];
-        indexFiles[i] = buf ? sourceFromBuffer(buf) : null;
-    }
+        return buf ? sourceFromBuffer(buf) : null;
+    });
 
     return {
         dataFile: sourceFromBuffer(bundle.dat2),
@@ -63,7 +62,10 @@ export function createCacheStoreFromBundleSources(
     const metaFile = bundle.metaIndexFile;
 
     const indicesSet = new Set(indicesToLoad);
-    const indexSources: Array<ByteSource | null> = new Array(bundle.indexFiles.length);
+    const indexSources: Array<ByteSource | null> = Array.from(
+        { length: bundle.indexFiles.length },
+        () => null,
+    );
     const indexIds: number[] = [];
 
     for (let indexId = 0; indexId < bundle.indexFiles.length; indexId++) {

@@ -21,6 +21,9 @@ export abstract class CacheIndex {
         readonly compressionHandler: CompressionHandler,
     ) {}
 
+    // Only store-backed indices (Dat/Dat2) expose raw on-disk archive bytes.
+    readonly store?: CacheStore;
+
     abstract getArchiveIds(): Int32Array;
 
     abstract getArchiveCount(): number;
@@ -62,17 +65,17 @@ export abstract class CacheIndex {
      * up-front and do not retain raw archive bytes.
      */
     readArchiveBytes(archiveId: number): Uint8Array {
-        const store: unknown = (this as any).store;
+        const store = this.store;
         if (!store) {
             throw new Error("readArchiveBytes() unsupported (no store)");
         }
-        let rawSource: any;
+        let rawSource: ByteSource;
         try {
-            rawSource = (store as any).openArchiveReader(this.id, archiveId);
+            rawSource = store.openArchiveReader(this.id, archiveId);
         } catch {
             return new Uint8Array(0);
         }
-        if (!rawSource || rawSource.size === 0) {
+        if (rawSource.size === 0) {
             return new Uint8Array(0);
         }
         try {
