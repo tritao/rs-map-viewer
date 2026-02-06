@@ -1,9 +1,8 @@
-import { BIT_MASKS } from "../MathConstants";
 import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { ByteBuffer } from "../io/ByteBuffer";
-import { CountedBytesProvider } from "../io/BytesProvider";
+import { CountedBytesProvider, IndexArchiveFileBytesProvider } from "../io/BytesProvider";
 import { NamedBytesProvider } from "../io/NamedBytesProvider";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { Result, err, ok } from "../../util/Result";
@@ -141,9 +140,7 @@ export class ArchiveTypeLoader<T extends Type> extends BaseTypeLoader<T> {
 }
 
 export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
-    count: number;
-
-    archives: Map<number, Archive> = new Map();
+    private readonly source: IndexArchiveFileBytesProvider;
 
     constructor(
         readonly typeConstructor: new (id: number, cacheInfo: CacheInfo) => T,
@@ -152,33 +149,20 @@ export class IndexTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         readonly fileIdBits: number = 8,
     ) {
         super(typeConstructor, cacheInfo);
-        const filesPerArchive = 1 << fileIdBits;
-        const lastArchiveId = index.getLastArchiveId();
-        this.count = lastArchiveId < 0 ? 0 : lastArchiveId * filesPerArchive + index.getFileCount(lastArchiveId);
+        this.source = new IndexArchiveFileBytesProvider(index, fileIdBits);
     }
 
     override getData(id: number): Uint8Array | undefined {
-        const archiveId = id >> this.fileIdBits;
-        const fileId = id & BIT_MASKS[this.fileIdBits - 1];
-
-        let archive = this.archives.get(archiveId);
-        if (!archive) {
-            archive = this.index.tryGetArchive(archiveId);
-            if (!archive) {
-                return undefined;
-            }
-            this.archives.set(archiveId, archive);
-        }
-        return archive.getFile(fileId)?.data;
+        return this.source.getBytes(id);
     }
 
     override getCount(): number {
-        return this.count;
+        return this.source.getCount();
     }
 
     override clearCache(): void {
         super.clearCache();
-        this.archives.clear();
+        this.source.clearCache();
     }
 }
 
