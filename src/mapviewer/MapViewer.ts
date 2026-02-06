@@ -100,7 +100,7 @@ export class MapViewer {
         this.loadedCache = cache;
         this.session = session;
         this.renderer = new MapViewerRenderer(this);
-        this.initCache(cache);
+        this.initCache(cache, session);
     }
 
     getSearchParams(): URLSearchParamsInit {
@@ -178,11 +178,24 @@ export class MapViewer {
         });
     }
 
-    initCache(cache: LoadedCache): void {
+    initCache(cache: LoadedCache, sessionOverride?: CacheSession): void {
+        const sessionResult = sessionOverride
+            ? ok(sessionOverride)
+            : tryCreateCacheSession(cache, new JSCompressionHandler());
+        if (!sessionResult.ok) {
+            throw new Error(initErrorToString(sessionResult.error));
+        }
+
+        this.loadedCache = cache;
+        this.session = sessionResult.value;
+
         this.workerPool.initCache(cache, this.objSpawns, this.npcSpawns);
         this.clearMapImageUrls();
 
+        // Recreate renderer to ensure all GPU-side and loader-side state matches the new cache.
+        this.renderer = new MapViewerRenderer(this);
         this.renderer.initCache();
+        this.resetMenu();
 
         this.updateSearchParams();
     }

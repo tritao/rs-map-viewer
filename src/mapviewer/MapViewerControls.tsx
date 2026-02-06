@@ -300,6 +300,7 @@ export const MapViewerControls = memo(
                                     ]);
                                     mapViewer.npcSpawns = npcSpawns;
                                     mapViewer.initCache(loadedCache);
+                                    setRenderer(mapViewer.renderer);
                                     setDownloadProgress(undefined);
                                 }
                             },
