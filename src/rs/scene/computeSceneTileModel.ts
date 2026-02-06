@@ -1,8 +1,8 @@
-import { OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
+import { FloorTypeLoader, OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
 import { TextureLoader } from "../texture/TextureLoader";
 import { HSL_RGB_MAP, adjustOverlayLight, adjustUnderlayLight, packHsl } from "../util/ColorUtil";
 import type { TileRotation, TileShapeId } from "./Scene";
-import { SceneTileModel } from "./SceneTileModel";
+import { OverlayCornerSet, OverlayEdgeSet, SceneTileModel } from "./SceneTileModel";
 
 export type ComputeSceneTileModelParams = {
     x: number;
@@ -21,8 +21,11 @@ export type ComputeSceneTileModelParams = {
     tileRotation: number;
     smoothUnderlays: boolean;
     blendedColors: Int32Array[];
+    underlayTypeLoader: FloorTypeLoader;
     overlayTypeLoader: OverlayFloorTypeLoader;
     textureLoader: TextureLoader;
+    overlayPrimaryCorners?: OverlayCornerSet;
+    overlayPrimaryEdges?: OverlayEdgeSet;
 };
 
 type UnderlayOnlyTileModelParams = {
@@ -41,6 +44,8 @@ type UnderlayOnlyTileModelParams = {
     underlayHslNe: number;
     underlayHslNw: number;
     underlayRgb: number;
+    underlayTextureId: number;
+    underlayTextureSize: number;
 };
 
 function createUnderlayOnlyTileModel(
@@ -49,7 +54,10 @@ function createUnderlayOnlyTileModel(
     return new SceneTileModel(
         0 as TileShapeId,
         0 as TileRotation,
-        -1,
+        params.underlayTextureId,
+        params.underlayTextureSize,
+        undefined,
+        undefined,
         params.x,
         params.y,
         params.heightSw,
@@ -64,11 +72,20 @@ function createUnderlayOnlyTileModel(
         params.underlayHslSe,
         params.underlayHslNe,
         params.underlayHslNw,
-        0,
-        0,
         params.underlayRgb,
         0,
     );
+}
+
+function tryGetFloorTextureInfo(type: unknown): { textureId: number; textureSize: number } | undefined {
+    if (!type || typeof type !== "object") {
+        return undefined;
+    }
+    const maybe = type as { textureId?: unknown; textureSize?: unknown };
+    if (typeof maybe.textureId !== "number" || typeof maybe.textureSize !== "number") {
+        return undefined;
+    }
+    return { textureId: maybe.textureId, textureSize: maybe.textureSize };
 }
 
 export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams): SceneTileModel | undefined {
@@ -102,6 +119,19 @@ export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams
         underlayRgb = HSL_RGB_MAP[adjustUnderlayLight(underlayHslSw, 96)];
     }
 
+    let underlayTextureId = -1;
+    let underlayTextureSize = 128;
+    if (params.underlayId !== -1) {
+        const underlayResult = params.underlayTypeLoader.tryLoad(params.underlayId);
+        if (underlayResult.ok) {
+            const info = tryGetFloorTextureInfo(underlayResult.value);
+            if (info && info.textureId !== -1 && params.textureLoader.isSd(info.textureId)) {
+                underlayTextureId = info.textureId;
+                underlayTextureSize = info.textureSize || 128;
+            }
+        }
+    }
+
     if (params.overlayId === -1) {
         return createUnderlayOnlyTileModel({
             x: params.x,
@@ -119,6 +149,8 @@ export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams
             underlayHslNe,
             underlayHslNw,
             underlayRgb,
+            underlayTextureId,
+            underlayTextureSize,
         });
     }
 
@@ -140,6 +172,8 @@ export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams
             underlayHslNe,
             underlayHslNw,
             underlayRgb,
+            underlayTextureId,
+            underlayTextureSize,
         });
     }
 
@@ -147,34 +181,49 @@ export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams
     const shape = (params.tileShape + 1) as TileShapeId;
     const rotation = params.tileRotation as TileRotation;
 
-    let overlayHsl: number;
-    let overlayMinimapHsl: number;
-    if (overlay.textureId !== -1 && params.textureLoader.isSd(overlay.textureId)) {
-        overlayMinimapHsl = params.textureLoader.getAverageHsl(overlay.textureId);
-        overlayHsl = -1;
-    } else if (overlay.primaryRgb === 0xff00ff) {
-        overlayHsl = overlayMinimapHsl = -2;
-    } else {
-        overlayHsl = overlayMinimapHsl = packHsl(overlay.hue, overlay.saturation, overlay.lightness);
-    }
-
-    if (overlay.secondaryRgb !== -1) {
-        overlayMinimapHsl = packHsl(
-            overlay.secondaryHue,
-            overlay.secondarySaturation,
-            overlay.secondaryLightness,
-        );
-    }
-
     let overlayRgb = 0;
-    if (overlayMinimapHsl !== -2) {
-        overlayRgb = HSL_RGB_MAP[adjustOverlayLight(overlayMinimapHsl, 96)];
+    if (params.overlayPrimaryCorners) {
+        const hsls = params.overlayPrimaryCorners.minimapHsl;
+        let sum = 0;
+        let count = 0;
+        for (let i = 0; i < 4; i++) {
+            const hsl = hsls[i];
+            if (hsl !== -2) {
+                sum += hsl;
+                count++;
+            }
+        }
+        if (count > 0) {
+            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(((sum / count) | 0), 96)];
+        }
+    } else {
+        let overlayMinimapHsl: number;
+        if (overlay.textureId !== -1 && params.textureLoader.isSd(overlay.textureId)) {
+            overlayMinimapHsl = params.textureLoader.getAverageHsl(overlay.textureId);
+        } else if (overlay.primaryRgb === 0xff00ff) {
+            overlayMinimapHsl = -2;
+        } else {
+            overlayMinimapHsl = packHsl(overlay.hue, overlay.saturation, overlay.lightness);
+        }
+        if (overlay.secondaryRgb !== -1) {
+            overlayMinimapHsl = packHsl(
+                overlay.secondaryHue,
+                overlay.secondarySaturation,
+                overlay.secondaryLightness,
+            );
+        }
+        if (overlayMinimapHsl !== -2) {
+            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(overlayMinimapHsl, 96)];
+        }
     }
 
     return new SceneTileModel(
         shape,
         rotation,
-        overlay.textureId,
+        underlayTextureId,
+        underlayTextureSize,
+        params.overlayPrimaryCorners,
+        params.overlayPrimaryEdges,
         params.x,
         params.y,
         params.heightSw,
@@ -189,8 +238,6 @@ export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams
         underlayHslSe,
         underlayHslNe,
         underlayHslNw,
-        overlayHsl,
-        overlayMinimapHsl,
         underlayRgb,
         overlayRgb,
     );

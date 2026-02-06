@@ -2,6 +2,7 @@ import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { Type } from "../Type";
 import { FloorType } from "./FloorType";
+import { rgbToHsl } from "../../util/ColorUtil";
 
 export class OverlayFloorType extends Type implements FloorType {
     primaryRgb: number;
@@ -11,7 +12,27 @@ export class OverlayFloorType extends Type implements FloorType {
 
     hideUnderlay: boolean;
 
+    /**
+     * Secondary colour used by some caches (commonly minimap/alt colour).
+     * Not present in all revisions/game types.
+     */
     secondaryRgb: number;
+
+    /**
+     * RuneScape (e.g. 667) "blend colour" (used for overlay blending).
+     * Not present in all revisions/game types.
+     */
+    blendRgb: number;
+
+    primaryHsl: number;
+    blendHsl: number;
+
+    /**
+     * RuneScape-style occlusion flag (opcode 5 flips this to false).
+     *
+     * Oldschool uses opcode 5 for `hideUnderlay = false` instead, so this field isn't meaningful there.
+     */
+    occludes: boolean;
 
     hue: number;
     saturation: number;
@@ -27,7 +48,20 @@ export class OverlayFloorType extends Type implements FloorType {
     textureSize: number;
     blockShadow: boolean;
     textureBrightness: number;
-    blendTexture: boolean;
+
+    /**
+     * RuneScape blend priority (if supported by the cache).
+     *
+     * Note: in RuneScape 667, this is post-processed as `(blendPriority << 8) | id`.
+     */
+    blendPriority: number;
+
+    /**
+     * Whether this overlay participates in terrain blending.
+     *
+     * In RuneScape 667 this maps to `FloorOverlayType.blendable`.
+     */
+    blendable: boolean;
 
     underwaterColor: number;
     waterOpacity: number;
@@ -44,6 +78,10 @@ export class OverlayFloorType extends Type implements FloorType {
         this.secondaryTextureId = -1;
         this.hideUnderlay = true;
         this.secondaryRgb = -1;
+        this.blendRgb = -1;
+        this.primaryHsl = -1;
+        this.blendHsl = -1;
+        this.occludes = true;
         this.hue = 0;
         this.saturation = 0;
         this.lightness = 0;
@@ -55,11 +93,17 @@ export class OverlayFloorType extends Type implements FloorType {
         this.textureSize = 128;
         this.blockShadow = true;
         this.textureBrightness = 8;
-        this.blendTexture = false;
+        this.blendPriority = 8;
+        this.blendable = false;
         this.underwaterColor = 0x122b3d;
         this.waterOpacity = 16;
         this.waterBias = 127;
         this.isOverlay = cacheInfo.game !== GameType.Runescape || cacheInfo.revision > 377;
+
+        // `hideUnderlay` is not a concept on all game types/revisions (e.g. RuneScape 667 uses opcode 5 for occludes).
+        if (cacheInfo.game === GameType.Runescape) {
+            this.hideUnderlay = false;
+        }
     }
 
     getHueBlend(): number {
@@ -85,11 +129,23 @@ export class OverlayFloorType extends Type implements FloorType {
                 }
             }
         } else if (opcode === 5) {
-            this.hideUnderlay = false;
+            // Oldschool-style: hide underlay
+            // RuneScape-style: occludes=false (not currently used by the viewer)
+            if (this.cacheInfo.game !== GameType.Runescape) {
+                this.hideUnderlay = false;
+            } else {
+                this.occludes = false;
+            }
         } else if (opcode === 6) {
             this.name = this.readString(buffer);
         } else if (opcode === 7) {
-            this.secondaryRgb = buffer.readMedium();
+            // Oldschool-style: secondary colour
+            // RuneScape-style: blend colour
+            if (this.cacheInfo.game === GameType.Runescape) {
+                this.blendRgb = buffer.readMedium();
+            } else {
+                this.secondaryRgb = buffer.readMedium();
+            }
         } else if (opcode === 8) {
             // nothing
         } else if (opcode === 9) {
@@ -97,13 +153,17 @@ export class OverlayFloorType extends Type implements FloorType {
         } else if (opcode === 10) {
             this.blockShadow = false;
         } else if (opcode === 11) {
-            // TODO(revision): opcode 11 is revision-dependent.
-            // - rt4 530: `FloType.textureBrightness` (see /home/joao/dev/rs/2009-530/rt4-client/client/src/main/java/rt4/FloType.java)
-            // - 667: `FloorOverlayType.blendPriority` (see /home/joao/dev/rs/2011-667/.../config/flotype/FloorOverlayType.java)
-            // Consider gating by `cacheInfo` revision and/or storing both meanings.
-            this.textureBrightness = buffer.readUnsignedByte();
+            // Revision-dependent opcode.
+            // - RuneScape 667: blendPriority
+            // - Some older caches (e.g. rt4 530): textureBrightness
+            const value = buffer.readUnsignedByte();
+            if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 667) {
+                this.blendPriority = value;
+            } else {
+                this.textureBrightness = value;
+            }
         } else if (opcode === 12) {
-            this.blendTexture = true;
+            this.blendable = true;
         } else if (opcode === 13) {
             this.underwaterColor = buffer.readMedium();
         } else if (opcode === 14) {
@@ -137,7 +197,20 @@ export class OverlayFloorType extends Type implements FloorType {
             this.secondaryLightness = this.lightness;
         }
 
+        if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 667) {
+            // Mirrors 667 client postDecode.
+            this.blendPriority = (this.blendPriority << 8) | this.id;
+        }
+
         this.setHsl(this.primaryRgb);
+
+        this.primaryHsl = this.primaryRgb === 0xff00ff ? -2 : rgbToHsl(this.primaryRgb);
+        this.blendHsl =
+            this.blendRgb === -1
+                ? -1
+                : this.blendRgb === 0xff00ff
+                  ? -2
+                  : rgbToHsl(this.blendRgb);
     }
 
     setHsl(rgb: number): void {

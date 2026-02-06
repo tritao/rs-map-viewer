@@ -1,5 +1,6 @@
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { FloorTypeLoader, OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
+import { OverlayFloorType } from "../config/floortype/OverlayFloorType";
 import { LocModelType } from "../config/loctype/LocModelType";
 import { LocType } from "../config/loctype/LocType";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
@@ -23,6 +24,7 @@ import {
     TerrainSquareDecodeScratch,
 } from "./decodeTerrainSquare";
 import { computeSceneTileModelForTile } from "./computeSceneTileModel";
+import { OverlayCornerSet, OverlayEdgeSet } from "./SceneTileModel";
 
 export enum LocLoadType {
     MODELS,
@@ -31,6 +33,40 @@ export enum LocLoadType {
 
 export class SceneBuilder {
     static readonly BLEND_RADIUS = 5;
+
+    // Ported from 667 `TerrainTileBuilder` (edge eligibility is shape-relative; rotation applied at runtime).
+    // Edge order is assumed to be [south, east, north, west] (clockwise).
+    private static readonly BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE: boolean[][] = [
+        [false, false, false, false],
+        [false, true, true, false],
+        [true, false, true, false],
+        [true, false, true, false],
+        [false, false, true, false],
+        [false, false, true, false],
+        [true, false, true, false],
+        [true, false, false, true],
+        [true, false, false, true],
+        [true, true, false, false],
+        [false, false, false, false],
+        [false, true, false, true],
+        [false, false, false, false],
+    ];
+
+    private static readonly NON_BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE: boolean[][] = [
+        [false, false, false, false],
+        [false, false, false, false],
+        [false, false, true, false],
+        [false, false, true, false],
+        [false, false, true, false],
+        [false, false, true, false],
+        [true, false, true, false],
+        [true, false, false, true],
+        [true, false, false, true],
+        [false, false, false, false],
+        [false, false, false, false],
+        [false, false, false, false],
+        [false, false, false, false],
+    ];
 
     private static readonly displacementX: number[] = [1, 0, -1, 0];
     private static readonly displacementY: number[] = [0, -1, 0, 1];
@@ -935,6 +971,134 @@ export class SceneBuilder {
         return colors;
     }
 
+    private overlayBlendPriority(overlay: OverlayFloorType): number {
+        if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 667) {
+            return overlay.blendPriority | 0;
+        }
+        // Most other caches don't expose an explicit blend priority; treat as equal priority.
+        return 0;
+    }
+
+    private getOverlayEdgeEligibility(shape: number, rotation: number, blendable: boolean): boolean[] {
+        const table = blendable
+            ? SceneBuilder.BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE
+            : SceneBuilder.NON_BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE;
+        const local = table[shape] ?? [false, false, false, false];
+
+        // Apply rotation to align shape-local edges to world edges.
+        // rotation is clockwise in terrain decode; this mapping is best-effort and matches the 667 pattern usage.
+        const world = [false, false, false, false];
+        for (let worldEdge = 0; worldEdge < 4; worldEdge++) {
+            world[worldEdge] = local[(worldEdge - rotation) & 3];
+        }
+        return world;
+    }
+
+    private tryLoadOverlayCached(
+        cache: Map<number, OverlayFloorType | null>,
+        overlayId: number,
+    ): OverlayFloorType | undefined {
+        const cached = cache.get(overlayId);
+        if (cached !== undefined) {
+            return cached ?? undefined;
+        }
+        const result = this.overlayTypeLoader.tryLoad(overlayId);
+        if (!result.ok) {
+            cache.set(overlayId, null);
+            return undefined;
+        }
+        cache.set(overlayId, result.value);
+        return result.value;
+    }
+
+    private fillOverlaySample(
+        out: OverlayCornerSet | OverlayEdgeSet,
+        index: number,
+        overlay: OverlayFloorType,
+        textureLoader: TextureLoader,
+        preferBlendColour: boolean,
+    ): void {
+        let textureId = overlay.textureId;
+        if (!(textureId !== -1 && textureLoader.isSd(textureId))) {
+            textureId = overlay.secondaryTextureId;
+            if (!(textureId !== -1 && textureLoader.isSd(textureId))) {
+                textureId = -1;
+            }
+        }
+
+        out.textureId[index] = textureId;
+        out.textureSize[index] = Math.max(1, (overlay.textureSize || 128) | 0);
+
+        if (textureId !== -1) {
+            out.baseHsl[index] = -1;
+            out.minimapHsl[index] = textureLoader.getAverageHsl(textureId);
+            return;
+        }
+
+        const baseHsl =
+            preferBlendColour && overlay.blendHsl !== -1 ? overlay.blendHsl : overlay.primaryHsl;
+        out.baseHsl[index] = baseHsl;
+        out.minimapHsl[index] = baseHsl;
+
+        if (overlay.secondaryRgb !== -1) {
+            out.minimapHsl[index] = packHsl(
+                overlay.secondaryHue,
+                overlay.secondarySaturation,
+                overlay.secondaryLightness,
+            );
+        }
+    }
+
+    private chooseOverlayForCorner(
+        overlayCache: Map<number, OverlayFloorType | null>,
+        scene: Scene,
+        level: number,
+        candidates: readonly [number, number][],
+        currentOverlayId: number,
+        currentOverlayBlendable: boolean,
+    ): OverlayFloorType | undefined {
+        let best: OverlayFloorType | undefined;
+        let bestPriority = -1;
+        let bestIsCurrent = false;
+
+        for (const [x, y] of candidates) {
+            if (x < 0 || y < 0 || x >= scene.sizeX || y >= scene.sizeY) {
+                continue;
+            }
+            const overlayId = scene.tileOverlays[level][x][y] - 1;
+            if (overlayId < 0) {
+                continue;
+            }
+            const overlay = this.tryLoadOverlayCached(overlayCache, overlayId);
+            if (!overlay) {
+                continue;
+            }
+
+            const isCurrent = overlayId === currentOverlayId;
+            // Only blend from neighbors when the *current* overlay supports blending, and the neighbor is blendable too.
+            if (!isCurrent && (!currentOverlayBlendable || !overlay.blendable)) {
+                continue;
+            }
+
+            const priority = this.overlayBlendPriority(overlay);
+            if (
+                !best ||
+                priority > bestPriority ||
+                (priority === bestPriority && isCurrent && !bestIsCurrent)
+            ) {
+                best = overlay;
+                bestPriority = priority;
+                bestIsCurrent = isCurrent;
+            }
+        }
+
+        // Ensure we always have a deterministic fallback.
+        if (!best) {
+            best = this.tryLoadOverlayCached(overlayCache, currentOverlayId);
+        }
+        return best;
+    }
+
     addTileModels(scene: Scene, smoothUnderlays: boolean): void {
         const heights = scene.tileHeights;
         const underlayIds = scene.tileUnderlays;
@@ -942,6 +1106,21 @@ export class SceneBuilder {
         const tileShapes = scene.tileShapes;
         const tileRotations = scene.tileRotations;
 
+        const textureLoader = this.textureLoader;
+        const overlayCache = new Map<number, OverlayFloorType | null>();
+
+        const primaryCornersScratch: OverlayCornerSet = {
+            baseHsl: new Int32Array(4),
+            minimapHsl: new Int32Array(4),
+            textureId: new Int32Array(4),
+            textureSize: new Int32Array(4),
+        };
+        const primaryEdgesScratch: OverlayEdgeSet = {
+            baseHsl: new Int32Array(4),
+            minimapHsl: new Int32Array(4),
+            textureId: new Int32Array(4),
+            textureSize: new Int32Array(4),
+        };
         for (let level = 0; level < scene.levels; level++) {
             const blendedColors = this.blendUnderlays(scene, level);
             const lights = scene.calculateTileLights(level);
@@ -950,6 +1129,188 @@ export class SceneBuilder {
                 for (let y = 1; y < scene.sizeY - 1; y++) {
                     const underlayId = underlayIds[level][x][y] - 1;
                     const overlayId = overlayIds[level][x][y] - 1;
+
+                    let overlayPrimaryCorners: OverlayCornerSet | undefined = undefined;
+                    let overlayPrimaryEdges: OverlayEdgeSet | undefined = undefined;
+
+                    if (overlayId !== -1) {
+                        const overlayType = this.tryLoadOverlayCached(overlayCache, overlayId);
+                        if (overlayType) {
+                            // Note: `hideUnderlay` is used by some clients for occlusion decisions, not for changing
+                            // which faces are underlay vs overlay. The viewer doesn't implement tile occluders yet,
+                            // so we ignore it for terrain rendering.
+                            overlayPrimaryCorners = primaryCornersScratch;
+                            overlayPrimaryEdges = primaryEdgesScratch;
+
+                            const edgeEligibility = this.getOverlayEdgeEligibility(
+                                tileShapes[level][x][y],
+                                tileRotations[level][x][y] & 0x3,
+                                overlayType.blendable,
+                            );
+                            const canBlendSouth = edgeEligibility[0];
+                            const canBlendEast = edgeEligibility[1];
+                            const canBlendNorth = edgeEligibility[2];
+                            const canBlendWest = edgeEligibility[3];
+
+                            // Corner order: SW, SE, NE, NW
+                            const sw = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendWest ? [[x - 1, y] as [number, number]] : []),
+                                    ...(canBlendSouth ? [[x, y - 1] as [number, number]] : []),
+                                    ...((canBlendWest || canBlendSouth) ? [[x - 1, y - 1] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+                            const se = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendEast ? [[x + 1, y] as [number, number]] : []),
+                                    ...(canBlendSouth ? [[x, y - 1] as [number, number]] : []),
+                                    ...((canBlendEast || canBlendSouth) ? [[x + 1, y - 1] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+                            const ne = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendEast ? [[x + 1, y] as [number, number]] : []),
+                                    ...(canBlendNorth ? [[x, y + 1] as [number, number]] : []),
+                                    ...((canBlendEast || canBlendNorth) ? [[x + 1, y + 1] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+                            const nw = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendWest ? [[x - 1, y] as [number, number]] : []),
+                                    ...(canBlendNorth ? [[x, y + 1] as [number, number]] : []),
+                                    ...((canBlendWest || canBlendNorth) ? [[x - 1, y + 1] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+
+                            this.fillOverlaySample(
+                                primaryCornersScratch,
+                                0,
+                                sw ?? overlayType,
+                                textureLoader,
+                                (sw?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                            this.fillOverlaySample(
+                                primaryCornersScratch,
+                                1,
+                                se ?? overlayType,
+                                textureLoader,
+                                (se?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                            this.fillOverlaySample(
+                                primaryCornersScratch,
+                                2,
+                                ne ?? overlayType,
+                                textureLoader,
+                                (ne?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                            this.fillOverlaySample(
+                                primaryCornersScratch,
+                                3,
+                                nw ?? overlayType,
+                                textureLoader,
+                                (nw?.id ?? overlayType.id) !== overlayType.id,
+                            );
+
+                            const south = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendSouth ? [[x, y - 1] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+                            const east = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendEast ? [[x + 1, y] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+                            const north = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendNorth ? [[x, y + 1] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+                            const west = this.chooseOverlayForCorner(
+                                overlayCache,
+                                scene,
+                                level,
+                                [
+                                    [x, y],
+                                    ...(canBlendWest ? [[x - 1, y] as [number, number]] : []),
+                                ],
+                                overlayId,
+                                overlayType.blendable,
+                            );
+
+                            this.fillOverlaySample(
+                                primaryEdgesScratch,
+                                0,
+                                south ?? overlayType,
+                                textureLoader,
+                                (south?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                            this.fillOverlaySample(
+                                primaryEdgesScratch,
+                                1,
+                                east ?? overlayType,
+                                textureLoader,
+                                (east?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                            this.fillOverlaySample(
+                                primaryEdgesScratch,
+                                2,
+                                north ?? overlayType,
+                                textureLoader,
+                                (north?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                            this.fillOverlaySample(
+                                primaryEdgesScratch,
+                                3,
+                                west ?? overlayType,
+                                textureLoader,
+                                (west?.id ?? overlayType.id) !== overlayType.id,
+                            );
+                        }
+                    }
+
                     const tileModel = computeSceneTileModelForTile({
                         x,
                         y,
@@ -967,8 +1328,11 @@ export class SceneBuilder {
                         tileRotation: tileRotations[level][x][y],
                         smoothUnderlays,
                         blendedColors,
+                        underlayTypeLoader: this.underlayTypeLoader,
                         overlayTypeLoader: this.overlayTypeLoader,
                         textureLoader: this.textureLoader,
+                        overlayPrimaryCorners,
+                        overlayPrimaryEdges,
                     });
                     if (!tileModel) {
                         continue;

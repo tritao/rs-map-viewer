@@ -58,6 +58,36 @@ type SceneTileVertex = {
     textureId: number;
 };
 
+export type OverlayCornerSet = {
+    // Corner order: SW, SE, NE, NW
+    baseHsl: Int32Array;
+    minimapHsl: Int32Array;
+    textureId: Int32Array;
+    textureSize: Int32Array;
+};
+
+export type OverlayEdgeSet = {
+    // Edge order: S, E, N, W
+    baseHsl: Int32Array;
+    minimapHsl: Int32Array;
+    textureId: Int32Array;
+    textureSize: Int32Array;
+};
+
+const DEFAULT_OVERLAY_CORNERS: OverlayCornerSet = {
+    baseHsl: new Int32Array([-1, -1, -1, -1]),
+    minimapHsl: new Int32Array([-1, -1, -1, -1]),
+    textureId: new Int32Array([-1, -1, -1, -1]),
+    textureSize: new Int32Array([TILE_SIZE, TILE_SIZE, TILE_SIZE, TILE_SIZE]),
+};
+
+const DEFAULT_OVERLAY_EDGES: OverlayEdgeSet = {
+    baseHsl: new Int32Array([-1, -1, -1, -1]),
+    minimapHsl: new Int32Array([-1, -1, -1, -1]),
+    textureId: new Int32Array([-1, -1, -1, -1]),
+    textureSize: new Int32Array([TILE_SIZE, TILE_SIZE, TILE_SIZE, TILE_SIZE]),
+};
+
 export class SceneTileModel {
     underlayHslSw: number;
     underlayHslSe: number;
@@ -99,7 +129,10 @@ export class SceneTileModel {
     constructor(
         readonly shape: TileShapeId,
         readonly rotation: TileRotation,
-        readonly textureId: number,
+        readonly underlayTextureId: number,
+        readonly underlayTextureSize: number,
+        overlayPrimaryCorners: OverlayCornerSet | undefined,
+        overlayPrimaryEdges: OverlayEdgeSet | undefined,
         x: number,
         y: number,
         heightSw: number,
@@ -114,8 +147,6 @@ export class SceneTileModel {
         readonly blendUnderlayHslSe: number,
         readonly blendUnderlayHslNe: number,
         readonly blendUnderlayHslNw: number,
-        readonly overlayHsl: number,
-        readonly overlayMinimapHsl: number,
         readonly underlayRgb: number,
         readonly overlayRgb: number,
     ) {
@@ -141,27 +172,52 @@ export class SceneTileModel {
         const underlayMinimapHslNe = adjustUnderlayLight(blendUnderlayHslSw, lightNe);
         const underlayMinimapHslNw = adjustUnderlayLight(blendUnderlayHslSw, lightNw);
 
-        const overlayHslSw = (this.overlayHslSw = adjustOverlayLight(overlayHsl, lightSw));
-        const overlayHslSe = (this.overlayHslSe = adjustOverlayLight(overlayHsl, lightSe));
-        const overlayHslNe = (this.overlayHslNe = adjustOverlayLight(overlayHsl, lightNe));
-        const overlayHslNw = (this.overlayHslNw = adjustOverlayLight(overlayHsl, lightNw));
+        const primaryCorners: OverlayCornerSet = overlayPrimaryCorners ?? DEFAULT_OVERLAY_CORNERS;
+        const primaryEdges: OverlayEdgeSet = overlayPrimaryEdges ?? DEFAULT_OVERLAY_EDGES;
+
+        const overlayHslSw = (this.overlayHslSw = adjustOverlayLight(primaryCorners.baseHsl[0], lightSw));
+        const overlayHslSe = (this.overlayHslSe = adjustOverlayLight(primaryCorners.baseHsl[1], lightSe));
+        const overlayHslNe = (this.overlayHslNe = adjustOverlayLight(primaryCorners.baseHsl[2], lightNe));
+        const overlayHslNw = (this.overlayHslNw = adjustOverlayLight(primaryCorners.baseHsl[3], lightNw));
 
         const overlayMinimapHslSw = (this.overlayMinimapHslSw = adjustOverlayLight(
-            overlayMinimapHsl,
+            primaryCorners.minimapHsl[0],
             lightSw,
         ));
         const overlayMinimapHslSe = (this.overlayMinimapHslSe = adjustOverlayLight(
-            overlayMinimapHsl,
+            primaryCorners.minimapHsl[1],
             lightSe,
         ));
         const overlayMinimapHslNe = (this.overlayMinimapHslNe = adjustOverlayLight(
-            overlayMinimapHsl,
+            primaryCorners.minimapHsl[2],
             lightNe,
         ));
         const overlayMinimapHslNw = (this.overlayMinimapHslNw = adjustOverlayLight(
-            overlayMinimapHsl,
+            primaryCorners.minimapHsl[3],
             lightNw,
         ));
+
+        const overlayHslS = adjustOverlayLight(
+            primaryEdges.baseHsl[0],
+            (lightSw + lightSe) >> 1,
+        );
+        const overlayHslE = adjustOverlayLight(
+            primaryEdges.baseHsl[1],
+            (lightSe + lightNe) >> 1,
+        );
+        const overlayHslN = adjustOverlayLight(
+            primaryEdges.baseHsl[2],
+            (lightNe + lightNw) >> 1,
+        );
+        const overlayHslW = adjustOverlayLight(
+            primaryEdges.baseHsl[3],
+            (lightNw + lightSw) >> 1,
+        );
+
+        const overlayMinimapHslS = adjustOverlayLight(primaryEdges.minimapHsl[0], (lightSw + lightSe) >> 1);
+        const overlayMinimapHslE = adjustOverlayLight(primaryEdges.minimapHsl[1], (lightSe + lightNe) >> 1);
+        const overlayMinimapHslN = adjustOverlayLight(primaryEdges.minimapHsl[2], (lightNe + lightNw) >> 1);
+        const overlayMinimapHslW = adjustOverlayLight(primaryEdges.minimapHsl[3], (lightNw + lightSw) >> 1);
 
         this.underlayRgb = underlayRgb;
         this.overlayRgb = overlayRgb;
@@ -177,6 +233,9 @@ export class SceneTileModel {
         const overlayMinimapHsls = new Array<number>(vertexCount);
         const tileX = x * TILE_SIZE;
         const tileY = y * TILE_SIZE;
+
+        const chosenCornerIndex = new Int8Array(vertexCount);
+        const chosenCornerWeight = new Float32Array(vertexCount);
 
         for (let i = 0; i < vertexCount; i++) {
             let vertexIndex = vertexIndices[i];
@@ -214,8 +273,10 @@ export class SceneTileModel {
                 vertY = (heightSe + heightSw) >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslSe, underlayHslSw);
                 vertUnderlayMinimapHsl = (underlayMinimapHslSe + underlayMinimapHslSw) >> 1;
-                vertOverlayHsl = (overlayHslSe + overlayHslSw) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslSe + overlayMinimapHslSw) >> 1;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslS : (overlayHslSe + overlayHslSw) >> 1;
+                vertOverlayMinimapHsl = overlayPrimaryEdges
+                    ? overlayMinimapHslS
+                    : (overlayMinimapHslSe + overlayMinimapHslSw) >> 1;
             } else if (vertexIndex === 3) {
                 vertX = tileX + TILE_SIZE;
                 vertZ = tileY;
@@ -230,8 +291,10 @@ export class SceneTileModel {
                 vertY = (heightNe + heightSe) >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslSe, underlayHslNe);
                 vertUnderlayMinimapHsl = (underlayMinimapHslSe + underlayMinimapHslNe) >> 1;
-                vertOverlayHsl = (overlayHslSe + overlayHslNe) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslSe + overlayMinimapHslNe) >> 1;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslE : (overlayHslSe + overlayHslNe) >> 1;
+                vertOverlayMinimapHsl = overlayPrimaryEdges
+                    ? overlayMinimapHslE
+                    : (overlayMinimapHslSe + overlayMinimapHslNe) >> 1;
             } else if (vertexIndex === 5) {
                 vertX = tileX + TILE_SIZE;
                 vertZ = tileY + TILE_SIZE;
@@ -246,8 +309,10 @@ export class SceneTileModel {
                 vertY = (heightNe + heightNw) >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslNw, underlayHslNe);
                 vertUnderlayMinimapHsl = (underlayMinimapHslNw + underlayMinimapHslNe) >> 1;
-                vertOverlayHsl = (overlayHslNw + overlayHslNe) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslNw + overlayMinimapHslNe) >> 1;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslN : (overlayHslNw + overlayHslNe) >> 1;
+                vertOverlayMinimapHsl = overlayPrimaryEdges
+                    ? overlayMinimapHslN
+                    : (overlayMinimapHslNw + overlayMinimapHslNe) >> 1;
             } else if (vertexIndex === 7) {
                 vertX = tileX;
                 vertZ = tileY + TILE_SIZE;
@@ -262,8 +327,10 @@ export class SceneTileModel {
                 vertY = (heightNw + heightSw) >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslNw, underlayHslSw);
                 vertUnderlayMinimapHsl = (underlayMinimapHslNw + underlayMinimapHslSw) >> 1;
-                vertOverlayHsl = (overlayHslNw + overlayHslSw) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslNw + overlayMinimapHslSw) >> 1;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslW : (overlayHslNw + overlayHslSw) >> 1;
+                vertOverlayMinimapHsl = overlayPrimaryEdges
+                    ? overlayMinimapHslW
+                    : (overlayMinimapHslNw + overlayMinimapHslSw) >> 1;
             } else if (vertexIndex === 9) {
                 vertX = tileX + HALF_TILE_SIZE;
                 vertZ = tileY + QUARTER_TILE_SIZE;
@@ -339,6 +406,34 @@ export class SceneTileModel {
             overlayMinimapHsls[i] = vertOverlayMinimapHsl;
         }
 
+        for (let i = 0; i < vertexCount; i++) {
+            const localU = (this.vertexX[i] - tileX) / TILE_SIZE;
+            const localV = (this.vertexZ[i] - tileY) / TILE_SIZE;
+
+            const wSw = (1.0 - localU) * (1.0 - localV);
+            const wSe = localU * (1.0 - localV);
+            const wNe = localU * localV;
+            const wNw = (1.0 - localU) * localV;
+
+            let corner = 0;
+            let best = wSw;
+            if (wSe > best) {
+                best = wSe;
+                corner = 1;
+            }
+            if (wNe > best) {
+                best = wNe;
+                corner = 2;
+            }
+            if (wNw > best) {
+                best = wNw;
+                corner = 3;
+            }
+
+            chosenCornerIndex[i] = corner;
+            chosenCornerWeight[i] = best;
+        }
+
         const tileFaces = tileShapeFaces[shape];
         const faceCount = tileFaces.length / 4;
         this.normalFaceCount = faceCount;
@@ -355,7 +450,13 @@ export class SceneTileModel {
         this.minimapFaceColorsB = new Int32Array(faceCount);
         this.minimapFaceColorsC = new Int32Array(faceCount);
 
-        if (textureId !== -1) {
+        const hasPrimaryTexture =
+            primaryCorners.textureId[0] !== -1 ||
+            primaryCorners.textureId[1] !== -1 ||
+            primaryCorners.textureId[2] !== -1 ||
+            primaryCorners.textureId[3] !== -1;
+
+        if (underlayTextureId !== -1 || hasPrimaryTexture) {
             this.faceTextures = new Int32Array(faceCount);
         }
 
@@ -382,13 +483,13 @@ export class SceneTileModel {
             this.facesA[i] = a;
             this.facesB[i] = b;
             this.facesC[i] = c;
-            let faceTextureId = -1;
             let hslA = 0;
             let hslB = 0;
             let hslC = 0;
             let minimapHslA = 0;
             let minimapHslB = 0;
             let minimapHslC = 0;
+
             if (isOverlay) {
                 hslA = overlayHsls[a];
                 hslB = overlayHsls[b];
@@ -396,10 +497,6 @@ export class SceneTileModel {
                 minimapHslA = overlayMinimapHsls[a];
                 minimapHslB = overlayMinimapHsls[b];
                 minimapHslC = overlayMinimapHsls[c];
-                faceTextureId = textureId;
-                if (this.faceTextures) {
-                    this.faceTextures[i] = textureId;
-                }
             } else {
                 hslA = underlayHsls[a];
                 hslB = underlayHsls[b];
@@ -407,9 +504,42 @@ export class SceneTileModel {
                 minimapHslA = underlayMinimapHsls[a];
                 minimapHslB = underlayMinimapHsls[b];
                 minimapHslC = underlayMinimapHsls[c];
-                if (this.faceTextures) {
-                    this.faceTextures[i] = -1;
+            }
+
+            let faceTextureId = -1;
+            let faceTextureSize = TILE_SIZE;
+            if (isOverlay) {
+                const cornerSet = primaryCorners;
+                const cornerWeights = [0.0, 0.0, 0.0, 0.0];
+
+                const corners = [a, b, c];
+                for (const vert of corners) {
+                    const corner = chosenCornerIndex[vert];
+                    cornerWeights[corner] += chosenCornerWeight[vert];
                 }
+
+                let bestCorner = 0;
+                let bestWeight = cornerWeights[0];
+                for (let ci = 1; ci < 4; ci++) {
+                    if (cornerWeights[ci] > bestWeight) {
+                        bestWeight = cornerWeights[ci];
+                        bestCorner = ci;
+                    }
+                }
+
+                faceTextureId = cornerSet.textureId[bestCorner];
+                if (faceTextureId !== -1) {
+                    faceTextureSize = Math.max(1, cornerSet.textureSize[bestCorner] | 0);
+                }
+            } else {
+                faceTextureId = underlayTextureId;
+                if (faceTextureId !== -1) {
+                    faceTextureSize = Math.max(1, underlayTextureSize | 0);
+                }
+            }
+
+            if (this.faceTextures) {
+                this.faceTextures[i] = faceTextureId;
             }
 
             this.faceColorsA[i] = hslA;
@@ -424,14 +554,14 @@ export class SceneTileModel {
                 continue;
             }
 
-            const u0 = (this.vertexX[a] - tileX) / TILE_SIZE;
-            const v0 = (this.vertexZ[a] - tileY) / TILE_SIZE;
+            const u0 = (this.vertexX[a] - tileX) / faceTextureSize;
+            const v0 = (this.vertexZ[a] - tileY) / faceTextureSize;
 
-            const u1 = (this.vertexX[b] - tileX) / TILE_SIZE;
-            const v1 = (this.vertexZ[b] - tileY) / TILE_SIZE;
+            const u1 = (this.vertexX[b] - tileX) / faceTextureSize;
+            const v1 = (this.vertexZ[b] - tileY) / faceTextureSize;
 
-            const u2 = (this.vertexX[c] - tileX) / TILE_SIZE;
-            const v2 = (this.vertexZ[c] - tileY) / TILE_SIZE;
+            const u2 = (this.vertexX[c] - tileX) / faceTextureSize;
+            const v2 = (this.vertexZ[c] - tileY) / faceTextureSize;
 
             this.faces.push({
                 vertices: [

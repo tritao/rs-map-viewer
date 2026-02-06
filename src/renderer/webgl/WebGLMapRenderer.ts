@@ -325,7 +325,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             TEXTURE_SIZE,
             TEXTURE_SIZE,
             textureCount + 1,
-            {},
+            {
+                wrapS: PicoGL.REPEAT,
+                wrapT: PicoGL.REPEAT,
+            },
         );
 
         this.updateTextureFiltering();
