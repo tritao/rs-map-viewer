@@ -17,7 +17,6 @@ export type CacheSession = {
     varManager: VarManager;
     mapFileIndex: MapFileIndex;
     tryGetIndex(indexId: number): CacheIndex | undefined;
-    getIndex(indexId: number): CacheIndex;
     /**
      * Creates a new session that shares the same cache store/index tables, but has
      * fresh loader caches. This mirrors a "thread-local context" in a future C++ port.
@@ -68,7 +67,6 @@ export function tryCreateCacheSessionFromSystem(
         varManager,
         mapFileIndex: loaders.mapFileLoader.mapFileIndex,
         tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
-        getIndex: (indexId: number) => cacheSystem.getIndex(indexId),
         tryFork: () => tryCreateCacheSessionFromSystem(cache, cacheSystem),
     };
 
