@@ -1,4 +1,3 @@
-import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
@@ -21,15 +20,27 @@ export class ProceduralTextureLoader implements TextureLoader {
     static create(
         hasAlphaMaterialField: boolean,
         hasAlphaOperation: boolean,
-        materialsIndex: CacheIndex,
+        materialsBytes: Uint8Array,
         textureSource: EnumeratingBytesProvider,
         spriteSource: BytesProvider,
     ): ProceduralTextureLoader {
-        const materialsFile = materialsIndex.tryGetFile(0, 0);
-        if (!materialsFile) {
-            throw new Error("ProceduralTextureLoader: materials file not found (archive=0 file=0)");
-        }
-        const buffer = new ByteBuffer(materialsFile.data);
+        return ProceduralTextureLoader.createFromMaterialsBytes(
+            hasAlphaMaterialField,
+            hasAlphaOperation,
+            materialsBytes,
+            textureSource,
+            spriteSource,
+        );
+    }
+
+    static createFromMaterialsBytes(
+        hasAlphaMaterialField: boolean,
+        hasAlphaOperation: boolean,
+        materialsBytes: Uint8Array,
+        textureSource: EnumeratingBytesProvider,
+        spriteSource: BytesProvider,
+    ): ProceduralTextureLoader {
+        const buffer = new ByteBuffer(materialsBytes);
         const count = buffer.readUnsignedShort();
         const materials: (ProcTextureMaterial | undefined)[] = new Array(count);
         for (let i = 0; i < count; i++) {

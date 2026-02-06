@@ -65,7 +65,7 @@ import { CacheRules, computeCacheRules } from "./CacheRules";
 import { Loaders } from "./Loaders";
 import { IndexArchiveProvider } from "../io/ArchiveProvider";
 import { err, ok, Result } from "../../util/Result";
-import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
+import { createFailed, InitError, initErrorToString, missingArchive, missingFile, missingIndex } from "./InitError";
 import { ArchiveProviderGroupBytesProviderFactory } from "../io/GroupBytesProviderFactory";
 
 function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
@@ -276,11 +276,16 @@ export function tryCreateDat2Loaders(
             if (!materialsIndexResult.ok) {
                 return materialsIndexResult;
             }
+            const materialsIndex = materialsIndexResult.value;
+            const materialsFile = materialsIndex.tryGetFile(0, 0);
+            if (!materialsFile) {
+                return err(missingFile(materialsIndex.id, 0, 0, "rs2 materials"));
+            }
             try {
                 textureLoader = ProceduralTextureLoader.create(
                     rules.texture.hasAlphaMaterialField,
                     rules.texture.hasAlphaOperation,
-                    materialsIndexResult.value,
+                    materialsFile.data,
                     new IndexSmartFileBytesProvider(textureIndex, null),
                     new IndexFileBytesProvider(spriteIndex, 0),
                 );
