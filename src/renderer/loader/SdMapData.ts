@@ -40,6 +40,7 @@ export class SdMapData extends SdRenderableData implements MapData {
         readonly locsAnimated: LocAnimatedData[],
         readonly npcs: NpcData[],
 
+        readonly usedTextureIds: Int32Array,
         readonly loadedTextures: Map<number, Int32Array>,
     ) {
         super(RenderableType.Map, getMapSquareId(mapX, mapY), cacheName,

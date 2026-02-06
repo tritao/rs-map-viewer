@@ -687,6 +687,8 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             false,
         );
 
+        const usedTextureIds = Int32Array.from(sceneBuf.usedTextureIds);
+
         const loadedTextures = new Map<number, Int32Array>();
         for (const textureId of sceneBuf.usedTextureIds) {
             if (!loadedTextureIds.has(textureId)) {
@@ -707,6 +709,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             vertices.buffer,
             indices.buffer,
             heightMapTextureData.buffer,
+            usedTextureIds.buffer,
 
             modelInfoTextures.base.buffer,
             modelInfoTextures.alpha.buffer,
@@ -760,6 +763,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
             locsAnimated,
             npcs,
 
+            usedTextureIds,
             loadedTextures,
         );
 

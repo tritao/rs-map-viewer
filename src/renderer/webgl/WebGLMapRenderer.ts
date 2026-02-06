@@ -40,6 +40,8 @@ import { CacheSession } from "../../rs/runtime/createCacheSession";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
+const MAX_TEXTURE_SLOTS = 256;
+const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
 
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     dataLoader: SdMapDataLoader;
@@ -78,8 +80,18 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     // Textures
     textureArray?: Texture;
     textureMaterials?: Texture;
+    textureSlotLut?: Texture;
 
     textureIds: number[] = [];
+    textureIdToIndex: Map<number, number> = new Map();
+
+    private textureIdToSlot: Map<number, number> = new Map();
+    private freeTextureSlots: number[] = [];
+    private textureLastUsedFrame: Map<number, number> = new Map();
+    private textureSlotLutData?: Uint16Array;
+    private textureSlotCount: number = 0;
+
+    private visibleTextureIds: Set<number> = new Set();
 
     frameDrawCall?: DrawCall;
     frameFxaaDrawCall?: DrawCall;
@@ -263,7 +275,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         if (this.app) {
             this.initTextures();
         }
-        console.log("Renderer initCache", this.app);
+        console.log(
+            "Renderer initCache",
+            this.app ? { width: this.app.width, height: this.app.height } : { app: null },
+        );
     }
 
     initTextures(): void {
@@ -275,10 +290,32 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             .filter((id) => textureLoader.isSd(id))
             .slice(0, MAX_TEXTURES - 1);
 
+        this.textureIdToIndex.clear();
+        for (let i = 0; i < this.textureIds.length; i++) {
+            this.textureIdToIndex.set(this.textureIds[i], i + 1);
+        }
+
+        this.initTextureSlotLut();
         this.initTextureArray();
         this.initMaterialsTexture();
 
         console.log("init textures", this.textureIds, allTextureIds.length);
+    }
+
+    initTextureSlotLut(): void {
+        if (this.textureSlotLut) {
+            this.textureSlotLut.delete();
+            this.textureSlotLut = undefined;
+        }
+
+        const textureCount = this.textureIds.length + 1;
+        this.textureSlotLutData = new Uint16Array(textureCount);
+
+        this.textureSlotLut = this.app.createTexture2D(this.textureSlotLutData, textureCount, 1, {
+            internalFormat: PicoGL.R16UI,
+            minFilter: PicoGL.NEAREST,
+            magFilter: PicoGL.NEAREST,
+        });
     }
 
     initTextureArray() {
@@ -289,34 +326,55 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.textureArray = undefined;
         }
         this.loadedTextureIds.clear();
+        this.textureIdToSlot.clear();
+        this.freeTextureSlots.length = 0;
+        this.textureLastUsedFrame.clear();
 
         console.time("load textures");
 
         const pixelCount = TEXTURE_SIZE * TEXTURE_SIZE;
 
-        const textureCount = this.textureIds.length;
-        const pixels = new Int32Array((textureCount + 1) * pixelCount);
+        const maxArrayLayers = this.gl.getParameter(this.gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
+        this.textureSlotCount = Math.max(2, Math.min(maxArrayLayers, MAX_TEXTURE_SLOTS));
+        const pixels = new Int32Array(this.textureSlotCount * pixelCount);
 
         // White texture
         pixels.fill(0xffffffff, 0, pixelCount);
 
         const cacheInfo = this.session.cache.info;
+        console.log(
+            `init texture slots: slots=${this.textureSlotCount} maxLayers=${maxArrayLayers} textureIds=${this.textureIds.length}`,
+        );
 
-        let maxPreloadTextures = textureCount;
+        let maxPreloadTextures = Math.min(this.textureIds.length, this.textureSlotCount - 1);
         // we should check if the texture loader is procedural instead
         if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 508) {
             maxPreloadTextures = 64;
         }
 
-        for (let i = 0; i < Math.min(textureCount, maxPreloadTextures); i++) {
+        maxPreloadTextures = Math.min(maxPreloadTextures, this.textureSlotCount - 1);
+
+        for (let i = 0; i < maxPreloadTextures; i++) {
+            const slot = i + 1;
             const textureId = this.textureIds[i];
             const texturePixels = textureLoader.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0);
             if (texturePixels) {
-                pixels.set(texturePixels, (i + 1) * pixelCount);
+                pixels.set(texturePixels, slot * pixelCount);
             } else {
                 console.error("Failed loading texture", textureId);
             }
+            this.textureIdToSlot.set(textureId, slot);
             this.loadedTextureIds.add(textureId);
+            this.touchTexture(textureId);
+
+            const textureIndex = this.textureIdToIndex.get(textureId);
+            if (textureIndex !== undefined && this.textureSlotLutData) {
+                this.textureSlotLutData[textureIndex] = slot;
+            }
+        }
+
+        for (let slot = maxPreloadTextures + 1; slot < this.textureSlotCount; slot++) {
+            this.freeTextureSlots.push(slot);
         }
 
         this.textureArray = createTextureArray(
@@ -324,7 +382,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             new Uint8Array(pixels.buffer),
             TEXTURE_SIZE,
             TEXTURE_SIZE,
-            textureCount + 1,
+            this.textureSlotCount,
             {
                 wrapS: PicoGL.REPEAT,
                 wrapT: PicoGL.REPEAT,
@@ -333,7 +391,187 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         this.updateTextureFiltering();
 
+        if (this.textureSlotLut && this.textureSlotLutData) {
+            this.textureSlotLut.data(this.textureSlotLutData);
+        }
+
+        const texErr = this.gl.getError();
+        if (texErr !== this.gl.NO_ERROR) {
+            console.error("Texture array init GL error", texErr);
+        }
         console.timeEnd("load textures");
+    }
+
+    private touchTexture(textureId: number): void {
+        if (textureId === -1) {
+            return;
+        }
+        this.textureLastUsedFrame.set(textureId, this.stats.frameCount);
+    }
+
+    private evictTextureSlot(protectedTextureIds?: Set<number>): number | undefined {
+        let candidateTextureId: number | undefined;
+        let candidateLastUsed = Number.POSITIVE_INFINITY;
+
+        for (const [textureId, slot] of this.textureIdToSlot) {
+            if (slot === 0) {
+                continue;
+            }
+            if (protectedTextureIds?.has(textureId)) {
+                continue;
+            }
+            const lastUsed = this.textureLastUsedFrame.get(textureId) ?? -1;
+            if (lastUsed < candidateLastUsed) {
+                candidateLastUsed = lastUsed;
+                candidateTextureId = textureId;
+            }
+        }
+
+        if (candidateTextureId === undefined) {
+            // All resident textures are protected (e.g. everything visible). Do not evict, otherwise we'd
+            // thrash textures even with a static camera due to oversubscription.
+            return undefined;
+        }
+
+        const slot = this.textureIdToSlot.get(candidateTextureId);
+        if (slot === undefined) {
+            throw new Error("Texture slot bookkeeping corrupted");
+        }
+
+        this.textureIdToSlot.delete(candidateTextureId);
+        this.loadedTextureIds.delete(candidateTextureId);
+        this.textureLastUsedFrame.delete(candidateTextureId);
+
+        const textureIndex = this.textureIdToIndex.get(candidateTextureId);
+        if (textureIndex !== undefined && this.textureSlotLutData) {
+            this.textureSlotLutData[textureIndex] = 0;
+        }
+
+        return slot;
+    }
+
+    private ensureTextureInSlot(
+        textureId: number,
+        pixels: Int32Array | undefined,
+        protectedTextureIds?: Set<number>,
+    ): { slot: number; lutDirty: boolean; updated: boolean } {
+        const existingSlot = this.textureIdToSlot.get(textureId);
+        if (existingSlot !== undefined) {
+            this.touchTexture(textureId);
+            return { slot: existingSlot, lutDirty: false, updated: false };
+        }
+
+        if (!this.textureArray) {
+            throw new Error("Texture array is not initialized");
+        }
+
+        const textureIndex = this.textureIdToIndex.get(textureId);
+        if (textureIndex === undefined) {
+            return { slot: 0, lutDirty: false, updated: false };
+        }
+
+        let slot = this.freeTextureSlots.pop();
+        if (slot === undefined) {
+            slot = this.evictTextureSlot(protectedTextureIds);
+            if (slot === undefined) {
+                // Oversubscribed: keep output stable (missing texture) instead of cycling.
+                return { slot: 0, lutDirty: false, updated: false };
+            }
+        }
+
+        if (!pixels) {
+            const texturePixels = this.session.loaders.textureLoader.tryGetPixelsArgb(
+                textureId,
+                TEXTURE_SIZE,
+                true,
+                1.0,
+            );
+            if (!texturePixels) {
+                console.error("Failed loading texture", textureId);
+                this.freeTextureSlots.push(slot);
+                return { slot: 0, lutDirty: false, updated: false };
+            }
+            pixels = texturePixels;
+        }
+
+        this.textureArray.bind(0);
+        this.gl.texSubImage3D(
+            PicoGL.TEXTURE_2D_ARRAY,
+            0,
+            0,
+            0,
+            slot,
+            TEXTURE_SIZE,
+            TEXTURE_SIZE,
+            1,
+            PicoGL.RGBA,
+            PicoGL.UNSIGNED_BYTE,
+            new Uint8Array(pixels.buffer),
+        );
+
+        this.textureIdToSlot.set(textureId, slot);
+        this.loadedTextureIds.add(textureId);
+        this.touchTexture(textureId);
+
+        let lutDirty = false;
+        if (this.textureSlotLutData) {
+            this.textureSlotLutData[textureIndex] = slot;
+            lutDirty = true;
+        }
+
+        return { slot, lutDirty, updated: true };
+    }
+
+    private updateVisibleTextureResidency(): void {
+        this.visibleTextureIds.clear();
+
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId);
+            if (!map || !map.canRender(this.stats.frameCount)) {
+                continue;
+            }
+
+            const used = map.usedTextureIds;
+            if (!used) {
+                continue;
+            }
+
+            for (let j = 0; j < used.length; j++) {
+                const textureId = used[j];
+                this.visibleTextureIds.add(textureId);
+                this.touchTexture(textureId);
+            }
+        }
+
+        if (!this.textureArray || !this.textureSlotLut || !this.textureSlotLutData) {
+            return;
+        }
+
+        let updatedCount = 0;
+        let lutDirty = false;
+
+        for (const textureId of this.visibleTextureIds) {
+            if (updatedCount >= MAX_TEXTURE_UPLOADS_PER_FRAME) {
+                break;
+            }
+            if (this.textureIdToSlot.has(textureId)) {
+                continue;
+            }
+            const result = this.ensureTextureInSlot(textureId, undefined, this.visibleTextureIds);
+            lutDirty ||= result.lutDirty;
+            updatedCount += result.updated ? 1 : 0;
+        }
+
+        if (lutDirty) {
+            this.textureSlotLut.data(this.textureSlotLutData);
+        }
+        if (updatedCount > 0) {
+            // `generateMipmap` operates on the texture bound to the currently active texture unit.
+            // Ensure our texture array is bound before generating mipmaps.
+            this.textureArray.bind(0);
+            this.gl.generateMipmap(PicoGL.TEXTURE_2D_ARRAY);
+        }
     }
 
     updateTextureFiltering(): void {
@@ -394,31 +632,27 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         if (!this.textureArray) {
             throw new Error("Texture array is not initialized");
         }
+        if (!this.textureSlotLut || !this.textureSlotLutData) {
+            throw new Error("Texture slot LUT is not initialized");
+        }
+
         let updatedCount = 0;
+        let lutDirty = false;
         for (const [id, pixels] of textures) {
             if (this.loadedTextureIds.has(id)) {
                 continue;
             }
-            const index = this.textureIds.indexOf(id) + 1;
-
-            this.textureArray.bind(0);
-            this.gl.texSubImage3D(
-                PicoGL.TEXTURE_2D_ARRAY,
-                0,
-                0,
-                0,
-                index,
-                TEXTURE_SIZE,
-                TEXTURE_SIZE,
-                1,
-                PicoGL.RGBA,
-                PicoGL.UNSIGNED_BYTE,
-                new Uint8Array(pixels.buffer),
-            );
-            this.loadedTextureIds.add(id);
-            updatedCount++;
+            const result = this.ensureTextureInSlot(id, pixels, this.visibleTextureIds);
+            lutDirty ||= result.lutDirty;
+            updatedCount += result.updated ? 1 : 0;
+        }
+        if (lutDirty) {
+            this.textureSlotLut.data(this.textureSlotLutData);
         }
         if (updatedCount > 0) {
+            // `generateMipmap` operates on the texture bound to the currently active texture unit.
+            // Ensure our texture array is bound before generating mipmaps.
+            this.textureArray.bind(0);
             this.gl.generateMipmap(PicoGL.TEXTURE_2D_ARRAY);
         }
     }
@@ -492,6 +726,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 this.npcProgram!,
                 this.textureArray!,
                 this.textureMaterials!,
+                this.textureSlotLut!,
                 this.sceneUniformBuffer!,
                 mapData,
                 time,
@@ -567,6 +802,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.hoveredMapIds.clear();
         }
         this.rendererStats.interactionsTime = performance.now() - interactionsStart;
+
+        this.updateVisibleTextureResidency();
 
         if (this.cullBackFace) {
             this.app.enable(PicoGL.CULL_FACE);
@@ -984,6 +1221,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         this.textureMaterials?.delete();
         this.textureMaterials = undefined;
+
+        this.textureSlotLut?.delete();
+        this.textureSlotLut = undefined;
 
         for (const texture of this.npcDataTextureBuffer) {
             texture?.delete();

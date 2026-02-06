@@ -30,6 +30,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         npcProgram: Program,
         textureArray: Texture,
         textureMaterials: Texture,
+        textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         data: SdMapData,
         time: number,
@@ -53,6 +54,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
                 // .uniform("u_drawIdOffset", drawIdOffset)
                 .texture("u_textures", textureArray)
                 .texture("u_textureMaterials", textureMaterials)
+                .texture("u_textureSlotLut", textureSlotLut)
                 .texture("u_heightMap", renderable.heightMapTexture)
                 .drawRanges(...drawRanges);
 
@@ -77,6 +79,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         renderable.createAnimatedLocs(time, data, seqTypeLoader);
         renderable.createNpcs(data, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
         renderable.processNpcsCollisions();
+        renderable.usedTextureIds = data.usedTextureIds;
 
         return renderable;
     }

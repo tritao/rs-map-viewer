@@ -80,6 +80,9 @@ export class WebGLRenderable {
     npcs!: Npc[];
     npcDataTextureOffsets!: number[];
 
+    // Actual cache texture IDs used by this renderable (optional; used for texture residency).
+    usedTextureIds?: Int32Array;
+
     static load(
         seqTypeLoader: SeqTypeLoader,
         npcTypeLoader: NpcTypeLoader,
@@ -90,6 +93,7 @@ export class WebGLRenderable {
         npcProgram: Program,
         textureArray: Texture,
         textureMaterials: Texture,
+        textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         data: SdRenderableData,
         time: number,
@@ -115,6 +119,7 @@ export class WebGLRenderable {
                 // .uniform("u_drawIdOffset", drawIdOffset)
                 .texture("u_textures", textureArray)
                 .texture("u_textureMaterials", textureMaterials)
+                .texture("u_textureSlotLut", textureSlotLut)
                 .texture("u_heightMap", renderable.heightMapTexture)
                 .drawRanges(...drawRanges);
 

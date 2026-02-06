@@ -80,6 +80,7 @@ export class WebGLRenderer extends WebGLMapRenderer {
                 this.npcProgram!,
                 this.textureArray!,
                 this.textureMaterials!,
+                this.textureSlotLut!,
                 this.sceneUniformBuffer!,
                 data,
                 time,
