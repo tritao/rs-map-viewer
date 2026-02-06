@@ -3,10 +3,13 @@ import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { CountedBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { err, ok, Result } from "../../util/Result";
 import { ModelData } from "./ModelData";
 
 export interface ModelLoader {
-    getModel(id: number): ModelData | undefined;
+    tryLoadModel(id: number): Result<ModelData, DecodeError>;
+    tryGetModel(id: number): ModelData | undefined;
     getCount(): number;
     clearCache(): void;
 }
@@ -18,29 +21,41 @@ export class IndexModelLoader implements ModelLoader {
 
     constructor(readonly modelSource: CountedBytesProvider) {}
 
-    private readonly errors: Set<number> = new Set();
+    private readonly errors: Map<number, DecodeError> = new Map();
 
     getCount(): number {
         return this.modelSource.getCount();
     }
 
-    getModel(id: number): ModelData | undefined {
-        if (this.errors.has(id)) {
-            return undefined;
+    tryLoadModel(id: number): Result<ModelData, DecodeError> {
+        const cachedError = this.errors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
+
         const bytes = this.modelSource.getBytes(id);
         if (!bytes) {
-            return undefined;
+            return err(notFoundError("ModelData", id));
         }
+
         try {
-            return ModelData.decode(bytes);
-        } catch (e) {
-            if (!this.errors.has(id)) {
-                console.error("Failed decoding model file", id, e);
-                this.errors.add(id);
-            }
-            return undefined;
+            return ok(ModelData.decode(bytes));
+        } catch (cause) {
+            const e = decodeFailedError({
+                typeName: "ModelData",
+                id,
+                message: `ModelData: failed decoding id=${id}`,
+                cause,
+            });
+            this.errors.set(id, e);
+            console.error(e.message, cause);
+            return err(e);
         }
+    }
+
+    tryGetModel(id: number): ModelData | undefined {
+        const result = this.tryLoadModel(id);
+        return result.ok ? result.value : undefined;
     }
 
     clearCache(): void {
@@ -211,12 +226,28 @@ export class LegacyModelLoader implements ModelLoader {
         return this.count;
     }
 
-    getModel(id: number): ModelData | undefined {
+    tryLoadModel(id: number): Result<ModelData, DecodeError> {
         const meta = this.metadatas[id];
         if (!meta) {
-            return undefined;
+            return err(notFoundError("LegacyModelData", id));
         }
-        return ModelData.decodeLegacy(this, meta);
+        try {
+            return ok(ModelData.decodeLegacy(this, meta));
+        } catch (cause) {
+            return err(
+                decodeFailedError({
+                    typeName: "LegacyModelData",
+                    id,
+                    message: `LegacyModelData: failed decoding id=${id}`,
+                    cause,
+                }),
+            );
+        }
+    }
+
+    tryGetModel(id: number): ModelData | undefined {
+        const result = this.tryLoadModel(id);
+        return result.ok ? result.value : undefined;
     }
 
     clearCache(): void {}

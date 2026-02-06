@@ -39,7 +39,7 @@ export class NpcModelLoader {
         if (!model) {
             const models = new Array<ModelData>(npcType.modelIds.length);
             for (let i = 0; i < models.length; i++) {
-                const modelData = this.modelLoader.getModel(npcType.modelIds[i]);
+                const modelData = this.modelLoader.tryGetModel(npcType.modelIds[i]);
                 if (modelData) {
                     models[i] = modelData;
                 }
@@ -99,7 +99,7 @@ export class NpcModelLoader {
 
     transformNpcModel(model: Model, seqType: SeqType, frame: number): Model {
         if (seqType.hasAnimMayaSeq()) {
-            const skeletalSeq = this.skeletalSeqLoader?.tryLoad(seqType.animMayaId);
+            const skeletalSeq = this.skeletalSeqLoader?.tryGet(seqType.animMayaId);
             if (!skeletalSeq) {
                 return Model.copyAnimated(model, true, true);
             }
@@ -111,7 +111,7 @@ export class NpcModelLoader {
                 return Model.copyAnimated(model, true, true);
             }
 
-            const seqFrame = this.seqFrameLoader.tryLoad(seqType.frameIds[frame]);
+            const seqFrame = this.seqFrameLoader.tryGet(seqType.frameIds[frame]);
 
             if (seqFrame) {
                 model = Model.copyAnimated(

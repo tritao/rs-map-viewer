@@ -3,13 +3,16 @@ import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { EnumeratingGroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
+import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
 import { decodeDat2SeqFrameMapFromSource } from "./decodeDat2SeqFrameMap";
+import { err, ok, Result } from "../../../util/Result";
 
 export interface SeqFrameLoader {
-    tryLoad(id: number): SeqFrame | undefined;
+    tryLoad(id: number): Result<SeqFrame, DecodeError>;
+    tryGet(id: number): SeqFrame | undefined;
 
     clearCache(): void;
 }
@@ -21,8 +24,17 @@ export class LegacySeqFrameLoader implements SeqFrameLoader {
 
     constructor(readonly frames: SeqFrame[]) {}
 
-    tryLoad(id: number): SeqFrame | undefined {
-        return this.frames[id];
+    tryLoad(id: number): Result<SeqFrame, DecodeError> {
+        const frame = this.frames[id];
+        if (!frame) {
+            return err(notFoundError("LegacySeqFrame", id));
+        }
+        return ok(frame);
+    }
+
+    tryGet(id: number): SeqFrame | undefined {
+        const result = this.tryLoad(id);
+        return result.ok ? result.value : undefined;
     }
 
     clearCache(): void {}
@@ -61,8 +73,17 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
 
     constructor(readonly frames: Map<number, SeqFrame>) {}
 
-    tryLoad(id: number): SeqFrame | undefined {
-        return this.frames.get(id);
+    tryLoad(id: number): Result<SeqFrame, DecodeError> {
+        const frame = this.frames.get(id);
+        if (!frame) {
+            return err(notFoundError("DatSeqFrame", id));
+        }
+        return ok(frame);
+    }
+
+    tryGet(id: number): SeqFrame | undefined {
+        const result = this.tryLoad(id);
+        return result.ok ? result.value : undefined;
     }
 
     clearCache(): void {}
@@ -70,7 +91,7 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
 
 export class Dat2SeqFrameLoader implements SeqFrameLoader {
     frameMaps: Map<number, SeqFrameMap> = new Map();
-    private readonly errors: Set<number> = new Set();
+    private readonly errors: Map<number, DecodeError> = new Map();
     private readonly scratch = new SeqFrameDecodeScratch();
 
     constructor(
@@ -80,9 +101,10 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
     ) {}
 
     // changed 610
-    tryLoad(id: number): SeqFrame | undefined {
-        if (this.errors.has(id)) {
-            return undefined;
+    tryLoad(id: number): Result<SeqFrame, DecodeError> {
+        const cachedError = this.errors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
         const frameMapId = id >> 16;
         const frameId = id & 0xffff;
@@ -91,8 +113,9 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
         if (!frameMap) {
             const source = this.animGroupSourceFactory.getEnumeratingGroup(frameMapId);
             if (!source) {
-                this.errors.add(id);
-                return undefined;
+                const e = notFoundError("Dat2SeqFrame", id);
+                this.errors.set(id, e);
+                return err(e);
             }
 
             frameMap = decodeDat2SeqFrameMapFromSource(
@@ -106,13 +129,16 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
         const frame = frameMap.frames[frameId];
         if (!frame) {
-            if (!this.errors.has(id)) {
-                console.error("Failed decoding seq frame", id);
-                this.errors.add(id);
-            }
-            return undefined;
+            const e = notFoundError("Dat2SeqFrame", id);
+            this.errors.set(id, e);
+            return err(e);
         }
-        return frame;
+        return ok(frame);
+    }
+
+    tryGet(id: number): SeqFrame | undefined {
+        const result = this.tryLoad(id);
+        return result.ok ? result.value : undefined;
     }
 
     clearCache(): void {

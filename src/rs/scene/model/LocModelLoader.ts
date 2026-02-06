@@ -49,7 +49,7 @@ export class LocModelLoader {
         }
         let model = this.modelDataCache.get(key);
         if (!model) {
-            model = this.modelLoader.getModel(id);
+            model = this.modelLoader.tryGetModel(id);
             if (model) {
                 if (mirrored) {
                     model.mirror();
@@ -321,7 +321,7 @@ export class LocModelLoader {
 
     transformModel(model: Model, seqType: SeqType, frame: number, rotation: number): Model {
         if (seqType.hasAnimMayaSeq()) {
-            const skeletalSeq = this.skeletalSeqLoader?.tryLoad(seqType.animMayaId);
+            const skeletalSeq = this.skeletalSeqLoader?.tryGet(seqType.animMayaId);
             if (!skeletalSeq) {
                 return Model.copyAnimated(model, true, true);
             }
@@ -352,7 +352,7 @@ export class LocModelLoader {
                 return model;
             }
 
-            const seqFrame = this.seqFrameLoader.tryLoad(seqType.frameIds[frame]);
+            const seqFrame = this.seqFrameLoader.tryGet(seqType.frameIds[frame]);
 
             if (seqFrame) {
                 model = Model.copyAnimated(

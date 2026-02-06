@@ -357,7 +357,7 @@ export class Dat2SeqFrame {
 
             const baseId = buf.readUnsignedShort();
 
-            const base = baseLoader.tryLoad(baseId);
+            const base = baseLoader.tryGet(baseId);
             if (!base) {
                 return undefined;
             }

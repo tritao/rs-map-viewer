@@ -367,7 +367,7 @@ export class SdRenderableDataLoader
         }
 
         if (type == RenderableType.Model) {
-            const modelData = modelLoader.getModel(id);
+            const modelData = modelLoader.tryGetModel(id);
             if (modelData == null) {
                 console.log("cannot load model data for model id", id);
             }
