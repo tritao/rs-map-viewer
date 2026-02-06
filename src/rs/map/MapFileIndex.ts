@@ -1,4 +1,3 @@
-import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { MapSquareId, asMapSquareId } from "../ids/Ids";
@@ -22,12 +21,8 @@ class MapSquare {
 }
 
 export class DatMapFileIndex implements MapFileIndex {
-    static create(versionListArchive: Archive): DatMapFileIndex {
-        const file = versionListArchive.getFileNamed("map_index");
-        if (!file) {
-            throw new Error("map_index not found");
-        }
-        const buffer = new ByteBuffer(file.data);
+    static decodeMapIndex(bytes: Uint8Array): DatMapFileIndex {
+        const buffer = new ByteBuffer(bytes);
 
         const mapSquares = new Map<number, MapSquare>();
 

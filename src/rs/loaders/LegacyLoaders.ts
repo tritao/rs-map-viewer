@@ -23,6 +23,7 @@ import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
 import { LegacyIndexId } from "../cache/IndexId";
+import { ArchiveNamedBytesProvider } from "../io/NamedBytesProvider";
 import { loadMapFunctions, loadMapScenes } from "./DatLoaders";
 import { Loaders } from "./Loaders";
 import { err, ok, Result } from "../../util/Result";
@@ -153,7 +154,7 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
 
         mapFileLoader: new LegacyMapFileLoader(mapIndex, new Dat2MapIndex(mapIndex)),
 
-        mapScenes: loadMapScenes(mediaArchive),
-        mapFunctions: loadMapFunctions(mediaArchive),
+        mapScenes: loadMapScenes(new ArchiveNamedBytesProvider(mediaArchive)),
+        mapFunctions: loadMapFunctions(new ArchiveNamedBytesProvider(mediaArchive)),
     });
 }

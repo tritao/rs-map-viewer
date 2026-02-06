@@ -1,5 +1,6 @@
 import { Archive } from "../cache/format/Archive";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { brightenRgb, rgbToHsl } from "../util/ColorUtil";
@@ -21,11 +22,13 @@ export class DatTextureLoader implements TextureLoader {
     idAverageHslMap: Map<number, number>;
     transparentTextureMap: Map<number, boolean> = new Map();
     private readonly pixelErrors: Map<number, DecodeError> = new Map();
+    private readonly spriteSource: NamedBytesProvider;
 
     constructor(
         readonly textureArchive: Archive,
         animatedTextureIds: number[],
     ) {
+        this.spriteSource = new ArchiveNamedBytesProvider(textureArchive);
         this.animatedTextureIds = new Set(animatedTextureIds);
         this.textureIds = new Array(this.getTextureCount());
         for (let i = 0; i < this.textureIds.length; i++) {
@@ -239,11 +242,7 @@ export class DatTextureLoader implements TextureLoader {
 
         let sprite = this.textureSprites[id];
         if (!sprite) {
-            sprite = SpriteLoader.tryLoadIndexedSpriteDat(
-                this.textureArchive,
-                id.toString(),
-                0,
-            );
+            sprite = SpriteLoader.tryLoadIndexedSpriteDatFromNamedBytes(this.spriteSource, id.toString(), 0);
             if (!sprite) {
                 this.transparentTextureMap.set(id, false);
                 const e = notFoundError("DatTextureSprite", id);

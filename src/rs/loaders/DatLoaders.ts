@@ -30,9 +30,10 @@ import { CacheSystem } from "../cache/CacheSystem";
 import { CacheType } from "../cache/CacheType";
 import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { DatIndexId } from "../cache/IndexId";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { Loaders } from "./Loaders";
 import { err, ok, Result } from "../../util/Result";
-import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
+import { createFailed, InitError, initErrorToString, missingArchive, missingIndex, missingNamedFile } from "./InitError";
 
 function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
@@ -50,16 +51,16 @@ function requireArchive(index: CacheIndex, archiveId: number, description: strin
     return ok(archive);
 }
 
-export function loadMapSprites(mediaArchive: Archive, name: string): IndexedSprite[] {
-    return SpriteLoader.loadIndexedSpritesDat(mediaArchive, name);
+export function loadMapSprites(mediaSource: NamedBytesProvider, name: string): IndexedSprite[] {
+    return SpriteLoader.loadIndexedSpritesDatFromNamedBytes(mediaSource, name);
 }
 
-export function loadMapScenes(mediaArchive: Archive): IndexedSprite[] {
-    return loadMapSprites(mediaArchive, "mapscene");
+export function loadMapScenes(mediaSource: NamedBytesProvider): IndexedSprite[] {
+    return loadMapSprites(mediaSource, "mapscene");
 }
 
-export function loadMapFunctions(mediaArchive: Archive): IndexedSprite[] {
-    return loadMapSprites(mediaArchive, "mapfunction");
+export function loadMapFunctions(mediaSource: NamedBytesProvider): IndexedSprite[] {
+    return loadMapSprites(mediaSource, "mapfunction");
 }
 
 export function createDatLoaders(
@@ -143,10 +144,17 @@ export function tryCreateDatLoaders(
     }
 
     let mapFileIndex: DatMapFileIndex;
-    try {
-        mapFileIndex = DatMapFileIndex.create(versionListArchiveResult.value);
-    } catch (e) {
-        return err(createFailed("map file index", e));
+    {
+        const versionListSource = new ArchiveNamedBytesProvider(versionListArchiveResult.value);
+        const mapIndexBytes = versionListSource.getBytes("map_index");
+        if (!mapIndexBytes) {
+            return err(missingNamedFile(configIndex.id, DatConfigArchiveId.versionList, "map_index", "map index"));
+        }
+        try {
+            mapFileIndex = DatMapFileIndex.decodeMapIndex(mapIndexBytes);
+        } catch (e) {
+            return err(createFailed("map file index", e));
+        }
     }
 
     let locTypeLoader: LocTypeLoader;
@@ -170,6 +178,8 @@ export function tryCreateDatLoaders(
     if (!animationsIndexResult.ok) {
         return animationsIndexResult;
     }
+
+    const mediaSource = new ArchiveNamedBytesProvider(mediaArchive);
 
     return ok({
         underlayTypeLoader: floTypeLoader,
@@ -195,7 +205,7 @@ export function tryCreateDatLoaders(
 
         mapFileLoader: new MapFileLoader(mapIndex, mapFileIndex),
 
-        mapScenes: loadMapScenes(mediaArchive),
-        mapFunctions: loadMapFunctions(mediaArchive),
+        mapScenes: loadMapScenes(mediaSource),
+        mapFunctions: loadMapFunctions(mediaSource),
     });
 }
