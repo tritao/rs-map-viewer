@@ -3,6 +3,8 @@ import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
+import { DecodeError, decodeFailedError } from "../errors/DecodeError";
+import { err, ok, Result } from "../../util/Result";
 import { IndexedSprite } from "./IndexedSprite";
 
 export class SpriteLoader {
@@ -106,17 +108,42 @@ export class SpriteLoader {
         );
     }
 
+    static tryLoadIndexedSpriteDatResultFromNamedBytes(
+        source: NamedBytesProvider,
+        name: string,
+        offset: number,
+    ): Result<IndexedSprite, DecodeError> {
+        const dataBytes = source.getBytes(name + ".dat");
+        const indexBytes = source.getBytes("index.dat");
+        if (!dataBytes || !indexBytes) {
+            return err(
+                decodeFailedError({
+                    typeName: "IndexedSpriteDat",
+                    id: -1,
+                    message: `SpriteLoader: missing sprite DAT files (name=${name})`,
+                }),
+            );
+        }
+        const sprite = this.tryDecodeIndexedSpriteDat(dataBytes, indexBytes, offset);
+        if (!sprite) {
+            return err(
+                decodeFailedError({
+                    typeName: "IndexedSpriteDat",
+                    id: -1,
+                    message: `SpriteLoader: failed decoding indexed sprite (name=${name}, offset=${offset})`,
+                }),
+            );
+        }
+        return ok(sprite);
+    }
+
     static tryLoadIndexedSpriteDatFromNamedBytes(
         source: NamedBytesProvider,
         name: string,
         offset: number,
     ): IndexedSprite | undefined {
-        const dataBytes = source.getBytes(name + ".dat");
-        const indexBytes = source.getBytes("index.dat");
-        if (!dataBytes || !indexBytes) {
-            return undefined;
-        }
-        return this.tryDecodeIndexedSpriteDat(dataBytes, indexBytes, offset);
+        const result = this.tryLoadIndexedSpriteDatResultFromNamedBytes(source, name, offset);
+        return result.ok ? result.value : undefined;
     }
 
     private static tryDecodeIndexedSpriteDat(
