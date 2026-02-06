@@ -22,6 +22,7 @@ struct TypeDecodeError {
 struct TypeDecodeContext {
     const CacheInfo& cacheInfo;
     StringArena* strings = nullptr;
+    Allocator* alloc = nullptr;
 };
 
 inline u8 configStringTerminator(const CacheInfo& cacheInfo) noexcept {
@@ -96,7 +97,7 @@ Status decodeType(T& out, Uint8ArrayReader& reader, TypeDecodeError* err, const 
         } else {
             // For types that only implement the context-aware signature, provide an empty/default context.
             // This is primarily for tests or ad-hoc decode calls.
-            const TypeDecodeContext empty{out.cacheInfo, nullptr};
+            const TypeDecodeContext empty{out.cacheInfo, nullptr, nullptr};
             s = decodeOpcodeImpl(out, opcode, reader, empty, 0);
         }
         if (!ok(s)) {

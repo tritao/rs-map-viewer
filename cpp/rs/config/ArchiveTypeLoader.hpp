@@ -51,7 +51,7 @@ public:
         }
 
         StringArena strings(alloc);
-        const TypeDecodeContext ctx{cacheInfo, &strings};
+        const TypeDecodeContext ctx{cacheInfo, &strings, &alloc};
 
         Vec<Status> statusById(alloc);
         rr = statusById.resize(static_cast<std::size_t>(count));
