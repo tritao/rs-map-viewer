@@ -24,11 +24,20 @@
 #include "../rs/config/floortype/OverlayFloorType.hpp"
 #include "../rs/config/floortype/UnderlayFloorType.hpp"
 #include "../rs/config/idktype/IdkTypeLoader.hpp"
+#include "../rs/config/invtype/InvTypeLoader.hpp"
+#include "../rs/config/structtype/StructTypeLoader.hpp"
 #include "../rs/config/paramtype/ParamTypeLoader.hpp"
 #include "../rs/config/seqtype/SeqTypeLoader.hpp"
 #include "../rs/config/spotanimtype/SpotAnimTypeLoader.hpp"
 #include "../rs/config/vartype/VarBitType.hpp"
 #include "../rs/config/vartype/VarBitTypeLoader.hpp"
+#include "../rs/config/bastype/BasTypeLoader.hpp"
+#include "../rs/config/questtype/QuestTypeLoader.hpp"
+#include "../rs/config/mapscenetype/MapSceneTypeLoader.hpp"
+#include "../rs/config/meltype/MapElementTypeLoader.hpp"
+#include "../rs/config/loctype/LocTypeLoader.hpp"
+#include "../rs/config/npctype/NpcTypeLoader.hpp"
+#include "../rs/config/objtype/ObjTypeLoader.hpp"
 #include "../rs/types.hpp"
 
 namespace {
@@ -773,6 +782,482 @@ int main() {
             }
             if (t->retextureFrom[0] != 0x0033 || t->retextureTo[0] != 0x0044) {
                 return fail("SpotAnimType retexture mismatch");
+            }
+        }
+
+        {
+            // Config decode: InvType.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 2 + 1);
+            if (!rr.isOk()) {
+                return fail("InvType: OOM");
+            }
+            fileBytes[0] = 2;
+            fileBytes[1] = 0x00;
+            fileBytes[2] = 0x10;
+            fileBytes[3] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("InvType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::InvTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("InvTypeLoader::fromArchive failed");
+            }
+            rs::InvTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::InvType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->itemCount != 16) {
+                return fail("InvType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: StructType (params map).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Oldschool,
+                .environment = "test",
+                .revision = 220,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [249][count=2]
+            //   [isStr=0][key=0x010203][int=0x11223344]
+            //   [isStr=1][key=0x000001]["hi\0"]
+            // [0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 1 + (1 + 3 + 4) + (1 + 3 + 3) + 1);
+            if (!rr.isOk()) {
+                return fail("StructType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 249;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x01;
+            fileBytes[off++] = 0x02;
+            fileBytes[off++] = 0x03;
+            fileBytes[off++] = 0x11;
+            fileBytes[off++] = 0x22;
+            fileBytes[off++] = 0x33;
+            fileBytes[off++] = 0x44;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x01;
+            fileBytes[off++] = static_cast<rs::u8>('h');
+            fileBytes[off++] = static_cast<rs::u8>('i');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("StructType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::StructTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("StructTypeLoader::fromArchive failed");
+            }
+            rs::StructTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::StructType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("StructTypeLoader.get(0) expected Ok");
+            }
+            if (t->params.keys.size() != 2 || t->params.values.size() != 2) {
+                return fail("StructType params size mismatch");
+            }
+            if (t->params.keys[0] != 0x010203 || t->params.values[0].isString || t->params.values[0].intValue != 0x11223344) {
+                return fail("StructType param0 mismatch");
+            }
+            if (t->params.keys[1] != 1 || !t->params.values[1].isString || t->params.values[1].stringValue.len != 2) {
+                return fail("StructType param1 mismatch");
+            }
+        }
+
+        {
+            // Config decode: BasType (idle/walk + rotate/translate block).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 667,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [1][idle=0x0001][walk=0x0002][27][slot=2][6 * i16][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 2 + 2 + 1 + 1 + (6 * 2) + 1);
+            if (!rr.isOk()) {
+                return fail("BasType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 27;
+            fileBytes[off++] = 2;
+            for (int i = 0; i < 6; i++) {
+                fileBytes[off++] = 0;
+                fileBytes[off++] = static_cast<rs::u8>(i + 1);
+            }
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("BasType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::BasTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("BasTypeLoader::fromArchive failed");
+            }
+            rs::BasTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::BasType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->idleSeqId != 1 || t->walkSeqId != 2 || !t->hasModelRotateTranslate[2]) {
+                return fail("BasType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: QuestType (verstring) + post() sortName fallback.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [1][0]["Q\0"][15][pointsReq=0x000A][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 1 + 2 + 1 + 2 + 1);
+            if (!rr.isOk()) {
+                return fail("QuestType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = static_cast<rs::u8>('Q');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 15;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 10;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("QuestType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::QuestTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("QuestTypeLoader::fromArchive failed");
+            }
+            rs::QuestTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::QuestType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || !t->hasName || !t->hasSortName || t->sortName.len != 1) {
+                return fail("QuestType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: MapSceneType.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [1][sprite=0x0010][2][rgb=0x112233][3][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 2 + 1 + 3 + 1 + 1);
+            if (!rr.isOk()) {
+                return fail("MapSceneType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x10;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 0x11;
+            fileBytes[off++] = 0x22;
+            fileBytes[off++] = 0x33;
+            fileBytes[off++] = 3;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("MapSceneType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::MapSceneTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("MapSceneTypeLoader::fromArchive failed");
+            }
+            rs::MapSceneTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::MapSceneType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->spriteId != 0x10 || t->colorRgb != 0x112233 || !t->enlarge) {
+                return fail("MapSceneType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: MapElementType.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Oldschool,
+                .environment = "test",
+                .revision = 220,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [1][bigSmart=0x0012][3]["name\0"][10]["op\0"][249][count=1][isStr=0][key=0x000001][int=7][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(2 + 1 + 5 + 1 + 3 + 1 + 1 + (1 + 1 + 3 + 4) + 1);
+            if (!rr.isOk()) {
+                return fail("MapElementType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x12;
+            fileBytes[off++] = 3;
+            fileBytes[off++] = static_cast<rs::u8>('n');
+            fileBytes[off++] = static_cast<rs::u8>('a');
+            fileBytes[off++] = static_cast<rs::u8>('m');
+            fileBytes[off++] = static_cast<rs::u8>('e');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 10;
+            fileBytes[off++] = static_cast<rs::u8>('o');
+            fileBytes[off++] = static_cast<rs::u8>('p');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 249;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x01;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x07;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("MapElementType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::MapElementTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("MapElementTypeLoader::fromArchive failed");
+            }
+            rs::MapElementTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::MapElementType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->spriteId != 0x12 || !t->hasName || t->name.len != 4 || !t->hasOp[0] || t->params.keys.size() != 1) {
+                return fail("MapElementType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: LocType (name + action => interactive in post()).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [2]["door\0"][30]["Open\0"][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 5 + 1 + 5 + 1);
+            if (!rr.isOk()) {
+                return fail("LocType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = static_cast<rs::u8>('d');
+            fileBytes[off++] = static_cast<rs::u8>('o');
+            fileBytes[off++] = static_cast<rs::u8>('o');
+            fileBytes[off++] = static_cast<rs::u8>('r');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 30;
+            fileBytes[off++] = static_cast<rs::u8>('O');
+            fileBytes[off++] = static_cast<rs::u8>('p');
+            fileBytes[off++] = static_cast<rs::u8>('e');
+            fileBytes[off++] = static_cast<rs::u8>('n');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("LocType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::LocTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("LocTypeLoader::fromArchive failed");
+            }
+            rs::LocTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::LocType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->name.len != 4 || t->isInteractive != 1) {
+                return fail("LocType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: NpcType (name + action).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [2]["bob\0"][12][2][30]["Talk-to\0"][95][0x0010][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 4 + 1 + 1 + 1 + 8 + 1 + 2 + 1);
+            if (!rr.isOk()) {
+                return fail("NpcType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = static_cast<rs::u8>('b');
+            fileBytes[off++] = static_cast<rs::u8>('o');
+            fileBytes[off++] = static_cast<rs::u8>('b');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 12;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 30;
+            fileBytes[off++] = static_cast<rs::u8>('T');
+            fileBytes[off++] = static_cast<rs::u8>('a');
+            fileBytes[off++] = static_cast<rs::u8>('l');
+            fileBytes[off++] = static_cast<rs::u8>('k');
+            fileBytes[off++] = static_cast<rs::u8>('-');
+            fileBytes[off++] = static_cast<rs::u8>('t');
+            fileBytes[off++] = static_cast<rs::u8>('o');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 95;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x10;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("NpcType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::NpcTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("NpcTypeLoader::fromArchive failed");
+            }
+            rs::NpcTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::NpcType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->name.len != 3 || t->size != 2 || t->combatLevel != 0x10 || !t->hasAction[0]) {
+                return fail("NpcType decoded fields mismatch");
+            }
+        }
+
+        {
+            // Config decode: ObjType (hidden ground action is cleared).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // [2]["item\0"][11][30]["hidden\0"][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 5 + 1 + 1 + 1 + 7 + 1);
+            if (!rr.isOk()) {
+                return fail("ObjType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = static_cast<rs::u8>('i');
+            fileBytes[off++] = static_cast<rs::u8>('t');
+            fileBytes[off++] = static_cast<rs::u8>('e');
+            fileBytes[off++] = static_cast<rs::u8>('m');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 11;
+            fileBytes[off++] = 30;
+            fileBytes[off++] = static_cast<rs::u8>('h');
+            fileBytes[off++] = static_cast<rs::u8>('i');
+            fileBytes[off++] = static_cast<rs::u8>('d');
+            fileBytes[off++] = static_cast<rs::u8>('d');
+            fileBytes[off++] = static_cast<rs::u8>('e');
+            fileBytes[off++] = static_cast<rs::u8>('n');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("ObjType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::ObjTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("ObjTypeLoader::fromArchive failed");
+            }
+            rs::ObjTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::ObjType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t || t->name.len != 4 || t->stackability != rs::ObjStackability::Always || t->hasGroundAction[0]) {
+                return fail("ObjType decoded fields mismatch");
             }
         }
 
