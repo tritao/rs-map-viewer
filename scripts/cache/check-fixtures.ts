@@ -3,9 +3,14 @@ import path from "path";
 
 import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
+import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { Xtea } from "../../src/rs/crypto/Xtea";
+import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
 import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
+import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
+import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
+import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
 
 const FIXTURES_DIR = path.resolve("testdata/cache-fixtures");
 
@@ -81,12 +86,103 @@ function checkArchiveSplit(): void {
     assertBytesEqual("archive-split:file1", file1.data, expected1);
 }
 
+function checkIndexedSpriteDat(): void {
+    const dir = path.join(FIXTURES_DIR, "indexed-sprite-dat");
+    const { name, offset } = JSON.parse(fs.readFileSync(path.join(dir, "case.json"), "utf-8")) as {
+        name: string;
+        offset: number;
+    };
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        width: number;
+        height: number;
+        xOffset: number;
+        yOffset: number;
+        subWidth: number;
+        subHeight: number;
+        palette: number[];
+        pixels: number[];
+    };
+
+    const indexBytes = readFileBytes(path.join(dir, "index.dat"));
+    const dataBytes = readFileBytes(path.join(dir, `${name}.dat`));
+
+    const source: NamedBytesProvider = {
+        getBytes: (fileName: string) => {
+            if (fileName === "index.dat") return indexBytes;
+            if (fileName === `${name}.dat`) return dataBytes;
+            return undefined;
+        },
+    };
+
+    const sprite = SpriteLoader.tryLoadIndexedSpriteDatFromNamedBytes(source, name, offset);
+    if (!sprite) {
+        throw new Error("indexed-sprite-dat: failed decoding sprite");
+    }
+
+    const palette = Array.from(sprite.palette);
+    const pixels = Array.from(sprite.pixels);
+
+    const same =
+        sprite.width === expected.width &&
+        sprite.height === expected.height &&
+        sprite.xOffset === expected.xOffset &&
+        sprite.yOffset === expected.yOffset &&
+        sprite.subWidth === expected.subWidth &&
+        sprite.subHeight === expected.subHeight &&
+        palette.length === expected.palette.length &&
+        palette.every((v, i) => v === expected.palette[i]) &&
+        pixels.length === expected.pixels.length &&
+        pixels.every((v, i) => v === expected.pixels[i]);
+    if (!same) {
+        throw new Error(
+            `indexed-sprite-dat: mismatch\nactual=${JSON.stringify(
+                {
+                    width: sprite.width,
+                    height: sprite.height,
+                    xOffset: sprite.xOffset,
+                    yOffset: sprite.yOffset,
+                    subWidth: sprite.subWidth,
+                    subHeight: sprite.subHeight,
+                    palette,
+                    pixels,
+                },
+                null,
+                2,
+            )}\nexpected=${JSON.stringify(expected, null, 2)}`,
+        );
+    }
+}
+
+function checkVarBitType(): void {
+    const dir = path.join(FIXTURES_DIR, "varbit-type");
+    const bytes = readFileBytes(path.join(dir, "input.bin"));
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        baseVar: number;
+        startBit: number;
+        endBit: number;
+    };
+
+    const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 999, "n/a", 0);
+    const type = new VarBitType(0, cacheInfo);
+    type.decode(new ByteBuffer(bytes));
+
+    const actual = { baseVar: type.baseVar, startBit: type.startBit, endBit: type.endBit };
+    if (
+        actual.baseVar !== expected.baseVar ||
+        actual.startBit !== expected.startBit ||
+        actual.endBit !== expected.endBit
+    ) {
+        throw new Error(`varbit-type: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+    }
+}
+
 function main(): void {
     checkXtea();
     checkSectorChain();
     checkArchiveSplit();
+    checkIndexedSpriteDat();
+    checkVarBitType();
     console.log("OK: cache fixtures");
 }
 
 main();
-
