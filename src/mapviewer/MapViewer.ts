@@ -16,6 +16,7 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
+import { initErrorToString } from "../rs/loaders/InitError";
 import { err, ok, Result } from "../util/Result";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -72,7 +73,7 @@ export class MapViewer {
     ): Result<MapViewer, string> {
         const sessionResult = tryCreateCacheSession(cache, new JSCompressionHandler());
         if (!sessionResult.ok) {
-            return err(sessionResult.error);
+            return err(initErrorToString(sessionResult.error));
         }
         return ok(
             new MapViewer(

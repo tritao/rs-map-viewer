@@ -26,20 +26,20 @@ import { LegacyIndexId } from "../cache/IndexId";
 import { loadMapFunctions, loadMapScenes } from "./DatLoaders";
 import { Loaders } from "./Loaders";
 import { err, ok, Result } from "../../util/Result";
-import { errorToString } from "../../util/ErrorUtil";
+import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
 
-function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, string> {
+function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
     if (!index) {
-        return err(`Missing ${description} index (index=${indexId})`);
+        return err(missingIndex(indexId, description));
     }
     return ok(index);
 }
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, string> {
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, InitError> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
-        return err(`Missing ${description} archive (index=${index.id} archive=${archiveId})`);
+        return err(missingArchive(index.id, archiveId, description));
     }
     return ok(archive);
 }
@@ -47,12 +47,12 @@ function requireArchive(index: CacheIndex, archiveId: number, description: strin
 export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Loaders {
     const result = tryCreateLegacyLoaders(cacheInfo, cacheSystem);
     if (!result.ok) {
-        throw new Error(result.error);
+        throw new Error(initErrorToString(result.error));
     }
     return result.value;
 }
 
-export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, string> {
+export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, InitError> {
     const configIndexResult = requireIndex(cacheSystem, LegacyIndexId.configs, "legacy configs");
     if (!configIndexResult.ok) {
         return configIndexResult;
@@ -112,7 +112,7 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
         objTypeLoader = DatObjTypeLoader.create(cacheInfo, configArchive);
         seqTypeLoader = DatSeqTypeLoader.create(cacheInfo, configArchive);
     } catch (e) {
-        return err(`Failed creating legacy dat type loaders: ${errorToString(e)}`);
+        return err(createFailed("legacy dat type loaders", e));
     }
 
     const textureLoader = new DatTextureLoader(textureArchive, [
@@ -126,7 +126,7 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
         modelLoader = LegacyModelLoader.create(modelArchive);
         seqFrameLoader = LegacySeqFrameLoader.create(modelArchive);
     } catch (e) {
-        return err(`Failed creating legacy model/seq loaders: ${errorToString(e)}`);
+        return err(createFailed("legacy model/seq loaders", e));
     }
 
     return ok({

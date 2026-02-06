@@ -5,18 +5,18 @@ import { tryCreateDat2Loaders } from "./Dat2Loaders";
 import { tryCreateDatLoaders } from "./DatLoaders";
 import { tryCreateLegacyLoaders } from "./LegacyLoaders";
 import { Loaders } from "./Loaders";
-import { err, ok, Result } from "../../util/Result";
-import { errorToString } from "../../util/ErrorUtil";
+import { err, Result } from "../../util/Result";
+import { InitError, initErrorToString, unexpected } from "./InitError";
 
 export function createLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Loaders {
     const result = tryCreateLoaders(cacheInfo, cacheSystem);
     if (!result.ok) {
-        throw new Error(result.error);
+        throw new Error(initErrorToString(result.error));
     }
     return result.value;
 }
 
-export function tryCreateLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, string> {
+export function tryCreateLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, InitError> {
     try {
         const cacheType = detectCacheType(cacheInfo);
         switch (cacheType) {
@@ -27,8 +27,8 @@ export function tryCreateLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem)
             case CacheType.Dat2:
                 return tryCreateDat2Loaders(cacheInfo, cacheType, cacheSystem);
         }
-        return err("Not implemented");
+        return err(unexpected("Not implemented"));
     } catch (e) {
-        return err(errorToString(e));
+        return err(unexpected(e));
     }
 }

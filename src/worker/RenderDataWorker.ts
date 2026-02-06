@@ -28,6 +28,7 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import { errorToString } from "../util/ErrorUtil";
 import { Loaders } from "../rs/loaders/Loaders";
 import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
+import { initErrorToString } from "../rs/loaders/InitError";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -78,7 +79,7 @@ async function initWorker(
 
     const sessionResult = tryCreateCacheSession(cache, compressionHandler);
     if (!sessionResult.ok) {
-        throw new Error(sessionResult.error);
+        throw new Error(initErrorToString(sessionResult.error));
     }
     const session = sessionResult.value;
     const loaders = session.loaders;

@@ -32,20 +32,20 @@ import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { DatIndexId } from "../cache/IndexId";
 import { Loaders } from "./Loaders";
 import { err, ok, Result } from "../../util/Result";
-import { errorToString } from "../../util/ErrorUtil";
+import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
 
-function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, string> {
+function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
     if (!index) {
-        return err(`Missing ${description} index (index=${indexId})`);
+        return err(missingIndex(indexId, description));
     }
     return ok(index);
 }
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, string> {
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, InitError> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
-        return err(`Missing ${description} archive (index=${index.id} archive=${archiveId})`);
+        return err(missingArchive(index.id, archiveId, description));
     }
     return ok(archive);
 }
@@ -69,7 +69,7 @@ export function createDatLoaders(
 ): Loaders {
     const result = tryCreateDatLoaders(cacheInfo, _cacheType, cacheSystem);
     if (!result.ok) {
-        throw new Error(result.error);
+        throw new Error(initErrorToString(result.error));
     }
     return result.value;
 }
@@ -78,7 +78,7 @@ export function tryCreateDatLoaders(
     cacheInfo: CacheInfo,
     _cacheType: CacheType,
     cacheSystem: CacheSystem,
-): Result<Loaders, string> {
+): Result<Loaders, InitError> {
     const configIndexResult = requireIndex(cacheSystem, DatIndexId.configs, "dat configs");
     if (!configIndexResult.ok) {
         return configIndexResult;
@@ -101,7 +101,7 @@ export function tryCreateDatLoaders(
     try {
         floTypeLoader = DatFloorTypeLoader.create(cacheInfo, configArchive);
     } catch (e) {
-        return err(`Failed creating floor type loader: ${errorToString(e)}`);
+        return err(createFailed("floor type loader", e));
     }
 
     let varBitTypeLoader: VarBitTypeLoader;
@@ -111,7 +111,7 @@ export function tryCreateDatLoaders(
         try {
             varBitTypeLoader = DatVarBitTypeLoader.create(cacheInfo, configArchive);
         } catch (e) {
-            return err(`Failed creating varbit loader: ${errorToString(e)}`);
+            return err(createFailed("varbit loader", e));
         }
     }
 
@@ -146,7 +146,7 @@ export function tryCreateDatLoaders(
     try {
         mapFileIndex = DatMapFileIndex.create(versionListArchiveResult.value);
     } catch (e) {
-        return err(`Failed creating map file index: ${errorToString(e)}`);
+        return err(createFailed("map file index", e));
     }
 
     let locTypeLoader: LocTypeLoader;
@@ -159,7 +159,7 @@ export function tryCreateDatLoaders(
         objTypeLoader = DatObjTypeLoader.create(cacheInfo, configArchive);
         seqTypeLoader = DatSeqTypeLoader.create(cacheInfo, configArchive);
     } catch (e) {
-        return err(`Failed creating dat type loaders: ${errorToString(e)}`);
+        return err(createFailed("dat type loaders", e));
     }
 
     const modelsIndexResult = requireIndex(cacheSystem, DatIndexId.models, "dat models");

@@ -8,7 +8,7 @@ import { MapFileIndex } from "../map/MapFileIndex";
 import { tryCreateLoaders } from "../loaders/createLoaders";
 import { Loaders } from "../loaders/Loaders";
 import { err, ok, Result } from "../../util/Result";
-import { errorToString } from "../../util/ErrorUtil";
+import { createFailed, InitError, initErrorToString } from "../loaders/InitError";
 
 export type CacheSession = {
     cache: LoadedCache;
@@ -22,13 +22,13 @@ export type CacheSession = {
      * Creates a new session that shares the same cache store/index tables, but has
      * fresh loader caches. This mirrors a "thread-local context" in a future C++ port.
      */
-    tryFork(): Result<CacheSession, string>;
+    tryFork(): Result<CacheSession, InitError>;
 };
 
 export function createCacheSession(cache: LoadedCache, compressionHandler: CompressionHandler): CacheSession {
     const result = tryCreateCacheSession(cache, compressionHandler);
     if (!result.ok) {
-        throw new Error(result.error);
+        throw new Error(initErrorToString(result.error));
     }
     return result.value;
 }
@@ -36,19 +36,19 @@ export function createCacheSession(cache: LoadedCache, compressionHandler: Compr
 export function tryCreateCacheSession(
     cache: LoadedCache,
     compressionHandler: CompressionHandler,
-): Result<CacheSession, string> {
+): Result<CacheSession, InitError> {
     try {
         const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
         return tryCreateCacheSessionFromSystem(cache, cacheSystem);
     } catch (e) {
-        return err(errorToString(e));
+        return err(createFailed("cache system", e));
     }
 }
 
 export function tryCreateCacheSessionFromSystem(
     cache: LoadedCache,
     cacheSystem: CacheSystem,
-): Result<CacheSession, string> {
+): Result<CacheSession, InitError> {
     const loadersResult = tryCreateLoaders(cache.info, cacheSystem);
     if (!loadersResult.ok) {
         return loadersResult;

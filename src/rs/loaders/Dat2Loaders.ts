@@ -65,20 +65,20 @@ import { CacheRules, computeCacheRules } from "./CacheRules";
 import { Loaders } from "./Loaders";
 import { IndexArchiveProvider } from "../io/ArchiveProvider";
 import { err, ok, Result } from "../../util/Result";
-import { errorToString } from "../../util/ErrorUtil";
+import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
 
-function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, string> {
+function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
     if (!index) {
-        return err(`Missing ${description} index (index=${indexId})`);
+        return err(missingIndex(indexId, description));
     }
     return ok(index);
 }
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, string> {
+function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, InitError> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
-        return err(`Missing ${description} archive (index=${index.id} archive=${archiveId})`);
+        return err(missingArchive(index.id, archiveId, description));
     }
     return ok(archive);
 }
@@ -113,7 +113,7 @@ export function createDat2Loaders(
 ): Loaders {
     const result = tryCreateDat2Loaders(cacheInfo, _cacheType, cacheSystem);
     if (!result.ok) {
-        throw new Error(result.error);
+        throw new Error(initErrorToString(result.error));
     }
     return result.value;
 }
@@ -122,12 +122,12 @@ export function tryCreateDat2Loaders(
     cacheInfo: CacheInfo,
     _cacheType: CacheType,
     cacheSystem: CacheSystem,
-): Result<Loaders, string> {
+): Result<Loaders, InitError> {
     let rules: CacheRules;
     try {
         rules = computeCacheRules(cacheInfo, cacheSystem);
     } catch (e) {
-        return err(`Failed computing cache rules: ${errorToString(e)}`);
+        return err(createFailed("cache rules", e));
     }
 
     const configIndexResult = requireIndex(cacheSystem, Dat2IndexId.configs, "dat2 configs");
@@ -284,7 +284,7 @@ export function tryCreateDat2Loaders(
                     new IndexFileBytesProvider(spriteIndex, 0),
                 );
             } catch (e) {
-                return err(`Failed creating procedural texture loader: ${errorToString(e)}`);
+                return err(createFailed("procedural texture loader", e));
             }
             break;
         }
