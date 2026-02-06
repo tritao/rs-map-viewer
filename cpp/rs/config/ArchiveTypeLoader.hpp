@@ -10,6 +10,7 @@
 #include "../core/Result.hpp"
 #include "../core/Span.hpp"
 #include "../core/Status.hpp"
+#include "../core/StringArena.hpp"
 #include "../core/Vec.hpp"
 #include "../io/Uint8ArrayReader.hpp"
 #include "../types.hpp"
@@ -49,6 +50,9 @@ public:
             types[static_cast<std::size_t>(i)] = T(i, cacheInfo);
         }
 
+        StringArena strings(alloc);
+        const TypeDecodeContext ctx{cacheInfo, &strings};
+
         Vec<Status> statusById(alloc);
         rr = statusById.resize(static_cast<std::size_t>(count));
         if (!rr.isOk()) {
@@ -69,14 +73,14 @@ public:
             }
             Uint8ArrayReader reader(f.data.span(), 0);
             TypeDecodeError err{};
-            const Status s = decodeType(types[static_cast<std::size_t>(id)], reader, &err);
+            const Status s = decodeType(types[static_cast<std::size_t>(id)], reader, &err, &ctx);
             statusById[static_cast<std::size_t>(id)] = s;
             if (ok(s)) {
                 callPost(types[static_cast<std::size_t>(id)], 0);
             }
         }
 
-        return Result<ArchiveTypeLoader>::ok(ArchiveTypeLoader(rs::move(types), rs::move(statusById), count));
+        return Result<ArchiveTypeLoader>::ok(ArchiveTypeLoader(rs::move(types), rs::move(statusById), rs::move(strings), count));
     }
 
     ArchiveTypeLoader() = default;
@@ -113,11 +117,12 @@ private:
     template <typename U>
     static void callPost(U&, ...) noexcept {}
 
-    explicit ArchiveTypeLoader(Vec<T> types, Vec<Status> statusById, i32 count) noexcept
-        : types_(rs::move(types)), statusById_(rs::move(statusById)), count_(count) {}
+    explicit ArchiveTypeLoader(Vec<T> types, Vec<Status> statusById, StringArena strings, i32 count) noexcept
+        : types_(rs::move(types)), statusById_(rs::move(statusById)), strings_(rs::move(strings)), count_(count) {}
 
     Vec<T> types_;
     Vec<Status> statusById_;
+    StringArena strings_{};
     i32 count_ = 0;
 };
 
