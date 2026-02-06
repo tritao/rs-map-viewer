@@ -36,6 +36,7 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
     static createFromSource(frameMapSource: EnumeratingBytesProvider): DatSeqFrameLoader {
         const frames: Map<number, SeqFrame> = new Map();
         const scratch = new SeqFrameDecodeScratch();
+        const failedFrameMapIds: number[] = [];
 
         for (const frameMapId of frameMapSource.getIds()) {
             const bytes = frameMapSource.getBytes(frameMapId);
@@ -43,8 +44,16 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
                 continue;
             }
             if (!DatSeqFrame.tryLoad(frames, bytes, scratch)) {
-                console.error("Failed loading frame map " + frameMapId);
+                failedFrameMapIds.push(frameMapId);
             }
+        }
+
+        if (failedFrameMapIds.length > 0) {
+            const preview = failedFrameMapIds.slice(0, 10).join(", ");
+            console.error(
+                `DatSeqFrameLoader: failed loading ${failedFrameMapIds.length} frame maps` +
+                    (failedFrameMapIds.length <= 10 ? ` (${preview})` : ` (first: ${preview})`),
+            );
         }
 
         return new DatSeqFrameLoader(frames);
