@@ -158,13 +158,6 @@ async function initWorker(
     };
 }
 
-function clearCache(workerState: WorkerState): void {
-    workerState.locModelLoader.clearCache();
-    workerState.objModelLoader.clearCache();
-    workerState.npcModelLoader.clearCache();
-    workerState.session.clearCaches();
-}
-
 const worker = {
     initCache(cache: LoadedCache, objSpawns: ObjSpawn[], npcSpawns: NpcSpawn[]) {
         console.log("init worker", cache.info);
@@ -185,8 +178,6 @@ const worker = {
         const workerState = await requireWorkerState();
 
         const { data, transferables } = await dataLoader.load(workerState, input);
-
-        clearCache(workerState);
 
         if (!data) {
             return undefined;
