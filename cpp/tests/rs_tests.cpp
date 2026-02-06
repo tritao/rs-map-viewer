@@ -385,6 +385,9 @@ int main() {
             if (t->primaryRgb != 0x224466) {
                 return fail("OverlayFloorType primaryRgb mismatch");
             }
+            if (t->name.len != 3 || !t->name.data || t->name.data[0] != 'a' || t->name.data[1] != 'b' || t->name.data[2] != 'c') {
+                return fail("OverlayFloorType name mismatch");
+            }
             if (t->primaryHsl != rs::rgbToHsl(t->primaryRgb)) {
                 return fail("OverlayFloorType primaryHsl mismatch");
             }

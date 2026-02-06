@@ -3,6 +3,7 @@
 #include "../../cache/CacheInfo.hpp"
 #include "../../cache/CacheType.hpp"
 #include "../../core/Status.hpp"
+#include "../../core/Str.hpp"
 #include "../../io/Uint8ArrayReader.hpp"
 #include "../../types.hpp"
 #include "../TypeDecode.hpp"
@@ -126,6 +127,7 @@ struct OverlayFloorType {
     i32 waterBias = 127;
 
     bool isOverlay = false;
+    Str name{};
 
     OverlayFloorType() = default;
     OverlayFloorType(i32 id_, const CacheInfo& cacheInfo_) noexcept : id(id_), cacheInfo(cacheInfo_) {
@@ -135,7 +137,7 @@ struct OverlayFloorType {
         }
     }
 
-    Status decodeOpcode(u8 opcode, Uint8ArrayReader& reader) noexcept {
+    Status decodeOpcode(u8 opcode, Uint8ArrayReader& reader, const TypeDecodeContext& ctx) noexcept {
         if (opcode == 1) {
             u32 v = 0;
             const Status s = reader.readMedium(&v);
@@ -176,9 +178,11 @@ struct OverlayFloorType {
             return Status::Ok;
         }
         if (opcode == 6) {
-            const CacheType cacheType = detectCacheType(cacheInfo);
-            const u8 terminator = (cacheType != CacheType::Dat2) ? 0x0A : 0;
-            return skipString(reader, terminator);
+            const u8 terminator = configStringTerminator(cacheInfo);
+            if (!ctx.strings) {
+                return skipString(reader, terminator);
+            }
+            return readArenaString(reader, terminator, *ctx.strings, &name);
         }
         if (opcode == 7) {
             u32 v = 0;
@@ -358,4 +362,3 @@ struct OverlayFloorType {
 };
 
 } // namespace rs
-
