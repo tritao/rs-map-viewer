@@ -2,6 +2,8 @@ import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheSystem } from "../../cache/CacheSystem";
 import { OsrsIndexId, Rs2IndexId, Dat2IndexId } from "../../cache/IndexId";
 import { ByteBuffer } from "../../io/ByteBuffer";
+import { err, ok, Result } from "../../../util/Result";
+import { InitError, missingFile, missingIndex } from "../../loaders/InitError";
 import { Type } from "../Type";
 import { DefaultsGroup } from "./DefaultsGroup";
 
@@ -20,29 +22,33 @@ export class GraphicsDefaults extends Type {
     modIcons: number = -1;
 
     static create(cacheInfo: CacheInfo, fileSystem: CacheSystem): GraphicsDefaults {
+        const result = GraphicsDefaults.tryCreate(cacheInfo, fileSystem);
+        if (result.ok) {
+            return result.value;
+        }
+        return new GraphicsDefaults(-1, cacheInfo);
+    }
+
+    static tryCreate(cacheInfo: CacheInfo, fileSystem: CacheSystem): Result<GraphicsDefaults, InitError> {
         const osrsDefaultsIndex = fileSystem.tryGetIndex(OsrsIndexId.graphicDefaults);
         if (cacheInfo.game === GameType.Oldschool && osrsDefaultsIndex) {
             const defaultsFile = osrsDefaultsIndex.tryGetFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
-                console.error("GraphicsDefaults: file not found");
-                return new GraphicsDefaults(-1, cacheInfo);
+                return err(missingFile(OsrsIndexId.graphicDefaults, DefaultsGroup.GRAPHICS, 0, "osrs graphics defaults"));
             }
 
             const defaults = new GraphicsDefaults(defaultsFile.archiveId, cacheInfo);
             defaults.decode(new ByteBuffer(defaultsFile.data));
 
-            return defaults;
+            return ok(defaults);
         }
 
         if (cacheInfo.game === GameType.Runescape && fileSystem.tryGetIndex(Rs2IndexId.defaults)) {
-            const defaults = new GraphicsDefaults(-1, cacheInfo);
-
-            return defaults;
+            return ok(new GraphicsDefaults(-1, cacheInfo));
         } else {
             const spriteIndex = fileSystem.tryGetIndex(Dat2IndexId.sprites);
             if (!spriteIndex) {
-                console.error("GraphicsDefaults: missing sprite index");
-                return new GraphicsDefaults(-1, cacheInfo);
+                return err(missingIndex(Dat2IndexId.sprites, "dat2 sprites (for graphics defaults)"));
             }
 
             const defaults = new GraphicsDefaults(-1, cacheInfo);
@@ -59,7 +65,7 @@ export class GraphicsDefaults extends Type {
             defaults.scrollBars = spriteIndex.tryGetArchiveId("scrollbar") ?? -1;
             defaults.modIcons = spriteIndex.tryGetArchiveId("mod_icons") ?? -1;
 
-            return defaults;
+            return ok(defaults);
         }
     }
 

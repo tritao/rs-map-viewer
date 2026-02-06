@@ -357,16 +357,21 @@ export function tryCreateDat2Loaders(
         }
         mapScenes = mapSceneSprites;
     } else {
-        const graphicDefaults = GraphicsDefaults.create(cacheInfo, cacheSystem);
-        if (graphicDefaults.mapScenes === -1) {
+        const graphicDefaultsResult = GraphicsDefaults.tryCreate(cacheInfo, cacheSystem);
+        if (!graphicDefaultsResult.ok) {
             mapScenes = [];
         } else {
+            const graphicDefaults = graphicDefaultsResult.value;
+            if (graphicDefaults.mapScenes === -1) {
+                mapScenes = [];
+            } else {
             const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, graphicDefaults.mapScenes);
             if (!sprites) {
                 console.error("Failed to load map scenes");
                 mapScenes = [];
             } else {
                 mapScenes = sprites;
+            }
             }
         }
     }
@@ -400,7 +405,13 @@ export function tryCreateDat2Loaders(
             break;
         }
         case "graphics_defaults": {
-            const graphicDefaults = GraphicsDefaults.create(cacheInfo, cacheSystem);
+            const graphicDefaultsResult = GraphicsDefaults.tryCreate(cacheInfo, cacheSystem);
+            if (!graphicDefaultsResult.ok) {
+                mapFunctions = [];
+                break;
+            }
+
+            const graphicDefaults = graphicDefaultsResult.value;
             if (graphicDefaults.mapFunctions === -1) {
                 mapFunctions = [];
                 break;
