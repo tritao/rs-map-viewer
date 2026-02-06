@@ -105,19 +105,13 @@ export class SpriteLoader {
         return this.tryLoadIndexedSpriteDatId(archive, id, offset);
     }
 
-    static tryLoadIndexedSpriteDatId(
-        archive: Archive,
-        id: number,
+    private static tryDecodeIndexedSpriteDat(
+        dataBytes: Uint8Array,
+        indexBytes: Uint8Array,
         offset: number,
     ): IndexedSprite | undefined {
-        const dataFile = archive.getFile(id);
-        const indexFile = archive.getFileNamed("index.dat");
-        if (!dataFile || !indexFile) {
-            return undefined;
-        }
-
-        const dataBuffer = new ByteBuffer(dataFile.data);
-        const indexBuffer = new ByteBuffer(indexFile.data);
+        const dataBuffer = new ByteBuffer(dataBytes);
+        const indexBuffer = new ByteBuffer(indexBytes);
 
         if (dataBuffer.remaining < 2) {
             return undefined;
@@ -202,6 +196,19 @@ export class SpriteLoader {
         return sprite;
     }
 
+    static tryLoadIndexedSpriteDatId(
+        archive: Archive,
+        id: number,
+        offset: number,
+    ): IndexedSprite | undefined {
+        const dataFile = archive.getFile(id);
+        const indexFile = archive.getFileNamed("index.dat");
+        if (!dataFile || !indexFile) {
+            return undefined;
+        }
+        return this.tryDecodeIndexedSpriteDat(dataFile.data, indexFile.data, offset);
+    }
+
     static loadIndexedSpritesDat(archive: Archive, name: string): IndexedSprite[] {
         const id = archive.getFileId(name + ".dat");
         if (id === -1) {
@@ -216,9 +223,12 @@ export class SpriteLoader {
         if (!dataFile || !indexFile) {
             return [];
         }
+        return this.decodeIndexedSpritesDat(dataFile.data, indexFile.data);
+    }
 
-        const dataBuffer = new ByteBuffer(dataFile.data);
-        const indexBuffer = new ByteBuffer(indexFile.data);
+    private static decodeIndexedSpritesDat(dataBytes: Uint8Array, indexBytes: Uint8Array): IndexedSprite[] {
+        const dataBuffer = new ByteBuffer(dataBytes);
+        const indexBuffer = new ByteBuffer(indexBytes);
 
         if (dataBuffer.remaining < 2) {
             return [];
