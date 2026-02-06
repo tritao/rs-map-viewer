@@ -33,6 +33,7 @@ public:
 
     Status readBytes(std::size_t amount, Span<const u8>* out) noexcept;
     Status readBytesInto(Span<u8> target) noexcept;
+    Status readBytesUntil(u8 terminator, Span<const u8>* out) noexcept;
 
 private:
     Span<const u8> data_;

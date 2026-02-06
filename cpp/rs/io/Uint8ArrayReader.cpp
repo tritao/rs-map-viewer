@@ -218,4 +218,25 @@ Status Uint8ArrayReader::readBytesInto(Span<u8> target) noexcept {
     return Status::Ok;
 }
 
+Status Uint8ArrayReader::readBytesUntil(u8 terminator, Span<const u8>* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+
+    const std::size_t start = offset_;
+    while (true) {
+        const Status s = ensure(1);
+        if (!ok(s)) {
+            return s;
+        }
+        const u8 b = data_[offset_];
+        offset_ += 1;
+        if (b == terminator) {
+            const std::size_t endExcl = offset_ - 1;
+            *out = data_.subspan(start, endExcl - start);
+            return Status::Ok;
+        }
+    }
+}
+
 } // namespace rs
