@@ -5,6 +5,13 @@ import { TextureMaterial } from "./TextureMaterial";
 import { ProceduralTexture } from "./procedural/ProceduralTexture";
 import { TextureGenerator } from "./procedural/TextureGenerator";
 
+function formatIdPreview(ids: ReadonlyArray<number>, limit: number = 10): string {
+    if (ids.length <= limit) {
+        return ids.join(", ");
+    }
+    return `${ids.slice(0, limit).join(", ")} …`;
+}
+
 export class OldProceduralTextureLoader implements TextureLoader {
     textureGenerator: TextureGenerator;
 
@@ -24,6 +31,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
         }
 
         const textureIds = Array.from(textureDefinitionSource.getIds());
+        const failedDefinitionIds: number[] = [];
         for (let i = 0; i < textureIds.length; i++) {
             const id = textureIds[i];
             const bytes = textureDefinitionSource.getBytes(id);
@@ -35,8 +43,14 @@ export class OldProceduralTextureLoader implements TextureLoader {
                 const def = new ProceduralTextureDefinition(id, buffer);
                 definitions.set(id, def);
             } catch (e) {
-                console.error("OldProceduralTextureLoader: failed decoding texture definition", id, e);
+                failedDefinitionIds.push(id);
             }
+        }
+
+        if (failedDefinitionIds.length > 0) {
+            console.error(
+                `OldProceduralTextureLoader: failed decoding ${failedDefinitionIds.length} texture definitions (first: ${formatIdPreview(failedDefinitionIds)})`,
+            );
         }
 
         return new OldProceduralTextureLoader(spriteSource, textureIds, definitions);

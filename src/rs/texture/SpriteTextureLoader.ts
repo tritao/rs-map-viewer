@@ -6,6 +6,13 @@ import { brightenRgb } from "../util/ColorUtil";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 
+function formatIdPreview(ids: ReadonlyArray<number>, limit: number = 10): string {
+    if (ids.length <= limit) {
+        return ids.join(", ");
+    }
+    return `${ids.slice(0, limit).join(", ")} …`;
+}
+
 export class SpriteTextureLoader implements TextureLoader {
     static readonly ANIM_DIRECTION_UV = [
         [0.0, 0.0],
@@ -26,6 +33,7 @@ export class SpriteTextureLoader implements TextureLoader {
             return new SpriteTextureLoader(spriteSource, [], definitions);
         }
         const textureIds = Array.from(textureDefinitionSource.getIds());
+        const failedDefinitionIds: number[] = [];
         for (let i = 0; i < textureIds.length; i++) {
             const textureId = textureIds[i];
             const bytes = textureDefinitionSource.getBytes(textureId);
@@ -37,8 +45,14 @@ export class SpriteTextureLoader implements TextureLoader {
                 const definition = TextureDefinition.decode(textureId, buffer);
                 definitions.set(textureId, definition);
             } catch (e) {
-                console.error("SpriteTextureLoader: failed decoding texture definition", textureId, e);
+                failedDefinitionIds.push(textureId);
             }
+        }
+
+        if (failedDefinitionIds.length > 0) {
+            console.error(
+                `SpriteTextureLoader: failed decoding ${failedDefinitionIds.length} texture definitions (first: ${formatIdPreview(failedDefinitionIds)})`,
+            );
         }
 
         return new SpriteTextureLoader(spriteSource, textureIds, definitions);

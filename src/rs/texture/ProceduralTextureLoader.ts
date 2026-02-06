@@ -6,6 +6,7 @@ import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 import { ProceduralTexture } from "./procedural/ProceduralTexture";
 import { TextureGenerator } from "./procedural/TextureGenerator";
+import { errorToString } from "../../util/ErrorUtil";
 
 export class ProceduralTextureLoader implements TextureLoader {
     textureGenerator: TextureGenerator;
@@ -205,7 +206,7 @@ export class ProceduralTextureLoader implements TextureLoader {
             this.textureDecodeErrors.delete(id);
             return texture;
         } catch (e) {
-            console.error("Failed decoding procedural texture definition", id, e);
+            console.error(`ProceduralTextureLoader: failed decoding texture definition id=${id}: ${errorToString(e)}`);
             this.textureDecodeErrors.add(id);
             return undefined;
         }
