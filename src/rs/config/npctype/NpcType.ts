@@ -27,7 +27,7 @@ export class NpcType extends Type {
     retextureFrom!: number[];
     retextureTo!: number[];
 
-    actions: string[];
+    actions: Array<string | undefined>;
 
     drawMapDot: boolean;
 
@@ -113,7 +113,7 @@ export class NpcType extends Type {
         this.walkBackSeqId = -1;
         this.walkLeftSeqId = -1;
         this.walkRightSeqId = -1;
-        this.actions = new Array<string>(5);
+        this.actions = Array.from({ length: 5 }, () => undefined);
         this.drawMapDot = true;
         this.combatLevel = -1;
         this.widthScale = 128;
@@ -176,7 +176,7 @@ export class NpcType extends Type {
     override decodeOpcode(opcode: number, buffer: ByteBuffer): void {
         if (opcode === 1) {
             const count = buffer.readUnsignedByte();
-            this.modelIds = new Array<number>(count);
+            this.modelIds = Array.from({ length: count }, () => 0);
 
             if (this.isLargeModelId()) {
                 for (let i = 0; i < count; i++) {
@@ -215,13 +215,13 @@ export class NpcType extends Type {
             this.category = buffer.readUnsignedShort();
         } else if (opcode >= 30 && opcode < 35) {
             this.actions[opcode - 30] = this.readString(buffer);
-            if (this.actions[opcode - 30].toLowerCase() === "hidden") {
-                delete this.actions[opcode - 30];
+            if (this.actions[opcode - 30]?.toLowerCase() === "hidden") {
+                this.actions[opcode - 30] = undefined;
             }
         } else if (opcode === 40) {
             const count = buffer.readUnsignedByte();
-            this.recolorFrom = new Array<number>(count);
-            this.recolorTo = new Array<number>(count);
+            this.recolorFrom = Array.from({ length: count }, () => 0);
+            this.recolorTo = Array.from({ length: count }, () => 0);
 
             for (let i = 0; i < count; i++) {
                 this.recolorFrom[i] = buffer.readUnsignedShort();
@@ -229,8 +229,8 @@ export class NpcType extends Type {
             }
         } else if (opcode === 41) {
             const count = buffer.readUnsignedByte();
-            this.retextureFrom = new Array<number>(count);
-            this.retextureTo = new Array<number>(count);
+            this.retextureFrom = Array.from({ length: count }, () => 0);
+            this.retextureTo = Array.from({ length: count }, () => 0);
 
             for (let i = 0; i < count; i++) {
                 this.retextureFrom[i] = buffer.readUnsignedShort();
@@ -240,7 +240,7 @@ export class NpcType extends Type {
             buffer.readUnsignedShort();
         } else if (opcode === 60) {
             const count = buffer.readUnsignedByte();
-            this.chatheadModelIds = new Array<number>(count);
+            this.chatheadModelIds = Array.from({ length: count }, () => 0);
 
             if (this.isLargeModelId()) {
                 for (let i = 0; i < count; i++) {
@@ -278,8 +278,8 @@ export class NpcType extends Type {
                     count++;
                 }
 
-                this.headIconSpriteIds = new Array(count);
-                this.headIconSpriteIndices = new Array(count);
+                this.headIconSpriteIds = Array.from({ length: count }, () => -1);
+                this.headIconSpriteIndices = Array.from({ length: count }, () => -1);
 
                 for (let i = 0; i < count; i++) {
                     if ((flag & 1) << i === 0) {
@@ -313,7 +313,7 @@ export class NpcType extends Type {
             }
 
             const count = buffer.readUnsignedByte();
-            this.transforms = new Array<number>(count + 2);
+            this.transforms = Array.from({ length: count + 2 }, () => -1);
 
             for (let i = 0; i <= count; i++) {
                 this.transforms[i] = buffer.readUnsignedShort();
@@ -365,14 +365,14 @@ export class NpcType extends Type {
         } else if (opcode === 119) {
             this.loginScreenProps = buffer.readByte();
         } else if (opcode === 121) {
-            const modelOffsets = new Array<number[]>(this.modelIds.length);
+            const modelOffsets: Array<[number, number, number] | undefined> = Array.from(
+                { length: this.modelIds.length },
+                () => undefined,
+            );
             const count = buffer.readUnsignedByte();
             for (let i = 0; i < count; i++) {
                 const index = buffer.readUnsignedByte();
-                const offsets = (modelOffsets[index] = new Array(3));
-                offsets[0] = buffer.readByte();
-                offsets[1] = buffer.readByte();
-                offsets[2] = buffer.readByte();
+                modelOffsets[index] = [buffer.readByte(), buffer.readByte(), buffer.readByte()];
             }
         } else if (opcode === 122) {
             if (this.cacheInfo.game === GameType.Oldschool) {
@@ -460,8 +460,8 @@ export class NpcType extends Type {
             // member only options
             this.actions[opcode - 150] = this.readString(buffer);
             const isMember = true;
-            if (!isMember || this.actions[opcode - 150].toLowerCase() === "hidden") {
-                delete this.actions[opcode - 150];
+            if (!isMember || this.actions[opcode - 150]?.toLowerCase() === "hidden") {
+                this.actions[opcode - 150] = undefined;
             }
         } else if (opcode === 155) {
             this.colourHue = buffer.readByte();
@@ -474,10 +474,7 @@ export class NpcType extends Type {
             this.followerOpsPriorityFlag = 0;
         } else if (opcode === 160) {
             const count = buffer.readUnsignedByte();
-            this.quests = new Array(count);
-            for (let i = 0; i < count; i++) {
-                this.quests[i] = buffer.readUnsignedShort();
-            }
+            this.quests = Array.from({ length: count }, () => buffer.readUnsignedShort());
         } else if (opcode === 161) {
             const unusedOpcode161 = true;
         } else if (opcode === 162) {

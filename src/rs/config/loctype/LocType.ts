@@ -48,7 +48,7 @@ export class LocType extends Type {
     ambient: number;
     contrast: number;
 
-    actions: string[];
+    actions: Array<string | undefined>;
 
     mapFunctionId: number;
     mapSceneId: number;
@@ -138,7 +138,7 @@ export class LocType extends Type {
         this.decorDisplacement = LocType.DEFAULT_DECOR_DISPLACEMENT;
         this.ambient = 0;
         this.contrast = 0;
-        this.actions = new Array(5);
+        this.actions = Array.from({ length: 5 }, () => undefined);
         this.mapFunctionId = -1;
         this.mapSceneId = -1;
         this.flipMapSceneSprite = false;
@@ -223,22 +223,25 @@ export class LocType extends Type {
             }
 
             const count = buffer.readUnsignedByte();
-            this.types = new Array(count);
-            this.models = new Array(count);
+            const types: LocModelType[] = [];
+            const models: number[][] = [];
             for (let i = 0; i < count; i++) {
-                this.types[i] = buffer.readByte();
+                types.push(buffer.readByte());
                 const modelCount = buffer.readUnsignedByte();
-                this.models[i] = new Array(modelCount);
+                const modelIds: number[] = [];
                 if (this.isLargeModelId()) {
                     for (let j = 0; j < modelCount; j++) {
-                        this.models[i][j] = buffer.readBigSmart();
+                        modelIds.push(buffer.readBigSmart());
                     }
                 } else {
                     for (let j = 0; j < modelCount; j++) {
-                        this.models[i][j] = buffer.readUnsignedShort();
+                        modelIds.push(buffer.readUnsignedShort());
                     }
                 }
+                models.push(modelIds);
             }
+            this.types = types;
+            this.models = models;
 
             if (opcode === 5 && !someBool) {
                 this.skipNewModels(buffer);
@@ -249,13 +252,14 @@ export class LocType extends Type {
                 if (this.models && !this.lowDetail) {
                     buffer.offset += count * 3;
                 } else {
-                    this.models = new Array(count);
-                    this.types = new Array(count);
+                    const models: number[][] = [];
+                    const types: LocModelType[] = [];
                     for (let i = 0; i < count; i++) {
-                        this.models[i] = new Array(1);
-                        this.models[i][0] = buffer.readUnsignedShort();
-                        this.types[i] = buffer.readUnsignedByte();
+                        models.push([buffer.readUnsignedShort()]);
+                        types.push(buffer.readUnsignedByte());
                     }
+                    this.models = models;
+                    this.types = types;
                 }
             }
         } else if (opcode === 2) {
@@ -269,11 +273,7 @@ export class LocType extends Type {
                     buffer.offset += count * 2;
                 } else {
                     this.types = undefined;
-                    this.models = new Array(1);
-                    this.models[0] = new Array(count);
-                    for (let i = 0; i < count; i++) {
-                        this.models[0][i] = buffer.readUnsignedShort();
-                    }
+                    this.models = [Array.from({ length: count }, () => buffer.readUnsignedShort())];
                 }
             }
         } else if (opcode === 14) {
@@ -311,13 +311,13 @@ export class LocType extends Type {
             this.contrast = buffer.readByte() * 25;
         } else if (opcode >= 30 && opcode < 39) {
             this.actions[opcode - 30] = this.readString(buffer);
-            if (this.actions[opcode - 30].toLowerCase() === "hidden") {
-                delete this.actions[opcode - 30];
+            if (this.actions[opcode - 30]?.toLowerCase() === "hidden") {
+                this.actions[opcode - 30] = undefined;
             }
         } else if (opcode === 40) {
             const count = buffer.readUnsignedByte();
-            this.recolorFrom = new Array(count);
-            this.recolorTo = new Array(count);
+            this.recolorFrom = Array.from({ length: count }, () => 0);
+            this.recolorTo = Array.from({ length: count }, () => 0);
 
             for (let i = 0; i < count; i++) {
                 this.recolorFrom[i] = buffer.readUnsignedShort();
@@ -325,8 +325,8 @@ export class LocType extends Type {
             }
         } else if (opcode === 41) {
             const count = buffer.readUnsignedByte();
-            this.retextureFrom = new Array(count);
-            this.retextureTo = new Array(count);
+            this.retextureFrom = Array.from({ length: count }, () => 0);
+            this.retextureTo = Array.from({ length: count }, () => 0);
 
             for (let i = 0; i < count; i++) {
                 this.retextureFrom[i] = buffer.readUnsignedShort();
@@ -384,7 +384,7 @@ export class LocType extends Type {
             }
 
             const count = buffer.readUnsignedByte();
-            this.transforms = new Array(count + 2);
+            this.transforms = Array.from({ length: count + 2 }, () => -1);
 
             for (let i = 0; i <= count; i++) {
                 this.transforms[i] = this.isLargeModelId()
@@ -410,11 +410,7 @@ export class LocType extends Type {
                 this.ambientSoundRetain = buffer.readUnsignedByte();
             }
             const count = buffer.readUnsignedByte();
-            this.ambientSoundIds = new Array(count);
-
-            for (let i = 0; i < count; i++) {
-                this.ambientSoundIds[i] = buffer.readUnsignedShort();
-            }
+            this.ambientSoundIds = Array.from({ length: count }, () => buffer.readUnsignedShort());
         } else if (opcode === 81) {
             this.contouredGround = buffer.readUnsignedByte() * 256;
 
@@ -471,8 +467,8 @@ export class LocType extends Type {
         } else if (opcode === 106) {
             let totalDelay = 0;
             const count = buffer.readUnsignedByte();
-            this.randomSeqIds = new Array(count);
-            this.randomSeqDelays = new Array(count);
+            this.randomSeqIds = Array.from({ length: count }, () => -1);
+            this.randomSeqDelays = Array.from({ length: count }, () => 0);
             for (let i = 0; i < count; i++) {
                 this.randomSeqIds[i] = this.isLargeModelId()
                     ? buffer.readBigSmart()
@@ -486,15 +482,12 @@ export class LocType extends Type {
             this.mapFunctionId = buffer.readUnsignedShort();
         } else if (opcode >= 150 && opcode < 155) {
             this.actions[opcode - 150] = this.readString(buffer);
-            if (this.actions[opcode - 150].toLowerCase() === "hidden") {
-                delete this.actions[opcode - 150];
+            if (this.actions[opcode - 150]?.toLowerCase() === "hidden") {
+                this.actions[opcode - 150] = undefined;
             }
         } else if (opcode === 160) {
             const count = buffer.readUnsignedByte();
-            this.quests = new Array(count);
-            for (let i = 0; i < count; i++) {
-                this.quests[i] = buffer.readUnsignedShort();
-            }
+            this.quests = Array.from({ length: count }, () => buffer.readUnsignedShort());
         } else if (opcode === 163) {
             this.targetHue = buffer.readByte();
             this.targetSaturation = buffer.readByte();

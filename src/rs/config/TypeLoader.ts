@@ -180,12 +180,12 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
         const buffer = new ByteBuffer(file.data);
 
         const count = buffer.readUnsignedShort();
-        const types = new Array<T>(count);
-        for (let i = 0; i < count; i++) {
-            const type = (types[i] = new typeConstructor(i, cacheInfo));
+        const types = Array.from({ length: count }, (_, i) => {
+            const type = new typeConstructor(i, cacheInfo);
             type.decode(buffer);
             type.post();
-        }
+            return type;
+        });
 
         return new DatTypeLoader(types);
     }

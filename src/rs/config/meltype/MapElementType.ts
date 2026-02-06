@@ -20,7 +20,7 @@ export class MapElementType extends Type {
 
     showInElementList: boolean = true;
 
-    ops: (string | undefined)[] = new Array(5);
+    ops: Array<string | undefined> = Array.from({ length: 5 }, () => undefined);
 
     params?: ParamsMap;
 

@@ -47,16 +47,16 @@ export class SpotAnimType extends Type {
             this.contrast = buffer.readUnsignedByte();
         } else if (opcode === 40) {
             const count = buffer.readUnsignedByte();
-            this.recolorFrom = new Array<number>(count);
-            this.recolorTo = new Array<number>(count);
+            this.recolorFrom = Array.from({ length: count }, () => 0);
+            this.recolorTo = Array.from({ length: count }, () => 0);
             for (let i = 0; i < count; i++) {
                 this.recolorFrom[i] = buffer.readUnsignedShort();
                 this.recolorTo[i] = buffer.readUnsignedShort();
             }
         } else if (opcode === 41) {
             const count = buffer.readUnsignedByte();
-            this.retextureFrom = new Array<number>(count);
-            this.retextureTo = new Array<number>(count);
+            this.retextureFrom = Array.from({ length: count }, () => 0);
+            this.retextureTo = Array.from({ length: count }, () => 0);
             for (let i = 0; i < count; i++) {
                 this.retextureFrom[i] = buffer.readUnsignedShort();
                 this.retextureTo[i] = buffer.readUnsignedShort();

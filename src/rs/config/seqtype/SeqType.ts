@@ -118,8 +118,8 @@ export class SeqType extends Type {
             } else {
                 count = buffer.readUnsignedShort();
             }
-            this.frameIds = new Array(count);
-            this.frameLengths = new Array(count);
+            this.frameIds = Array.from({ length: count }, () => 0);
+            this.frameLengths = Array.from({ length: count }, () => 0);
 
             if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision <= 377) {
                 for (let i = 0; i < count; i++) {
@@ -143,7 +143,7 @@ export class SeqType extends Type {
             this.frameStep = buffer.readUnsignedShort();
         } else if (opcode === 3) {
             const count = buffer.readUnsignedByte();
-            this.masks = new Array(count + 1);
+            this.masks = Array.from({ length: count + 1 }, () => 0);
             for (let i = 0; i < count; i++) {
                 this.masks[i] = buffer.readUnsignedByte();
             }
@@ -174,7 +174,7 @@ export class SeqType extends Type {
                 buffer.readInt();
             } else {
                 const count = buffer.readUnsignedByte();
-                this.chatFrameIds = new Array(count);
+                this.chatFrameIds = Array.from({ length: count }, () => 0);
 
                 for (let i = 0; i < count; i++) {
                     this.chatFrameIds[i] = buffer.readUnsignedShort();
@@ -198,7 +198,7 @@ export class SeqType extends Type {
                 }
             } else {
                 const count = buffer.readUnsignedByte();
-                this.frameSounds = new Array(count);
+                const frameSounds: SeqSoundEffect[] = [];
 
                 const isNewSoundEffects = this.isNewSoundEffects();
 
@@ -218,8 +218,9 @@ export class SeqType extends Type {
                         loops = (sound >> 4) & 0x7;
                         location = sound & 0xf;
                     }
-                    this.frameSounds[i] = new SeqSoundEffect(id, loops, location, retain);
+                    frameSounds.push(new SeqSoundEffect(id, loops, location, retain));
                 }
+                this.frameSounds = frameSounds;
             }
         } else if (opcode === 14) {
             if (this.cacheInfo.game === GameType.Oldschool) {
@@ -270,7 +271,7 @@ export class SeqType extends Type {
             if (this.cacheInfo.game === GameType.Oldschool) {
                 const count = buffer.readUnsignedByte();
 
-                this.animMayaMasks = new Array(256).fill(false);
+                this.animMayaMasks = Array.from({ length: 256 }, () => false);
 
                 for (let i = 0; i < count; i++) {
                     this.animMayaMasks[buffer.readUnsignedByte()] = true;

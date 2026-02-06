@@ -21,8 +21,17 @@ export function decodeTypeFromBuffer<T extends Type>(
         type.post();
         return ok(type);
     } catch (cause) {
-        const opcode = cause instanceof TypeDecodeError ? cause.opcode : undefined;
-        const offset = cause instanceof TypeDecodeError ? cause.offset : buffer.offset;
+        const typeDecodeMeta =
+            typeof cause === "object" &&
+            cause !== null &&
+            "opcode" in cause &&
+            "offset" in cause &&
+            typeof (cause as { opcode?: unknown }).opcode === "number" &&
+            typeof (cause as { offset?: unknown }).offset === "number"
+                ? { opcode: (cause as { opcode: number }).opcode, offset: (cause as { offset: number }).offset }
+                : undefined;
+        const opcode = typeDecodeMeta?.opcode;
+        const offset = typeDecodeMeta?.offset ?? buffer.offset;
         return err(
             decodeFailedError({
                 typeName,
@@ -44,4 +53,3 @@ export function decodeTypeFromBytes<T extends Type>(
 ): Result<T, DecodeError> {
     return decodeTypeFromBuffer(typeConstructor, cacheInfo, id, new ByteBuffer(bytes));
 }
-

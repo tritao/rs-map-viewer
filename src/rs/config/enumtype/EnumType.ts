@@ -33,8 +33,8 @@ export class EnumType extends Type {
             this.defaultInt = buffer.readInt();
         } else if (opcode === 5) {
             this.outputCount = buffer.readUnsignedShort();
-            this.keys = new Array(this.outputCount);
-            this.stringValues = new Array(this.outputCount);
+            this.keys = Array.from({ length: this.outputCount }, () => 0);
+            this.stringValues = Array.from({ length: this.outputCount }, () => "");
 
             for (let i = 0; i < this.outputCount; i++) {
                 this.keys[i] = buffer.readInt();
@@ -42,8 +42,8 @@ export class EnumType extends Type {
             }
         } else if (opcode === 6) {
             this.outputCount = buffer.readUnsignedShort();
-            this.keys = new Array(this.outputCount);
-            this.intValues = new Array(this.outputCount);
+            this.keys = Array.from({ length: this.outputCount }, () => 0);
+            this.intValues = Array.from({ length: this.outputCount }, () => 0);
 
             for (let i = 0; i < this.outputCount; i++) {
                 this.keys[i] = buffer.readInt();

@@ -53,22 +53,20 @@ export class QuestType extends Type {
             this.sortName = buffer.readVerString();
         } else if (opcode === 3) {
             const count = buffer.readUnsignedByte();
-            this.varps = new Array(count);
-            for (let i = 0; i < count; i++) {
+            this.varps = Array.from({ length: count }, () => {
                 const id = buffer.readUnsignedShort();
                 const inProgressValue = buffer.readInt();
                 const completedValue = buffer.readInt();
-                this.varps[i] = new QuestVar(id, inProgressValue, completedValue);
-            }
+                return new QuestVar(id, inProgressValue, completedValue);
+            });
         } else if (opcode === 4) {
             const count = buffer.readUnsignedByte();
-            this.varbits = new Array(count);
-            for (let i = 0; i < count; i++) {
+            this.varbits = Array.from({ length: count }, () => {
                 const id = buffer.readUnsignedShort();
                 const inProgressValue = buffer.readInt();
                 const completedValue = buffer.readInt();
-                this.varbits[i] = new QuestVar(id, inProgressValue, completedValue);
-            }
+                return new QuestVar(id, inProgressValue, completedValue);
+            });
         } else if (opcode === 5) {
             buffer.readUnsignedShort();
         } else if (opcode === 6) {
@@ -88,18 +86,14 @@ export class QuestType extends Type {
             buffer.readInt();
         } else if (opcode === 13) {
             const count = buffer.readUnsignedByte();
-            this.questRequirements = new Array(count);
-            for (let i = 0; i < count; i++) {
-                this.questRequirements[i] = buffer.readUnsignedShort();
-            }
+            this.questRequirements = Array.from({ length: count }, () => buffer.readUnsignedShort());
         } else if (opcode === 14) {
             const count = buffer.readUnsignedByte();
-            this.skillRequirements = new Array(count);
-            for (let i = 0; i < count; i++) {
+            this.skillRequirements = Array.from({ length: count }, () => {
                 const id = buffer.readUnsignedByte();
                 const level = buffer.readUnsignedByte();
-                this.skillRequirements[i] = new QuestSkillReq(id, level);
-            }
+                return new QuestSkillReq(id, level);
+            });
         } else if (opcode === 15) {
             this.pointsRequirement = buffer.readUnsignedShort();
         } else if (opcode === 17) {

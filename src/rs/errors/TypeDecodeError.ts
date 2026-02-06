@@ -1,6 +1,7 @@
 export class TypeDecodeError extends Error {
     readonly opcode: number;
     readonly offset: number;
+    readonly cause?: unknown;
 
     constructor(message: string, options: { opcode: number; offset: number; cause?: unknown }) {
         super(message);
@@ -8,7 +9,6 @@ export class TypeDecodeError extends Error {
         this.opcode = options.opcode;
         this.offset = options.offset;
         // Keep original error available for callers that care.
-        (this as any).cause = options.cause;
+        this.cause = options.cause;
     }
 }
-

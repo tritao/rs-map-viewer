@@ -5,7 +5,7 @@ export class BasType extends Type {
     idleSeqId = -1;
     walkSeqId = -1;
 
-    modelRotateTranslate?: number[][];
+    modelRotateTranslate?: Array<number[] | undefined>;
 
     override decodeOpcode(opcode: number, buffer: ByteBuffer): void {
         if (opcode === 1) {
@@ -38,21 +38,10 @@ export class BasType extends Type {
             const hillHeight = buffer.readUnsignedByte() * 4;
         } else if (opcode === 27) {
             if (!this.modelRotateTranslate) {
-                this.modelRotateTranslate = new Array(12);
+                this.modelRotateTranslate = Array.from({ length: 12 }, () => undefined);
             }
             const bodyPartId = buffer.readUnsignedByte();
-            this.modelRotateTranslate[bodyPartId] = new Array(6);
-            for (let type = 0; type < 6; type++) {
-                /*
-                 * 0 -Rotate X
-                 * 1 - Rotate Y
-                 * 2 - Rotate Z
-                 * 3 - Translate X
-                 * 4 - Translate Y
-                 * 5 - Translate Z
-                 */
-                this.modelRotateTranslate[bodyPartId][type] = buffer.readShort();
-            }
+            this.modelRotateTranslate[bodyPartId] = Array.from({ length: 6 }, () => buffer.readShort());
         } else if (opcode === 29) {
             const yawAcceleration = buffer.readUnsignedByte();
         } else if (opcode === 30) {

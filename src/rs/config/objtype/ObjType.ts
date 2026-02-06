@@ -204,8 +204,8 @@ export class ObjType extends Type {
             this.inventoryActions[opcode - 35] = this.readString(buffer);
         } else if (opcode === 40) {
             const count = buffer.readUnsignedByte();
-            this.recolorFrom = new Array(count);
-            this.recolorTo = new Array(count);
+            this.recolorFrom = Array.from({ length: count }, () => 0);
+            this.recolorTo = Array.from({ length: count }, () => 0);
 
             for (let i = 0; i < count; i++) {
                 this.recolorFrom[i] = buffer.readUnsignedShort();
@@ -213,8 +213,8 @@ export class ObjType extends Type {
             }
         } else if (opcode === 41) {
             const count = buffer.readUnsignedByte();
-            this.retextureFrom = new Array(count);
-            this.retextureTo = new Array(count);
+            this.retextureFrom = Array.from({ length: count }, () => 0);
+            this.retextureTo = Array.from({ length: count }, () => 0);
 
             for (let i = 0; i < count; i++) {
                 this.retextureFrom[i] = buffer.readUnsignedShort();
@@ -252,8 +252,8 @@ export class ObjType extends Type {
             this.noteTemplate = buffer.readUnsignedShort();
         } else if (opcode >= 100 && opcode < 110) {
             if (!this.countObj) {
-                this.countObj = new Array(10);
-                this.countCo = new Array(10);
+                this.countObj = Array.from({ length: 10 }, () => 0);
+                this.countCo = Array.from({ length: 10 }, () => 0);
             }
 
             this.countObj[opcode - 100] = buffer.readUnsignedShort();
@@ -364,13 +364,7 @@ export class ObjType extends Type {
         this.team = original.team;
         this.groundActions = original.groundActions;
         this.op75 = original.op75;
-        this.inventoryActions = new Array(5);
-        if (original.inventoryActions) {
-            for (let i = 0; i < 4; i++) {
-                this.inventoryActions[i] = original.inventoryActions[i];
-            }
-        }
-
+        this.inventoryActions = Array.from({ length: 5 }, (_, i) => original.inventoryActions?.[i] ?? null);
         this.inventoryActions[4] = "Discard";
         this.price = 0;
     }
