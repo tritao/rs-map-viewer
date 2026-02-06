@@ -1,6 +1,7 @@
 import { CacheInfo } from "../../cache/CacheInfo";
 import { Archive } from "../../cache/format/Archive";
 import { EnumeratingBytesProvider, EnumeratingArchiveBytesProvider } from "../../io/BytesProvider";
+import { DecodeError } from "../../errors/DecodeError";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
@@ -18,18 +19,22 @@ export function decodeDat2SeqFrameMapFromSource(
     }
 
     const frames: Array<SeqFrame | undefined> = new Array(maxId + 1);
+    const errors: Map<number, DecodeError> = new Map();
     for (let i = 0; i < ids.length; i++) {
         const id = ids[i];
         const bytes = source.getBytes(id);
         if (!bytes) {
             continue;
         }
-        const frame = Dat2SeqFrame.tryLoad(cacheInfo, baseLoader, bytes, scratch);
-        if (frame) {
-            frames[id] = frame;
+        const result = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, bytes, scratch);
+        if (result.ok) {
+            frames[id] = result.value;
+            errors.delete(id);
+        } else {
+            errors.set(id, result.error.id === undefined ? { ...result.error, id } : result.error);
         }
     }
-    return new SeqFrameMap(frames);
+    return new SeqFrameMap(frames, errors);
 }
 
 export function decodeDat2SeqFrameMapFromArchive(

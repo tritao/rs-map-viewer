@@ -2,9 +2,11 @@ import { Archive } from "../../cache/format/Archive";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
+import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { DatSeqBase, LegacySeqBase, SeqBase } from "./SeqBase";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { SeqTransformType } from "./SeqTransformType";
+import { err, ok, Result } from "../../../util/Result";
 
 export class SeqFrameDecodeScratch {
     transformGroupCache: Int32Array = new Int32Array(500);
@@ -190,17 +192,33 @@ export class LegacySeqFrame {
 }
 
 export class DatSeqFrame {
+    static tryLoadResult(
+        frames: Map<number, SeqFrame>,
+        data: Uint8Array,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+        frameMapId: number = -1,
+    ): Result<void, DecodeError> {
+        try {
+            DatSeqFrame.load(frames, data, scratch);
+            return ok(undefined);
+        } catch (cause) {
+            return err(
+                decodeFailedError({
+                    typeName: "DatSeqFrameMap",
+                    id: frameMapId,
+                    message: `DatSeqFrame: failed decoding frame map id=${frameMapId}`,
+                    cause,
+                }),
+            );
+        }
+    }
+
     static tryLoad(
         frames: Map<number, SeqFrame>,
         data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
     ): boolean {
-        try {
-            DatSeqFrame.load(frames, data, scratch);
-            return true;
-        } catch {
-            return false;
-        }
+        return DatSeqFrame.tryLoadResult(frames, data, scratch).ok;
     }
 
     static load(
@@ -341,12 +359,12 @@ export class DatSeqFrame {
 }
 
 export class Dat2SeqFrame {
-    static tryLoad(
+    static tryLoadResult(
         cacheInfo: CacheInfo,
         baseLoader: SeqBaseLoader,
         data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
-    ): SeqFrame | undefined {
+    ): Result<SeqFrame, DecodeError> {
         try {
             const buf = new ByteBuffer(data);
             const dataBuf = new ByteBuffer(data);
@@ -357,10 +375,11 @@ export class Dat2SeqFrame {
 
             const baseId = buf.readUnsignedShort();
 
-            const base = baseLoader.tryGet(baseId);
-            if (!base) {
-                return undefined;
+            const baseResult = baseLoader.tryLoad(baseId);
+            if (!baseResult.ok) {
+                return err(baseResult.error);
             }
+            const base = baseResult.value;
 
             const count = buf.readUnsignedByte();
 
@@ -449,7 +468,13 @@ export class Dat2SeqFrame {
             }
 
             if (count !== 0 && dataBuf.offset !== data.length) {
-                return undefined;
+                return err(
+                    decodeFailedError({
+                        typeName: "Dat2SeqFrame",
+                        id: -1,
+                        message: "Dat2SeqFrame: trailing bytes after decode",
+                    }),
+                );
             }
 
             const transformGroups: number[] = new Array(transformCount);
@@ -465,21 +490,40 @@ export class Dat2SeqFrame {
                 resetOriginGroups[i] = scratch.resetOriginGroupsCache[i];
             }
 
-            return new SeqFrame(
-                0,
-                base,
-                transformCount,
-                transformGroups,
-                transformX,
-                transformY,
-                transformZ,
-                resetOriginGroups,
-                hasAlphaTransform,
-                hasColorTransform,
+            return ok(
+                new SeqFrame(
+                    0,
+                    base,
+                    transformCount,
+                    transformGroups,
+                    transformX,
+                    transformY,
+                    transformZ,
+                    resetOriginGroups,
+                    hasAlphaTransform,
+                    hasColorTransform,
+                ),
             );
-        } catch (e) {
-            return undefined;
+        } catch (cause) {
+            return err(
+                decodeFailedError({
+                    typeName: "Dat2SeqFrame",
+                    id: -1,
+                    message: "Dat2SeqFrame: failed decoding frame",
+                    cause,
+                }),
+            );
         }
+    }
+
+    static tryLoad(
+        cacheInfo: CacheInfo,
+        baseLoader: SeqBaseLoader,
+        data: Uint8Array,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): SeqFrame | undefined {
+        const result = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, data, scratch);
+        return result.ok ? result.value : undefined;
     }
 
 }

@@ -5,6 +5,7 @@ import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
 import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { Xtea } from "../../src/rs/crypto/Xtea";
+import { notFoundError } from "../../src/rs/errors/DecodeError";
 import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { SeqBase } from "../../src/rs/model/seq/SeqBase";
@@ -15,6 +16,7 @@ import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
 import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
+import { err, ok } from "../../src/util/Result";
 
 const FIXTURES_DIR = path.resolve("testdata/cache-fixtures");
 
@@ -264,17 +266,16 @@ function checkDat2SeqFrameMinimal(): void {
         [[]],
     );
     const baseLoader = {
-        tryLoad: (_id: number) => {
-            throw new Error("not used");
-        },
+        tryLoad: (id: number) => (id === 0 ? ok(base) : err(notFoundError("SeqBase", id))),
         tryGet: (id: number) => (id === 0 ? base : undefined),
         clearCache: () => {},
     };
 
-    const frame = Dat2SeqFrame.tryLoad(cacheInfo, baseLoader, bytes);
-    if (!frame) {
-        throw new Error("dat2-seqframe-min: failed decoding frame");
+    const frameResult = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, bytes);
+    if (!frameResult.ok) {
+        throw new Error(`dat2-seqframe-min: failed decoding frame: ${frameResult.error.message}`);
     }
+    const frame = frameResult.value;
 
     const actual = {
         transformCount: frame.transformCount,
@@ -316,17 +317,16 @@ function checkDat2SeqFrameNonTrivial(): void {
         [[], [], [], []],
     );
     const baseLoader = {
-        tryLoad: (_id: number) => {
-            throw new Error("not used");
-        },
+        tryLoad: (id: number) => (id === 0 ? ok(base) : err(notFoundError("SeqBase", id))),
         tryGet: (id: number) => (id === 0 ? base : undefined),
         clearCache: () => {},
     };
 
-    const frame = Dat2SeqFrame.tryLoad(cacheInfo, baseLoader, bytes);
-    if (!frame) {
-        throw new Error("dat2-seqframe-nontrivial: failed decoding frame");
+    const frameResult = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, bytes);
+    if (!frameResult.ok) {
+        throw new Error(`dat2-seqframe-nontrivial: failed decoding frame: ${frameResult.error.message}`);
     }
+    const frame = frameResult.value;
 
     const actual = {
         transformCount: frame.transformCount,

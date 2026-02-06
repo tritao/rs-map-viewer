@@ -5,7 +5,7 @@ import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../../io/Bytes
 import { EnumeratingGroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
 import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { SeqBaseLoader } from "./SeqBaseLoader";
-import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
+import { DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
 import { decodeDat2SeqFrameMapFromSource } from "./decodeDat2SeqFrameMap";
 import { err, ok, Result } from "../../../util/Result";
@@ -55,7 +55,7 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
             if (!bytes) {
                 continue;
             }
-            if (!DatSeqFrame.tryLoad(frames, bytes, scratch)) {
+            if (!DatSeqFrame.tryLoadResult(frames, bytes, scratch, frameMapId).ok) {
                 failedFrameMapIds.push(frameMapId);
             }
         }
@@ -129,7 +129,16 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
         const frame = frameMap.frames[frameId];
         if (!frame) {
-            const e = notFoundError("Dat2SeqFrame", id);
+            const frameError = frameMap.errors.get(frameId);
+            let e: DecodeError;
+            if (frameError) {
+                e =
+                    frameError.id === id
+                        ? frameError
+                        : { ...frameError, id, typeName: frameError.typeName ?? "Dat2SeqFrame" };
+            } else {
+                e = notFoundError("Dat2SeqFrame", id);
+            }
             this.errors.set(id, e);
             return err(e);
         }
