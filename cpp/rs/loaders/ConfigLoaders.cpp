@@ -8,12 +8,14 @@
 #include "../core/Status.hpp"
 #include "../types.hpp"
 #include "../config/floortype/FloorTypeLoaders.hpp"
+#include "../config/idktype/IdkTypeLoader.hpp"
 #include "../config/vartype/VarBitTypeLoader.hpp"
 
 namespace rs {
 
 static constexpr i32 DAT2_INDEX_CONFIGS = 2;
 static constexpr i32 DAT2_CONFIG_ARCHIVE_UNDERLAYS = 1;
+static constexpr i32 DAT2_CONFIG_ARCHIVE_IDENTKITS = 3;
 static constexpr i32 DAT2_CONFIG_ARCHIVE_OVERLAYS = 4;
 static constexpr i32 DAT2_CONFIG_ARCHIVE_VARBITS = 14;
 
@@ -38,6 +40,21 @@ Result<ConfigLoaders> tryCreateConfigLoaders(const CacheSystem& cacheSystem, con
             return Result<ConfigLoaders>::err(r.status());
         }
         out.underlays = rs::move(r.value());
+    }
+
+    {
+        // Dat2: identity kits are stored in configs index (2), archive id 3.
+        auto archRes = cacheSystem.getArchive(DAT2_INDEX_CONFIGS, DAT2_CONFIG_ARCHIVE_IDENTKITS, alloc);
+        if (!archRes.isOk()) {
+            return Result<ConfigLoaders>::err(archRes.status());
+        }
+        const Archive archive = rs::move(archRes.value());
+
+        auto r = IdkTypeLoader::fromArchive(cacheInfo, archive, alloc);
+        if (!r.isOk()) {
+            return Result<ConfigLoaders>::err(r.status());
+        }
+        out.identKits = rs::move(r.value());
     }
 
     {

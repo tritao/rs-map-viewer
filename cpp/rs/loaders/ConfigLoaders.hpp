@@ -8,6 +8,7 @@
 #include "../types.hpp"
 #include "../config/vartype/VarBitTypeLoader.hpp"
 #include "../config/floortype/FloorTypeLoaders.hpp"
+#include "../config/idktype/IdkTypeLoader.hpp"
 
 namespace rs {
 
@@ -15,6 +16,7 @@ struct ConfigLoaders {
     VarBitTypeLoader varBits;
     UnderlayFloorTypeLoader underlays;
     OverlayFloorTypeLoader overlays;
+    IdkTypeLoader identKits;
 };
 
 // Minimal starting point for the config/loaders port. Extend this struct as we port more config types.
