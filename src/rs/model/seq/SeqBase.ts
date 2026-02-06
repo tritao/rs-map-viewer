@@ -1,6 +1,7 @@
-import { Archive } from "../../cache/format/Archive";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
+import { Archive } from "../../cache/format/Archive";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
 import { SkeletalBase } from "../skeletal/SkeletalBase";
 import { SeqTransformType } from "./SeqTransformType";
 
@@ -17,17 +18,17 @@ export class SeqBase {
 }
 
 export class LegacySeqBase {
-    static load(modelArchive: Archive): SeqBase[] {
-        const headFile = modelArchive.getFileNamed("base_head.dat");
-        const typeFile = modelArchive.getFileNamed("base_type.dat");
-        const labelFile = modelArchive.getFileNamed("base_label.dat");
-        if (!headFile || !typeFile || !labelFile) {
+    static load(source: NamedBytesProvider): SeqBase[] {
+        const headBytes = source.getBytes("base_head.dat");
+        const typeBytes = source.getBytes("base_type.dat");
+        const labelBytes = source.getBytes("base_label.dat");
+        if (!headBytes || !typeBytes || !labelBytes) {
             throw new Error("Missing legacy base archive files (base_head/base_type/base_label)");
         }
 
-        const head = new ByteBuffer(headFile.data);
-        const type = new ByteBuffer(typeFile.data);
-        const label = new ByteBuffer(labelFile.data);
+        const head = new ByteBuffer(headBytes);
+        const type = new ByteBuffer(typeBytes);
+        const label = new ByteBuffer(labelBytes);
 
         const baseCount = head.readUnsignedShort();
         const lastBaseId = head.readUnsignedShort();
@@ -57,6 +58,10 @@ export class LegacySeqBase {
         }
 
         return bases;
+    }
+
+    static loadFromArchive(modelArchive: Archive): SeqBase[] {
+        return LegacySeqBase.load(new ArchiveNamedBytesProvider(modelArchive));
     }
 }
 

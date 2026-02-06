@@ -1,6 +1,7 @@
 import { Archive } from "../../cache/format/Archive";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
 import { DatSeqBase, LegacySeqBase, SeqBase } from "./SeqBase";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { SeqTransformType } from "./SeqTransformType";
@@ -60,21 +61,21 @@ export class SeqFrame {
 }
 
 export class LegacySeqFrame {
-    static load(modelArchive: Archive, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
-        const bases = LegacySeqBase.load(modelArchive);
+    static load(source: NamedBytesProvider, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
+        const bases = LegacySeqBase.load(source);
 
-        const headFile = modelArchive.getFileNamed("frame_head.dat");
-        const tran1File = modelArchive.getFileNamed("frame_tran1.dat");
-        const tran2File = modelArchive.getFileNamed("frame_tran2.dat");
-        const delFile = modelArchive.getFileNamed("frame_del.dat");
-        if (!headFile || !tran1File || !tran2File || !delFile) {
+        const headBytes = source.getBytes("frame_head.dat");
+        const tran1Bytes = source.getBytes("frame_tran1.dat");
+        const tran2Bytes = source.getBytes("frame_tran2.dat");
+        const delBytes = source.getBytes("frame_del.dat");
+        if (!headBytes || !tran1Bytes || !tran2Bytes || !delBytes) {
             throw new Error("Missing legacy frame archive files (frame_head/frame_tran1/frame_tran2/frame_del)");
         }
 
-        const head = new ByteBuffer(headFile.data);
-        const tran1 = new ByteBuffer(tran1File.data);
-        const tran2 = new ByteBuffer(tran2File.data);
-        const del = new ByteBuffer(delFile.data);
+        const head = new ByteBuffer(headBytes);
+        const tran1 = new ByteBuffer(tran1Bytes);
+        const tran2 = new ByteBuffer(tran2Bytes);
+        const del = new ByteBuffer(delBytes);
 
         const frameCount = head.readUnsignedShort();
         const lastFrameId = head.readUnsignedShort();
@@ -181,6 +182,10 @@ export class LegacySeqFrame {
         }
 
         return frames;
+    }
+
+    static loadFromArchive(modelArchive: Archive, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
+        return LegacySeqFrame.load(new ArchiveNamedBytesProvider(modelArchive), scratch);
     }
 }
 

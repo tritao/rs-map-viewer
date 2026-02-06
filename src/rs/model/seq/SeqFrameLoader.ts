@@ -16,7 +16,7 @@ export interface SeqFrameLoader {
 
 export class LegacySeqFrameLoader implements SeqFrameLoader {
     static create(modelArchive: Archive): LegacySeqFrameLoader {
-        return new LegacySeqFrameLoader(LegacySeqFrame.load(modelArchive));
+        return new LegacySeqFrameLoader(LegacySeqFrame.loadFromArchive(modelArchive));
     }
 
     constructor(readonly frames: SeqFrame[]) {}

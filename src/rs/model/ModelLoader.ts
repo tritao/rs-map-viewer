@@ -2,11 +2,13 @@ import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { CountedBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { ModelData } from "./ModelData";
 
 export interface ModelLoader {
     getModel(id: number): ModelData | undefined;
     getCount(): number;
+    clearCache(): void;
 }
 
 export class IndexModelLoader implements ModelLoader {
@@ -39,6 +41,10 @@ export class IndexModelLoader implements ModelLoader {
             }
             return undefined;
         }
+    }
+
+    clearCache(): void {
+        this.errors.clear();
     }
 }
 
@@ -82,16 +88,20 @@ export class LegacyModelLoader implements ModelLoader {
     metadatas: LegacyModelMetadata[];
 
     static create(modelArchive: Archive): LegacyModelLoader {
-        return new LegacyModelLoader(modelArchive);
+        return LegacyModelLoader.createFromSource(new ArchiveNamedBytesProvider(modelArchive));
     }
 
-    private constructor(modelArchive: Archive) {
+    static createFromSource(source: NamedBytesProvider): LegacyModelLoader {
+        return new LegacyModelLoader(source);
+    }
+
+    private constructor(source: NamedBytesProvider) {
         const requireBuffer = (name: string): ByteBuffer => {
-            const file = modelArchive.getFileNamed(name);
-            if (!file) {
+            const bytes = source.getBytes(name);
+            if (!bytes) {
                 throw new Error(`Missing legacy model archive file: ${name}`);
             }
-            return new ByteBuffer(file.data);
+            return new ByteBuffer(bytes);
         };
 
         this.head = requireBuffer("ob_head.dat");
@@ -208,4 +218,6 @@ export class LegacyModelLoader implements ModelLoader {
         }
         return ModelData.decodeLegacy(this, meta);
     }
+
+    clearCache(): void {}
 }
