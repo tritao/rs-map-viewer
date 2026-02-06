@@ -91,10 +91,14 @@ export class SceneBuffer {
         }
         for (const face of tileModel.faces) {
             for (const vertex of face.vertices) {
-                const textureIndex = this.textureIdIndexMap.get(vertex.textureId) ?? -1;
+                const textureIndex0 = this.textureIdIndexMap.get(vertex.textureId) ?? -1;
+                const textureIndex1 = this.textureIdIndexMap.get(vertex.textureId1) ?? -1;
 
-                if (textureIndex !== -1) {
+                if (textureIndex0 !== -1) {
                     this.usedTextureIds.add(vertex.textureId);
+                }
+                if (textureIndex1 !== -1) {
+                    this.usedTextureIds.add(vertex.textureId1);
                 }
 
                 const index = this.vertexBuf.addVertex(
@@ -105,8 +109,11 @@ export class SceneBuffer {
                     0xff,
                     vertex.u,
                     vertex.v,
-                    textureIndex,
+                    textureIndex0,
                     0,
+                    true,
+                    textureIndex1,
+                    vertex.texBlend,
                 );
 
                 this.indices.push(index);

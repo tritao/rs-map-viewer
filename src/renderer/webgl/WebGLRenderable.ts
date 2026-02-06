@@ -178,16 +178,16 @@ export class WebGLRenderable {
     }
 
     createBuffers(app: PicoApp, data: SdRenderableData) {
-        this.interleavedBuffer = app.createInterleavedBuffer(12, data.vertices);
+        this.interleavedBuffer = app.createInterleavedBuffer(16, data.vertices);
         this.indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.indices);
 
         this.vertexArray = app
             .createVertexArray()
-            // v0, v1, v2
+            // v0, v1, v2, v3
             .vertexAttributeBuffer(0, this.interleavedBuffer, {
                 type: PicoGL.UNSIGNED_INT,
-                size: 3,
-                stride: 12,
+                size: 4,
+                stride: 16,
                 integer: true as any,
             })
             .indexBuffer(this.indexBuffer);

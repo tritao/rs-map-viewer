@@ -3,10 +3,12 @@ struct Vertex {
     vec4 color;
     vec2 texCoord;
     uint textureId;
+    uint textureId1;
+    float texBlend;
     uint priority;
 };
 
-Vertex decodeVertex(uint v0, uint v1, uint v2, float brightness) {
+Vertex decodeVertex(uint v0, uint v1, uint v2, uint v3, float brightness) {
     float x = float(int((v0 >> 17u) & 0x7FFFu) - 0x4000);
     float u = unpackFloat11(((v0 >> 11u) & 0x3Fu) | ((v2 & 0x1Fu) << 6u));
     float v = unpackFloat11(v0 & 0x7FFu);
@@ -14,7 +16,18 @@ Vertex decodeVertex(uint v0, uint v1, uint v2, float brightness) {
     float y = -float(int((v1) & 0x7FFFu) - 0x4000);
     int hsl = int((v1 >> 15u) & 0xFFFFu);
     float isTextured = float((v1 >> 31) & 0x1u);
-    float textureId = float(((hsl >> 7) | int(((v2 >> 5u) & 0x1u) << 9u)) + 1) * isTextured;
+    float textureId = float((
+        (hsl >> 7)
+        | int(((v2 >> 5u) & 0x1u) << 9u)
+        | int(((v3 >> 19u) & 0x1u) << 10u)
+    ) + 1) * isTextured;
+
+    float isTextured1 = float((v3 >> 10u) & 0x1u);
+    float textureId1 = float((
+        (v3 & 0x3FFu)
+        | (((v3 >> 20u) & 0x1u) << 10u)
+    ) + 1u) * isTextured1;
+    float texBlend = float((v3 >> 11u) & 0xFFu) / 255.0;
 
     float z = float(int((v2 >> 17u) & 0x7FFFu) - 0x4000);
     float alpha = float((v2 >> 9u) & 0xFFu) / 255.0;
@@ -23,5 +36,5 @@ Vertex decodeVertex(uint v0, uint v1, uint v2, float brightness) {
     vec4 color = when_eq(textureId, 0.0) * vec4(hslToRgb(hsl, brightness), alpha)
         + when_neq(textureId, 0.0) * vec4(vec3(float(hsl & 0x7F) / 127.0), alpha);
 
-    return Vertex(vec3(x, y, z), color, vec2(u, v), uint(textureId), priority);
+    return Vertex(vec3(x, y, z), color, vec2(u, v), uint(textureId), uint(textureId1), texBlend, priority);
 }

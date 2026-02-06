@@ -56,6 +56,8 @@ type SceneTileVertex = {
     u: number;
     v: number;
     textureId: number;
+    textureId1: number;
+    texBlend: number;
 };
 
 export type OverlayCornerSet = {
@@ -236,6 +238,8 @@ export class SceneTileModel {
 
         const chosenCornerIndex = new Int8Array(vertexCount);
         const chosenCornerWeight = new Float32Array(vertexCount);
+        const edgeForVertex = new Int8Array(vertexCount);
+        edgeForVertex.fill(-1);
 
         for (let i = 0; i < vertexCount; i++) {
             let vertexIndex = vertexIndices[i];
@@ -249,6 +253,16 @@ export class SceneTileModel {
 
             if (vertexIndex > 12 && vertexIndex <= 16) {
                 vertexIndex = ((vertexIndex - 13 - rotation) & 3) + 13;
+            }
+
+            if (vertexIndex === 2) {
+                edgeForVertex[i] = 0; // S
+            } else if (vertexIndex === 4) {
+                edgeForVertex[i] = 1; // E
+            } else if (vertexIndex === 6) {
+                edgeForVertex[i] = 2; // N
+            } else if (vertexIndex === 8) {
+                edgeForVertex[i] = 3; // W
             }
 
             let vertX = 0;
@@ -434,6 +448,25 @@ export class SceneTileModel {
             chosenCornerWeight[i] = best;
         }
 
+        const overlayPrefTextureId = new Int32Array(vertexCount);
+        const overlayPrefTextureSize = new Int32Array(vertexCount);
+        for (let i = 0; i < vertexCount; i++) {
+            let texId = primaryCorners.textureId[chosenCornerIndex[i]];
+            let texSize = primaryCorners.textureSize[chosenCornerIndex[i]];
+
+            const edge = edgeForVertex[i];
+            if (edge !== -1) {
+                const edgeTex = primaryEdges.textureId[edge];
+                if (edgeTex !== -1) {
+                    texId = edgeTex;
+                    texSize = primaryEdges.textureSize[edge];
+                }
+            }
+
+            overlayPrefTextureId[i] = texId;
+            overlayPrefTextureSize[i] = Math.max(1, texSize | 0);
+        }
+
         const tileFaces = tileShapeFaces[shape];
         const faceCount = tileFaces.length / 4;
         this.normalFaceCount = faceCount;
@@ -538,6 +571,62 @@ export class SceneTileModel {
                 }
             }
 
+            let faceTextureId1 = -1;
+            let texBlendA = 0;
+            let texBlendB = 0;
+            let texBlendC = 0;
+
+            if (isOverlay && faceTextureId !== -1) {
+                const pA = overlayPrefTextureId[a];
+                const pB = overlayPrefTextureId[b];
+                const pC = overlayPrefTextureId[c];
+
+                const sA = overlayPrefTextureSize[a];
+                const sB = overlayPrefTextureSize[b];
+                const sC = overlayPrefTextureSize[c];
+
+                // Find an alternate overlay texture to blend towards, but only when it uses the same texture size
+                // as the current face (we only have a single UV set).
+                let candidate = -1;
+                let candidateCount = 0;
+
+                const consider = (texId: number, texSize: number) => {
+                    if (texId === -1 || texId === faceTextureId || texSize !== faceTextureSize) {
+                        return;
+                    }
+                    let count = 0;
+                    if (pA === texId && sA === texSize) count++;
+                    if (pB === texId && sB === texSize) count++;
+                    if (pC === texId && sC === texSize) count++;
+                    if (count > candidateCount) {
+                        candidate = texId;
+                        candidateCount = count;
+                    }
+                };
+
+                consider(pA, sA);
+                consider(pB, sB);
+                consider(pC, sC);
+
+                if (candidate !== -1 && candidateCount > 0) {
+                    texBlendA = pA === candidate && sA === faceTextureSize ? 1 : 0;
+                    texBlendB = pB === candidate && sB === faceTextureSize ? 1 : 0;
+                    texBlendC = pC === candidate && sC === faceTextureSize ? 1 : 0;
+
+                    const sum = texBlendA + texBlendB + texBlendC;
+                    if (sum === 3) {
+                        // All vertices want the candidate; just use it as the primary texture for this face.
+                        faceTextureId = candidate;
+                        faceTextureId1 = -1;
+                        texBlendA = 0;
+                        texBlendB = 0;
+                        texBlendC = 0;
+                    } else if (sum > 0) {
+                        faceTextureId1 = candidate;
+                    }
+                }
+            }
+
             if (this.faceTextures) {
                 this.faceTextures[i] = faceTextureId;
             }
@@ -573,6 +662,8 @@ export class SceneTileModel {
                         u: u0,
                         v: v0,
                         textureId: faceTextureId,
+                        textureId1: faceTextureId1,
+                        texBlend: texBlendA,
                     },
                     {
                         x: this.vertexX[b],
@@ -582,6 +673,8 @@ export class SceneTileModel {
                         u: u1,
                         v: v1,
                         textureId: faceTextureId,
+                        textureId1: faceTextureId1,
+                        texBlend: texBlendB,
                     },
                     {
                         x: this.vertexX[c],
@@ -591,6 +684,8 @@ export class SceneTileModel {
                         u: u2,
                         v: v2,
                         textureId: faceTextureId,
+                        textureId1: faceTextureId1,
+                        texBlend: texBlendC,
                     },
                 ],
             });
