@@ -8,6 +8,7 @@ import {
     IndexTypeLoader,
     TypeLoader,
 } from "../../TypeLoader";
+import { ArchiveBytesProvider } from "../../../io/BytesProvider";
 import { VarBitType } from "./VarBitType";
 
 export type VarBitTypeLoader = TypeLoader<VarBitType>;
@@ -29,7 +30,7 @@ export class ArchiveVarBitTypeLoader
     implements VarBitTypeLoader
 {
     constructor(cacheInfo: CacheInfo, archive: Archive) {
-        super(VarBitType, cacheInfo, archive);
+        super(VarBitType, cacheInfo, new ArchiveBytesProvider(archive));
     }
 }
 

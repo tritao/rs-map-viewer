@@ -3,6 +3,7 @@ import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { CountedBytesProvider } from "../io/BytesProvider";
 import { NamedBytesProvider } from "../io/NamedBytesProvider";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { Result, err, ok } from "../../util/Result";
@@ -123,17 +124,17 @@ export class ArchiveTypeLoader<T extends Type> extends BaseTypeLoader<T> {
     constructor(
         readonly typeConstructor: TypeConstructor<T>,
         readonly cacheInfo: CacheInfo,
-        readonly archive: Archive,
+        readonly source: CountedBytesProvider,
     ) {
         super(typeConstructor, cacheInfo);
     }
 
     override getData(id: number): Uint8Array | undefined {
-        return this.archive.getFile(id)?.data;
+        return this.source.getBytes(id);
     }
 
     override getCount(): number {
-        return this.archive.lastFileId + 1;
+        return this.source.getCount();
     }
 
     // Inherit BaseTypeLoader.tryLoad for caching + error handling.

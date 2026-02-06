@@ -1,6 +1,7 @@
 import { Archive } from "../../cache/format/Archive";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { ArchiveTypeLoader, DatTypeLoader, TypeLoader } from "../TypeLoader";
+import { ArchiveBytesProvider } from "../../io/BytesProvider";
 import { FloorType } from "./FloorType";
 import { OverlayFloorType } from "./OverlayFloorType";
 import { UnderlayFloorType } from "./UnderlayFloorType";
@@ -15,7 +16,7 @@ export class ArchiveUnderlayFloorTypeLoader
     implements UnderlayFloorTypeLoader
 {
     constructor(cacheInfo: CacheInfo, archive: Archive) {
-        super(UnderlayFloorType, cacheInfo, archive);
+        super(UnderlayFloorType, cacheInfo, new ArchiveBytesProvider(archive));
     }
 }
 
@@ -24,7 +25,7 @@ export class ArchiveOverlayFloorTypeLoader
     implements OverlayFloorTypeLoader
 {
     constructor(cacheInfo: CacheInfo, archive: Archive) {
-        super(OverlayFloorType, cacheInfo, archive);
+        super(OverlayFloorType, cacheInfo, new ArchiveBytesProvider(archive));
     }
 }
 

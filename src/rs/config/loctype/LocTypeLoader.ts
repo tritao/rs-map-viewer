@@ -7,6 +7,7 @@ import {
     IndexedDatTypeLoader,
     TypeLoader,
 } from "../TypeLoader";
+import { ArchiveBytesProvider } from "../../io/BytesProvider";
 import { LocType } from "./LocType";
 
 export type LocTypeLoader = TypeLoader<LocType>;
@@ -19,7 +20,7 @@ export class DatLocTypeLoader {
 
 export class ArchiveLocTypeLoader extends ArchiveTypeLoader<LocType> implements LocTypeLoader {
     constructor(cacheInfo: CacheInfo, archive: Archive) {
-        super(LocType, cacheInfo, archive);
+        super(LocType, cacheInfo, new ArchiveBytesProvider(archive));
     }
 }
 

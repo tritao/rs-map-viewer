@@ -7,6 +7,7 @@ import {
     IndexedDatTypeLoader,
     TypeLoader,
 } from "../TypeLoader";
+import { ArchiveBytesProvider } from "../../io/BytesProvider";
 import { ObjType } from "./ObjType";
 
 export type ObjTypeLoader = TypeLoader<ObjType>;
@@ -19,7 +20,7 @@ export class DatObjTypeLoader {
 
 export class ArchiveObjTypeLoader extends ArchiveTypeLoader<ObjType> implements ObjTypeLoader {
     constructor(cacheInfo: CacheInfo, archive: Archive) {
-        super(ObjType, cacheInfo, archive);
+        super(ObjType, cacheInfo, new ArchiveBytesProvider(archive));
     }
 }
 

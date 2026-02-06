@@ -1,6 +1,7 @@
 import { Archive } from "../../cache/format/Archive";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { ArchiveTypeLoader, DummyTypeLoader, TypeLoader } from "../TypeLoader";
+import { ArchiveBytesProvider } from "../../io/BytesProvider";
 import { BasType } from "./BasType";
 
 export type BasTypeLoader = TypeLoader<BasType>;
@@ -13,6 +14,6 @@ export class DummyBasTypeLoader extends DummyTypeLoader<BasType> {
 
 export class ArchiveBasTypeLoader extends ArchiveTypeLoader<BasType> {
     constructor(cacheInfo: CacheInfo, archive: Archive) {
-        super(BasType, cacheInfo, archive);
+        super(BasType, cacheInfo, new ArchiveBytesProvider(archive));
     }
 }
