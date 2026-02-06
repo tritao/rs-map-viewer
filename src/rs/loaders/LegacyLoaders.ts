@@ -11,7 +11,7 @@ import { QuestTypeLoader } from "../config/questtype/QuestTypeLoader";
 import { DatSeqTypeLoader, SeqTypeLoader } from "../config/seqtype/SeqTypeLoader";
 import { DummyVarBitTypeLoader, VarBitTypeLoader } from "../config/vartype/bit/VarBitTypeLoader";
 import { Dat2MapIndex } from "../map/MapFileIndex";
-import { LegacyMapFileLoader, MapFileLoader } from "../map/MapFileLoader";
+import { CacheIndexMapIndexSource, LegacyMapFileLoader, MapFileLoader } from "../map/MapFileLoader";
 import { LegacyModelLoader } from "../model/ModelLoader";
 import { LegacySeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
@@ -152,7 +152,7 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
         seqFrameLoader,
         skeletalSeqLoader: undefined,
 
-        mapFileLoader: new LegacyMapFileLoader(mapIndex, new Dat2MapIndex(mapIndex)),
+        mapFileLoader: new LegacyMapFileLoader(new CacheIndexMapIndexSource(mapIndex), new Dat2MapIndex(mapIndex)),
 
         mapScenes: loadMapScenes(new ArchiveNamedBytesProvider(mediaArchive)),
         mapFunctions: loadMapFunctions(new ArchiveNamedBytesProvider(mediaArchive)),

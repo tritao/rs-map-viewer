@@ -4,33 +4,55 @@ import { Bzip2 } from "../compression/Bzip2";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { MapFileIndex } from "./MapFileIndex";
 
+export interface MapIndexSource {
+    tryGetArchiveId(name: string): number | undefined;
+    tryGetFile(archiveId: number, fileId: number): Uint8Array | undefined;
+    tryGetFileKey(archiveId: number, fileId: number, key: number[] | null): Uint8Array | undefined;
+}
+
+export class CacheIndexMapIndexSource implements MapIndexSource {
+    constructor(readonly index: CacheIndex) {}
+
+    tryGetArchiveId(name: string): number | undefined {
+        return this.index.tryGetArchiveId(name);
+    }
+
+    tryGetFile(archiveId: number, fileId: number): Uint8Array | undefined {
+        return this.index.tryGetFile(archiveId, fileId)?.data;
+    }
+
+    tryGetFileKey(archiveId: number, fileId: number, key: number[] | null): Uint8Array | undefined {
+        return this.index.tryGetFileKey(archiveId, fileId, key)?.data;
+    }
+}
+
 export class MapFileLoader {
     constructor(
-        readonly mapIndex: CacheIndex,
+        readonly mapSource: MapIndexSource,
         readonly mapFileIndex: MapFileIndex,
     ) {}
 
     getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
         const archiveId = this.mapFileIndex.tryGetTerrainArchiveId(mapX, mapY);
         if (archiveId === undefined) return undefined;
-        return this.mapIndex.tryGetFile(archiveId, 0)?.data;
+        return this.mapSource.tryGetFile(archiveId, 0);
     }
 
     getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
         const archiveId = this.mapFileIndex.tryGetLocArchiveId(mapX, mapY);
         if (archiveId === undefined) return undefined;
         const key = xteasMap.get(archiveId);
-        return this.mapIndex.tryGetFileKey(archiveId, 0, key ? key : null)?.data;
+        return this.mapSource.tryGetFileKey(archiveId, 0, key ? key : null);
     }
 
     getNpcSpawnData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
         const locArchiveId = this.mapFileIndex.tryGetLocArchiveId(mapX, mapY);
-        const archiveId = this.mapIndex.tryGetArchiveId(`n${mapX}_${mapY}`);
+        const archiveId = this.mapSource.tryGetArchiveId(`n${mapX}_${mapY}`);
         if (locArchiveId === undefined || archiveId === undefined) {
             return undefined;
         }
         const key = xteasMap.get(locArchiveId);
-        return this.mapIndex.tryGetFileKey(archiveId, 0, key ? key : null)?.data;
+        return this.mapSource.tryGetFileKey(archiveId, 0, key ? key : null);
     }
 }
 

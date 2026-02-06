@@ -15,7 +15,7 @@ import {
     VarBitTypeLoader,
 } from "../config/vartype/bit/VarBitTypeLoader";
 import { DatMapFileIndex } from "../map/MapFileIndex";
-import { MapFileLoader } from "../map/MapFileLoader";
+import { CacheIndexMapIndexSource, MapFileLoader } from "../map/MapFileLoader";
 import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
 import { DatSeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
@@ -203,7 +203,7 @@ export function tryCreateDatLoaders(
         seqFrameLoader: DatSeqFrameLoader.create(animationsIndexResult.value),
         skeletalSeqLoader: undefined,
 
-        mapFileLoader: new MapFileLoader(mapIndex, mapFileIndex),
+        mapFileLoader: new MapFileLoader(new CacheIndexMapIndexSource(mapIndex), mapFileIndex),
 
         mapScenes: loadMapScenes(mediaSource),
         mapFunctions: loadMapFunctions(mediaSource),
