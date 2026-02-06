@@ -19,10 +19,14 @@
 #include "../rs/core/Status.hpp"
 #include "../rs/core/Vec.hpp"
 #include "../rs/config/TypeDecode.hpp"
+#include "../rs/config/enumtype/EnumTypeLoader.hpp"
 #include "../rs/config/floortype/FloorTypeLoaders.hpp"
 #include "../rs/config/floortype/OverlayFloorType.hpp"
 #include "../rs/config/floortype/UnderlayFloorType.hpp"
 #include "../rs/config/idktype/IdkTypeLoader.hpp"
+#include "../rs/config/paramtype/ParamTypeLoader.hpp"
+#include "../rs/config/seqtype/SeqTypeLoader.hpp"
+#include "../rs/config/spotanimtype/SpotAnimTypeLoader.hpp"
 #include "../rs/config/vartype/VarBitType.hpp"
 #include "../rs/config/vartype/VarBitTypeLoader.hpp"
 #include "../rs/types.hpp"
@@ -466,6 +470,309 @@ int main() {
             }
             if (t->ifModelIds[0] != 0x0A0B) {
                 return fail("IdkType ifModelIds mismatch");
+            }
+        }
+
+        {
+            // Config decode: EnumType with string values.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes:
+            // [1]['i'][2]['s'][3]["def\0"][5][count=2][key=1][val="a\0"][key=2][val="bb\0"][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 1 + 1 + 1 + 1 + 4 + 1 + 2 + (4 + 2) + (4 + 3) + 1);
+            if (!rr.isOk()) {
+                return fail("EnumType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = static_cast<rs::u8>('i');
+            fileBytes[off++] = 2;
+            fileBytes[off++] = static_cast<rs::u8>('s');
+            fileBytes[off++] = 3;
+            fileBytes[off++] = static_cast<rs::u8>('d');
+            fileBytes[off++] = static_cast<rs::u8>('e');
+            fileBytes[off++] = static_cast<rs::u8>('f');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 5;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 2; // u16 count
+            // key=1
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 1;
+            // val="a"
+            fileBytes[off++] = static_cast<rs::u8>('a');
+            fileBytes[off++] = 0;
+            // key=2
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 2;
+            // val="bb"
+            fileBytes[off++] = static_cast<rs::u8>('b');
+            fileBytes[off++] = static_cast<rs::u8>('b');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("EnumType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::EnumTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("EnumTypeLoader::fromArchive failed");
+            }
+            rs::EnumTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::EnumType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("EnumTypeLoader.get(0) expected Ok");
+            }
+            if (t->outputCount != 2 || t->keys.size() != 2 || t->stringValues.size() != 2) {
+                return fail("EnumType sizes mismatch");
+            }
+            if (t->keys[0] != 1 || t->keys[1] != 2) {
+                return fail("EnumType keys mismatch");
+            }
+            if (t->defaultString.len != 3 || !t->defaultString.data || t->defaultString.data[0] != 'd') {
+                return fail("EnumType defaultString mismatch");
+            }
+            if (t->stringValues[0].len != 1 || t->stringValues[1].len != 2) {
+                return fail("EnumType stringValues mismatch");
+            }
+        }
+
+        {
+            // Config decode: ParamType (type + default string + autoDisable).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes: [1]['s'][5]["hi\0"][4][0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 1 + 1 + 3 + 1 + 1);
+            if (!rr.isOk()) {
+                return fail("ParamType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = static_cast<rs::u8>('s');
+            fileBytes[off++] = 5;
+            fileBytes[off++] = static_cast<rs::u8>('h');
+            fileBytes[off++] = static_cast<rs::u8>('i');
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 4;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("ParamType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::ParamTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("ParamTypeLoader::fromArchive failed");
+            }
+            rs::ParamTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::ParamType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("ParamTypeLoader.get(0) expected Ok");
+            }
+            if (!t->isString() || t->autoDisable) {
+                return fail("ParamType fields mismatch");
+            }
+            if (t->defaultString.len != 2 || !t->defaultString.data || t->defaultString.data[0] != 'h') {
+                return fail("ParamType defaultString mismatch");
+            }
+        }
+
+        {
+            // Config decode: SeqType (basic Dat2-style frame ids).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes:
+            // [1][count=2]
+            //   lengths: [0x0003][0x0004]
+            //   frameId lows: [0x0011][0x0022]
+            //   frameId highs: [0x0001][0x0000] => ids: 0x0001_0011, 0x0000_0022
+            // [2][frameStep=0x0010]
+            // [3][maskCount=2][5][6]
+            // [8][maxLoops=7]
+            // [15] tweened=true (non-oldschool)
+            // [0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(26);
+            if (!rr.isOk()) {
+                return fail("SeqType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 3;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 4;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x11;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x22;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 0;
+            fileBytes[off++] = 0x10;
+            fileBytes[off++] = 3;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 5;
+            fileBytes[off++] = 6;
+            fileBytes[off++] = 8;
+            fileBytes[off++] = 7;
+            fileBytes[off++] = 15;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("SeqType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::SeqTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("SeqTypeLoader::fromArchive failed");
+            }
+            rs::SeqTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::SeqType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("SeqTypeLoader.get(0) expected Ok");
+            }
+            if (t->frameIds.size() != 2 || t->frameLengths.size() != 2) {
+                return fail("SeqType frame array sizes mismatch");
+            }
+            if (t->frameLengths[0] != 3 || t->frameLengths[1] != 4) {
+                return fail("SeqType frameLengths mismatch");
+            }
+            if (t->frameIds[0] != ((1 << 16) | 0x0011) || t->frameIds[1] != 0x0022) {
+                return fail("SeqType frameIds mismatch");
+            }
+            if (t->frameStep != 0x0010 || !t->looping || t->maxLoops != 7 || !t->tweened) {
+                return fail("SeqType scalar fields mismatch");
+            }
+            if (t->masks.size() != 3 || t->masks[0] != 5 || t->masks[1] != 6 || t->masks[2] != 9999999) {
+                return fail("SeqType masks mismatch");
+            }
+        }
+
+        {
+            // Config decode: SpotAnimType (scales + recolor/retexture).
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes:
+            // [1][model=0x0123][2][seq=0x0456][4][w=0x00C8][5][h=0x00C9]
+            // [40][n=1][from=0x0011][to=0x0022]
+            // [41][n=1][from=0x0033][to=0x0044]
+            // [0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(1 + 2 + 1 + 2 + 1 + 2 + 1 + 2 + (1 + 1 + 2 + 2) + (1 + 1 + 2 + 2) + 1);
+            if (!rr.isOk()) {
+                return fail("SpotAnimType: OOM");
+            }
+            std::size_t off = 0;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0x01;
+            fileBytes[off++] = 0x23;
+            fileBytes[off++] = 2;
+            fileBytes[off++] = 0x04;
+            fileBytes[off++] = 0x56;
+            fileBytes[off++] = 4;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0xC8;
+            fileBytes[off++] = 5;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0xC9;
+            fileBytes[off++] = 40;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x11;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x22;
+            fileBytes[off++] = 41;
+            fileBytes[off++] = 1;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x33;
+            fileBytes[off++] = 0x00;
+            fileBytes[off++] = 0x44;
+            fileBytes[off++] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("SpotAnimType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::SpotAnimTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("SpotAnimTypeLoader::fromArchive failed");
+            }
+            rs::SpotAnimTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::SpotAnimType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("SpotAnimTypeLoader.get(0) expected Ok");
+            }
+            if (t->modelId != 0x0123 || t->sequenceId != 0x0456) {
+                return fail("SpotAnimType ids mismatch");
+            }
+            if (t->widthScale != 0x00C8 || t->heightScale != 0x00C9) {
+                return fail("SpotAnimType scales mismatch");
+            }
+            if (t->recolorFrom.size() != 1 || t->retextureFrom.size() != 1) {
+                return fail("SpotAnimType array sizes mismatch");
+            }
+            if (t->recolorFrom[0] != 0x0011 || t->recolorTo[0] != 0x0022) {
+                return fail("SpotAnimType recolor mismatch");
+            }
+            if (t->retextureFrom[0] != 0x0033 || t->retextureTo[0] != 0x0044) {
+                return fail("SpotAnimType retexture mismatch");
             }
         }
 
