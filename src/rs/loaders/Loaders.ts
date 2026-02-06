@@ -37,6 +37,6 @@ export type Loaders = Readonly<{
 
     mapFileLoader: MapFileLoader;
 
-    mapScenes: ReadonlyArray<IndexedSprite>;
-    mapFunctions: ReadonlyArray<IndexedSprite>;
+    mapScenes: ReadonlyArray<IndexedSprite | undefined>;
+    mapFunctions: ReadonlyArray<IndexedSprite | undefined>;
 }>;

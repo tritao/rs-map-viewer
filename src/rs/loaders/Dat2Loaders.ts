@@ -87,9 +87,12 @@ function requireArchive(index: CacheIndex, archiveId: number, description: strin
 function loadMapElementSprites(
     spriteIndex: CacheIndex,
     mapElementTypeLoader: MapElementTypeLoader,
-): IndexedSprite[] {
+): Array<IndexedSprite | undefined> {
     const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
-    const mapElementSprites = new Array<IndexedSprite>(mapElementTypeLoader.getCount());
+    const mapElementSprites: Array<IndexedSprite | undefined> = Array.from(
+        { length: mapElementTypeLoader.getCount() },
+        () => undefined,
+    );
     for (let i = 0; i < mapElementSprites.length; i++) {
         const result = mapElementTypeLoader.tryLoad(i);
         if (!result.ok) {
@@ -336,7 +339,7 @@ export function tryCreateDat2Loaders(
     const mapFileIndex: MapFileIndex = new Dat2MapIndex(mapIndex);
     const mapFileLoader: MapFileLoader = new MapFileLoader(new CacheIndexMapBytesProvider(mapIndex), mapFileIndex);
 
-    let mapScenes: IndexedSprite[];
+    let mapScenes: Array<IndexedSprite | undefined>;
     if (rules.mapScenes.mode === "archive") {
         const mapScenesArchiveResult = requireArchive(configIndex, Rs2ConfigArchiveId.mapScenes, "map scenes");
         if (!mapScenesArchiveResult.ok) {
@@ -345,7 +348,10 @@ export function tryCreateDat2Loaders(
         const mapScenesArchive = mapScenesArchiveResult.value;
         const mapSceneTypeLoader = new MapSceneTypeLoader(cacheInfo, mapScenesArchive);
 
-        const mapSceneSprites = new Array<IndexedSprite>(mapScenesArchive.lastFileId + 1);
+        const mapSceneSprites: Array<IndexedSprite | undefined> = Array.from(
+            { length: mapScenesArchive.lastFileId + 1 },
+            () => undefined,
+        );
         const mapScenesSource = new EnumeratingArchiveBytesProvider(mapScenesArchive);
         for (const id of mapScenesSource.getIds()) {
             const result = mapSceneTypeLoader.tryLoad(id);
@@ -380,7 +386,7 @@ export function tryCreateDat2Loaders(
         }
     }
 
-    let mapFunctions: IndexedSprite[];
+    let mapFunctions: Array<IndexedSprite | undefined>;
     switch (rules.mapFunctions.mode) {
         case "osrs_archive": {
             const mapElementArchiveResult = requireArchive(
