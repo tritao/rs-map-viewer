@@ -1,7 +1,9 @@
 import { Archive } from "../cache/format/Archive";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { brightenRgb, rgbToHsl } from "../util/ColorUtil";
+import { err, ok, Result } from "../../util/Result";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 
@@ -14,10 +16,11 @@ export class DatTextureLoader implements TextureLoader {
 
     textureSprites: Array<IndexedSprite | undefined>;
     missingTextureSpriteIds: Set<number> = new Set();
+    private readonly textureSpriteErrors: Map<number, DecodeError> = new Map();
 
     idAverageHslMap: Map<number, number>;
     transparentTextureMap: Map<number, boolean> = new Map();
-    private readonly pixelErrors: Set<number> = new Set();
+    private readonly pixelErrors: Map<number, DecodeError> = new Map();
 
     constructor(
         readonly textureArchive: Archive,
@@ -124,19 +127,29 @@ export class DatTextureLoader implements TextureLoader {
         return this.getMaterial(id);
     }
 
-    private tryGetPixelsRgbInternal(
+    tryLoadMaterial(id: number): Result<TextureMaterial, DecodeError> {
+        if (id < 0 || id > this.getLastTextureId()) {
+            return err(notFoundError("DatTextureMaterial", id));
+        }
+        return ok(this.getMaterial(id));
+    }
+
+    private tryLoadPixelsInternal(
         id: number,
         size: number,
         flipH: boolean,
         brightness: number,
-    ): Int32Array | undefined {
-        if (this.pixelErrors.has(id)) {
-            return undefined;
+    ): Result<Int32Array, DecodeError> {
+        const cachedError = this.pixelErrors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
-        const sprite = this.tryLoadTextureSprite(id);
-        if (!sprite) {
-            return undefined;
+
+        const spriteResult = this.tryLoadTextureSpriteResult(id);
+        if (!spriteResult.ok) {
+            return err(spriteResult.error);
         }
+        const sprite = spriteResult.value;
 
         const palettePixels = sprite.pixels;
         const sourcePalette = sprite.palette;
@@ -169,11 +182,13 @@ export class DatTextureLoader implements TextureLoader {
             }
         } else {
             if (sprite.subWidth !== 128 || size !== 64) {
-                if (!this.pixelErrors.has(id)) {
-                    console.error("DatTextureLoader: unsupported sprite size for texture", id, sprite.subWidth, size);
-                    this.pixelErrors.add(id);
-                }
-                return undefined;
+                const e = decodeFailedError({
+                    typeName: "DatTexturePixels",
+                    id,
+                    message: `DatTextureLoader: unsupported sprite size for texture id=${id} sprite.subWidth=${sprite.subWidth} size=${size}`,
+                });
+                this.pixelErrors.set(id, e);
+                return err(e);
             }
 
             let pixelIndex = 0;
@@ -186,20 +201,40 @@ export class DatTextureLoader implements TextureLoader {
             }
         }
 
-        return pixels;
+        return ok(pixels);
     }
 
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        const result = this.tryLoadPixelsRgb(id, size, flipH, brightness);
+        return result.ok ? result.value : undefined;
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        const result = this.tryLoadPixelsArgb(id, size, flipH, brightness);
+        return result.ok ? result.value : undefined;
+    }
+
+    tryLoadPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+        return this.tryLoadPixelsInternal(id, size, flipH, brightness);
+    }
+
+    tryLoadPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+        return this.tryLoadPixelsInternal(id, size, flipH, brightness);
     }
 
     tryLoadTextureSprite(id: number): IndexedSprite | undefined {
+        const result = this.tryLoadTextureSpriteResult(id);
+        return result.ok ? result.value : undefined;
+    }
+
+    private tryLoadTextureSpriteResult(id: number): Result<IndexedSprite, DecodeError> {
         if (this.missingTextureSpriteIds.has(id)) {
-            return undefined;
+            return err(this.textureSpriteErrors.get(id) ?? notFoundError("DatTextureSprite", id));
+        }
+
+        const cachedError = this.textureSpriteErrors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
 
         let sprite = this.textureSprites[id];
@@ -211,9 +246,10 @@ export class DatTextureLoader implements TextureLoader {
             );
             if (!sprite) {
                 this.transparentTextureMap.set(id, false);
-                console.error("DatTextureLoader: missing texture sprite", id);
+                const e = notFoundError("DatTextureSprite", id);
+                this.textureSpriteErrors.set(id, e);
                 this.missingTextureSpriteIds.add(id);
-                return undefined;
+                return err(e);
             }
             this.textureSprites[id] = sprite;
             sprite.normalize();
@@ -232,12 +268,13 @@ export class DatTextureLoader implements TextureLoader {
 
             this.transparentTextureMap.set(id, isTransparent);
         }
-        return sprite;
+        return ok(sprite);
     }
 
     clearCache(): void {
         this.textureSprites = new Array(this.getLastTextureId());
         this.missingTextureSpriteIds.clear();
+        this.textureSpriteErrors.clear();
         this.idAverageHslMap.clear();
         this.transparentTextureMap.clear();
         this.pixelErrors.clear();

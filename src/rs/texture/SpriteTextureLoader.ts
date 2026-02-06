@@ -1,8 +1,10 @@
 import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { brightenRgb } from "../util/ColorUtil";
+import { err, ok, Result } from "../../util/Result";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 
@@ -23,7 +25,7 @@ export class SpriteTextureLoader implements TextureLoader {
     ];
 
     idIndexMap: Map<number, number>;
-    private readonly errors: Set<number> = new Set();
+    private readonly errors: Map<number, DecodeError> = new Map();
 
     static create(textureDefinitionSource: EnumeratingBytesProvider | undefined, spriteSource: BytesProvider): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
@@ -149,63 +151,89 @@ export class SpriteTextureLoader implements TextureLoader {
         return this.getMaterial(id);
     }
 
-    tryLoadTextureSprite(id: number): IndexedSprite | undefined {
-        if (this.errors.has(id)) {
-            return undefined;
-        }
+    tryLoadMaterial(id: number): Result<TextureMaterial, DecodeError> {
         const def = this.definitions.get(id);
         if (!def) {
-            if (!this.errors.has(id)) {
-                console.error("SpriteTextureLoader: missing texture definition", id);
-                this.errors.add(id);
-            }
-            return undefined;
+            return err(notFoundError("SpriteTextureMaterial", id));
+        }
+        return ok(this.getMaterial(id));
+    }
+
+    tryLoadTextureSprite(id: number): IndexedSprite | undefined {
+        const result = this.tryLoadTextureSpriteResult(id);
+        return result.ok ? result.value : undefined;
+    }
+
+    private tryLoadTextureSpriteResult(id: number): Result<IndexedSprite, DecodeError> {
+        const cachedError = this.errors.get(id);
+        if (cachedError) {
+            return err(cachedError);
+        }
+
+        const def = this.definitions.get(id);
+        if (!def) {
+            const e = notFoundError("SpriteTextureDefinition", id);
+            this.errors.set(id, e);
+            return err(e);
         }
 
         for (let i = 0; i < def.spriteIds.length; i++) {
-            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
+            const spriteId = def.spriteIds[i];
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId);
             if (!sprite) {
-                if (!this.errors.has(id)) {
-                    console.error("SpriteTextureLoader: missing sprite for texture", id, def.spriteIds[i]);
-                    this.errors.add(id);
-                }
-                return undefined;
+                const e = decodeFailedError({
+                    typeName: "SpriteTextureSprite",
+                    id,
+                    message: `SpriteTextureLoader: missing sprite for texture id=${id} spriteId=${spriteId}`,
+                });
+                this.errors.set(id, e);
+                return err(e);
             }
             sprite.normalize();
-            return sprite;
+            return ok(sprite);
         }
-        return undefined;
+
+        const e = decodeFailedError({
+            typeName: "SpriteTextureSprite",
+            id,
+            message: `SpriteTextureLoader: no sprites referenced by texture id=${id}`,
+        });
+        this.errors.set(id, e);
+        return err(e);
     }
 
-    private tryGetPixelsRgbInternal(
+    private tryLoadPixelsInternal(
         id: number,
         size: number,
         flipH: boolean,
         brightness: number,
-    ): Int32Array | undefined {
-        if (this.errors.has(id)) {
-            return undefined;
+    ): Result<Int32Array, DecodeError> {
+        const cachedError = this.errors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
+
         const def = this.definitions.get(id);
         if (!def) {
-            if (!this.errors.has(id)) {
-                console.error("SpriteTextureLoader: missing texture definition", id);
-                this.errors.add(id);
-            }
-            return undefined;
+            const e = notFoundError("SpriteTexturePixels", id);
+            this.errors.set(id, e);
+            return err(e);
         }
 
         const pixelCount = size * size;
         const pixels = new Int32Array(pixelCount);
 
         for (let i = 0; i < def.spriteIds.length; i++) {
-            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, def.spriteIds[i]);
+            const spriteId = def.spriteIds[i];
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId);
             if (!sprite) {
-                if (!this.errors.has(id)) {
-                    console.error("SpriteTextureLoader: missing sprite for texture", id, def.spriteIds[i]);
-                    this.errors.add(id);
-                }
-                return undefined;
+                const e = decodeFailedError({
+                    typeName: "SpriteTexturePixels",
+                    id,
+                    message: `SpriteTextureLoader: missing sprite for texture id=${id} spriteId=${spriteId}`,
+                });
+                this.errors.set(id, e);
+                return err(e);
             }
             sprite.normalize();
 
@@ -261,11 +289,13 @@ export class SpriteTextureLoader implements TextureLoader {
                     }
                 } else {
                     if (sprite.subWidth !== 128 || size !== 64) {
-                        if (!this.errors.has(id)) {
-                            console.error("SpriteTextureLoader: unsupported sprite size for texture", id, sprite.subWidth, size);
-                            this.errors.add(id);
-                        }
-                        return undefined;
+                        const e = decodeFailedError({
+                            typeName: "SpriteTexturePixels",
+                            id,
+                            message: `SpriteTextureLoader: unsupported sprite size for texture id=${id} sprite.subWidth=${sprite.subWidth} size=${size}`,
+                        });
+                        this.errors.set(id, e);
+                        return err(e);
                     }
 
                     let pixelIndex = 0;
@@ -280,15 +310,25 @@ export class SpriteTextureLoader implements TextureLoader {
             }
         }
 
-        return pixels;
+        return ok(pixels);
     }
 
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        const result = this.tryLoadPixelsRgb(id, size, flipH, brightness);
+        return result.ok ? result.value : undefined;
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        const result = this.tryLoadPixelsArgb(id, size, flipH, brightness);
+        return result.ok ? result.value : undefined;
+    }
+
+    tryLoadPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+        return this.tryLoadPixelsInternal(id, size, flipH, brightness);
+    }
+
+    tryLoadPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+        return this.tryLoadPixelsInternal(id, size, flipH, brightness);
     }
 
     clearCache(): void {

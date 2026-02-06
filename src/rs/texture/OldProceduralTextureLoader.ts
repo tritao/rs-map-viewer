@@ -1,5 +1,7 @@
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { err, ok, Result } from "../../util/Result";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 import { ProceduralTexture } from "./procedural/ProceduralTexture";
@@ -18,7 +20,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
     idIndexMap: Map<number, number> = new Map();
 
     transparentTextureMap: Map<number, boolean> = new Map();
-    private readonly pixelDecodeErrors: Set<number> = new Set();
+    private readonly pixelDecodeErrors: Map<number, DecodeError> = new Map();
 
     static create(
         textureDefinitionSource: EnumeratingBytesProvider | undefined,
@@ -159,18 +161,27 @@ export class OldProceduralTextureLoader implements TextureLoader {
         return this.getMaterial(id);
     }
 
-    private tryGetPixelsRgbInternal(
+    tryLoadMaterial(id: number): Result<TextureMaterial, DecodeError> {
+        const def = this.definitions.get(id);
+        if (!def) {
+            return err(notFoundError("OldProceduralTextureMaterial", id));
+        }
+        return ok(this.getMaterial(id));
+    }
+
+    private tryLoadPixelsRgbInternal(
         id: number,
         size: number,
         flipH: boolean,
         brightness: number,
-    ): Int32Array | undefined {
-        if (this.pixelDecodeErrors.has(id)) {
-            return undefined;
+    ): Result<Int32Array, DecodeError> {
+        const cachedError = this.pixelDecodeErrors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
         const def = this.definitions.get(id);
         if (!def) {
-            return undefined;
+            return err(notFoundError("OldProceduralTexturePixelsRgb", id));
         }
 
         try {
@@ -186,28 +197,32 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
             this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
 
-            return pixels;
+            return ok(pixels);
         } catch (e) {
-            if (!this.pixelDecodeErrors.has(id)) {
-                console.error("OldProceduralTextureLoader: failed decoding texture pixels", id, e);
-                this.pixelDecodeErrors.add(id);
-            }
-            return undefined;
+            const errObj = decodeFailedError({
+                typeName: "OldProceduralTexturePixelsRgb",
+                id,
+                message: `OldProceduralTextureLoader: failed decoding texture RGB pixels id=${id}`,
+                cause: e,
+            });
+            this.pixelDecodeErrors.set(id, errObj);
+            return err(errObj);
         }
     }
 
-    private tryGetPixelsArgbInternal(
+    private tryLoadPixelsArgbInternal(
         id: number,
         size: number,
         flipH: boolean,
         brightness: number,
-    ): Int32Array | undefined {
-        if (this.pixelDecodeErrors.has(id)) {
-            return undefined;
+    ): Result<Int32Array, DecodeError> {
+        const cachedError = this.pixelDecodeErrors.get(id);
+        if (cachedError) {
+            return err(cachedError);
         }
         const def = this.definitions.get(id);
         if (!def) {
-            return undefined;
+            return err(notFoundError("OldProceduralTexturePixelsArgb", id));
         }
 
         try {
@@ -223,22 +238,35 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
             this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
 
-            return pixels;
+            return ok(pixels);
         } catch (e) {
-            if (!this.pixelDecodeErrors.has(id)) {
-                console.error("OldProceduralTextureLoader: failed decoding texture pixels", id, e);
-                this.pixelDecodeErrors.add(id);
-            }
-            return undefined;
+            const errObj = decodeFailedError({
+                typeName: "OldProceduralTexturePixelsArgb",
+                id,
+                message: `OldProceduralTextureLoader: failed decoding texture ARGB pixels id=${id}`,
+                cause: e,
+            });
+            this.pixelDecodeErrors.set(id, errObj);
+            return err(errObj);
         }
     }
 
     tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        return this.tryGetPixelsRgbInternal(id, size, flipH, brightness);
+        const result = this.tryLoadPixelsRgb(id, size, flipH, brightness);
+        return result.ok ? result.value : undefined;
     }
 
     tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
-        return this.tryGetPixelsArgbInternal(id, size, flipH, brightness);
+        const result = this.tryLoadPixelsArgb(id, size, flipH, brightness);
+        return result.ok ? result.value : undefined;
+    }
+
+    tryLoadPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+        return this.tryLoadPixelsRgbInternal(id, size, flipH, brightness);
+    }
+
+    tryLoadPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+        return this.tryLoadPixelsArgbInternal(id, size, flipH, brightness);
     }
 
     clearCache(): void {
