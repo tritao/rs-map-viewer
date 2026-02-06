@@ -49,7 +49,7 @@ export class LocModelLoader {
         }
         let model = this.modelDataCache.get(key);
         if (!model) {
-            model = this.modelLoader.tryGetModel(id);
+            model = this.modelLoader.tryGet(id);
             if (model) {
                 if (mirrored) {
                     model.mirror();

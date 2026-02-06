@@ -39,7 +39,7 @@ export class NpcModelLoader {
         if (!model) {
             const models = new Array<ModelData>(npcType.modelIds.length);
             for (let i = 0; i < models.length; i++) {
-                const modelData = this.modelLoader.tryGetModel(npcType.modelIds[i]);
+                const modelData = this.modelLoader.tryGet(npcType.modelIds[i]);
                 if (modelData) {
                     models[i] = modelData;
                 }

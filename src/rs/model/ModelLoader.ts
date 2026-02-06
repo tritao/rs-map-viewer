@@ -8,8 +8,8 @@ import { err, ok, Result } from "../../util/Result";
 import { ModelData } from "./ModelData";
 
 export interface ModelLoader {
-    tryLoadModel(id: number): Result<ModelData, DecodeError>;
-    tryGetModel(id: number): ModelData | undefined;
+    tryLoad(id: number): Result<ModelData, DecodeError>;
+    tryGet(id: number): ModelData | undefined;
     getCount(): number;
     clearCache(): void;
 }
@@ -27,7 +27,7 @@ export class IndexModelLoader implements ModelLoader {
         return this.modelSource.getCount();
     }
 
-    tryLoadModel(id: number): Result<ModelData, DecodeError> {
+    tryLoad(id: number): Result<ModelData, DecodeError> {
         const cachedError = this.errors.get(id);
         if (cachedError) {
             return err(cachedError);
@@ -53,8 +53,8 @@ export class IndexModelLoader implements ModelLoader {
         }
     }
 
-    tryGetModel(id: number): ModelData | undefined {
-        const result = this.tryLoadModel(id);
+    tryGet(id: number): ModelData | undefined {
+        const result = this.tryLoad(id);
         return result.ok ? result.value : undefined;
     }
 
@@ -226,7 +226,7 @@ export class LegacyModelLoader implements ModelLoader {
         return this.count;
     }
 
-    tryLoadModel(id: number): Result<ModelData, DecodeError> {
+    tryLoad(id: number): Result<ModelData, DecodeError> {
         const meta = this.metadatas[id];
         if (!meta) {
             return err(notFoundError("LegacyModelData", id));
@@ -245,8 +245,8 @@ export class LegacyModelLoader implements ModelLoader {
         }
     }
 
-    tryGetModel(id: number): ModelData | undefined {
-        const result = this.tryLoadModel(id);
+    tryGet(id: number): ModelData | undefined {
+        const result = this.tryLoad(id);
         return result.ok ? result.value : undefined;
     }
 

@@ -46,7 +46,7 @@ export class ObjModelLoader {
             return model;
         }
 
-        const modelData = this.modelLoader.tryGetModel(objType.model);
+        const modelData = this.modelLoader.tryGet(objType.model);
         if (!modelData) {
             return undefined;
         }
