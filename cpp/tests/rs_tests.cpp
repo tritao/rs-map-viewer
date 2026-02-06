@@ -18,6 +18,9 @@
 #include "../rs/core/Span.hpp"
 #include "../rs/core/Status.hpp"
 #include "../rs/core/Vec.hpp"
+#include "../rs/config/TypeDecode.hpp"
+#include "../rs/config/vartype/VarBitType.hpp"
+#include "../rs/config/vartype/VarBitTypeLoader.hpp"
 #include "../rs/types.hpp"
 
 namespace {
@@ -234,6 +237,52 @@ int main() {
             const rs::Status ps = sys.readContainerPayload(5, 0, nullptr, &payload, alloc);
             if (ps != rs::Status::Unsupported) {
                 return fail("CacheSystem(Dat): readContainerPayload expected Unsupported");
+            }
+        }
+
+        {
+            // Config decode: VarBitType (opcode=1) + archive-backed loader.
+            const rs::CacheInfo cacheInfo{
+                .name = "test",
+                .game = rs::GameType::Runescape,
+                .environment = "test",
+                .revision = 500,
+                .timestamp = "1970-01-01",
+                .size = 0,
+            };
+
+            // Bytes: [opcode=1][baseVar=u16][start=u8][end=u8][opcode=0]
+            rs::Vec<rs::u8> fileBytes(alloc);
+            auto rr = fileBytes.resize(6);
+            if (!rr.isOk()) {
+                return fail("VarBitType: OOM");
+            }
+            fileBytes[0] = 1;
+            fileBytes[1] = 0x01;
+            fileBytes[2] = 0x23;
+            fileBytes[3] = 4;
+            fileBytes[4] = 9;
+            fileBytes[5] = 0;
+
+            auto archRes = rs::Archive::create(0, rs::move(fileBytes), alloc);
+            if (!archRes.isOk()) {
+                return fail("VarBitType: Archive::create failed");
+            }
+            rs::Archive archive = rs::move(archRes.value());
+
+            auto loaderRes = rs::VarBitTypeLoader::fromArchive(cacheInfo, archive, alloc);
+            if (!loaderRes.isOk()) {
+                return fail("VarBitTypeLoader::fromArchive failed");
+            }
+            rs::VarBitTypeLoader loader = rs::move(loaderRes.value());
+
+            const rs::VarBitType* t = nullptr;
+            const rs::Status s = loader.get(0, &t);
+            if (!rs::ok(s) || !t) {
+                return fail("VarBitTypeLoader.get(0) expected Ok");
+            }
+            if (t->baseVar != 0x0123 || t->startBit != 4 || t->endBit != 9) {
+                return fail("VarBitType decoded fields mismatch");
             }
         }
 
