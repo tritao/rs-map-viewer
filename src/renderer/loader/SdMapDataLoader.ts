@@ -576,6 +576,21 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         console.time(`load map ${mapX},${mapY}`);
         this.init();
 
+        const profileStart = performance.now();
+        const profile: Record<string, number> = {};
+        const timeStep = <T>(name: string, fn: () => T): T => {
+            const t0 = performance.now();
+            const result = fn();
+            profile[name] = performance.now() - t0;
+            return result;
+        };
+        const timeStepAsync = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+            const t0 = performance.now();
+            const result = await fn();
+            profile[name] = performance.now() - t0;
+            return result;
+        };
+
         const loaders = state.session.loaders;
         const locTypeLoader = loaders.locTypeLoader;
         const npcTypeLoader = loaders.npcTypeLoader;
@@ -614,26 +629,34 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         console.timeEnd(`build scene ${mapX},${mapY}`);
 
         const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
-        sceneBuf.addTerrain(scene, borderSize, maxLevel);
+        timeStep("addTerrain", () => sceneBuf.addTerrain(scene, borderSize, maxLevel));
 
-        const sceneLocs = getSceneLocs(locTypeLoader, scene, borderSize, maxLevel);
+        const sceneLocs = timeStep("getSceneLocs", () =>
+            getSceneLocs(locTypeLoader, scene, borderSize, maxLevel),
+        );
         const sceneModels = sceneLocs.locs;
 
         // Create loc animated groups and add transformed locs
-        const locAnimatedGroups = addLocEntities(
-            locModelLoader,
-            locTypeLoader,
-            seqTypeLoader,
-            varManager,
-            scene,
-            sceneModels,
-            sceneBuf,
-            sceneLocs.locEntities,
+        const locAnimatedGroups = timeStep("addLocEntities", () =>
+            addLocEntities(
+                locModelLoader,
+                locTypeLoader,
+                seqTypeLoader,
+                varManager,
+                scene,
+                sceneModels,
+                sceneBuf,
+                sceneLocs.locEntities,
+            ),
         );
 
         if (loadObjs) {
-            const objSpawns = getMapObjSpawns(state.objSpawns, maxLevel, mapX, mapY);
-            createObjSceneModels(objTypeLoader, objModelLoader, sceneModels, scene, borderSize, objSpawns);
+            const objSpawns = timeStep("getMapObjSpawns", () =>
+                getMapObjSpawns(state.objSpawns, maxLevel, mapX, mapY),
+            );
+            timeStep("createObjSceneModels", () =>
+                createObjSceneModels(objTypeLoader, objModelLoader, sceneModels, scene, borderSize, objSpawns),
+            );
         }
 
         let locsAnimated: LocAnimatedData[] = [];
@@ -678,31 +701,41 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
                 });
             }
         }
-        const npcSpawnGroups = createNpcSpawnGroups(
-            npcModelLoader,
-            npcTypeLoader,
-            seqTypeLoader,
-            basTypeLoader,
-            sceneBuf,
-            npcSpawns,
+        const npcSpawnGroups = timeStep("createNpcSpawnGroups", () =>
+            createNpcSpawnGroups(
+                npcModelLoader,
+                npcTypeLoader,
+                seqTypeLoader,
+                basTypeLoader,
+                sceneBuf,
+                npcSpawns,
+            ),
         );
-        const npcs = createNpcDatas(npcSpawnGroups);
+        const npcs = timeStep("createNpcDatas", () => createNpcDatas(npcSpawnGroups));
 
-        const drawRanges = SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY);
+        const drawRanges = timeStep("getDrawRanges", () =>
+            SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY),
+        );
 
-        const modelInfoTextures = SdRenderableDataLoader.getModelInfoTextures(sceneBuf);
+        const modelInfoTextures = timeStep("getModelInfoTextures", () =>
+            SdRenderableDataLoader.getModelInfoTextures(sceneBuf),
+        );
 
-        const heightMapTextureData = loadHeightMapTextureData(scene);
+        const heightMapTextureData = timeStep("loadHeightMapTextureData", () =>
+            loadHeightMapTextureData(scene),
+        );
 
         const vertices = sceneBuf.vertexBuf.byteArray();
-        const indices = new Int32Array(sceneBuf.indices);
+        const indices = timeStep("packIndices", () => new Int32Array(sceneBuf.indices));
 
-        const minimapBlob = await loadMinimapBlob(
-            state.mapImageRenderer,
-            scene,
-            0,
-            borderSize,
-            false,
+        const minimapBlob = await timeStepAsync("loadMinimapBlob", () =>
+            loadMinimapBlob(
+                state.mapImageRenderer,
+                scene,
+                0,
+                borderSize,
+                false,
+            ),
         );
 
         const usedTextureIds = Int32Array.from(sceneBuf.usedTextureIds);
@@ -727,6 +760,18 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         }
 
         console.timeEnd(`load map ${mapX},${mapY}`);
+
+        const totalMs = performance.now() - profileStart;
+        if (totalMs > 5000) {
+            const parts = Object.entries(profile)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([k, v]) => `${k}=${v.toFixed(1)}ms`)
+                .join(" ");
+            console.log(
+                `load map ${mapX},${mapY}: total=${totalMs.toFixed(1)}ms vertices=${sceneBuf.vertexCount()} indices=${sceneBuf.indices.length} models=${sceneModels.length} ${parts}`,
+            );
+        }
 
         const transferables = [
             ...scene.tileRenderFlags.flat().map((buf) => buf.buffer),
