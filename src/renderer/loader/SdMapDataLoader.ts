@@ -532,11 +532,31 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
     __type = "sdMapDataLoader" as const;
 
     modelHashBuf?: ModelHashBuffer;
+    private cachedTextureIdIndexMap?: Map<number, number>;
+    private cachedTextureCacheName?: string;
 
     init(): void {
         if (!this.modelHashBuf) {
             this.modelHashBuf = new ModelHashBuffer(5000);
         }
+    }
+
+    private getTextureIdIndexMap(textureLoader: TextureLoader, cacheName: string): Map<number, number> {
+        if (this.cachedTextureIdIndexMap && this.cachedTextureCacheName === cacheName) {
+            return this.cachedTextureIdIndexMap;
+        }
+
+        let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
+        textureIds = textureIds.slice(0, 2047);
+
+        const textureIdIndexMap = new Map<number, number>();
+        for (let i = 0; i < textureIds.length; i++) {
+            textureIdIndexMap.set(textureIds[i], i);
+        }
+
+        this.cachedTextureIdIndexMap = textureIdIndexMap;
+        this.cachedTextureCacheName = cacheName;
+        return textureIdIndexMap;
     }
 
     async load(
@@ -570,12 +590,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
         const varManager = state.varProvider;
 
-        let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
-        textureIds = textureIds.slice(0, 2047);
-        const textureIdIndexMap = new Map<number, number>();
-        for (let i = 0; i < textureIds.length; i++) {
-            textureIdIndexMap.set(textureIds[i], i);
-        }
+        const textureIdIndexMap = this.getTextureIdIndexMap(
+            textureLoader,
+            state.session.cache.info.name,
+        );
 
         const borderSize = 6;
 
@@ -690,13 +708,22 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const usedTextureIds = Int32Array.from(sceneBuf.usedTextureIds);
 
         const loadedTextures = new Map<number, Int32Array>();
+        const loadTexturesStart = performance.now();
+        let missingTextureCount = 0;
         for (const textureId of sceneBuf.usedTextureIds) {
             if (!loadedTextureIds.has(textureId)) {
                 const pixels = textureLoader.tryGetPixelsArgb(textureId, 128, true, 1.0);
                 if (pixels) {
                     loadedTextures.set(textureId, pixels);
                 }
+                missingTextureCount++;
             }
+        }
+        const loadTexturesMs = performance.now() - loadTexturesStart;
+        if (loadTexturesMs > 250) {
+            console.log(
+                `load map ${mapX},${mapY}: textures used=${sceneBuf.usedTextureIds.size} missing=${missingTextureCount} decoded=${loadedTextures.size} ms=${loadTexturesMs.toFixed(1)}`,
+            );
         }
 
         console.timeEnd(`load map ${mapX},${mapY}`);
@@ -775,5 +802,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
 
     reset(): void {
         this.modelHashBuf = undefined;
+        this.cachedTextureIdIndexMap = undefined;
+        this.cachedTextureCacheName = undefined;
     }
 }

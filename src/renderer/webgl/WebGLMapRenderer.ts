@@ -42,6 +42,7 @@ const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
 const MAX_TEXTURE_SLOTS = 256;
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
+const MAX_TEXTURE_PIXEL_CACHE = 512;
 
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     dataLoader: SdMapDataLoader;
@@ -92,6 +93,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     private textureSlotCount: number = 0;
 
     private visibleTextureIds: Set<number> = new Set();
+    private texturePixelCache: Map<number, Int32Array> = new Map();
 
     frameDrawCall?: DrawCall;
     frameFxaaDrawCall?: DrawCall;
@@ -329,6 +331,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.textureIdToSlot.clear();
         this.freeTextureSlots.length = 0;
         this.textureLastUsedFrame.clear();
+        this.texturePixelCache.clear();
 
         console.time("load textures");
 
@@ -364,7 +367,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 console.error("Failed loading texture", textureId);
             }
             this.textureIdToSlot.set(textureId, slot);
-            this.loadedTextureIds.add(textureId);
+            if (texturePixels) {
+                this.cacheTexturePixels(textureId, texturePixels);
+            }
             this.touchTexture(textureId);
 
             const textureIndex = this.textureIdToIndex.get(textureId);
@@ -400,6 +405,32 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             console.error("Texture array init GL error", texErr);
         }
         console.timeEnd("load textures");
+    }
+
+    private cacheTexturePixels(textureId: number, pixels: Int32Array): void {
+        // LRU update
+        if (this.texturePixelCache.has(textureId)) {
+            this.texturePixelCache.delete(textureId);
+        }
+        this.texturePixelCache.set(textureId, pixels);
+        this.loadedTextureIds.add(textureId);
+
+        while (this.texturePixelCache.size > MAX_TEXTURE_PIXEL_CACHE) {
+            const oldest = this.texturePixelCache.keys().next().value as number | undefined;
+            if (oldest === undefined) {
+                break;
+            }
+            if (this.textureIdToSlot.has(oldest)) {
+                const p = this.texturePixelCache.get(oldest);
+                this.texturePixelCache.delete(oldest);
+                if (p) {
+                    this.texturePixelCache.set(oldest, p);
+                }
+                continue;
+            }
+            this.texturePixelCache.delete(oldest);
+            this.loadedTextureIds.delete(oldest);
+        }
     }
 
     private touchTexture(textureId: number): void {
@@ -439,7 +470,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
 
         this.textureIdToSlot.delete(candidateTextureId);
-        this.loadedTextureIds.delete(candidateTextureId);
         this.textureLastUsedFrame.delete(candidateTextureId);
 
         const textureIndex = this.textureIdToIndex.get(candidateTextureId);
@@ -480,6 +510,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
 
         if (!pixels) {
+            pixels = this.texturePixelCache.get(textureId);
+        }
+
+        if (!pixels) {
             const texturePixels = this.session.loaders.textureLoader.tryGetPixelsArgb(
                 textureId,
                 TEXTURE_SIZE,
@@ -510,7 +544,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         );
 
         this.textureIdToSlot.set(textureId, slot);
-        this.loadedTextureIds.add(textureId);
+        this.cacheTexturePixels(textureId, pixels);
         this.touchTexture(textureId);
 
         let lutDirty = false;
@@ -639,7 +673,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         let updatedCount = 0;
         let lutDirty = false;
         for (const [id, pixels] of textures) {
-            if (this.loadedTextureIds.has(id)) {
+            this.cacheTexturePixels(id, pixels);
+            if (this.textureIdToSlot.has(id)) {
                 continue;
             }
             const result = this.ensureTextureInSlot(id, pixels, this.visibleTextureIds);
