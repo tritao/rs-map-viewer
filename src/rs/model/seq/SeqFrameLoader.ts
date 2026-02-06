@@ -2,11 +2,11 @@ import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
-import { ArchiveProvider } from "../../io/ArchiveProvider";
+import { EnumeratingGroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
-import { decodeDat2SeqFrameMapFromArchive } from "./decodeDat2SeqFrameMap";
+import { decodeDat2SeqFrameMapFromSource } from "./decodeDat2SeqFrameMap";
 
 export interface SeqFrameLoader {
     tryLoad(id: number): SeqFrame | undefined;
@@ -66,7 +66,7 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
     constructor(
         readonly cacheInfo: CacheInfo,
-        readonly animArchiveProvider: ArchiveProvider,
+        readonly animGroupSourceFactory: EnumeratingGroupBytesProviderFactory,
         readonly baseLoader: SeqBaseLoader,
     ) {}
 
@@ -80,16 +80,16 @@ export class Dat2SeqFrameLoader implements SeqFrameLoader {
 
         let frameMap = this.frameMaps.get(frameMapId);
         if (!frameMap) {
-            const archive = this.animArchiveProvider.getArchive(frameMapId);
-            if (!archive) {
+            const source = this.animGroupSourceFactory.getEnumeratingGroup(frameMapId);
+            if (!source) {
                 this.errors.add(id);
                 return undefined;
             }
 
-            frameMap = decodeDat2SeqFrameMapFromArchive(
+            frameMap = decodeDat2SeqFrameMapFromSource(
                 this.cacheInfo,
                 this.baseLoader,
-                archive,
+                source,
                 this.scratch,
             );
             this.frameMaps.set(frameMapId, frameMap);

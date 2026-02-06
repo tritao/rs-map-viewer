@@ -1,5 +1,5 @@
-import { Archive } from "../../cache/format/Archive";
-import { ArchiveProvider } from "../../io/ArchiveProvider";
+import { BytesProvider } from "../../io/BytesProvider";
+import { GroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { SkeletalSeq } from "./SkeletalSeq";
 
@@ -9,14 +9,14 @@ export interface SkeletalSeqLoader {
     clearCache(): void;
 }
 
-export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
+export class ProviderSkeletalSeqLoader implements SkeletalSeqLoader {
     seqs: Map<number, SkeletalSeq> = new Map();
     private readonly errors: Set<number> = new Set();
 
-    archiveCache: Map<number, Archive> = new Map();
+    groupCache: Map<number, BytesProvider> = new Map();
 
     constructor(
-        readonly animArchiveProvider: ArchiveProvider,
+        readonly animGroupProviderFactory: GroupBytesProviderFactory,
         readonly baseLoader: SeqBaseLoader,
     ) {}
 
@@ -32,21 +32,21 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
         const archiveId = id >> 16;
         const fileId = id & 0xffff;
 
-        let archive = this.archiveCache.get(archiveId);
-        if (!archive) {
-            archive = this.animArchiveProvider.getArchive(archiveId);
-            if (!archive) {
+        let group = this.groupCache.get(archiveId);
+        if (!group) {
+            group = this.animGroupProviderFactory.getGroup(archiveId);
+            if (!group) {
                 return undefined;
             }
-            this.archiveCache.set(archiveId, archive);
+            this.groupCache.set(archiveId, group);
         }
 
-        const file = archive.getFile(fileId);
-        if (!file) {
+        const bytes = group.getBytes(fileId);
+        if (!bytes) {
             return undefined;
         }
 
-        const skeletalSeq = SkeletalSeq.tryLoad(this.baseLoader, id, file.data);
+        const skeletalSeq = SkeletalSeq.tryLoad(this.baseLoader, id, bytes);
         if (!skeletalSeq) {
             if (!this.errors.has(id)) {
                 console.error("Failed decoding skeletal seq", id);
@@ -60,7 +60,7 @@ export class ArchiveSkeletalSeqLoader implements SkeletalSeqLoader {
 
     clearCache(): void {
         this.seqs.clear();
-        this.archiveCache.clear();
+        this.groupCache.clear();
         this.errors.clear();
     }
 }

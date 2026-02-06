@@ -46,7 +46,7 @@ import { MapFileLoader } from "../map/MapFileLoader";
 import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
 import { Dat2SeqBaseLoader, SeqBaseLoader } from "../model/seq/SeqBaseLoader";
 import { Dat2SeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
-import { ArchiveSkeletalSeqLoader, SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
+import { ProviderSkeletalSeqLoader, SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoader";
@@ -66,6 +66,7 @@ import { Loaders } from "./Loaders";
 import { IndexArchiveProvider } from "../io/ArchiveProvider";
 import { err, ok, Result } from "../../util/Result";
 import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
+import { ArchiveProviderGroupBytesProviderFactory } from "../io/GroupBytesProviderFactory";
 
 function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
@@ -317,11 +318,10 @@ export function tryCreateDat2Loaders(
     }
     const animationsArchiveProvider = new IndexArchiveProvider(animationsIndexResult.value);
 
-    const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(cacheInfo, animationsArchiveProvider, seqBaseLoader);
-    const skeletalSeqLoader: SkeletalSeqLoader | undefined = new ArchiveSkeletalSeqLoader(
-        animationsArchiveProvider,
-        seqBaseLoader,
-    );
+    const groupFactory = new ArchiveProviderGroupBytesProviderFactory(animationsArchiveProvider);
+
+    const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(cacheInfo, groupFactory, seqBaseLoader);
+    const skeletalSeqLoader: SkeletalSeqLoader | undefined = new ProviderSkeletalSeqLoader(groupFactory, seqBaseLoader);
 
     const mapsIndexResult = requireIndex(cacheSystem, Dat2IndexId.maps, "dat2 maps");
     if (!mapsIndexResult.ok) {
