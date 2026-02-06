@@ -81,7 +81,10 @@ export class OldProceduralTextureLoader implements TextureLoader {
     }
 
     isSd(id: number): boolean {
-        return this.definitions.get(id)?.valid ?? false;
+        // Some caches (notably later RuneScape revisions) have texture definitions that are still usable for
+        // terrain/material rendering even when this legacy `valid` bit isn't set. The viewer's SD path expects
+        // 128x128 pixels regardless (the generator can resample), so treat "has a definition" as SD-eligible.
+        return this.definitions.has(id);
     }
 
     isTransparent(id: number): boolean {

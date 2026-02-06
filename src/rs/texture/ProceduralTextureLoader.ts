@@ -17,6 +17,8 @@ export class ProceduralTextureLoader implements TextureLoader {
 
     transparentTextureMap: Map<number, boolean> = new Map();
 
+    private readonly textureIdSet: ReadonlySet<number>;
+
     static create(
         hasAlphaMaterialField: boolean,
         hasAlphaOperation: boolean,
@@ -195,6 +197,7 @@ export class ProceduralTextureLoader implements TextureLoader {
         readonly materials: (ProcTextureMaterial | undefined)[],
     ) {
         this.textureGenerator = new TextureGenerator(spriteSource, this);
+        this.textureIdSet = new Set(textureIds);
     }
 
     private tryLoadTextureDefinition(id: number): Result<ProceduralTextureDefinition, DecodeError> {
@@ -245,7 +248,9 @@ export class ProceduralTextureLoader implements TextureLoader {
     }
 
     isSd(id: number): boolean {
-        return this.materials[id]?.valid ?? false;
+        // Some caches (e.g. RuneScape 667) reference procedural texture ids that don't have a corresponding
+        // "material" entry (or the `valid` flag isn't set) but are still renderable via the texture definitions.
+        return this.textureIdSet.has(id);
     }
 
     isSmall(id: number): boolean {
