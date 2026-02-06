@@ -1,0 +1,11 @@
+{
+  "transformCount": 3,
+  "transformGroups": [1, 2, 3],
+  "transformX": [5, 16, 1],
+  "transformY": [-3, 0, 0],
+  "transformZ": [2, 0, 0],
+  "resetOriginGroups": [0, -1, -1],
+  "hasAlphaTransform": true,
+  "hasColorTransform": false
+}
+

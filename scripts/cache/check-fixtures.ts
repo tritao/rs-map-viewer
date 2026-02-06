@@ -211,6 +211,35 @@ function checkModelV1Empty(): void {
     }
 }
 
+function checkModelV2Triangle(): void {
+    const dir = path.join(FIXTURES_DIR, "model-v2-tri");
+    const bytes = readFileBytes(path.join(dir, "input.bin"));
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        version: number;
+        verticesCount: number;
+        faceCount: number;
+        indices1: number[];
+        indices2: number[];
+        indices3: number[];
+        faceColors: number[];
+    };
+
+    const model = ModelData.decode(bytes);
+    const actual = {
+        version: model.version,
+        verticesCount: model.verticesCount,
+        faceCount: model.faceCount,
+        indices1: Array.from(model.indices1),
+        indices2: Array.from(model.indices2),
+        indices3: Array.from(model.indices3),
+        faceColors: Array.from(model.faceColors),
+    };
+
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(`model-v2-tri: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+    }
+}
+
 function checkDat2SeqFrameMinimal(): void {
     const dir = path.join(FIXTURES_DIR, "dat2-seqframe-min");
     const bytes = readFileBytes(path.join(dir, "input.bin"));
@@ -263,6 +292,60 @@ function checkDat2SeqFrameMinimal(): void {
     }
 }
 
+function checkDat2SeqFrameNonTrivial(): void {
+    const dir = path.join(FIXTURES_DIR, "dat2-seqframe-nontrivial");
+    const bytes = readFileBytes(path.join(dir, "input.bin"));
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        transformCount: number;
+        transformGroups: number[];
+        transformX: number[];
+        transformY: number[];
+        transformZ: number[];
+        resetOriginGroups: number[];
+        hasAlphaTransform: boolean;
+        hasColorTransform: boolean;
+    };
+
+    const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
+    const base = new SeqBase(
+        0,
+        4,
+        [SeqTransformType.ORIGIN, SeqTransformType.TRANSLATE, SeqTransformType.ROTATE, SeqTransformType.ALPHA],
+        [true, true, true, true],
+        new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]),
+        [[], [], [], []],
+    );
+    const baseLoader = {
+        tryLoad: (_id: number) => {
+            throw new Error("not used");
+        },
+        tryGet: (id: number) => (id === 0 ? base : undefined),
+        clearCache: () => {},
+    };
+
+    const frame = Dat2SeqFrame.tryLoad(cacheInfo, baseLoader, bytes);
+    if (!frame) {
+        throw new Error("dat2-seqframe-nontrivial: failed decoding frame");
+    }
+
+    const actual = {
+        transformCount: frame.transformCount,
+        transformGroups: frame.transformGroups,
+        transformX: frame.transformX,
+        transformY: frame.transformY,
+        transformZ: frame.transformZ,
+        resetOriginGroups: frame.resetOriginGroups,
+        hasAlphaTransform: frame.hasAlphaTransform,
+        hasColorTransform: frame.hasColorTransform,
+    };
+
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(
+            `dat2-seqframe-nontrivial: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`,
+        );
+    }
+}
+
 function main(): void {
     checkXtea();
     checkSectorChain();
@@ -270,7 +353,9 @@ function main(): void {
     checkIndexedSpriteDat();
     checkVarBitType();
     checkModelV1Empty();
+    checkModelV2Triangle();
     checkDat2SeqFrameMinimal();
+    checkDat2SeqFrameNonTrivial();
     console.log("OK: cache fixtures");
 }
 
