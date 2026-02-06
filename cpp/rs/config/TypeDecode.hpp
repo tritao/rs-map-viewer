@@ -16,6 +16,19 @@ struct TypeDecodeError {
     Status status = Status::Ok;
 };
 
+inline Status skipString(Uint8ArrayReader& reader, u8 terminator) noexcept {
+    while (true) {
+        u8 b = 0;
+        const Status s = reader.readUnsignedByte(&b);
+        if (!ok(s)) {
+            return s;
+        }
+        if (b == terminator) {
+            return Status::Ok;
+        }
+    }
+}
+
 // Convention: config "type" decoding is opcode-driven and terminates on opcode=0.
 // The concrete type provides:
 //   Status decodeOpcode(u8 opcode, Uint8ArrayReader& reader) noexcept;
@@ -51,4 +64,3 @@ Status decodeType(T& out, Uint8ArrayReader& reader, TypeDecodeError* err) noexce
 }
 
 } // namespace rs
-
