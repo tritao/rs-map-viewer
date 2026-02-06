@@ -303,7 +303,7 @@ export class SdRenderableDataLoader
     ): Promise<RenderDataResult<SdRenderableData | undefined>> {
         this.init();
 
-        const loaders = state.loaders;
+        const loaders = state.session.loaders;
         const locTypeLoader = loaders.locTypeLoader;
         const npcTypeLoader = loaders.npcTypeLoader;
         const basTypeLoader = loaders.basTypeLoader;

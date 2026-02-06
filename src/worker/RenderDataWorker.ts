@@ -26,7 +26,6 @@ import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSe
 import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { errorToString } from "../util/ErrorUtil";
-import { Loaders } from "../rs/loaders/Loaders";
 import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
 import { initErrorToString } from "../rs/loaders/InitError";
 
@@ -37,7 +36,6 @@ const hasherPromise = Hasher.init();
 
 export type WorkerState = {
     session: CacheSession;
-    loaders: Loaders;
     varProvider: VarStateProvider;
     mapBytesProvider: MapBytesProvider;
     locModelLoader: LocModelLoader;
@@ -82,7 +80,6 @@ async function initWorker(
         throw new Error(initErrorToString(sessionResult.error));
     }
     const session = sessionResult.value;
-    const loaders = session.loaders;
     const {
         underlayTypeLoader,
         overlayTypeLoader,
@@ -98,7 +95,7 @@ async function initWorker(
         varBitTypeLoader,
         mapScenes,
         mapFunctions,
-    } = loaders;
+    } = session.loaders;
 
     const varProvider = new VarStateProvider(varBitTypeLoader, session.varManager.values);
 
@@ -145,7 +142,6 @@ async function initWorker(
 
     return {
         session,
-        loaders,
         varProvider,
         mapBytesProvider,
         locModelLoader,
@@ -166,8 +162,7 @@ function clearCache(workerState: WorkerState): void {
     workerState.locModelLoader.clearCache();
     workerState.objModelLoader.clearCache();
     workerState.npcModelLoader.clearCache();
-    workerState.loaders.seqFrameLoader.clearCache();
-    workerState.loaders.skeletalSeqLoader?.clearCache();
+    workerState.session.clearCaches();
 }
 
 const worker = {
@@ -207,7 +202,7 @@ const worker = {
         const workerState = await requireWorkerState();
 
         const pixels =
-            workerState.loaders.textureLoader.tryGetPixelsArgb(id, size, flipH, brightness) ??
+            workerState.session.loaders.textureLoader.tryGetPixelsArgb(id, size, flipH, brightness) ??
             new Int32Array(size * size);
 
         return Transfer(pixels, [pixels.buffer]);

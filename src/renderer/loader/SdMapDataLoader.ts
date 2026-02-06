@@ -556,7 +556,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         console.time(`load map ${mapX},${mapY}`);
         this.init();
 
-        const loaders = state.loaders;
+        const loaders = state.session.loaders;
         const locTypeLoader = loaders.locTypeLoader;
         const npcTypeLoader = loaders.npcTypeLoader;
         const objTypeLoader = loaders.objTypeLoader;

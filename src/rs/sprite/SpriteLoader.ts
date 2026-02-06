@@ -98,8 +98,8 @@ export class SpriteLoader {
     }
 
     static tryLoadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite | undefined {
-        const id = archive.getFileId(name + ".dat");
-        if (id === -1) {
+        const id = archive.tryGetFileId(name + ".dat");
+        if (id === undefined) {
             return undefined;
         }
         return this.tryLoadIndexedSpriteDatId(archive, id, offset);
@@ -210,8 +210,8 @@ export class SpriteLoader {
     }
 
     static loadIndexedSpritesDat(archive: Archive, name: string): IndexedSprite[] {
-        const id = archive.getFileId(name + ".dat");
-        if (id === -1) {
+        const id = archive.tryGetFileId(name + ".dat");
+        if (id === undefined) {
             return [];
         }
         return this.loadIndexedSpritesDatId(archive, id);
