@@ -2,11 +2,13 @@ import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
+import { ProgressListener } from "../rs/cache/platform/CacheLoader";
+import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
-import { CacheList, LoadedCache } from "../util/Caches";
+import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { InputManager } from "../util/InputManager";
 import { MapManager } from "../renderer/MapManager";
@@ -18,6 +20,8 @@ import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
 import { initErrorToString } from "../rs/loaders/InitError";
 import { err, ok, Result } from "../util/Result";
+import { CacheInfo } from "../rs/cache/CacheInfo";
+import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -28,7 +32,7 @@ export class MapViewer {
     camera: Camera = new Camera(3242, -26, 3202, -245, 1862);
     pathfinder: Pathfinder = new Pathfinder();
 
-    renderer: MapViewerRenderer;
+    renderer!: MapViewerRenderer;
 
     loadedCache: LoadedCache;
     session: CacheSession;
@@ -48,6 +52,9 @@ export class MapViewer {
     // State
     needsSearchParamUpdate: boolean = false;
     lastTimeSearchParamsUpdated: number = 0;
+
+    private cacheSwitchNonce: number = 0;
+    private cacheSwitchAbort?: AbortController;
 
     menuOpen: boolean = false;
     menuOpenedFrame: number = 0;
@@ -99,8 +106,7 @@ export class MapViewer {
     ) {
         this.loadedCache = cache;
         this.session = session;
-        this.renderer = new MapViewerRenderer(this);
-        this.initCache(cache, session);
+        this.applyLoadedCache(cache, npcSpawns, session);
     }
 
     getSearchParams(): URLSearchParamsInit {
@@ -178,7 +184,39 @@ export class MapViewer {
         });
     }
 
-    initCache(cache: LoadedCache, sessionOverride?: CacheSession): void {
+    async switchCache(
+        cacheInfo: CacheInfo,
+        progressListener?: ProgressListener,
+    ): Promise<MapViewerRenderer> {
+        if (cacheInfo.name === this.loadedCache.info.name) {
+            return this.renderer;
+        }
+
+        this.cacheSwitchAbort?.abort();
+        const abortController = new AbortController();
+        this.cacheSwitchAbort = abortController;
+        const nonce = ++this.cacheSwitchNonce;
+
+        const [loadedCache, npcSpawns] = await Promise.all([
+            loadCacheFiles(
+                new BrowserCacheLoader(),
+                cacheInfo,
+                abortController.signal,
+                progressListener,
+            ),
+            fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
+        ]);
+
+        if (nonce !== this.cacheSwitchNonce) {
+            return this.renderer;
+        }
+
+        this.applyLoadedCache(loadedCache, npcSpawns);
+
+        return this.renderer;
+    }
+
+    applyLoadedCache(cache: LoadedCache, npcSpawns: NpcSpawn[], sessionOverride?: CacheSession): void {
         const sessionResult = sessionOverride
             ? ok(sessionOverride)
             : tryCreateCacheSession(cache, new JSCompressionHandler());
@@ -188,8 +226,9 @@ export class MapViewer {
 
         this.loadedCache = cache;
         this.session = sessionResult.value;
+        this.npcSpawns = npcSpawns;
 
-        this.workerPool.initCache(cache, this.objSpawns, this.npcSpawns);
+        this.workerPool.initCache(cache, this.objSpawns, npcSpawns);
         this.clearMapImageUrls();
 
         // Recreate renderer to ensure all GPU-side and loader-side state matches the new cache.

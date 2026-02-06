@@ -4,14 +4,11 @@ import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useState } from "react";
 
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
-import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
-import { loadCacheFiles } from "../util/Caches";
 import { CameraView, ProjectionType } from "../renderer/Camera";
 import { MapViewer } from "./MapViewer";
 import { MapViewerRenderer } from "./MapViewerRenderer";
-import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
 import FileSaver from "file-saver";
 
 interface MapViewerControlsProps {
@@ -294,13 +291,11 @@ export const MapViewerControls = memo(
                                     (cache) => cache.name === v,
                                 );
                                 if (v !== mapViewer.loadedCache.info.name && cacheInfo) {
-                                    const [loadedCache, npcSpawns] = await Promise.all([
-                                        loadCacheFiles(new BrowserCacheLoader(), cacheInfo, undefined, setDownloadProgress),
-                                        fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
-                                    ]);
-                                    mapViewer.npcSpawns = npcSpawns;
-                                    mapViewer.initCache(loadedCache);
-                                    setRenderer(mapViewer.renderer);
+                                    const newRenderer = await mapViewer.switchCache(
+                                        cacheInfo,
+                                        setDownloadProgress,
+                                    );
+                                    setRenderer(newRenderer);
                                     setDownloadProgress(undefined);
                                 }
                             },
