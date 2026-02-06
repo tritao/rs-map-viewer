@@ -132,7 +132,7 @@ function testComputeSceneTileModelInvariants(): void {
         textureLoader: {} as any,
     } as any);
     assert(underlayOnly !== undefined, "expected tile model for underlay-only");
-    assert(underlayOnly.overlayTextureId === -1, "expected underlay-only tile model to have no overlay texture");
+    assert(underlayOnly.faceTextures === undefined, "expected underlay-only tile model to have no overlay/underlay textures");
     assert(underlayOnly.underlayTextureId === -1, "expected underlay-only tile model to have no underlay texture");
     assert(underlayOnly.shape === 0, "expected underlay-only tile model to use shape=0");
 }

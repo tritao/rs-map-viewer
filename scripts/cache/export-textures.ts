@@ -2,8 +2,7 @@ import fs from "fs";
 import sharp from "sharp";
 
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { getCacheLoaderFactory } from "../../src/rs/loaders/CacheLoaderFactory";
-import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
+import { createCacheSession } from "../../src/rs/runtime/createCacheSession";
 import { loadCache, loadCacheInfos, loadCacheList } from "./load-util";
 
 function saveArgbArrayToPng(pixels: Int32Array, width: number, height: number, outputPath: string) {
@@ -37,10 +36,8 @@ const cacheInfo = cacheList.latest;
 
 const loadedCache = loadCache(cacheInfo);
 
-const cacheSystem = createCacheSystemFromFiles(loadedCache.type, loadedCache.bundle, new JSCompressionHandler());
-const cacheLoaderFactory = getCacheLoaderFactory(cacheInfo, cacheSystem);
-
-const textureLoader = cacheLoaderFactory.getTextureLoader();
+const session = createCacheSession(loadedCache, new JSCompressionHandler());
+const textureLoader = session.loaders.textureLoader;
 
 fs.mkdirSync("./textures", { recursive: true });
 
