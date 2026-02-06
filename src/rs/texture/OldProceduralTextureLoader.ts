@@ -26,7 +26,6 @@ export class OldProceduralTextureLoader implements TextureLoader {
     ): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
         if (!textureDefinitionSource) {
-            console.error("OldProceduralTextureLoader: missing texture archive 0");
             return new OldProceduralTextureLoader(spriteSource, [], definitions);
         }
 

@@ -48,7 +48,6 @@ export class IndexModelLoader implements ModelLoader {
                 cause,
             });
             this.errors.set(id, e);
-            console.error(e.message, cause);
             return err(e);
         }
     }

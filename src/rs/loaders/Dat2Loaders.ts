@@ -367,7 +367,6 @@ export function tryCreateDat2Loaders(
             } else {
             const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, graphicDefaults.mapScenes);
             if (!sprites) {
-                console.error("Failed to load map scenes");
                 mapScenes = [];
             } else {
                 mapScenes = sprites;
@@ -419,7 +418,6 @@ export function tryCreateDat2Loaders(
 
             const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, graphicDefaults.mapFunctions);
             if (!sprites) {
-                console.error("Failed to load map functions");
                 mapFunctions = [];
                 break;
             }

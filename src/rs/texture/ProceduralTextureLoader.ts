@@ -26,8 +26,7 @@ export class ProceduralTextureLoader implements TextureLoader {
     ): ProceduralTextureLoader {
         const materialsFile = materialsIndex.tryGetFile(0, 0);
         if (!materialsFile) {
-            console.error("ProceduralTextureLoader: materials file not found (archive=0 file=0)");
-            return new ProceduralTextureLoader(hasAlphaOperation, textureSource, spriteSource, [], []);
+            throw new Error("ProceduralTextureLoader: materials file not found (archive=0 file=0)");
         }
         const buffer = new ByteBuffer(materialsFile.data);
         const count = buffer.readUnsignedShort();

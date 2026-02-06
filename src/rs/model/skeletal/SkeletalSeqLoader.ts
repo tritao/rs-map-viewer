@@ -62,7 +62,6 @@ export class ProviderSkeletalSeqLoader implements SkeletalSeqLoader {
                 message: `SkeletalSeq: failed decoding id=${id}`,
             });
             this.errors.set(id, e);
-            console.error(e.message);
             return err(e);
         }
         this.seqs.set(id, skeletalSeq);

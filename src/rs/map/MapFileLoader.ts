@@ -35,6 +35,9 @@ export class MapFileLoader {
 }
 
 export class LegacyMapFileLoader extends MapFileLoader {
+    private readonly terrainDecompressErrors: Set<number> = new Set();
+    private readonly locDecompressErrors: Set<number> = new Set();
+
     decompress(data: Uint8Array): Uint8Array {
         const buffer = new ByteBuffer(data);
         const actualSize = buffer.readInt();
@@ -51,7 +54,11 @@ export class LegacyMapFileLoader extends MapFileLoader {
         try {
             return this.decompress(data);
         } catch (e) {
-            console.error("Failed decompressing terrain data", mapX, mapY, data.length, e);
+            const mapId = (mapX << 8) + mapY;
+            if (!this.terrainDecompressErrors.has(mapId)) {
+                console.error("Failed decompressing terrain data", mapX, mapY, data.length, e);
+                this.terrainDecompressErrors.add(mapId);
+            }
             return undefined;
         }
     }
@@ -64,7 +71,11 @@ export class LegacyMapFileLoader extends MapFileLoader {
         try {
             return this.decompress(data);
         } catch (e) {
-            console.error("Failed decompressing loc data", mapX, mapY, data.length, data, e);
+            const mapId = (mapX << 8) + mapY;
+            if (!this.locDecompressErrors.has(mapId)) {
+                console.error("Failed decompressing loc data", mapX, mapY, data.length, data, e);
+                this.locDecompressErrors.add(mapId);
+            }
             return undefined;
         }
     }

@@ -29,7 +29,6 @@ export class SpriteTextureLoader implements TextureLoader {
         const definitions = new Map<number, TextureDefinition>();
 
         if (!textureDefinitionSource) {
-            console.error("SpriteTextureLoader: missing texture archive 0");
             return new SpriteTextureLoader(spriteSource, [], definitions);
         }
         const textureIds = Array.from(textureDefinitionSource.getIds());
