@@ -2,6 +2,7 @@ import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { IndexedSprite } from "./IndexedSprite";
 
 export class SpriteLoader {
@@ -98,11 +99,24 @@ export class SpriteLoader {
     }
 
     static tryLoadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite | undefined {
-        const id = archive.tryGetFileId(name + ".dat");
-        if (id === undefined) {
+        return SpriteLoader.tryLoadIndexedSpriteDatFromNamedBytes(
+            new ArchiveNamedBytesProvider(archive),
+            name,
+            offset,
+        );
+    }
+
+    static tryLoadIndexedSpriteDatFromNamedBytes(
+        source: NamedBytesProvider,
+        name: string,
+        offset: number,
+    ): IndexedSprite | undefined {
+        const dataBytes = source.getBytes(name + ".dat");
+        const indexBytes = source.getBytes("index.dat");
+        if (!dataBytes || !indexBytes) {
             return undefined;
         }
-        return this.tryLoadIndexedSpriteDatId(archive, id, offset);
+        return this.tryDecodeIndexedSpriteDat(dataBytes, indexBytes, offset);
     }
 
     private static tryDecodeIndexedSpriteDat(
@@ -210,11 +224,16 @@ export class SpriteLoader {
     }
 
     static loadIndexedSpritesDat(archive: Archive, name: string): IndexedSprite[] {
-        const id = archive.tryGetFileId(name + ".dat");
-        if (id === undefined) {
+        return SpriteLoader.loadIndexedSpritesDatFromNamedBytes(new ArchiveNamedBytesProvider(archive), name);
+    }
+
+    static loadIndexedSpritesDatFromNamedBytes(source: NamedBytesProvider, name: string): IndexedSprite[] {
+        const dataBytes = source.getBytes(name + ".dat");
+        const indexBytes = source.getBytes("index.dat");
+        if (!dataBytes || !indexBytes) {
             return [];
         }
-        return this.loadIndexedSpritesDatId(archive, id);
+        return this.decodeIndexedSpritesDat(dataBytes, indexBytes);
     }
 
     static loadIndexedSpritesDatId(archive: Archive, id: number): IndexedSprite[] {
