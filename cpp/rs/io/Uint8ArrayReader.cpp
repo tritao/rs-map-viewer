@@ -188,6 +188,87 @@ Status Uint8ArrayReader::readBigSmart(i32* out) noexcept {
     return Status::Ok;
 }
 
+Status Uint8ArrayReader::readUnsignedSmart(i32* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    u8 b = 0;
+    Status s = peekUnsignedByte(&b);
+    if (!ok(s)) {
+        return s;
+    }
+    if (b < 128) {
+        u8 v = 0;
+        s = readUnsignedByte(&v);
+        if (!ok(s)) {
+            return s;
+        }
+        *out = static_cast<i32>(v);
+        return Status::Ok;
+    }
+    u16 v = 0;
+    s = readUnsignedShort(&v);
+    if (!ok(s)) {
+        return s;
+    }
+    *out = static_cast<i32>(v) - 0x8000;
+    return Status::Ok;
+}
+
+Status Uint8ArrayReader::readUnsignedSmartMin1(i32* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    u8 b = 0;
+    Status s = peekUnsignedByte(&b);
+    if (!ok(s)) {
+        return s;
+    }
+    if (b < 128) {
+        u8 v = 0;
+        s = readUnsignedByte(&v);
+        if (!ok(s)) {
+            return s;
+        }
+        *out = static_cast<i32>(v) - 1;
+        return Status::Ok;
+    }
+    u16 v = 0;
+    s = readUnsignedShort(&v);
+    if (!ok(s)) {
+        return s;
+    }
+    *out = static_cast<i32>(v) - 0x8001;
+    return Status::Ok;
+}
+
+Status Uint8ArrayReader::readSmart2(i32* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    i8 b = 0;
+    Status s = peekByte(&b);
+    if (!ok(s)) {
+        return s;
+    }
+    if (b >= 0) {
+        u8 v = 0;
+        s = readUnsignedByte(&v);
+        if (!ok(s)) {
+            return s;
+        }
+        *out = static_cast<i32>(v) - 64;
+        return Status::Ok;
+    }
+    u16 v = 0;
+    s = readUnsignedShort(&v);
+    if (!ok(s)) {
+        return s;
+    }
+    *out = static_cast<i32>(v) - 49152;
+    return Status::Ok;
+}
+
 Status Uint8ArrayReader::readBytes(std::size_t amount, Span<const u8>* out) noexcept {
     if (!out) {
         return Status::InvalidArgument;

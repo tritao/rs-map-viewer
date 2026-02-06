@@ -30,6 +30,9 @@ public:
     Status readUnsignedInt(u32* out) noexcept;
 
     Status readBigSmart(i32* out) noexcept;
+    Status readUnsignedSmart(i32* out) noexcept;
+    Status readUnsignedSmartMin1(i32* out) noexcept;
+    Status readSmart2(i32* out) noexcept;
 
     Status readBytes(std::size_t amount, Span<const u8>* out) noexcept;
     Status readBytesInto(Span<u8> target) noexcept;
