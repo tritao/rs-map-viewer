@@ -49,13 +49,13 @@ public:
             types[static_cast<std::size_t>(i)] = T(i, cacheInfo);
         }
 
-        Vec<u8> present(alloc);
-        rr = present.resize(static_cast<std::size_t>(count));
+        Vec<Status> statusById(alloc);
+        rr = statusById.resize(static_cast<std::size_t>(count));
         if (!rr.isOk()) {
             return Result<ArchiveTypeLoader>::err(rr.status());
         }
-        for (std::size_t i = 0; i < present.size(); i++) {
-            present[i] = 0;
+        for (std::size_t i = 0; i < statusById.size(); i++) {
+            statusById[i] = Status::NotFound;
         }
 
         for (std::size_t i = 0; i < files.size(); i++) {
@@ -70,14 +70,13 @@ public:
             Uint8ArrayReader reader(f.data.span(), 0);
             TypeDecodeError err{};
             const Status s = decodeType(types[static_cast<std::size_t>(id)], reader, &err);
-            if (!ok(s)) {
-                present[static_cast<std::size_t>(id)] = 0;
-                continue;
+            statusById[static_cast<std::size_t>(id)] = s;
+            if (ok(s)) {
+                callPost(types[static_cast<std::size_t>(id)], 0);
             }
-            present[static_cast<std::size_t>(id)] = 1;
         }
 
-        return Result<ArchiveTypeLoader>::ok(ArchiveTypeLoader(rs::move(types), rs::move(present), count));
+        return Result<ArchiveTypeLoader>::ok(ArchiveTypeLoader(rs::move(types), rs::move(statusById), count));
     }
 
     ArchiveTypeLoader() = default;
@@ -92,22 +91,34 @@ public:
             return Status::OutOfRange;
         }
         const std::size_t idx = static_cast<std::size_t>(id);
-        if (idx >= present_.size() || present_[idx] == 0) {
+        if (idx >= statusById_.size()) {
             *out = nullptr;
-            return Status::NotFound;
+            return Status::OutOfRange;
+        }
+        const Status s = statusById_[idx];
+        if (!ok(s)) {
+            *out = nullptr;
+            return s;
         }
         *out = &types_[idx];
         return Status::Ok;
     }
 
 private:
-    explicit ArchiveTypeLoader(Vec<T> types, Vec<u8> present, i32 count) noexcept
-        : types_(rs::move(types)), present_(rs::move(present)), count_(count) {}
+    template <typename U>
+    static auto callPost(U& v, int) noexcept -> decltype(v.post()) {
+        v.post();
+    }
+
+    template <typename U>
+    static void callPost(U&, ...) noexcept {}
+
+    explicit ArchiveTypeLoader(Vec<T> types, Vec<Status> statusById, i32 count) noexcept
+        : types_(rs::move(types)), statusById_(rs::move(statusById)), count_(count) {}
 
     Vec<T> types_;
-    Vec<u8> present_;
+    Vec<Status> statusById_;
     i32 count_ = 0;
 };
 
 } // namespace rs
-
