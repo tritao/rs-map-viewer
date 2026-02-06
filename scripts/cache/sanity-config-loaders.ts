@@ -2,6 +2,9 @@ import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
 import { BaseTypeLoader, IndexedDatTypeLoader } from "../../src/rs/config/TypeLoader";
 import { Type } from "../../src/rs/config/Type";
+import { LocType } from "../../src/rs/config/loctype/LocType";
+import { NpcType } from "../../src/rs/config/npctype/NpcType";
+import { EnumType } from "../../src/rs/config/enumtype/EnumType";
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
@@ -110,10 +113,69 @@ function testDecodeErrorIncludesOpcodeAndOffset(): void {
     assert(typeof r.error.offset === "number", "expected numeric offset");
 }
 
+function encodeCString(s: string): number[] {
+    const bytes: number[] = [];
+    for (let i = 0; i < s.length; i++) {
+        bytes.push(s.charCodeAt(i) & 0xff);
+    }
+    bytes.push(0);
+    return bytes;
+}
+
+function encodeI32BE(v: number): number[] {
+    return [(v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff];
+}
+
+function testConfigTypesUseDenseOptionalArrays(): void {
+    // Use a Dat2-like cache type so `Type.readString()` uses 0 terminators (simpler fixtures).
+    const cacheInfo = new CacheInfo("test", GameType.Runescape, "test", 500, "1970-01-01", 0);
+
+    // LocType: "hidden" action should become `undefined` (not a sparse hole).
+    {
+        const loc = new LocType(0, cacheInfo);
+        const bytes = new Uint8Array([30, ...encodeCString("hidden"), 0]);
+        loc.decode(new ByteBuffer(bytes));
+        assert(loc.actions.length === 5, "expected LocType.actions length=5");
+        assert(loc.actions[0] === undefined, "expected LocType.actions[0] cleared to undefined");
+        assert(0 in loc.actions, "expected LocType.actions[0] to be present (dense array)");
+    }
+
+    // NpcType: same semantics for action clearing.
+    {
+        const npc = new NpcType(0, cacheInfo);
+        const bytes = new Uint8Array([30, ...encodeCString("hidden"), 0]);
+        npc.decode(new ByteBuffer(bytes));
+        assert(npc.actions.length === 5, "expected NpcType.actions length=5");
+        assert(npc.actions[0] === undefined, "expected NpcType.actions[0] cleared to undefined");
+        assert(0 in npc.actions, "expected NpcType.actions[0] to be present (dense array)");
+    }
+
+    // EnumType: keys/values arrays should be dense (no `new Array(n)` holes).
+    {
+        const en = new EnumType(0, cacheInfo);
+        const bytes = new Uint8Array([
+            5, // opcode
+            0,
+            2, // u16 outputCount
+            ...encodeI32BE(1),
+            ...encodeCString("a"),
+            ...encodeI32BE(2),
+            ...encodeCString("b"),
+            0, // terminator opcode
+        ]);
+        en.decode(new ByteBuffer(bytes));
+        assert(en.keys.length === 2, "expected EnumType.keys length=2");
+        assert(en.stringValues.length === 2, "expected EnumType.stringValues length=2");
+        assert(0 in en.keys && 1 in en.keys, "expected EnumType.keys to be dense");
+        assert(0 in en.stringValues && 1 in en.stringValues, "expected EnumType.stringValues to be dense");
+    }
+}
+
 function main(): void {
     testTryLoadNotFound();
     testIndexedDatLoaderSlices();
     testDecodeErrorIncludesOpcodeAndOffset();
+    testConfigTypesUseDenseOptionalArrays();
     console.log("sanity-config-loaders: ok");
 }
 
