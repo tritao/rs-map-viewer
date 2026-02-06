@@ -37,12 +37,20 @@ import { TileRenderFlag } from "../../rs/scene/Scene";
 import { WebGLRenderable } from "./WebGLRenderable";
 import { GameType } from "../../rs/cache/CacheInfo";
 import { CacheSession } from "../../rs/runtime/createCacheSession";
+import { button, folder } from "leva";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
 const MAX_TEXTURE_SLOTS = 256;
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
 const MAX_TEXTURE_PIXEL_CACHE = 512;
+
+const enum EnsureTextureStatus {
+    Ok = 0,
+    UnknownTexture = 1,
+    Oversubscribed = 2,
+    DecodeFailed = 3,
+}
 
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     dataLoader: SdMapDataLoader;
@@ -110,6 +118,52 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     isNewTextureAnim: boolean = false;
 
+    debugTextureMode: number = 0;
+
+    private debugLastResidencyLogFrame: number = 0;
+
+    private logTextureDebugStats(): void {
+        const cacheInfo = this.session.cache.info;
+        const textureLoader = this.session.loaders.textureLoader as unknown as { constructor?: { name?: string } };
+        console.log(
+            `texture debug: cache=${cacheInfo.name} game=${cacheInfo.game} rev=${cacheInfo.revision} loader=${textureLoader?.constructor?.name ?? "unknown"} slots=${this.textureSlotCount - 1} visible=${this.visibleTextureIds.size} resident=${this.textureIdToSlot.size} free=${this.freeTextureSlots.length}`,
+        );
+
+        const sampleIds: number[] = [];
+        for (const id of this.visibleTextureIds) {
+            sampleIds.push(id);
+            if (sampleIds.length >= 10) break;
+        }
+
+        const samplePixelStride = 97;
+        const samplePixelCount = 512;
+        for (const textureId of sampleIds) {
+            const index = this.textureIdToIndex.get(textureId) ?? -1;
+            const slot = this.textureIdToSlot.get(textureId) ?? 0;
+            const pixels = this.texturePixelCache.get(textureId);
+            if (!pixels) {
+                console.log(`texture debug: id=${textureId} index=${index} slot=${slot} pixels=missing`);
+                continue;
+            }
+
+            let chroma = 0;
+            const n = Math.min(samplePixelCount, pixels.length);
+            for (let i = 0; i < n; i++) {
+                const p = pixels[(i * samplePixelStride) % pixels.length] | 0;
+                const r = (p >> 16) & 0xff;
+                const g = (p >> 8) & 0xff;
+                const b = p & 0xff;
+                if (r !== g || g !== b) {
+                    chroma++;
+                }
+            }
+            const p0 = pixels[0] | 0;
+            console.log(
+                `texture debug: id=${textureId} index=${index} slot=${slot} chroma=${chroma}/${n} p0=0x${(p0 >>> 0).toString(16).padStart(8, "0")}`,
+            );
+        }
+    }
+
     constructor(
         readonly session: CacheSession, readonly workerPool: RenderDataWorkerPool,
         readonly inputManager: InputManager,
@@ -175,6 +229,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             PicoGL.FLOAT, // float u_brightness;
             PicoGL.FLOAT, // float u_colorBanding;
             PicoGL.FLOAT, // float u_isNewTextureAnim;
+            PicoGL.FLOAT, // float u_debugTextureMode;
         ]);
 
         this.initFramebuffers();
@@ -283,6 +338,29 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         );
     }
 
+    override getControls() {
+        return {
+            ...super.getControls(),
+            Debug: folder(
+                {
+                    "Texture Debug": {
+                        value: this.debugTextureMode,
+                        options: {
+                            Off: 0,
+                            "Missing Magenta": 1,
+                            "Raw Texture": 2,
+                        },
+                        onChange: (v: number) => {
+                            this.debugTextureMode = v;
+                        },
+                    },
+                    "Log Texture Stats": button(() => this.logTextureDebugStats()),
+                },
+                { collapsed: true },
+            ),
+        };
+    }
+
     initTextures(): void {
         const textureLoader = this.session.loaders.textureLoader;
 
@@ -349,6 +427,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             `init texture slots: slots=${this.textureSlotCount} maxLayers=${maxArrayLayers} textureIds=${this.textureIds.length}`,
         );
 
+        if (this.textureIds.length + 1 > this.textureSlotCount) {
+            console.warn(
+                `Texture array slots capped: textures=${this.textureIds.length} slots=${this.textureSlotCount - 1} maxLayers=${maxArrayLayers}. Some textures may appear missing.`,
+            );
+        }
+
         let maxPreloadTextures = Math.min(this.textureIds.length, this.textureSlotCount - 1);
         // we should check if the texture loader is procedural instead
         if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 508) {
@@ -399,7 +483,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         if (this.textureSlotLut && this.textureSlotLutData) {
             this.textureSlotLut.data(this.textureSlotLutData);
         }
-
         const texErr = this.gl.getError();
         if (texErr !== this.gl.NO_ERROR) {
             console.error("Texture array init GL error", texErr);
@@ -484,11 +567,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         textureId: number,
         pixels: Int32Array | undefined,
         protectedTextureIds?: Set<number>,
-    ): { slot: number; lutDirty: boolean; updated: boolean } {
+    ): { slot: number; lutDirty: boolean; updated: boolean; status: EnsureTextureStatus } {
         const existingSlot = this.textureIdToSlot.get(textureId);
         if (existingSlot !== undefined) {
             this.touchTexture(textureId);
-            return { slot: existingSlot, lutDirty: false, updated: false };
+            return { slot: existingSlot, lutDirty: false, updated: false, status: EnsureTextureStatus.Ok };
         }
 
         if (!this.textureArray) {
@@ -497,7 +580,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         const textureIndex = this.textureIdToIndex.get(textureId);
         if (textureIndex === undefined) {
-            return { slot: 0, lutDirty: false, updated: false };
+            return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.UnknownTexture };
         }
 
         let slot = this.freeTextureSlots.pop();
@@ -505,7 +588,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             slot = this.evictTextureSlot(protectedTextureIds);
             if (slot === undefined) {
                 // Oversubscribed: keep output stable (missing texture) instead of cycling.
-                return { slot: 0, lutDirty: false, updated: false };
+                return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.Oversubscribed };
             }
         }
 
@@ -523,7 +606,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             if (!texturePixels) {
                 console.error("Failed loading texture", textureId);
                 this.freeTextureSlots.push(slot);
-                return { slot: 0, lutDirty: false, updated: false };
+                return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.DecodeFailed };
             }
             pixels = texturePixels;
         }
@@ -553,7 +636,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             lutDirty = true;
         }
 
-        return { slot, lutDirty, updated: true };
+        return { slot, lutDirty, updated: true, status: EnsureTextureStatus.Ok };
     }
 
     private updateVisibleTextureResidency(): void {
@@ -584,6 +667,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         let updatedCount = 0;
         let lutDirty = false;
+        let missingOversubscribed = 0;
+        let missingUnknown = 0;
+        let missingDecode = 0;
 
         for (const textureId of this.visibleTextureIds) {
             if (updatedCount >= MAX_TEXTURE_UPLOADS_PER_FRAME) {
@@ -595,6 +681,13 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const result = this.ensureTextureInSlot(textureId, undefined, this.visibleTextureIds);
             lutDirty ||= result.lutDirty;
             updatedCount += result.updated ? 1 : 0;
+            if (result.status === EnsureTextureStatus.Oversubscribed) {
+                missingOversubscribed++;
+            } else if (result.status === EnsureTextureStatus.UnknownTexture) {
+                missingUnknown++;
+            } else if (result.status === EnsureTextureStatus.DecodeFailed) {
+                missingDecode++;
+            }
         }
 
         if (lutDirty) {
@@ -605,6 +698,16 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             // Ensure our texture array is bound before generating mipmaps.
             this.textureArray.bind(0);
             this.gl.generateMipmap(PicoGL.TEXTURE_2D_ARRAY);
+        }
+
+        if (this.debugTextureMode !== 0) {
+            const frame = this.stats.frameCount;
+            if (frame - this.debugLastResidencyLogFrame >= 60) {
+                this.debugLastResidencyLogFrame = frame;
+                console.log(
+                    `texture residency: visible=${this.visibleTextureIds.size} slots=${this.textureSlotCount - 1} resident=${this.textureIdToSlot.size} free=${this.freeTextureSlots.length} updated=${updatedCount} missing(oversub~)=${missingOversubscribed} missing(unknown~)=${missingUnknown} missing(decode~)=${missingDecode}`,
+                );
+            }
         }
     }
 
@@ -826,6 +929,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             .set(8, this.brightness as any)
             .set(9, this.colorBanding as any)
             .set(10, this.isNewTextureAnim as any)
+            .set(11, this.debugTextureMode as any)
             .update();
 
         const currInteractions = this.interactions[this.stats.frameCount % this.interactions.length];

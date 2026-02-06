@@ -29,6 +29,24 @@ void main() {
     vec4 textureColor1 = texture(u_textures, vec3(v_texCoord, float(slot1))).bgra;
     float blend = clamp(v_texBlend, 0.0, 1.0) * float(slot1 != 0u);
     vec4 textureColor = mix(textureColor0, textureColor1, blend);
+
+    // Debug modes:
+    // 0 = normal
+    // 1 = highlight missing (slot0==0) as magenta
+    // 2 = show raw textureColor (no lighting), missing as magenta
+    if (u_debugTextureMode > 0.5) {
+        if (slot0 == 0u && v_texId0 != 0u) {
+            fragColor = vec4(1.0, 0.0, 1.0, 1.0);
+            interactId = v_interactId;
+            return;
+        }
+        if (u_debugTextureMode > 1.5) {
+            fragColor = textureColor;
+            interactId = v_interactId;
+            return;
+        }
+    }
+
     fragColor = pow(textureColor, vec4(vec3(u_brightness), 1.0)) *
         vec4(round(v_color.rgb * u_colorBanding) / u_colorBanding, v_color.a);
 #ifdef DISCARD_ALPHA
