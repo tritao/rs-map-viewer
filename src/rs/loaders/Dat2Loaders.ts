@@ -62,7 +62,7 @@ import { Archive } from "../cache/format/Archive";
 import { Dat2ConfigArchiveId, OsrsConfigArchiveId, Rs2ConfigArchiveId } from "../cache/ConfigArchiveId";
 import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 import { CacheRules, computeCacheRules } from "./CacheRules";
-import { Loaders } from "./Loaders";
+import { Loaders, OptionalIndexedSprite } from "./Loaders";
 import { IndexArchiveProvider } from "../io/ArchiveProvider";
 import { err, ok, Result } from "../../util/Result";
 import { createFailed, InitError, initErrorToString, missingArchive, missingFile, missingIndex } from "./InitError";
@@ -87,9 +87,9 @@ function requireArchive(index: CacheIndex, archiveId: number, description: strin
 function loadMapElementSprites(
     spriteIndex: CacheIndex,
     mapElementTypeLoader: MapElementTypeLoader,
-): Array<IndexedSprite | undefined> {
+): Array<OptionalIndexedSprite> {
     const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
-    const mapElementSprites: Array<IndexedSprite | undefined> = Array.from(
+    const mapElementSprites: Array<OptionalIndexedSprite> = Array.from(
         { length: mapElementTypeLoader.getCount() },
         () => undefined,
     );
@@ -339,7 +339,7 @@ export function tryCreateDat2Loaders(
     const mapFileIndex: MapFileIndex = new Dat2MapIndex(mapIndex);
     const mapFileLoader: MapFileLoader = new MapFileLoader(new CacheIndexMapBytesProvider(mapIndex), mapFileIndex);
 
-    let mapScenes: Array<IndexedSprite | undefined>;
+    let mapScenes: Array<OptionalIndexedSprite>;
     if (rules.mapScenes.mode === "archive") {
         const mapScenesArchiveResult = requireArchive(configIndex, Rs2ConfigArchiveId.mapScenes, "map scenes");
         if (!mapScenesArchiveResult.ok) {
@@ -348,7 +348,7 @@ export function tryCreateDat2Loaders(
         const mapScenesArchive = mapScenesArchiveResult.value;
         const mapSceneTypeLoader = new MapSceneTypeLoader(cacheInfo, mapScenesArchive);
 
-        const mapSceneSprites: Array<IndexedSprite | undefined> = Array.from(
+        const mapSceneSprites: Array<OptionalIndexedSprite> = Array.from(
             { length: mapScenesArchive.lastFileId + 1 },
             () => undefined,
         );
@@ -386,7 +386,7 @@ export function tryCreateDat2Loaders(
         }
     }
 
-    let mapFunctions: Array<IndexedSprite | undefined>;
+    let mapFunctions: Array<OptionalIndexedSprite>;
     switch (rules.mapFunctions.mode) {
         case "osrs_archive": {
             const mapElementArchiveResult = requireArchive(

@@ -31,6 +31,7 @@ import { Rasterizer3D } from "../../graphics/Rasterizer3D";
 import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpritePixels } from "../../sprite/SpritePixels";
 import { TextureLoader } from "../../texture/TextureLoader";
+import { OptionalIndexedSprite } from "../../loaders/Loaders";
 import { INVALID_HSL_COLOR } from "../../util/ColorUtil";
 import { getLocPlacementRotation, getLocPlacementType } from "../../scene/LocPlacementFlag";
 import { Scene, TileRenderFlag } from "../../scene/Scene";
@@ -69,8 +70,8 @@ export class MapImageRenderer {
     constructor(
         readonly textureLoader: TextureLoader,
         readonly locTypeLoader: LocTypeLoader,
-        readonly mapScenes: ReadonlyArray<IndexedSprite | undefined>,
-        readonly mapFunctions: ReadonlyArray<IndexedSprite | undefined>,
+        readonly mapScenes: ReadonlyArray<OptionalIndexedSprite>,
+        readonly mapFunctions: ReadonlyArray<OptionalIndexedSprite>,
     ) {}
 
     renderMinimap(scene: Scene, level: number): Int32Array {

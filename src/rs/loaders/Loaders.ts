@@ -13,6 +13,8 @@ import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { TextureLoader } from "../texture/TextureLoader";
 
+export type OptionalIndexedSprite = IndexedSprite | undefined;
+
 export type Loaders = Readonly<{
     underlayTypeLoader: FloorTypeLoader;
     overlayTypeLoader: OverlayFloorTypeLoader;
@@ -37,6 +39,6 @@ export type Loaders = Readonly<{
 
     mapFileLoader: MapFileLoader;
 
-    mapScenes: ReadonlyArray<IndexedSprite | undefined>;
-    mapFunctions: ReadonlyArray<IndexedSprite | undefined>;
+    mapScenes: ReadonlyArray<OptionalIndexedSprite>;
+    mapFunctions: ReadonlyArray<OptionalIndexedSprite>;
 }>;
