@@ -3,6 +3,7 @@ import { Archive } from "../cache/format/Archive";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { ByteBuffer } from "../io/ByteBuffer";
+import { NamedBytesProvider } from "../io/NamedBytesProvider";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { Result, err, ok } from "../../util/Result";
 import { Type } from "./Type";
@@ -236,7 +237,34 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         if (!indexFile) {
             throw new Error(name + ".idx not found");
         }
-        const indexBuffer = new ByteBuffer(indexFile.data);
+        return IndexedDatTypeLoader.createFromBytes(typeConstructor, cacheInfo, dataFile.data, indexFile.data, name);
+    }
+
+    static createFromNamedBytes<T extends Type>(
+        typeConstructor: TypeConstructor<T>,
+        cacheInfo: CacheInfo,
+        source: NamedBytesProvider,
+        name: string,
+    ): IndexedDatTypeLoader<T> {
+        const datBytes = source.getBytes(name + ".dat");
+        if (!datBytes) {
+            throw new Error(name + ".dat not found");
+        }
+        const idxBytes = source.getBytes(name + ".idx");
+        if (!idxBytes) {
+            throw new Error(name + ".idx not found");
+        }
+        return IndexedDatTypeLoader.createFromBytes(typeConstructor, cacheInfo, datBytes, idxBytes, name);
+    }
+
+    private static createFromBytes<T extends Type>(
+        typeConstructor: TypeConstructor<T>,
+        cacheInfo: CacheInfo,
+        datBytes: Uint8Array,
+        idxBytes: Uint8Array,
+        _name: string,
+    ): IndexedDatTypeLoader<T> {
+        const indexBuffer = new ByteBuffer(idxBytes);
         const count = indexBuffer.readUnsignedShort();
 
         const dataOffsets = new Int32Array(count);
@@ -255,7 +283,7 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
             typeConstructor,
             cacheInfo,
             count,
-            dataFile.data,
+            datBytes,
             dataOffsets,
             dataLengths,
         );
