@@ -104,9 +104,10 @@ function testComputeSceneTileModelInvariants(): void {
         tileRotation: 0,
         smoothUnderlays: true,
         blendedColors,
+        underlayTypeLoader: { tryLoad: () => ({ ok: false }) } as any,
         overlayTypeLoader: {} as any,
         textureLoader: {} as any,
-    });
+    } as any);
     assert(none === undefined, "expected undefined when no underlay and no overlay");
 
     const underlayOnly = computeSceneTileModelForTile({
@@ -126,11 +127,13 @@ function testComputeSceneTileModelInvariants(): void {
         tileRotation: 0,
         smoothUnderlays: true,
         blendedColors,
+        underlayTypeLoader: { tryLoad: () => ({ ok: false }) } as any,
         overlayTypeLoader: {} as any,
         textureLoader: {} as any,
-    });
+    } as any);
     assert(underlayOnly !== undefined, "expected tile model for underlay-only");
-    assert(underlayOnly.textureId === -1, "expected underlay-only tile model to have textureId=-1");
+    assert(underlayOnly.overlayTextureId === -1, "expected underlay-only tile model to have no overlay texture");
+    assert(underlayOnly.underlayTextureId === -1, "expected underlay-only tile model to have no underlay texture");
     assert(underlayOnly.shape === 0, "expected underlay-only tile model to use shape=0");
 }
 
