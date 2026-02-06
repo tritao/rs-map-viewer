@@ -36,7 +36,6 @@ set(RS_SOURCES
     rs/cache/CacheIndex.cpp
     rs/cache/CacheSystem.cpp
     rs/util/XXHash64.cpp
-    rs/config/vartype/VarBitTypeLoader.cpp
     rs/loaders/ConfigLoaders.cpp
 )
 
