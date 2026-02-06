@@ -6,6 +6,10 @@ import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
 import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { Xtea } from "../../src/rs/crypto/Xtea";
 import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
+import { ModelData } from "../../src/rs/model/ModelData";
+import { SeqBase } from "../../src/rs/model/seq/SeqBase";
+import { Dat2SeqFrame } from "../../src/rs/model/seq/SeqFrame";
+import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
 import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
@@ -176,12 +180,97 @@ function checkVarBitType(): void {
     }
 }
 
+function checkModelV1Empty(): void {
+    const dir = path.join(FIXTURES_DIR, "model-v1-empty");
+    const bytes = readFileBytes(path.join(dir, "input.bin"));
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        version: number;
+        verticesCount: number;
+        faceCount: number;
+        textureFaceCount: number;
+        priority: number;
+    };
+
+    const model = ModelData.decode(bytes);
+    const actual = {
+        version: model.version,
+        verticesCount: model.verticesCount,
+        faceCount: model.faceCount,
+        textureFaceCount: model.textureFaceCount,
+        priority: model.priority,
+    };
+
+    if (
+        actual.version !== expected.version ||
+        actual.verticesCount !== expected.verticesCount ||
+        actual.faceCount !== expected.faceCount ||
+        actual.textureFaceCount !== expected.textureFaceCount ||
+        actual.priority !== expected.priority
+    ) {
+        throw new Error(`model-v1-empty: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+    }
+}
+
+function checkDat2SeqFrameMinimal(): void {
+    const dir = path.join(FIXTURES_DIR, "dat2-seqframe-min");
+    const bytes = readFileBytes(path.join(dir, "input.bin"));
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        transformCount: number;
+        transformGroups: number[];
+        transformX: number[];
+        transformY: number[];
+        transformZ: number[];
+        resetOriginGroups: number[];
+        hasAlphaTransform: boolean;
+        hasColorTransform: boolean;
+    };
+
+    const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
+    const base = new SeqBase(
+        0,
+        1,
+        [SeqTransformType.TRANSLATE],
+        [true],
+        new Uint16Array([0xffff]),
+        [[]],
+    );
+    const baseLoader = {
+        tryLoad: (_id: number) => {
+            throw new Error("not used");
+        },
+        tryGet: (id: number) => (id === 0 ? base : undefined),
+        clearCache: () => {},
+    };
+
+    const frame = Dat2SeqFrame.tryLoad(cacheInfo, baseLoader, bytes);
+    if (!frame) {
+        throw new Error("dat2-seqframe-min: failed decoding frame");
+    }
+
+    const actual = {
+        transformCount: frame.transformCount,
+        transformGroups: frame.transformGroups,
+        transformX: frame.transformX,
+        transformY: frame.transformY,
+        transformZ: frame.transformZ,
+        resetOriginGroups: frame.resetOriginGroups,
+        hasAlphaTransform: frame.hasAlphaTransform,
+        hasColorTransform: frame.hasColorTransform,
+    };
+
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        throw new Error(`dat2-seqframe-min: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+    }
+}
+
 function main(): void {
     checkXtea();
     checkSectorChain();
     checkArchiveSplit();
     checkIndexedSpriteDat();
     checkVarBitType();
+    checkModelV1Empty();
+    checkDat2SeqFrameMinimal();
     console.log("OK: cache fixtures");
 }
 
