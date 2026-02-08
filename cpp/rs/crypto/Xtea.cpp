@@ -28,10 +28,9 @@ Status Xtea::decryptInPlace(Span<u8> data, std::size_t start, std::size_t end, c
     if (end > data.size()) {
         return Status::OutOfRange;
     }
-    if (((end - start) & 7u) != 0u) {
-        return Status::BadFormat;
-    }
 
+    // TS behavior: decrypt floor((end-start)/8) blocks and leave any trailing bytes untouched.
+    // Cache containers sometimes encrypt a size that isn't a multiple of 8 (e.g. 4+payloadLen).
     const std::size_t n = (end - start) / 8;
     const u32 initialSum = mulU32(static_cast<u32>(GOLDEN_RATIO), static_cast<u32>(ROUNDS));
 

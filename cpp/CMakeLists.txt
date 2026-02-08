@@ -12,6 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(RS_BUILD_TOOLS "Build command-line tools (native only by default)" ON)
 option(RS_BUILD_TESTS "Build tests (native only by default)" ON)
 option(RS_BUILD_WASM_SMOKE "Build a minimal wasm smoke target" OFF)
+option(RS_ENABLE_SANITIZERS "Enable ASan+UBSan for native builds" OFF)
 
 if (EMSCRIPTEN)
     # No CLI/tests for wasm yet (they depend on native filesystem + host execution).
@@ -31,13 +32,30 @@ set(RS_SOURCES
     rs/compression/NativeCompressionHandler.cpp
     rs/cache/format/Container.cpp
     rs/cache/format/Archive.cpp
-    rs/cache/reference/ReferenceTable.cpp
-    rs/cache/store/SectorChainStore.cpp
-    rs/cache/CacheIndex.cpp
-    rs/cache/CacheSystem.cpp
-    rs/util/XXHash64.cpp
-    rs/loaders/ConfigLoaders.cpp
-)
+	    rs/cache/reference/ReferenceTable.cpp
+	    rs/cache/store/SectorChainStore.cpp
+	    rs/cache/CacheIndex.cpp
+	    rs/cache/CacheSystem.cpp
+	    rs/sprite/SpriteLoader.cpp
+	    rs/texture/SpriteTextureLoader.cpp
+	    rs/texture/DatTextureLoader.cpp
+	    rs/texture/ProceduralTextureLoader.cpp
+	    rs/texture/OldProceduralTextureLoader.cpp
+	    rs/texture/procedural/TextureGenerator.cpp
+	    rs/texture/procedural/ProceduralTexture.cpp
+	    rs/texture/procedural/operation/TextureOperationFactory.cpp
+	    rs/util/XXHash64.cpp
+	    rs/util/HeightCalc.cpp
+	    rs/map/TerrainSquareDecode.cpp
+	    rs/map/LocPlacementsDecode.cpp
+	    rs/map/NpcSpawnsDecode.cpp
+	    rs/loaders/ConfigLoaders.cpp
+	    rs/loaders/CacheSession.cpp
+	    rs/loaders/Dat2Loaders.cpp
+	    rs/loaders/DatLoaders.cpp
+	    rs/loaders/LegacyLoaders.cpp
+	    rs/loaders/Loaders.cpp
+	)
 
 if (NOT EMSCRIPTEN)
     list(APPEND RS_SOURCES
@@ -160,12 +178,32 @@ add_custom_target(rs_core_stl_guard
 
 add_dependencies(rs rs_core_stl_guard)
 
+if (RS_ENABLE_SANITIZERS AND NOT EMSCRIPTEN)
+    set(RS_SANITIZER_FLAGS
+        -fsanitize=address,undefined
+        -fno-omit-frame-pointer
+        -fno-sanitize-recover=all
+        # `-fsanitize=undefined` enables `vptr` by default, which requires RTTI. The core library is built with
+        # `-fno-rtti`, so we explicitly disable it here.
+        -fno-sanitize=vptr
+    )
+
+    target_compile_options(rs PRIVATE
+        ${RS_SANITIZER_FLAGS}
+    )
+endif()
+
 if (RS_BUILD_TOOLS)
     add_executable(rs_cli
         tools/rs_cli.cpp
     )
 
     target_link_libraries(rs_cli PRIVATE rs)
+
+    if (RS_ENABLE_SANITIZERS AND NOT EMSCRIPTEN)
+        target_compile_options(rs_cli PRIVATE ${RS_SANITIZER_FLAGS})
+        target_link_options(rs_cli PRIVATE ${RS_SANITIZER_FLAGS})
+    endif()
 
     target_link_options(rs_cli PRIVATE
         -Wl,--gc-sections
@@ -180,6 +218,11 @@ if (RS_BUILD_TESTS)
     )
 
     target_link_libraries(rs_tests PRIVATE rs)
+
+    if (RS_ENABLE_SANITIZERS AND NOT EMSCRIPTEN)
+        target_compile_options(rs_tests PRIVATE ${RS_SANITIZER_FLAGS})
+        target_link_options(rs_tests PRIVATE ${RS_SANITIZER_FLAGS})
+    endif()
 
     target_link_options(rs_tests PRIVATE
         -Wl,--gc-sections

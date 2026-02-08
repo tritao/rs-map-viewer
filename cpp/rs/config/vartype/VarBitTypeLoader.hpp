@@ -1,10 +1,10 @@
 #pragma once
 
 #include "VarBitType.hpp"
-#include "../ArchiveTypeLoader.hpp"
+#include "../DenseTypeLoader.hpp"
 
 namespace rs {
 
-using VarBitTypeLoader = ArchiveTypeLoader<VarBitType>;
+using VarBitTypeLoader = DenseTypeLoader<VarBitType>;
 
 } // namespace rs

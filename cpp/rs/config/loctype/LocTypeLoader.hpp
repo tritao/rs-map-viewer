@@ -1,11 +1,10 @@
 #pragma once
 
-#include "../ArchiveTypeLoader.hpp"
+#include "../DenseTypeLoader.hpp"
 #include "LocType.hpp"
 
 namespace rs {
 
-using LocTypeLoader = ArchiveTypeLoader<LocType>;
+using LocTypeLoader = DenseTypeLoader<LocType>;
 
 } // namespace rs
-

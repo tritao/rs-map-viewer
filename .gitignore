@@ -32,6 +32,8 @@ caches/
 cpp-core/build/
 cpp-core/build-native/
 cpp/build/
+cpp/build-debug/
+cpp/build-sanitize/
 cpp/build-wasm/
 cpp/.cache/
 

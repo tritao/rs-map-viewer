@@ -1,11 +1,10 @@
 #pragma once
 
-#include "../ArchiveTypeLoader.hpp"
+#include "../DenseTypeLoader.hpp"
 #include "ObjType.hpp"
 
 namespace rs {
 
-using ObjTypeLoader = ArchiveTypeLoader<ObjType>;
+using ObjTypeLoader = DenseTypeLoader<ObjType>;
 
 } // namespace rs
-

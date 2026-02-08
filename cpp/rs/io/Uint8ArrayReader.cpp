@@ -269,6 +269,28 @@ Status Uint8ArrayReader::readSmart2(i32* out) noexcept {
     return Status::Ok;
 }
 
+Status Uint8ArrayReader::readSmart3(i32* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    i32 i = 0;
+    i32 delta = 0;
+    Status s = readUnsignedSmart(&delta);
+    if (!ok(s)) {
+        return s;
+    }
+    while (delta == 32767) {
+        i += 32767;
+        s = readUnsignedSmart(&delta);
+        if (!ok(s)) {
+            return s;
+        }
+    }
+    i += delta;
+    *out = i;
+    return Status::Ok;
+}
+
 Status Uint8ArrayReader::readBytes(std::size_t amount, Span<const u8>* out) noexcept {
     if (!out) {
         return Status::InvalidArgument;

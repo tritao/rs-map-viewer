@@ -5,85 +5,11 @@
 #include "../../core/Status.hpp"
 #include "../../core/Str.hpp"
 #include "../../io/Uint8ArrayReader.hpp"
+#include "../../util/ColorUtil.hpp"
 #include "../../types.hpp"
 #include "../TypeDecode.hpp"
 
 namespace rs {
-
-inline i32 packHsl(i32 hue, i32 saturation, i32 lightness) noexcept {
-    if (lightness > 179) {
-        saturation = saturation / 2;
-    }
-    if (lightness > 192) {
-        saturation = saturation / 2;
-    }
-    if (lightness > 217) {
-        saturation = saturation / 2;
-    }
-    if (lightness > 243) {
-        saturation = saturation / 2;
-    }
-    return ((saturation / 32) << 7) + ((hue / 4) << 10) + (lightness / 2);
-}
-
-inline i32 rgbToHsl(i32 rgb) noexcept {
-    const double r = static_cast<double>((rgb >> 16) & 0xFF) / 256.0;
-    const double g = static_cast<double>((rgb >> 8) & 0xFF) / 256.0;
-    const double b = static_cast<double>(rgb & 0xFF) / 256.0;
-
-    double minRgb = r;
-    if (g < minRgb) {
-        minRgb = g;
-    }
-    if (b < minRgb) {
-        minRgb = b;
-    }
-
-    double maxRgb = r;
-    if (g > maxRgb) {
-        maxRgb = g;
-    }
-    if (b > maxRgb) {
-        maxRgb = b;
-    }
-
-    double hueTemp = 0.0;
-    double sat = 0.0;
-    const double light = (minRgb + maxRgb) / 2.0;
-    if (minRgb != maxRgb) {
-        if (light < 0.5) {
-            sat = (maxRgb - minRgb) / (minRgb + maxRgb);
-        } else {
-            sat = (maxRgb - minRgb) / (2.0 - maxRgb - minRgb);
-        }
-
-        if (maxRgb == r) {
-            hueTemp = (g - b) / (maxRgb - minRgb);
-        } else if (maxRgb == g) {
-            hueTemp = 2.0 + (b - r) / (maxRgb - minRgb);
-        } else {
-            hueTemp = 4.0 + (r - g) / (maxRgb - minRgb);
-        }
-    }
-
-    hueTemp /= 6.0;
-
-    const i32 hue = static_cast<i32>(hueTemp * 256.0);
-    i32 saturation = static_cast<i32>(sat * 256.0);
-    i32 lightness = static_cast<i32>(light * 256.0);
-    if (saturation < 0) {
-        saturation = 0;
-    } else if (saturation > 255) {
-        saturation = 255;
-    }
-    if (lightness < 0) {
-        lightness = 0;
-    } else if (lightness > 255) {
-        lightness = 255;
-    }
-
-    return packHsl(hue, saturation, lightness);
-}
 
 struct OverlayFloorType {
     i32 id = -1;

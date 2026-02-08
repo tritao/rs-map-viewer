@@ -62,6 +62,13 @@ public:
         size_ = 0;
     }
 
+    // Releases capacity (frees backing storage) while keeping the allocator.
+    void releaseMemory() noexcept {
+        destroyAll();
+        size_ = 0;
+        release();
+    }
+
     Result<void> reserve(std::size_t newCapacity) noexcept {
         if (newCapacity <= capacity_) {
             return Result<void>::ok();
@@ -161,4 +168,3 @@ private:
 };
 
 } // namespace rs
-

@@ -3,8 +3,7 @@
 #include "../cache/CacheInfo.hpp"
 #include "../cache/CacheSystem.hpp"
 #include "../core/Allocator.hpp"
-#include "../core/Result.hpp"
-#include "../core/Status.hpp"
+#include "../core/Expected.hpp"
 #include "../types.hpp"
 #include "../config/vartype/VarBitTypeLoader.hpp"
 #include "../config/floortype/FloorTypeLoaders.hpp"
@@ -22,6 +21,11 @@
 #include "../config/mapscenetype/MapSceneTypeLoader.hpp"
 #include "../config/meltype/MapElementTypeLoader.hpp"
 #include "../config/structtype/StructTypeLoader.hpp"
+#include "../config/vartype/client/VarClientIntTypeLoader.hpp"
+#include "../config/vartype/client/VarClientStrTypeLoader.hpp"
+#include "../config/vartype/player/VarPlayerTypeLoader.hpp"
+
+#include "InitError.hpp"
 
 namespace rs {
 
@@ -39,6 +43,11 @@ struct ConfigLoaders {
     SeqTypeLoader seqs;
     SpotAnimTypeLoader spotAnims;
 
+    // Optional var configs (revision-dependent / not always present).
+    VarPlayerTypeLoader varPlayers;
+    VarClientIntTypeLoader varClientInts;
+    VarClientStrTypeLoader varClientStrs;
+
     // Optional / revision-dependent config archives (loaded when present).
     BasTypeLoader bas;
     QuestTypeLoader quests;
@@ -48,6 +57,9 @@ struct ConfigLoaders {
 };
 
 // Minimal starting point for the config/loaders port. Extend this struct as we port more config types.
-Result<ConfigLoaders> tryCreateConfigLoaders(const CacheSystem& cacheSystem, const CacheInfo& cacheInfo, Allocator& alloc) noexcept;
+Expected<ConfigLoaders, InitError> tryCreateConfigLoaders(
+    const CacheSystem& cacheSystem,
+    const CacheInfo& cacheInfo,
+    Allocator& alloc) noexcept;
 
 } // namespace rs

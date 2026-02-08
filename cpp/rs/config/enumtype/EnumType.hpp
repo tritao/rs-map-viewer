@@ -3,6 +3,7 @@
 #include "../../cache/CacheInfo.hpp"
 #include "../../core/Status.hpp"
 #include "../../core/Str.hpp"
+#include "../../core/StrUtil.hpp"
 #include "../../core/Vec.hpp"
 #include "../../io/Uint8ArrayReader.hpp"
 #include "../../types.hpp"
@@ -17,7 +18,7 @@ struct EnumType {
     u8 inputType = 0;
     u8 outputType = 0;
 
-    Str defaultString{};
+    Str defaultString = strLiteral("null");
     i32 defaultInt = 0;
 
     i32 outputCount = 0;
@@ -158,4 +159,3 @@ struct EnumType {
 };
 
 } // namespace rs
-

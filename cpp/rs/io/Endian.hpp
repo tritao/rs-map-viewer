@@ -10,6 +10,10 @@ namespace rs {
     return static_cast<u16>((static_cast<u16>(p[0]) << 8) | static_cast<u16>(p[1]));
 }
 
+[[nodiscard]] inline u16 readU16LE(const u8* p) {
+    return static_cast<u16>(static_cast<u16>(p[0]) | (static_cast<u16>(p[1]) << 8));
+}
+
 [[nodiscard]] inline u32 readU24BE(const u8* p) {
     return (static_cast<u32>(p[0]) << 16) | (static_cast<u32>(p[1]) << 8) | static_cast<u32>(p[2]);
 }
@@ -21,6 +25,15 @@ namespace rs {
 
 [[nodiscard]] inline i32 readI32BE(const u8* p) {
     return static_cast<i32>(readU32BE(p));
+}
+
+[[nodiscard]] inline u32 readU32LE(const u8* p) {
+    return static_cast<u32>(p[0]) | (static_cast<u32>(p[1]) << 8) | (static_cast<u32>(p[2]) << 16) |
+           (static_cast<u32>(p[3]) << 24);
+}
+
+[[nodiscard]] inline i32 readI32LE(const u8* p) {
+    return static_cast<i32>(readU32LE(p));
 }
 
 inline void writeU16BE(u8* p, u16 v) {
@@ -42,4 +55,3 @@ inline void writeU32BE(u8* p, u32 v) {
 }
 
 } // namespace rs
-

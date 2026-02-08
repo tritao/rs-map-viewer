@@ -13,6 +13,12 @@
 
 namespace rs {
 
+// Arena for stable byte-string storage (STL-free).
+//
+// Core policy:
+// - Callers allocate decoded cache strings here and store them as `Str` views.
+// - Strings are copied verbatim (no encoding conversion).
+// - A trailing '\0' is appended for convenience in tools/tests, but the owning type is `Str` (ptr+len).
 class StringArena final {
 public:
     explicit StringArena(Allocator& alloc, std::size_t defaultBlockSize = 4096) noexcept

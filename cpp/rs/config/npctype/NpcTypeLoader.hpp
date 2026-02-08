@@ -1,11 +1,10 @@
 #pragma once
 
-#include "../ArchiveTypeLoader.hpp"
+#include "../DenseTypeLoader.hpp"
 #include "NpcType.hpp"
 
 namespace rs {
 
-using NpcTypeLoader = ArchiveTypeLoader<NpcType>;
+using NpcTypeLoader = DenseTypeLoader<NpcType>;
 
 } // namespace rs
-

@@ -11,7 +11,9 @@ struct VarBitType {
     i32 id = -1;
     CacheInfo cacheInfo{};
 
-    i32 baseVar = -1;
+    // TS leaves this field unset for "empty" entries (bytes=[0]), and our parity harness hashes unset numeric
+    // fields as 0 (via `x|0`). Default to 0 to match that behavior.
+    i32 baseVar = 0;
     i32 startBit = 0;
     i32 endBit = 0;
 
@@ -45,4 +47,3 @@ struct VarBitType {
 };
 
 } // namespace rs
-

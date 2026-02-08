@@ -27,8 +27,7 @@ static bool looksLikeGzipWithTrailingU16(Span<const u8> data) noexcept {
         return false;
     }
     const std::size_t len = data.size();
-    const u32 isize = static_cast<u32>(data[len - 4]) | (static_cast<u32>(data[len - 3]) << 8) |
-                      (static_cast<u32>(data[len - 2]) << 16) | (static_cast<u32>(data[len - 1]) << 24);
+    const u32 isize = readU32LE(data.data() + (len - 4));
     return data[len - 2] == 0 && (isize & 0x00FF'FFFFu) == 0 && isize != 0;
 }
 
@@ -87,6 +86,21 @@ const ArchiveFile* Archive::getFile(i32 id) const noexcept {
     return filesById_[idx];
 }
 
+const ArchiveFile* Archive::getFileByNameHash(i32 nameHash) const noexcept {
+    for (std::size_t i = 0; i < files_.size(); i++) {
+        const ArchiveFile& f = files_[i];
+        if (f.nameHash == nameHash) {
+            return &f;
+        }
+    }
+    return nullptr;
+}
+
+i32 Archive::getFileIdByNameHash(i32 nameHash) const noexcept {
+    const ArchiveFile* f = getFileByNameHash(nameHash);
+    return f ? f->id : -1;
+}
+
 Result<Archive> Archive::decodeFromSource(const ArchiveMeta& meta, const ByteSource& source, Allocator& alloc) noexcept {
     auto bytesRes = readAllBytes(source, alloc);
     if (!bytesRes.isOk()) {
@@ -117,7 +131,8 @@ Result<Archive> Archive::decodeFromBytes(const ArchiveMeta& meta, Span<const u8>
         }
 
         Vec<ArchiveFile> files(alloc);
-        auto pr = files.emplaceBack(lastFileId, archiveId, rs::move(data));
+        const i32 nameHash = meta.fileNameHashes.size() >= 1 ? meta.fileNameHashes[0] : 0;
+        auto pr = files.emplaceBack(lastFileId, archiveId, rs::move(data), nameHash);
         if (!pr.isOk()) {
             return Result<Archive>::err(pr.status());
         }
@@ -192,6 +207,7 @@ Result<Archive> Archive::decodeFromBytes(const ArchiveMeta& meta, Span<const u8>
         const std::size_t idx = static_cast<std::size_t>(fileIdx);
         files[idx].id = meta.fileIds.size() > idx ? meta.fileIds[idx] : fileIdx;
         files[idx].archiveId = archiveId;
+        files[idx].nameHash = meta.fileNameHashes.size() > idx ? meta.fileNameHashes[idx] : 0;
 
         const i32 sizeI32 = fileSizes[idx];
         if (sizeI32 < 0) {
@@ -354,8 +370,8 @@ Result<Archive> Archive::decodeOld(
 
         files[static_cast<std::size_t>(i)].id = i;
         files[static_cast<std::size_t>(i)].archiveId = archiveId;
+        files[static_cast<std::size_t>(i)].nameHash = nameHash;
         files[static_cast<std::size_t>(i)].data = rs::move(fileData);
-        (void)nameHash; // unused in C++ model
     }
 
     return Result<Archive>::ok(Archive(archiveId, lastFileId, rs::move(files), alloc));

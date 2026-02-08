@@ -40,7 +40,7 @@ CacheIndex::CacheIndex(
       id_(id),
       store_(&store),
       compressionHandler_(&compressionHandler) {
-    if (cacheType_ == CacheType::Dat) {
+    if (cacheType_ == CacheType::Dat || cacheType_ == CacheType::Legacy) {
         new (&storage_.dat) DatIndexImpl();
         storage_.dat.archiveCount = archiveCount;
         storage_.dat.archiveIds = rs::move(archiveIds);
@@ -52,7 +52,7 @@ CacheIndex::CacheIndex(
 }
 
 CacheIndex::~CacheIndex() {
-    if (cacheType_ == CacheType::Dat) {
+    if (cacheType_ == CacheType::Dat || cacheType_ == CacheType::Legacy) {
         storage_.dat.~DatIndexImpl();
     } else {
         storage_.dat2.~Dat2IndexImpl();
@@ -61,7 +61,7 @@ CacheIndex::~CacheIndex() {
 
 CacheIndex::CacheIndex(CacheIndex&& other) noexcept
     : cacheType_(other.cacheType_), id_(other.id_), store_(other.store_), compressionHandler_(other.compressionHandler_) {
-    if (cacheType_ == CacheType::Dat) {
+    if (cacheType_ == CacheType::Dat || cacheType_ == CacheType::Legacy) {
         new (&storage_.dat) DatIndexImpl();
         storage_.dat.archiveCount = other.storage_.dat.archiveCount;
         storage_.dat.archiveIds = rs::move(other.storage_.dat.archiveIds);
@@ -75,7 +75,7 @@ CacheIndex::CacheIndex(CacheIndex&& other) noexcept
     other.id_ = -1;
     other.store_ = nullptr;
     other.compressionHandler_ = nullptr;
-    if (other.cacheType_ == CacheType::Dat) {
+    if (other.cacheType_ == CacheType::Dat || other.cacheType_ == CacheType::Legacy) {
         other.storage_.dat.~DatIndexImpl();
     } else {
         other.storage_.dat2.~Dat2IndexImpl();
@@ -90,7 +90,7 @@ CacheIndex& CacheIndex::operator=(CacheIndex&& other) noexcept {
     }
 
     // Destroy current.
-    if (cacheType_ == CacheType::Dat) {
+    if (cacheType_ == CacheType::Dat || cacheType_ == CacheType::Legacy) {
         storage_.dat.~DatIndexImpl();
     } else {
         storage_.dat2.~Dat2IndexImpl();
@@ -101,7 +101,7 @@ CacheIndex& CacheIndex::operator=(CacheIndex&& other) noexcept {
     store_ = other.store_;
     compressionHandler_ = other.compressionHandler_;
 
-    if (cacheType_ == CacheType::Dat) {
+    if (cacheType_ == CacheType::Dat || cacheType_ == CacheType::Legacy) {
         new (&storage_.dat) DatIndexImpl();
         storage_.dat.archiveCount = other.storage_.dat.archiveCount;
         storage_.dat.archiveIds = rs::move(other.storage_.dat.archiveIds);
@@ -115,7 +115,7 @@ CacheIndex& CacheIndex::operator=(CacheIndex&& other) noexcept {
     other.id_ = -1;
     other.store_ = nullptr;
     other.compressionHandler_ = nullptr;
-    if (other.cacheType_ == CacheType::Dat) {
+    if (other.cacheType_ == CacheType::Dat || other.cacheType_ == CacheType::Legacy) {
         other.storage_.dat.~DatIndexImpl();
     } else {
         other.storage_.dat2.~Dat2IndexImpl();
@@ -131,11 +131,11 @@ Result<CacheIndex> CacheIndex::fromStore(
     const CacheStore& store,
     const CompressionHandler& compressionHandler,
     Allocator& alloc) noexcept {
-    if (cacheType != CacheType::Dat && cacheType != CacheType::Dat2) {
+    if (cacheType != CacheType::Dat && cacheType != CacheType::Legacy && cacheType != CacheType::Dat2) {
         return Result<CacheIndex>::err(Status::Unsupported);
     }
 
-    if (cacheType == CacheType::Dat) {
+    if (cacheType == CacheType::Dat || cacheType == CacheType::Legacy) {
         std::size_t indexSize = 0;
         const Status s = store.getIndexFileSize(id, &indexSize);
         if (!ok(s)) {
@@ -299,10 +299,11 @@ Result<Archive> CacheIndex::getArchiveKey(i32 archiveId, const XteaKey* key, All
         return Result<Archive>::err(s);
     }
 
-    if (cacheType_ == CacheType::Dat) {
+    if (cacheType_ == CacheType::Dat || cacheType_ == CacheType::Legacy) {
         // Dat caches store "old" archive bytes directly.
-        // Index 0 ("configs") is multi-file; other indices are typically single-file.
-        const bool multipleFiles = (id_ == 0);
+        // Dat: index 0 ("configs") is multi-file; other indices are typically single-file.
+        // Legacy: indices are typically multi-file (single archive with many named files).
+        const bool multipleFiles = (cacheType_ == CacheType::Legacy) ? true : (id_ == 0);
         return Archive::decodeOld(
             archiveId,
             Span<const u8>(bytes.data(), bytes.size()),

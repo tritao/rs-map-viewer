@@ -31,6 +31,8 @@ public:
 
     [[nodiscard]] Span<const ArchiveFile> files() const noexcept { return files_.span(); }
     [[nodiscard]] const ArchiveFile* getFile(i32 id) const noexcept;
+    [[nodiscard]] const ArchiveFile* getFileByNameHash(i32 nameHash) const noexcept;
+    [[nodiscard]] i32 getFileIdByNameHash(i32 nameHash) const noexcept;
 
 private:
     i32 id_;
