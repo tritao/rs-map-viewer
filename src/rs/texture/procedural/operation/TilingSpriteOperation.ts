@@ -8,7 +8,12 @@ export class TilingSpriteOperation extends SpriteSourceOperation {
         }
         const output = this.colourImageCache.get(line);
         if (this.colourImageCache.dirty) {
-            if (!super.loadSprite(textureGenerator) || !this.pixels || this.width <= 0 || this.height <= 0) {
+            if (
+                !super.loadSprite(textureGenerator) ||
+                !this.pixels ||
+                this.width <= 0 ||
+                this.height <= 0
+            ) {
                 output[0].fill(0);
                 output[1].fill(0);
                 output[2].fill(0);

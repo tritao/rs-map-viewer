@@ -1,5 +1,5 @@
-import { ByteSource } from "./ByteSource";
 import { ByteReader } from "./ByteReader";
+import { ByteSource } from "./ByteSource";
 import { readI32BE, readU24BE, readU32BE } from "./Endian";
 
 export class ByteSourceReader implements ByteReader {
@@ -43,7 +43,9 @@ export class ByteSourceReader implements ByteReader {
         }
 
         if (this.position + amount > this.source.size) {
-            throw new Error(`Read out of bounds. position=${this.position}, amount=${amount}, size=${this.source.size}`);
+            throw new Error(
+                `Read out of bounds. position=${this.position}, amount=${amount}, size=${this.source.size}`,
+            );
         }
 
         if (this.position >= this.windowStart && this.position + amount <= this.windowEnd) {
@@ -136,7 +138,9 @@ export class ByteSourceReader implements ByteReader {
             throw new Error("Invalid length");
         }
         if (this.position + length > this.source.size) {
-            throw new Error(`Read out of bounds. position=${this.position}, length=${length}, size=${this.source.size}`);
+            throw new Error(
+                `Read out of bounds. position=${this.position}, length=${length}, size=${this.source.size}`,
+            );
         }
 
         this.source.readInto(this.position, target, targetOffset, length);

@@ -172,12 +172,12 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
         normalizedPos = (t - startX) / rangeX;
     }
 
-    let cycleCount = normalizedPos | 0;
+    let cycleCount = Math.trunc(normalizedPos);
     let cycleFrac = Math.abs(normalizedPos - cycleCount);
     let mappedT = cycleFrac * rangeX;
     cycleCount = Math.abs(1.0 + cycleCount);
     const halfCycles = cycleCount / 2.0;
-    const halfCyclesInt = halfCycles | 0;
+    const halfCyclesInt = Math.trunc(halfCycles);
     const pingPongPhase = halfCycles - halfCyclesInt;
     if (isStart) {
         if (curve.startInterpType === CurveInterpType.TYPE_4) {

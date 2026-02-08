@@ -1,7 +1,7 @@
 import { CacheInfo, GameType } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
-import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 import { OsrsConfigArchiveId, Rs2ConfigArchiveId } from "../cache/ConfigArchiveId";
+import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 
 export type TextureRules =
     | { mode: "sprite" }
@@ -69,17 +69,29 @@ export function computeCacheRules(cacheInfo: CacheInfo, cacheSystem: CacheSystem
             bas = { mode: "archive" };
         }
 
-        if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.quests)) {
+        if (
+            cacheInfo.game === GameType.Runescape &&
+            configIndex.archiveExists(Rs2ConfigArchiveId.quests)
+        ) {
             quests = { mode: "archive" };
         }
 
-        if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.mapScenes)) {
+        if (
+            cacheInfo.game === GameType.Runescape &&
+            configIndex.archiveExists(Rs2ConfigArchiveId.mapScenes)
+        ) {
             mapScenes = { mode: "archive" };
         }
 
-        if (cacheInfo.game === GameType.Oldschool && configIndex.archiveExists(OsrsConfigArchiveId.mapFunctions)) {
+        if (
+            cacheInfo.game === GameType.Oldschool &&
+            configIndex.archiveExists(OsrsConfigArchiveId.mapFunctions)
+        ) {
             mapFunctions = { mode: "osrs_archive" };
-        } else if (cacheInfo.game === GameType.Runescape && configIndex.archiveExists(Rs2ConfigArchiveId.mapFunctions)) {
+        } else if (
+            cacheInfo.game === GameType.Runescape &&
+            configIndex.archiveExists(Rs2ConfigArchiveId.mapFunctions)
+        ) {
             mapFunctions = { mode: "rs2_archive" };
         }
     }

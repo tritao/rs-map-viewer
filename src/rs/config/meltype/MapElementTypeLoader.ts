@@ -1,7 +1,7 @@
-import { Archive } from "../../cache/format/Archive";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { ArchiveTypeLoader, TypeLoader } from "../TypeLoader";
+import { Archive } from "../../cache/format/Archive";
 import { ArchiveBytesProvider } from "../../io/BytesProvider";
+import { ArchiveTypeLoader, TypeLoader } from "../TypeLoader";
 import { MapElementType } from "./MapElementType";
 
 export type MapElementTypeLoader = TypeLoader<MapElementType>;

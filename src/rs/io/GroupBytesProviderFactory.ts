@@ -1,5 +1,10 @@
 import { ArchiveProvider } from "./ArchiveProvider";
-import { ArchiveBytesProvider, BytesProvider, EnumeratingArchiveBytesProvider, EnumeratingBytesProvider } from "./BytesProvider";
+import {
+    ArchiveBytesProvider,
+    BytesProvider,
+    EnumeratingArchiveBytesProvider,
+    EnumeratingBytesProvider,
+} from "./BytesProvider";
 
 /**
  * Provides access to "groups" of sub-files (e.g. cache archives) as a BytesProvider.
@@ -15,7 +20,9 @@ export interface EnumeratingGroupBytesProviderFactory extends GroupBytesProvider
     getEnumeratingGroup(groupId: number): EnumeratingBytesProvider | undefined;
 }
 
-export class ArchiveProviderGroupBytesProviderFactory implements EnumeratingGroupBytesProviderFactory {
+export class ArchiveProviderGroupBytesProviderFactory
+    implements EnumeratingGroupBytesProviderFactory
+{
     constructor(readonly archiveProvider: ArchiveProvider) {}
 
     getGroup(groupId: number): BytesProvider | undefined {
@@ -28,4 +35,3 @@ export class ArchiveProviderGroupBytesProviderFactory implements EnumeratingGrou
         return archive ? new EnumeratingArchiveBytesProvider(archive) : undefined;
     }
 }
-

@@ -1,6 +1,7 @@
 import JavaRandom from "../../../../util/JavaRandom";
 import { nextIntJagex } from "../../../../util/MathUtil";
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -49,10 +50,18 @@ export class LineNoiseOperation extends TextureOperation {
 
                 let startX = nextIntJagex(rng, textureGenerator.width);
                 let startY = nextIntJagex(rng, textureGenerator.height);
-                let endX =
-                    ((textureGenerator.cosine[angleTableIndex] * this.lineLength) >> 12) + startX;
-                let endY =
-                    ((textureGenerator.sine[angleTableIndex] * this.lineLength) >> 12) + startY;
+                const deltaX = mulShift(
+                    textureGenerator.cosine[angleTableIndex],
+                    this.lineLength,
+                    12,
+                );
+                const deltaY = mulShift(
+                    textureGenerator.sine[angleTableIndex],
+                    this.lineLength,
+                    12,
+                );
+                let endX = deltaX + startX;
+                let endY = deltaY + startY;
                 let absDeltaX = endX - startX;
                 let absDeltaY = endY - startY;
                 if (absDeltaX !== 0 || absDeltaY !== 0) {
@@ -85,8 +94,8 @@ export class LineNoiseOperation extends TextureOperation {
                     if (deltaY < 0) {
                         deltaY = -deltaY;
                     }
-                    let error = (-deltaX / 2) | 0;
-                    const valueStep = (2048 / deltaX) | 0;
+                    let error = idiv(-deltaX, 2);
+                    const valueStep = idiv(2048, deltaX);
                     const intensityJitter = 1024 - (nextIntJagex(rng, 4096) >> 2);
                     const intensityBase = 1024 + intensityJitter;
                     const yStep = endY <= startY ? -1 : 1;

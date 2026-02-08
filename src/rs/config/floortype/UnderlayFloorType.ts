@@ -106,8 +106,8 @@ export class UnderlayFloorType extends Type implements FloorType {
             }
         }
         hue /= 6.0;
-        this.saturation = (sat * 256.0) | 0;
-        this.lightness = (light * 256.0) | 0;
+        this.saturation = Math.trunc(sat * 256.0);
+        this.lightness = Math.trunc(light * 256.0);
         if (this.saturation < 0) {
             this.saturation = 0;
         } else if (this.saturation > 255) {
@@ -119,13 +119,13 @@ export class UnderlayFloorType extends Type implements FloorType {
             this.lightness = 255;
         }
         if (light > 0.5) {
-            this.hueMultiplier = (512.0 * (sat * (1.0 - light))) | 0;
+            this.hueMultiplier = Math.trunc(512.0 * (sat * (1.0 - light)));
         } else {
-            this.hueMultiplier = (512.0 * (sat * light)) | 0;
+            this.hueMultiplier = Math.trunc(512.0 * (sat * light));
         }
         if (this.hueMultiplier < 1) {
             this.hueMultiplier = 1;
         }
-        this.hue = (this.hueMultiplier * hue) | 0;
+        this.hue = Math.trunc(this.hueMultiplier * hue);
     }
 }

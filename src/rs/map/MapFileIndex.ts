@@ -1,6 +1,6 @@
 import { CacheIndex } from "../cache/CacheIndex";
-import { ByteBuffer } from "../io/ByteBuffer";
 import { MapSquareId, asMapSquareId } from "../ids/Ids";
+import { ByteBuffer } from "../io/ByteBuffer";
 
 export function getMapSquareId(mapX: number, mapY: number): MapSquareId {
     return asMapSquareId((mapX << 8) + mapY);
@@ -26,7 +26,7 @@ export class DatMapFileIndex implements MapFileIndex {
 
         const mapSquares = new Map<number, MapSquare>();
 
-        const count = (buffer.remaining / 7) | 0;
+        const count = Math.trunc(buffer.remaining / 7);
         for (let i = 0; i < count; i++) {
             const mapId = buffer.readUnsignedShort();
             const terrainArchiveId = buffer.readUnsignedShort();

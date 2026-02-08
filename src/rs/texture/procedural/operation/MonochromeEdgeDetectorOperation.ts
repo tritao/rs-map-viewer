@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { i32, idiv, imul, maskIndex, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -24,27 +25,29 @@ export class MonochromeEdgeDetectorOperation extends TextureOperation {
             const prevInput = this.getMonochromeInput(
                 textureGenerator,
                 0,
-                (line - 1) & textureGenerator.heightMask,
+                maskIndex(line - 1, textureGenerator.heightMask),
             );
             const input = this.getMonochromeInput(textureGenerator, 0, line);
             const nextInput = this.getMonochromeInput(
                 textureGenerator,
                 0,
-                (line + 1) & textureGenerator.heightMask,
+                maskIndex(line + 1, textureGenerator.heightMask),
             );
             for (let x = 0; x < textureGenerator.width; x++) {
-                const dyScaled = this.strengthQ12 * (nextInput[x] - prevInput[x]);
-                const dxScaled =
-                    this.strengthQ12 *
-                    (input[(x + 1) & textureGenerator.widthMask] -
-                        input[(x - 1) & textureGenerator.widthMask]);
+                const dyScaled = imul(this.strengthQ12, nextInput[x] - prevInput[x]);
+                const dxScaled = imul(
+                    this.strengthQ12,
+                    input[maskIndex(x + 1, textureGenerator.widthMask)] -
+                        input[maskIndex(x - 1, textureGenerator.widthMask)],
+                );
                 const dxQ12 = dxScaled >> 12;
                 const dyQ12 = dyScaled >> 12;
-                const dySquaredQ12 = (dyQ12 * dyQ12) >> 12;
-                const dxSquaredQ12 = (dxQ12 * dxQ12) >> 12;
-                const normalizerQ12 =
-                    (Math.sqrt((dySquaredQ12 + dxSquaredQ12 + 4096) / 4096.0) * 4096.0) | 0;
-                const invNormalizerQ24 = normalizerQ12 === 0 ? 0 : (16777216 / normalizerQ12) | 0;
+                const dySquaredQ12 = mulShift(dyQ12, dyQ12, 12);
+                const dxSquaredQ12 = mulShift(dxQ12, dxQ12, 12);
+                const normalizerQ12 = i32(
+                    Math.sqrt((dySquaredQ12 + dxSquaredQ12 + 4096) / 4096.0) * 4096.0,
+                );
+                const invNormalizerQ24 = normalizerQ12 === 0 ? 0 : idiv(16777216, normalizerQ12);
                 output[x] = 4096 - invNormalizerQ24;
             }
         }

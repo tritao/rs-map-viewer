@@ -44,13 +44,12 @@ export class Curve {
         this.endInterpType = getInterpTypeForId(buffer.readUnsignedByte());
         this.bool = buffer.readUnsignedByte() !== 0;
 
-        this.points = new Array(count);
+        this.points = Array.from({ length: count }, () => new CurvePoint());
 
         let lastPoint: CurvePoint | undefined;
         for (let i = 0; i < count; i++) {
-            const point = new CurvePoint();
+            const point = this.points[i];
             point.decode(buffer, version);
-            this.points[i] = point;
             if (lastPoint) {
                 lastPoint.next = point;
             }
@@ -112,7 +111,8 @@ export class Curve {
 
                     do {
                         // Middle point index
-                        const pointIndex = (startPointIndex + endPointIndex) >> 1;
+                        const pointIndexSum = startPointIndex + endPointIndex;
+                        const pointIndex = pointIndexSum >> 1;
                         if (t < this.points[pointIndex].x) {
                             if (t > this.points[pointIndex - 1].x) {
                                 newPointIndex = pointIndex - 1;

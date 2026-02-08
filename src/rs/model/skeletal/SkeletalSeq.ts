@@ -1,9 +1,10 @@
 import { mat4, quat, vec3 } from "gl-matrix";
 
+import { Result, err, ok } from "../../../util/Result";
+import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SeqBase } from "../seq/SeqBase";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
-import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { Curve } from "./Curve";
 import { getCurveIndex, getCurveTypeForId } from "./CurveType";
 import { SkeletalBase } from "./SkeletalBase";
@@ -14,7 +15,6 @@ import {
     getCurveCount,
     getTransformTypeForId,
 } from "./SkeletalTransformType";
-import { err, ok, Result } from "../../../util/Result";
 
 export class SkeletalSeq {
     poseId: number;
@@ -25,7 +25,11 @@ export class SkeletalSeq {
 
     hasAlphaTransform: boolean = false;
 
-    static tryLoadResult(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): Result<SkeletalSeq, DecodeError> {
+    static tryLoadResult(
+        baseLoader: SeqBaseLoader,
+        id: number,
+        data: Uint8Array,
+    ): Result<SkeletalSeq, DecodeError> {
         try {
             const buffer = new ByteBuffer(data);
 
@@ -61,7 +65,11 @@ export class SkeletalSeq {
         }
     }
 
-    static tryLoad(baseLoader: SeqBaseLoader, id: number, data: Uint8Array): SkeletalSeq | undefined {
+    static tryLoad(
+        baseLoader: SeqBaseLoader,
+        id: number,
+        data: Uint8Array,
+    ): SkeletalSeq | undefined {
         const result = SkeletalSeq.tryLoadResult(baseLoader, id, data);
         return result.ok ? result.value : undefined;
     }
@@ -77,8 +85,11 @@ export class SkeletalSeq {
         buffer.readUnsignedShort();
         this.poseId = buffer.readUnsignedByte();
         this.curveCount = buffer.readUnsignedShort();
-        this.boneCurves = new Array(skeletalBase.bones.length);
-        this.curves = new Array(base.count);
+        this.boneCurves = Array.from(
+            { length: skeletalBase.bones.length },
+            () => undefined as unknown as Curve[],
+        );
+        this.curves = Array.from({ length: base.count }, () => undefined as unknown as Curve[]);
 
         for (let i = 0; i < this.curveCount; i++) {
             const transformType = getTransformTypeForId(buffer.readUnsignedByte());
@@ -97,7 +108,10 @@ export class SkeletalSeq {
             }
 
             if (curves[boneIndex] === undefined) {
-                curves[boneIndex] = new Array(getCurveCount(transformType));
+                curves[boneIndex] = Array.from(
+                    { length: getCurveCount(transformType) },
+                    () => undefined as unknown as Curve,
+                );
             }
 
             curve.load();

@@ -1,19 +1,12 @@
-import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
-import { ByteBuffer } from "../io/ByteBuffer";
+import { Result, err, ok } from "../../util/Result";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { ByteBuffer } from "../io/ByteBuffer";
+import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { brightenRgb } from "../util/ColorUtil";
-import { err, ok, Result } from "../../util/Result";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
-
-function formatIdPreview(ids: ReadonlyArray<number>, limit: number = 10): string {
-    if (ids.length <= limit) {
-        return ids.join(", ");
-    }
-    return `${ids.slice(0, limit).join(", ")} …`;
-}
 
 export class SpriteTextureLoader implements TextureLoader {
     static readonly ANIM_DIRECTION_UV = [
@@ -25,45 +18,45 @@ export class SpriteTextureLoader implements TextureLoader {
     ];
 
     idIndexMap: Map<number, number>;
-    private readonly errors: Map<number, DecodeError> = new Map();
+    private readonly errors: Map<number, DecodeError>;
 
-    static create(textureDefinitionSource: EnumeratingBytesProvider | undefined, spriteSource: BytesProvider): SpriteTextureLoader {
+    static create(
+        textureDefinitionSource: EnumeratingBytesProvider | undefined,
+        spriteSource: BytesProvider,
+    ): SpriteTextureLoader {
         const definitions = new Map<number, TextureDefinition>();
+        const errors = new Map<number, DecodeError>();
 
         if (!textureDefinitionSource) {
-            return new SpriteTextureLoader(spriteSource, [], definitions);
+            return new SpriteTextureLoader(spriteSource, [], definitions, errors);
         }
         const textureIds = Array.from(textureDefinitionSource.getIds());
-        const failedDefinitionIds: number[] = [];
         for (let i = 0; i < textureIds.length; i++) {
             const textureId = textureIds[i];
             const bytes = textureDefinitionSource.getBytes(textureId);
             if (!bytes) {
                 continue;
             }
-            try {
-                const buffer = new ByteBuffer(bytes);
-                const definition = TextureDefinition.decode(textureId, buffer);
+            const buffer = new ByteBuffer(bytes);
+            const definitionResult = TextureDefinition.tryDecode(textureId, buffer);
+            if (definitionResult.ok) {
+                const definition = definitionResult.value;
                 definitions.set(textureId, definition);
-            } catch (e) {
-                failedDefinitionIds.push(textureId);
+            } else {
+                errors.set(textureId, definitionResult.error);
             }
         }
 
-        if (failedDefinitionIds.length > 0) {
-            console.error(
-                `SpriteTextureLoader: failed decoding ${failedDefinitionIds.length} texture definitions (first: ${formatIdPreview(failedDefinitionIds)})`,
-            );
-        }
-
-        return new SpriteTextureLoader(spriteSource, textureIds, definitions);
+        return new SpriteTextureLoader(spriteSource, textureIds, definitions, errors);
     }
 
     constructor(
         readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly definitions: Map<number, TextureDefinition>,
+        errors?: Map<number, DecodeError>,
     ) {
+        this.errors = errors ?? new Map();
         this.idIndexMap = new Map();
         for (let i = 0; i < textureIds.length; i++) {
             this.idIndexMap.set(textureIds[i], i);
@@ -179,7 +172,10 @@ export class SpriteTextureLoader implements TextureLoader {
 
         for (let i = 0; i < def.spriteIds.length; i++) {
             const spriteId = def.spriteIds[i];
-            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId);
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(
+                this.spriteSource,
+                spriteId,
+            );
             if (!sprite) {
                 const e = decodeFailedError({
                     typeName: "SpriteTextureSprite",
@@ -225,7 +221,10 @@ export class SpriteTextureLoader implements TextureLoader {
 
         for (let i = 0; i < def.spriteIds.length; i++) {
             const spriteId = def.spriteIds[i];
-            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId);
+            const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(
+                this.spriteSource,
+                spriteId,
+            );
             if (!sprite) {
                 const e = decodeFailedError({
                     typeName: "SpriteTexturePixels",
@@ -262,7 +261,9 @@ export class SpriteTextureLoader implements TextureLoader {
                         const gb = rgb & 0xffff;
                         if (rg === gb) {
                             const blue = rgb & 0xff;
-                            rgb = (((r_b * blue) >> 8) & 0xff00ff) | ((green * blue) & 0xff00);
+                            const rbScaled = r_b * blue;
+                            const gScaled = green * blue;
+                            rgb = ((rbScaled >> 8) & 0xff00ff) | (gScaled & 0xff00);
                         }
                     }
 
@@ -313,21 +314,41 @@ export class SpriteTextureLoader implements TextureLoader {
         return ok(pixels);
     }
 
-    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+    tryGetPixelsRgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const result = this.tryLoadPixelsRgb(id, size, flipH, brightness);
         return result.ok ? result.value : undefined;
     }
 
-    tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+    tryGetPixelsArgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const result = this.tryLoadPixelsArgb(id, size, flipH, brightness);
         return result.ok ? result.value : undefined;
     }
 
-    tryLoadPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+    tryLoadPixelsRgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Result<Int32Array, DecodeError> {
         return this.tryLoadPixelsInternal(id, size, flipH, brightness);
     }
 
-    tryLoadPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+    tryLoadPixelsArgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Result<Int32Array, DecodeError> {
         return this.tryLoadPixelsInternal(id, size, flipH, brightness);
     }
 
@@ -337,53 +358,49 @@ export class SpriteTextureLoader implements TextureLoader {
 }
 
 class TextureDefinition {
-    static decode(id: number, buffer: ByteBuffer): TextureDefinition {
+    static tryDecode(id: number, buffer: ByteBuffer): Result<TextureDefinition, DecodeError> {
         const averageHsl = buffer.readUnsignedShort();
         const opaque = buffer.readUnsignedByte() === 1;
         const spriteCount = buffer.readUnsignedByte();
         if (spriteCount < 1 || spriteCount > 4) {
-            throw new Error("Invalid sprite count for texture: " + spriteCount);
+            return err(
+                decodeFailedError({
+                    typeName: "SpriteTextureDefinition",
+                    id,
+                    message: `SpriteTextureLoader: invalid spriteCount=${spriteCount} for texture id=${id}`,
+                }),
+            );
         }
 
-        const spriteIds = new Array<number>(spriteCount);
-        for (let i = 0; i < spriteCount; i++) {
-            spriteIds[i] = buffer.readUnsignedShort();
-        }
+        const spriteIds = Array.from({ length: spriteCount }, () => buffer.readUnsignedShort());
 
         let spriteTypes: number[] | undefined;
         if (spriteCount > 1) {
-            spriteTypes = new Array(spriteCount - 1);
-            for (let i = 0; i < spriteCount - 1; i++) {
-                spriteTypes[i] = buffer.readUnsignedByte();
-            }
+            spriteTypes = Array.from({ length: spriteCount - 1 }, () => buffer.readUnsignedByte());
         }
         let unused: number[] | undefined;
         if (spriteCount > 1) {
-            unused = new Array(spriteCount - 1);
-            for (let i = 0; i < spriteCount - 1; i++) {
-                unused[i] = buffer.readUnsignedByte();
-            }
+            unused = Array.from({ length: spriteCount - 1 }, () => buffer.readUnsignedByte());
         }
 
-        const transforms = new Array<number>(spriteCount);
-        for (let i = 0; i < spriteCount; i++) {
-            transforms[i] = buffer.readInt();
-        }
+        const transforms = Array.from({ length: spriteCount }, () => buffer.readInt());
 
         const animationDirection = buffer.readUnsignedByte();
         const animationSpeed = buffer.readUnsignedByte();
 
-        return new TextureDefinition(
-            id,
-            averageHsl,
-            opaque,
-            spriteCount,
-            spriteIds,
-            transforms,
-            animationDirection,
-            animationSpeed,
-            spriteTypes,
-            unused,
+        return ok(
+            new TextureDefinition(
+                id,
+                averageHsl,
+                opaque,
+                spriteCount,
+                spriteIds,
+                transforms,
+                animationDirection,
+                animationSpeed,
+                spriteTypes,
+                unused,
+            ),
         );
     }
 

@@ -1,16 +1,16 @@
 // import { Xtea } from "../util/Xtea";
 import { CompressionHandler } from "../../compression/CompressionHandler";
 import { CompressionType } from "../../compression/CompressionType";
-import { Xtea } from "../../crypto/Xtea";
+import { Xtea, XteaKey } from "../../crypto/Xtea";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { readU32BE } from "../../io/Endian";
 import { getOrCopyBytes } from "../../io/ByteSourceUtil";
+import { readU32BE } from "../../io/Endian";
 
 export class Container {
     static decodeFromSource(
         source: ByteSource,
-        key: number[] | null,
+        key: XteaKey | null,
         compressionHandler: CompressionHandler,
     ): Container {
         const reader = new ByteSourceReader(source);
@@ -28,17 +28,16 @@ export class Container {
                 const encryptedSize = 4 + size;
                 const end = 5 + encryptedSize;
                 if (end > source.size) {
-                    throw new Error(`Truncated container. expected>=${end}, available=${source.size}`);
+                    throw new Error(
+                        `Truncated container. expected>=${end}, available=${source.size}`,
+                    );
                 }
 
                 const encrypted = new Uint8Array(encryptedSize);
                 source.readInto(5, encrypted);
                 Xtea.decryptInPlace(encrypted, 0, encryptedSize, key);
 
-                return new Container(
-                    compression,
-                    encrypted.subarray(0, size),
-                );
+                return new Container(compression, encrypted.subarray(0, size));
             }
 
             const end = 5 + size;
@@ -57,7 +56,9 @@ export class Container {
         const compressedSize = size;
         const expectedMinSize = 5 + 4 + compressedSize;
         if (expectedMinSize > source.size) {
-            throw new Error(`Truncated container. expected>=${expectedMinSize}, available=${source.size}`);
+            throw new Error(
+                `Truncated container. expected>=${expectedMinSize}, available=${source.size}`,
+            );
         }
 
         let actualSize: number;

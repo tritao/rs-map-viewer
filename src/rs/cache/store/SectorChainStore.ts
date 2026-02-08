@@ -1,10 +1,10 @@
 import { ByteSource } from "../../io/ByteSource";
-import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { ByteSourceAccess } from "../../io/ByteSourceAccess";
-import { CacheIndex } from "../CacheIndex";
-import { CacheStore } from "./CacheStore";
+import { ByteSourceSlice } from "../../io/ByteSourceSlice";
 import { readI32BE, readU16BE, readU24BE } from "../../io/Endian";
 import { toU32 } from "../../util/U32";
+import { CacheIndex } from "../CacheIndex";
+import { CacheStore } from "./CacheStore";
 import {
     IDX_ENTRY_SIZE,
     SECTOR_DATA_SIZE,
@@ -46,7 +46,9 @@ class SectorChainArchiveSource implements ByteSource {
             throw new Error("Invalid length");
         }
         if (offset < 0 || offset + length > this.size) {
-            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`);
+            throw new Error(
+                `Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`,
+            );
         }
         if (length === 0) {
             return;
@@ -119,13 +121,7 @@ export class SectorChainStore implements CacheStore {
             extended,
         );
 
-        return new SectorChainArchiveSource(
-            this.dataFile,
-            sectorIds,
-            size,
-            headerSize,
-            dataSize,
-        );
+        return new SectorChainArchiveSource(this.dataFile, sectorIds, size, headerSize, dataSize);
     }
 
     private getIndexFile(indexId: number): ByteSource | null {
@@ -142,7 +138,11 @@ export class SectorChainStore implements CacheStore {
         return indexId + 1;
     }
 
-    private readSectorCluster(indexFile: ByteSource, indexId: number, archiveId: number): SectorCluster {
+    private readSectorCluster(
+        indexFile: ByteSource,
+        indexId: number,
+        archiveId: number,
+    ): SectorCluster {
         const clusterPtr = archiveId * IDX_ENTRY_SIZE;
         const fileSize = indexFile.size;
         if (clusterPtr < 0 || clusterPtr + IDX_ENTRY_SIZE > fileSize) {
@@ -203,10 +203,14 @@ export class SectorChainStore implements CacheStore {
             }
 
             if (toU32(readArchiveId) !== toU32(archiveId)) {
-                throw new Error(`Sector archive id mismatch. expected: ${archiveId} got: ${readArchiveId}`);
+                throw new Error(
+                    `Sector archive id mismatch. expected: ${archiveId} got: ${readArchiveId}`,
+                );
             }
             if (readIndexId !== sectorIndexId) {
-                throw new Error(`Sector index id mismatch. expected: ${sectorIndexId} got: ${readIndexId}`);
+                throw new Error(
+                    `Sector index id mismatch. expected: ${sectorIndexId} got: ${readIndexId}`,
+                );
             }
             if (readChunk !== chunk) {
                 throw new Error(`Sector chunk mismatch. expected: ${chunk} got: ${readChunk}`);
@@ -221,5 +225,4 @@ export class SectorChainStore implements CacheStore {
 
         return sectorIds;
     }
-
 }

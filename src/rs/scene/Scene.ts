@@ -1,4 +1,4 @@
-import { isModelData, MergeNormalsScratch, ModelData } from "../model/ModelData";
+import { MergeNormalsScratch, ModelData, isModelData } from "../model/ModelData";
 import { TextureLoader } from "../texture/TextureLoader";
 import { CollisionMap } from "./CollisionMap";
 import { FloorDecoration } from "./FloorDecoration";
@@ -8,7 +8,7 @@ import { SceneTileModel } from "./SceneTileModel";
 import { Wall } from "./Wall";
 import { WallDecoration } from "./WallDecoration";
 import { Entity } from "./entity/Entity";
-import { EntityTag, EntityType, getEntityTypeFromTag } from "./entity/EntityTag";
+import { ENTITY_TAG_NONE, EntityTag, EntityType, getEntityTypeFromTag } from "./entity/EntityTag";
 
 const MAX_LOC_PER_TILE = 5;
 
@@ -53,29 +53,80 @@ export class Scene {
         readonly sizeX: number,
         readonly sizeY: number,
     ) {
-        this.tiles = new Array(levels);
-        this.collisionMaps = new Array(levels);
+        this.tiles = Array.from({ length: levels }, () => undefined as unknown as SceneTile[][]);
+        this.collisionMaps = Array.from(
+            { length: levels },
+            () => undefined as unknown as CollisionMap,
+        );
 
-        this.tileHeights = new Array(levels);
-        this.tileRenderFlags = new Array(levels);
-        this.tileUnderlays = new Array(levels);
-        this.tileOverlays = new Array(levels);
-        this.tileShapes = new Array(levels);
-        this.tileRotations = new Array(levels);
+        this.tileHeights = Array.from(
+            { length: levels },
+            () => undefined as unknown as Int32Array[],
+        );
+        this.tileRenderFlags = Array.from(
+            { length: levels },
+            () => undefined as unknown as Uint8Array[],
+        );
+        this.tileUnderlays = Array.from(
+            { length: levels },
+            () => undefined as unknown as Uint16Array[],
+        );
+        this.tileOverlays = Array.from(
+            { length: levels },
+            () => undefined as unknown as Int16Array[],
+        );
+        this.tileShapes = Array.from(
+            { length: levels },
+            () => undefined as unknown as Uint8Array[],
+        );
+        this.tileRotations = Array.from(
+            { length: levels },
+            () => undefined as unknown as Uint8Array[],
+        );
 
-        this.tileLightOcclusions = new Array(levels);
+        this.tileLightOcclusions = Array.from(
+            { length: levels },
+            () => undefined as unknown as Uint8Array[],
+        );
         for (let l = 0; l < levels; l++) {
-            this.tiles[l] = new Array(this.sizeX);
+            this.tiles[l] = Array.from(
+                { length: this.sizeX },
+                () => undefined as unknown as SceneTile[],
+            );
             this.collisionMaps[l] = new CollisionMap(this.sizeX, this.sizeY);
-            this.tileHeights[l] = new Array(this.sizeX + 1);
-            this.tileRenderFlags[l] = new Array(this.sizeX);
-            this.tileUnderlays[l] = new Array(this.sizeX);
-            this.tileOverlays[l] = new Array(this.sizeX);
-            this.tileShapes[l] = new Array(this.sizeX);
-            this.tileRotations[l] = new Array(this.sizeX);
-            this.tileLightOcclusions[l] = new Array(this.sizeX + 1);
+            this.tileHeights[l] = Array.from(
+                { length: this.sizeX + 1 },
+                () => undefined as unknown as Int32Array,
+            );
+            this.tileRenderFlags[l] = Array.from(
+                { length: this.sizeX },
+                () => undefined as unknown as Uint8Array,
+            );
+            this.tileUnderlays[l] = Array.from(
+                { length: this.sizeX },
+                () => undefined as unknown as Uint16Array,
+            );
+            this.tileOverlays[l] = Array.from(
+                { length: this.sizeX },
+                () => undefined as unknown as Int16Array,
+            );
+            this.tileShapes[l] = Array.from(
+                { length: this.sizeX },
+                () => undefined as unknown as Uint8Array,
+            );
+            this.tileRotations[l] = Array.from(
+                { length: this.sizeX },
+                () => undefined as unknown as Uint8Array,
+            );
+            this.tileLightOcclusions[l] = Array.from(
+                { length: this.sizeX + 1 },
+                () => undefined as unknown as Uint8Array,
+            );
             for (let x = 0; x < this.sizeX; x++) {
-                this.tiles[l][x] = new Array(this.sizeY);
+                this.tiles[l][x] = Array.from(
+                    { length: this.sizeY },
+                    () => undefined as unknown as SceneTile,
+                );
                 this.tileRenderFlags[l][x] = new Uint8Array(this.sizeY);
                 this.tileUnderlays[l][x] = new Uint16Array(this.sizeY);
                 this.tileOverlays[l][x] = new Int16Array(this.sizeY);
@@ -286,20 +337,20 @@ export class Scene {
         const tile = this.tiles[level][tileX][tileY];
         if (tile && tile.wallDecoration) {
             const decor = tile.wallDecoration;
-            decor.offsetX = ((displacement * decor.offsetX) / 16) | 0;
-            decor.offsetY = ((displacement * decor.offsetY) / 16) | 0;
+            decor.offsetX = Math.trunc((displacement * decor.offsetX) / 16);
+            decor.offsetY = Math.trunc((displacement * decor.offsetY) / 16);
         }
     }
 
-    getWallTag(level: number, tileX: number, tileY: number): bigint {
+    getWallTag(level: number, tileX: number, tileY: number): EntityTag {
         const tile = this.tiles[level][tileX][tileY];
-        return (tile && tile.wall && tile.wall.tag) ?? 0n;
+        return (tile && tile.wall && tile.wall.tag) ?? ENTITY_TAG_NONE;
     }
 
-    getLocTag(level: number, tileX: number, tileY: number): bigint {
+    getLocTag(level: number, tileX: number, tileY: number): EntityTag {
         const tile = this.tiles[level][tileX][tileY];
         if (!tile) {
-            return 0n;
+            return ENTITY_TAG_NONE;
         }
 
         for (const loc of tile.locs) {
@@ -309,15 +360,15 @@ export class Scene {
             }
         }
 
-        return 0n;
+        return ENTITY_TAG_NONE;
     }
 
-    getFloorDecorationTag(level: number, tileX: number, tileY: number): bigint {
+    getFloorDecorationTag(level: number, tileX: number, tileY: number): EntityTag {
         const tile = this.tiles[level][tileX][tileY];
-        return (tile && tile.floorDecoration && tile.floorDecoration.tag) || 0n;
+        return (tile && tile.floorDecoration && tile.floorDecoration.tag) ?? ENTITY_TAG_NONE;
     }
 
-    getLocFlags(level: number, tileX: number, tileY: number, tag: bigint): number {
+    getLocFlags(level: number, tileX: number, tileY: number, tag: EntityTag): number {
         const tile = this.tiles[level][tileX][tileY];
         if (!tile) {
             return -1;
@@ -341,10 +392,10 @@ export class Scene {
     }
 
     calculateTileLights(level: number, ignoreTileLightOcclusion: boolean = false): Int32Array[] {
-        const lights: Int32Array[] = new Array(this.sizeX);
-        for (let i = 0; i < this.sizeX; i++) {
-            lights[i] = new Int32Array(this.sizeY);
-        }
+        const lights: Int32Array[] = Array.from(
+            { length: this.sizeX },
+            () => new Int32Array(this.sizeY),
+        );
 
         const LIGHT_DIR_X = -50;
         const LIGHT_DIR_Y = -10;
@@ -353,11 +404,13 @@ export class Scene {
         const LIGHT_INTENSITY_FACTOR = 768;
         const HEIGHT_SCALE = 65536;
 
-        const lightMagnitude =
+        const lightMagnitude = Math.trunc(
             Math.sqrt(
                 LIGHT_DIR_X * LIGHT_DIR_X + LIGHT_DIR_Y * LIGHT_DIR_Y + LIGHT_DIR_Z * LIGHT_DIR_Z,
-            ) | 0;
-        const lightIntensity = (lightMagnitude * LIGHT_INTENSITY_FACTOR) >> 8;
+            ),
+        );
+        const lightIntensityProduct = lightMagnitude * LIGHT_INTENSITY_FACTOR;
+        const lightIntensity = lightIntensityProduct >> 8;
 
         for (let x = 1; x < this.sizeX - 1; x++) {
             for (let y = 1; y < this.sizeY - 1; y++) {
@@ -371,14 +424,15 @@ export class Scene {
                 const heightDeltaY =
                     this.tileHeights[level][x][y + 1] - this.tileHeights[level][x][y - 1];
 
-                const tileNormalLength =
+                const tileNormalLength = Math.trunc(
                     Math.sqrt(
                         heightDeltaY * heightDeltaY + heightDeltaX * heightDeltaX + HEIGHT_SCALE,
-                    ) | 0;
+                    ),
+                );
 
-                const normalizedTileNormalX = ((heightDeltaX << 8) / tileNormalLength) | 0;
-                const normalizedTileNormalY = (HEIGHT_SCALE / tileNormalLength) | 0;
-                const normalizedTileNormalZ = ((heightDeltaY << 8) / tileNormalLength) | 0;
+                const normalizedTileNormalX = Math.trunc((heightDeltaX << 8) / tileNormalLength);
+                const normalizedTileNormalY = Math.trunc(HEIGHT_SCALE / tileNormalLength);
+                const normalizedTileNormalZ = Math.trunc((heightDeltaY << 8) / tileNormalLength);
 
                 // Now we calculate the light contribution based on a simplified Phong model, specifically
                 // we ignore the material coefficients and there are no specular contributions.
@@ -398,7 +452,7 @@ export class Scene {
                     normalizedTileNormalX * LIGHT_DIR_X +
                     normalizedTileNormalY * LIGHT_DIR_Y +
                     normalizedTileNormalZ * LIGHT_DIR_Z;
-                const sunLight = (dot / lightIntensity + LIGHT_INTENSITY_BASE) | 0;
+                const sunLight = Math.trunc(dot / lightIntensity + LIGHT_INTENSITY_BASE);
 
                 // Now that we have the computed light contribution, take light occlusion from other objects
                 // into account. These tile light occlusions are computed dinamically based on walls, roofs
@@ -462,7 +516,10 @@ export class Scene {
         if ((this.tileRenderFlags[0][tileX][tileY] & TileRenderFlag.Bridge) !== 0) {
             return true;
         }
-        if ((this.tileRenderFlags[level][tileX][tileY] & TileRenderFlag.ExcludeFromPlayerLevel) !== 0) {
+        if (
+            (this.tileRenderFlags[level][tileX][tileY] & TileRenderFlag.ExcludeFromPlayerLevel) !==
+            0
+        ) {
             return false;
         }
         return playerLevel === this.getTileMinLevel(level, tileX, tileY);
@@ -472,31 +529,32 @@ export class Scene {
         const heights = this.tileHeights[level];
         const tileSizeShift = 7;
         const tileSize = 1 << tileSizeShift;
+        const tileMask = tileSize - 1;
 
         const tileX = x >> tileSizeShift;
         const tileY = z >> tileSizeShift;
         if (tileX < 0 || tileY < 0 || tileX > this.sizeX - 1 || tileY > this.sizeY - 1) {
             return 0;
         }
-        const rx = x & (tileSize - 1);
-        const rz = z & (tileSize - 1);
-        const heightZ0 =
-            ((tileSize - rx) * heights[tileX][tileY] + heights[1 + tileX][tileY] * rx) >>
-            tileSizeShift;
-        const heightZ1 =
-            (heights[tileX][1 + tileY] * (-rx + tileSize) + heights[tileX + 1][1 + tileY] * rx) >>
-            tileSizeShift;
-        return (rz * heightZ1 + (-rz + tileSize) * heightZ0) >> tileSizeShift;
+        const rx = x & tileMask;
+        const rz = z & tileMask;
+        const heightZ0Numerator =
+            (tileSize - rx) * heights[tileX][tileY] + heights[1 + tileX][tileY] * rx;
+        const heightZ0 = heightZ0Numerator >> tileSizeShift;
+        const heightZ1Numerator =
+            heights[tileX][1 + tileY] * (tileSize - rx) + heights[tileX + 1][1 + tileY] * rx;
+        const heightZ1 = heightZ1Numerator >> tileSizeShift;
+        const heightNumerator = rz * heightZ1 + (tileSize - rz) * heightZ0;
+        return heightNumerator >> tileSizeShift;
     }
 
     getCenterHeight(level: number, tileX: number, tileY: number): number {
-        return (
-            (this.tileHeights[level][tileX][tileY] +
-                this.tileHeights[level][tileX][tileY + 1] +
-                this.tileHeights[level][tileX + 1][tileY] +
-                this.tileHeights[level][tileX + 1][tileY + 1]) >>
-            2
-        );
+        const sum =
+            this.tileHeights[level][tileX][tileY] +
+            this.tileHeights[level][tileX][tileY + 1] +
+            this.tileHeights[level][tileX + 1][tileY] +
+            this.tileHeights[level][tileX + 1][tileY + 1];
+        return sum >> 2;
     }
 
     getDeltaHeight(
@@ -617,11 +675,7 @@ export class Scene {
                 for (let y = startY; y <= endY; y++) {
                     if (y >= 0 && y < this.sizeY && (x >= endX || y >= endY)) {
                         const tile = this.tiles[level][x][y];
-                        if (
-                            tile &&
-                            tile.floorDecoration &&
-                            tile.floorDecoration.entity
-                        ) {
+                        if (tile && tile.floorDecoration && tile.floorDecoration.entity) {
                             const deltaHeight = this.getDeltaHeight(
                                 level,
                                 x,
@@ -658,15 +712,15 @@ export class Scene {
                         const model0 = wall.entity0;
                         this.mergeLargeLocNormals(model0, level, tileX, tileY, 1, 1);
 
-                            if (isModelData(wall.entity1)) {
-                                const model1 = wall.entity1;
-                                this.mergeLargeLocNormals(model1, level, tileX, tileY, 1, 1);
-                                model0.mergeNormals(model1, 0, 0, 0, false, this.mergeNormalsScratch);
-                                wall.entity1 = model1.light(
-                                    textureLoader,
-                                    model1.ambient,
-                                    model1.contrast,
-                                    lightX,
+                        if (isModelData(wall.entity1)) {
+                            const model1 = wall.entity1;
+                            this.mergeLargeLocNormals(model1, level, tileX, tileY, 1, 1);
+                            model0.mergeNormals(model1, 0, 0, 0, false, this.mergeNormalsScratch);
+                            wall.entity1 = model1.light(
+                                textureLoader,
+                                model1.ambient,
+                                model1.contrast,
+                                lightX,
                                 lightY,
                                 lightZ,
                             );

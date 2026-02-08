@@ -1,17 +1,18 @@
-import { StringUtil } from "../util/StringUtil";
 import { CompressionHandler } from "../compression/CompressionHandler";
+import { XteaKey } from "../crypto/Xtea";
+import { ByteSource } from "../io/ByteSource";
+import { ByteSourceReader } from "../io/ByteSourceReader";
+import { getOrCopyBytes, readAllBytes } from "../io/ByteSourceUtil";
+import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
+import { StringUtil } from "../util/StringUtil";
+import { DatIndexId } from "./IndexId";
 import { Archive } from "./format/Archive";
 import { ArchiveFile } from "./format/ArchiveFile";
 import { Container } from "./format/Container";
-import { DatIndexId } from "./IndexId";
 import { ArchiveReference } from "./reference/ArchiveReference";
 import { ReferenceTable } from "./reference/ReferenceTable";
 import { CacheStore } from "./store/CacheStore";
 import { IDX_ENTRY_SIZE } from "./store/DatLayout";
-import { ByteSource } from "../io/ByteSource";
-import { ByteSourceReader } from "../io/ByteSourceReader";
-import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
-import { getOrCopyBytes, readAllBytes } from "../io/ByteSourceUtil";
 
 export abstract class CacheIndex {
     static readonly META_INDEX_ID: i32 = 255;
@@ -48,9 +49,9 @@ export abstract class CacheIndex {
 
     abstract getFileCount(archiveId: number): number;
 
-    abstract getArchiveKey(archiveId: number, key: number[] | null): Archive;
+    abstract getArchiveKey(archiveId: number, key: XteaKey | null): Archive;
 
-    tryGetArchiveKey(archiveId: number, key: number[] | null): Archive | undefined {
+    tryGetArchiveKey(archiveId: number, key: XteaKey | null): Archive | undefined {
         try {
             return this.getArchiveKey(archiveId, key);
         } catch {
@@ -88,11 +89,11 @@ export abstract class CacheIndex {
     /**
      * Dat2-only: decodes the container and returns the payload bytes (archive format bytes).
      */
-    readContainerPayload(_archiveId: number, _key: number[] | null): Uint8Array {
+    readContainerPayload(_archiveId: number, _key: XteaKey | null): Uint8Array {
         throw new Error("readContainerPayload() unsupported");
     }
 
-    tryReadContainerPayload(archiveId: number, key: number[] | null): Uint8Array | undefined {
+    tryReadContainerPayload(archiveId: number, key: XteaKey | null): Uint8Array | undefined {
         try {
             return this.readContainerPayload(archiveId, key);
         } catch {
@@ -101,22 +102,18 @@ export abstract class CacheIndex {
     }
 
     getArchive(archiveId: number): Archive {
-        return this.getArchiveKey(archiveId, null)
+        return this.getArchiveKey(archiveId, null);
     }
 
     tryGetArchive(archiveId: number): Archive | undefined {
         return this.tryGetArchiveKey(archiveId, null);
     }
 
-    getFileKey(
-        archiveId: number,
-        fileId: number,
-        key: number[] | null,
-    ): ArchiveFile | null {
+    getFileKey(archiveId: number, fileId: number, key: XteaKey | null): ArchiveFile | null {
         return this.getArchiveKey(archiveId, key).getFile(fileId);
     }
 
-    getFileSmart(id: number, key: number[] | null): ArchiveFile | null {
+    getFileSmart(id: number, key: XteaKey | null): ArchiveFile | null {
         if (this.getArchiveCount() === 1) {
             return this.getFileKey(0, id, key);
         } else if (this.getFileCount(id) === 1) {
@@ -125,16 +122,12 @@ export abstract class CacheIndex {
         throw new Error("Invalid archive");
     }
 
-    tryGetFileKey(
-        archiveId: number,
-        fileId: number,
-        key: number[] | null,
-    ): ArchiveFile | undefined {
+    tryGetFileKey(archiveId: number, fileId: number, key: XteaKey | null): ArchiveFile | undefined {
         const archive = this.tryGetArchiveKey(archiveId, key);
         return archive?.getFile(fileId) ?? undefined;
     }
 
-    tryGetFileSmart(id: number, key: number[] | null): ArchiveFile | undefined {
+    tryGetFileSmart(id: number, key: XteaKey | null): ArchiveFile | undefined {
         if (this.getArchiveCount() === 1) {
             return this.tryGetFileKey(0, id, key);
         } else if (this.getFileCount(id) === 1) {
@@ -143,11 +136,8 @@ export abstract class CacheIndex {
         return undefined;
     }
 
-    getFile(
-        archiveId: number,
-        fileId: number,
-    ): ArchiveFile | null {
-        return this.getFileKey(archiveId, fileId, null)
+    getFile(archiveId: number, fileId: number): ArchiveFile | null {
+        return this.getFileKey(archiveId, fileId, null);
     }
 
     tryGetFile(archiveId: number, fileId: number): ArchiveFile | undefined {
@@ -159,12 +149,17 @@ function byteSourceFromBytes(data: Uint8Array): ByteSource {
     return new Uint8ArrayByteSource(data);
 }
 
-function decodeTableFromSource(source: ByteSource, compressionHandler: CompressionHandler): ReferenceTable {
+function decodeTableFromSource(
+    source: ByteSource,
+    compressionHandler: CompressionHandler,
+): ReferenceTable {
     if (source.size === 0) {
         return ReferenceTable.INVALID_TABLE;
     }
     const container = Container.decodeFromSource(source, null, compressionHandler);
-    return ReferenceTable.decodeFromReader(new ByteSourceReader(byteSourceFromBytes(container.data)));
+    return ReferenceTable.decodeFromReader(
+        new ByteSourceReader(byteSourceFromBytes(container.data)),
+    );
 }
 
 function decodeArchiveDataFromSource(
@@ -172,7 +167,7 @@ function decodeArchiveDataFromSource(
     compressionHandler: CompressionHandler,
     archiveId: number,
     source: ByteSource,
-    key: number[] | null,
+    key: XteaKey | null,
 ): Archive {
     const archiveRef = table.getArchiveReference(archiveId);
     if (!archiveRef) {
@@ -246,7 +241,7 @@ export class DatCacheIndex extends CacheIndex {
         return 0;
     }
 
-    getArchiveKey(archiveId: number, _key: number[] | null): Archive {
+    getArchiveKey(archiveId: number, _key: XteaKey | null): Archive {
         if (!this.archiveExists(archiveId)) {
             throw new Error("Archive not found: " + archiveId);
         }
@@ -280,12 +275,7 @@ export class Dat2CacheIndex extends CacheIndex {
     ): Dat2CacheIndex {
         const metaSource = store.openArchiveReader(CacheIndex.META_INDEX_ID, id);
         const table = decodeTableFromSource(metaSource, compressionHandler);
-        return new Dat2CacheIndex(
-            id,
-            table,
-            store,
-            compressionHandler,
-        );
+        return new Dat2CacheIndex(id, table, store, compressionHandler);
     }
 
     getArchiveIds(): Int32Array {
@@ -318,12 +308,18 @@ export class Dat2CacheIndex extends CacheIndex {
         return value ? value.fileCount : 0;
     }
 
-    override getArchiveKey(archiveId: number, key: number[] | null): Archive {
+    override getArchiveKey(archiveId: number, key: XteaKey | null): Archive {
         const source = this.store.openArchiveReader(this.id, archiveId);
-        return decodeArchiveDataFromSource(this.table, this.compressionHandler, archiveId, source, key);
+        return decodeArchiveDataFromSource(
+            this.table,
+            this.compressionHandler,
+            archiveId,
+            source,
+            key,
+        );
     }
 
-    override readContainerPayload(archiveId: number, key: number[] | null): Uint8Array {
+    override readContainerPayload(archiveId: number, key: XteaKey | null): Uint8Array {
         const raw = this.readArchiveBytes(archiveId);
         if (raw.byteLength === 0) {
             return new Uint8Array(0);
@@ -379,7 +375,11 @@ export class LegacyCacheIndex extends CacheIndex {
     }
 
     archiveExists(archiveId: number): boolean {
-        return archiveId >= 0 && archiveId < this.archives.length && this.archives[archiveId] !== undefined;
+        return (
+            archiveId >= 0 &&
+            archiveId < this.archives.length &&
+            this.archives[archiveId] !== undefined
+        );
     }
 
     getFileCount(archiveId: number): number {
@@ -387,11 +387,15 @@ export class LegacyCacheIndex extends CacheIndex {
         return archive ? archive.fileCount : 0;
     }
 
-    override getArchiveKey(archiveId: number, key: number[] | null): Archive {
+    override getArchiveKey(archiveId: number, key: XteaKey | null): Archive {
         return this.archives[archiveId];
     }
 
-    override getFileKey(archiveId: number, fileId: number, key: number[] | null): ArchiveFile | null {
+    override getFileKey(
+        archiveId: number,
+        fileId: number,
+        key: XteaKey | null,
+    ): ArchiveFile | null {
         const value = this.archives[archiveId];
         return value ? value.getFile(fileId) : null;
     }

@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -64,9 +65,9 @@ export class BrightnessOperation extends TextureOperation {
                             absB = -absB;
                         }
                         if (absB <= this.maxValue) {
-                            outputR[x] = (r * this.redFactor) >> 12;
-                            outputG[x] = (g * this.greenFactor) >> 12;
-                            outputB[x] = (b * this.blueFactor) >> 12;
+                            outputR[x] = mulShift(r, this.redFactor, 12);
+                            outputG[x] = mulShift(g, this.greenFactor, 12);
+                            outputB[x] = mulShift(b, this.blueFactor, 12);
                         } else {
                             outputR[x] = r;
                             outputG[x] = g;

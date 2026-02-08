@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { i32, idiv, imul, maskIndex, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -27,29 +28,31 @@ export class NormalMapOperation extends TextureOperation {
             const prevHeightRow = this.getMonochromeInput(
                 textureGenerator,
                 0,
-                (line - 1) & textureGenerator.heightMask,
+                maskIndex(line - 1, textureGenerator.heightMask),
             );
             const heightRow = this.getMonochromeInput(textureGenerator, 0, line);
             const nextHeightRow = this.getMonochromeInput(
                 textureGenerator,
                 0,
-                (line + 1) & textureGenerator.heightMask,
+                maskIndex(line + 1, textureGenerator.heightMask),
             );
             const outputR = output[0];
             const outputG = output[1];
             const outputB = output[2];
             for (let x = 0; x < textureGenerator.width; x++) {
-                const dyScaled = this.strengthQ12 * (nextHeightRow[x] - prevHeightRow[x]);
-                const dxScaled =
-                    this.strengthQ12 *
-                    (heightRow[(x + 1) & textureGenerator.widthMask] -
-                        heightRow[(x - 1) & textureGenerator.widthMask]);
+                const dyScaled = imul(this.strengthQ12, nextHeightRow[x] - prevHeightRow[x]);
+                const dxScaled = imul(
+                    this.strengthQ12,
+                    heightRow[maskIndex(x + 1, textureGenerator.widthMask)] -
+                        heightRow[maskIndex(x - 1, textureGenerator.widthMask)],
+                );
                 const dyQ12 = dyScaled >> 12;
                 const dxQ12 = dxScaled >> 12;
-                const dySquaredQ12 = (dyQ12 * dyQ12) >> 12;
-                const dxSquaredQ12 = (dxQ12 * dxQ12) >> 12;
-                const normalizerQ12 =
-                    (Math.sqrt((dySquaredQ12 + dxSquaredQ12 + 4096) / 4096.0) * 4096.0) | 0;
+                const dySquaredQ12 = mulShift(dyQ12, dyQ12, 12);
+                const dxSquaredQ12 = mulShift(dxQ12, dxQ12, 12);
+                const normalizerQ12 = i32(
+                    Math.sqrt((dySquaredQ12 + dxSquaredQ12 + 4096) / 4096.0) * 4096.0,
+                );
                 let red: number;
                 let green: number;
                 let blue: number;
@@ -58,9 +61,9 @@ export class NormalMapOperation extends TextureOperation {
                     green = 0;
                     blue = 0;
                 } else {
-                    red = (dxScaled / normalizerQ12) | 0;
-                    green = (dyScaled / normalizerQ12) | 0;
-                    blue = (16777216 / normalizerQ12) | 0;
+                    red = idiv(dxScaled, normalizerQ12);
+                    green = idiv(dyScaled, normalizerQ12);
+                    blue = idiv(16777216, normalizerQ12);
                 }
                 if (this.unsignedOutput) {
                     red = (red >> 1) + 2048;

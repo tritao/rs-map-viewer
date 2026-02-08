@@ -1,3 +1,5 @@
+import { i32 } from "./JavaInt";
+
 export class StringUtil {
     // An implementation of Dan Bernstein's {@code djb2} hash function which is
     // slightly modified. Instead of the initial hash being 5381, it is zero.
@@ -19,7 +21,7 @@ export class StringUtil {
         name = name.toUpperCase();
         let hash = 0;
         for (let i = 0; i < name.length; i++) {
-            hash = (hash * 61 + name.charCodeAt(i) - 32) | 0;
+            hash = i32(hash * 61 + name.charCodeAt(i) - 32);
         }
         return hash;
     }

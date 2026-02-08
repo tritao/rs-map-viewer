@@ -29,8 +29,9 @@ export class LerpOperation extends TextureOperation {
                 } else if (aWeight === 0) {
                     output[pixel] = inputB[pixel];
                 } else {
-                    output[pixel] =
-                        ((4096 - aWeight) * inputB[pixel] + aWeight * inputA[pixel]) >> 12;
+                    const bWeight = 4096 - aWeight;
+                    const numerator = bWeight * inputB[pixel] + aWeight * inputA[pixel];
+                    output[pixel] = numerator >> 12;
                 }
             }
         }
@@ -67,9 +68,12 @@ export class LerpOperation extends TextureOperation {
                     outputB[pixel] = inputBB[pixel];
                 } else {
                     const bWeight = 4096 - aWeight;
-                    outputR[pixel] = (aWeight * inputAR[pixel] + bWeight * inputBR[pixel]) >> 12;
-                    outputG[pixel] = (aWeight * inputAG[pixel] + bWeight * inputBG[pixel]) >> 12;
-                    outputB[pixel] = (aWeight * inputAB[pixel] + bWeight * inputBB[pixel]) >> 12;
+                    const rNumerator = aWeight * inputAR[pixel] + bWeight * inputBR[pixel];
+                    const gNumerator = aWeight * inputAG[pixel] + bWeight * inputBG[pixel];
+                    const bNumerator = aWeight * inputAB[pixel] + bWeight * inputBB[pixel];
+                    outputR[pixel] = rNumerator >> 12;
+                    outputG[pixel] = gNumerator >> 12;
+                    outputB[pixel] = bNumerator >> 12;
                 }
             }
         }

@@ -1,3 +1,11 @@
+import { Result, err, ok } from "../../util/Result";
+import { CacheIndex } from "../cache/CacheIndex";
+import { CacheInfo } from "../cache/CacheInfo";
+import { CacheSystem } from "../cache/CacheSystem";
+import { CacheType } from "../cache/CacheType";
+import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
+import { DatIndexId } from "../cache/IndexId";
+import { Archive } from "../cache/format/Archive";
 import { BasTypeLoader, DummyBasTypeLoader } from "../config/bastype/BasTypeLoader";
 import {
     DatFloorTypeLoader,
@@ -14,6 +22,7 @@ import {
     DummyVarBitTypeLoader,
     VarBitTypeLoader,
 } from "../config/vartype/bit/VarBitTypeLoader";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { DatMapFileIndex } from "../map/MapFileIndex";
 import { CacheIndexMapBytesProvider, MapFileLoader } from "../map/MapFileLoader";
 import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
@@ -23,19 +32,21 @@ import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { DatTextureLoader } from "../texture/DatTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
-import { Archive } from "../cache/format/Archive";
-import { CacheIndex } from "../cache/CacheIndex";
-import { CacheInfo } from "../cache/CacheInfo";
-import { CacheSystem } from "../cache/CacheSystem";
-import { CacheType } from "../cache/CacheType";
-import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
-import { DatIndexId } from "../cache/IndexId";
-import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
+import {
+    InitError,
+    createFailed,
+    initErrorToString,
+    missingArchive,
+    missingIndex,
+    missingNamedFile,
+} from "./InitError";
 import { Loaders } from "./Loaders";
-import { err, ok, Result } from "../../util/Result";
-import { createFailed, InitError, initErrorToString, missingArchive, missingIndex, missingNamedFile } from "./InitError";
 
-function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
+function requireIndex(
+    cacheSystem: CacheSystem,
+    indexId: number,
+    description: string,
+): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
     if (!index) {
         return err(missingIndex(indexId, description));
@@ -43,7 +54,11 @@ function requireIndex(cacheSystem: CacheSystem, indexId: number, description: st
     return ok(index);
 }
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, InitError> {
+function requireArchive(
+    index: CacheIndex,
+    archiveId: number,
+    description: string,
+): Result<Archive, InitError> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
         return err(missingArchive(index.id, archiveId, description));
@@ -86,7 +101,11 @@ export function tryCreateDatLoaders(
     }
     const configIndex = configIndexResult.value;
 
-    const configArchiveResult = requireArchive(configIndex, DatConfigArchiveId.configs, "dat config");
+    const configArchiveResult = requireArchive(
+        configIndex,
+        DatConfigArchiveId.configs,
+        "dat config",
+    );
     if (!configArchiveResult.ok) {
         return configArchiveResult;
     }
@@ -116,7 +135,11 @@ export function tryCreateDatLoaders(
         }
     }
 
-    const textureArchiveResult = requireArchive(configIndex, DatConfigArchiveId.textures, "dat textures");
+    const textureArchiveResult = requireArchive(
+        configIndex,
+        DatConfigArchiveId.textures,
+        "dat textures",
+    );
     if (!textureArchiveResult.ok) {
         return textureArchiveResult;
     }
@@ -148,7 +171,14 @@ export function tryCreateDatLoaders(
         const versionListSource = new ArchiveNamedBytesProvider(versionListArchiveResult.value);
         const mapIndexBytes = versionListSource.getBytes("map_index");
         if (!mapIndexBytes) {
-            return err(missingNamedFile(configIndex.id, DatConfigArchiveId.versionList, "map_index", "map index"));
+            return err(
+                missingNamedFile(
+                    configIndex.id,
+                    DatConfigArchiveId.versionList,
+                    "map_index",
+                    "map index",
+                ),
+            );
         }
         try {
             mapFileIndex = DatMapFileIndex.decodeMapIndex(mapIndexBytes);
@@ -174,7 +204,11 @@ export function tryCreateDatLoaders(
     if (!modelsIndexResult.ok) {
         return modelsIndexResult;
     }
-    const animationsIndexResult = requireIndex(cacheSystem, DatIndexId.animations, "dat animations");
+    const animationsIndexResult = requireIndex(
+        cacheSystem,
+        DatIndexId.animations,
+        "dat animations",
+    );
     if (!animationsIndexResult.ok) {
         return animationsIndexResult;
     }

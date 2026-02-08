@@ -1,8 +1,8 @@
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { ByteBuffer } from "../../io/ByteBuffer";
+import { rgbToHsl } from "../../util/ColorUtil";
 import { Type } from "../Type";
 import { FloorType } from "./FloorType";
-import { rgbToHsl } from "../../util/ColorUtil";
 
 export class OverlayFloorType extends Type implements FloorType {
     primaryRgb: number;
@@ -206,11 +206,7 @@ export class OverlayFloorType extends Type implements FloorType {
 
         this.primaryHsl = this.primaryRgb === 0xff00ff ? -2 : rgbToHsl(this.primaryRgb);
         this.blendHsl =
-            this.blendRgb === -1
-                ? -1
-                : this.blendRgb === 0xff00ff
-                  ? -2
-                  : rgbToHsl(this.blendRgb);
+            this.blendRgb === -1 ? -1 : this.blendRgb === 0xff00ff ? -2 : rgbToHsl(this.blendRgb);
     }
 
     setHsl(rgb: number): void {
@@ -256,9 +252,9 @@ export class OverlayFloorType extends Type implements FloorType {
         }
 
         hue /= 6.0;
-        this.hue = (hue * 256.0) | 0;
-        this.saturation = (sat * 256.0) | 0;
-        this.lightness = (light * 256.0) | 0;
+        this.hue = Math.trunc(hue * 256.0);
+        this.saturation = Math.trunc(sat * 256.0);
+        this.lightness = Math.trunc(light * 256.0);
         if (this.saturation < 0) {
             this.saturation = 0;
         } else if (this.saturation > 255) {
@@ -272,13 +268,13 @@ export class OverlayFloorType extends Type implements FloorType {
         }
 
         if (light > 0.5) {
-            this.hueMultiplier = (512.0 * (sat * (1.0 - light))) | 0;
+            this.hueMultiplier = Math.trunc(512.0 * (sat * (1.0 - light)));
         } else {
-            this.hueMultiplier = (512.0 * (sat * light)) | 0;
+            this.hueMultiplier = Math.trunc(512.0 * (sat * light));
         }
         if (this.hueMultiplier < 1) {
             this.hueMultiplier = 1;
         }
-        this.hueBlend = (this.hueMultiplier * hue) | 0;
+        this.hueBlend = Math.trunc(this.hueMultiplier * hue);
     }
 }

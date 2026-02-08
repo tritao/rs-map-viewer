@@ -1,10 +1,10 @@
-import { Archive } from "../cache/format/Archive";
+import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
+import { Archive } from "../cache/format/Archive";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { CountedBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
-import { err, ok, Result } from "../../util/Result";
 import { ModelData } from "./ModelData";
 
 export interface ModelLoader {
@@ -82,24 +82,22 @@ export class LegacyModelMetadata {
 }
 
 export class LegacyModelLoader implements ModelLoader {
-    head: ByteBuffer;
-    face1: ByteBuffer;
-    face2: ByteBuffer;
-    face3: ByteBuffer;
-    face4: ByteBuffer;
-    face5: ByteBuffer;
-    point1: ByteBuffer;
-    point2: ByteBuffer;
-    point3: ByteBuffer;
-    point4: ByteBuffer;
-    point5: ByteBuffer;
-    vertex1: ByteBuffer;
-    vertex2: ByteBuffer;
-    axis: ByteBuffer;
+    readonly count: number;
+    readonly metadatas: Array<LegacyModelMetadata | undefined>;
 
-    count: number;
-
-    metadatas: LegacyModelMetadata[];
+    private readonly face1Bytes: Uint8Array;
+    private readonly face2Bytes: Uint8Array;
+    private readonly face3Bytes: Uint8Array;
+    private readonly face4Bytes: Uint8Array;
+    private readonly face5Bytes: Uint8Array;
+    private readonly point1Bytes: Uint8Array;
+    private readonly point2Bytes: Uint8Array;
+    private readonly point3Bytes: Uint8Array;
+    private readonly point4Bytes: Uint8Array;
+    private readonly point5Bytes: Uint8Array;
+    private readonly vertex1Bytes: Uint8Array;
+    private readonly vertex2Bytes: Uint8Array;
+    private readonly axisBytes: Uint8Array;
 
     static create(modelArchive: Archive): LegacyModelLoader {
         return LegacyModelLoader.createFromSource(new ArchiveNamedBytesProvider(modelArchive));
@@ -110,32 +108,42 @@ export class LegacyModelLoader implements ModelLoader {
     }
 
     private constructor(source: NamedBytesProvider) {
-        const requireBuffer = (name: string): ByteBuffer => {
+        const requireBytes = (name: string): Uint8Array => {
             const bytes = source.getBytes(name);
             if (!bytes) {
                 throw new Error(`Missing legacy model archive file: ${name}`);
             }
-            return new ByteBuffer(bytes);
+            return bytes;
         };
 
-        this.head = requireBuffer("ob_head.dat");
-        this.face1 = requireBuffer("ob_face1.dat");
-        this.face2 = requireBuffer("ob_face2.dat");
-        this.face3 = requireBuffer("ob_face3.dat");
-        this.face4 = requireBuffer("ob_face4.dat");
-        this.face5 = requireBuffer("ob_face5.dat");
-        this.point1 = requireBuffer("ob_point1.dat");
-        this.point2 = requireBuffer("ob_point2.dat");
-        this.point3 = requireBuffer("ob_point3.dat");
-        this.point4 = requireBuffer("ob_point4.dat");
-        this.point5 = requireBuffer("ob_point5.dat");
-        this.vertex1 = requireBuffer("ob_vertex1.dat");
-        this.vertex2 = requireBuffer("ob_vertex2.dat");
-        this.axis = requireBuffer("ob_axis.dat");
+        const headBytes = requireBytes("ob_head.dat");
+        this.face1Bytes = requireBytes("ob_face1.dat");
+        this.face2Bytes = requireBytes("ob_face2.dat");
+        this.face3Bytes = requireBytes("ob_face3.dat");
+        this.face4Bytes = requireBytes("ob_face4.dat");
+        this.face5Bytes = requireBytes("ob_face5.dat");
+        this.point1Bytes = requireBytes("ob_point1.dat");
+        this.point2Bytes = requireBytes("ob_point2.dat");
+        this.point3Bytes = requireBytes("ob_point3.dat");
+        this.point4Bytes = requireBytes("ob_point4.dat");
+        this.point5Bytes = requireBytes("ob_point5.dat");
+        this.vertex1Bytes = requireBytes("ob_vertex1.dat");
+        this.vertex2Bytes = requireBytes("ob_vertex2.dat");
+        this.axisBytes = requireBytes("ob_axis.dat");
 
-        const count = (this.count = this.head.readUnsignedShort());
+        // Decode metadata using local cursors. The loader must be re-entrant: runtime decode should not share mutable
+        // offsets/cursors across calls (important for multi-threaded worker/session ports).
+        const head = new ByteBuffer(headBytes);
+        const point1 = new ByteBuffer(this.point1Bytes);
+        const point2 = new ByteBuffer(this.point2Bytes);
+        const point3 = new ByteBuffer(this.point3Bytes);
+        const point4 = new ByteBuffer(this.point4Bytes);
+        const vertex1 = new ByteBuffer(this.vertex1Bytes);
+        const vertex2 = new ByteBuffer(this.vertex2Bytes);
 
-        this.metadatas = new Array(count + 100);
+        const count = (this.count = head.readUnsignedShort());
+
+        this.metadatas = Array.from({ length: count + 100 }, () => undefined);
 
         let vertexTextureDataOffset = 0;
         let labelDataOffset = 0;
@@ -146,42 +154,42 @@ export class LegacyModelLoader implements ModelLoader {
         let triangleSkinDataOffset = 0;
 
         for (let i = 0; i < count; i++) {
-            const index = this.head.readUnsignedShort();
+            const index = head.readUnsignedShort();
             const meta = (this.metadatas[index] = new LegacyModelMetadata());
-            meta.vertexCount = this.head.readUnsignedShort();
-            meta.triangleCount = this.head.readUnsignedShort();
-            meta.texturedTriangleCount = this.head.readUnsignedByte();
-            meta.vertexFlagsOffset = this.point1.offset;
-            meta.vertexXOffset = this.point2.offset;
-            meta.vertexYOffset = this.point3.offset;
-            meta.vertexZOffset = this.point4.offset;
-            meta.faceVerticesOffset = this.vertex1.offset;
-            meta.faceOrientationsOffset = this.vertex2.offset;
-            const hasInfo = this.head.readUnsignedByte();
-            const hasPriorities = this.head.readUnsignedByte();
-            const hasAlpha = this.head.readUnsignedByte();
-            const hasSkins = this.head.readUnsignedByte();
-            const hasLabels = this.head.readUnsignedByte();
+            meta.vertexCount = head.readUnsignedShort();
+            meta.triangleCount = head.readUnsignedShort();
+            meta.texturedTriangleCount = head.readUnsignedByte();
+            meta.vertexFlagsOffset = point1.offset;
+            meta.vertexXOffset = point2.offset;
+            meta.vertexYOffset = point3.offset;
+            meta.vertexZOffset = point4.offset;
+            meta.faceVerticesOffset = vertex1.offset;
+            meta.faceOrientationsOffset = vertex2.offset;
+            const hasInfo = head.readUnsignedByte();
+            const hasPriorities = head.readUnsignedByte();
+            const hasAlpha = head.readUnsignedByte();
+            const hasSkins = head.readUnsignedByte();
+            const hasLabels = head.readUnsignedByte();
             for (let v = 0; v < meta.vertexCount; v++) {
-                const flags = this.point1.readUnsignedByte();
+                const flags = point1.readUnsignedByte();
                 if ((flags & 0x1) !== 0) {
-                    this.point2.readSmart2();
+                    point2.readSmart2();
                 }
                 if ((flags & 0x2) !== 0) {
-                    this.point3.readSmart2();
+                    point3.readSmart2();
                 }
                 if ((flags & 0x4) !== 0) {
-                    this.point4.readSmart2();
+                    point4.readSmart2();
                 }
             }
 
             for (let t = 0; t < meta.triangleCount; t++) {
-                const type = this.vertex2.readUnsignedByte();
+                const type = vertex2.readUnsignedByte();
                 if (type === 1) {
-                    this.vertex1.readSmart2();
-                    this.vertex1.readSmart2();
+                    vertex1.readSmart2();
+                    vertex1.readSmart2();
                 }
-                this.vertex1.readSmart2();
+                vertex1.readSmart2();
             }
 
             meta.faceColorsOffset = triangleColorDataOffset;
@@ -219,6 +227,38 @@ export class LegacyModelLoader implements ModelLoader {
             meta.faceTextureAxisOffset = vertexTextureDataOffset;
             vertexTextureDataOffset += meta.texturedTriangleCount;
         }
+    }
+
+    createDecodeBuffers(): {
+        face1: ByteBuffer;
+        face2: ByteBuffer;
+        face3: ByteBuffer;
+        face4: ByteBuffer;
+        face5: ByteBuffer;
+        point1: ByteBuffer;
+        point2: ByteBuffer;
+        point3: ByteBuffer;
+        point4: ByteBuffer;
+        point5: ByteBuffer;
+        vertex1: ByteBuffer;
+        vertex2: ByteBuffer;
+        axis: ByteBuffer;
+    } {
+        return {
+            face1: new ByteBuffer(this.face1Bytes),
+            face2: new ByteBuffer(this.face2Bytes),
+            face3: new ByteBuffer(this.face3Bytes),
+            face4: new ByteBuffer(this.face4Bytes),
+            face5: new ByteBuffer(this.face5Bytes),
+            point1: new ByteBuffer(this.point1Bytes),
+            point2: new ByteBuffer(this.point2Bytes),
+            point3: new ByteBuffer(this.point3Bytes),
+            point4: new ByteBuffer(this.point4Bytes),
+            point5: new ByteBuffer(this.point5Bytes),
+            vertex1: new ByteBuffer(this.vertex1Bytes),
+            vertex2: new ByteBuffer(this.vertex2Bytes),
+            axis: new ByteBuffer(this.axisBytes),
+        };
     }
 
     getCount(): number {

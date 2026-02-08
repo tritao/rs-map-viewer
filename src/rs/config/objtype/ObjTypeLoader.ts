@@ -1,13 +1,13 @@
-import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
+import { Archive } from "../../cache/format/Archive";
+import { ArchiveBytesProvider } from "../../io/BytesProvider";
 import {
     ArchiveTypeLoader,
     IndexTypeLoader,
     IndexedDatTypeLoader,
     TypeLoader,
 } from "../TypeLoader";
-import { ArchiveBytesProvider } from "../../io/BytesProvider";
 import { ObjType } from "./ObjType";
 
 export type ObjTypeLoader = TypeLoader<ObjType>;

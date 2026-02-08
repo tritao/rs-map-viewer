@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -32,11 +33,11 @@ export class HerringboneOperation extends TextureOperation {
                 const xQ12 = textureGenerator.horizontalGradient[x];
                 const yQ12 = textureGenerator.verticalGradient[line];
 
-                const xTileIndex = (this.scaleX * xQ12) >> 12;
-                const yTileIndex = (this.scaleY * yQ12) >> 12;
+                const xTileIndex = mulShift(this.scaleX, xQ12, 12);
+                const yTileIndex = mulShift(this.scaleY, yQ12, 12);
 
-                const xFracQ12 = this.scaleX * (xQ12 % ((4096 / this.scaleX) | 0));
-                const yFracQ12 = this.scaleY * (yQ12 % ((4096 / this.scaleY) | 0));
+                const xFracQ12 = this.scaleX * (xQ12 % idiv(4096, this.scaleX));
+                const yFracQ12 = this.scaleY * (yQ12 % idiv(4096, this.scaleY));
 
                 if (yFracQ12 < this.gapQ12) {
                     let phase = xTileIndex - yTileIndex;

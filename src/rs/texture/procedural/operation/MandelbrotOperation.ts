@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -32,28 +33,27 @@ export class MandelbrotOperation extends TextureOperation {
         if (this.monochromeImageCache.dirty) {
             for (let x = 0; x < textureGenerator.width; x++) {
                 const cReQ12 =
-                    (this.centerXQ12 +
-                        (textureGenerator.horizontalGradient[x] << 12) / this.zoomQ12) |
-                    0;
+                    this.centerXQ12 +
+                    idiv(shl(textureGenerator.horizontalGradient[x], 12), this.zoomQ12);
                 const cImQ12 =
-                    (this.centerYQ12 +
-                        (textureGenerator.verticalGradient[line] << 12) / this.zoomQ12) |
-                    0;
+                    this.centerYQ12 +
+                    idiv(shl(textureGenerator.verticalGradient[line], 12), this.zoomQ12);
 
                 let zImQ12 = cImQ12;
                 let zReQ12 = cReQ12;
                 let iter = 0;
-                let zReSqQ12 = (cReQ12 * cReQ12) >> 12;
-                let zImSqQ12 = (cImQ12 * cImQ12) >> 12;
+                let zReSqQ12 = mulShift(cReQ12, cReQ12, 12);
+                let zImSqQ12 = mulShift(cImQ12, cImQ12, 12);
                 while (zReSqQ12 + zImSqQ12 < 16384 && iter < this.maxIterations) {
                     iter++;
-                    zImQ12 = cImQ12 + ((zImQ12 * zReQ12) >> 12) * 2;
+                    const zImReQ12 = mulShift(zImQ12, zReQ12, 12);
+                    zImQ12 = cImQ12 + zImReQ12 * 2;
                     zReQ12 = cReQ12 + zReSqQ12 - zImSqQ12;
-                    zImSqQ12 = (zImQ12 * zImQ12) >> 12;
-                    zReSqQ12 = (zReQ12 * zReQ12) >> 12;
+                    zImSqQ12 = mulShift(zImQ12, zImQ12, 12);
+                    zReSqQ12 = mulShift(zReQ12, zReQ12, 12);
                 }
                 output[x] =
-                    iter >= this.maxIterations - 1 ? 0 : ((iter << 12) / this.maxIterations) | 0;
+                    iter >= this.maxIterations - 1 ? 0 : idiv(shl(iter, 12), this.maxIterations);
             }
         }
         return output;

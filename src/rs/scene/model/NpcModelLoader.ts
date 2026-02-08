@@ -37,12 +37,13 @@ export class NpcModelLoader {
 
         let model = this.modelCache.get(npcType.id);
         if (!model) {
-            const models = new Array<ModelData>(npcType.modelIds.length);
-            for (let i = 0; i < models.length; i++) {
+            const models: ModelData[] = [];
+            for (let i = 0; i < npcType.modelIds.length; i++) {
                 const modelData = this.modelLoader.tryGet(npcType.modelIds[i]);
-                if (modelData) {
-                    models[i] = modelData;
+                if (!modelData) {
+                    return undefined;
                 }
+                models.push(modelData);
             }
 
             const merged = ModelData.merge(models, models.length);

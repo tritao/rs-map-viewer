@@ -2,6 +2,7 @@ import JavaRandom from "../../../../util/JavaRandom";
 import { nextIntJagex } from "../../../../util/MathUtil";
 import { ByteBuffer } from "../../../io/ByteBuffer";
 import { ArrayUtils } from "../../../util/ArrayUtils";
+import { i32, idiv, maskIndex, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -62,7 +63,7 @@ export class IrregularBricksOperation extends TextureOperation {
             this.brickValueVariationQ12 > 0
                 ? 4096 - nextIntJagex(random, this.brickValueVariationQ12)
                 : 4096;
-        const bevelJitterPx = (this.bevelRadiusPx * this.bevelJitterQ12) >> 12;
+        const bevelJitterPx = mulShift(this.bevelRadiusPx, this.bevelJitterQ12, 12);
         const bevelRadiusPx =
             this.bevelRadiusPx - (bevelJitterPx > 0 ? nextIntJagex(random, bevelJitterPx) : 0);
         if (textureGenerator.width <= startX) {
@@ -73,8 +74,8 @@ export class IrregularBricksOperation extends TextureOperation {
                 return;
             }
 
-            const halfWidth = (brickWidthPx / 2) | 0;
-            const halfHeight = (brickHeightPx / 2) | 0;
+            const halfWidth = idiv(brickWidthPx, 2);
+            const halfHeight = idiv(brickHeightPx, 2);
             const bevelWidthPx = halfWidth >= bevelRadiusPx ? bevelRadiusPx : halfWidth;
             const bevelHeightPx = bevelRadiusPx > halfHeight ? halfHeight : bevelRadiusPx;
             const innerStartX = startX + bevelWidthPx;
@@ -86,9 +87,14 @@ export class IrregularBricksOperation extends TextureOperation {
                     const invY = brickHeightPx - y - 1;
                     if (bevelHeightPx <= invY) {
                         for (let dx = 0; dx < bevelWidthPx; dx++) {
-                            row[textureGenerator.widthMask & (startX + dx)] = row[
-                                textureGenerator.widthMask & (brickWidthPx + startX - dx - 1)
-                            ] = ((brickValue * dx) / bevelWidthPx) | 0;
+                            const leftIdx = maskIndex(startX + dx, textureGenerator.widthMask);
+                            const rightIdx = maskIndex(
+                                brickWidthPx + startX - dx - 1,
+                                textureGenerator.widthMask,
+                            );
+                            const value = idiv(brickValue * dx, bevelWidthPx);
+                            row[leftIdx] = value;
+                            row[rightIdx] = value;
                         }
                         if (innerStartX + innerWidth <= textureGenerator.width) {
                             ArrayUtils.fill(row, innerStartX, innerWidth, brickValue);
@@ -98,20 +104,31 @@ export class IrregularBricksOperation extends TextureOperation {
                             ArrayUtils.fill(row, 0, innerWidth - rightLen, brickValue);
                         }
                     } else {
-                        const verticalFade = ((invY * brickValue) / bevelHeightPx) | 0;
+                        const verticalFade = idiv(invY * brickValue, bevelHeightPx);
                         if (this.cornerBlendMode === CornerBlendMode.Multiply) {
                             for (let dx = 0; dx < bevelWidthPx; dx++) {
-                                const horizontalFade = ((dx * brickValue) / bevelWidthPx) | 0;
-                                row[textureGenerator.widthMask & (startX + dx)] = row[
-                                    (brickWidthPx + startX - dx - 1) & textureGenerator.widthMask
-                                ] = (verticalFade * horizontalFade) >> 12;
+                                const horizontalFade = idiv(dx * brickValue, bevelWidthPx);
+                                const leftIdx = maskIndex(startX + dx, textureGenerator.widthMask);
+                                const rightIdx = maskIndex(
+                                    brickWidthPx + startX - dx - 1,
+                                    textureGenerator.widthMask,
+                                );
+                                const value = mulShift(verticalFade, horizontalFade, 12);
+                                row[leftIdx] = value;
+                                row[rightIdx] = value;
                             }
                         } else {
                             for (let dx = 0; dx < bevelWidthPx; dx++) {
-                                const horizontalFade = ((brickValue * dx) / bevelWidthPx) | 0;
-                                row[textureGenerator.widthMask & (dx + startX)] = row[
-                                    textureGenerator.widthMask & (startX + brickWidthPx - dx - 1)
-                                ] = verticalFade > horizontalFade ? horizontalFade : verticalFade;
+                                const horizontalFade = idiv(brickValue * dx, bevelWidthPx);
+                                const leftIdx = maskIndex(dx + startX, textureGenerator.widthMask);
+                                const rightIdx = maskIndex(
+                                    startX + brickWidthPx - dx - 1,
+                                    textureGenerator.widthMask,
+                                );
+                                const value =
+                                    verticalFade > horizontalFade ? horizontalFade : verticalFade;
+                                row[leftIdx] = value;
+                                row[rightIdx] = value;
                             }
                         }
                         if (textureGenerator.width < innerWidth + innerStartX) {
@@ -123,20 +140,31 @@ export class IrregularBricksOperation extends TextureOperation {
                         }
                     }
                 } else {
-                    const verticalFade = ((y * brickValue) / bevelHeightPx) | 0;
+                    const verticalFade = idiv(y * brickValue, bevelHeightPx);
                     if (this.cornerBlendMode === CornerBlendMode.Multiply) {
                         for (let dx = 0; dx < bevelWidthPx; dx++) {
-                            const horizontalFade = ((brickValue * dx) / bevelWidthPx) | 0;
-                            row[textureGenerator.widthMask & (dx + startX)] = row[
-                                (startX + brickWidthPx - dx - 1) & textureGenerator.widthMask
-                            ] = (horizontalFade * verticalFade) >> 12;
+                            const horizontalFade = idiv(brickValue * dx, bevelWidthPx);
+                            const leftIdx = maskIndex(dx + startX, textureGenerator.widthMask);
+                            const rightIdx = maskIndex(
+                                startX + brickWidthPx - dx - 1,
+                                textureGenerator.widthMask,
+                            );
+                            const value = mulShift(horizontalFade, verticalFade, 12);
+                            row[leftIdx] = value;
+                            row[rightIdx] = value;
                         }
                     } else {
                         for (let dx = 0; dx < bevelWidthPx; dx++) {
-                            const horizontalFade = ((brickValue * dx) / bevelWidthPx) | 0;
-                            row[(dx + startX) & textureGenerator.widthMask] = row[
-                                (brickWidthPx + startX - dx - 1) & textureGenerator.widthMask
-                            ] = verticalFade <= horizontalFade ? verticalFade : horizontalFade;
+                            const horizontalFade = idiv(brickValue * dx, bevelWidthPx);
+                            const leftIdx = maskIndex(dx + startX, textureGenerator.widthMask);
+                            const rightIdx = maskIndex(
+                                brickWidthPx + startX - dx - 1,
+                                textureGenerator.widthMask,
+                            );
+                            const value =
+                                verticalFade <= horizontalFade ? verticalFade : horizontalFade;
+                            row[leftIdx] = value;
+                            row[rightIdx] = value;
                         }
                     }
 
@@ -181,25 +209,23 @@ export class IrregularBricksOperation extends TextureOperation {
         let isFirstRow = true;
         let segmentCount = 0;
         let reachedBottom = true;
-        const minBrickWidthPx = (this.minBrickWidthQ12 * textureGenerator.width) >> 12;
+        const minBrickWidthPx = mulShift(this.minBrickWidthQ12, textureGenerator.width, 12);
         let segmentWriteIndex = 0;
-        const minBrickHeightPx = (this.minBrickHeightQ12 * textureGenerator.height) >> 12;
-        const maxBrickWidthPx = (textureGenerator.width * this.maxBrickWidthQ12) >> 12;
-        const maxBrickHeightPx = (this.maxBrickHeightQ12 * textureGenerator.height) >> 12;
+        const minBrickHeightPx = mulShift(this.minBrickHeightQ12, textureGenerator.height, 12);
+        const maxBrickWidthPx = mulShift(textureGenerator.width, this.maxBrickWidthQ12, 12);
+        const maxBrickHeightPx = mulShift(this.maxBrickHeightQ12, textureGenerator.height, 12);
         if (maxBrickHeightPx <= 1) {
             return pixels[line];
         }
 
-        this.bevelRadiusPx = ((textureGenerator.width / 8) * this.bevelRadiusScaleQ12) >> 12;
-        const maxSegments = (textureGenerator.width / minBrickWidthPx + 1) | 0;
+        this.bevelRadiusPx = Math.trunc(
+            (textureGenerator.width * this.bevelRadiusScaleQ12) / 32768,
+        );
+        const maxSegments = i32(textureGenerator.width / minBrickWidthPx + 1);
         const random = new JavaRandom(this.seed);
 
-        let segments = new Array<Int32Array>(maxSegments);
-        let prevSegments = new Array<Int32Array>(maxSegments);
-        for (let i = 0; i < maxSegments; i++) {
-            segments[i] = new Int32Array(3);
-            prevSegments[i] = new Int32Array(3);
-        }
+        let segments = Array.from({ length: maxSegments }, () => new Int32Array(3));
+        let prevSegments = Array.from({ length: maxSegments }, () => new Int32Array(3));
 
         while (true) {
             while (true) {

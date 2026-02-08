@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -19,9 +20,9 @@ export class GradientOperation extends TextureOperation {
             const presetId = buffer.readUnsignedByte();
             if (presetId === 0) {
                 const stopCount = buffer.readUnsignedByte();
-                this.stops = new Array(stopCount);
+                this.stops = Array.from({ length: stopCount }, () => new Int32Array(4));
                 for (let i = 0; i < stopCount; i++) {
-                    const stop = (this.stops[i] = new Int32Array(4));
+                    const stop = this.stops[i];
                     stop[0] = buffer.readUnsignedShort();
                     stop[1] = buffer.readUnsignedByte() << 4;
                     stop[2] = buffer.readUnsignedByte() << 4;
@@ -93,11 +94,15 @@ export class GradientOperation extends TextureOperation {
                 const stopN = this.stops[stopIndex];
                 if (stopIndex > 0) {
                     const stopP = this.stops[stopIndex - 1];
-                    const nMod = (((posQ12 - stopP[0]) << 12) / (stopN[0] - stopP[0])) | 0;
+                    const denom = stopN[0] - stopP[0];
+                    const nMod = denom !== 0 ? idiv(shl(posQ12 - stopP[0], 12), denom) : 0;
                     const pMod = 4096 - nMod;
-                    r = (stopP[1] * pMod + stopN[1] * nMod) >> 12;
-                    g = (stopP[2] * pMod + stopN[2] * nMod) >> 12;
-                    b = (stopN[3] * nMod + stopP[3] * pMod) >> 12;
+                    const rNumerator = stopP[1] * pMod + stopN[1] * nMod;
+                    const gNumerator = stopP[2] * pMod + stopN[2] * nMod;
+                    const bNumerator = stopN[3] * nMod + stopP[3] * pMod;
+                    r = rNumerator >> 12;
+                    g = gNumerator >> 12;
+                    b = bNumerator >> 12;
                 } else {
                     r = stopN[1];
                     g = stopN[2];
@@ -135,10 +140,7 @@ export class GradientOperation extends TextureOperation {
         this.presetId = preset;
         switch (preset) {
             case 1:
-                this.stops = new Array(2);
-                for (let i = 0; i < this.stops.length; i++) {
-                    this.stops[i] = new Int32Array(4);
-                }
+                this.stops = Array.from({ length: 2 }, () => new Int32Array(4));
                 this.stops[0][0] = 0;
                 this.stops[0][1] = 0;
                 this.stops[0][2] = 0;
@@ -150,10 +152,7 @@ export class GradientOperation extends TextureOperation {
                 this.stops[1][3] = 4096;
                 break;
             case 2:
-                this.stops = new Array(8);
-                for (let i = 0; i < this.stops.length; i++) {
-                    this.stops[i] = new Int32Array(4);
-                }
+                this.stops = Array.from({ length: 8 }, () => new Int32Array(4));
                 this.stops[0][0] = 0;
                 this.stops[0][1] = 2650;
                 this.stops[0][2] = 2602;
@@ -195,10 +194,7 @@ export class GradientOperation extends TextureOperation {
                 this.stops[7][3] = 1140;
                 break;
             case 3:
-                this.stops = new Array(7);
-                for (let i = 0; i < this.stops.length; i++) {
-                    this.stops[i] = new Int32Array(4);
-                }
+                this.stops = Array.from({ length: 7 }, () => new Int32Array(4));
 
                 this.stops[0][1] = 0;
                 this.stops[0][2] = 0;
@@ -237,10 +233,7 @@ export class GradientOperation extends TextureOperation {
                 break;
 
             case 4:
-                this.stops = new Array(6);
-                for (let i = 0; i < this.stops.length; i++) {
-                    this.stops[i] = new Int32Array(4);
-                }
+                this.stops = Array.from({ length: 6 }, () => new Int32Array(4));
                 this.stops[0][3] = 0;
                 this.stops[0][1] = 0;
                 this.stops[0][0] = 0;
@@ -272,10 +265,7 @@ export class GradientOperation extends TextureOperation {
                 this.stops[5][3] = 4096;
                 break;
             case 5:
-                this.stops = new Array(16);
-                for (let i = 0; i < this.stops.length; i++) {
-                    this.stops[i] = new Int32Array(4);
-                }
+                this.stops = Array.from({ length: 16 }, () => new Int32Array(4));
                 this.stops[0][2] = 192;
                 this.stops[0][0] = 0;
                 this.stops[0][1] = 80;
@@ -358,10 +348,7 @@ export class GradientOperation extends TextureOperation {
                 break;
 
             case 6:
-                this.stops = new Array(4);
-                for (let i = 0; i < this.stops.length; i++) {
-                    this.stops[i] = new Int32Array(4);
-                }
+                this.stops = Array.from({ length: 4 }, () => new Int32Array(4));
                 this.stops[0][3] = 0;
                 this.stops[0][2] = 4096;
                 this.stops[0][0] = 2048;

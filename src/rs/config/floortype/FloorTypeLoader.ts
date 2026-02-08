@@ -1,7 +1,7 @@
-import { Archive } from "../../cache/format/Archive";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { ArchiveTypeLoader, DatTypeLoader, TypeLoader } from "../TypeLoader";
+import { Archive } from "../../cache/format/Archive";
 import { ArchiveBytesProvider } from "../../io/BytesProvider";
+import { ArchiveTypeLoader, DatTypeLoader, TypeLoader } from "../TypeLoader";
 import { FloorType } from "./FloorType";
 import { OverlayFloorType } from "./OverlayFloorType";
 import { UnderlayFloorType } from "./UnderlayFloorType";

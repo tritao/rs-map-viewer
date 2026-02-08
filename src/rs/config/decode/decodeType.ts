@@ -1,8 +1,8 @@
+import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo } from "../../cache/CacheInfo";
 import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { TypeDecodeError } from "../../errors/TypeDecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
-import { Result, err, ok } from "../../../util/Result";
 import { Type } from "../Type";
 
 export type TypeConstructor<T extends Type> = new (id: number, cacheInfo: CacheInfo) => T;
@@ -28,7 +28,10 @@ export function decodeTypeFromBuffer<T extends Type>(
             "offset" in cause &&
             typeof (cause as { opcode?: unknown }).opcode === "number" &&
             typeof (cause as { offset?: unknown }).offset === "number"
-                ? { opcode: (cause as { opcode: number }).opcode, offset: (cause as { offset: number }).offset }
+                ? {
+                      opcode: (cause as { opcode: number }).opcode,
+                      offset: (cause as { offset: number }).offset,
+                  }
                 : undefined;
         const opcode = typeDecodeMeta?.opcode;
         const offset = typeDecodeMeta?.offset ?? buffer.offset;

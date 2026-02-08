@@ -13,7 +13,9 @@ export class ByteSourceSlice implements ByteSource {
             throw new Error("Invalid size");
         }
         if (start + size > source.size) {
-            throw new Error(`Slice out of bounds. start=${start}, size=${size}, sourceSize=${source.size}`);
+            throw new Error(
+                `Slice out of bounds. start=${start}, size=${size}, sourceSize=${source.size}`,
+            );
         }
     }
 
@@ -31,7 +33,9 @@ export class ByteSourceSlice implements ByteSource {
             throw new Error("Invalid length");
         }
         if (offset < 0 || offset + length > this.size) {
-            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`);
+            throw new Error(
+                `Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`,
+            );
         }
         this.source.readInto(this.start + offset, target, targetOffset, length);
     }

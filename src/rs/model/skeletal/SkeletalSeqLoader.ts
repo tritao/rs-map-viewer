@@ -1,9 +1,9 @@
+import { Result, err, ok } from "../../../util/Result";
+import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { BytesProvider } from "../../io/BytesProvider";
 import { GroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
-import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
 import { SkeletalSeq } from "./SkeletalSeq";
-import { err, ok, Result } from "../../../util/Result";
 
 export interface SkeletalSeqLoader {
     tryLoad(id: number): Result<SkeletalSeq, DecodeError>;

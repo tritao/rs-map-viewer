@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift, shl } from "../../../util/JavaInt";
 import { TEXTURE_COSINE_TABLE_Q12, TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -26,9 +27,13 @@ export class CurveOperation extends TextureOperation {
         if (field === 0) {
             this.interpolationMode = buffer.readUnsignedByte() as CurveInterpolationMode;
             const controlPointCount = buffer.readUnsignedByte();
-            this.controlPoints = new Array(controlPointCount);
-            for (let controlPointIndex = 0; controlPointIndex < controlPointCount; controlPointIndex++) {
-                const point = (this.controlPoints[controlPointIndex] = new Array(2));
+            this.controlPoints = Array.from({ length: controlPointCount }, () => [0, 0]);
+            for (
+                let controlPointIndex = 0;
+                controlPointIndex < controlPointCount;
+                controlPointIndex++
+            ) {
+                const point = this.controlPoints[controlPointIndex];
                 point[0] = buffer.readUnsignedShort();
                 point[1] = buffer.readUnsignedShort();
             }
@@ -85,7 +90,7 @@ export class CurveOperation extends TextureOperation {
         if (this.monochromeImageCache.dirty) {
             const input = this.getMonochromeInput(textureGenerator, 0, line);
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                let value = (input[pixel] / 16) | 0;
+                let value = idiv(input[pixel], 16);
                 if (value < 0) {
                     value = 0;
                 }
@@ -120,17 +125,19 @@ export class CurveOperation extends TextureOperation {
                     const yPrev = prevPoint[1];
                     const yNext = nextPoint[1];
                     const yNextNext = this.getControlPoint(segmentIndex + 1)[1];
-                    const tQ12 =
-                        (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
-                        0;
-                    const tSquaredQ12 = ((tQ12 * tQ12) / 4096) | 0;
+                    const tQ12 = idiv(
+                        shl(inputQ12 - prevPoint[0], 12),
+                        nextPoint[0] - prevPoint[0],
+                    );
+                    const tSquaredQ12 = mulShift(tQ12, tQ12, 12);
                     const coefA = yPrev - yPrevPrev + (yNextNext - yNext);
                     const coefB = yPrevPrev - yPrev - coefA;
                     const coefC = yNext - yPrevPrev;
                     const coefD = yPrev;
-                    const cubicTerm = (tSquaredQ12 * ((tQ12 * coefA) >> 12)) >> 12;
-                    const quadraticTerm = ((tSquaredQ12 * coefB) / 4096) | 0;
-                    const linearTerm = ((tQ12 * coefC) / 4096) | 0;
+                    const tCoefAQ12 = mulShift(tQ12, coefA, 12);
+                    const cubicTerm = mulShift(tSquaredQ12, tCoefAQ12, 12);
+                    const quadraticTerm = mulShift(tSquaredQ12, coefB, 12);
+                    const linearTerm = mulShift(tQ12, coefC, 12);
                     let out = linearTerm + cubicTerm + quadraticTerm + coefD;
                     if (out <= -32768) {
                         out = -32767;
@@ -156,15 +163,19 @@ export class CurveOperation extends TextureOperation {
                     }
                     const prevPoint = this.controlPoints[segmentIndex - 1];
                     const nextPoint = this.controlPoints[segmentIndex];
-                    const tQ12 =
-                        (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
-                        0;
-                    const nextWeightQ12 =
-                        ((4096 - TEXTURE_COSINE_TABLE_Q12[((tQ12 & 8187) / 32) | 0]) / 2) | 0;
+                    const tQ12 = idiv(
+                        shl(inputQ12 - prevPoint[0], 12),
+                        nextPoint[0] - prevPoint[0],
+                    );
+                    const nextWeightQ12 = idiv(
+                        4096 - TEXTURE_COSINE_TABLE_Q12[idiv(tQ12 & 8187, 32)],
+                        2,
+                    );
                     const prevWeightQ12 = 4096 - nextWeightQ12;
-                    let out =
-                        ((prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12) / 4096) |
-                        0;
+                    let out = idiv(
+                        prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12,
+                        4096,
+                    );
                     if (out <= -32768) {
                         out = -32767;
                     }
@@ -189,13 +200,15 @@ export class CurveOperation extends TextureOperation {
                     }
                     const prevPoint = this.controlPoints[segmentIndex - 1];
                     const nextPoint = this.controlPoints[segmentIndex];
-                    const nextWeightQ12 =
-                        (((inputQ12 - prevPoint[0]) * 4096) / (nextPoint[0] - prevPoint[0])) |
-                        0;
+                    const nextWeightQ12 = idiv(
+                        shl(inputQ12 - prevPoint[0], 12),
+                        nextPoint[0] - prevPoint[0],
+                    );
                     const prevWeightQ12 = 4096 - nextWeightQ12;
-                    let out =
-                        ((prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12) / 4096) |
-                        0;
+                    let out = idiv(
+                        prevWeightQ12 * prevPoint[1] + nextPoint[1] * nextWeightQ12,
+                        4096,
+                    );
                     if (out <= -32768) {
                         out = -32767;
                     }

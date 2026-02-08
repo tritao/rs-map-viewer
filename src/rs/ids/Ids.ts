@@ -31,4 +31,3 @@ export function asNpcId(value: number): NpcId {
 export function asObjId(value: number): ObjId {
     return value as ObjId;
 }
-

@@ -27,14 +27,9 @@ export class Pathfinder {
     bufWriterIndex: number = 0;
 
     constructor(public graphSize: number = DEFAULT_GRAPH_SIZE) {
-        this.directions = new Array(graphSize);
-        this.distances = new Array(graphSize);
-        this.flags = new Array(graphSize);
-        for (let i = 0; i < graphSize; i++) {
-            this.directions[i] = new Int32Array(graphSize);
-            this.distances[i] = new Int32Array(graphSize);
-            this.flags[i] = new Int32Array(graphSize);
-        }
+        this.directions = Array.from({ length: graphSize }, () => new Int32Array(graphSize));
+        this.distances = Array.from({ length: graphSize }, () => new Int32Array(graphSize));
+        this.flags = Array.from({ length: graphSize }, () => new Int32Array(graphSize));
 
         this.queueSize = (graphSize * graphSize) / 4;
 
@@ -267,6 +262,7 @@ export class Pathfinder {
         const _clip = this.flags;
         const _bufferX = this.bufferX;
         const _bufferY = this.bufferY;
+        const queueMask = this.queueSize - 1;
 
         // when we start searching for path, we position ourselves in the middle of graph
         // so the base(minimum) position is source_pos - HALF_GRAPH_SIZE.
@@ -291,7 +287,8 @@ export class Pathfinder {
         while (read !== write) {
             currentX = _bufferX[read];
             currentY = _bufferY[read];
-            read = (read + 1) & (this.queueSize - 1);
+            read++;
+            read &= queueMask;
 
             currentGraphX = currentX - graphBaseX;
             currentGraphY = currentY - graphBaseY;
@@ -316,7 +313,8 @@ export class Pathfinder {
                 // we can go to west, queue it
                 _bufferX[write] = currentX - 1;
                 _bufferY[write] = currentY;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX - 1][currentGraphY] = DirectionFlag.EAST;
                 _distances[currentGraphX - 1][currentGraphY] = nextDistance;
@@ -332,7 +330,8 @@ export class Pathfinder {
                 // we can go to east, queue it
                 _bufferX[write] = currentX + 1;
                 _bufferY[write] = currentY;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX + 1][currentGraphY] = DirectionFlag.WEST;
                 _distances[currentGraphX + 1][currentGraphY] = nextDistance;
@@ -348,7 +347,8 @@ export class Pathfinder {
                 // we can go to south, queue it
                 _bufferX[write] = currentX;
                 _bufferY[write] = currentY - 1;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX][currentGraphY - 1] = DirectionFlag.NORTH;
                 _distances[currentGraphX][currentGraphY - 1] = nextDistance;
@@ -364,7 +364,8 @@ export class Pathfinder {
                 // we can go to north, queue it
                 _bufferX[write] = currentX;
                 _bufferY[write] = currentY + 1;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX][currentGraphY + 1] = DirectionFlag.SOUTH;
                 _distances[currentGraphX][currentGraphY + 1] = nextDistance;
@@ -390,7 +391,8 @@ export class Pathfinder {
                 // we can go to south west, queue it
                 _bufferX[write] = currentX - 1;
                 _bufferY[write] = currentY - 1;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX - 1][currentGraphY - 1] =
                     DirectionFlag.NORTH | DirectionFlag.EAST;
@@ -416,7 +418,8 @@ export class Pathfinder {
                 // we can go to south east, queue it
                 _bufferX[write] = currentX + 1;
                 _bufferY[write] = currentY - 1;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX + 1][currentGraphY - 1] =
                     DirectionFlag.NORTH | DirectionFlag.WEST;
@@ -442,7 +445,8 @@ export class Pathfinder {
                 // we can go to north west, queue it.
                 _bufferX[write] = currentX - 1;
                 _bufferY[write] = currentY + 1;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX - 1][currentGraphY + 1] =
                     DirectionFlag.SOUTH | DirectionFlag.EAST;
@@ -468,7 +472,8 @@ export class Pathfinder {
                 // we can go to north east, queue it.
                 _bufferX[write] = currentX + 1;
                 _bufferY[write] = currentY + 1;
-                write = (write + 1) & (this.queueSize - 1);
+                write++;
+                write &= queueMask;
 
                 _directions[currentGraphX + 1][currentGraphY + 1] =
                     DirectionFlag.SOUTH | DirectionFlag.WEST;
@@ -506,6 +511,7 @@ export class Pathfinder {
         const _clip = this.flags;
         const _bufferX = this.bufferX;
         const _bufferY = this.bufferY;
+        const queueMask = this.queueSize - 1;
 
         // when we start searching for path, we position ourselves in the middle of graph
         // so the base(minimum) position is source_pos - HALF_GRAPH_SIZE.
@@ -530,7 +536,8 @@ export class Pathfinder {
         while (read !== write) {
             currentX = _bufferX[read];
             currentY = _bufferY[read];
-            read = (read + 1) & (this.queueSize - 1);
+            read++;
+            read &= queueMask;
 
             currentGraphX = currentX - graphBaseX;
             currentGraphY = currentY - graphBaseY;
@@ -570,7 +577,8 @@ export class Pathfinder {
                     // we can go to west, queue it
                     _bufferX[write] = currentX - 1;
                     _bufferY[write] = currentY;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX - 1][currentGraphY] = DirectionFlag.EAST;
                     _distances[currentGraphX - 1][currentGraphY] = nextDistance;
@@ -602,7 +610,8 @@ export class Pathfinder {
                     // we can go to east, queue it
                     _bufferX[write] = currentX + 1;
                     _bufferY[write] = currentY;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX + 1][currentGraphY] = DirectionFlag.WEST;
                     _distances[currentGraphX + 1][currentGraphY] = nextDistance;
@@ -634,7 +643,8 @@ export class Pathfinder {
                     // we can go to south, queue it
                     _bufferX[write] = currentX;
                     _bufferY[write] = currentY - 1;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX][currentGraphY - 1] = DirectionFlag.NORTH;
                     _distances[currentGraphX][currentGraphY - 1] = nextDistance;
@@ -666,7 +676,8 @@ export class Pathfinder {
                     // we can go to north, queue it
                     _bufferX[write] = currentX;
                     _bufferY[write] = currentY + 1;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX][currentGraphY + 1] = DirectionFlag.SOUTH;
                     _distances[currentGraphX][currentGraphY + 1] = nextDistance;
@@ -700,7 +711,8 @@ export class Pathfinder {
                     // we can go to south west, queue it
                     _bufferX[write] = currentX - 1;
                     _bufferY[write] = currentY - 1;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX - 1][currentGraphY - 1] = DirectionFlag.NORTH_EAST;
                     _distances[currentGraphX - 1][currentGraphY - 1] = nextDistance;
@@ -733,7 +745,8 @@ export class Pathfinder {
                     // we can go to south east, queue it
                     _bufferX[write] = currentX + 1;
                     _bufferY[write] = currentY - 1;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX + 1][currentGraphY - 1] = DirectionFlag.NORTH_WEST;
                     _distances[currentGraphX + 1][currentGraphY - 1] = nextDistance;
@@ -766,7 +779,8 @@ export class Pathfinder {
                     // we can go to north west, queue it.
                     _bufferX[write] = currentX - 1;
                     _bufferY[write] = currentY + 1;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX - 1][currentGraphY + 1] = DirectionFlag.SOUTH_EAST;
                     _distances[currentGraphX - 1][currentGraphY + 1] = nextDistance;
@@ -799,7 +813,8 @@ export class Pathfinder {
                     // we can go to north east, queue it.
                     _bufferX[write] = currentX + 1;
                     _bufferY[write] = currentY + 1;
-                    write = (write + 1) & (this.queueSize - 1);
+                    write++;
+                    write &= queueMask;
 
                     _directions[currentGraphX + 1][currentGraphY + 1] = DirectionFlag.SOUTH_WEST;
                     _distances[currentGraphX + 1][currentGraphY + 1] = nextDistance;

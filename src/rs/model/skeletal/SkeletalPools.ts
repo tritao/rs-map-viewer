@@ -22,4 +22,3 @@ export class SkeletalPools {
         vec3.set(this.scaleVector, 1, 1, 1);
     }
 }
-

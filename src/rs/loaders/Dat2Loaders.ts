@@ -1,3 +1,15 @@
+import { Result, err, ok } from "../../util/Result";
+import { CacheIndex } from "../cache/CacheIndex";
+import { CacheInfo, GameType } from "../cache/CacheInfo";
+import { CacheSystem } from "../cache/CacheSystem";
+import { CacheType } from "../cache/CacheType";
+import {
+    Dat2ConfigArchiveId,
+    OsrsConfigArchiveId,
+    Rs2ConfigArchiveId,
+} from "../cache/ConfigArchiveId";
+import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
+import { Archive } from "../cache/format/Archive";
 import {
     ArchiveBasTypeLoader,
     BasTypeLoader,
@@ -41,6 +53,13 @@ import {
     IndexVarBitTypeLoader,
     VarBitTypeLoader,
 } from "../config/vartype/bit/VarBitTypeLoader";
+import { IndexArchiveProvider } from "../io/ArchiveProvider";
+import {
+    EnumeratingArchiveBytesProvider,
+    IndexFileBytesProvider,
+    IndexSmartFileBytesProvider,
+} from "../io/BytesProvider";
+import { ArchiveProviderGroupBytesProviderFactory } from "../io/GroupBytesProviderFactory";
 import { Dat2MapIndex, MapFileIndex } from "../map/MapFileIndex";
 import { CacheIndexMapBytesProvider, MapFileLoader } from "../map/MapFileLoader";
 import { IndexModelLoader, ModelLoader } from "../model/ModelLoader";
@@ -53,22 +72,22 @@ import { OldProceduralTextureLoader } from "../texture/OldProceduralTextureLoade
 import { ProceduralTextureLoader } from "../texture/ProceduralTextureLoader";
 import { SpriteTextureLoader } from "../texture/SpriteTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
-import { IndexFileBytesProvider, IndexSmartFileBytesProvider, EnumeratingArchiveBytesProvider } from "../io/BytesProvider";
-import { CacheIndex } from "../cache/CacheIndex";
-import { CacheInfo, GameType } from "../cache/CacheInfo";
-import { CacheSystem } from "../cache/CacheSystem";
-import { CacheType } from "../cache/CacheType";
-import { Archive } from "../cache/format/Archive";
-import { Dat2ConfigArchiveId, OsrsConfigArchiveId, Rs2ConfigArchiveId } from "../cache/ConfigArchiveId";
-import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
 import { CacheRules, computeCacheRules } from "./CacheRules";
+import {
+    InitError,
+    createFailed,
+    initErrorToString,
+    missingArchive,
+    missingFile,
+    missingIndex,
+} from "./InitError";
 import { Loaders, OptionalIndexedSprite } from "./Loaders";
-import { IndexArchiveProvider } from "../io/ArchiveProvider";
-import { err, ok, Result } from "../../util/Result";
-import { createFailed, InitError, initErrorToString, missingArchive, missingFile, missingIndex } from "./InitError";
-import { ArchiveProviderGroupBytesProviderFactory } from "../io/GroupBytesProviderFactory";
 
-function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
+function requireIndex(
+    cacheSystem: CacheSystem,
+    indexId: number,
+    description: string,
+): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
     if (!index) {
         return err(missingIndex(indexId, description));
@@ -76,7 +95,11 @@ function requireIndex(cacheSystem: CacheSystem, indexId: number, description: st
     return ok(index);
 }
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, InitError> {
+function requireArchive(
+    index: CacheIndex,
+    archiveId: number,
+    description: string,
+): Result<Archive, InitError> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
         return err(missingArchive(index.id, archiveId, description));
@@ -102,7 +125,10 @@ function loadMapElementSprites(
         if (mapElement.spriteId === -1) {
             continue;
         }
-        const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(spriteSource, mapElement.spriteId);
+        const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(
+            spriteSource,
+            mapElement.spriteId,
+        );
         if (sprite) {
             mapElementSprites[i] = sprite;
         }
@@ -148,17 +174,31 @@ export function tryCreateDat2Loaders(
 
     const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
 
-    const underlaysArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.underlays, "dat2 underlays");
+    const underlaysArchiveResult = requireArchive(
+        configIndex,
+        Dat2ConfigArchiveId.underlays,
+        "dat2 underlays",
+    );
     if (!underlaysArchiveResult.ok) {
         return underlaysArchiveResult;
     }
-    const underlayTypeLoader = new ArchiveUnderlayFloorTypeLoader(cacheInfo, underlaysArchiveResult.value);
+    const underlayTypeLoader = new ArchiveUnderlayFloorTypeLoader(
+        cacheInfo,
+        underlaysArchiveResult.value,
+    );
 
-    const overlaysArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.overlays, "dat2 overlays");
+    const overlaysArchiveResult = requireArchive(
+        configIndex,
+        Dat2ConfigArchiveId.overlays,
+        "dat2 overlays",
+    );
     if (!overlaysArchiveResult.ok) {
         return overlaysArchiveResult;
     }
-    const overlayTypeLoader = new ArchiveOverlayFloorTypeLoader(cacheInfo, overlaysArchiveResult.value);
+    const overlayTypeLoader = new ArchiveOverlayFloorTypeLoader(
+        cacheInfo,
+        overlaysArchiveResult.value,
+    );
 
     let varBitTypeLoader: VarBitTypeLoader;
     if (rules.isIndexConfigs) {
@@ -168,7 +208,11 @@ export function tryCreateDat2Loaders(
         }
         varBitTypeLoader = new IndexVarBitTypeLoader(cacheInfo, varbitsIndexResult.value);
     } else {
-        const varbitsArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.varbits, "dat2 varbits");
+        const varbitsArchiveResult = requireArchive(
+            configIndex,
+            Dat2ConfigArchiveId.varbits,
+            "dat2 varbits",
+        );
         if (!varbitsArchiveResult.ok) {
             return varbitsArchiveResult;
         }
@@ -183,7 +227,11 @@ export function tryCreateDat2Loaders(
         }
         locTypeLoader = new IndexLocTypeLoader(cacheInfo, locsIndexResult.value);
     } else {
-        const locsArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.locs, "dat2 locs");
+        const locsArchiveResult = requireArchive(
+            configIndex,
+            Dat2ConfigArchiveId.locs,
+            "dat2 locs",
+        );
         if (!locsArchiveResult.ok) {
             return locsArchiveResult;
         }
@@ -198,7 +246,11 @@ export function tryCreateDat2Loaders(
         }
         npcTypeLoader = new IndexNpcTypeLoader(cacheInfo, npcsIndexResult.value);
     } else {
-        const npcsArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.npcs, "dat2 npcs");
+        const npcsArchiveResult = requireArchive(
+            configIndex,
+            Dat2ConfigArchiveId.npcs,
+            "dat2 npcs",
+        );
         if (!npcsArchiveResult.ok) {
             return npcsArchiveResult;
         }
@@ -213,7 +265,11 @@ export function tryCreateDat2Loaders(
         }
         objTypeLoader = new IndexObjTypeLoader(cacheInfo, objsIndexResult.value);
     } else {
-        const objsArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.objs, "dat2 objs");
+        const objsArchiveResult = requireArchive(
+            configIndex,
+            Dat2ConfigArchiveId.objs,
+            "dat2 objs",
+        );
         if (!objsArchiveResult.ok) {
             return objsArchiveResult;
         }
@@ -228,7 +284,11 @@ export function tryCreateDat2Loaders(
         }
         seqTypeLoader = new IndexSeqTypeLoader(cacheInfo, seqsIndexResult.value);
     } else {
-        const seqsArchiveResult = requireArchive(configIndex, Dat2ConfigArchiveId.seqs, "dat2 seqs");
+        const seqsArchiveResult = requireArchive(
+            configIndex,
+            Dat2ConfigArchiveId.seqs,
+            "dat2 seqs",
+        );
         if (!seqsArchiveResult.ok) {
             return seqsArchiveResult;
         }
@@ -248,7 +308,11 @@ export function tryCreateDat2Loaders(
 
     let questTypeLoader: QuestTypeLoader | undefined;
     if (rules.quests.mode === "archive") {
-        const questsArchiveResult = requireArchive(configIndex, Rs2ConfigArchiveId.quests, "quests");
+        const questsArchiveResult = requireArchive(
+            configIndex,
+            Rs2ConfigArchiveId.quests,
+            "quests",
+        );
         if (!questsArchiveResult.ok) {
             return questsArchiveResult;
         }
@@ -275,7 +339,11 @@ export function tryCreateDat2Loaders(
             );
             break;
         case "materials": {
-            const materialsIndexResult = requireIndex(cacheSystem, Rs2IndexId.materials, "rs2 materials");
+            const materialsIndexResult = requireIndex(
+                cacheSystem,
+                Rs2IndexId.materials,
+                "rs2 materials",
+            );
             if (!materialsIndexResult.ok) {
                 return materialsIndexResult;
             }
@@ -318,9 +386,16 @@ export function tryCreateDat2Loaders(
     if (!skeletonsIndexResult.ok) {
         return skeletonsIndexResult;
     }
-    const seqBaseLoader: SeqBaseLoader = Dat2SeqBaseLoader.create(cacheInfo, skeletonsIndexResult.value);
+    const seqBaseLoader: SeqBaseLoader = Dat2SeqBaseLoader.create(
+        cacheInfo,
+        skeletonsIndexResult.value,
+    );
 
-    const animationsIndexResult = requireIndex(cacheSystem, Dat2IndexId.animations, "dat2 animations");
+    const animationsIndexResult = requireIndex(
+        cacheSystem,
+        Dat2IndexId.animations,
+        "dat2 animations",
+    );
     if (!animationsIndexResult.ok) {
         return animationsIndexResult;
     }
@@ -328,8 +403,15 @@ export function tryCreateDat2Loaders(
 
     const groupFactory = new ArchiveProviderGroupBytesProviderFactory(animationsArchiveProvider);
 
-    const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(cacheInfo, groupFactory, seqBaseLoader);
-    const skeletalSeqLoader: SkeletalSeqLoader | undefined = new ProviderSkeletalSeqLoader(groupFactory, seqBaseLoader);
+    const seqFrameLoader: SeqFrameLoader = new Dat2SeqFrameLoader(
+        cacheInfo,
+        groupFactory,
+        seqBaseLoader,
+    );
+    const skeletalSeqLoader: SkeletalSeqLoader | undefined = new ProviderSkeletalSeqLoader(
+        groupFactory,
+        seqBaseLoader,
+    );
 
     const mapsIndexResult = requireIndex(cacheSystem, Dat2IndexId.maps, "dat2 maps");
     if (!mapsIndexResult.ok) {
@@ -337,11 +419,18 @@ export function tryCreateDat2Loaders(
     }
     const mapIndex = mapsIndexResult.value;
     const mapFileIndex: MapFileIndex = new Dat2MapIndex(mapIndex);
-    const mapFileLoader: MapFileLoader = new MapFileLoader(new CacheIndexMapBytesProvider(mapIndex), mapFileIndex);
+    const mapFileLoader: MapFileLoader = new MapFileLoader(
+        new CacheIndexMapBytesProvider(mapIndex),
+        mapFileIndex,
+    );
 
     let mapScenes: Array<OptionalIndexedSprite>;
     if (rules.mapScenes.mode === "archive") {
-        const mapScenesArchiveResult = requireArchive(configIndex, Rs2ConfigArchiveId.mapScenes, "map scenes");
+        const mapScenesArchiveResult = requireArchive(
+            configIndex,
+            Rs2ConfigArchiveId.mapScenes,
+            "map scenes",
+        );
         if (!mapScenesArchiveResult.ok) {
             return mapScenesArchiveResult;
         }
@@ -360,7 +449,10 @@ export function tryCreateDat2Loaders(
             }
             const mapScene = result.value;
             if (mapScene.spriteId !== -1) {
-                const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(spriteSource, mapScene.spriteId);
+                const sprite = SpriteLoader.loadIntoIndexedSpriteFromSource(
+                    spriteSource,
+                    mapScene.spriteId,
+                );
                 if (sprite) {
                     mapSceneSprites[id] = sprite;
                 }
@@ -376,12 +468,15 @@ export function tryCreateDat2Loaders(
             if (graphicDefaults.mapScenes === -1) {
                 mapScenes = [];
             } else {
-            const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, graphicDefaults.mapScenes);
-            if (!sprites) {
-                mapScenes = [];
-            } else {
-                mapScenes = sprites;
-            }
+                const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(
+                    spriteSource,
+                    graphicDefaults.mapScenes,
+                );
+                if (!sprites) {
+                    mapScenes = [];
+                } else {
+                    mapScenes = sprites;
+                }
             }
         }
     }
@@ -397,7 +492,10 @@ export function tryCreateDat2Loaders(
             if (!mapElementArchiveResult.ok) {
                 return mapElementArchiveResult;
             }
-            const mapElementTypeLoader = new ArchiveMapElementTypeLoader(cacheInfo, mapElementArchiveResult.value);
+            const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
+                cacheInfo,
+                mapElementArchiveResult.value,
+            );
             mapFunctions = loadMapElementSprites(spriteIndex, mapElementTypeLoader);
             break;
         }
@@ -410,7 +508,10 @@ export function tryCreateDat2Loaders(
             if (!mapElementArchiveResult.ok) {
                 return mapElementArchiveResult;
             }
-            const mapElementTypeLoader = new ArchiveMapElementTypeLoader(cacheInfo, mapElementArchiveResult.value);
+            const mapElementTypeLoader = new ArchiveMapElementTypeLoader(
+                cacheInfo,
+                mapElementArchiveResult.value,
+            );
             mapFunctions = loadMapElementSprites(spriteIndex, mapElementTypeLoader);
             break;
         }
@@ -427,7 +528,10 @@ export function tryCreateDat2Loaders(
                 break;
             }
 
-            const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(spriteSource, graphicDefaults.mapFunctions);
+            const sprites = SpriteLoader.loadIntoIndexedSpritesFromSource(
+                spriteSource,
+                graphicDefaults.mapFunctions,
+            );
             if (!sprites) {
                 mapFunctions = [];
                 break;

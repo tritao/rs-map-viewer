@@ -364,7 +364,10 @@ export class ObjType extends Type {
         this.team = original.team;
         this.groundActions = original.groundActions;
         this.op75 = original.op75;
-        this.inventoryActions = Array.from({ length: 5 }, (_, i) => original.inventoryActions?.[i] ?? null);
+        this.inventoryActions = Array.from(
+            { length: 5 },
+            (_, i) => original.inventoryActions?.[i] ?? null,
+        );
         this.inventoryActions[4] = "Discard";
         this.price = 0;
     }

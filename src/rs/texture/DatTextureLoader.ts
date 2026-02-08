@@ -1,10 +1,10 @@
+import { Result, err, ok } from "../../util/Result";
 import { Archive } from "../cache/format/Archive";
 import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";
 import { brightenRgb, rgbToHsl } from "../util/ColorUtil";
-import { err, ok, Result } from "../../util/Result";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 
@@ -30,11 +30,8 @@ export class DatTextureLoader implements TextureLoader {
     ) {
         this.spriteSource = new ArchiveNamedBytesProvider(textureArchive);
         this.animatedTextureIds = new Set(animatedTextureIds);
-        this.textureIds = new Array(this.getTextureCount());
-        for (let i = 0; i < this.textureIds.length; i++) {
-            this.textureIds[i] = i;
-        }
-        this.textureSprites = new Array(this.getLastTextureId());
+        this.textureIds = Array.from({ length: this.getTextureCount() }, (_, i) => i);
+        this.textureSprites = Array.from({ length: this.getLastTextureId() }, () => undefined);
         this.idAverageHslMap = new Map();
     }
 
@@ -91,8 +88,10 @@ export class DatTextureLoader implements TextureLoader {
             blue += sprite.palette[i] & 0xff;
         }
 
-        const averageRgb =
-            ((red / colourCount) << 16) + ((green / colourCount) << 8) + ((blue / colourCount) | 0);
+        const avgRed = Math.trunc(red / colourCount);
+        const avgGreen = Math.trunc(green / colourCount);
+        const avgBlue = Math.trunc(blue / colourCount);
+        const averageRgb = avgRed * 0x10000 + avgGreen * 0x100 + avgBlue;
 
         averageHsl = rgbToHsl(averageRgb);
 
@@ -207,21 +206,41 @@ export class DatTextureLoader implements TextureLoader {
         return ok(pixels);
     }
 
-    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+    tryGetPixelsRgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const result = this.tryLoadPixelsRgb(id, size, flipH, brightness);
         return result.ok ? result.value : undefined;
     }
 
-    tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+    tryGetPixelsArgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const result = this.tryLoadPixelsArgb(id, size, flipH, brightness);
         return result.ok ? result.value : undefined;
     }
 
-    tryLoadPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+    tryLoadPixelsRgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Result<Int32Array, DecodeError> {
         return this.tryLoadPixelsInternal(id, size, flipH, brightness);
     }
 
-    tryLoadPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+    tryLoadPixelsArgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Result<Int32Array, DecodeError> {
         return this.tryLoadPixelsInternal(id, size, flipH, brightness);
     }
 
@@ -242,7 +261,11 @@ export class DatTextureLoader implements TextureLoader {
 
         let sprite = this.textureSprites[id];
         if (!sprite) {
-            sprite = SpriteLoader.tryLoadIndexedSpriteDatFromNamedBytes(this.spriteSource, id.toString(), 0);
+            sprite = SpriteLoader.tryLoadIndexedSpriteDatFromNamedBytes(
+                this.spriteSource,
+                id.toString(),
+                0,
+            );
             if (!sprite) {
                 this.transparentTextureMap.set(id, false);
                 const e = notFoundError("DatTextureSprite", id);
@@ -271,7 +294,7 @@ export class DatTextureLoader implements TextureLoader {
     }
 
     clearCache(): void {
-        this.textureSprites = new Array(this.getLastTextureId());
+        this.textureSprites = Array.from({ length: this.getLastTextureId() }, () => undefined);
         this.missingTextureSpriteIds.clear();
         this.textureSpriteErrors.clear();
         this.idAverageHslMap.clear();

@@ -1,3 +1,17 @@
+import {
+    U64_ZERO,
+    u64FromNumber,
+    u64FromU32,
+    u64IsNonZero,
+    u64IsZero,
+    u64Or,
+    u64SetBit,
+    u64Shl,
+    u64Shr,
+    u64TestBit,
+    u64ToNumber,
+} from "../../util/U64";
+
 export enum EntityType {
     PLAYER = 0,
     NPC = 1,
@@ -5,7 +19,13 @@ export enum EntityType {
     OBJ = 3,
 }
 
-export type EntityTag = bigint;
+export type EntityTag = u64;
+
+export const ENTITY_TAG_NONE: EntityTag = U64_ZERO;
+
+export function hasEntityTag(tag: EntityTag): boolean {
+    return u64IsNonZero(tag);
+}
 
 export function calculateEntityTag(
     tileX: number,
@@ -14,29 +34,26 @@ export function calculateEntityTag(
     notInteractive: boolean,
     id: number,
 ): EntityTag {
-    let tag =
-        BigInt(tileX & 0x7f) |
-        (BigInt(tileY & 0x7f) << 7n) |
-        (BigInt(entityType & 0x3) << 14n) |
-        (BigInt(id) << 17n);
+    let tag = u64Or(u64FromU32(tileX & 0x7f), u64Shl(u64FromU32(tileY & 0x7f), 7));
+    tag = u64Or(tag, u64Shl(u64FromU32(entityType & 0x3), 14));
+    tag = u64Or(tag, u64Shl(u64FromNumber(id), 17));
     if (notInteractive) {
-        tag |= 0x10000n;
+        tag = u64SetBit(tag, 16);
     }
     return tag;
 }
 
 export function isEntityInteractive(tag: EntityTag): boolean {
-    let interactive = tag !== 0n;
-    if (interactive) {
-        interactive = (Number(tag >> 16n) & 0x1) === 0;
+    if (u64IsZero(tag)) {
+        return false;
     }
-    return interactive;
+    return !u64TestBit(tag, 16);
 }
 
 export function getIdFromTag(tag: EntityTag): number {
-    return Number(tag >> 17n);
+    return u64ToNumber(u64Shr(tag, 17));
 }
 
 export function getEntityTypeFromTag(tag: EntityTag): EntityType {
-    return Number(tag >> 14n) & 0x3;
+    return u64ToNumber(u64Shr(tag, 14)) & 0x3;
 }

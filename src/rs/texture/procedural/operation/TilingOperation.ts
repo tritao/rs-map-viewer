@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -27,8 +28,8 @@ export class TilingOperation extends TextureOperation {
         }
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
-            const tileW = (textureGenerator.width / this.tileCountH) | 0;
-            const tileH = (textureGenerator.height / this.tileCountV) | 0;
+            const tileW = idiv(textureGenerator.width, this.tileCountH);
+            const tileH = idiv(textureGenerator.height, this.tileCountV);
             let input: Int32Array;
             if (tileH <= 0) {
                 input = this.getMonochromeInput(textureGenerator, 0, 0);
@@ -37,7 +38,7 @@ export class TilingOperation extends TextureOperation {
                 input = this.getMonochromeInput(
                     textureGenerator,
                     0,
-                    ((textureGenerator.height * tY) / tileH) | 0,
+                    idiv(textureGenerator.height * tY, tileH),
                 );
             }
             for (let x = 0; x < textureGenerator.width; x++) {
@@ -45,7 +46,7 @@ export class TilingOperation extends TextureOperation {
                     output[x] = input[0];
                 } else {
                     const tX = x % tileW;
-                    output[x] = input[((tX * textureGenerator.width) / tileW) | 0];
+                    output[x] = input[idiv(tX * textureGenerator.width, tileW)];
                 }
             }
         }
@@ -58,8 +59,8 @@ export class TilingOperation extends TextureOperation {
         }
         const output = this.colourImageCache.get(line);
         if (this.colourImageCache.dirty) {
-            const tileW = (textureGenerator.width / this.tileCountH) | 0;
-            const tileH = (textureGenerator.height / this.tileCountV) | 0;
+            const tileW = idiv(textureGenerator.width, this.tileCountH);
+            const tileH = idiv(textureGenerator.height, this.tileCountV);
             let input: Int32Array[];
             if (tileH <= 0) {
                 input = this.getColourInput(textureGenerator, 0, 0);
@@ -68,7 +69,7 @@ export class TilingOperation extends TextureOperation {
                 input = this.getColourInput(
                     textureGenerator,
                     0,
-                    ((textureGenerator.height * tY) / tileH) | 0,
+                    idiv(textureGenerator.height * tY, tileH),
                 );
             }
             const inputR = input[0];
@@ -81,7 +82,7 @@ export class TilingOperation extends TextureOperation {
                 let inputX = 0;
                 if (tileW > 0) {
                     const tX = x % tileW;
-                    inputX = ((tX * textureGenerator.width) / tileW) | 0;
+                    inputX = idiv(tX * textureGenerator.width, tileW);
                 }
                 outputR[x] = inputR[inputX];
                 outputG[x] = inputG[inputX];

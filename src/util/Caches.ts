@@ -1,8 +1,9 @@
-import { CacheBundleTransfer } from "../rs/cache/platform/CacheFiles";
 import { CacheInfo, getGameTypeFromName, getLatestCache } from "../rs/cache/CacheInfo";
-import { CacheLoader, ProgressListener } from "../rs/cache/platform/CacheLoader";
 import { CacheType, detectCacheType } from "../rs/cache/CacheType";
+import { CacheBundleTransfer } from "../rs/cache/platform/CacheFiles";
 import { fetchCacheFiles } from "../rs/cache/platform/CacheFilesFetcher";
+import { CacheLoader, ProgressListener } from "../rs/cache/platform/CacheLoader";
+import { XteaKey, asXteaKey } from "../rs/crypto/Xtea";
 
 const CACHE_PATH = "/caches/";
 
@@ -14,14 +15,23 @@ export class CacheInfoJson {
         public revision: number,
         public timestamp: string,
         public size: number,
-    ) { }
+    ) {}
 }
 
 export async function fetchCacheInfos(): Promise<CacheInfo[]> {
     const resp = await fetch(CACHE_PATH + "caches.json");
     var infos: CacheInfoJson[] = await resp.json();
-    return infos.map(info => new CacheInfo(info.name, getGameTypeFromName(info.game),
-        info.environment, info.revision, info.timestamp, info.size))
+    return infos.map(
+        (info) =>
+            new CacheInfo(
+                info.name,
+                getGameTypeFromName(info.game),
+                info.environment,
+                info.revision,
+                info.timestamp,
+                info.size,
+            ),
+    );
 }
 
 export type CacheList = {
@@ -79,12 +89,12 @@ export async function loadCacheFiles(
     };
 }
 
-export type XteaMap = Map<number, number[]>;
+export type XteaMap = Map<number, XteaKey>;
 
 export async function fetchXteas(url: RequestInfo, signal?: AbortSignal): Promise<XteaMap> {
     const resp = await fetch(url, {
         signal,
     });
     const data: Record<string, number[]> = await resp.json();
-    return new Map(Object.keys(data).map((key) => [parseInt(key), data[key]]));
+    return new Map(Object.keys(data).map((key) => [parseInt(key), asXteaKey(data[key])] as const));
 }

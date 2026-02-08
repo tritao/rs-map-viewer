@@ -1,7 +1,7 @@
-import { Archive } from "../../cache/format/Archive";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { ArchiveTypeLoader } from "../TypeLoader";
+import { Archive } from "../../cache/format/Archive";
 import { ArchiveBytesProvider } from "../../io/BytesProvider";
+import { ArchiveTypeLoader } from "../TypeLoader";
 import { MapSceneType } from "./MapSceneType";
 
 export class MapSceneTypeLoader extends ArchiveTypeLoader<MapSceneType> {

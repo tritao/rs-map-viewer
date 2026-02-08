@@ -1,8 +1,8 @@
+import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheSystem } from "../../cache/CacheSystem";
-import { OsrsIndexId, Rs2IndexId, Dat2IndexId } from "../../cache/IndexId";
+import { Dat2IndexId, OsrsIndexId, Rs2IndexId } from "../../cache/IndexId";
 import { ByteBuffer } from "../../io/ByteBuffer";
-import { err, ok, Result } from "../../../util/Result";
 import { InitError, missingFile, missingIndex } from "../../loaders/InitError";
 import { Type } from "../Type";
 import { DefaultsGroup } from "./DefaultsGroup";
@@ -29,12 +29,22 @@ export class GraphicsDefaults extends Type {
         return new GraphicsDefaults(-1, cacheInfo);
     }
 
-    static tryCreate(cacheInfo: CacheInfo, fileSystem: CacheSystem): Result<GraphicsDefaults, InitError> {
+    static tryCreate(
+        cacheInfo: CacheInfo,
+        fileSystem: CacheSystem,
+    ): Result<GraphicsDefaults, InitError> {
         const osrsDefaultsIndex = fileSystem.tryGetIndex(OsrsIndexId.graphicDefaults);
         if (cacheInfo.game === GameType.Oldschool && osrsDefaultsIndex) {
             const defaultsFile = osrsDefaultsIndex.tryGetFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
-                return err(missingFile(OsrsIndexId.graphicDefaults, DefaultsGroup.GRAPHICS, 0, "osrs graphics defaults"));
+                return err(
+                    missingFile(
+                        OsrsIndexId.graphicDefaults,
+                        DefaultsGroup.GRAPHICS,
+                        0,
+                        "osrs graphics defaults",
+                    ),
+                );
             }
 
             const defaults = new GraphicsDefaults(defaultsFile.archiveId, cacheInfo);
@@ -48,7 +58,9 @@ export class GraphicsDefaults extends Type {
         } else {
             const spriteIndex = fileSystem.tryGetIndex(Dat2IndexId.sprites);
             if (!spriteIndex) {
-                return err(missingIndex(Dat2IndexId.sprites, "dat2 sprites (for graphics defaults)"));
+                return err(
+                    missingIndex(Dat2IndexId.sprites, "dat2 sprites (for graphics defaults)"),
+                );
             }
 
             const defaults = new GraphicsDefaults(-1, cacheInfo);

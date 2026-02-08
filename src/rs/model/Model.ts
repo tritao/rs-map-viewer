@@ -2,6 +2,7 @@ import { mat4, vec3 } from "gl-matrix";
 
 import { COSINE, SINE } from "../MathConstants";
 import { Entity } from "../core/Entity";
+import { toI32 } from "../util/U32";
 import { ContourGroundType } from "./ContourGroundType";
 import { ModelData } from "./ModelData";
 import { SeqBase } from "./seq/SeqBase";
@@ -367,14 +368,14 @@ export class Model extends Entity {
                 this.contourHeight = this.height;
             }
 
-            this.xzRadius = (Math.sqrt(this.xzRadius) + 0.99) | 0;
-            this.radius =
-                (Math.sqrt(this.xzRadius * this.xzRadius + this.height * this.height) + 0.99) | 0;
-            this.diameter =
-                (this.radius +
-                    (Math.sqrt(this.xzRadius * this.xzRadius + this.bottomY * this.bottomY) +
-                        0.99)) |
-                0;
+            this.xzRadius = Math.floor(Math.sqrt(this.xzRadius) + 0.99);
+            this.radius = Math.floor(
+                Math.sqrt(this.xzRadius * this.xzRadius + this.height * this.height) + 0.99,
+            );
+            this.diameter = Math.floor(
+                this.radius +
+                    (Math.sqrt(this.xzRadius * this.xzRadius + this.bottomY * this.bottomY) + 0.99),
+            );
         }
     }
 
@@ -456,35 +457,44 @@ export class Model extends Entity {
         let endX = sceneX + this.maxX;
         let startY = sceneZ + this.minZ;
         let endY = sceneZ + this.maxZ;
+        const endXPlus128 = endX + 128;
+        const endYPlus128 = endY + 128;
+        const endXTile = endXPlus128 >> 7;
+        const endYTile = endYPlus128 >> 7;
         if (
             (type === ContourGroundType.WarpToTerrain ||
                 type === ContourGroundType.WarpToTerrainFadeByVertexHeight ||
                 type === ContourGroundType.AlignToSlope ||
                 type === ContourGroundType.WarpBetweenPlanes) &&
             (startX < 0 ||
-                (endX + 128) >> 7 >= heightMap.length ||
+                endXTile >= heightMap.length ||
                 startY < 0 ||
-                (endY + 128) >> 7 >= heightMap[0].length)
+                endYTile >= heightMap[0].length)
         ) {
             return this;
         }
-        if (type === ContourGroundType.WarpToPlaneAbove || type === ContourGroundType.WarpBetweenPlanes) {
+        if (
+            type === ContourGroundType.WarpToPlaneAbove ||
+            type === ContourGroundType.WarpBetweenPlanes
+        ) {
             if (heightMapAbove === undefined) {
                 return this;
             }
             if (
                 startX < 0 ||
-                (endX + 128) >> 7 >= heightMapAbove.length ||
+                endXTile >= heightMapAbove.length ||
                 startY < 0 ||
-                (endY + 128) >> 7 >= heightMapAbove[0].length
+                endYTile >= heightMapAbove[0].length
             ) {
                 return this;
             }
         } else {
             startX >>= 7;
-            endX = (endX + 127) >> 7;
+            const endXPlus127 = endX + 127;
+            endX = endXPlus127 >> 7;
             startY >>= 7;
-            endY = (endY + 127) >> 7;
+            const endYPlus127 = endY + 127;
+            endY = endYPlus127 >> 7;
             if (
                 heightMap[startX][startY] === sceneHeight &&
                 heightMap[endX][startY] === sceneHeight &&
@@ -545,8 +555,8 @@ export class Model extends Entity {
                 model.verticesZ = this.verticesZ.slice();
             }
 
-            const halfSizeX = (sizeX / 2) | 0;
-            const halfSizeZ = (sizeZ / 2) | 0;
+            const halfSizeX = Math.trunc(sizeX / 2);
+            const halfSizeZ = Math.trunc(sizeZ / 2);
 
             const h00 = Model.sampleHeightMap(heightMap, sceneX - halfSizeX, sceneZ - halfSizeZ);
             const h10 = Model.sampleHeightMap(heightMap, sceneX + halfSizeX, sceneZ - halfSizeZ);
@@ -560,13 +570,13 @@ export class Model extends Entity {
 
             const angleFactor = 2048.0 / (2.0 * Math.PI);
             if (sizeZ !== 0) {
-                const pitch = (Math.atan2(minTop - minBottom, sizeZ) * angleFactor) & 0x7ff;
+                const pitch = toI32(Math.atan2(minTop - minBottom, sizeZ) * angleFactor) & 0x7ff;
                 if (pitch !== 0) {
                     model.rotateX(pitch);
                 }
             }
             if (sizeX !== 0) {
-                const roll = (Math.atan2(minLeft - minRight, sizeX) * angleFactor) & 0x7ff;
+                const roll = toI32(Math.atan2(minLeft - minRight, sizeX) * angleFactor) & 0x7ff;
                 if (roll !== 0) {
                     model.rotateZ(roll);
                 }
@@ -597,10 +607,13 @@ export class Model extends Entity {
                 const rz = vz & 0x7f;
                 const tx = vx >> 7;
                 const tz = vz >> 7;
-                const h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                const h1 =
-                    (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                const h0 = h0Numerator >> 7;
+                const h1Numerator =
+                    heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                const h1 = h1Numerator >> 7;
+                const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                const height = heightNumerator >> 7;
                 model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight;
             }
             for (let i = model.usedVertexCount; i < model.verticesCount; i++) {
@@ -616,10 +629,13 @@ export class Model extends Entity {
                     tz >= 0 &&
                     tz < heightMap[0].length - 1
                 ) {
-                    const h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                    const h1 =
-                        (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                    const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                    const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                    const h0 = h0Numerator >> 7;
+                    const h1Numerator =
+                        heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                    const h1 = h1Numerator >> 7;
+                    const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                    const height = heightNumerator >> 7;
                     model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight;
                 } else {
                     model.contourVerticesY[i] = this.verticesY[i];
@@ -627,7 +643,8 @@ export class Model extends Entity {
             }
         } else if (type === ContourGroundType.WarpToTerrainFadeByVertexHeight) {
             for (let i = 0; i < model.usedVertexCount; i++) {
-                const yRatio = ((this.verticesY[i] << 16) / this.minY) | 0;
+                const yRatioNumeratorQ16 = this.verticesY[i] << 16;
+                const yRatio = toI32(yRatioNumeratorQ16 / this.minY);
                 if (yRatio < param) {
                     const vx = this.verticesX[i] + sceneX;
                     const vz = this.verticesZ[i] + sceneZ;
@@ -635,10 +652,13 @@ export class Model extends Entity {
                     const rz = vz & 0x7f;
                     const tx = vx >> 7;
                     const tz = vz >> 7;
-                    const h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                    const h1 =
-                        (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                    const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                    const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                    const h0 = h0Numerator >> 7;
+                    const h1Numerator =
+                        heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                    const h1 = h1Numerator >> 7;
+                    const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                    const height = heightNumerator >> 7;
                     model.contourVerticesY[i] =
                         this.verticesY[i] + ((height - sceneHeight) * (param - yRatio)) / param;
                 } else {
@@ -646,7 +666,8 @@ export class Model extends Entity {
                 }
             }
             for (let i = model.usedVertexCount; i < model.verticesCount; i++) {
-                const yRatio = ((this.verticesY[i] << 16) / this.minY) | 0;
+                const yRatioNumeratorQ16 = this.verticesY[i] << 16;
+                const yRatio = toI32(yRatioNumeratorQ16 / this.minY);
                 if (yRatio < param) {
                     const vx = this.verticesX[i] + sceneX;
                     const vz = this.verticesZ[i] + sceneZ;
@@ -660,12 +681,14 @@ export class Model extends Entity {
                         tz >= 0 &&
                         tz < heightMap[0].length - 1
                     ) {
-                        const h0 =
-                            (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                        const h1 =
-                            (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >>
-                            7;
-                        const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                        const h0Numerator =
+                            heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                        const h0 = h0Numerator >> 7;
+                        const h1Numerator =
+                            heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                        const h1 = h1Numerator >> 7;
+                        const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                        const height = heightNumerator >> 7;
                         model.contourVerticesY[i] =
                             this.verticesY[i] + ((height - sceneHeight) * (param - yRatio)) / param;
                     }
@@ -685,13 +708,14 @@ export class Model extends Entity {
                 const rz = vz & 0x7f;
                 const tx = vx >> 7;
                 const tz = vz >> 7;
-                const h0 =
-                    (heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx) >> 7;
-                const h1 =
-                    (heightMapAbove[tx][tz + 1] * (128 - rx) +
-                        heightMapAbove[tx + 1][tz + 1] * rx) >>
-                    7;
-                const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                const h0Numerator =
+                    heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx;
+                const h0 = h0Numerator >> 7;
+                const h1Numerator =
+                    heightMapAbove[tx][tz + 1] * (128 - rx) + heightMapAbove[tx + 1][tz + 1] * rx;
+                const h1 = h1Numerator >> 7;
+                const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                const height = heightNumerator >> 7;
                 model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight + deltaY;
             }
         } else if (type === ContourGroundType.WarpBetweenPlanes) {
@@ -706,20 +730,29 @@ export class Model extends Entity {
                 const rz = vz & 0x7f;
                 const tx = vx >> 7;
                 const tz = vz >> 7;
-                let h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                let h1 = (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                const height = (h0 * (128 - rz) + h1 * rz) >> 7;
-                h0 = (heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx) >> 7;
-                h1 =
-                    (heightMapAbove[tx][tz + 1] * (128 - rx) +
-                        heightMapAbove[tx + 1][tz + 1] * rx) >>
-                    7;
-                const heightAbove = (h0 * (128 - rz) + h1 * rz) >> 7;
+                const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                const h0 = h0Numerator >> 7;
+                const h1Numerator =
+                    heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                const h1 = h1Numerator >> 7;
+                const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                const height = heightNumerator >> 7;
+
+                const h0AboveNumerator =
+                    heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx;
+                const h0Above = h0AboveNumerator >> 7;
+                const h1AboveNumerator =
+                    heightMapAbove[tx][tz + 1] * (128 - rx) + heightMapAbove[tx + 1][tz + 1] * rx;
+                const h1Above = h1AboveNumerator >> 7;
+                const heightAboveNumerator = h0Above * (128 - rz) + h1Above * rz;
+                const heightAbove = heightAboveNumerator >> 7;
                 const deltaHeight = height - heightAbove;
 
-                model.contourVerticesY[i] =
-                    (((((this.verticesY[i] << 8) / deltaY) | 0) * deltaHeight) >> 8) -
-                    (sceneHeight - height);
+                const yScaleNumeratorQ8 = this.verticesY[i] << 8;
+                const yScale = toI32(yScaleNumeratorQ8 / deltaY);
+                const yOffsetNumerator = toI32(yScale * deltaHeight);
+                const yOffset = yOffsetNumerator >> 8;
+                model.contourVerticesY[i] = yOffset - (sceneHeight - height);
             }
         }
 
@@ -740,12 +773,13 @@ export class Model extends Entity {
         }
         const rx = x & 0x7f;
         const rz = z & 0x7f;
-        const h0 =
-            (heightMap[tileX][tileZ] * (128 - rx) + heightMap[tileX + 1][tileZ] * rx) >> 7;
-        const h1 =
-            (heightMap[tileX][tileZ + 1] * (128 - rx) + heightMap[tileX + 1][tileZ + 1] * rx) >>
-            7;
-        return (h0 * (128 - rz) + h1 * rz) >> 7;
+        const h0Numerator = heightMap[tileX][tileZ] * (128 - rx) + heightMap[tileX + 1][tileZ] * rx;
+        const h0 = h0Numerator >> 7;
+        const h1Numerator =
+            heightMap[tileX][tileZ + 1] * (128 - rx) + heightMap[tileX + 1][tileZ + 1] * rx;
+        const h1 = h1Numerator >> 7;
+        const heightNumerator = h0 * (128 - rz) + h1 * rz;
+        return heightNumerator >> 7;
     }
 
     rotate90(): void {
@@ -782,8 +816,10 @@ export class Model extends Entity {
         const cos = COSINE[angle];
 
         for (let i = 0; i < this.verticesCount; i++) {
-            const temp = (sin * this.verticesZ[i] + cos * this.verticesX[i]) >> 16;
-            this.verticesZ[i] = (cos * this.verticesZ[i] - sin * this.verticesX[i]) >> 16;
+            const tempNumerator = toI32(sin * this.verticesZ[i] + cos * this.verticesX[i]);
+            const temp = tempNumerator >> 16;
+            const zNumerator = toI32(cos * this.verticesZ[i] - sin * this.verticesX[i]);
+            this.verticesZ[i] = zNumerator >> 16;
             this.verticesX[i] = temp;
         }
 
@@ -806,8 +842,10 @@ export class Model extends Entity {
         for (let i = 0; i < this.verticesCount; i++) {
             const y = this.verticesY[i];
             const z = this.verticesZ[i];
-            this.verticesY[i] = (y * cos - z * sin) >> 16;
-            this.verticesZ[i] = (y * sin + z * cos) >> 16;
+            const yNumerator = toI32(y * cos - z * sin);
+            this.verticesY[i] = yNumerator >> 16;
+            const zNumerator = toI32(y * sin + z * cos);
+            this.verticesZ[i] = zNumerator >> 16;
         }
         this.invalidateBounds();
     }
@@ -818,17 +856,19 @@ export class Model extends Entity {
         for (let i = 0; i < this.verticesCount; i++) {
             const x = this.verticesX[i];
             const y = this.verticesY[i];
-            this.verticesX[i] = (x * cos - y * sin) >> 16;
-            this.verticesY[i] = (x * sin + y * cos) >> 16;
+            const xNumerator = toI32(x * cos - y * sin);
+            this.verticesX[i] = xNumerator >> 16;
+            const yNumerator = toI32(x * sin + y * cos);
+            this.verticesY[i] = yNumerator >> 16;
         }
         this.invalidateBounds();
     }
 
     scale(x: number, y: number, z: number): void {
         for (let i = 0; i < this.verticesCount; i++) {
-            this.verticesX[i] = ((this.verticesX[i] * x) / 128) | 0;
-            this.verticesY[i] = ((this.verticesY[i] * y) / 128) | 0;
-            this.verticesZ[i] = ((this.verticesZ[i] * z) / 128) | 0;
+            this.verticesX[i] = toI32((this.verticesX[i] * x) / 128);
+            this.verticesY[i] = toI32((this.verticesY[i] * y) / 128);
+            this.verticesZ[i] = toI32((this.verticesZ[i] * z) / 128);
         }
 
         this.invalidateBounds();
@@ -974,9 +1014,9 @@ export class Model extends Entity {
                 }
 
                 if (groupVertexCount > 0) {
-                    this.animateOriginX = tx + ((this.animateOriginX / groupVertexCount) | 0);
-                    this.animateOriginY = ty + ((this.animateOriginY / groupVertexCount) | 0);
-                    this.animateOriginZ = tz + ((this.animateOriginZ / groupVertexCount) | 0);
+                    this.animateOriginX = tx + Math.trunc(this.animateOriginX / groupVertexCount);
+                    this.animateOriginY = ty + Math.trunc(this.animateOriginY / groupVertexCount);
+                    this.animateOriginZ = tz + Math.trunc(this.animateOriginZ / groupVertexCount);
                 } else {
                     this.animateOriginX = tx;
                     this.animateOriginY = ty;
@@ -1014,10 +1054,14 @@ export class Model extends Entity {
                             if (angleZ !== 0) {
                                 const sin = SINE[angleZ];
                                 const cos = COSINE[angleZ];
-                                const temp =
-                                    (sin * this.verticesY[v] + cos * this.verticesX[v]) >> 16;
-                                this.verticesY[v] =
-                                    (cos * this.verticesY[v] - sin * this.verticesX[v]) >> 16;
+                                const tempNumerator = toI32(
+                                    sin * this.verticesY[v] + cos * this.verticesX[v],
+                                );
+                                const temp = tempNumerator >> 16;
+                                const yNumerator = toI32(
+                                    cos * this.verticesY[v] - sin * this.verticesX[v],
+                                );
+                                this.verticesY[v] = yNumerator >> 16;
                                 this.verticesX[v] = temp;
                             }
 
@@ -1025,10 +1069,14 @@ export class Model extends Entity {
                             if (angleX !== 0) {
                                 const sin = SINE[angleX];
                                 const cos = COSINE[angleX];
-                                const temp =
-                                    (cos * this.verticesY[v] - sin * this.verticesZ[v]) >> 16;
-                                this.verticesZ[v] =
-                                    (sin * this.verticesY[v] + cos * this.verticesZ[v]) >> 16;
+                                const tempNumerator = toI32(
+                                    cos * this.verticesY[v] - sin * this.verticesZ[v],
+                                );
+                                const temp = tempNumerator >> 16;
+                                const zNumerator = toI32(
+                                    sin * this.verticesY[v] + cos * this.verticesZ[v],
+                                );
+                                this.verticesZ[v] = zNumerator >> 16;
                                 this.verticesY[v] = temp;
                             }
 
@@ -1036,10 +1084,14 @@ export class Model extends Entity {
                             if (angleY !== 0) {
                                 const sin = SINE[angleY];
                                 const cos = COSINE[angleY];
-                                const temp =
-                                    (sin * this.verticesZ[v] + cos * this.verticesX[v]) >> 16;
-                                this.verticesZ[v] =
-                                    (cos * this.verticesZ[v] - sin * this.verticesX[v]) >> 16;
+                                const tempNumerator = toI32(
+                                    sin * this.verticesZ[v] + cos * this.verticesX[v],
+                                );
+                                const temp = tempNumerator >> 16;
+                                const zNumerator = toI32(
+                                    cos * this.verticesZ[v] - sin * this.verticesX[v],
+                                );
+                                this.verticesZ[v] = zNumerator >> 16;
                                 this.verticesX[v] = temp;
                             }
 
@@ -1058,9 +1110,9 @@ export class Model extends Entity {
                             this.verticesY[v] -= this.animateOriginY;
                             this.verticesZ[v] -= this.animateOriginZ;
 
-                            this.verticesX[v] = ((tx * this.verticesX[v]) / 128) | 0;
-                            this.verticesY[v] = ((ty * this.verticesY[v]) / 128) | 0;
-                            this.verticesZ[v] = ((tz * this.verticesZ[v]) / 128) | 0;
+                            this.verticesX[v] = toI32((tx * this.verticesX[v]) / 128);
+                            this.verticesY[v] = toI32((ty * this.verticesY[v]) / 128);
+                            this.verticesZ[v] = toI32((tz * this.verticesZ[v]) / 128);
 
                             this.verticesX[v] += this.animateOriginX;
                             this.verticesY[v] += this.animateOriginY;
@@ -1101,7 +1153,8 @@ export class Model extends Entity {
                         let hue = (color >> 10) & 0x3f;
                         let saturation = (color >> 7) & 0x7;
                         let lightness = color & 0x7f;
-                        hue = (hue + tx) & 0x3f;
+                        const hueSum = hue + tx;
+                        hue = hueSum & 0x3f;
                         saturation += ty;
                         if (saturation < 0) {
                             saturation = 0;
@@ -1142,7 +1195,7 @@ export class Model extends Entity {
             return;
         }
         for (let v = 0; v < this.verticesCount; v++) {
-                const group = this.animMayaGroups[v];
+            const group = this.animMayaGroups[v];
             if (group && group.length !== 0) {
                 const scalings = this.animMayaScales[v];
 

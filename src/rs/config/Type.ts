@@ -1,7 +1,7 @@
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheType, detectCacheType } from "../cache/CacheType";
-import { ByteBuffer } from "../io/ByteBuffer";
 import { TypeDecodeError } from "../errors/TypeDecodeError";
+import { ByteBuffer } from "../io/ByteBuffer";
 
 export type ParamsMap = Map<number, number | string>;
 

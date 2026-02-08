@@ -1,11 +1,11 @@
+import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
-import { ByteBuffer } from "../../io/ByteBuffer";
 import { Archive } from "../../cache/format/Archive";
-import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
 import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
+import { ByteBuffer } from "../../io/ByteBuffer";
+import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
 import { SkeletalBase } from "../skeletal/SkeletalBase";
 import { SeqTransformType } from "./SeqTransformType";
-import { err, ok, Result } from "../../../util/Result";
 
 export class SeqBase {
     constructor(
@@ -35,22 +35,28 @@ export class LegacySeqBase {
         const baseCount = head.readUnsignedShort();
         const lastBaseId = head.readUnsignedShort();
 
-        const bases: SeqBase[] = new Array(lastBaseId + 1);
+        const bases: SeqBase[] = Array.from(
+            { length: lastBaseId + 1 },
+            () => undefined as unknown as SeqBase,
+        );
         for (let i = 0; i < baseCount; i++) {
             const id = head.readUnsignedShort();
             const count = head.readUnsignedByte();
 
             // const count = buf.readUnsignedByte();
-            const types: SeqTransformType[] = new Array(count);
-            const transformActor: boolean[] = new Array(count).fill(true);
+            const types: SeqTransformType[] = Array.from(
+                { length: count },
+                () => 0 as SeqTransformType,
+            );
+            const transformActor: boolean[] = Array.from({ length: count }, () => true);
             const masks = new Uint16Array(count).fill(-1);
-            const labels: number[][] = new Array(count);
+            const labels: number[][] = Array.from({ length: count }, () => []);
 
             for (let j = 0; j < count; j++) {
                 types[j] = type.readUnsignedByte();
 
                 const subCount = label.readUnsignedByte();
-                labels[j] = new Array(subCount);
+                labels[j] = Array.from({ length: subCount }, () => 0);
                 for (let l = 0; l < subCount; l++) {
                     labels[j][l] = label.readUnsignedByte();
                 }
@@ -70,10 +76,13 @@ export class LegacySeqBase {
 export class DatSeqBase {
     static load(buf: ByteBuffer): SeqBase {
         const count = buf.readUnsignedByte();
-        const types: SeqTransformType[] = new Array(count);
-        const transformActor: boolean[] = new Array(count).fill(true);
+        const types: SeqTransformType[] = Array.from(
+            { length: count },
+            () => 0 as SeqTransformType,
+        );
+        const transformActor: boolean[] = Array.from({ length: count }, () => true);
         const masks = new Uint16Array(count).fill(-1);
-        const labels: number[][] = new Array(count);
+        const labels: number[][] = Array.from({ length: count }, () => []);
 
         for (let i = 0; i < count; i++) {
             types[i] = buf.readUnsignedByte();
@@ -81,7 +90,7 @@ export class DatSeqBase {
 
         for (let i = 0; i < count; i++) {
             const subCount = buf.readUnsignedByte();
-            labels[i] = new Array(subCount);
+            labels[i] = Array.from({ length: subCount }, () => 0);
             for (let l = 0; l < subCount; l++) {
                 labels[i][l] = buf.readUnsignedByte();
             }
@@ -95,10 +104,13 @@ export class Dat2SeqBase {
     static load(cacheInfo: CacheInfo, id: number, data: Uint8Array): SeqBase {
         const buf = new ByteBuffer(data);
         const count = buf.readUnsignedByte();
-        const types: SeqTransformType[] = new Array(count);
-        const transformActor: boolean[] = new Array(count).fill(false);
+        const types: SeqTransformType[] = Array.from(
+            { length: count },
+            () => 0 as SeqTransformType,
+        );
+        const transformActor: boolean[] = Array.from({ length: count }, () => false);
         const masks = new Uint16Array(count);
-        const labels: number[][] = new Array(count);
+        const labels: number[][] = Array.from({ length: count }, () => []);
 
         for (let i = 0; i < count; i++) {
             types[i] = buf.readUnsignedByte();
@@ -124,7 +136,7 @@ export class Dat2SeqBase {
         }
 
         for (let i = 0; i < count; i++) {
-            labels[i] = new Array(buf.readUnsignedByte());
+            labels[i] = Array.from({ length: buf.readUnsignedByte() }, () => 0);
         }
 
         for (let i = 0; i < count; i++) {
@@ -148,7 +160,11 @@ export class Dat2SeqBase {
         return result.ok ? result.value : undefined;
     }
 
-    static tryLoadResult(cacheInfo: CacheInfo, id: number, data: Uint8Array): Result<SeqBase, DecodeError> {
+    static tryLoadResult(
+        cacheInfo: CacheInfo,
+        id: number,
+        data: Uint8Array,
+    ): Result<SeqBase, DecodeError> {
         try {
             return ok(Dat2SeqBase.load(cacheInfo, id, data));
         } catch (cause) {

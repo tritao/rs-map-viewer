@@ -27,4 +27,3 @@ export function rotrU32(x: u32, bits: number): u32 {
     const s = bits & 31;
     return ((x >>> s) | (x << (32 - s))) >>> 0;
 }
-

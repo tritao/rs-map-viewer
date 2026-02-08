@@ -18,29 +18,18 @@ export class ProceduralTexture {
     constructor(buffer: ByteBuffer, hasAlphaOperation: boolean) {
         const operationCount = buffer.readUnsignedByte();
         // console.log("op count", operationCount);
-        let spriteDepCount = 0;
-        let textureDepCount = 0;
-        const inputConnections = new Array<number[]>(operationCount);
-        this.operations = new Array(operationCount);
+        const operations: TextureOperation[] = [];
+        const inputConnections: number[][] = [];
         for (let op = 0; op < operationCount; op++) {
             const operation = TextureOperationFactory.create(buffer);
-            if (operation.getSpriteId() >= 0) {
-                spriteDepCount++;
-            }
-            if (operation.getTextureId() >= 0) {
-                textureDepCount++;
-            }
             const inputCount = operation.inputs.length;
-            inputConnections[op] = new Array(inputCount);
-            for (let i = 0; i < inputCount; i++) {
-                inputConnections[op][i] = buffer.readUnsignedByte();
-            }
-            this.operations[op] = operation;
+            const connections = Array.from({ length: inputCount }, () => buffer.readUnsignedByte());
+            operations.push(operation);
+            inputConnections.push(connections);
         }
-        this.spriteDependencies = new Array(spriteDepCount);
-        this.textureDependencies = new Array(textureDepCount);
-        let spriteDepIndex = 0;
-        let textureDepIndex = 0;
+        this.operations = operations;
+        const spriteDependencies: number[] = [];
+        const textureDependencies: number[] = [];
         for (let op = 0; op < operationCount; op++) {
             const operation = this.operations[op];
             const inputCount = operation.inputs.length;
@@ -50,13 +39,14 @@ export class ProceduralTexture {
             const spriteId = operation.getSpriteId();
             const textureId = operation.getTextureId();
             if (spriteId >= 0) {
-                this.spriteDependencies[spriteDepIndex++] = spriteId;
+                spriteDependencies.push(spriteId);
             }
             if (textureId >= 0) {
-                this.textureDependencies[textureDepIndex++] = textureId;
+                textureDependencies.push(textureId);
             }
-            delete inputConnections[op];
         }
+        this.spriteDependencies = spriteDependencies;
+        this.textureDependencies = textureDependencies;
         this.colourOperation = this.operations[buffer.readUnsignedByte()];
         if (hasAlphaOperation) {
             this.alphaOperation = this.operations[buffer.readUnsignedByte()];
@@ -254,7 +244,7 @@ export class ProceduralTexture {
                     textureGenerator.isTransparent = true;
                 }
 
-                const argb = (a * 0x1000000 + r * 0x10000 + g * 0x100 + b) | 0;
+                const argb = a * 0x1000000 + r * 0x10000 + g * 0x100 + b;
 
                 pixels[dstIdx++] = argb;
                 if (flipV) {

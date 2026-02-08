@@ -10,14 +10,14 @@ export abstract class TextureOperation {
     cacheSlotCount: number = 0;
     isMonochrome: boolean;
 
-    inputs: TextureOperation[];
+    inputs: (TextureOperation | undefined)[];
 
     monochromeImageCache?: MonochromeImageCache;
     colourImageCache?: ColourImageCache;
 
     constructor(inputCount: number, isMonochrome: boolean) {
         this.isMonochrome = isMonochrome;
-        this.inputs = new Array(inputCount);
+        this.inputs = Array.from({ length: inputCount }, () => undefined);
     }
 
     decode(field: number, buffer: ByteBuffer): void {}
@@ -59,21 +59,34 @@ export abstract class TextureOperation {
         inputIndex: number,
         line: number,
     ): Int32Array {
-        if (this.inputs[inputIndex].isMonochrome) {
-            return this.inputs[inputIndex].getMonochromeOutput(textureGenerator, line);
+        const input = this.inputs[inputIndex];
+        if (!input) {
+            throw new Error(`TextureOperation: missing input at index=${inputIndex}`);
         }
-        return this.inputs[inputIndex].getColourOutput(textureGenerator, line)[0];
+        if (input.isMonochrome) {
+            return input.getMonochromeOutput(textureGenerator, line);
+        }
+        return input.getColourOutput(textureGenerator, line)[0];
     }
 
-    getColourInput(textureGenerator: TextureGenerator, inputIndex: number, line: number): Int32Array[] {
-        if (this.inputs[inputIndex].isMonochrome) {
-            const monochromeOutputs = this.inputs[inputIndex].getMonochromeOutput(
-                textureGenerator,
-                line,
-            );
-            const colourOutputs = new Array<Int32Array>(3).fill(monochromeOutputs);
+    getColourInput(
+        textureGenerator: TextureGenerator,
+        inputIndex: number,
+        line: number,
+    ): Int32Array[] {
+        const input = this.inputs[inputIndex];
+        if (!input) {
+            throw new Error(`TextureOperation: missing input at index=${inputIndex}`);
+        }
+        if (input.isMonochrome) {
+            const monochromeOutputs = input.getMonochromeOutput(textureGenerator, line);
+            const colourOutputs: Int32Array[] = [
+                monochromeOutputs,
+                monochromeOutputs,
+                monochromeOutputs,
+            ];
             return colourOutputs;
         }
-        return this.inputs[inputIndex].getColourOutput(textureGenerator, line);
+        return input.getColourOutput(textureGenerator, line);
     }
 }

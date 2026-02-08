@@ -4,12 +4,16 @@ export enum GameType {
     Oldschool,
 }
 
-export function getGameTypeName(gameType: GameType): String {
-    switch(gameType) {
-    case GameType.Classic: return "classic"
-    case GameType.Runescape: return "runescape"
-    case GameType.Oldschool: return "oldschool"
-    default: throw Error("Unknown game type");
+export function getGameTypeName(gameType: GameType): string {
+    switch (gameType) {
+        case GameType.Classic:
+            return "classic";
+        case GameType.Runescape:
+            return "runescape";
+        case GameType.Oldschool:
+            return "oldschool";
+        default:
+            throw new Error("Unknown game type");
     }
 }
 
@@ -42,13 +46,10 @@ export function sortCachesNewToOld(caches: Array<CacheInfo>): void {
         const isOsrsB = b.game === GameType.Oldschool;
         const isLiveA = a.environment === "live";
         const isLiveB = b.environment === "live";
-        const dateA = Date.parse(a.timestamp);
-        const dateB = Date.parse(b.timestamp);
         return (
-            <i32>((isOsrsB ? 1 : 0) - (isOsrsA ? 1 : 0)) ||
-            <i32>((isLiveB ? 1 : 0) - (isLiveA ? 1 : 0)) ||
-            <i32>(b.revision - a.revision)
-            //|| dateB - dateA
+            (isOsrsB ? 1 : 0) - (isOsrsA ? 1 : 0) ||
+            (isLiveB ? 1 : 0) - (isLiveA ? 1 : 0) ||
+            b.revision - a.revision
         );
     });
 }

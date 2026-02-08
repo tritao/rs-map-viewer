@@ -1,13 +1,17 @@
 import { COSINE, SINE } from "../MathConstants";
-import { ByteBuffer } from "../io/ByteBuffer";
 import { Entity } from "../core/Entity";
+import { ByteBuffer } from "../io/ByteBuffer";
 import { TextureLoader } from "../texture/TextureLoader";
-import { FaceNormal } from "./FaceNormal";
+import { toI32 } from "../util/U32";
 import { ContourGroundType } from "./ContourGroundType";
+import { FaceNormal } from "./FaceNormal";
 import { Model } from "./Model";
+import { decodeLegacyModelDataInto } from "./ModelDataLegacyDecode";
 import { LegacyModelLoader, LegacyModelMetadata } from "./ModelLoader";
 import { computeTextureCoords } from "./TextureMapper";
 import { VertexNormal } from "./VertexNormal";
+
+const EMPTY_INT32_ARRAY: Int32Array = new Int32Array(0);
 
 export function isModelData(entity: Entity | null | undefined): entity is ModelData {
     return !!entity && entity.canMergeNormals();
@@ -164,7 +168,8 @@ export class ModelData extends Entity {
 
     // TODO: replace with the one from ColorUtil
     static adjustLightness(hsl: number, lightness: number): number {
-        lightness = ((hsl & 127) * lightness) >> 7;
+        const lightnessNumerator = (hsl & 127) * lightness;
+        lightness = lightnessNumerator >> 7;
         if (lightness < 2) {
             lightness = 2;
         } else if (lightness > 126) {
@@ -180,7 +185,7 @@ export class ModelData extends Entity {
         } else if (lightness > 126) {
             lightness = 126;
         }
-        return lightness | 0;
+        return Math.trunc(lightness);
     }
 
     static mergeNormals(
@@ -243,10 +248,16 @@ export class ModelData extends Entity {
                 }
 
                 if (!model0.mergedNormals) {
-                    model0.mergedNormals = new Array(model0.usedVertexCount);
+                    model0.mergedNormals = Array.from(
+                        { length: model0.usedVertexCount },
+                        () => undefined as unknown as VertexNormal,
+                    );
                 }
                 if (!model1.mergedNormals) {
-                    model1.mergedNormals = new Array(model1.usedVertexCount);
+                    model1.mergedNormals = Array.from(
+                        { length: model1.usedVertexCount },
+                        () => undefined as unknown as VertexNormal,
+                    );
                 }
 
                 let mergedNormal0 = model0.mergedNormals[v0];
@@ -414,8 +425,14 @@ export class ModelData extends Entity {
         }
 
         if (hasMayaGroups) {
-            this.animMayaGroups = new Array(this.verticesCount);
-            this.animMayaScales = new Array(this.verticesCount);
+            this.animMayaGroups = Array.from(
+                { length: this.verticesCount },
+                () => EMPTY_INT32_ARRAY,
+            );
+            this.animMayaScales = Array.from(
+                { length: this.verticesCount },
+                () => EMPTY_INT32_ARRAY,
+            );
         }
 
         this.faceColors = new Uint16Array(this.faceCount);
@@ -729,8 +746,8 @@ export class ModelData extends Entity {
         }
 
         if (hasMayaGroups === 1) {
-            this.animMayaGroups = new Array(vertexCount);
-            this.animMayaScales = new Array(vertexCount);
+            this.animMayaGroups = Array.from({ length: vertexCount }, () => EMPTY_INT32_ARRAY);
+            this.animMayaScales = Array.from({ length: vertexCount }, () => EMPTY_INT32_ARRAY);
         }
 
         this.faceColors = new Uint16Array(faceCount);
@@ -1016,8 +1033,8 @@ export class ModelData extends Entity {
         }
 
         if (hasMayaGroups === 1) {
-            this.animMayaGroups = new Array(vertexCount);
-            this.animMayaScales = new Array(vertexCount);
+            this.animMayaGroups = Array.from({ length: vertexCount }, () => EMPTY_INT32_ARRAY);
+            this.animMayaScales = Array.from({ length: vertexCount }, () => EMPTY_INT32_ARRAY);
         }
 
         this.faceColors = new Uint16Array(faceCount);
@@ -1958,241 +1975,7 @@ export class ModelData extends Entity {
     }
 
     decodeLegacy(loader: LegacyModelLoader, meta: LegacyModelMetadata) {
-        let hasRenderType = false;
-        let isTextured = false;
-
-        this.verticesCount = meta.vertexCount;
-        this.faceCount = meta.triangleCount;
-        this.textureFaceCount = meta.texturedTriangleCount;
-        this.verticesX = new Int32Array(this.verticesCount);
-        this.verticesY = new Int32Array(this.verticesCount);
-        this.verticesZ = new Int32Array(this.verticesCount);
-        this.indices1 = new Int32Array(this.faceCount);
-        this.indices2 = new Int32Array(this.faceCount);
-        this.indices3 = new Int32Array(this.faceCount);
-        if (this.textureFaceCount > 0) {
-            this.textureRenderTypes = new Int8Array(this.textureFaceCount);
-            this.textureMappingP = new Int16Array(this.textureFaceCount);
-            this.textureMappingM = new Int16Array(this.textureFaceCount);
-            this.textureMappingN = new Int16Array(this.textureFaceCount);
-        }
-
-        if (meta.vertexLabelsOffset >= 0) {
-            this.vertexSkins = new Int32Array(this.verticesCount);
-        }
-
-        if (meta.faceInfosOffset >= 0) {
-            this.faceRenderTypes = new Int8Array(this.faceCount);
-            this.textureCoords = new Int8Array(this.faceCount);
-            this.faceTextures = new Int16Array(this.faceCount);
-        }
-
-        if (meta.facePrioritiesOffset >= 0) {
-            this.faceRenderPriorities = new Int8Array(this.faceCount);
-        } else {
-            this.priority = -meta.facePrioritiesOffset - 1;
-        }
-
-        if (meta.faceAlphasOffset >= 0) {
-            this.faceAlphas = new Int8Array(this.faceCount);
-        }
-
-        if (meta.faceLabelsOffset >= 0) {
-            this.faceSkins = new Int32Array(this.faceCount);
-        }
-
-        this.faceColors = new Uint16Array(this.faceCount);
-
-        loader.point1.offset = meta.vertexFlagsOffset;
-        loader.point2.offset = meta.vertexXOffset;
-        loader.point3.offset = meta.vertexYOffset;
-        loader.point4.offset = meta.vertexZOffset;
-        loader.point5.offset = meta.vertexLabelsOffset;
-
-        let lastVertX = 0;
-        let lastVertY = 0;
-        let lastVertZ = 0;
-
-        for (let i = 0; i < this.verticesCount; i++) {
-            const flag = loader.point1.readUnsignedByte();
-            let deltaVertX = 0;
-            if ((flag & 0x1) !== 0) {
-                deltaVertX = loader.point2.readSmart2();
-            }
-
-            let deltaVertY = 0;
-            if ((flag & 0x2) !== 0) {
-                deltaVertY = loader.point3.readSmart2();
-            }
-
-            let deltaVertZ = 0;
-            if ((flag & 0x4) !== 0) {
-                deltaVertZ = loader.point4.readSmart2();
-            }
-
-            this.verticesX[i] = lastVertX + deltaVertX;
-            this.verticesY[i] = lastVertY + deltaVertY;
-            this.verticesZ[i] = lastVertZ + deltaVertZ;
-            lastVertX = this.verticesX[i];
-            lastVertY = this.verticesY[i];
-            lastVertZ = this.verticesZ[i];
-            if (this.vertexSkins) {
-                this.vertexSkins[i] = loader.point5.readUnsignedByte();
-            }
-        }
-
-        loader.face1.offset = meta.faceColorsOffset;
-        loader.face2.offset = meta.faceInfosOffset;
-        loader.face3.offset = meta.facePrioritiesOffset;
-        loader.face4.offset = meta.faceAlphasOffset;
-        loader.face5.offset = meta.faceLabelsOffset;
-
-        for (let i = 0; i < this.faceCount; i++) {
-            this.faceColors[i] = loader.face1.readUnsignedShort();
-            if (this.faceRenderTypes && this.textureCoords && this.faceTextures) {
-                const flag = loader.face2.readUnsignedByte();
-                if ((flag & 0x1) === 1) {
-                    this.faceRenderTypes[i] = 1;
-                    hasRenderType = true;
-                } else {
-                    this.faceRenderTypes[i] = 0;
-                }
-
-                if ((flag & 0x2) === 2) {
-                    this.textureCoords[i] = flag >> 2;
-                    this.faceTextures[i] = this.faceColors[i];
-                    this.faceColors[i] = 127;
-                    if (this.faceTextures[i] !== -1) {
-                        isTextured = true;
-                    }
-                } else {
-                    this.textureCoords[i] = -1;
-                    this.faceTextures[i] = -1;
-                }
-            }
-
-            if (this.faceRenderPriorities) {
-                this.faceRenderPriorities[i] = loader.face3.readByte();
-            }
-
-            if (this.faceAlphas) {
-                this.faceAlphas[i] = loader.face4.readByte();
-            }
-
-            if (this.faceSkins) {
-                this.faceSkins[i] = loader.face5.readUnsignedByte();
-            }
-        }
-
-        loader.vertex1.offset = meta.faceVerticesOffset;
-        loader.vertex2.offset = meta.faceOrientationsOffset;
-
-        let index1 = 0;
-        let index2 = 0;
-        let index3 = 0;
-        let lastIndex = 0;
-
-        this.usedVertexCount = -1;
-        for (let i = 0; i < this.faceCount; i++) {
-            const type = loader.vertex2.readUnsignedByte();
-            if (type === 1) {
-                index1 = loader.vertex1.readSmart2() + lastIndex;
-                index2 = loader.vertex1.readSmart2() + index1;
-                index3 = loader.vertex1.readSmart2() + index2;
-                lastIndex = index3;
-                this.indices1[i] = index1;
-                this.indices2[i] = index2;
-                this.indices3[i] = index3;
-                if (index1 > this.usedVertexCount) {
-                    this.usedVertexCount = index1;
-                }
-                if (index2 > this.usedVertexCount) {
-                    this.usedVertexCount = index2;
-                }
-                if (index3 > this.usedVertexCount) {
-                    this.usedVertexCount = index3;
-                }
-            }
-
-            if (type === 2) {
-                index2 = index3;
-                index3 = loader.vertex1.readSmart2() + lastIndex;
-                lastIndex = index3;
-                this.indices1[i] = index1;
-                this.indices2[i] = index2;
-                this.indices3[i] = index3;
-                if (index3 > this.usedVertexCount) {
-                    this.usedVertexCount = index3;
-                }
-            }
-
-            if (type === 3) {
-                index1 = index3;
-                index3 = loader.vertex1.readSmart2() + lastIndex;
-                lastIndex = index3;
-                this.indices1[i] = index1;
-                this.indices2[i] = index2;
-                this.indices3[i] = index3;
-                if (index3 > this.usedVertexCount) {
-                    this.usedVertexCount = index3;
-                }
-            }
-
-            if (type === 4) {
-                const temp = index1;
-                index1 = index2;
-                index2 = temp;
-                index3 = loader.vertex1.readSmart2() + lastIndex;
-                lastIndex = index3;
-                this.indices1[i] = index1;
-                this.indices2[i] = temp;
-                this.indices3[i] = index3;
-                if (index3 > this.usedVertexCount) {
-                    this.usedVertexCount = index3;
-                }
-            }
-        }
-        this.usedVertexCount++;
-
-        loader.axis.offset = meta.faceTextureAxisOffset * 6;
-
-        for (let i = 0; i < this.textureFaceCount; i++) {
-            this.textureRenderTypes[i] = 0;
-            this.textureMappingP[i] = loader.axis.readUnsignedShort();
-            this.textureMappingM[i] = loader.axis.readUnsignedShort();
-            this.textureMappingN[i] = loader.axis.readUnsignedShort();
-        }
-
-        if (this.textureCoords) {
-            let hasValidTexFace = false;
-
-            for (let i = 0; i < this.faceCount; i++) {
-                const index = this.textureCoords[i] & 255;
-                if (index !== 255) {
-                    if (
-                        this.indices1[i] === (this.textureMappingP[index] & 0xffff) &&
-                        this.indices2[i] === (this.textureMappingM[index] & 0xffff) &&
-                        this.indices3[i] === (this.textureMappingN[index] & 0xffff)
-                    ) {
-                        this.textureCoords[i] = -1;
-                    } else {
-                        hasValidTexFace = true;
-                    }
-                }
-            }
-
-            if (!hasValidTexFace) {
-                this.textureCoords = undefined;
-            }
-        }
-
-        if (!isTextured) {
-            this.faceTextures = undefined;
-        }
-
-        if (!hasRenderType) {
-            this.faceRenderTypes = undefined;
-        }
+        decodeLegacyModelDataInto(this, loader, meta);
     }
 
     copyFrom(
@@ -2355,35 +2138,44 @@ export class ModelData extends Entity {
         let endX = sceneX + this.maxX;
         let startY = sceneZ + this.minZ;
         let endY = sceneZ + this.maxZ;
+        const endXPlus128 = endX + 128;
+        const endYPlus128 = endY + 128;
+        const endXTile = endXPlus128 >> 7;
+        const endYTile = endYPlus128 >> 7;
         if (
             (type === ContourGroundType.WarpToTerrain ||
                 type === ContourGroundType.WarpToTerrainFadeByVertexHeight ||
                 type === ContourGroundType.AlignToSlope ||
                 type === ContourGroundType.WarpBetweenPlanes) &&
             (startX < 0 ||
-                (endX + 128) >> 7 >= heightMap.length ||
+                endXTile >= heightMap.length ||
                 startY < 0 ||
-                (endY + 128) >> 7 >= heightMap[0].length)
+                endYTile >= heightMap[0].length)
         ) {
             return this;
         }
-        if (type === ContourGroundType.WarpToPlaneAbove || type === ContourGroundType.WarpBetweenPlanes) {
+        if (
+            type === ContourGroundType.WarpToPlaneAbove ||
+            type === ContourGroundType.WarpBetweenPlanes
+        ) {
             if (heightMapAbove === undefined) {
                 return this;
             }
             if (
                 startX < 0 ||
-                (endX + 128) >> 7 >= heightMapAbove.length ||
+                endXTile >= heightMapAbove.length ||
                 startY < 0 ||
-                (endY + 128) >> 7 >= heightMapAbove[0].length
+                endYTile >= heightMapAbove[0].length
             ) {
                 return this;
             }
         } else {
             startX >>= 7;
-            endX = (endX + 127) >> 7;
+            const endXPlus127 = endX + 127;
+            endX = endXPlus127 >> 7;
             startY >>= 7;
-            endY = (endY + 127) >> 7;
+            const endYPlus127 = endY + 127;
+            endY = endYPlus127 >> 7;
             if (
                 heightMap[startX][startY] === sceneHeight &&
                 heightMap[endX][startY] === sceneHeight &&
@@ -2441,13 +2233,29 @@ export class ModelData extends Entity {
             model.verticesZ = this.verticesZ.slice();
             model.contourVerticesY = undefined;
 
-            const halfSizeX = (sizeX / 2) | 0;
-            const halfSizeZ = (sizeZ / 2) | 0;
+            const halfSizeX = Math.trunc(sizeX / 2);
+            const halfSizeZ = Math.trunc(sizeZ / 2);
 
-            const h00 = ModelData.sampleHeightMap(heightMap, sceneX - halfSizeX, sceneZ - halfSizeZ);
-            const h10 = ModelData.sampleHeightMap(heightMap, sceneX + halfSizeX, sceneZ - halfSizeZ);
-            const h01 = ModelData.sampleHeightMap(heightMap, sceneX - halfSizeX, sceneZ + halfSizeZ);
-            const h11 = ModelData.sampleHeightMap(heightMap, sceneX + halfSizeX, sceneZ + halfSizeZ);
+            const h00 = ModelData.sampleHeightMap(
+                heightMap,
+                sceneX - halfSizeX,
+                sceneZ - halfSizeZ,
+            );
+            const h10 = ModelData.sampleHeightMap(
+                heightMap,
+                sceneX + halfSizeX,
+                sceneZ - halfSizeZ,
+            );
+            const h01 = ModelData.sampleHeightMap(
+                heightMap,
+                sceneX - halfSizeX,
+                sceneZ + halfSizeZ,
+            );
+            const h11 = ModelData.sampleHeightMap(
+                heightMap,
+                sceneX + halfSizeX,
+                sceneZ + halfSizeZ,
+            );
 
             const minTop = Math.min(h00, h10);
             const minBottom = Math.min(h01, h11);
@@ -2456,13 +2264,13 @@ export class ModelData extends Entity {
 
             const angleFactor = 2048.0 / (2.0 * Math.PI);
             if (sizeZ !== 0) {
-                const pitch = (Math.atan2(minTop - minBottom, sizeZ) * angleFactor) & 0x7ff;
+                const pitch = toI32(Math.atan2(minTop - minBottom, sizeZ) * angleFactor) & 0x7ff;
                 if (pitch !== 0) {
                     model.rotateX(pitch);
                 }
             }
             if (sizeX !== 0) {
-                const roll = (Math.atan2(minLeft - minRight, sizeX) * angleFactor) & 0x7ff;
+                const roll = toI32(Math.atan2(minLeft - minRight, sizeX) * angleFactor) & 0x7ff;
                 if (roll !== 0) {
                     model.rotateZ(roll);
                 }
@@ -2490,10 +2298,13 @@ export class ModelData extends Entity {
                 const rz = vz & 0x7f;
                 const tx = vx >> 7;
                 const tz = vz >> 7;
-                const h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                const h1 =
-                    (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                const h0 = h0Numerator >> 7;
+                const h1Numerator =
+                    heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                const h1 = h1Numerator >> 7;
+                const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                const height = heightNumerator >> 7;
                 model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight;
             }
             for (let i = model.usedVertexCount; i < model.verticesCount; i++) {
@@ -2509,16 +2320,20 @@ export class ModelData extends Entity {
                     tz >= 0 &&
                     tz < heightMap[0].length - 1
                 ) {
-                    const h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                    const h1 =
-                        (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                    const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                    const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                    const h0 = h0Numerator >> 7;
+                    const h1Numerator =
+                        heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                    const h1 = h1Numerator >> 7;
+                    const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                    const height = heightNumerator >> 7;
                     model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight;
                 }
             }
         } else if (type === ContourGroundType.WarpToTerrainFadeByVertexHeight) {
             for (let i = 0; i < model.usedVertexCount; i++) {
-                const yRatio = ((this.verticesY[i] << 16) / -this.height) | 0;
+                const yRatioNumeratorQ16 = this.verticesY[i] << 16;
+                const yRatio = toI32(yRatioNumeratorQ16 / -this.height);
                 if (yRatio < param) {
                     const vx = this.verticesX[i] + sceneX;
                     const vz = this.verticesZ[i] + sceneZ;
@@ -2526,10 +2341,12 @@ export class ModelData extends Entity {
                     const rz = vz & 0x7f;
                     const tx = vx >> 7;
                     const tz = vz >> 7;
-                    const h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                    const h1 =
-                        (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                    const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                    const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                    const h0 = h0Numerator >> 7;
+                    const h1 = heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                    const h1Shifted = h1 >> 7;
+                    const heightNumerator = h0 * (128 - rz) + h1Shifted * rz;
+                    const height = heightNumerator >> 7;
                     model.contourVerticesY[i] =
                         this.verticesY[i] + ((height - sceneHeight) * (param - yRatio)) / param;
                 } else {
@@ -2537,7 +2354,8 @@ export class ModelData extends Entity {
                 }
             }
             for (let i = model.usedVertexCount; i < model.verticesCount; i++) {
-                const yRatio = ((this.verticesY[i] << 16) / -this.height) | 0;
+                const yRatioNumeratorQ16 = this.verticesY[i] << 16;
+                const yRatio = toI32(yRatioNumeratorQ16 / -this.height);
                 if (yRatio < param) {
                     const vx = this.verticesX[i] + sceneX;
                     const vz = this.verticesZ[i] + sceneZ;
@@ -2551,12 +2369,14 @@ export class ModelData extends Entity {
                         tz >= 0 &&
                         tz < heightMap[0].length - 1
                     ) {
-                        const h0 =
-                            (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
+                        const h0Numerator =
+                            heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                        const h0 = h0Numerator >> 7;
                         const h1 =
-                            (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >>
-                            7;
-                        const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                            heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                        const h1Shifted = h1 >> 7;
+                        const heightNumerator = h0 * (128 - rz) + h1Shifted * rz;
+                        const height = heightNumerator >> 7;
                         model.contourVerticesY[i] =
                             this.verticesY[i] + ((height - sceneHeight) * (param - yRatio)) / param;
                     }
@@ -2576,13 +2396,14 @@ export class ModelData extends Entity {
                 const rz = vz & 0x7f;
                 const tx = vx >> 7;
                 const tz = vz >> 7;
-                const h0 =
-                    (heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx) >> 7;
-                const h1 =
-                    (heightMapAbove[tx][tz + 1] * (128 - rx) +
-                        heightMapAbove[tx + 1][tz + 1] * rx) >>
-                    7;
-                const height = (h0 * (128 - rz) + h1 * rz) >> 7;
+                const h0Numerator =
+                    heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx;
+                const h0 = h0Numerator >> 7;
+                const h1Numerator =
+                    heightMapAbove[tx][tz + 1] * (128 - rx) + heightMapAbove[tx + 1][tz + 1] * rx;
+                const h1 = h1Numerator >> 7;
+                const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                const height = heightNumerator >> 7;
                 model.contourVerticesY[i] = this.verticesY[i] + height - sceneHeight + deltaY;
             }
         } else if (type === ContourGroundType.WarpBetweenPlanes) {
@@ -2597,20 +2418,29 @@ export class ModelData extends Entity {
                 const rz = vz & 0x7f;
                 const tx = vx >> 7;
                 const tz = vz >> 7;
-                let h0 = (heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx) >> 7;
-                let h1 = (heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx) >> 7;
-                const height = (h0 * (128 - rz) + h1 * rz) >> 7;
-                h0 = (heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx) >> 7;
-                h1 =
-                    (heightMapAbove[tx][tz + 1] * (128 - rx) +
-                        heightMapAbove[tx + 1][tz + 1] * rx) >>
-                    7;
-                const heightAbove = (h0 * (128 - rz) + h1 * rz) >> 7;
+                const h0Numerator = heightMap[tx][tz] * (128 - rx) + heightMap[tx + 1][tz] * rx;
+                const h0 = h0Numerator >> 7;
+                const h1Numerator =
+                    heightMap[tx][tz + 1] * (128 - rx) + heightMap[tx + 1][tz + 1] * rx;
+                const h1 = h1Numerator >> 7;
+                const heightNumerator = h0 * (128 - rz) + h1 * rz;
+                const height = heightNumerator >> 7;
+
+                const h0AboveNumerator =
+                    heightMapAbove[tx][tz] * (128 - rx) + heightMapAbove[tx + 1][tz] * rx;
+                const h0Above = h0AboveNumerator >> 7;
+                const h1AboveNumerator =
+                    heightMapAbove[tx][tz + 1] * (128 - rx) + heightMapAbove[tx + 1][tz + 1] * rx;
+                const h1Above = h1AboveNumerator >> 7;
+                const heightAboveNumerator = h0Above * (128 - rz) + h1Above * rz;
+                const heightAbove = heightAboveNumerator >> 7;
                 const deltaHeight = height - heightAbove;
 
-                model.contourVerticesY[i] =
-                    (((((this.verticesY[i] << 8) / deltaY) | 0) * deltaHeight) >> 8) -
-                    (sceneHeight - height);
+                const yScaleNumeratorQ8 = this.verticesY[i] << 8;
+                const yScale = toI32(yScaleNumeratorQ8 / deltaY);
+                const yOffsetNumerator = toI32(yScale * deltaHeight);
+                const yOffset = yOffsetNumerator >> 8;
+                model.contourVerticesY[i] = yOffset - (sceneHeight - height);
 
                 // there is something wrong with this calculation, possibly something to do with scaling down
                 // model.contourVerticesY[i] -= 13;
@@ -2635,18 +2465,19 @@ export class ModelData extends Entity {
         }
         const rx = x & 0x7f;
         const rz = z & 0x7f;
-        const h0 =
-            (heightMap[tileX][tileZ] * (128 - rx) + heightMap[tileX + 1][tileZ] * rx) >> 7;
-        const h1 =
-            (heightMap[tileX][tileZ + 1] * (128 - rx) + heightMap[tileX + 1][tileZ + 1] * rx) >>
-            7;
-        return (h0 * (128 - rz) + h1 * rz) >> 7;
+        const h0Numerator = heightMap[tileX][tileZ] * (128 - rx) + heightMap[tileX + 1][tileZ] * rx;
+        const h0 = h0Numerator >> 7;
+        const h1Numerator =
+            heightMap[tileX][tileZ + 1] * (128 - rx) + heightMap[tileX + 1][tileZ + 1] * rx;
+        const h1 = h1Numerator >> 7;
+        const heightNumerator = h0 * (128 - rz) + h1 * rz;
+        return heightNumerator >> 7;
     }
 
     computeAnimationTables(): void {
         let skin: number;
         if (this.vertexSkins) {
-            const labelCounts: number[] = new Array(256).fill(0);
+            const labelCounts = new Int32Array(256);
             let highestSkin = 0;
 
             const vertexCount = this.usedVertexCount;
@@ -2660,7 +2491,7 @@ export class ModelData extends Entity {
                 }
             }
 
-            this.vertexLabels = new Array(highestSkin + 1);
+            this.vertexLabels = Array.from({ length: highestSkin + 1 }, () => EMPTY_INT32_ARRAY);
 
             for (let i = 0; i <= highestSkin; i++) {
                 this.vertexLabels[i] = new Int32Array(labelCounts[i]);
@@ -2678,7 +2509,7 @@ export class ModelData extends Entity {
         }
 
         if (this.faceSkins) {
-            const labelCounts: number[] = new Array(256).fill(0);
+            const labelCounts = new Int32Array(256);
             let highestSkin = 0;
 
             for (let i = 0; i < this.faceCount; i++) {
@@ -2691,7 +2522,7 @@ export class ModelData extends Entity {
                 }
             }
 
-            this.faceLabels = new Array(highestSkin + 1);
+            this.faceLabels = Array.from({ length: highestSkin + 1 }, () => EMPTY_INT32_ARRAY);
 
             for (let i = 0; i <= highestSkin; i++) {
                 this.faceLabels[i] = new Int32Array(labelCounts[i]);
@@ -2743,8 +2574,10 @@ export class ModelData extends Entity {
         const cos = COSINE[angle];
 
         for (let i = 0; i < this.verticesCount; i++) {
-            const temp = (sin * this.verticesZ[i] + cos * this.verticesX[i]) >> 16;
-            this.verticesZ[i] = (cos * this.verticesZ[i] - sin * this.verticesX[i]) >> 16;
+            const tempNumerator = toI32(sin * this.verticesZ[i] + cos * this.verticesX[i]);
+            const temp = tempNumerator >> 16;
+            const zNumerator = toI32(cos * this.verticesZ[i] - sin * this.verticesX[i]);
+            this.verticesZ[i] = zNumerator >> 16;
             this.verticesX[i] = temp;
         }
 
@@ -2757,8 +2590,10 @@ export class ModelData extends Entity {
         for (let i = 0; i < this.verticesCount; i++) {
             const y = this.verticesY[i];
             const z = this.verticesZ[i];
-            this.verticesY[i] = (y * cos - z * sin) >> 16;
-            this.verticesZ[i] = (y * sin + z * cos) >> 16;
+            const yNumerator = toI32(y * cos - z * sin);
+            this.verticesY[i] = yNumerator >> 16;
+            const zNumerator = toI32(y * sin + z * cos);
+            this.verticesZ[i] = zNumerator >> 16;
         }
         this.invalidate();
     }
@@ -2769,8 +2604,10 @@ export class ModelData extends Entity {
         for (let i = 0; i < this.verticesCount; i++) {
             const x = this.verticesX[i];
             const y = this.verticesY[i];
-            this.verticesX[i] = (x * cos - y * sin) >> 16;
-            this.verticesY[i] = (x * sin + y * cos) >> 16;
+            const xNumerator = toI32(x * cos - y * sin);
+            this.verticesX[i] = xNumerator >> 16;
+            const yNumerator = toI32(x * sin + y * cos);
+            this.verticesY[i] = yNumerator >> 16;
         }
         this.invalidate();
     }
@@ -2819,9 +2656,9 @@ export class ModelData extends Entity {
 
     resize(resizeX: number, resizeY: number, resizeZ: number): void {
         for (let i = 0; i < this.verticesCount; i++) {
-            this.verticesX[i] = ((this.verticesX[i] * resizeX) / 128) | 0;
-            this.verticesY[i] = ((this.verticesY[i] * resizeY) / 128) | 0;
-            this.verticesZ[i] = ((this.verticesZ[i] * resizeZ) / 128) | 0;
+            this.verticesX[i] = toI32((this.verticesX[i] * resizeX) / 128);
+            this.verticesY[i] = toI32((this.verticesY[i] * resizeY) / 128);
+            this.verticesZ[i] = toI32((this.verticesZ[i] * resizeZ) / 128);
         }
 
         this.invalidate();
@@ -2829,11 +2666,7 @@ export class ModelData extends Entity {
 
     calculateVertexNormals(): void {
         if (!this.normals) {
-            this.normals = new Array(this.usedVertexCount);
-
-            for (let i = 0; i < this.usedVertexCount; i++) {
-                this.normals[i] = new VertexNormal();
-            }
+            this.normals = Array.from({ length: this.usedVertexCount }, () => new VertexNormal());
 
             const verticesY = this.contourVerticesY || this.verticesY;
 
@@ -2864,15 +2697,16 @@ export class ModelData extends Entity {
                     normalZ >>= 1;
                 }
 
-                let normalLength =
-                    Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ) | 0;
+                let normalLength = Math.trunc(
+                    Math.sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ),
+                );
                 if (normalLength <= 0) {
                     normalLength = 1;
                 }
 
-                normalX = ((normalX * 256) / normalLength) | 0;
-                normalY = ((normalY * 256) / normalLength) | 0;
-                normalZ = ((normalZ * 256) / normalLength) | 0;
+                normalX = Math.trunc((normalX * 256) / normalLength);
+                normalY = Math.trunc((normalY * 256) / normalLength);
+                normalZ = Math.trunc((normalZ * 256) / normalLength);
                 let type;
                 if (!this.faceRenderTypes) {
                     type = 0;
@@ -2898,7 +2732,10 @@ export class ModelData extends Entity {
                     normal.magnitude++;
                 } else if (type === 1) {
                     if (!this.faceNormals) {
-                        this.faceNormals = new Array(this.faceCount);
+                        this.faceNormals = Array.from(
+                            { length: this.faceCount },
+                            () => undefined as unknown as FaceNormal,
+                        );
                     }
 
                     this.faceNormals[i] = new FaceNormal(normalX, normalY, normalZ);
@@ -2983,8 +2820,11 @@ export class ModelData extends Entity {
         if (!this.normals) {
             throw new Error("Failed to calculate normals. This should not be possible.");
         }
-        const magnitude = Math.sqrt(lightZ * lightZ + lightX * lightX + lightY * lightY) | 0;
-        const lightIntensity = (magnitude * contrast) >> 8;
+        const magnitude = Math.trunc(
+            Math.sqrt(lightZ * lightZ + lightX * lightX + lightY * lightY),
+        );
+        const lightIntensityProduct = toI32(magnitude * contrast);
+        const lightIntensity = lightIntensityProduct >> 8;
         const model = new Model();
         model.faceColors1 = new Int32Array(this.faceCount);
         model.faceColors2 = new Int32Array(this.faceCount);
@@ -3089,49 +2929,46 @@ export class ModelData extends Entity {
                     } else {
                         normal = this.normals[this.indices1[i]];
                     }
-                    let shade17 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                (lightIntensity * normal.magnitude)) <<
-                        17;
-                    model.faceColors1[i] =
-                        shade17 | ModelData.adjustLightness(color, shade17 >> 17);
+                    const shade1Numerator =
+                        lightY * normal.y + lightZ * normal.z + lightX * normal.x;
+                    const shade1Denom = lightIntensity * normal.magnitude;
+                    const shade1 = ambient + Math.trunc(shade1Numerator / shade1Denom);
+                    let shade17 = shade1 << 17;
+                    model.faceColors1[i] = shade17 | ModelData.adjustLightness(color, shade1);
 
                     if (this.mergedNormals && this.mergedNormals[this.indices2[i]]) {
                         normal = this.mergedNormals[this.indices2[i]];
                     } else {
                         normal = this.normals[this.indices2[i]];
                     }
-                    shade17 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                (lightIntensity * normal.magnitude)) <<
-                        17;
-                    model.faceColors2[i] =
-                        shade17 | ModelData.adjustLightness(color, shade17 >> 17);
+                    const shade2Numerator =
+                        lightY * normal.y + lightZ * normal.z + lightX * normal.x;
+                    const shade2Denom = lightIntensity * normal.magnitude;
+                    const shade2 = ambient + Math.trunc(shade2Numerator / shade2Denom);
+                    shade17 = shade2 << 17;
+                    model.faceColors2[i] = shade17 | ModelData.adjustLightness(color, shade2);
 
                     if (this.mergedNormals && this.mergedNormals[this.indices3[i]]) {
                         normal = this.mergedNormals[this.indices3[i]];
                     } else {
                         normal = this.normals[this.indices3[i]];
                     }
-                    shade17 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                (lightIntensity * normal.magnitude)) <<
-                        17;
-                    model.faceColors3[i] =
-                        shade17 | ModelData.adjustLightness(color, shade17 >> 17);
+                    const shade3Numerator =
+                        lightY * normal.y + lightZ * normal.z + lightX * normal.x;
+                    const shade3Denom = lightIntensity * normal.magnitude;
+                    const shade3 = ambient + Math.trunc(shade3Numerator / shade3Denom);
+                    shade17 = shade3 << 17;
+                    model.faceColors3[i] = shade17 | ModelData.adjustLightness(color, shade3);
                 } else if (type === 1 && this.faceNormals) {
                     const normal = this.faceNormals[i];
-                    const shade17 =
-                        (ambient +
-                            (lightY * normal.y + lightZ * normal.z + lightX * normal.x) /
-                                ((lightIntensity >> 1) + lightIntensity)) <<
-                        17;
+                    const shadeNumerator =
+                        lightY * normal.y + lightZ * normal.z + lightX * normal.x;
+                    const lightIntensityHalf = lightIntensity >> 1;
+                    const shadeDenom = lightIntensityHalf + lightIntensity;
+                    const shade = ambient + Math.trunc(shadeNumerator / shadeDenom);
+                    const shade17 = shade << 17;
                     model.faceColors1[i] =
-                        shade17 |
-                        ModelData.adjustLightness(this.faceColors[i] & 0xffff, shade17 >> 17);
+                        shade17 | ModelData.adjustLightness(this.faceColors[i] & 0xffff, shade);
                     model.faceColors3[i] = -1;
                 } else if (type === 3) {
                     model.faceColors1[i] = 128;

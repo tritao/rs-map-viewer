@@ -8,23 +8,23 @@ import { ByteBuffer } from "../io/ByteBuffer";
 import { getMapSquareId } from "../map/MapFileIndex";
 import { ContourGroundType } from "../model/ContourGroundType";
 import { Model } from "../model/Model";
-import { packHsl } from "../util/ColorUtil";
 import { TextureLoader } from "../texture/TextureLoader";
+import { packHsl } from "../util/ColorUtil";
 import { CollisionMap } from "./CollisionMap";
 import { packLocPlacement } from "./LocPlacementFlag";
 import { Scene, TileRenderFlag } from "./Scene";
-import { Entity } from "./entity/Entity";
-import { EntityType, calculateEntityTag, getIdFromTag } from "./entity/EntityTag";
-import { LocEntity } from "./entity/LocEntity";
-import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
+import { OverlayCornerSet, OverlayEdgeSet } from "./SceneTileModel";
+import { computeSceneTileModelForTile } from "./computeSceneTileModel";
 import { decodeLocPlacementsFromBytes } from "./decodeLocPlacements";
 import {
+    TerrainSquareDecodeScratch,
     applyDecodedTerrainSquareToScene,
     decodeTerrainSquareFromBytesInto,
-    TerrainSquareDecodeScratch,
 } from "./decodeTerrainSquare";
-import { computeSceneTileModelForTile } from "./computeSceneTileModel";
-import { OverlayCornerSet, OverlayEdgeSet } from "./SceneTileModel";
+import { Entity } from "./entity/Entity";
+import { EntityType, calculateEntityTag, getIdFromTag, hasEntityTag } from "./entity/EntityTag";
+import { LocEntity } from "./entity/LocEntity";
+import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
 
 export enum LocLoadType {
     MODELS,
@@ -52,21 +52,22 @@ export class SceneBuilder {
         [false, false, false, false],
     ];
 
-    private static readonly NON_BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE: boolean[][] = [
-        [false, false, false, false],
-        [false, false, false, false],
-        [false, false, true, false],
-        [false, false, true, false],
-        [false, false, true, false],
-        [false, false, true, false],
-        [true, false, true, false],
-        [true, false, false, true],
-        [true, false, false, true],
-        [false, false, false, false],
-        [false, false, false, false],
-        [false, false, false, false],
-        [false, false, false, false],
-    ];
+    private static readonly NON_BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE: boolean[][] =
+        [
+            [false, false, false, false],
+            [false, false, false, false],
+            [false, false, true, false],
+            [false, false, true, false],
+            [false, false, true, false],
+            [false, false, true, false],
+            [true, false, true, false],
+            [true, false, false, true],
+            [true, false, false, true],
+            [false, false, false, false],
+            [false, false, false, false],
+            [false, false, false, false],
+            [false, false, false, false],
+        ];
 
     private static readonly displacementX: number[] = [1, 0, -1, 0];
     private static readonly displacementY: number[] = [0, -1, 0, 1];
@@ -205,12 +206,7 @@ export class SceneBuilder {
             const sceneX = placement.localX + offsetX;
             const sceneY = placement.localY + offsetY;
 
-            if (
-                sceneX > 0 &&
-                sceneY > 0 &&
-                sceneX < scene.sizeX - 1 &&
-                sceneY < scene.sizeY - 1
-            ) {
+            if (sceneX > 0 && sceneY > 0 && sceneX < scene.sizeX - 1 && sceneY < scene.sizeY - 1) {
                 let transformedLevel = placement.level;
                 if ((scene.tileRenderFlags[1][sceneX][sceneY] & TileRenderFlag.Bridge) !== 0) {
                     transformedLevel = placement.level - 1;
@@ -263,7 +259,8 @@ export class SceneBuilder {
         let endX: number;
         if (tileX + sizeX <= scene.sizeX) {
             startX = (sizeX >> 1) + tileX;
-            endX = ((sizeX + 1) >> 1) + tileX;
+            const sizeXPlus1 = sizeX + 1;
+            endX = (sizeXPlus1 >> 1) + tileX;
         } else {
             startX = tileX;
             endX = tileX + 1;
@@ -273,7 +270,8 @@ export class SceneBuilder {
         let endY: number;
         if (tileY + sizeY <= scene.sizeY) {
             startY = (sizeY >> 1) + tileY;
-            endY = tileY + ((sizeY + 1) >> 1);
+            const sizeYPlus1 = sizeY + 1;
+            endY = tileY + (sizeYPlus1 >> 1);
         } else {
             startY = tileY;
             endY = tileY + 1;
@@ -285,12 +283,12 @@ export class SceneBuilder {
             heightMapAbove = scene.tileHeights[level + 1];
         }
 
-        const centerHeight =
-            (heightMap[endX][endY] +
-                heightMap[startX][endY] +
-                heightMap[startX][startY] +
-                heightMap[endX][startY]) >>
-            2;
+        const centerHeightSum =
+            heightMap[endX][endY] +
+            heightMap[startX][endY] +
+            heightMap[startX][startY] +
+            heightMap[endX][startY];
+        const centerHeight = centerHeightSum >> 2;
         const entityX = (tileX << 7) + (sizeX << 6);
         const entityY = (tileY << 7) + (sizeY << 6);
 
@@ -389,7 +387,7 @@ export class SceneBuilder {
                     let lightOcclusion = 15;
                     const xzRadius = entity.tryGetXZRadius();
                     if (xzRadius !== null) {
-                        lightOcclusion = (xzRadius / 4) | 0;
+                        lightOcclusion = Math.trunc(xzRadius / 4);
                         if (lightOcclusion > 30) {
                             lightOcclusion = 30;
                         }
@@ -515,6 +513,8 @@ export class SceneBuilder {
                 }
             }
         } else if (type === LocModelType.WALL_CORNER) {
+            const rotationPlus1 = rotation + 1;
+            const rotationNext = rotationPlus1 & 3;
             let entity0: Entity | undefined;
             let entity1: Entity | undefined;
             if (isEntity) {
@@ -531,7 +531,7 @@ export class SceneBuilder {
                 entity1 = new LocEntity(
                     id,
                     type,
-                    (rotation + 1) & 3,
+                    rotationNext,
                     level,
                     tileX,
                     tileY,
@@ -548,7 +548,7 @@ export class SceneBuilder {
                 entity1 = this.locModelLoader.getModel(
                     locType,
                     type,
-                    (rotation + 1) & 3,
+                    rotationNext,
                     contourGroundInfo,
                 );
             }
@@ -678,7 +678,7 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL_DECORATION_OUTSIDE) {
             let displacement = LocType.DEFAULT_DECOR_DISPLACEMENT;
             const wallTag = scene.getWallTag(level, tileX, tileY);
-            if (wallTag !== 0n) {
+            if (hasEntityTag(wallTag)) {
                 const wallLocResult = this.locTypeLoader.tryLoad(getIdFromTag(wallTag));
                 if (wallLocResult.ok) {
                     displacement = wallLocResult.value.decorDisplacement;
@@ -724,10 +724,10 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL_DECORATION_DIAGONAL_OUTSIDE) {
             let displacement = LocType.DEFAULT_DECOR_DISPLACEMENT / 2;
             const wallTag = scene.getWallTag(level, tileX, tileY);
-            if (wallTag !== 0n) {
+            if (hasEntityTag(wallTag)) {
                 const wallLocResult = this.locTypeLoader.tryLoad(getIdFromTag(wallTag));
                 if (wallLocResult.ok) {
-                    displacement = (wallLocResult.value.decorDisplacement / 2) | 0;
+                    displacement = Math.trunc(wallLocResult.value.decorDisplacement / 2);
                 }
             }
 
@@ -768,7 +768,8 @@ export class SceneBuilder {
                 flags,
             );
         } else if (type === LocModelType.WALL_DECORATION_DIAGONAL_INSIDE) {
-            const insideRotation = (rotation + 2) & 3;
+            const rotationPlus2 = rotation + 2;
+            const insideRotation = rotationPlus2 & 3;
 
             let entity: Entity | undefined;
             if (isEntity) {
@@ -806,14 +807,15 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL_DECORATION_DIAGONAL_DOUBLE) {
             let displacement = LocType.DEFAULT_DECOR_DISPLACEMENT / 2;
             const wallTag = scene.getWallTag(level, tileX, tileY);
-            if (wallTag !== 0n) {
+            if (hasEntityTag(wallTag)) {
                 const wallLocResult = this.locTypeLoader.tryLoad(getIdFromTag(wallTag));
                 if (wallLocResult.ok) {
-                    displacement = (wallLocResult.value.decorDisplacement / 2) | 0;
+                    displacement = Math.trunc(wallLocResult.value.decorDisplacement / 2);
                 }
             }
 
-            const insideRotation = (rotation + 2) & 3;
+            const rotationPlus2 = rotation + 2;
+            const insideRotation = rotationPlus2 & 3;
 
             let entity0: Entity | undefined;
             let entity1: Entity | undefined;
@@ -872,10 +874,9 @@ export class SceneBuilder {
     }
 
     blendUnderlays(scene: Scene, level: number): Int32Array[] {
-        const colors: Int32Array[] = new Array(scene.sizeX);
-        for (let i = 0; i < scene.sizeX; i++) {
-            colors[i] = new Int32Array(scene.sizeY).fill(-1);
-        }
+        const colors: Int32Array[] = Array.from({ length: scene.sizeX }, () =>
+            new Int32Array(scene.sizeY).fill(-1),
+        );
 
         const maxSize = Math.max(scene.sizeX, scene.sizeY);
 
@@ -959,9 +960,9 @@ export class SceneBuilder {
                 const underlayId = scene.tileUnderlays[level][xi][yi];
 
                 if (underlayId > 0) {
-                    const avgHue = ((runningHues * 256) / runningMultiplier) | 0;
-                    const avgSat = (runningSat / runningNumber) | 0;
-                    const avgLight = (runningLight / runningNumber) | 0;
+                    const avgHue = Math.trunc((runningHues * 256) / runningMultiplier);
+                    const avgSat = Math.trunc(runningSat / runningNumber);
+                    const avgLight = Math.trunc(runningLight / runningNumber);
 
                     colors[xi][yi] = packHsl(avgHue, avgSat, avgLight);
                 }
@@ -973,13 +974,17 @@ export class SceneBuilder {
 
     private overlayBlendPriority(overlay: OverlayFloorType): number {
         if (this.cacheInfo.game === GameType.Runescape && this.cacheInfo.revision >= 667) {
-            return overlay.blendPriority | 0;
+            return Math.trunc(overlay.blendPriority);
         }
         // Most other caches don't expose an explicit blend priority; treat as equal priority.
         return 0;
     }
 
-    private getOverlayEdgeEligibility(shape: number, rotation: number, blendable: boolean): boolean[] {
+    private getOverlayEdgeEligibility(
+        shape: number,
+        rotation: number,
+        blendable: boolean,
+    ): boolean[] {
         const table = blendable
             ? SceneBuilder.BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE
             : SceneBuilder.NON_BLENDABLE_OVERLAY_NEIGHBOR_EDGE_ELIGIBILITY_BY_SHAPE;
@@ -989,7 +994,9 @@ export class SceneBuilder {
         // rotation is clockwise in terrain decode; this mapping is best-effort and matches the 667 pattern usage.
         const world = [false, false, false, false];
         for (let worldEdge = 0; worldEdge < 4; worldEdge++) {
-            world[worldEdge] = local[(worldEdge - rotation) & 3];
+            const localEdgeIndex = worldEdge - rotation;
+            const localEdge = localEdgeIndex & 3;
+            world[worldEdge] = local[localEdge];
         }
         return world;
     }
@@ -1027,7 +1034,7 @@ export class SceneBuilder {
         }
 
         out.textureId[index] = textureId;
-        out.textureSize[index] = Math.max(1, (overlay.textureSize || 128) | 0);
+        out.textureSize[index] = Math.max(1, Math.trunc(overlay.textureSize || 128));
 
         if (textureId !== -1) {
             out.baseHsl[index] = -1;
@@ -1161,7 +1168,9 @@ export class SceneBuilder {
                                     [x, y],
                                     ...(canBlendWest ? [[x - 1, y] as [number, number]] : []),
                                     ...(canBlendSouth ? [[x, y - 1] as [number, number]] : []),
-                                    ...((canBlendWest || canBlendSouth) ? [[x - 1, y - 1] as [number, number]] : []),
+                                    ...(canBlendWest || canBlendSouth
+                                        ? [[x - 1, y - 1] as [number, number]]
+                                        : []),
                                 ],
                                 overlayId,
                                 overlayType.blendable,
@@ -1174,7 +1183,9 @@ export class SceneBuilder {
                                     [x, y],
                                     ...(canBlendEast ? [[x + 1, y] as [number, number]] : []),
                                     ...(canBlendSouth ? [[x, y - 1] as [number, number]] : []),
-                                    ...((canBlendEast || canBlendSouth) ? [[x + 1, y - 1] as [number, number]] : []),
+                                    ...(canBlendEast || canBlendSouth
+                                        ? [[x + 1, y - 1] as [number, number]]
+                                        : []),
                                 ],
                                 overlayId,
                                 overlayType.blendable,
@@ -1187,7 +1198,9 @@ export class SceneBuilder {
                                     [x, y],
                                     ...(canBlendEast ? [[x + 1, y] as [number, number]] : []),
                                     ...(canBlendNorth ? [[x, y + 1] as [number, number]] : []),
-                                    ...((canBlendEast || canBlendNorth) ? [[x + 1, y + 1] as [number, number]] : []),
+                                    ...(canBlendEast || canBlendNorth
+                                        ? [[x + 1, y + 1] as [number, number]]
+                                        : []),
                                 ],
                                 overlayId,
                                 overlayType.blendable,
@@ -1200,7 +1213,9 @@ export class SceneBuilder {
                                     [x, y],
                                     ...(canBlendWest ? [[x - 1, y] as [number, number]] : []),
                                     ...(canBlendNorth ? [[x, y + 1] as [number, number]] : []),
-                                    ...((canBlendWest || canBlendNorth) ? [[x - 1, y + 1] as [number, number]] : []),
+                                    ...(canBlendWest || canBlendNorth
+                                        ? [[x - 1, y + 1] as [number, number]]
+                                        : []),
                                 ],
                                 overlayId,
                                 overlayType.blendable,
@@ -1250,10 +1265,7 @@ export class SceneBuilder {
                                 overlayCache,
                                 scene,
                                 level,
-                                [
-                                    [x, y],
-                                    ...(canBlendEast ? [[x + 1, y] as [number, number]] : []),
-                                ],
+                                [[x, y], ...(canBlendEast ? [[x + 1, y] as [number, number]] : [])],
                                 overlayId,
                                 overlayType.blendable,
                             );
@@ -1272,10 +1284,7 @@ export class SceneBuilder {
                                 overlayCache,
                                 scene,
                                 level,
-                                [
-                                    [x, y],
-                                    ...(canBlendWest ? [[x - 1, y] as [number, number]] : []),
-                                ],
+                                [[x, y], ...(canBlendWest ? [[x - 1, y] as [number, number]] : [])],
                                 overlayId,
                                 overlayType.blendable,
                             );

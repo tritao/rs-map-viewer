@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -59,7 +60,7 @@ export class TextureSourceOperation extends TextureOperation {
             let start =
                 (textureGenerator.height === this.height
                     ? line
-                    : ((this.height * line) / textureGenerator.height) | 0) * this.width;
+                    : idiv(this.height * line, textureGenerator.height)) * this.width;
             const outputR = output[0];
             const outputG = output[1];
             const outputB = output[2];
@@ -73,7 +74,7 @@ export class TextureSourceOperation extends TextureOperation {
                 }
             } else {
                 for (let x = 0; x < textureGenerator.width; x++) {
-                    const idx = ((this.width * x) / textureGenerator.width) | 0;
+                    const idx = idiv(this.width * x, textureGenerator.width);
                     const value = pixels[idx + start];
                     outputB[x] = (value & 0xff) << 4;
                     outputG[x] = (value & 0xff00) >> 4;

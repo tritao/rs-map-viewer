@@ -144,8 +144,7 @@ export class ReferenceTable {
         private readonly _archiveFileIds: Int32Array[],
         private readonly _archiveFileNameHashes: Int32Array[],
         private _archiveNameHashIdMap: Map<number, number> | null = null,
-    ) {
-    }
+    ) {}
 
     getArchiveId(name: string): number | null {
         if (!this.named) {
@@ -209,5 +208,4 @@ export class ReferenceTable {
         this._archiveReferenceCache[i] = ref;
         return ref;
     }
-
 }

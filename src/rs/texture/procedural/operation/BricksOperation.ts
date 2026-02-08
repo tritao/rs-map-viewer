@@ -1,6 +1,7 @@
 import JavaRandom from "../../../../util/JavaRandom";
 import { nextIntJagex } from "../../../../util/MathUtil";
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -47,37 +48,45 @@ export class BricksOperation extends TextureOperation {
     }
 
     override init(): void {
-        this.brickValueByRowCol = new Array(this.rowCount);
-        this.xBoundariesByRow = new Array(this.rowCount);
-        for (let i = 0; i < this.rowCount; i++) {
-            this.brickValueByRowCol[i] = new Int32Array(this.columns);
-            this.xBoundariesByRow[i] = new Int32Array(this.columns + 1);
-        }
+        this.brickValueByRowCol = Array.from(
+            { length: this.rowCount },
+            () => new Int32Array(this.columns),
+        );
+        this.xBoundariesByRow = Array.from(
+            { length: this.rowCount },
+            () => new Int32Array(this.columns + 1),
+        );
         this.yBoundaries = new Int32Array(this.rowCount + 1);
 
         const random = new JavaRandom(this.rowCount);
-        this.halfMortarThicknessQ12 = (this.mortarThicknessQ12 / 2) | 0;
-        this.xStepQ12 = (4096 / this.columns) | 0;
-        const halfXStepQ12 = (this.xStepQ12 / 2) | 0;
-        this.yStepQ12 = (4096 / this.rowCount) | 0;
-        const halfYStepQ12 = (this.yStepQ12 / 2) | 0;
+        this.halfMortarThicknessQ12 = idiv(this.mortarThicknessQ12, 2);
+        this.xStepQ12 = idiv(4096, this.columns);
+        const halfXStepQ12 = idiv(this.xStepQ12, 2);
+        this.yStepQ12 = idiv(4096, this.rowCount);
+        const halfYStepQ12 = idiv(this.yStepQ12, 2);
         this.yBoundaries[0] = 0;
 
         for (let row = 0; row < this.rowCount; row++) {
             if (row > 0) {
                 let value = this.yStepQ12;
-                const randomValue =
-                    ((nextIntJagex(random, 4096) - 2048) * this.heightJitterQ12) >> 12;
-                value += (randomValue * halfYStepQ12) >> 12;
+                const randomValue = mulShift(
+                    nextIntJagex(random, 4096) - 2048,
+                    this.heightJitterQ12,
+                    12,
+                );
+                value += mulShift(randomValue, halfYStepQ12, 12);
                 this.yBoundaries[row] = value + this.yBoundaries[row - 1];
             }
             this.xBoundariesByRow[row][0] = 0;
             for (let col = 0; col < this.columns; col++) {
                 if (col > 0) {
                     let value = this.xStepQ12;
-                    const randomValue =
-                        ((nextIntJagex(random, 4096) - 2048) * this.widthJitterQ12) >> 12;
-                    value += (randomValue * halfXStepQ12) >> 12;
+                    const randomValue = mulShift(
+                        nextIntJagex(random, 4096) - 2048,
+                        this.widthJitterQ12,
+                        12,
+                    );
+                    value += mulShift(randomValue, halfXStepQ12, 12);
                     this.xBoundariesByRow[row][col] = this.xBoundariesByRow[row][col - 1] + value;
                 }
                 this.brickValueByRowCol[row][col] =
@@ -121,7 +130,7 @@ export class BricksOperation extends TextureOperation {
                     const stagger = rowIndex % 2 !== 0 ? -this.rowStaggerQ12 : this.rowStaggerQ12;
                     let colIndex = 0;
                     let xCoord =
-                        ((this.xStepQ12 * stagger) >> 12) +
+                        mulShift(this.xStepQ12, stagger, 12) +
                         textureGenerator.horizontalGradient[pixel];
                     for (; xCoord < 0; xCoord += 4096);
                     for (; xCoord > 4096; xCoord -= 4096);

@@ -48,9 +48,7 @@ type UnderlayOnlyTileModelParams = {
     underlayTextureSize: number;
 };
 
-function createUnderlayOnlyTileModel(
-    params: UnderlayOnlyTileModelParams,
-): SceneTileModel {
+function createUnderlayOnlyTileModel(params: UnderlayOnlyTileModelParams): SceneTileModel {
     return new SceneTileModel(
         0 as TileShapeId,
         0 as TileRotation,
@@ -77,7 +75,9 @@ function createUnderlayOnlyTileModel(
     );
 }
 
-function tryGetFloorTextureInfo(type: unknown): { textureId: number; textureSize: number } | undefined {
+function tryGetFloorTextureInfo(
+    type: unknown,
+): { textureId: number; textureSize: number } | undefined {
     if (!type || typeof type !== "object") {
         return undefined;
     }
@@ -88,7 +88,9 @@ function tryGetFloorTextureInfo(type: unknown): { textureId: number; textureSize
     return { textureId: maybe.textureId, textureSize: maybe.textureSize };
 }
 
-export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams): SceneTileModel | undefined {
+export function computeSceneTileModelForTile(
+    params: ComputeSceneTileModelParams,
+): SceneTileModel | undefined {
     if (params.underlayId === -1 && params.overlayId === -1) {
         return undefined;
     }
@@ -194,7 +196,7 @@ export function computeSceneTileModelForTile(params: ComputeSceneTileModelParams
             }
         }
         if (count > 0) {
-            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(((sum / count) | 0), 96)];
+            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(Math.trunc(sum / count), 96)];
         }
     } else {
         let overlayMinimapHsl: number;

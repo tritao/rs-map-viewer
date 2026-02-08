@@ -1,8 +1,9 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { getOrCopyBytes } from "../../io/ByteSourceUtil";
+import { readU32LE } from "../../io/Endian";
+import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveFile } from "./ArchiveFile";
 
@@ -30,16 +31,15 @@ export class Archive {
 
         const len = data.byteLength;
         // Little-endian u32 from last 4 bytes.
-        const isize =
-            (data[len - 4] |
-                (data[len - 3] << 8) |
-                (data[len - 2] << 16) |
-                (data[len - 1] << 24)) >>> 0;
+        const isize = readU32LE(data, len - 4);
 
         return data[len - 2] === 0 && (isize & 0x00ff_ffff) === 0 && isize !== 0;
     }
 
-    private static _decompressDatGzip(data: Uint8Array, compressionHandler: CompressionHandler): Uint8Array {
+    private static _decompressDatGzip(
+        data: Uint8Array,
+        compressionHandler: CompressionHandler,
+    ): Uint8Array {
         const len = data.byteLength;
         const canTrim = len >= 2;
         const preferTrim = canTrim && Archive._looksLikeGzipWithTrailingU16(data);
@@ -178,7 +178,10 @@ export class Archive {
     static decodeFromSource(meta: ArchiveMeta, source: ByteSource): Archive {
         const { id: archiveId, lastFileId, fileCount, fileIds, fileNameHashes } = meta;
 
-        const filesById: Array<ArchiveFile | undefined> = Array.from({ length: lastFileId + 1 }, () => undefined);
+        const filesById: Array<ArchiveFile | undefined> = Array.from(
+            { length: lastFileId + 1 },
+            () => undefined,
+        );
         const files: ArchiveFile[] = [];
 
         if (fileCount === 1) {
@@ -266,8 +269,7 @@ export class Archive {
         readonly fileNameHashes: Int32Array,
         private readonly _filesById: Array<ArchiveFile | undefined>,
         private readonly _files: ArchiveFile[],
-    ) {
-    }
+    ) {}
 
     private _getFileNameHashIdMap(): Map<number, number> | null {
         if (this.fileNameHashes.length === 0) {

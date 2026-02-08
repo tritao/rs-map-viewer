@@ -1,6 +1,7 @@
 import { clamp } from "../../../../util/MathUtil";
 import { ByteBuffer } from "../../../io/ByteBuffer";
 import { ArrayUtils } from "../../../util/ArrayUtils";
+import { idiv, mulQ12, mulShift, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -15,19 +16,22 @@ export class ShapeRasterizerOperation extends TextureOperation {
     override decode(field: number, buffer: ByteBuffer): void {
         if (field === 0) {
             const count = buffer.readUnsignedByte();
-            this.shapes = new Array(count);
+            const shapes: RasterizerOperationShape[] = [];
             for (let i = 0; i < count; i++) {
                 const type = buffer.readUnsignedByte();
                 if (type === 0) {
-                    this.shapes[i] = RasterizerOperationLine.create(buffer);
+                    shapes.push(RasterizerOperationLine.create(buffer));
                 } else if (type === 1) {
-                    this.shapes[i] = RasterizerOperationBezierCurve.create(buffer);
+                    shapes.push(RasterizerOperationBezierCurve.create(buffer));
                 } else if (type === 2) {
-                    this.shapes[i] = RasterizerOperationRectangle.create(buffer);
+                    shapes.push(RasterizerOperationRectangle.create(buffer));
                 } else if (type === 3) {
-                    this.shapes[i] = RasterizerOperationEllipse.create(buffer);
+                    shapes.push(RasterizerOperationEllipse.create(buffer));
+                } else {
+                    throw new Error(`ShapeRasterizerOperation: unknown shape type=${type}`);
                 }
             }
+            this.shapes = shapes;
         } else if (field === 1) {
             this.isMonochrome = buffer.readUnsignedByte() === 1;
         }
@@ -78,10 +82,7 @@ export class ShapeRasterizerOperation extends TextureOperation {
         if (this.colourImageCache.dirty) {
             const width = textureGenerator.width;
             const height = textureGenerator.height;
-            const pixels = new Array<Int32Array>(height);
-            for (let i = 0; i < height; i++) {
-                pixels[i] = new Int32Array(width);
-            }
+            const pixels = Array.from({ length: height }, () => new Int32Array(width));
             const outputAll = this.colourImageCache.getAll();
             this.render(textureGenerator, pixels);
             for (let y = 0; y < textureGenerator.height; y++) {
@@ -139,45 +140,45 @@ export class Rasterizer {
         } else if (deltaY === 0) {
             this.rasterHorizontalLine(x0, x1, y0, color);
         } else {
-            const slopeQ12 = ((deltaY << 12) / deltaX) | 0;
-            const yIntercept = y0 - ((x0 * slopeQ12) >> 12);
+            const slopeQ12 = idiv(shl(deltaY, 12), deltaX);
+            const yIntercept = y0 - mulShift(x0, slopeQ12, 12);
             let startX: number;
             let startY: number;
             if (x0 < this.startX) {
-                startY = yIntercept + ((this.startX * slopeQ12) >> 12);
+                startY = yIntercept + mulShift(this.startX, slopeQ12, 12);
                 startX = this.startX;
             } else if (this.widthMask >= x0) {
                 startX = x0;
                 startY = y0;
             } else {
                 startX = this.widthMask;
-                startY = ((this.widthMask * slopeQ12) >> 12) + yIntercept;
+                startY = mulShift(this.widthMask, slopeQ12, 12) + yIntercept;
             }
             let endX: number;
             let endY: number;
             if (x1 < this.startX) {
                 endX = this.startX;
-                endY = yIntercept + ((this.startX * slopeQ12) >> 12);
+                endY = yIntercept + mulShift(this.startX, slopeQ12, 12);
             } else if (x1 <= this.widthMask) {
                 endX = x1;
                 endY = y1;
             } else {
                 endX = this.widthMask;
-                endY = ((slopeQ12 * this.widthMask) >> 12) + yIntercept;
+                endY = mulShift(slopeQ12, this.widthMask, 12) + yIntercept;
             }
             if (this.startY > endY) {
-                endX = ((this.startY - yIntercept) << 12) / slopeQ12;
+                endX = idiv(shl(this.startY - yIntercept, 12), slopeQ12);
                 endY = this.startY;
             } else if (this.heightMask < endY) {
-                endX = ((this.heightMask - yIntercept) << 12) / slopeQ12;
+                endX = idiv(shl(this.heightMask - yIntercept, 12), slopeQ12);
                 endY = this.heightMask;
             }
             if (this.startY > startY) {
-                startX = ((this.startY - yIntercept) << 12) / slopeQ12;
+                startX = idiv(shl(this.startY - yIntercept, 12), slopeQ12);
                 startY = this.startY;
             } else if (startY > this.heightMask) {
                 startY = this.heightMask;
-                startX = ((this.heightMask - yIntercept) << 12) / slopeQ12;
+                startX = idiv(shl(this.heightMask - yIntercept, 12), slopeQ12);
             }
             this.rasterLine0(startX, endX, startY, endY, color);
         }
@@ -347,16 +348,18 @@ export class Rasterizer {
         const coeffY1 = threeY1 - threeY0;
         const coeffX1 = threeX1 - threeX0;
         for (let tQ12 = 128; tQ12 <= 4096; tQ12 += 128) {
-            const t2Q12 = (tQ12 * tQ12) >> 12;
-            const t3Q12 = (tQ12 * t2Q12) >> 12;
+            const t2Q12 = mulQ12(tQ12, tQ12);
+            const t3Q12 = mulQ12(tQ12, t2Q12);
             const xTerm3 = t3Q12 * coeffX3;
             const xTerm2 = t2Q12 * coeffX2;
             const xTerm1 = coeffX1 * tQ12;
             const yTerm2 = coeffY2 * t2Q12;
-            const x = ((xTerm1 + xTerm2 + xTerm3) >> 12) + x0;
+            const xSum = xTerm1 + xTerm2 + xTerm3;
+            const x = (xSum >> 12) + x0;
             const yTerm3 = coeffY3 * t3Q12;
             const yTerm1 = coeffY1 * tQ12;
-            const y = ((yTerm1 + yTerm3 + yTerm2) >> 12) + y0;
+            const ySum = yTerm1 + yTerm3 + yTerm2;
+            const y = (ySum >> 12) + y0;
             this.rasterLine0(prevX, x, prevY, y, outlineColor);
             prevX = x;
             prevY = y;
@@ -393,16 +396,18 @@ export class Rasterizer {
         const coeffX1 = threeX1 - threeX0;
         const coeffY1 = threeY1 - threeY0;
         for (let tQ12 = 128; tQ12 <= 4096; tQ12 += 128) {
-            const t2Q12 = (tQ12 * tQ12) >> 12;
+            const t2Q12 = mulQ12(tQ12, tQ12);
             const xTerm2 = t2Q12 * coeffX2;
-            const t3Q12 = (tQ12 * t2Q12) >> 12;
+            const t3Q12 = mulQ12(tQ12, t2Q12);
             const xTerm3 = t3Q12 * coeffX3;
             const yTerm1 = coeffY1 * tQ12;
             const yTerm2 = coeffY2 * t2Q12;
             const yTerm3 = coeffY3 * t3Q12;
             const xTerm1 = coeffX1 * tQ12;
-            const x = ((xTerm1 + xTerm2 + xTerm3) >> 12) + x0;
-            const y = ((yTerm1 + yTerm3 + yTerm2) >> 12) + y0;
+            const xSum = xTerm1 + xTerm2 + xTerm3;
+            const ySum = yTerm1 + yTerm3 + yTerm2;
+            const x = (xSum >> 12) + x0;
+            const y = (ySum >> 12) + y0;
             this.rasterLine(prevX, x, prevY, y, outlineColor);
             prevY = y;
             prevX = x;
@@ -426,15 +431,7 @@ export class Rasterizer {
         ) {
             this.rasterRectangle0(x0, x1, y0, y1, fillColor, outlineColor, outlineWidth);
         } else {
-            this.rasterRectangleClamped(
-                x0,
-                x1,
-                y0,
-                y1,
-                fillColor,
-                outlineColor,
-                outlineWidth,
-            );
+            this.rasterRectangleClamped(x0, x1, y0, y1, fillColor, outlineColor, outlineWidth);
         }
     }
 
@@ -515,13 +512,7 @@ export class Rasterizer {
         }
     }
 
-    rasterRectangleFillClamped(
-        x0: number,
-        x1: number,
-        y0: number,
-        y1: number,
-        fillColor: number,
-    ) {
+    rasterRectangleFillClamped(x0: number, x1: number, y0: number, y1: number, fillColor: number) {
         const y0Clamped = clamp(y0, this.startY, this.heightMask);
         const y1Clamped = clamp(y1, this.startY, this.heightMask);
         const x0Clamped = clamp(x0, this.startX, this.widthMask);
@@ -705,15 +696,7 @@ export class Rasterizer {
         ) {
             this.rasterEllipse0(x, y, sizeX, sizeY, fillColor, outlineColor, outlineWidth);
         } else {
-            this.rasterEllipseClamped(
-                x,
-                y,
-                sizeX,
-                sizeY,
-                fillColor,
-                outlineColor,
-                outlineWidth,
-            );
+            this.rasterEllipseClamped(x, y, sizeX, sizeY, fillColor, outlineColor, outlineWidth);
         }
     }
 
@@ -812,46 +795,16 @@ export class Rasterizer {
             const yBottom = y - yOffsetOuter;
             if (isWithinInnerY) {
                 const innerLeftX = x - xOffsetInner;
-                ArrayUtils.fillRange(
-                    this.pixels[yBottom],
-                    outerLeftX,
-                    innerLeftX,
-                    outlineColor,
-                );
+                ArrayUtils.fillRange(this.pixels[yBottom], outerLeftX, innerLeftX, outlineColor);
                 const innerRightX = x + xOffsetInner;
-                ArrayUtils.fillRange(
-                    this.pixels[yBottom],
-                    innerLeftX,
-                    innerRightX,
-                    fillColor,
-                );
-                ArrayUtils.fillRange(
-                    this.pixels[yBottom],
-                    innerRightX,
-                    outerRightX,
-                    outlineColor,
-                );
+                ArrayUtils.fillRange(this.pixels[yBottom], innerLeftX, innerRightX, fillColor);
+                ArrayUtils.fillRange(this.pixels[yBottom], innerRightX, outerRightX, outlineColor);
                 ArrayUtils.fillRange(this.pixels[yTop], outerLeftX, innerLeftX, outlineColor);
                 ArrayUtils.fillRange(this.pixels[yTop], innerLeftX, innerRightX, fillColor);
-                ArrayUtils.fillRange(
-                    this.pixels[yTop],
-                    innerRightX,
-                    outerRightX,
-                    outlineColor,
-                );
+                ArrayUtils.fillRange(this.pixels[yTop], innerRightX, outerRightX, outlineColor);
             } else {
-                ArrayUtils.fillRange(
-                    this.pixels[yBottom],
-                    outerLeftX,
-                    outerRightX,
-                    outlineColor,
-                );
-                ArrayUtils.fillRange(
-                    this.pixels[yTop],
-                    outerLeftX,
-                    outerRightX,
-                    outlineColor,
-                );
+                ArrayUtils.fillRange(this.pixels[yBottom], outerLeftX, outerRightX, outlineColor);
+                ArrayUtils.fillRange(this.pixels[yTop], outerLeftX, outerRightX, outlineColor);
             }
         }
     }
@@ -954,23 +907,11 @@ export class Rasterizer {
             outerDecisionAAdjust -= fourRx2;
             outerDecisionBDec -= fourRx2;
             if (yTop >= this.startY && this.heightMask >= yBottom) {
-                const outerRightX = clamp(
-                    xOffsetOuter + x,
-                    this.startX,
-                    this.widthMask,
-                );
+                const outerRightX = clamp(xOffsetOuter + x, this.startX, this.widthMask);
                 const outerLeftX = clamp(x - xOffsetOuter, this.startX, this.widthMask);
                 if (isWithinInnerY) {
-                    const innerRightX = clamp(
-                        x + xOffsetInner,
-                        this.startX,
-                        this.widthMask,
-                    );
-                    const innerLeftX = clamp(
-                        x - xOffsetInner,
-                        this.startX,
-                        this.widthMask,
-                    );
+                    const innerRightX = clamp(x + xOffsetInner, this.startX, this.widthMask);
+                    const innerLeftX = clamp(x - xOffsetInner, this.startX, this.widthMask);
                     if (this.startY <= yBottom) {
                         const rowPixels = this.pixels[yBottom];
                         ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
@@ -1158,16 +1099,8 @@ export class Rasterizer {
                 const yTop = y + yOffset;
                 if (this.startY <= yTop && yBottom <= this.heightMask) {
                     if (yOffset >= innerRadius) {
-                        const outerRightX = clamp(
-                            x + xOffset,
-                            this.startX,
-                            this.widthMask,
-                        );
-                        const outerLeftX = clamp(
-                            x - xOffset,
-                            this.startX,
-                            this.widthMask,
-                        );
+                        const outerRightX = clamp(x + xOffset, this.startX, this.widthMask);
+                        const outerLeftX = clamp(x - xOffset, this.startX, this.widthMask);
                         if (this.heightMask >= yTop) {
                             ArrayUtils.fillRange(
                                 this.pixels[yTop],
@@ -1186,26 +1119,10 @@ export class Rasterizer {
                         }
                     } else {
                         const innerHalfWidth = this.circleOutline[yOffset];
-                        const outerRightX = clamp(
-                            x + xOffset,
-                            this.startX,
-                            this.widthMask,
-                        );
-                        const outerLeftX = clamp(
-                            x - xOffset,
-                            this.startX,
-                            this.widthMask,
-                        );
-                        const innerRightX = clamp(
-                            x + innerHalfWidth,
-                            this.startX,
-                            this.widthMask,
-                        );
-                        const innerLeftX = clamp(
-                            x - innerHalfWidth,
-                            this.startX,
-                            this.widthMask,
-                        );
+                        const outerRightX = clamp(x + xOffset, this.startX, this.widthMask);
+                        const outerLeftX = clamp(x - xOffset, this.startX, this.widthMask);
+                        const innerRightX = clamp(x + innerHalfWidth, this.startX, this.widthMask);
+                        const innerLeftX = clamp(x - innerHalfWidth, this.startX, this.widthMask);
                         if (this.heightMask >= yTop) {
                             const rowPixels = this.pixels[yTop];
                             ArrayUtils.fillRange(rowPixels, outerLeftX, innerLeftX, outlineColor);
@@ -1227,16 +1144,8 @@ export class Rasterizer {
                 const outerRightXRaw = yOffset + x;
                 const outerLeftXRaw = x - yOffset;
                 if (outerRightXRaw >= this.startX && this.widthMask >= outerLeftXRaw) {
-                    const outerRightX = clamp(
-                        outerRightXRaw,
-                        this.startX,
-                        this.widthMask,
-                    );
-                    const outerLeftX = clamp(
-                        outerLeftXRaw,
-                        this.startX,
-                        this.widthMask,
-                    );
+                    const outerRightX = clamp(outerRightXRaw, this.startX, this.widthMask);
+                    const outerLeftX = clamp(outerLeftXRaw, this.startX, this.widthMask);
                     if (xOffset >= innerRadius) {
                         if (this.heightMask >= yTop) {
                             ArrayUtils.fillRange(
@@ -1256,9 +1165,7 @@ export class Rasterizer {
                         }
                     } else {
                         const innerHalfWidthAtX =
-                            innerOutlineY >= xOffset
-                                ? innerOutlineY
-                                : this.circleOutline[xOffset];
+                            innerOutlineY >= xOffset ? innerOutlineY : this.circleOutline[xOffset];
                         const innerRightX = clamp(
                             x + innerHalfWidthAtX,
                             this.startX,
@@ -1287,13 +1194,7 @@ export class Rasterizer {
         }
     }
 
-    rasterEllipseFill(
-        x: number,
-        y: number,
-        sizeX: number,
-        sizeY: number,
-        fillColor: number,
-    ) {
+    rasterEllipseFill(x: number, y: number, sizeX: number, sizeY: number, fillColor: number) {
         if (sizeX === sizeY) {
             this.rasterCircleFill(x, y, sizeX, fillColor);
         } else if (
@@ -1308,13 +1209,7 @@ export class Rasterizer {
         }
     }
 
-    rasterEllipseFill0(
-        x: number,
-        y: number,
-        sizeX: number,
-        sizeY: number,
-        fillColor: number,
-    ) {
+    rasterEllipseFill0(x: number, y: number, sizeX: number, sizeY: number, fillColor: number) {
         ArrayUtils.fillRange(this.pixels[y], x - sizeX, sizeX + x, fillColor);
         let xOffset = 0;
         let yOffset = sizeY;
@@ -1553,10 +1448,10 @@ export class RasterizerOperationLine extends RasterizerOperationShape {
     override renderFill(rasterizer: Rasterizer, width: number, height: number): void {}
 
     override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {
-        const x0 = (this.x0 * width) >> 12;
-        const x1 = (this.x1 * width) >> 12;
-        const y0 = (this.y0 * height) >> 12;
-        const y1 = (this.y1 * height) >> 12;
+        const x0 = mulShift(this.x0, width, 12);
+        const x1 = mulShift(this.x1, width, 12);
+        const y0 = mulShift(this.y0, height, 12);
+        const y1 = mulShift(this.y1, height, 12);
         rasterizer.rasterLine(x0, x1, y0, y1, this.outlineColor);
     }
 }
@@ -1607,14 +1502,14 @@ export class RasterizerOperationBezierCurve extends RasterizerOperationShape {
     override renderFill(rasterizer: Rasterizer, width: number, height: number): void {}
 
     override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {
-        const x0 = (width * this.x0) >> 12;
-        const y0 = (height * this.y0) >> 12;
-        const x1 = (width * this.x1) >> 12;
-        const y1 = (height * this.y1) >> 12;
-        const x2 = (width * this.x2) >> 12;
-        const y2 = (height * this.y2) >> 12;
-        const x3 = (width * this.x3) >> 12;
-        const y3 = (height * this.y3) >> 12;
+        const x0 = mulShift(width, this.x0, 12);
+        const y0 = mulShift(height, this.y0, 12);
+        const x1 = mulShift(width, this.x1, 12);
+        const y1 = mulShift(height, this.y1, 12);
+        const x2 = mulShift(width, this.x2, 12);
+        const y2 = mulShift(height, this.y2, 12);
+        const x3 = mulShift(width, this.x3, 12);
+        const y3 = mulShift(height, this.y3, 12);
         rasterizer.rasterBezierCurve(x0, y0, x1, y1, x2, y2, x3, y3, this.outlineColor);
     }
 }
@@ -1652,10 +1547,10 @@ export class RasterizerOperationRectangle extends RasterizerOperationShape {
     }
 
     override render(rasterizer: Rasterizer, width: number, height: number): void {
-        const x0 = (this.x0 * width) >> 12;
-        const x1 = (this.x1 * width) >> 12;
-        const y0 = (this.y0 * height) >> 12;
-        const y1 = (this.y1 * height) >> 12;
+        const x0 = mulShift(this.x0, width, 12);
+        const x1 = mulShift(this.x1, width, 12);
+        const y0 = mulShift(this.y0, height, 12);
+        const y1 = mulShift(this.y1, height, 12);
         rasterizer.rasterRectangle(
             x0,
             x1,
@@ -1668,18 +1563,18 @@ export class RasterizerOperationRectangle extends RasterizerOperationShape {
     }
 
     override renderFill(rasterizer: Rasterizer, width: number, height: number): void {
-        const x0 = (this.x0 * width) >> 12;
-        const x1 = (this.x1 * width) >> 12;
-        const y0 = (this.y0 * height) >> 12;
-        const y1 = (this.y1 * height) >> 12;
+        const x0 = mulShift(this.x0, width, 12);
+        const x1 = mulShift(this.x1, width, 12);
+        const y0 = mulShift(this.y0, height, 12);
+        const y1 = mulShift(this.y1, height, 12);
         rasterizer.rasterRectangleFill(x0, x1, y0, y1, this.fillColor);
     }
 
     override renderOutline(rasterizer: Rasterizer, width: number, height: number): void {
-        const x0 = (this.x0 * width) >> 12;
-        const x1 = (this.x1 * width) >> 12;
-        const y0 = (this.y0 * height) >> 12;
-        const y1 = (this.y1 * height) >> 12;
+        const x0 = mulShift(this.x0, width, 12);
+        const x1 = mulShift(this.x1, width, 12);
+        const y0 = mulShift(this.y0, height, 12);
+        const y1 = mulShift(this.y1, height, 12);
         rasterizer.rasterRectangleOutline(x0, x1, y0, y1, this.outlineColor, this.outlineWidth);
     }
 }
@@ -1717,10 +1612,10 @@ export class RasterizerOperationEllipse extends RasterizerOperationShape {
     }
 
     override render(rasterizer: Rasterizer, width: number, height: number): void {
-        const x = (this.x * width) >> 12;
-        const y = (this.y * height) >> 12;
-        const sizeX = (this.sizeX * width) >> 12;
-        const sizeY = (this.sizeY * height) >> 12;
+        const x = mulShift(this.x, width, 12);
+        const y = mulShift(this.y, height, 12);
+        const sizeX = mulShift(this.sizeX, width, 12);
+        const sizeY = mulShift(this.sizeY, height, 12);
         rasterizer.rasterEllipse(
             x,
             y,
@@ -1733,10 +1628,10 @@ export class RasterizerOperationEllipse extends RasterizerOperationShape {
     }
 
     override renderFill(rasterizer: Rasterizer, width: number, height: number): void {
-        const x = (this.x * width) >> 12;
-        const y = (this.y * height) >> 12;
-        const sizeX = (this.sizeX * width) >> 12;
-        const sizeY = (this.sizeY * height) >> 12;
+        const x = mulShift(this.x, width, 12);
+        const y = mulShift(this.y, height, 12);
+        const sizeX = mulShift(this.sizeX, width, 12);
+        const sizeY = mulShift(this.sizeY, height, 12);
         rasterizer.rasterEllipseFill(x, y, sizeX, sizeY, this.fillColor);
     }
 

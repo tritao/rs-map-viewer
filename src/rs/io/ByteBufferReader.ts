@@ -10,7 +10,9 @@ export class ByteBufferReader implements ByteReader {
 
     seek(position: number): void {
         if (position < 0 || position > this.buffer.length) {
-            throw new Error(`Seek out of bounds. position=${position}, length=${this.buffer.length}`);
+            throw new Error(
+                `Seek out of bounds. position=${position}, length=${this.buffer.length}`,
+            );
         }
         this.buffer.offset = position;
     }

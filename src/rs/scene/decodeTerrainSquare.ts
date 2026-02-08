@@ -28,54 +28,29 @@ export class TerrainSquareDecodeScratch implements DecodedTerrainSquare {
     tileRotations: Uint8Array[][];
 
     constructor(levels: number = Scene.MAX_LEVELS, size: number = Scene.MAP_SQUARE_SIZE) {
-        this.tileHeights = new Array(levels);
-        this.tileRenderFlags = new Array(levels);
-        this.tileUnderlays = new Array(levels);
-        this.tileOverlays = new Array(levels);
-        this.tileShapes = new Array(levels);
-        this.tileRotations = new Array(levels);
-
-        for (let level = 0; level < levels; level++) {
-            this.tileHeights[level] = allocTileGridI32(size);
-            this.tileRenderFlags[level] = allocTileGridU8(size);
-            this.tileUnderlays[level] = allocTileGridU16(size);
-            this.tileOverlays[level] = allocTileGridI16(size);
-            this.tileShapes[level] = allocTileGridU8(size);
-            this.tileRotations[level] = allocTileGridU8(size);
-        }
+        this.tileHeights = Array.from({ length: levels }, () => allocTileGridI32(size));
+        this.tileRenderFlags = Array.from({ length: levels }, () => allocTileGridU8(size));
+        this.tileUnderlays = Array.from({ length: levels }, () => allocTileGridU16(size));
+        this.tileOverlays = Array.from({ length: levels }, () => allocTileGridI16(size));
+        this.tileShapes = Array.from({ length: levels }, () => allocTileGridU8(size));
+        this.tileRotations = Array.from({ length: levels }, () => allocTileGridU8(size));
     }
 }
 
 function allocTileGridU8(size: number): Uint8Array[] {
-    const grid: Uint8Array[] = new Array(size);
-    for (let x = 0; x < size; x++) {
-        grid[x] = new Uint8Array(size);
-    }
-    return grid;
+    return Array.from({ length: size }, () => new Uint8Array(size));
 }
 
 function allocTileGridI16(size: number): Int16Array[] {
-    const grid: Int16Array[] = new Array(size);
-    for (let x = 0; x < size; x++) {
-        grid[x] = new Int16Array(size);
-    }
-    return grid;
+    return Array.from({ length: size }, () => new Int16Array(size));
 }
 
 function allocTileGridU16(size: number): Uint16Array[] {
-    const grid: Uint16Array[] = new Array(size);
-    for (let x = 0; x < size; x++) {
-        grid[x] = new Uint16Array(size);
-    }
-    return grid;
+    return Array.from({ length: size }, () => new Uint16Array(size));
 }
 
 function allocTileGridI32(size: number): Int32Array[] {
-    const grid: Int32Array[] = new Array(size);
-    for (let x = 0; x < size; x++) {
-        grid[x] = new Int32Array(size);
-    }
-    return grid;
+    return Array.from({ length: size }, () => new Int32Array(size));
 }
 
 export function decodeTerrainSquareFromBytesInto(
@@ -122,7 +97,8 @@ export function decodeTerrainSquareFromBytesInto(
                             tileHeightsCol[y] =
                                 -generateHeight(worldX, worldY) * Scene.UNITS_TILE_HEIGHT_BASIS;
                         } else {
-                            tileHeightsCol[y] = decoded.tileHeights[level - 1][x][y] - Scene.UNITS_LEVEL_HEIGHT;
+                            tileHeightsCol[y] =
+                                decoded.tileHeights[level - 1][x][y] - Scene.UNITS_LEVEL_HEIGHT;
                         }
                         break;
                     }
@@ -137,15 +113,17 @@ export function decodeTerrainSquareFromBytesInto(
                             tileHeightsCol[y] = -height * Scene.UNITS_TILE_HEIGHT_BASIS;
                         } else {
                             tileHeightsCol[y] =
-                                decoded.tileHeights[level - 1][x][y] - height * Scene.UNITS_TILE_HEIGHT_BASIS;
+                                decoded.tileHeights[level - 1][x][y] -
+                                height * Scene.UNITS_TILE_HEIGHT_BASIS;
                         }
                         break;
                     }
 
                     if (v <= 49) {
                         tileOverlaysCol[y] = readTerrainValue(buffer, newTerrainFormat);
-                        tileShapesCol[y] = (v - 2) >> 2;
-                        tileRotationsCol[y] = (v - 2) & 3;
+                        const shapeAndRotation = v - 2;
+                        tileShapesCol[y] = shapeAndRotation >> 2;
+                        tileRotationsCol[y] = shapeAndRotation & 3;
                     } else if (v <= 81) {
                         tileRenderFlagsCol[y] = v - 49;
                     } else {
@@ -209,7 +187,10 @@ export function applyDecodedTerrainSquareToScene(
                 }
 
                 let realLevel = level;
-                if (scene.levels > 1 && (decoded.tileRenderFlags[1][x][y] & TileRenderFlag.Bridge) !== 0) {
+                if (
+                    scene.levels > 1 &&
+                    (decoded.tileRenderFlags[1][x][y] & TileRenderFlag.Bridge) !== 0
+                ) {
                     realLevel = level - 1;
                 }
 

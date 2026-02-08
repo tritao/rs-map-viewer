@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -43,9 +44,9 @@ export class ColourStripOperation extends TextureOperation {
                     outputG[pixel] = this.colourG;
                     outputB[pixel] = this.colourB;
                 } else {
-                    outputR[pixel] = (this.colourR * valueR) >> 12;
-                    outputG[pixel] = (this.colourG * valueG) >> 12;
-                    outputB[pixel] = (this.colourB * valueB) >> 12;
+                    outputR[pixel] = mulShift(this.colourR, valueR, 12);
+                    outputG[pixel] = mulShift(this.colourG, valueG, 12);
+                    outputB[pixel] = mulShift(this.colourB, valueB, 12);
                 }
             }
         }

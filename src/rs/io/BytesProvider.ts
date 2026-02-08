@@ -1,5 +1,6 @@
 import { CacheIndex } from "../cache/CacheIndex";
 import { Archive } from "../cache/format/Archive";
+import { XteaKey } from "../crypto/Xtea";
 
 export interface BytesProvider<K = number> {
     getBytes(id: K): Uint8Array | undefined;
@@ -27,7 +28,9 @@ export class IndexArchiveFileBytesProvider implements CountedBytesProvider {
 
         const lastArchiveId = index.getLastArchiveId();
         this.count =
-            lastArchiveId < 0 ? 0 : lastArchiveId * filesPerArchive + index.getFileCount(lastArchiveId);
+            lastArchiveId < 0
+                ? 0
+                : lastArchiveId * filesPerArchive + index.getFileCount(lastArchiveId);
     }
 
     getBytes(id: number): Uint8Array | undefined {
@@ -77,7 +80,7 @@ export class IndexFileBytesProvider implements EnumeratingBytesProvider {
 export class IndexSmartFileBytesProvider implements EnumeratingBytesProvider {
     constructor(
         readonly index: CacheIndex,
-        readonly key: number[] | null,
+        readonly key: XteaKey | null,
     ) {}
 
     getBytes(id: number): Uint8Array | undefined {

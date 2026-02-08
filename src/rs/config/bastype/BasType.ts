@@ -41,7 +41,9 @@ export class BasType extends Type {
                 this.modelRotateTranslate = Array.from({ length: 12 }, () => undefined);
             }
             const bodyPartId = buffer.readUnsignedByte();
-            this.modelRotateTranslate[bodyPartId] = Array.from({ length: 6 }, () => buffer.readShort());
+            this.modelRotateTranslate[bodyPartId] = Array.from({ length: 6 }, () =>
+                buffer.readShort(),
+            );
         } else if (opcode === 29) {
             const yawAcceleration = buffer.readUnsignedByte();
         } else if (opcode === 30) {

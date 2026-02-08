@@ -26,7 +26,9 @@ export class Uint8ArrayByteSource implements ByteSource {
             throw new Error("Invalid length");
         }
         if (offset < 0 || offset + length > this.size) {
-            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`);
+            throw new Error(
+                `Read out of bounds. offset=${offset}, length=${length}, size=${this.size}`,
+            );
         }
         if (length === 0) {
             return;

@@ -14,15 +14,14 @@ export class MapFileBytesProvider implements MapBytesProvider {
     ) {}
 
     getTerrainBytes(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapFileLoader.getTerrainData(mapX, mapY);
+        return this.mapFileLoader.tryGetTerrainBytes(mapX, mapY);
     }
 
     getLocBytes(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapFileLoader.getLocData(mapX, mapY, this.xteasMap);
+        return this.mapFileLoader.tryGetLocBytes(mapX, mapY, this.xteasMap);
     }
 
     getNpcSpawnBytes(mapX: number, mapY: number): Uint8Array | undefined {
-        return this.mapFileLoader.getNpcSpawnData(mapX, mapY, this.xteasMap);
+        return this.mapFileLoader.tryGetNpcSpawnBytes(mapX, mapY, this.xteasMap);
     }
 }
-

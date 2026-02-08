@@ -5,7 +5,7 @@ export class QuatPool {
     private readonly pool: Array<quat | undefined>;
 
     constructor(private readonly capacity: number) {
-        this.pool = new Array(capacity);
+        this.pool = Array.from({ length: capacity }, () => undefined);
     }
 
     reset(): void {

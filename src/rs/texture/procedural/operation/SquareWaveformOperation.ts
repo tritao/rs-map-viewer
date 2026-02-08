@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -36,8 +37,8 @@ export class SquareWaveformOperation extends TextureOperation {
         this.segmentStartQ12 = new Int32Array(this.periodCount + 1);
 
         let segmentStartQ12 = 0;
-        const segmentSizeQ12 = (4096 / this.periodCount) | 0;
-        const pulseWidthQ12 = (segmentSizeQ12 * this.dutyCycleQ12) >> 12;
+        const segmentSizeQ12 = idiv(4096, this.periodCount);
+        const pulseWidthQ12 = mulShift(segmentSizeQ12, this.dutyCycleQ12, 12);
         for (let periodIndex = 0; periodIndex < this.periodCount; periodIndex++) {
             this.segmentStartQ12[periodIndex] = segmentStartQ12;
             this.pulseEndQ12[periodIndex] = segmentStartQ12 + pulseWidthQ12;
@@ -76,11 +77,13 @@ export class SquareWaveformOperation extends TextureOperation {
                     const horizontalGradient = textureGenerator.horizontalGradient[pixel];
                     switch (this.directionMode) {
                         case SquareWaveDirectionMode.DiagonalDifference:
-                            phaseQ12 = ((horizontalGradient - verticalGradient) >> 1) + 2048;
+                            const diff = horizontalGradient - verticalGradient;
+                            phaseQ12 = (diff >> 1) + 2048;
                             break;
                         case SquareWaveDirectionMode.DiagonalSum:
-                            phaseQ12 =
-                                ((horizontalGradient - (4096 - verticalGradient)) >> 1) + 2048;
+                            const invY = 4096 - verticalGradient;
+                            const sumDiff = horizontalGradient - invY;
+                            phaseQ12 = (sumDiff >> 1) + 2048;
                             break;
                         case SquareWaveDirectionMode.Horizontal:
                             phaseQ12 = horizontalGradient;

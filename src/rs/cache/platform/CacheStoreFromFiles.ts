@@ -1,14 +1,14 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
-import { CacheStore } from "../store/CacheStore";
-import { SectorChainStore } from "../store/SectorChainStore";
 import { ByteSource } from "../../io/ByteSource";
 import { Uint8ArrayByteSource } from "../../io/Uint8ArrayByteSource";
 import { StringUtil } from "../../util/StringUtil";
-import { Archive } from "../format/Archive";
 import { LegacyCacheIndex } from "../CacheIndex";
 import { CacheSystem } from "../CacheSystem";
 import { CacheType } from "../CacheType";
 import { LegacyIndexId } from "../IndexId";
+import { Archive } from "../format/Archive";
+import { CacheStore } from "../store/CacheStore";
+import { SectorChainStore } from "../store/SectorChainStore";
 import { CacheBundleTransfer, LegacyCacheBundleTransfer } from "./CacheFiles";
 import { CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
 
@@ -28,9 +28,8 @@ export function hydrateCacheStoreSources(bundle: CacheBundleTransfer): CacheStor
     }
 
     if (bundle.kind === "dat") {
-        const indexFiles = Array.from(
-            { length: DAT_INDEX_COUNT },
-            (_, i) => sourceFromBuffer(bundle.idx[i]),
+        const indexFiles = Array.from({ length: DAT_INDEX_COUNT }, (_, i) =>
+            sourceFromBuffer(bundle.idx[i]),
         );
         return {
             dataFile: sourceFromBuffer(bundle.dat),
@@ -136,7 +135,10 @@ function readAll(buffer: CacheBuffer): Uint8Array {
     return toCacheBytes(buffer);
 }
 
-function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compressionHandler: CompressionHandler): CacheSystem {
+function createLegacyCacheSystem(
+    cacheBundle: LegacyCacheBundleTransfer,
+    compressionHandler: CompressionHandler,
+): CacheSystem {
     const { config, media, textures, models, maps, mapNames } = cacheBundle.legacy;
 
     const configArchive = Archive.decodeOld(0, readAll(config), true, compressionHandler);
@@ -147,7 +149,11 @@ function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compres
     );
 
     const mediaArchive = Archive.decodeOld(0, readAll(media), true, compressionHandler);
-    const mediaIndex = new LegacyCacheIndex(LegacyIndexId.media, [mediaArchive], compressionHandler);
+    const mediaIndex = new LegacyCacheIndex(
+        LegacyIndexId.media,
+        [mediaArchive],
+        compressionHandler,
+    );
 
     const textureArchive = Archive.decodeOld(0, readAll(textures), true, compressionHandler);
     const textureIndex = new LegacyCacheIndex(
@@ -157,7 +163,11 @@ function createLegacyCacheSystem(cacheBundle: LegacyCacheBundleTransfer, compres
     );
 
     const modelArchive = Archive.decodeOld(0, readAll(models), true, compressionHandler);
-    const modelIndex = new LegacyCacheIndex(LegacyIndexId.models, [modelArchive], compressionHandler);
+    const modelIndex = new LegacyCacheIndex(
+        LegacyIndexId.models,
+        [modelArchive],
+        compressionHandler,
+    );
 
     const mapArchives: Archive[] = [];
     const mapArchiveNameHashes = new Map<number, number>();

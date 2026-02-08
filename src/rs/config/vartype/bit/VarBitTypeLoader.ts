@@ -1,6 +1,7 @@
-import { Archive } from "../../../cache/format/Archive";
 import { CacheIndex } from "../../../cache/CacheIndex";
 import { CacheInfo } from "../../../cache/CacheInfo";
+import { Archive } from "../../../cache/format/Archive";
+import { ArchiveBytesProvider } from "../../../io/BytesProvider";
 import {
     ArchiveTypeLoader,
     DatTypeLoader,
@@ -8,7 +9,6 @@ import {
     IndexTypeLoader,
     TypeLoader,
 } from "../../TypeLoader";
-import { ArchiveBytesProvider } from "../../../io/BytesProvider";
 import { VarBitType } from "./VarBitType";
 
 export type VarBitTypeLoader = TypeLoader<VarBitType>;

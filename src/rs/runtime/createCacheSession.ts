@@ -1,14 +1,14 @@
 import { LoadedCache } from "../../util/Caches";
+import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheSystem } from "../cache/CacheSystem";
 import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { VarManager } from "../config/vartype/VarManager";
-import { MapFileIndex } from "../map/MapFileIndex";
-import { tryCreateLoaders } from "../loaders/createLoaders";
+import { InitError, createFailed, initErrorToString } from "../loaders/InitError";
 import { Loaders } from "../loaders/Loaders";
-import { err, ok, Result } from "../../util/Result";
-import { createFailed, InitError, initErrorToString } from "../loaders/InitError";
+import { tryCreateLoaders } from "../loaders/createLoaders";
+import { MapFileIndex } from "../map/MapFileIndex";
 
 export type CacheSession = {
     cache: LoadedCache;
@@ -29,7 +29,10 @@ export type CacheSession = {
     tryFork(): Result<CacheSession, InitError>;
 };
 
-export function createCacheSession(cache: LoadedCache, compressionHandler: CompressionHandler): CacheSession {
+export function createCacheSession(
+    cache: LoadedCache,
+    compressionHandler: CompressionHandler,
+): CacheSession {
     const result = tryCreateCacheSession(cache, compressionHandler);
     if (!result.ok) {
         throw new Error(initErrorToString(result.error));
@@ -42,7 +45,11 @@ export function tryCreateCacheSession(
     compressionHandler: CompressionHandler,
 ): Result<CacheSession, InitError> {
     try {
-        const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, compressionHandler);
+        const cacheSystem = createCacheSystemFromFiles(
+            cache.type,
+            cache.bundle,
+            compressionHandler,
+        );
         return tryCreateCacheSessionFromSystem(cache, cacheSystem);
     } catch (e) {
         return err(createFailed("cache system", e));

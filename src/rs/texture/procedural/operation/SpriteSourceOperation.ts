@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -29,7 +30,12 @@ export class SpriteSourceOperation extends TextureOperation {
         }
         const output = this.colourImageCache.get(line);
         if (this.colourImageCache.dirty) {
-            if (!this.loadSprite(textureGenerator) || !this.pixels || this.width <= 0 || this.height <= 0) {
+            if (
+                !this.loadSprite(textureGenerator) ||
+                !this.pixels ||
+                this.width <= 0 ||
+                this.height <= 0
+            ) {
                 output[0].fill(0);
                 output[1].fill(0);
                 output[2].fill(0);
@@ -44,7 +50,7 @@ export class SpriteSourceOperation extends TextureOperation {
                 this.width *
                 (textureGenerator.height === this.height
                     ? line
-                    : ((line * this.height) / textureGenerator.height) | 0);
+                    : idiv(line * this.height, textureGenerator.height));
 
             if (textureGenerator.width === this.width) {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
@@ -55,7 +61,7 @@ export class SpriteSourceOperation extends TextureOperation {
                 }
             } else {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                    const srcX = ((this.width * pixel) / textureGenerator.width) | 0;
+                    const srcX = idiv(this.width * pixel, textureGenerator.width);
                     const value = this.pixels[offset + srcX];
                     outputB[pixel] = (value << 4) & 0xff0;
                     outputG[pixel] = (value & 0xff00) >> 4;

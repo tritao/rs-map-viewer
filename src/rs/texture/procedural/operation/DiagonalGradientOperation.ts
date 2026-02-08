@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { i32 } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -41,29 +42,34 @@ export class DiagonalGradientOperation extends TextureOperation {
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
             const yQ12 = textureGenerator.verticalGradient[line];
-            const yCenteredHalfQ12 = (yQ12 - 2048) >> 1;
+            const yCenteredQ12 = yQ12 - 2048;
+            const yCenteredHalfQ12 = yCenteredQ12 >> 1;
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                 const xQ12 = textureGenerator.horizontalGradient[pixel];
-                const xCenteredHalfQ12 = (xQ12 - 2048) >> 1;
+                const xCenteredQ12 = xQ12 - 2048;
+                const xCenteredHalfQ12 = xCenteredQ12 >> 1;
                 let phaseQ12: number;
                 if (this.distanceMode === DiagonalGradientDistanceMode.DiagonalDifference) {
                     phaseQ12 = (xQ12 - yQ12) * this.frequency;
                 } else {
-                    const radiusSqQ12 =
-                        (yCenteredHalfQ12 * yCenteredHalfQ12 + xCenteredHalfQ12 * xCenteredHalfQ12) >>
-                        12;
-                    phaseQ12 = (4096.0 * Math.sqrt(radiusSqQ12 / 4096.0)) | 0;
-                    phaseQ12 = (this.frequency * phaseQ12 * 3.141592653589793) | 0;
+                    const radiusSqNumerator =
+                        yCenteredHalfQ12 * yCenteredHalfQ12 + xCenteredHalfQ12 * xCenteredHalfQ12;
+                    const radiusSqQ12 = radiusSqNumerator >> 12;
+                    phaseQ12 = i32(4096.0 * Math.sqrt(radiusSqQ12 / 4096.0));
+                    phaseQ12 = i32(this.frequency * phaseQ12 * 3.141592653589793);
                 }
                 phaseQ12 -= phaseQ12 & ~0xfff;
                 if (this.waveformMode === DiagonalGradientWaveformMode.Sine) {
-                    phaseQ12 = (textureGenerator.sine[(phaseQ12 >> 4) & 0xff] + 4096) >> 1;
+                    const sine = textureGenerator.sine[(phaseQ12 >> 4) & 0xff];
+                    const sinePlus = sine + 4096;
+                    phaseQ12 = sinePlus >> 1;
                 } else if (this.waveformMode === DiagonalGradientWaveformMode.Triangle) {
                     phaseQ12 -= 2048;
                     if (phaseQ12 < 0) {
                         phaseQ12 = -phaseQ12;
                     }
-                    phaseQ12 = (2048 - phaseQ12) << 1;
+                    const triangle = 2048 - phaseQ12;
+                    phaseQ12 = triangle << 1;
                 }
                 output[pixel] = phaseQ12;
             }

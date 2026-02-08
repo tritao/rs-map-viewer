@@ -12,9 +12,7 @@ export class ByteSourceAccess {
 
     private readonly view: Uint8Array | null;
 
-    constructor(
-        readonly source: ByteSource,
-    ) {
+    constructor(readonly source: ByteSource) {
         const v = source.tryGetUint8ArrayView();
         this.view = v && v.byteLength === source.size ? v : null;
     }
@@ -24,7 +22,9 @@ export class ByteSourceAccess {
             throw new Error("Invalid length");
         }
         if (offset < 0 || offset + length > this.source.size) {
-            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.source.size}`);
+            throw new Error(
+                `Read out of bounds. offset=${offset}, length=${length}, size=${this.source.size}`,
+            );
         }
         if (length === 0) {
             return ByteSourceAccess.EMPTY;
@@ -38,7 +38,9 @@ export class ByteSourceAccess {
             throw new Error("Invalid length");
         }
         if (offset < 0 || offset + length > this.source.size) {
-            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.source.size}`);
+            throw new Error(
+                `Read out of bounds. offset=${offset}, length=${length}, size=${this.source.size}`,
+            );
         }
         if (length === 0) {
             return ByteSourceAccess.EMPTY;
@@ -58,7 +60,9 @@ export class ByteSourceAccess {
             throw new Error("Invalid length");
         }
         if (offset < 0 || offset + length > this.source.size) {
-            throw new Error(`Read out of bounds. offset=${offset}, length=${length}, size=${this.source.size}`);
+            throw new Error(
+                `Read out of bounds. offset=${offset}, length=${length}, size=${this.source.size}`,
+            );
         }
         this.source.readInto(offset, target, targetOffset, length);
     }

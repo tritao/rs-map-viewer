@@ -1,9 +1,10 @@
 import { CompressionHandler } from "../compression/CompressionHandler";
+import { XteaKey } from "../crypto/Xtea";
 import { CacheIndex, Dat2CacheIndex, DatCacheIndex } from "./CacheIndex";
 import { CacheType } from "./CacheType";
-import { CacheStore } from "./store/CacheStore";
 import { Archive } from "./format/Archive";
 import { ArchiveReference } from "./reference/ArchiveReference";
+import { CacheStore } from "./store/CacheStore";
 
 export class CacheSystem {
     static loadIndicesFromStore(
@@ -31,7 +32,12 @@ export class CacheSystem {
         indexIds: number[],
         compressionHandler: CompressionHandler,
     ): CacheSystem {
-        const indices = CacheSystem.loadIndicesFromStore(cacheType, store, indexIds, compressionHandler);
+        const indices = CacheSystem.loadIndicesFromStore(
+            cacheType,
+            store,
+            indexIds,
+            compressionHandler,
+        );
         return new CacheSystem(indices, compressionHandler);
     }
 
@@ -60,15 +66,19 @@ export class CacheSystem {
         return this.getIndex(indexId).readArchiveBytes(archiveId);
     }
 
-    readContainerPayload(indexId: number, archiveId: number, key: number[] | null): Uint8Array {
+    readContainerPayload(indexId: number, archiveId: number, key: XteaKey | null): Uint8Array {
         return this.getIndex(indexId).readContainerPayload(archiveId, key);
     }
 
-    tryReadContainerPayload(indexId: number, archiveId: number, key: number[] | null): Uint8Array | undefined {
+    tryReadContainerPayload(
+        indexId: number,
+        archiveId: number,
+        key: XteaKey | null,
+    ): Uint8Array | undefined {
         return this.indices.get(indexId)?.tryReadContainerPayload(archiveId, key);
     }
 
-    getArchiveKey(indexId: number, archiveId: number, key: number[] | null): Archive {
+    getArchiveKey(indexId: number, archiveId: number, key: XteaKey | null): Archive {
         return this.getIndex(indexId).getArchiveKey(archiveId, key);
     }
 
@@ -92,7 +102,10 @@ export class CacheSystem {
      * Dat2-only: returns the subset of archive metadata required to split payload bytes into files.
      * Returns null if not available.
      */
-    getArchiveMeta(indexId: number, archiveId: number): {
+    getArchiveMeta(
+        indexId: number,
+        archiveId: number,
+    ): {
         id: number;
         lastFileId: number;
         fileCount: number;

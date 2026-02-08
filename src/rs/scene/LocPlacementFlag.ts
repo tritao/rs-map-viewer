@@ -6,8 +6,7 @@ export enum LocPlacementFlag {
 
 export function packLocPlacement(type: number, rotation: number): number {
     return (
-        ((rotation & 0x3) << LocPlacementFlag.RotationShift) |
-        (type & LocPlacementFlag.TypeMask)
+        ((rotation & 0x3) << LocPlacementFlag.RotationShift) | (type & LocPlacementFlag.TypeMask)
     );
 }
 
@@ -18,4 +17,3 @@ export function getLocPlacementType(packed: number): number {
 export function getLocPlacementRotation(packed: number): number {
     return (packed & LocPlacementFlag.RotationMask) >> LocPlacementFlag.RotationShift;
 }
-

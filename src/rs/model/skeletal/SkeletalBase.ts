@@ -8,7 +8,7 @@ export class SkeletalBase {
     poseCount: number;
 
     constructor(buffer: ByteBuffer, count: number) {
-        this.bones = new Array(count);
+        this.bones = Array.from({ length: count }, () => undefined as unknown as SkeletalBone);
         this.poseCount = buffer.readUnsignedByte();
 
         for (let i = 0; i < this.bones.length; i++) {

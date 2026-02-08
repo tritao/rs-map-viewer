@@ -18,7 +18,7 @@ export class ColourImageCache {
 
     images: Int32Array[][];
 
-    slots: ColourImageCacheSlot[];
+    slots: Array<ColourImageCacheSlot | undefined>;
 
     usedSlots: number;
 
@@ -30,14 +30,10 @@ export class ColourImageCache {
         this.slotCount = slotCount;
         this.lineCount = lineCount;
         this.usageTracker = new Denque<ColourImageCacheSlot>();
-        this.images = new Array(slotCount);
-        for (let i = 0; i < slotCount; i++) {
-            this.images[i] = new Array(3);
-            for (let p = 0; p < 3; p++) {
-                this.images[i][p] = new Int32Array(imageSize);
-            }
-        }
-        this.slots = new Array(slotCount);
+        this.images = Array.from({ length: slotCount }, () =>
+            Array.from({ length: 3 }, () => new Int32Array(imageSize)),
+        );
+        this.slots = Array.from({ length: lineCount }, () => undefined);
         this.usedSlots = 0;
         this.lastLine = -1;
         this.dirty = false;
@@ -63,22 +59,26 @@ export class ColourImageCache {
                     const oldSlot = this.usageTracker.pop();
                     if (oldSlot) {
                         slot = new ColourImageCacheSlot(line, oldSlot.slotId);
-                        delete this.slots[oldSlot.line];
+                        this.slots[oldSlot.line] = undefined;
                     }
                 }
                 this.slots[line] = slot;
             } else {
                 this.dirty = false;
             }
+            if (!slot) {
+                throw new Error("ColourImageCache: invariant violation (slot is undefined)");
+            }
+            const activeSlot = slot;
             // Remove the slot from the usage tracker and add it to the front
             for (let i = 0; i < this.usageTracker.length; i++) {
-                if (this.usageTracker.peekAt(i) === slot) {
+                if (this.usageTracker.peekAt(i) === activeSlot) {
                     this.usageTracker.removeOne(i);
                     break;
                 }
             }
-            this.usageTracker.unshift(slot);
-            return this.images[slot.slotId];
+            this.usageTracker.unshift(activeSlot);
+            return this.images[activeSlot.slotId];
         }
     }
 

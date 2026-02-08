@@ -1,10 +1,10 @@
-import { Archive } from "../cache/format/Archive";
+import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
+import { Archive } from "../cache/format/Archive";
+import { DecodeError, decodeFailedError } from "../errors/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
-import { DecodeError, decodeFailedError } from "../errors/DecodeError";
-import { err, ok, Result } from "../../util/Result";
 import { IndexedSprite } from "./IndexedSprite";
 
 export class SpriteLoader {
@@ -28,7 +28,7 @@ export class SpriteLoader {
         this.yOffsets = new Int32Array(this.spriteCount);
         this.widths = new Int32Array(this.spriteCount);
         this.heights = new Int32Array(this.spriteCount);
-        this.pixels = new Array(this.spriteCount);
+        this.pixels = Array.from({ length: this.spriteCount }, () => new Uint8Array(0));
 
         buffer.offset = data.length - 7 - this.spriteCount * 8;
 
@@ -100,7 +100,11 @@ export class SpriteLoader {
         return true;
     }
 
-    static tryLoadIndexedSpriteDat(archive: Archive, name: string, offset: number): IndexedSprite | undefined {
+    static tryLoadIndexedSpriteDat(
+        archive: Archive,
+        name: string,
+        offset: number,
+    ): IndexedSprite | undefined {
         return SpriteLoader.tryLoadIndexedSpriteDatFromNamedBytes(
             new ArchiveNamedBytesProvider(archive),
             name,
@@ -251,10 +255,16 @@ export class SpriteLoader {
     }
 
     static loadIndexedSpritesDat(archive: Archive, name: string): IndexedSprite[] {
-        return SpriteLoader.loadIndexedSpritesDatFromNamedBytes(new ArchiveNamedBytesProvider(archive), name);
+        return SpriteLoader.loadIndexedSpritesDatFromNamedBytes(
+            new ArchiveNamedBytesProvider(archive),
+            name,
+        );
     }
 
-    static loadIndexedSpritesDatFromNamedBytes(source: NamedBytesProvider, name: string): IndexedSprite[] {
+    static loadIndexedSpritesDatFromNamedBytes(
+        source: NamedBytesProvider,
+        name: string,
+    ): IndexedSprite[] {
         const dataBytes = source.getBytes(name + ".dat");
         const indexBytes = source.getBytes("index.dat");
         if (!dataBytes || !indexBytes) {
@@ -272,7 +282,10 @@ export class SpriteLoader {
         return this.decodeIndexedSpritesDat(dataFile.data, indexFile.data);
     }
 
-    private static decodeIndexedSpritesDat(dataBytes: Uint8Array, indexBytes: Uint8Array): IndexedSprite[] {
+    private static decodeIndexedSpritesDat(
+        dataBytes: Uint8Array,
+        indexBytes: Uint8Array,
+    ): IndexedSprite[] {
         const dataBuffer = new ByteBuffer(dataBytes);
         const indexBuffer = new ByteBuffer(indexBytes);
 
@@ -370,9 +383,9 @@ export class SpriteLoader {
     }
 
     toIndexedSprites(): IndexedSprite[] {
-        const sprites = new Array<IndexedSprite>(this.spriteCount);
+        const sprites = Array.from({ length: this.spriteCount }, () => new IndexedSprite());
         for (let i = 0; i < this.spriteCount; i++) {
-            const sprite = (sprites[i] = new IndexedSprite());
+            const sprite = sprites[i];
             sprite.width = this.width;
             sprite.height = this.height;
             sprite.xOffset = this.xOffsets[i];
@@ -393,10 +406,16 @@ export class SpriteLoader {
         spriteIndex: CacheIndex,
         id: number,
     ): IndexedSprite[] | undefined {
-        return this.loadIntoIndexedSpritesFromSource(new IndexFileBytesProvider(spriteIndex, 0), id);
+        return this.loadIntoIndexedSpritesFromSource(
+            new IndexFileBytesProvider(spriteIndex, 0),
+            id,
+        );
     }
 
-    static loadIntoIndexedSpriteFromSource(source: BytesProvider, id: number): IndexedSprite | undefined {
+    static loadIntoIndexedSpriteFromSource(
+        source: BytesProvider,
+        id: number,
+    ): IndexedSprite | undefined {
         const loader = new SpriteLoader();
         if (!loader.loadFromSource(source, id) || loader.spriteCount === 0) {
             return undefined;
@@ -404,7 +423,10 @@ export class SpriteLoader {
         return loader.toIndexedSprite(0);
     }
 
-    static loadIntoIndexedSpritesFromSource(source: BytesProvider, id: number): IndexedSprite[] | undefined {
+    static loadIntoIndexedSpritesFromSource(
+        source: BytesProvider,
+        id: number,
+    ): IndexedSprite[] | undefined {
         const loader = new SpriteLoader();
         if (!loader.loadFromSource(source, id) || loader.spriteCount === 0) {
             return undefined;

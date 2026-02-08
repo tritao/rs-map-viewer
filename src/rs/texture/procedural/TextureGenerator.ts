@@ -22,7 +22,9 @@ export const TEXTURE_INVERSE_SQUARE_ROOT_TABLE = (() => {
     let i = 0;
     for (let x = 0; x < 256; x++) {
         for (let y = 0; y <= x; y++) {
-            table[i++] = (255.0 / Math.sqrt(Math.fround((x * x + y * y + 65535) / 65535.0))) | 0;
+            table[i++] = Math.trunc(
+                255.0 / Math.sqrt(Math.fround((x * x + y * y + 65535) / 65535.0)),
+            );
         }
     }
     return table;
@@ -110,7 +112,7 @@ export class TextureGenerator {
     initBrightness(brightness: number): void {
         if (this.brightness !== brightness) {
             for (let i = 0; i < this.brightnessTable.length; i++) {
-                const v = (Math.pow(i / 255.0, brightness) * 255.0) | 0;
+                const v = Math.trunc(Math.pow(i / 255.0, brightness) * 255.0);
                 this.brightnessTable[i] = Math.min(v, 255);
             }
 
@@ -129,7 +131,9 @@ export class TextureGenerator {
     }
 
     tryLoadSprite(spriteId: number): IndexedSprite | undefined {
-        return SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId) ?? undefined;
+        return (
+            SpriteLoader.loadIntoIndexedSpriteFromSource(this.spriteSource, spriteId) ?? undefined
+        );
     }
 
     clearCache(): void {

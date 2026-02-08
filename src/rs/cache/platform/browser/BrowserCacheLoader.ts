@@ -1,4 +1,4 @@
-import { CachedFile, CacheLoader, DownloadProgress, ProgressListener } from "../CacheLoader";
+import { CacheLoader, CachedFile, DownloadProgress, ProgressListener } from "../CacheLoader";
 
 function ReadableBufferStream(ab: ArrayBuffer): ReadableStream<Uint8Array> {
     return new ReadableStream({
@@ -20,7 +20,7 @@ export class BrowserCacheLoader implements CacheLoader {
         progressListener?: ProgressListener,
     ): Promise<CachedFile> {
         const cache = await caches.open(cacheName);
-        return fetchCachedFile(baseUrl, name, shared, incremental, cache, signal, progressListener)
+        return fetchCachedFile(baseUrl, name, shared, incremental, cache, signal, progressListener);
     }
 }
 

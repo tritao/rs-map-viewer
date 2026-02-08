@@ -1,5 +1,5 @@
-import { ByteBuffer } from "../io/ByteBuffer";
 import { LocModelType } from "../config/loctype/LocModelType";
+import { ByteBuffer } from "../io/ByteBuffer";
 
 export type LocPlacement = {
     id: number;
@@ -47,4 +47,3 @@ export function decodeLocPlacementsFromBytes(data: Uint8Array): LocPlacement[] {
 
     return placements;
 }
-

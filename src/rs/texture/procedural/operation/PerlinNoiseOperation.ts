@@ -1,14 +1,17 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
 const PERLIN_FADE_TABLE_Q12 = (() => {
     const table = new Int32Array(4096);
     for (let i = 0; i < 4096; i++) {
-        const nCubedQ12 = (((i * i) >> 12) * i) >> 12;
+        const iSqQ12 = mulShift(i, i, 12);
+        const nCubedQ12 = mulShift(iSqQ12, i, 12);
         const sixNMinus15Q12 = i * 6 - 61440;
-        const innerQ12 = 40960 + ((i * sixNMinus15Q12) >> 12);
-        table[i] = (nCubedQ12 * innerQ12) >> 12;
+        const innerTermQ12 = mulShift(i, sixNMinus15Q12, 12);
+        const innerQ12 = 40960 + innerTermQ12;
+        table[i] = mulShift(nCubedQ12, innerQ12, 12);
     }
     return table;
 })();
@@ -33,7 +36,6 @@ export class PerlinNoiseOperation extends TextureOperation {
 
     permutations = new Int8Array(512);
 
-
     static dotGradient2D(x: number, y: number, gradient: number[]): number {
         return x * gradient[0] + y * gradient[1];
     }
@@ -43,7 +45,11 @@ export class PerlinNoiseOperation extends TextureOperation {
     }
 
     static lerp(start: number, end: number, amount: number): number {
-        return (start * (4096 - amount) + end * amount) >> 12;
+        const inv = 4096 - amount;
+        const startTerm = start * inv;
+        const endTerm = end * amount;
+        const numerator = startTerm + endTerm;
+        return numerator >> 12;
     }
 
     constructor() {
@@ -128,9 +134,9 @@ export class PerlinNoiseOperation extends TextureOperation {
         if (this.octaveCount === 1) {
             const amplitude = this.amplitudeByOctaveQ12[0];
             const freq12 = this.frequencyByOctave[0] << 12;
-            const xWrap = (freq12 * this.repeatX) >> 12;
-            const yWrap = (freq12 * this.repeatY) >> 12;
-            let yCoord = (freq12 * vGrad) >> 12;
+            const xWrap = mulShift(freq12, this.repeatX, 12);
+            const yWrap = mulShift(freq12, this.repeatY, 12);
+            let yCoord = mulShift(freq12, vGrad, 12);
             const permIndex0 = yCoord >> 12;
             let permIndex1 = permIndex0 + 1;
             if (yWrap <= permIndex1) {
@@ -144,37 +150,37 @@ export class PerlinNoiseOperation extends TextureOperation {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                     const hGrad = this.repeatX * textureGenerator.horizontalGradient[pixel];
                     let v = this.sampleNoise2D(
-                        (freq12 * hGrad) >> 12,
+                        mulShift(freq12, hGrad, 12),
                         xWrap,
                         perm0,
                         perm1,
                         yCoord,
                         fadeY,
                     );
-                    v = (amplitude * v) >> 12;
+                    v = mulShift(amplitude, v, 12);
                     output[pixel] = (v >> 1) + 2048;
                 }
             } else {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                     const hGrad = this.repeatX * textureGenerator.horizontalGradient[pixel];
                     const v = this.sampleNoise2D(
-                        (freq12 * hGrad) >> 12,
+                        mulShift(freq12, hGrad, 12),
                         xWrap,
                         perm0,
                         perm1,
                         yCoord,
                         fadeY,
                     );
-                    output[pixel] = (v * amplitude) >> 12;
+                    output[pixel] = mulShift(v, amplitude, 12);
                 }
             }
         } else {
             let amplitude = this.amplitudeByOctaveQ12[0];
             if (amplitude > 8 || amplitude < -8) {
                 const freq12 = this.frequencyByOctave[0] << 12;
-                let yCoord = (freq12 * vGrad) >> 12;
-                const xWrap = (freq12 * this.repeatX) >> 12;
-                const yWrap = (freq12 * this.repeatY) >> 12;
+                let yCoord = mulShift(freq12, vGrad, 12);
+                const xWrap = mulShift(freq12, this.repeatX, 12);
+                const yWrap = mulShift(freq12, this.repeatY, 12);
                 const yCell = yCoord >> 12;
                 let yCellNext = yCell + 1;
                 yCoord &= 0xfff;
@@ -187,14 +193,14 @@ export class PerlinNoiseOperation extends TextureOperation {
                 for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                     const xBase = this.repeatX * textureGenerator.horizontalGradient[pixel];
                     const v = this.sampleNoise2D(
-                        (xBase * freq12) >> 12,
+                        mulShift(xBase, freq12, 12),
                         xWrap,
                         permY0,
                         permY1,
                         yCoord,
                         fadeY,
                     );
-                    output[pixel] = (amplitude * v) >> 12;
+                    output[pixel] = mulShift(amplitude, v, 12);
                 }
             }
 
@@ -202,9 +208,9 @@ export class PerlinNoiseOperation extends TextureOperation {
                 amplitude = this.amplitudeByOctaveQ12[octave];
                 if (amplitude > 8 || amplitude < -8) {
                     const freq12 = this.frequencyByOctave[octave] << 12;
-                    const yWrap = (this.repeatY * freq12) >> 12;
-                    const xWrap = (this.repeatX * freq12) >> 12;
-                    let yCoord = (vGrad * freq12) >> 12;
+                    const yWrap = mulShift(this.repeatY, freq12, 12);
+                    const xWrap = mulShift(this.repeatX, freq12, 12);
+                    let yCoord = mulShift(vGrad, freq12, 12);
                     const yCell = yCoord >> 12;
                     let yCellNext = yCell + 1;
                     yCoord &= 0xfff;
@@ -218,28 +224,28 @@ export class PerlinNoiseOperation extends TextureOperation {
                         for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                             const xBase = textureGenerator.horizontalGradient[pixel] * this.repeatX;
                             let v = this.sampleNoise2D(
-                                (freq12 * xBase) >> 12,
+                                mulShift(freq12, xBase, 12),
                                 xWrap,
                                 permY0,
                                 permY1,
                                 yCoord,
                                 fadeY,
                             );
-                            v = output[pixel] + ((v * amplitude) >> 12);
+                            v = output[pixel] + mulShift(v, amplitude, 12);
                             output[pixel] = 2048 + (v >> 1);
                         }
                     } else {
                         for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                             const xBase = textureGenerator.horizontalGradient[pixel] * this.repeatX;
                             const v = this.sampleNoise2D(
-                                (freq12 * xBase) >> 12,
+                                mulShift(freq12, xBase, 12),
                                 xWrap,
                                 permY0,
                                 permY1,
                                 yCoord,
                                 fadeY,
                             );
-                            output[pixel] += (amplitude * v) >> 12;
+                            output[pixel] += mulShift(amplitude, v, 12);
                         }
                     }
                 }
@@ -280,7 +286,7 @@ export class PerlinNoiseOperation extends TextureOperation {
         } else {
             dot01 = gradIndex === 2 ? xFracMinusOne - yFrac : -xFracMinusOne + -yFrac;
         }
-        const interpTop = ((fadeX * (dot01 - dot00)) >> 12) + dot00;
+        const interpTop = mulShift(fadeX, dot01 - dot00, 12) + dot00;
         gradIndex = this.permutations[permY1 + xCell] & 0x3;
         if (gradIndex <= 1) {
             dot00 = gradIndex !== 0 ? yFracMinusOne - xCoord : xCoord + yFracMinusOne;
@@ -294,8 +300,8 @@ export class PerlinNoiseOperation extends TextureOperation {
             dot01 =
                 gradIndex === 2 ? -yFracMinusOne + xFracMinusOne : -yFracMinusOne + -xFracMinusOne;
         }
-        const interpBottom = dot00 + ((fadeX * (dot01 - dot00)) >> 12);
-        return interpTop + ((fadeY * (interpBottom - interpTop)) >> 12);
+        const interpBottom = dot00 + mulShift(fadeX, dot01 - dot00, 12);
+        return interpTop + mulShift(fadeY, interpBottom - interpTop, 12);
     }
 
     sampleNoise2DReference(

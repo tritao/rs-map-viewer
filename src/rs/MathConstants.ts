@@ -23,8 +23,8 @@ const ANGULAR_RATIO = 360.0 / CIRCULAR_ANGLE;
 const ANGULAR_RATIO_RADIANS = ANGULAR_RATIO * DEGREES_TO_RADIANS;
 
 for (let i = 0; i < 2048; i++) {
-    SINE[i] = ((65536.0 * Math.sin(i * ANGULAR_RATIO_RADIANS)) as i32) | 0;
-    COSINE[i] = ((65536.0 * Math.cos(i * ANGULAR_RATIO_RADIANS)) as i32) | 0;
+    SINE[i] = Math.trunc(65536.0 * Math.sin(i * ANGULAR_RATIO_RADIANS));
+    COSINE[i] = Math.trunc(65536.0 * Math.cos(i * ANGULAR_RATIO_RADIANS));
 }
 
 export const SINE_LARGE = new Int32Array(16384);
@@ -32,6 +32,6 @@ export const COSINE_LARGE = new Int32Array(16384);
 
 const d = 3.834951969714103e-4;
 for (let i = 0; i < 16384; i++) {
-    SINE_LARGE[i] = (16384.0 * Math.sin(i * d) as i32);
-    COSINE_LARGE[i] = (16384.0 * Math.cos(i * d) as i32);
+    SINE_LARGE[i] = (16384.0 * Math.sin(i * d)) as i32;
+    COSINE_LARGE[i] = (16384.0 * Math.cos(i * d)) as i32;
 }

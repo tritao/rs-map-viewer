@@ -1,11 +1,11 @@
-import { Archive } from "../cache/format/Archive";
+import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
+import { Archive } from "../cache/format/Archive";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { CountedBytesProvider, IndexArchiveFileBytesProvider } from "../io/BytesProvider";
 import { NamedBytesProvider } from "../io/NamedBytesProvider";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
-import { Result, err, ok } from "../../util/Result";
 import { Type } from "./Type";
 import { decodeTypeFromBytes } from "./decode/decodeType";
 
@@ -222,7 +222,13 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         if (!indexFile) {
             throw new Error(name + ".idx not found");
         }
-        return IndexedDatTypeLoader.createFromBytes(typeConstructor, cacheInfo, dataFile.data, indexFile.data, name);
+        return IndexedDatTypeLoader.createFromBytes(
+            typeConstructor,
+            cacheInfo,
+            dataFile.data,
+            indexFile.data,
+            name,
+        );
     }
 
     static createFromNamedBytes<T extends Type>(
@@ -239,7 +245,13 @@ export class IndexedDatTypeLoader<T extends Type> extends BaseTypeLoader<T> {
         if (!idxBytes) {
             throw new Error(name + ".idx not found");
         }
-        return IndexedDatTypeLoader.createFromBytes(typeConstructor, cacheInfo, datBytes, idxBytes, name);
+        return IndexedDatTypeLoader.createFromBytes(
+            typeConstructor,
+            cacheInfo,
+            datBytes,
+            idxBytes,
+            name,
+        );
     }
 
     private static createFromBytes<T extends Type>(

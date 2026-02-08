@@ -1,7 +1,7 @@
 import { CacheInfo } from "../../cache/CacheInfo";
 import { Archive } from "../../cache/format/Archive";
-import { EnumeratingBytesProvider, EnumeratingArchiveBytesProvider } from "../../io/BytesProvider";
 import { DecodeError } from "../../errors/DecodeError";
+import { EnumeratingArchiveBytesProvider, EnumeratingBytesProvider } from "../../io/BytesProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
@@ -18,7 +18,7 @@ export function decodeDat2SeqFrameMapFromSource(
         maxId = Math.max(maxId, ids[i]);
     }
 
-    const frames: Array<SeqFrame | undefined> = new Array(maxId + 1);
+    const frames: Array<SeqFrame | undefined> = Array.from({ length: maxId + 1 }, () => undefined);
     const errors: Map<number, DecodeError> = new Map();
     for (let i = 0; i < ids.length; i++) {
         const id = ids[i];

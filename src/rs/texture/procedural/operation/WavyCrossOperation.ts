@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -37,21 +38,23 @@ export class WavyCrossOperation extends TextureOperation {
     }
 
     isInWavyAntiDiagonalBand(textureGenerator: TextureGenerator, x: number, y: number) {
-        const phase = ((y - x) * this.phaseScaleQ12) >> 12;
-        let halfWidth = textureGenerator.cosine[((phase * 255) >> 12) & 0xff];
-        halfWidth = ((halfWidth << 12) / this.phaseScaleQ12) | 0;
-        halfWidth = ((halfWidth << 12) / this.widthNormalizationQ12) | 0;
-        halfWidth = (this.widthScaleQ12 * halfWidth) >> 12;
+        const phase = mulShift(y - x, this.phaseScaleQ12, 12);
+        const cosineIndex = mulShift(phase, 255, 12) & 0xff;
+        let halfWidth = textureGenerator.cosine[cosineIndex];
+        halfWidth = idiv(shl(halfWidth, 12), this.phaseScaleQ12);
+        halfWidth = idiv(shl(halfWidth, 12), this.widthNormalizationQ12);
+        halfWidth = mulShift(this.widthScaleQ12, halfWidth, 12);
         const sum = x + y;
         return halfWidth > sum && -halfWidth < sum;
     }
 
     isInWavyDiagonalBand(textureGenerator: TextureGenerator, x: number, y: number) {
-        const phase = ((y + x) * this.phaseScaleQ12) >> 12;
-        let halfWidth = textureGenerator.cosine[((phase * 255) >> 12) & 0xff];
-        halfWidth = ((halfWidth << 12) / this.phaseScaleQ12) | 0;
-        halfWidth = ((halfWidth << 12) / this.widthNormalizationQ12) | 0;
-        halfWidth = (halfWidth * this.widthScaleQ12) >> 12;
+        const phase = mulShift(y + x, this.phaseScaleQ12, 12);
+        const cosineIndex = mulShift(phase, 255, 12) & 0xff;
+        let halfWidth = textureGenerator.cosine[cosineIndex];
+        halfWidth = idiv(shl(halfWidth, 12), this.phaseScaleQ12);
+        halfWidth = idiv(shl(halfWidth, 12), this.widthNormalizationQ12);
+        halfWidth = mulShift(halfWidth, this.widthScaleQ12, 12);
         const diff = y - x;
         return halfWidth > diff && diff > -halfWidth;
     }

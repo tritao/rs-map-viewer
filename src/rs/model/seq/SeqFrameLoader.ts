@@ -1,14 +1,14 @@
-import { Archive } from "../../cache/format/Archive";
+import { Result, err, ok } from "../../../util/Result";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
+import { Archive } from "../../cache/format/Archive";
+import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { EnumeratingGroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
-import { DecodeError, notFoundError } from "../../errors/DecodeError";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
 import { decodeDat2SeqFrameMapFromSource } from "./decodeDat2SeqFrameMap";
-import { err, ok, Result } from "../../../util/Result";
 
 export interface SeqFrameLoader {
     tryLoad(id: number): Result<SeqFrame, DecodeError>;

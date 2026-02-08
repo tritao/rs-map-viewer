@@ -91,22 +91,15 @@ export class VoronoiNoiseOperation extends TextureOperation {
                 const cellX = xCoordQ12 >> 12;
                 const cellXNext = cellX + 1;
                 for (let yNeighbor = cellY - 1; yNeighbor <= cellYNext; yNeighbor++) {
-                    const yPermutation =
-                        this.permutations[
-                            (yNeighbor >= this.repeatY ? yNeighbor - this.repeatY : yNeighbor) &
-                                0xff
-                        ] & 0xff;
+                    const yNeighborWrapped =
+                        yNeighbor >= this.repeatY ? yNeighbor - this.repeatY : yNeighbor;
+                    const yPermutation = this.permutations[yNeighborWrapped & 0xff] & 0xff;
                     for (let xNeighbor = cellX - 1; xNeighbor <= cellXNext; xNeighbor++) {
-                        let featureIndex =
-                            (this.permutations[
-                                ((xNeighbor >= this.repeatX
-                                    ? xNeighbor - this.repeatX
-                                    : xNeighbor) +
-                                    yPermutation) &
-                                    0xff
-                            ] &
-                                0xff) *
-                            2;
+                        const xNeighborWrapped =
+                            xNeighbor >= this.repeatX ? xNeighbor - this.repeatX : xNeighbor;
+                        const permutationSum = xNeighborWrapped + yPermutation;
+                        const permutationIndex = permutationSum & 0xff;
+                        let featureIndex = (this.permutations[permutationIndex] & 0xff) * 2;
 
                         let dxQ12 =
                             xCoordQ12 -
@@ -117,7 +110,8 @@ export class VoronoiNoiseOperation extends TextureOperation {
                         let distQ12: number;
                         switch (this.distanceMetric) {
                             case 1:
-                                distQ12 = (dxQ12 * dxQ12 + dyQ12 * dyQ12) >> 12;
+                                const distNumerator = dxQ12 * dxQ12 + dyQ12 * dyQ12;
+                                distQ12 = distNumerator >> 12;
                                 break;
                             case 2:
                                 distQ12 =
@@ -129,35 +123,34 @@ export class VoronoiNoiseOperation extends TextureOperation {
                                 distQ12 = Math.max(dxQ12, dyQ12);
                                 break;
                             case 4:
-                                dxQ12 =
-                                    (Math.sqrt(Math.fround(dxQ12 < 0 ? -dxQ12 : dxQ12) / 4096.0) *
-                                        4096.0) |
-                                    0;
-                                dyQ12 =
-                                    (Math.sqrt(Math.fround(dyQ12 < 0 ? -dyQ12 : dyQ12) / 4096.0) *
-                                        4096.0) |
-                                    0;
+                                dxQ12 = Math.trunc(
+                                    Math.sqrt(Math.fround(dxQ12 < 0 ? -dxQ12 : dxQ12) / 4096.0) *
+                                        4096.0,
+                                );
+                                dyQ12 = Math.trunc(
+                                    Math.sqrt(Math.fround(dyQ12 < 0 ? -dyQ12 : dyQ12) / 4096.0) *
+                                        4096.0,
+                                );
                                 distQ12 = dyQ12 + dxQ12;
-                                distQ12 = (distQ12 * distQ12) >> 12;
+                                const distSq = distQ12 * distQ12;
+                                distQ12 = distSq >> 12;
                                 break;
 
                             case 5:
                                 dxQ12 *= dxQ12;
                                 dyQ12 *= dyQ12;
-                                distQ12 =
-                                    (Math.sqrt(
+                                distQ12 = Math.trunc(
+                                    Math.sqrt(
                                         Math.sqrt(Math.fround((dxQ12 + dyQ12) / 1.6777216e7)),
-                                    ) *
-                                        4096.0) |
-                                    0;
+                                    ) * 4096.0,
+                                );
                                 break;
                             default:
-                                distQ12 =
-                                    (Math.sqrt(
+                                distQ12 = Math.trunc(
+                                    Math.sqrt(
                                         Math.fround((dyQ12 * dyQ12 + dxQ12 * dxQ12) / 1.6777216e7),
-                                    ) *
-                                        4096.0) |
-                                    0;
+                                    ) * 4096.0,
+                                );
                                 break;
                         }
 

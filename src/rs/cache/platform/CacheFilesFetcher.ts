@@ -1,7 +1,13 @@
-import { CACHE_FILE, CacheBundleTransfer, CacheBuffer, DAT_INDEX_COUNT, toCacheBytes } from "./CacheFiles";
-import { CachedFile, CacheLoader, ProgressListener } from "./CacheLoader";
 import { CacheType } from "../CacheType";
 import { IDX_ENTRY_SIZE } from "../store/DatLayout";
+import {
+    CACHE_FILE,
+    CacheBuffer,
+    CacheBundleTransfer,
+    DAT_INDEX_COUNT,
+    toCacheBytes,
+} from "./CacheFiles";
+import { CacheLoader, CachedFile, ProgressListener } from "./CacheLoader";
 
 function decodeJsonStringArray(buffer: CacheBuffer): string[] {
     const text = new TextDecoder("utf-8").decode(toCacheBytes(buffer));
@@ -113,7 +119,6 @@ export async function fetchDatCacheFiles(
     signal?: AbortSignal,
     progressListener?: ProgressListener,
 ): Promise<CacheBundleTransfer> {
-
     const dataFilePromise = loader.fetchCachedFile(
         baseUrl,
         CACHE_FILE.DAT,
@@ -126,13 +131,7 @@ export async function fetchDatCacheFiles(
     const indexFilePromises: Promise<CachedFile>[] = [];
     for (let i = 0; i < DAT_INDEX_COUNT; i++) {
         indexFilePromises.push(
-            loader.fetchCachedFile(
-                baseUrl,
-                CACHE_FILE.INDEX_PREFIX + i,
-                shared,
-                false,
-                cacheName,
-            ),
+            loader.fetchCachedFile(baseUrl, CACHE_FILE.INDEX_PREFIX + i, shared, false, cacheName),
         );
     }
 
@@ -159,7 +158,6 @@ export async function fetchDat2CacheFiles(
     signal?: AbortSignal,
     progressListener?: ProgressListener,
 ): Promise<CacheBundleTransfer> {
-
     const dataFilePromise = loader.fetchCachedFile(
         baseUrl,
         CACHE_FILE.DAT2,

@@ -1,3 +1,9 @@
+import { Result, err, ok } from "../../util/Result";
+import { CacheIndex } from "../cache/CacheIndex";
+import { CacheInfo } from "../cache/CacheInfo";
+import { CacheSystem } from "../cache/CacheSystem";
+import { LegacyIndexId } from "../cache/IndexId";
+import { Archive } from "../cache/format/Archive";
 import { BasTypeLoader, DummyBasTypeLoader } from "../config/bastype/BasTypeLoader";
 import {
     DatFloorTypeLoader,
@@ -10,26 +16,34 @@ import { DatObjTypeLoader, ObjTypeLoader } from "../config/objtype/ObjTypeLoader
 import { QuestTypeLoader } from "../config/questtype/QuestTypeLoader";
 import { DatSeqTypeLoader, SeqTypeLoader } from "../config/seqtype/SeqTypeLoader";
 import { DummyVarBitTypeLoader, VarBitTypeLoader } from "../config/vartype/bit/VarBitTypeLoader";
+import { ArchiveNamedBytesProvider } from "../io/NamedBytesProvider";
 import { Dat2MapIndex } from "../map/MapFileIndex";
-import { CacheIndexMapBytesProvider, LegacyMapFileLoader, MapFileLoader } from "../map/MapFileLoader";
+import {
+    CacheIndexMapBytesProvider,
+    LegacyMapFileLoader,
+    MapFileLoader,
+} from "../map/MapFileLoader";
 import { LegacyModelLoader } from "../model/ModelLoader";
 import { LegacySeqFrameLoader, SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { DatTextureLoader } from "../texture/DatTextureLoader";
 import { TextureLoader } from "../texture/TextureLoader";
-import { Archive } from "../cache/format/Archive";
-import { CacheIndex } from "../cache/CacheIndex";
-import { CacheInfo } from "../cache/CacheInfo";
-import { CacheSystem } from "../cache/CacheSystem";
-import { LegacyIndexId } from "../cache/IndexId";
-import { ArchiveNamedBytesProvider } from "../io/NamedBytesProvider";
 import { loadMapFunctions, loadMapScenes } from "./DatLoaders";
+import {
+    InitError,
+    createFailed,
+    initErrorToString,
+    missingArchive,
+    missingIndex,
+} from "./InitError";
 import { Loaders } from "./Loaders";
-import { err, ok, Result } from "../../util/Result";
-import { createFailed, InitError, initErrorToString, missingArchive, missingIndex } from "./InitError";
 
-function requireIndex(cacheSystem: CacheSystem, indexId: number, description: string): Result<CacheIndex, InitError> {
+function requireIndex(
+    cacheSystem: CacheSystem,
+    indexId: number,
+    description: string,
+): Result<CacheIndex, InitError> {
     const index = cacheSystem.tryGetIndex(indexId);
     if (!index) {
         return err(missingIndex(indexId, description));
@@ -37,7 +51,11 @@ function requireIndex(cacheSystem: CacheSystem, indexId: number, description: st
     return ok(index);
 }
 
-function requireArchive(index: CacheIndex, archiveId: number, description: string): Result<Archive, InitError> {
+function requireArchive(
+    index: CacheIndex,
+    archiveId: number,
+    description: string,
+): Result<Archive, InitError> {
     const archive = index.tryGetArchive(archiveId);
     if (!archive) {
         return err(missingArchive(index.id, archiveId, description));
@@ -53,7 +71,10 @@ export function createLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSyst
     return result.value;
 }
 
-export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, InitError> {
+export function tryCreateLegacyLoaders(
+    cacheInfo: CacheInfo,
+    cacheSystem: CacheSystem,
+): Result<Loaders, InitError> {
     const configIndexResult = requireIndex(cacheSystem, LegacyIndexId.configs, "legacy configs");
     if (!configIndexResult.ok) {
         return configIndexResult;
@@ -152,7 +173,10 @@ export function tryCreateLegacyLoaders(cacheInfo: CacheInfo, cacheSystem: CacheS
         seqFrameLoader,
         skeletalSeqLoader: undefined,
 
-        mapFileLoader: new LegacyMapFileLoader(new CacheIndexMapBytesProvider(mapIndex), new Dat2MapIndex(mapIndex)),
+        mapFileLoader: new LegacyMapFileLoader(
+            new CacheIndexMapBytesProvider(mapIndex),
+            new Dat2MapIndex(mapIndex),
+        ),
 
         mapScenes: loadMapScenes(new ArchiveNamedBytesProvider(mediaArchive)),
         mapFunctions: loadMapFunctions(new ArchiveNamedBytesProvider(mediaArchive)),

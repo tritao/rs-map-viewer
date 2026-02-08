@@ -5,7 +5,7 @@ export class MatrixPool {
     private readonly pool: Array<mat4 | undefined>;
 
     constructor(private readonly capacity: number) {
-        this.pool = new Array(capacity);
+        this.pool = Array.from({ length: capacity }, () => undefined);
     }
 
     reset(): void {

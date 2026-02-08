@@ -8,12 +8,17 @@ export enum CacheType {
 }
 
 export function getCacheTypeName(cacheType: CacheType): String {
-    switch(cacheType) {
-    case CacheType.Classic: return "classic"
-    case CacheType.Legacy: return "legacy"
-    case CacheType.Dat: return "dat"
-    case CacheType.Dat2: return "dat2"
-    default: throw Error("Unknown cache type");
+    switch (cacheType) {
+        case CacheType.Classic:
+            return "classic";
+        case CacheType.Legacy:
+            return "legacy";
+        case CacheType.Dat:
+            return "dat";
+        case CacheType.Dat2:
+            return "dat2";
+        default:
+            throw Error("Unknown cache type");
     }
 }
 

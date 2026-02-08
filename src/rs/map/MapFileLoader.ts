@@ -1,13 +1,16 @@
 import { XteaMap } from "../../util/Caches";
+import { errorToString } from "../../util/ErrorUtil";
+import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { Bzip2 } from "../compression/Bzip2";
+import { XteaKey } from "../crypto/Xtea";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { MapFileIndex } from "./MapFileIndex";
 
 export interface MapIndexBytesProvider {
     tryGetArchiveId(name: string): number | undefined;
     tryGetFile(archiveId: number, fileId: number): Uint8Array | undefined;
-    tryGetFileKey(archiveId: number, fileId: number, key: number[] | null): Uint8Array | undefined;
+    tryGetFileKey(archiveId: number, fileId: number, key: XteaKey | null): Uint8Array | undefined;
 }
 
 /** Adapter for when you still have a `CacheIndex` at the boundary. */
@@ -22,8 +25,43 @@ export class CacheIndexMapBytesProvider implements MapIndexBytesProvider {
         return this.index.tryGetFile(archiveId, fileId)?.data;
     }
 
-    tryGetFileKey(archiveId: number, fileId: number, key: number[] | null): Uint8Array | undefined {
+    tryGetFileKey(archiveId: number, fileId: number, key: XteaKey | null): Uint8Array | undefined {
         return this.index.tryGetFileKey(archiveId, fileId, key)?.data;
+    }
+}
+
+export type MapBytesError =
+    | { kind: "missing_archive_id"; name: string; mapX: number; mapY: number }
+    | { kind: "missing_archive_id_for_key"; name: string; mapX: number; mapY: number }
+    | {
+          kind: "missing_file";
+          archiveId: number;
+          fileId: number;
+          mapX: number;
+          mapY: number;
+          name?: string;
+      }
+    | {
+          kind: "decompress_failed";
+          which: "terrain" | "loc";
+          mapX: number;
+          mapY: number;
+          error: string;
+      };
+
+export function mapBytesErrorToString(e: MapBytesError): string {
+    switch (e.kind) {
+        case "missing_archive_id":
+            return `Missing map archive id: ${e.name} (x=${e.mapX} y=${e.mapY})`;
+        case "missing_archive_id_for_key":
+            return `Missing archive id for xtea key: ${e.name} (x=${e.mapX} y=${e.mapY})`;
+        case "missing_file":
+            return (
+                `Missing map file: archive=${e.archiveId} file=${e.fileId} (x=${e.mapX} y=${e.mapY})` +
+                (e.name ? ` name=${e.name}` : "")
+            );
+        case "decompress_failed":
+            return `Failed decompressing map ${e.which} bytes (x=${e.mapX} y=${e.mapY}): ${e.error}`;
     }
 }
 
@@ -33,27 +71,74 @@ export class MapFileLoader {
         readonly mapFileIndex: MapFileIndex,
     ) {}
 
-    getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
+    tryLoadTerrainBytes(mapX: number, mapY: number): Result<Uint8Array, MapBytesError> {
         const archiveId = this.mapFileIndex.tryGetTerrainArchiveId(mapX, mapY);
-        if (archiveId === undefined) return undefined;
-        return this.mapSource.tryGetFile(archiveId, 0);
+        if (archiveId === undefined) {
+            return err({ kind: "missing_archive_id", name: `m${mapX}_${mapY}`, mapX, mapY });
+        }
+        const bytes = this.mapSource.tryGetFile(archiveId, 0);
+        if (!bytes) {
+            return err({ kind: "missing_file", archiveId, fileId: 0, mapX, mapY });
+        }
+        return ok(bytes);
     }
 
-    getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
+    tryGetTerrainBytes(mapX: number, mapY: number): Uint8Array | undefined {
+        const r = this.tryLoadTerrainBytes(mapX, mapY);
+        return r.ok ? r.value : undefined;
+    }
+
+    tryLoadLocBytes(
+        mapX: number,
+        mapY: number,
+        xteasMap: XteaMap,
+    ): Result<Uint8Array, MapBytesError> {
         const archiveId = this.mapFileIndex.tryGetLocArchiveId(mapX, mapY);
-        if (archiveId === undefined) return undefined;
+        if (archiveId === undefined) {
+            return err({ kind: "missing_archive_id", name: `l${mapX}_${mapY}`, mapX, mapY });
+        }
         const key = xteasMap.get(archiveId);
-        return this.mapSource.tryGetFileKey(archiveId, 0, key ? key : null);
+        const bytes = this.mapSource.tryGetFileKey(archiveId, 0, key ? key : null);
+        if (!bytes) {
+            return err({ kind: "missing_file", archiveId, fileId: 0, mapX, mapY });
+        }
+        return ok(bytes);
     }
 
-    getNpcSpawnData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
+    tryGetLocBytes(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
+        const r = this.tryLoadLocBytes(mapX, mapY, xteasMap);
+        return r.ok ? r.value : undefined;
+    }
+
+    tryLoadNpcSpawnBytes(
+        mapX: number,
+        mapY: number,
+        xteasMap: XteaMap,
+    ): Result<Uint8Array, MapBytesError> {
         const locArchiveId = this.mapFileIndex.tryGetLocArchiveId(mapX, mapY);
         const archiveId = this.mapSource.tryGetArchiveId(`n${mapX}_${mapY}`);
-        if (locArchiveId === undefined || archiveId === undefined) {
-            return undefined;
+        if (archiveId === undefined) {
+            return err({ kind: "missing_archive_id", name: `n${mapX}_${mapY}`, mapX, mapY });
+        }
+        if (locArchiveId === undefined) {
+            return err({
+                kind: "missing_archive_id_for_key",
+                name: `l${mapX}_${mapY}`,
+                mapX,
+                mapY,
+            });
         }
         const key = xteasMap.get(locArchiveId);
-        return this.mapSource.tryGetFileKey(archiveId, 0, key ? key : null);
+        const bytes = this.mapSource.tryGetFileKey(archiveId, 0, key ? key : null);
+        if (!bytes) {
+            return err({ kind: "missing_file", archiveId, fileId: 0, mapX, mapY });
+        }
+        return ok(bytes);
+    }
+
+    tryGetNpcSpawnBytes(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
+        const r = this.tryLoadNpcSpawnBytes(mapX, mapY, xteasMap);
+        return r.ok ? r.value : undefined;
     }
 }
 
@@ -69,37 +154,76 @@ export class LegacyMapFileLoader extends MapFileLoader {
         return decompressed;
     }
 
-    override getTerrainData(mapX: number, mapY: number): Uint8Array | undefined {
-        const data = super.getTerrainData(mapX, mapY);
-        if (!data) {
-            return undefined;
-        }
+    constructor(
+        mapSource: MapIndexBytesProvider,
+        mapFileIndex: MapFileIndex,
+        readonly errorSink: ((error: MapBytesError) => void) | undefined = (e) =>
+            console.error(mapBytesErrorToString(e)),
+    ) {
+        super(mapSource, mapFileIndex);
+    }
+
+    private reportTerrainOnce(mapX: number, mapY: number, error: unknown): void {
+        const mapId = (mapX << 8) + mapY;
+        if (this.terrainDecompressErrors.has(mapId)) return;
+        this.terrainDecompressErrors.add(mapId);
+        this.errorSink?.({
+            kind: "decompress_failed",
+            which: "terrain",
+            mapX,
+            mapY,
+            error: errorToString(error),
+        });
+    }
+
+    private reportLocOnce(mapX: number, mapY: number, error: unknown): void {
+        const mapId = (mapX << 8) + mapY;
+        if (this.locDecompressErrors.has(mapId)) return;
+        this.locDecompressErrors.add(mapId);
+        this.errorSink?.({
+            kind: "decompress_failed",
+            which: "loc",
+            mapX,
+            mapY,
+            error: errorToString(error),
+        });
+    }
+
+    override tryLoadTerrainBytes(mapX: number, mapY: number): Result<Uint8Array, MapBytesError> {
+        const base = super.tryLoadTerrainBytes(mapX, mapY);
+        if (!base.ok) return base;
         try {
-            return this.decompress(data);
+            return ok(this.decompress(base.value));
         } catch (e) {
-            const mapId = (mapX << 8) + mapY;
-            if (!this.terrainDecompressErrors.has(mapId)) {
-                console.error("Failed decompressing terrain data", mapX, mapY, data.length, e);
-                this.terrainDecompressErrors.add(mapId);
-            }
-            return undefined;
+            this.reportTerrainOnce(mapX, mapY, e);
+            return err({
+                kind: "decompress_failed",
+                which: "terrain",
+                mapX,
+                mapY,
+                error: errorToString(e),
+            });
         }
     }
 
-    override getLocData(mapX: number, mapY: number, xteasMap: XteaMap): Uint8Array | undefined {
-        const data = super.getLocData(mapX, mapY, xteasMap);
-        if (!data) {
-            return undefined;
-        }
+    override tryLoadLocBytes(
+        mapX: number,
+        mapY: number,
+        xteasMap: XteaMap,
+    ): Result<Uint8Array, MapBytesError> {
+        const base = super.tryLoadLocBytes(mapX, mapY, xteasMap);
+        if (!base.ok) return base;
         try {
-            return this.decompress(data);
+            return ok(this.decompress(base.value));
         } catch (e) {
-            const mapId = (mapX << 8) + mapY;
-            if (!this.locDecompressErrors.has(mapId)) {
-                console.error("Failed decompressing loc data", mapX, mapY, data.length, data, e);
-                this.locDecompressErrors.add(mapId);
-            }
-            return undefined;
+            this.reportLocOnce(mapX, mapY, e);
+            return err({
+                kind: "decompress_failed",
+                which: "loc",
+                mapX,
+                mapY,
+                error: errorToString(e),
+            });
         }
     }
 }

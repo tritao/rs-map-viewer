@@ -177,10 +177,22 @@ export class SceneTileModel {
         const primaryCorners: OverlayCornerSet = overlayPrimaryCorners ?? DEFAULT_OVERLAY_CORNERS;
         const primaryEdges: OverlayEdgeSet = overlayPrimaryEdges ?? DEFAULT_OVERLAY_EDGES;
 
-        const overlayHslSw = (this.overlayHslSw = adjustOverlayLight(primaryCorners.baseHsl[0], lightSw));
-        const overlayHslSe = (this.overlayHslSe = adjustOverlayLight(primaryCorners.baseHsl[1], lightSe));
-        const overlayHslNe = (this.overlayHslNe = adjustOverlayLight(primaryCorners.baseHsl[2], lightNe));
-        const overlayHslNw = (this.overlayHslNw = adjustOverlayLight(primaryCorners.baseHsl[3], lightNw));
+        const overlayHslSw = (this.overlayHslSw = adjustOverlayLight(
+            primaryCorners.baseHsl[0],
+            lightSw,
+        ));
+        const overlayHslSe = (this.overlayHslSe = adjustOverlayLight(
+            primaryCorners.baseHsl[1],
+            lightSe,
+        ));
+        const overlayHslNe = (this.overlayHslNe = adjustOverlayLight(
+            primaryCorners.baseHsl[2],
+            lightNe,
+        ));
+        const overlayHslNw = (this.overlayHslNw = adjustOverlayLight(
+            primaryCorners.baseHsl[3],
+            lightNw,
+        ));
 
         const overlayMinimapHslSw = (this.overlayMinimapHslSw = adjustOverlayLight(
             primaryCorners.minimapHsl[0],
@@ -199,28 +211,6 @@ export class SceneTileModel {
             lightNw,
         ));
 
-        const overlayHslS = adjustOverlayLight(
-            primaryEdges.baseHsl[0],
-            (lightSw + lightSe) >> 1,
-        );
-        const overlayHslE = adjustOverlayLight(
-            primaryEdges.baseHsl[1],
-            (lightSe + lightNe) >> 1,
-        );
-        const overlayHslN = adjustOverlayLight(
-            primaryEdges.baseHsl[2],
-            (lightNe + lightNw) >> 1,
-        );
-        const overlayHslW = adjustOverlayLight(
-            primaryEdges.baseHsl[3],
-            (lightNw + lightSw) >> 1,
-        );
-
-        const overlayMinimapHslS = adjustOverlayLight(primaryEdges.minimapHsl[0], (lightSw + lightSe) >> 1);
-        const overlayMinimapHslE = adjustOverlayLight(primaryEdges.minimapHsl[1], (lightSe + lightNe) >> 1);
-        const overlayMinimapHslN = adjustOverlayLight(primaryEdges.minimapHsl[2], (lightNe + lightNw) >> 1);
-        const overlayMinimapHslW = adjustOverlayLight(primaryEdges.minimapHsl[3], (lightNw + lightSw) >> 1);
-
         this.underlayRgb = underlayRgb;
         this.overlayRgb = overlayRgb;
 
@@ -229,10 +219,10 @@ export class SceneTileModel {
         this.vertexX = new Int32Array(vertexCount);
         this.vertexY = new Int32Array(vertexCount);
         this.vertexZ = new Int32Array(vertexCount);
-        const underlayHsls = new Array<number>(vertexCount);
-        const underlayMinimapHsls = new Array<number>(vertexCount);
-        const overlayHsls = new Array<number>(vertexCount);
-        const overlayMinimapHsls = new Array<number>(vertexCount);
+        const underlayHsls = Array.from({ length: vertexCount }, () => 0);
+        const underlayMinimapHsls = Array.from({ length: vertexCount }, () => 0);
+        const overlayHsls = Array.from({ length: vertexCount }, () => 0);
+        const overlayMinimapHsls = Array.from({ length: vertexCount }, () => 0);
         const tileX = x * TILE_SIZE;
         const tileY = y * TILE_SIZE;
 
@@ -241,18 +231,40 @@ export class SceneTileModel {
         const edgeForVertex = new Int8Array(vertexCount);
         edgeForVertex.fill(-1);
 
+        const lightSSum = lightSw + lightSe;
+        const lightESum = lightSe + lightNe;
+        const lightNSum = lightNe + lightNw;
+        const lightWSum = lightNw + lightSw;
+        const lightS = lightSSum >> 1;
+        const lightE = lightESum >> 1;
+        const lightN = lightNSum >> 1;
+        const lightW = lightWSum >> 1;
+
+        const overlayHslSAvg = adjustOverlayLight(primaryEdges.baseHsl[0], lightS);
+        const overlayHslEAvg = adjustOverlayLight(primaryEdges.baseHsl[1], lightE);
+        const overlayHslNAvg = adjustOverlayLight(primaryEdges.baseHsl[2], lightN);
+        const overlayHslWAvg = adjustOverlayLight(primaryEdges.baseHsl[3], lightW);
+
+        const overlayMinimapHslSAvg = adjustOverlayLight(primaryEdges.minimapHsl[0], lightS);
+        const overlayMinimapHslEAvg = adjustOverlayLight(primaryEdges.minimapHsl[1], lightE);
+        const overlayMinimapHslNAvg = adjustOverlayLight(primaryEdges.minimapHsl[2], lightN);
+        const overlayMinimapHslWAvg = adjustOverlayLight(primaryEdges.minimapHsl[3], lightW);
+
         for (let i = 0; i < vertexCount; i++) {
             let vertexIndex = vertexIndices[i];
             if ((vertexIndex & 1) === 0 && vertexIndex <= 8) {
-                vertexIndex = ((vertexIndex - rotation - rotation - 1) & 7) + 1;
+                const adjusted = vertexIndex - rotation - rotation - 1;
+                vertexIndex = (adjusted & 7) + 1;
             }
 
             if (vertexIndex > 8 && vertexIndex <= 12) {
-                vertexIndex = ((vertexIndex - 9 - rotation) & 3) + 9;
+                const adjusted = vertexIndex - 9 - rotation;
+                vertexIndex = (adjusted & 3) + 9;
             }
 
             if (vertexIndex > 12 && vertexIndex <= 16) {
-                vertexIndex = ((vertexIndex - 13 - rotation) & 3) + 13;
+                const adjusted = vertexIndex - 13 - rotation;
+                vertexIndex = (adjusted & 3) + 13;
             }
 
             if (vertexIndex === 2) {
@@ -284,13 +296,19 @@ export class SceneTileModel {
             } else if (vertexIndex === 2) {
                 vertX = tileX + HALF_TILE_SIZE;
                 vertZ = tileY;
-                vertY = (heightSe + heightSw) >> 1;
+                const heightSum = heightSe + heightSw;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslSe, underlayHslSw);
-                vertUnderlayMinimapHsl = (underlayMinimapHslSe + underlayMinimapHslSw) >> 1;
-                vertOverlayHsl = overlayPrimaryEdges ? overlayHslS : (overlayHslSe + overlayHslSw) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslSe + underlayMinimapHslSw;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslSe + overlayHslSw;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslSAvg : overlayHslSum >> 1;
                 vertOverlayMinimapHsl = overlayPrimaryEdges
-                    ? overlayMinimapHslS
-                    : (overlayMinimapHslSe + overlayMinimapHslSw) >> 1;
+                    ? overlayMinimapHslSAvg
+                    : (() => {
+                          const sum = overlayMinimapHslSe + overlayMinimapHslSw;
+                          return sum >> 1;
+                      })();
             } else if (vertexIndex === 3) {
                 vertX = tileX + TILE_SIZE;
                 vertZ = tileY;
@@ -302,13 +320,19 @@ export class SceneTileModel {
             } else if (vertexIndex === 4) {
                 vertX = tileX + TILE_SIZE;
                 vertZ = tileY + HALF_TILE_SIZE;
-                vertY = (heightNe + heightSe) >> 1;
+                const heightSum = heightNe + heightSe;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslSe, underlayHslNe);
-                vertUnderlayMinimapHsl = (underlayMinimapHslSe + underlayMinimapHslNe) >> 1;
-                vertOverlayHsl = overlayPrimaryEdges ? overlayHslE : (overlayHslSe + overlayHslNe) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslSe + underlayMinimapHslNe;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslSe + overlayHslNe;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslEAvg : overlayHslSum >> 1;
                 vertOverlayMinimapHsl = overlayPrimaryEdges
-                    ? overlayMinimapHslE
-                    : (overlayMinimapHslSe + overlayMinimapHslNe) >> 1;
+                    ? overlayMinimapHslEAvg
+                    : (() => {
+                          const sum = overlayMinimapHslSe + overlayMinimapHslNe;
+                          return sum >> 1;
+                      })();
             } else if (vertexIndex === 5) {
                 vertX = tileX + TILE_SIZE;
                 vertZ = tileY + TILE_SIZE;
@@ -320,13 +344,19 @@ export class SceneTileModel {
             } else if (vertexIndex === 6) {
                 vertX = tileX + HALF_TILE_SIZE;
                 vertZ = tileY + TILE_SIZE;
-                vertY = (heightNe + heightNw) >> 1;
+                const heightSum = heightNe + heightNw;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslNw, underlayHslNe);
-                vertUnderlayMinimapHsl = (underlayMinimapHslNw + underlayMinimapHslNe) >> 1;
-                vertOverlayHsl = overlayPrimaryEdges ? overlayHslN : (overlayHslNw + overlayHslNe) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslNw + underlayMinimapHslNe;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslNw + overlayHslNe;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslNAvg : overlayHslSum >> 1;
                 vertOverlayMinimapHsl = overlayPrimaryEdges
-                    ? overlayMinimapHslN
-                    : (overlayMinimapHslNw + overlayMinimapHslNe) >> 1;
+                    ? overlayMinimapHslNAvg
+                    : (() => {
+                          const sum = overlayMinimapHslNw + overlayMinimapHslNe;
+                          return sum >> 1;
+                      })();
             } else if (vertexIndex === 7) {
                 vertX = tileX;
                 vertZ = tileY + TILE_SIZE;
@@ -338,45 +368,67 @@ export class SceneTileModel {
             } else if (vertexIndex === 8) {
                 vertX = tileX;
                 vertZ = tileY + HALF_TILE_SIZE;
-                vertY = (heightNw + heightSw) >> 1;
+                const heightSum = heightNw + heightSw;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslNw, underlayHslSw);
-                vertUnderlayMinimapHsl = (underlayMinimapHslNw + underlayMinimapHslSw) >> 1;
-                vertOverlayHsl = overlayPrimaryEdges ? overlayHslW : (overlayHslNw + overlayHslSw) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslNw + underlayMinimapHslSw;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslNw + overlayHslSw;
+                vertOverlayHsl = overlayPrimaryEdges ? overlayHslWAvg : overlayHslSum >> 1;
                 vertOverlayMinimapHsl = overlayPrimaryEdges
-                    ? overlayMinimapHslW
-                    : (overlayMinimapHslNw + overlayMinimapHslSw) >> 1;
+                    ? overlayMinimapHslWAvg
+                    : (() => {
+                          const sum = overlayMinimapHslNw + overlayMinimapHslSw;
+                          return sum >> 1;
+                      })();
             } else if (vertexIndex === 9) {
                 vertX = tileX + HALF_TILE_SIZE;
                 vertZ = tileY + QUARTER_TILE_SIZE;
-                vertY = (heightSe + heightSw) >> 1;
+                const heightSum = heightSe + heightSw;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslSe, underlayHslSw);
-                vertUnderlayMinimapHsl = (underlayMinimapHslSe + underlayMinimapHslSw) >> 1;
-                vertOverlayHsl = (overlayHslSe + overlayHslSw) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslSe + overlayMinimapHslSw) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslSe + underlayMinimapHslSw;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslSe + overlayHslSw;
+                vertOverlayHsl = overlayHslSum >> 1;
+                const overlayMinimapHslSum = overlayMinimapHslSe + overlayMinimapHslSw;
+                vertOverlayMinimapHsl = overlayMinimapHslSum >> 1;
             } else if (vertexIndex === 10) {
                 vertX = tileX + THREE_QTR_TILE_SIZE;
                 vertZ = tileY + HALF_TILE_SIZE;
-                vertY = (heightNe + heightSe) >> 1;
+                const heightSum = heightNe + heightSe;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslSe, underlayHslNe);
-                vertUnderlayMinimapHsl = (underlayMinimapHslSe + underlayMinimapHslNe) >> 1;
-                vertOverlayHsl = (overlayHslSe + overlayHslNe) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslSe + overlayMinimapHslNe) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslSe + underlayMinimapHslNe;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslSe + overlayHslNe;
+                vertOverlayHsl = overlayHslSum >> 1;
+                const overlayMinimapHslSum = overlayMinimapHslSe + overlayMinimapHslNe;
+                vertOverlayMinimapHsl = overlayMinimapHslSum >> 1;
             } else if (vertexIndex === 11) {
                 vertX = tileX + HALF_TILE_SIZE;
                 vertZ = tileY + THREE_QTR_TILE_SIZE;
-                vertY = (heightNe + heightNw) >> 1;
+                const heightSum = heightNe + heightNw;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslNw, underlayHslNe);
-                vertUnderlayMinimapHsl = (underlayMinimapHslNw + underlayMinimapHslNe) >> 1;
-                vertOverlayHsl = (overlayHslNw + overlayHslNe) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslNw + overlayMinimapHslNe) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslNw + underlayMinimapHslNe;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslNw + overlayHslNe;
+                vertOverlayHsl = overlayHslSum >> 1;
+                const overlayMinimapHslSum = overlayMinimapHslNw + overlayMinimapHslNe;
+                vertOverlayMinimapHsl = overlayMinimapHslSum >> 1;
             } else if (vertexIndex === 12) {
                 vertX = tileX + QUARTER_TILE_SIZE;
                 vertZ = tileY + HALF_TILE_SIZE;
-                vertY = (heightNw + heightSw) >> 1;
+                const heightSum = heightNw + heightSw;
+                vertY = heightSum >> 1;
                 vertUnderlayHsl = mixHsl(underlayHslNw, underlayHslSw);
-                vertUnderlayMinimapHsl = (underlayMinimapHslNw + underlayMinimapHslSw) >> 1;
-                vertOverlayHsl = (overlayHslNw + overlayHslSw) >> 1;
-                vertOverlayMinimapHsl = (overlayMinimapHslNw + overlayMinimapHslSw) >> 1;
+                const underlayMinimapHslSum = underlayMinimapHslNw + underlayMinimapHslSw;
+                vertUnderlayMinimapHsl = underlayMinimapHslSum >> 1;
+                const overlayHslSum = overlayHslNw + overlayHslSw;
+                vertOverlayHsl = overlayHslSum >> 1;
+                const overlayMinimapHslSum = overlayMinimapHslNw + overlayMinimapHslSw;
+                vertOverlayMinimapHsl = overlayMinimapHslSum >> 1;
             } else if (vertexIndex === 13) {
                 vertX = tileX + QUARTER_TILE_SIZE;
                 vertZ = tileY + QUARTER_TILE_SIZE;
@@ -464,7 +516,7 @@ export class SceneTileModel {
             }
 
             overlayPrefTextureId[i] = texId;
-            overlayPrefTextureSize[i] = Math.max(1, texSize | 0);
+            overlayPrefTextureSize[i] = Math.max(1, Math.trunc(texSize));
         }
 
         const tileFaces = tileShapeFaces[shape];
@@ -502,15 +554,18 @@ export class SceneTileModel {
             let c = tileFaces[tileFaceIndex++];
 
             if (a < 4) {
-                a = (a - rotation) & 3;
+                const adjusted = a - rotation;
+                a = adjusted & 3;
             }
 
             if (b < 4) {
-                b = (b - rotation) & 3;
+                const adjusted = b - rotation;
+                b = adjusted & 3;
             }
 
             if (c < 4) {
-                c = (c - rotation) & 3;
+                const adjusted = c - rotation;
+                c = adjusted & 3;
             }
 
             this.facesA[i] = a;
@@ -562,12 +617,12 @@ export class SceneTileModel {
 
                 faceTextureId = cornerSet.textureId[bestCorner];
                 if (faceTextureId !== -1) {
-                    faceTextureSize = Math.max(1, cornerSet.textureSize[bestCorner] | 0);
+                    faceTextureSize = Math.max(1, Math.trunc(cornerSet.textureSize[bestCorner]));
                 }
             } else {
                 faceTextureId = underlayTextureId;
                 if (faceTextureId !== -1) {
-                    faceTextureSize = Math.max(1, underlayTextureSize | 0);
+                    faceTextureSize = Math.max(1, Math.trunc(underlayTextureSize));
                 }
             }
 

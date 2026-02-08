@@ -6,6 +6,7 @@ declare type isize = number;
 declare type u8 = number;
 declare type u16 = number;
 declare type u32 = number;
+declare type u64 = bigint;
 declare type usize = number;
 declare type f32 = number;
 declare type f64 = number;
@@ -15,5 +16,5 @@ declare module "*.png" {
     export default value;
 }
 
-declare module 'picogl/build/module/texture.js';
-declare module 'bzip2';
+declare module "picogl/build/module/texture.js";
+declare module "bzip2";

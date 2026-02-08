@@ -18,7 +18,7 @@ export class MonochromeImageCache {
 
     images: Int32Array[];
 
-    slots: MonochromeImageCacheSlot[];
+    slots: Array<MonochromeImageCacheSlot | undefined>;
 
     usedSlots: number;
 
@@ -30,11 +30,8 @@ export class MonochromeImageCache {
         this.slotCount = slotCount;
         this.lineCount = lineCount;
         this.usageTracker = new Denque<MonochromeImageCacheSlot>();
-        this.images = new Array(slotCount);
-        for (let i = 0; i < slotCount; i++) {
-            this.images[i] = new Int32Array(imageSize);
-        }
-        this.slots = new Array(slotCount);
+        this.images = Array.from({ length: slotCount }, () => new Int32Array(imageSize));
+        this.slots = Array.from({ length: lineCount }, () => undefined);
         this.usedSlots = 0;
         this.lastLine = -1;
         this.dirty = false;
@@ -60,22 +57,26 @@ export class MonochromeImageCache {
                     const oldSlot = this.usageTracker.pop();
                     if (oldSlot) {
                         slot = new MonochromeImageCacheSlot(line, oldSlot.slotId);
-                        delete this.slots[oldSlot.line];
+                        this.slots[oldSlot.line] = undefined;
                     }
                 }
                 this.slots[line] = slot;
             } else {
                 this.dirty = false;
             }
+            if (!slot) {
+                throw new Error("MonochromeImageCache: invariant violation (slot is undefined)");
+            }
+            const activeSlot = slot;
             // Remove the slot from the usage tracker and add it to the front
             for (let i = 0; i < this.usageTracker.length; i++) {
-                if (this.usageTracker.peekAt(i) === slot) {
+                if (this.usageTracker.peekAt(i) === activeSlot) {
                     this.usageTracker.removeOne(i);
                     break;
                 }
             }
-            this.usageTracker.unshift(slot);
-            return this.images[slot.slotId];
+            this.usageTracker.unshift(activeSlot);
+            return this.images[activeSlot.slotId];
         }
     }
 

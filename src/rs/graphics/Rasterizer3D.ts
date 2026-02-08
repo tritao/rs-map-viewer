@@ -1,5 +1,6 @@
 import { nextPow2 } from "../../util/MathUtil";
 import { HSL_RGB_MAP } from "../util/ColorUtil";
+import { toI32 } from "../util/U32";
 import type { Rasterizer2D } from "./Rasterizer2D";
 
 export class Rasterizer3D {
@@ -35,12 +36,7 @@ export class Rasterizer3D {
         );
     }
 
-    setRasterClip(
-        xClipStart: number,
-        yClipStart: number,
-        xClipEnd: number,
-        yClipEnd: number,
-    ) {
+    setRasterClip(xClipStart: number, yClipStart: number, xClipEnd: number, yClipEnd: number) {
         const Rasterizer3D = this;
         const Rasterizer2D = Rasterizer3D.r2d;
         Rasterizer3D.endX = xClipEnd - xClipStart;
@@ -60,8 +56,8 @@ export class Rasterizer3D {
 
     calculateViewport() {
         const Rasterizer3D = this;
-        Rasterizer3D.centerX = (Rasterizer3D.endX / 2) | 0;
-        Rasterizer3D.centerY = (Rasterizer3D.endY / 2) | 0;
+        Rasterizer3D.centerX = Math.trunc(Rasterizer3D.endX / 2);
+        Rasterizer3D.centerY = Math.trunc(Rasterizer3D.endY / 2);
         Rasterizer3D.viewportLeft = -Rasterizer3D.centerX;
         Rasterizer3D.viewportRight = Rasterizer3D.endX - Rasterizer3D.centerX;
         Rasterizer3D.viewportTop = -Rasterizer3D.centerY;
@@ -72,7 +68,7 @@ export class Rasterizer3D {
         const Rasterizer3D = this;
         const Rasterizer2D = Rasterizer3D.r2d;
         const offset = Rasterizer3D.rasterClipY[0];
-        const clipStartY = (offset / Rasterizer2D.width) | 0;
+        const clipStartY = Math.trunc(offset / Rasterizer2D.width);
         const clipStartX = offset - clipStartY * Rasterizer2D.width;
         Rasterizer3D.centerX = x - clipStartX;
         Rasterizer3D.centerY = y - clipStartY;
@@ -102,14 +98,22 @@ export class Rasterizer3D {
         const dhsl01 = hsl1 - hsl0;
         const dhsl02 = hsl2 - hsl0;
 
-        const slope12 = y2 !== y1 ? (((x2 - x1) << 14) / (y2 - y1)) | 0 : 0;
-        const slope01 = y0 !== y1 ? ((dx01 << 14) / dy01) | 0 : 0;
-        const slope02 = y0 !== y2 ? ((dx02 << 14) / dy02) | 0 : 0;
+        const dx12 = x2 - x1;
+        const dx12Q14 = dx12 << 14;
+        const dx01Q14 = dx01 << 14;
+        const dx02Q14 = dx02 << 14;
+        const slope12 = y2 !== y1 ? toI32(dx12Q14 / (y2 - y1)) : 0;
+        const slope01 = y0 !== y1 ? toI32(dx01Q14 / dy01) : 0;
+        const slope02 = y0 !== y2 ? toI32(dx02Q14 / dy02) : 0;
 
         const area2 = dx01 * dy02 - dx02 * dy01;
         if (area2 !== 0) {
-            const hslStepX = (((dhsl01 * dy02 - dhsl02 * dy01) << 8) / area2) | 0;
-            const hslStepY = (((dhsl02 * dx01 - dhsl01 * dx02) << 8) / area2) | 0;
+            const hslStepXNumerator = dhsl01 * dy02 - dhsl02 * dy01;
+            const hslStepYNumerator = dhsl02 * dx01 - dhsl01 * dx02;
+            const hslStepXNumeratorQ8 = hslStepXNumerator << 8;
+            const hslStepYNumeratorQ8 = hslStepYNumerator << 8;
+            const hslStepX = toI32(hslStepXNumeratorQ8 / area2);
+            const hslStepY = toI32(hslStepYNumeratorQ8 / area2);
             if (y0 <= y1 && y0 <= y2) {
                 if (y0 < Rasterizer3D.endY) {
                     if (y1 > Rasterizer3D.endY) {
@@ -136,10 +140,7 @@ export class Rasterizer3D {
                             y1 = 0;
                         }
 
-                        if (
-                            (y0 !== y1 && slope02 < slope01) ||
-                            (y0 === y1 && slope02 > slope12)
-                        ) {
+                        if ((y0 !== y1 && slope02 < slope01) || (y0 === y1 && slope02 > slope12)) {
                             y2 -= y1;
                             y1 -= y0;
                             y0 = Rasterizer3D.rasterClipY[y0];
@@ -239,10 +240,7 @@ export class Rasterizer3D {
                             y2 = 0;
                         }
 
-                        if (
-                            (y0 !== y2 && slope02 < slope01) ||
-                            (y0 === y2 && slope12 > slope01)
-                        ) {
+                        if ((y0 !== y2 && slope02 < slope01) || (y0 === y2 && slope12 > slope01)) {
                             y1 -= y2;
                             y2 -= y0;
                             y0 = Rasterizer3D.rasterClipY[y0];
@@ -355,10 +353,7 @@ export class Rasterizer3D {
                             y2 = 0;
                         }
 
-                        if (
-                            (y2 !== y1 && slope01 < slope12) ||
-                            (y2 === y1 && slope01 > slope02)
-                        ) {
+                        if ((y2 !== y1 && slope01 < slope12) || (y2 === y1 && slope01 > slope02)) {
                             y0 -= y2;
                             y2 -= y1;
                             y1 = Rasterizer3D.rasterClipY[y1];
@@ -803,13 +798,17 @@ export class Rasterizer3D {
                 do {
                     let color = HSL_RGB_MAP[hslIndex >> 8];
                     hslIndex += grad;
+                    const colorG = color & 0xff00;
+                    const colorRB = color & 0xff00ff;
                     color =
-                        (((dstAlpha * (color & 0xff00)) >> 8) & 0xff00) +
-                        (((dstAlpha * (color & 0xff00ff)) >> 8) & 0xff00ff);
+                        ((toI32(dstAlpha * colorG) >> 8) & 0xff00) +
+                        ((toI32(dstAlpha * colorRB) >> 8) & 0xff00ff);
                     const src = pixels[offset];
+                    const srcRB = src & 0xff00ff;
+                    const srcG = src & 0xff00;
                     pixels[offset++] =
-                        ((((src & 0xff00ff) * srcAlpha) >> 8) & 0xff00ff) +
-                        (((srcAlpha * (src & 0xff00)) >> 8) & 0xff00) +
+                        ((toI32(srcAlpha * srcRB) >> 8) & 0xff00ff) +
+                        ((toI32(srcAlpha * srcG) >> 8) & 0xff00) +
                         color;
                     loops--;
                 } while (loops > 0);

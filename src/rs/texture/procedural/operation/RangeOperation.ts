@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { mulShift } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -34,7 +35,7 @@ export class RangeOperation extends TextureOperation {
         if (this.monochromeImageCache.dirty) {
             const input = this.getMonochromeInput(textureGenerator, 0, line);
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                output[pixel] = ((this.outputRangeQ12 * input[pixel]) >> 12) + this.minOutputQ12;
+                output[pixel] = mulShift(this.outputRangeQ12, input[pixel], 12) + this.minOutputQ12;
             }
         }
         return output;
@@ -54,9 +55,12 @@ export class RangeOperation extends TextureOperation {
             const outputG = output[1];
             const outputB = output[2];
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                outputR[pixel] = ((this.outputRangeQ12 * inputR[pixel]) >> 12) + this.minOutputQ12;
-                outputG[pixel] = ((this.outputRangeQ12 * inputG[pixel]) >> 12) + this.minOutputQ12;
-                outputB[pixel] = ((this.outputRangeQ12 * inputB[pixel]) >> 12) + this.minOutputQ12;
+                outputR[pixel] =
+                    mulShift(this.outputRangeQ12, inputR[pixel], 12) + this.minOutputQ12;
+                outputG[pixel] =
+                    mulShift(this.outputRangeQ12, inputG[pixel], 12) + this.minOutputQ12;
+                outputB[pixel] =
+                    mulShift(this.outputRangeQ12, inputB[pixel], 12) + this.minOutputQ12;
             }
         }
         return output;

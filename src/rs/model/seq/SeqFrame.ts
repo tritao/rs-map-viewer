@@ -1,12 +1,12 @@
-import { Archive } from "../../cache/format/Archive";
+import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
+import { Archive } from "../../cache/format/Archive";
+import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
-import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
 import { DatSeqBase, LegacySeqBase, SeqBase } from "./SeqBase";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { SeqTransformType } from "./SeqTransformType";
-import { err, ok, Result } from "../../../util/Result";
 
 export class SeqFrameDecodeScratch {
     transformGroupCache: Int32Array = new Int32Array(500);
@@ -63,7 +63,10 @@ export class SeqFrame {
 }
 
 export class LegacySeqFrame {
-    static load(source: NamedBytesProvider, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
+    static load(
+        source: NamedBytesProvider,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): SeqFrame[] {
         const bases = LegacySeqBase.load(source);
 
         const headBytes = source.getBytes("frame_head.dat");
@@ -71,7 +74,9 @@ export class LegacySeqFrame {
         const tran2Bytes = source.getBytes("frame_tran2.dat");
         const delBytes = source.getBytes("frame_del.dat");
         if (!headBytes || !tran1Bytes || !tran2Bytes || !delBytes) {
-            throw new Error("Missing legacy frame archive files (frame_head/frame_tran1/frame_tran2/frame_del)");
+            throw new Error(
+                "Missing legacy frame archive files (frame_head/frame_tran1/frame_tran2/frame_del)",
+            );
         }
 
         const head = new ByteBuffer(headBytes);
@@ -82,7 +87,10 @@ export class LegacySeqFrame {
         const frameCount = head.readUnsignedShort();
         const lastFrameId = head.readUnsignedShort();
 
-        const frames: SeqFrame[] = new Array(lastFrameId + 1);
+        const frames: SeqFrame[] = Array.from(
+            { length: lastFrameId + 1 },
+            () => undefined as unknown as SeqFrame,
+        );
         for (let f = 0; f < frameCount; f++) {
             const frameId = head.readUnsignedShort();
 
@@ -157,11 +165,11 @@ export class LegacySeqFrame {
                 transformCount++;
             }
 
-            const transformGroups: number[] = new Array(transformCount);
-            const transformX: number[] = new Array(transformCount);
-            const transformY: number[] = new Array(transformCount);
-            const transformZ: number[] = new Array(transformCount);
-            const resetOriginGroups: number[] = new Array(transformCount);
+            const transformGroups: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformX: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformY: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformZ: number[] = Array.from({ length: transformCount }, () => 0);
+            const resetOriginGroups: number[] = Array.from({ length: transformCount }, () => -1);
             for (let i = 0; i < transformCount; i++) {
                 transformGroups[i] = scratch.transformGroupCache[i];
                 transformX[i] = scratch.transformXCache[i];
@@ -186,7 +194,10 @@ export class LegacySeqFrame {
         return frames;
     }
 
-    static loadFromArchive(modelArchive: Archive, scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch()): SeqFrame[] {
+    static loadFromArchive(
+        modelArchive: Archive,
+        scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+    ): SeqFrame[] {
         return LegacySeqFrame.load(new ArchiveNamedBytesProvider(modelArchive), scratch);
     }
 }
@@ -327,11 +338,11 @@ export class DatSeqFrame {
                 transformCount++;
             }
 
-            const transformGroups: number[] = new Array(transformCount);
-            const transformX: number[] = new Array(transformCount);
-            const transformY: number[] = new Array(transformCount);
-            const transformZ: number[] = new Array(transformCount);
-            const resetOriginGroups: number[] = new Array(transformCount);
+            const transformGroups: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformX: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformY: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformZ: number[] = Array.from({ length: transformCount }, () => 0);
+            const resetOriginGroups: number[] = Array.from({ length: transformCount }, () => -1);
             for (let i = 0; i < transformCount; i++) {
                 transformGroups[i] = scratch.transformGroupCache[i];
                 transformX[i] = scratch.transformXCache[i];
@@ -477,11 +488,11 @@ export class Dat2SeqFrame {
                 );
             }
 
-            const transformGroups: number[] = new Array(transformCount);
-            const transformX: number[] = new Array(transformCount);
-            const transformY: number[] = new Array(transformCount);
-            const transformZ: number[] = new Array(transformCount);
-            const resetOriginGroups: number[] = new Array(transformCount);
+            const transformGroups: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformX: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformY: number[] = Array.from({ length: transformCount }, () => 0);
+            const transformZ: number[] = Array.from({ length: transformCount }, () => 0);
+            const resetOriginGroups: number[] = Array.from({ length: transformCount }, () => -1);
             for (let i = 0; i < transformCount; i++) {
                 transformGroups[i] = scratch.transformGroupCache[i];
                 transformX[i] = scratch.transformXCache[i];
@@ -525,5 +536,4 @@ export class Dat2SeqFrame {
         const result = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, data, scratch);
         return result.ok ? result.value : undefined;
     }
-
 }

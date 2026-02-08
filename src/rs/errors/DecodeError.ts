@@ -32,4 +32,3 @@ export function decodeFailedError(options: {
         cause: options.cause,
     };
 }
-

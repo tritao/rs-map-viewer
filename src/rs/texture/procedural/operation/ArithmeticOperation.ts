@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -54,30 +55,29 @@ export class ArithmeticOperation extends TextureOperation {
                     break;
                 case ArithmeticBlendMode.Multiply:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        output[pixel] = (inputB[pixel] * inputA[pixel]) / 4096;
+                        output[pixel] = mulShift(inputB[pixel], inputA[pixel], 12);
                     }
                     break;
                 case ArithmeticBlendMode.Divide:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const inputBValue = inputB[pixel];
                         output[pixel] =
-                            inputBValue === 0 ? 4096 : (inputA[pixel] * 4096) / inputBValue;
+                            inputBValue === 0 ? 4096 : idiv(shl(inputA[pixel], 12), inputBValue);
                     }
                     break;
                 case ArithmeticBlendMode.Screen:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         output[pixel] =
-                            4096 - ((4096 - inputA[pixel]) * (4096 - inputB[pixel])) / 4096;
+                            4096 - mulShift(4096 - inputA[pixel], 4096 - inputB[pixel], 12);
                     }
                     break;
                 case ArithmeticBlendMode.Overlay:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         const inputBValue = inputB[pixel];
                         output[pixel] =
-                            inputBValue < 2048
-                                ? (inputBValue * inputA[pixel]) / 2048
-                                : 4096 -
-                                  ((((4096 - inputA[pixel]) * (4096 - inputBValue)) / 2048) | 0);
+                            inputBValue >= 2048
+                                ? 4096 - mulShift(4096 - inputA[pixel], 4096 - inputBValue, 11)
+                                : mulShift(inputBValue, inputA[pixel], 11);
                     }
                     break;
                 case ArithmeticBlendMode.ColorDodge:
@@ -86,7 +86,7 @@ export class ArithmeticOperation extends TextureOperation {
                         output[pixel] =
                             inputAValue === 4096
                                 ? 4096
-                                : (inputB[pixel] * 4096) / (4096 - inputAValue);
+                                : idiv(shl(inputB[pixel], 12), 4096 - inputAValue);
                     }
                     break;
                 case ArithmeticBlendMode.ColorBurn:
@@ -95,7 +95,7 @@ export class ArithmeticOperation extends TextureOperation {
                         output[pixel] =
                             inputAValue === 0
                                 ? 0
-                                : 4096 - ((4096 - inputB[pixel]) * 4096) / inputAValue;
+                                : 4096 - idiv(shl(4096 - inputB[pixel], 12), inputAValue);
                     }
                     break;
                 case ArithmeticBlendMode.Min:
@@ -127,7 +127,7 @@ export class ArithmeticOperation extends TextureOperation {
                         const inputAValue = inputA[pixel];
                         const inputBValue = inputB[pixel];
                         output[pixel] =
-                            inputBValue + inputAValue - (inputBValue * inputAValue) / 2048;
+                            inputBValue + inputAValue - mulShift(inputBValue, inputAValue, 11);
                     }
                     break;
             }
@@ -169,9 +169,9 @@ export class ArithmeticOperation extends TextureOperation {
                     break;
                 case ArithmeticBlendMode.Multiply:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        outputR[pixel] = (inputBR[pixel] * inputAR[pixel]) / 4096;
-                        outputG[pixel] = (inputBG[pixel] * inputAG[pixel]) / 4096;
-                        outputB[pixel] = (inputBB[pixel] * inputAB[pixel]) / 4096;
+                        outputR[pixel] = mulShift(inputBR[pixel], inputAR[pixel], 12);
+                        outputG[pixel] = mulShift(inputBG[pixel], inputAG[pixel], 12);
+                        outputB[pixel] = mulShift(inputBB[pixel], inputAB[pixel], 12);
                     }
                     break;
                 case ArithmeticBlendMode.Divide:
@@ -179,19 +179,19 @@ export class ArithmeticOperation extends TextureOperation {
                         const bR = inputBR[pixel];
                         const bG = inputBG[pixel];
                         const bB = inputBB[pixel];
-                        outputR[pixel] = bR === 0 ? 4096 : (inputAR[pixel] * 4096) / bR;
-                        outputG[pixel] = bG === 0 ? 4096 : (inputAG[pixel] * 4096) / bG;
-                        outputB[pixel] = bB === 0 ? 4096 : (inputAB[pixel] * 4096) / bB;
+                        outputR[pixel] = bR === 0 ? 4096 : idiv(shl(inputAR[pixel], 12), bR);
+                        outputG[pixel] = bG === 0 ? 4096 : idiv(shl(inputAG[pixel], 12), bG);
+                        outputB[pixel] = bB === 0 ? 4096 : idiv(shl(inputAB[pixel], 12), bB);
                     }
                     break;
                 case ArithmeticBlendMode.Screen:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
                         outputR[pixel] =
-                            4096 - ((4096 - inputAR[pixel]) * (4096 - inputBR[pixel])) / 4096;
+                            4096 - mulShift(4096 - inputAR[pixel], 4096 - inputBR[pixel], 12);
                         outputG[pixel] =
-                            4096 - ((4096 - inputAG[pixel]) * (4096 - inputBG[pixel])) / 4096;
+                            4096 - mulShift(4096 - inputAG[pixel], 4096 - inputBG[pixel], 12);
                         outputB[pixel] =
-                            4096 - ((4096 - inputAB[pixel]) * (4096 - inputBB[pixel])) / 4096;
+                            4096 - mulShift(4096 - inputAB[pixel], 4096 - inputBB[pixel], 12);
                     }
                     break;
                 case ArithmeticBlendMode.Overlay:
@@ -200,17 +200,17 @@ export class ArithmeticOperation extends TextureOperation {
                         const bG = inputBG[pixel];
                         const bB = inputBB[pixel];
                         outputR[pixel] =
-                            bR < 2048
-                                ? (bR * inputAR[pixel]) / 2048
-                                : 4096 - ((((4096 - inputAR[pixel]) * (4096 - bR)) / 2048) | 0);
+                            bR >= 2048
+                                ? 4096 - mulShift(4096 - inputAR[pixel], 4096 - bR, 11)
+                                : mulShift(bR, inputAR[pixel], 11);
                         outputG[pixel] =
-                            bG < 2048
-                                ? (bG * inputAG[pixel]) / 2048
-                                : 4096 - ((((4096 - inputAG[pixel]) * (4096 - bG)) / 2048) | 0);
+                            bG >= 2048
+                                ? 4096 - mulShift(4096 - inputAG[pixel], 4096 - bG, 11)
+                                : mulShift(bG, inputAG[pixel], 11);
                         outputB[pixel] =
-                            bB < 2048
-                                ? (bB * inputAB[pixel]) / 2048
-                                : 4096 - ((((4096 - inputAB[pixel]) * (4096 - bB)) / 2048) | 0);
+                            bB >= 2048
+                                ? 4096 - mulShift(4096 - inputAB[pixel], 4096 - bB, 11)
+                                : mulShift(bB, inputAB[pixel], 11);
                     }
                     break;
                 case ArithmeticBlendMode.ColorDodge:
@@ -218,9 +218,12 @@ export class ArithmeticOperation extends TextureOperation {
                         const aR = inputAR[pixel];
                         const aG = inputAG[pixel];
                         const aB = inputAB[pixel];
-                        outputR[pixel] = aR === 4096 ? 4096 : (inputBR[pixel] * 4096) / (4096 - aR);
-                        outputG[pixel] = aG === 4096 ? 4096 : (inputBG[pixel] * 4096) / (4096 - aG);
-                        outputB[pixel] = aB === 4096 ? 4096 : (inputBB[pixel] * 4096) / (4096 - aB);
+                        outputR[pixel] =
+                            aR === 4096 ? 4096 : idiv(shl(inputBR[pixel], 12), 4096 - aR);
+                        outputG[pixel] =
+                            aG === 4096 ? 4096 : idiv(shl(inputBG[pixel], 12), 4096 - aG);
+                        outputB[pixel] =
+                            aB === 4096 ? 4096 : idiv(shl(inputBB[pixel], 12), 4096 - aB);
                     }
                     break;
                 case ArithmeticBlendMode.ColorBurn:
@@ -229,11 +232,11 @@ export class ArithmeticOperation extends TextureOperation {
                         const aG = inputAG[pixel];
                         const aB = inputAB[pixel];
                         outputR[pixel] =
-                            aR === 0 ? 0 : 4096 - ((4096 - inputBR[pixel]) * 4096) / aR;
+                            aR === 0 ? 0 : 4096 - idiv(shl(4096 - inputBR[pixel], 12), aR);
                         outputG[pixel] =
-                            aG === 0 ? 0 : 4096 - ((4096 - inputBG[pixel]) * 4096) / aG;
+                            aG === 0 ? 0 : 4096 - idiv(shl(4096 - inputBG[pixel], 12), aG);
                         outputB[pixel] =
-                            aB === 0 ? 0 : 4096 - ((4096 - inputBB[pixel]) * 4096) / aB;
+                            aB === 0 ? 0 : 4096 - idiv(shl(4096 - inputBB[pixel], 12), aB);
                     }
                     break;
                 case ArithmeticBlendMode.Min:
@@ -277,15 +280,15 @@ export class ArithmeticOperation extends TextureOperation {
                     break;
                 case ArithmeticBlendMode.Exclusion:
                     for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                        const aR = inputBR[pixel];
-                        const aG = inputBG[pixel];
-                        const aB = inputBB[pixel];
-                        const bR = inputAR[pixel];
-                        const bG = inputAG[pixel];
-                        const bB = inputAB[pixel];
-                        outputR[pixel] = aR + bR - (aR * bR) / 2048;
-                        outputG[pixel] = aG + bG - (aG * bG) / 2048;
-                        outputB[pixel] = aB + bB - (aB * bB) / 2048;
+                        const aR = inputAR[pixel];
+                        const aG = inputAG[pixel];
+                        const aB = inputAB[pixel];
+                        const bR = inputBR[pixel];
+                        const bG = inputBG[pixel];
+                        const bB = inputBB[pixel];
+                        outputR[pixel] = aR + bR - mulShift(aR, bR, 11);
+                        outputG[pixel] = aG + bG - mulShift(aG, bG, 11);
+                        outputB[pixel] = aB + bB - mulShift(aB, bB, 11);
                     }
                     break;
             }

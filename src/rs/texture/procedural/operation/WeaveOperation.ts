@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { absI32, idiv, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -31,37 +32,29 @@ export class WeaveOperation extends TextureOperation {
                     yQ12 > 2048 - this.strandHalfThicknessQ12 &&
                     yQ12 < this.strandHalfThicknessQ12 + 2048
                 ) {
-                    let distFromCenterX = 2048 - xQ12;
-                    distFromCenterX = distFromCenterX < 0 ? -distFromCenterX : distFromCenterX;
-                    distFromCenterX <<= 12;
-                    distFromCenterX /= denomQ12;
+                    let distFromCenterX = absI32(2048 - xQ12);
+                    distFromCenterX = idiv(shl(distFromCenterX, 12), denomQ12);
                     output[pixel] = 4096 - distFromCenterX;
                 } else if (
                     2048 - this.strandHalfThicknessQ12 < xQ12 &&
                     2048 + this.strandHalfThicknessQ12 > xQ12
                 ) {
-                    let distFromCenterY = yQ12 - 2048;
-                    distFromCenterY = distFromCenterY < 0 ? -distFromCenterY : distFromCenterY;
+                    let distFromCenterY = absI32(yQ12 - 2048);
                     distFromCenterY -= this.strandHalfThicknessQ12;
-                    distFromCenterY <<= 12;
-                    output[pixel] = distFromCenterY / denomQ12;
+                    output[pixel] = idiv(shl(distFromCenterY, 12), denomQ12);
                 } else if (
                     this.strandHalfThicknessQ12 > yQ12 ||
                     yQ12 > 4096 - this.strandHalfThicknessQ12
                 ) {
-                    let distFromCenterX = xQ12 - 2048;
-                    distFromCenterX = distFromCenterX < 0 ? -distFromCenterX : distFromCenterX;
+                    let distFromCenterX = absI32(xQ12 - 2048);
                     distFromCenterX -= this.strandHalfThicknessQ12;
-                    distFromCenterX <<= 12;
-                    output[pixel] = distFromCenterX / denomQ12;
+                    output[pixel] = idiv(shl(distFromCenterX, 12), denomQ12);
                 } else if (
                     xQ12 < this.strandHalfThicknessQ12 ||
                     4096 - this.strandHalfThicknessQ12 < xQ12
                 ) {
-                    let distFromCenterY = 2048 - yQ12;
-                    distFromCenterY = distFromCenterY < 0 ? -distFromCenterY : distFromCenterY;
-                    distFromCenterY <<= 12;
-                    distFromCenterY /= denomQ12;
+                    let distFromCenterY = absI32(2048 - yQ12);
+                    distFromCenterY = idiv(shl(distFromCenterY, 12), denomQ12);
                     output[pixel] = 4096 - distFromCenterY;
                 } else {
                     output[pixel] = 0;

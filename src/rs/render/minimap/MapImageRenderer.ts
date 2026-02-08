@@ -28,14 +28,14 @@ import { LocModelType } from "../../config/loctype/LocModelType";
 import { LocTypeLoader } from "../../config/loctype/LocTypeLoader";
 import { Rasterizer2D } from "../../graphics/Rasterizer2D";
 import { Rasterizer3D } from "../../graphics/Rasterizer3D";
+import { OptionalIndexedSprite } from "../../loaders/Loaders";
+import { getLocPlacementRotation, getLocPlacementType } from "../../scene/LocPlacementFlag";
+import { Scene, TileRenderFlag } from "../../scene/Scene";
+import { getIdFromTag, hasEntityTag, isEntityInteractive } from "../../scene/entity/EntityTag";
 import { IndexedSprite } from "../../sprite/IndexedSprite";
 import { SpritePixels } from "../../sprite/SpritePixels";
 import { TextureLoader } from "../../texture/TextureLoader";
-import { OptionalIndexedSprite } from "../../loaders/Loaders";
 import { INVALID_HSL_COLOR } from "../../util/ColorUtil";
-import { getLocPlacementRotation, getLocPlacementType } from "../../scene/LocPlacementFlag";
-import { Scene, TileRenderFlag } from "../../scene/Scene";
-import { getIdFromTag, isEntityInteractive } from "../../scene/entity/EntityTag";
 
 const tileShape2D = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -90,7 +90,8 @@ export class MapImageRenderer {
                 }
                 if (
                     (scene.tileRenderFlags[level][tileX][tileY] &
-                        (TileRenderFlag.RenderOnLowerLevel | TileRenderFlag.ExcludeFromPlayerLevel)) ===
+                        (TileRenderFlag.RenderOnLowerLevel |
+                            TileRenderFlag.ExcludeFromPlayerLevel)) ===
                     0
                 ) {
                     this.drawTile(scene, pixels, offset, width, realLevel, tileX, tileY);
@@ -99,7 +100,8 @@ export class MapImageRenderer {
                 if (
                     level < 3 &&
                     realLevel < 3 &&
-                    (scene.tileRenderFlags[level + 1][tileX][tileY] & TileRenderFlag.RenderOnLowerLevel) !==
+                    (scene.tileRenderFlags[level + 1][tileX][tileY] &
+                        TileRenderFlag.RenderOnLowerLevel) !==
                         0
                 ) {
                     this.drawTile(scene, pixels, offset, width, realLevel + 1, tileX, tileY);
@@ -123,7 +125,8 @@ export class MapImageRenderer {
                 }
                 if (
                     (scene.tileRenderFlags[level][tileX][tileY] &
-                        (TileRenderFlag.RenderOnLowerLevel | TileRenderFlag.ExcludeFromPlayerLevel)) ===
+                        (TileRenderFlag.RenderOnLowerLevel |
+                            TileRenderFlag.ExcludeFromPlayerLevel)) ===
                     0
                 ) {
                     this.drawLoc(
@@ -142,7 +145,8 @@ export class MapImageRenderer {
                 if (
                     level < 3 &&
                     realLevel < 3 &&
-                    (scene.tileRenderFlags[level + 1][tileX][tileY] & TileRenderFlag.RenderOnLowerLevel) !==
+                    (scene.tileRenderFlags[level + 1][tileX][tileY] &
+                        TileRenderFlag.RenderOnLowerLevel) !==
                         0
                 ) {
                     this.drawLoc(
@@ -214,7 +218,7 @@ export class MapImageRenderer {
                         tileX,
                         tileY,
                     );
-                    if (floorDecorationTag !== 0n) {
+                    if (hasEntityTag(floorDecorationTag)) {
                         const locId = getIdFromTag(floorDecorationTag);
                         const locResult = this.locTypeLoader.tryLoad(locId);
                         if (!locResult.ok) {
@@ -225,8 +229,12 @@ export class MapImageRenderer {
                         if (locType.mapFunctionId !== -1) {
                             const mapFunction = this.mapFunctions[locType.mapFunctionId];
                             if (mapFunction) {
-                                const x = ((locType.sizeX * 4 - mapFunction.subWidth) / 2) | 0;
-                                const y = ((locType.sizeY * 4 - mapFunction.subHeight) / 2) | 0;
+                                const x = Math.trunc(
+                                    (locType.sizeX * 4 - mapFunction.subWidth) / 2,
+                                );
+                                const y = Math.trunc(
+                                    (locType.sizeY * 4 - mapFunction.subHeight) / 2,
+                                );
                                 mapFunction.drawAt(
                                     r2d,
                                     tileX * 4 + x,
@@ -333,10 +341,14 @@ export class MapImageRenderer {
         const h = py1 - py0;
 
         for (let vert = 0; vert < vertexX.length; vert++) {
-            this.tmpScreenX[vert] =
-                px0 + (((vertexX[vert] - localX) * w) >> LOCAL_COORD_BITS);
-            this.tmpScreenY[vert] =
-                py0 + (((LOCAL_TILE_SIZE - (vertexZ[vert] - localY)) * h) >> LOCAL_COORD_BITS);
+            const localDx = vertexX[vert] - localX;
+            const xNumerator = localDx * w;
+            this.tmpScreenX[vert] = px0 + (xNumerator >> LOCAL_COORD_BITS);
+
+            const localDz = vertexZ[vert] - localY;
+            const localInvZ = LOCAL_TILE_SIZE - localDz;
+            const yNumerator = localInvZ * h;
+            this.tmpScreenY[vert] = py0 + (yNumerator >> LOCAL_COORD_BITS);
         }
 
         for (let f = 0; f < facesA.length; f++) {
@@ -376,7 +388,7 @@ export class MapImageRenderer {
         wallInteractiveRgb: number,
     ): void {
         const wallTag = scene.getWallTag(level, tileX, tileY);
-        if (wallTag !== 0n) {
+        if (hasEntityTag(wallTag)) {
             const locFlags = scene.getLocFlags(level, tileX, tileY, wallTag);
             const rotation = getLocPlacementRotation(locFlags);
             const type = getLocPlacementType(locFlags);
@@ -391,9 +403,13 @@ export class MapImageRenderer {
             if (locType.mapSceneId !== -1) {
                 const mapScene = this.mapScenes[locType.mapSceneId];
                 if (mapScene) {
-                    const x = ((locType.sizeX * 4 - mapScene.subWidth) / 2) | 0;
-                    const y = ((locType.sizeY * 4 - mapScene.subHeight) / 2) | 0;
-                    mapScene.drawAt(r2d, tileX * 4 + x, y + (scene.sizeY - tileY - locType.sizeY) * 4);
+                    const x = Math.trunc((locType.sizeX * 4 - mapScene.subWidth) / 2);
+                    const y = Math.trunc((locType.sizeY * 4 - mapScene.subHeight) / 2);
+                    mapScene.drawAt(
+                        r2d,
+                        tileX * 4 + x,
+                        y + (scene.sizeY - tileY - locType.sizeY) * 4,
+                    );
                 }
             } else {
                 let rgb = wallRgb;
@@ -465,7 +481,7 @@ export class MapImageRenderer {
         }
 
         const locTag = scene.getLocTag(level, tileX, tileY);
-        if (locTag !== 0n) {
+        if (hasEntityTag(locTag)) {
             const locFlags = scene.getLocFlags(level, tileX, tileY, locTag);
             const rotation = getLocPlacementRotation(locFlags);
             const type = getLocPlacementType(locFlags);
@@ -480,9 +496,13 @@ export class MapImageRenderer {
             if (locType.mapSceneId !== -1) {
                 const mapScene = this.mapScenes[locType.mapSceneId];
                 if (mapScene) {
-                    const x = ((locType.sizeX * 4 - mapScene.subWidth) / 2) | 0;
-                    const y = ((locType.sizeY * 4 - mapScene.subHeight) / 2) | 0;
-                    mapScene.drawAt(r2d, tileX * 4 + x, (scene.sizeY - tileY - locType.sizeY) * 4 + y);
+                    const x = Math.trunc((locType.sizeX * 4 - mapScene.subWidth) / 2);
+                    const y = Math.trunc((locType.sizeY * 4 - mapScene.subHeight) / 2);
+                    mapScene.drawAt(
+                        r2d,
+                        tileX * 4 + x,
+                        (scene.sizeY - tileY - locType.sizeY) * 4 + y,
+                    );
                 }
             } else if (type === LocModelType.WALL_DIAGONAL) {
                 let rgb = wallRgb;
@@ -506,7 +526,7 @@ export class MapImageRenderer {
         }
 
         const floorDecorationTag = scene.getFloorDecorationTag(level, tileX, tileY);
-        if (floorDecorationTag !== 0n) {
+        if (hasEntityTag(floorDecorationTag)) {
             const locId = getIdFromTag(floorDecorationTag);
             const locResult = this.locTypeLoader.tryLoad(locId);
             if (!locResult.ok) {
@@ -517,9 +537,13 @@ export class MapImageRenderer {
             if (locType.mapSceneId !== -1) {
                 const mapScene = this.mapScenes[locType.mapSceneId];
                 if (mapScene) {
-                    const x = ((locType.sizeX * 4 - mapScene.subWidth) / 2) | 0;
-                    const y = ((locType.sizeY * 4 - mapScene.subHeight) / 2) | 0;
-                    mapScene.drawAt(r2d, tileX * 4 + x, y + (scene.sizeY - tileY - locType.sizeY) * 4);
+                    const x = Math.trunc((locType.sizeX * 4 - mapScene.subWidth) / 2);
+                    const y = Math.trunc((locType.sizeY * 4 - mapScene.subHeight) / 2);
+                    mapScene.drawAt(
+                        r2d,
+                        tileX * 4 + x,
+                        y + (scene.sizeY - tileY - locType.sizeY) * 4,
+                    );
                 }
             }
         }

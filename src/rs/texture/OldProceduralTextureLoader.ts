@@ -1,7 +1,7 @@
+import { Result, err, ok } from "../../util/Result";
+import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
-import { err, ok, Result } from "../../util/Result";
 import { TextureLoader } from "./TextureLoader";
 import { TextureMaterial } from "./TextureMaterial";
 import { ProceduralTexture } from "./procedural/ProceduralTexture";
@@ -50,7 +50,9 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
         if (failedDefinitionIds.length > 0) {
             console.error(
-                `OldProceduralTextureLoader: failed decoding ${failedDefinitionIds.length} texture definitions (first: ${formatIdPreview(failedDefinitionIds)})`,
+                `OldProceduralTextureLoader: failed decoding ${
+                    failedDefinitionIds.length
+                } texture definitions (first: ${formatIdPreview(failedDefinitionIds)})`,
             );
         }
 
@@ -254,21 +256,41 @@ export class OldProceduralTextureLoader implements TextureLoader {
         }
     }
 
-    tryGetPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+    tryGetPixelsRgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const result = this.tryLoadPixelsRgb(id, size, flipH, brightness);
         return result.ok ? result.value : undefined;
     }
 
-    tryGetPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Int32Array | undefined {
+    tryGetPixelsArgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Int32Array | undefined {
         const result = this.tryLoadPixelsArgb(id, size, flipH, brightness);
         return result.ok ? result.value : undefined;
     }
 
-    tryLoadPixelsRgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+    tryLoadPixelsRgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Result<Int32Array, DecodeError> {
         return this.tryLoadPixelsRgbInternal(id, size, flipH, brightness);
     }
 
-    tryLoadPixelsArgb(id: number, size: number, flipH: boolean, brightness: number): Result<Int32Array, DecodeError> {
+    tryLoadPixelsArgb(
+        id: number,
+        size: number,
+        flipH: boolean,
+        brightness: number,
+    ): Result<Int32Array, DecodeError> {
         return this.tryLoadPixelsArgbInternal(id, size, flipH, brightness);
     }
 

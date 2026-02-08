@@ -66,9 +66,9 @@ export function buildPalette(
                 }
             }
 
-            const r = (rFloat * 256.0) | 0;
-            const g = (gFloat * 256.0) | 0;
-            const b = (bFloat * 256.0) | 0;
+            const r = Math.trunc(rFloat * 256.0);
+            const g = Math.trunc(gFloat * 256.0);
+            const b = Math.trunc(bFloat * 256.0);
             const rgb = (r << 16) + (g << 8) + b;
 
             let newRgb = brightenRgb(rgb, brightness);
@@ -96,30 +96,33 @@ export function brightenRgb(rgb: number, brightness: number) {
     r = Math.pow(r, brightness);
     g = Math.pow(g, brightness);
     b = Math.pow(b, brightness);
-    const newR = (r * 256.0) | 0;
-    const newG = (g * 256.0) | 0;
-    const newB = (b * 256.0) | 0;
-    return (newR * 0x10000 + newG * 0x100 + newB) | 0;
+    const newR = Math.trunc(r * 256.0);
+    const newG = Math.trunc(g * 256.0);
+    const newB = Math.trunc(b * 256.0);
+    return newR * 0x10000 + newG * 0x100 + newB;
 }
 
 export function packHsl(hue: number, saturation: number, lightness: number) {
     if (lightness > 179) {
-        saturation = (saturation / 2) | 0;
+        saturation = Math.trunc(saturation / 2);
     }
 
     if (lightness > 192) {
-        saturation = (saturation / 2) | 0;
+        saturation = Math.trunc(saturation / 2);
     }
 
     if (lightness > 217) {
-        saturation = (saturation / 2) | 0;
+        saturation = Math.trunc(saturation / 2);
     }
 
     if (lightness > 243) {
-        saturation = (saturation / 2) | 0;
+        saturation = Math.trunc(saturation / 2);
     }
 
-    return ((saturation / 32) << 7) + ((hue / 4) << 10) + ((lightness / 2) | 0);
+    const sat = Math.trunc(saturation / 32);
+    const huePart = Math.trunc(hue / 4);
+    const lightPart = Math.trunc(lightness / 2);
+    return (sat << 7) + (huePart << 10) + lightPart;
 }
 
 export function mixHsl(hslA: number, hslB: number): number {
@@ -195,9 +198,9 @@ export function rgbToHsl(rgb: number): number {
 
     hueTemp /= 6.0;
 
-    const hue = (hueTemp * 256.0) | 0;
-    let saturation = (sat * 256.0) | 0;
-    let lightness = (light * 256.0) | 0;
+    const hue = Math.trunc(hueTemp * 256.0);
+    let saturation = Math.trunc(sat * 256.0);
+    let lightness = Math.trunc(light * 256.0);
     if (saturation < 0) {
         saturation = 0;
     } else if (saturation > 255) {
@@ -214,7 +217,8 @@ export function rgbToHsl(rgb: number): number {
 }
 
 export function blendLight(hsl: number, lightness: number): number {
-    lightness = ((hsl & 127) * lightness) >> 7;
+    const numerator = (hsl & 127) * lightness;
+    lightness = numerator >> 7;
     if (lightness < 2) {
         lightness = 2;
     } else if (lightness > 126) {
@@ -228,7 +232,8 @@ export function adjustUnderlayLight(hsl: number, light: number) {
     if (hsl === -1) {
         return INVALID_HSL_COLOR;
     } else {
-        light = ((hsl & 127) * light) >> 7;
+        const numerator = (hsl & 127) * light;
+        light = numerator >> 7;
         if (light < 2) {
             light = 2;
         } else if (light > 126) {
@@ -251,7 +256,8 @@ export function adjustOverlayLight(hsl: number, light: number) {
 
         return light;
     } else {
-        light = ((hsl & 127) * light) >> 7;
+        const numerator = (hsl & 127) * light;
+        light = numerator >> 7;
         if (light < 2) {
             light = 2;
         } else if (light > 126) {

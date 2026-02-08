@@ -2,6 +2,7 @@ import { TextureLoader } from "../texture/TextureLoader";
 import { ModelData } from "./ModelData";
 
 const uvTemp = new Float32Array(2);
+const IDENTITY_3X3 = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
 export function computeTextureCoords(
     textureLoader: TextureLoader,
@@ -590,7 +591,7 @@ export function calculateTextureScales(model: ModelData): TextureScales {
             minZ[i] = 2147483647;
             maxZ[i] = -2147483647;
         }
-        transformMatrices = new Array(textureFaceCount);
+        transformMatrices = Array.from({ length: textureFaceCount }, () => IDENTITY_3X3);
         for (let i = 0; i < model.faceCount; i++) {
             if (model.textureCoords[i] === -1) {
                 continue;

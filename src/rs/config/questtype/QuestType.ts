@@ -86,7 +86,9 @@ export class QuestType extends Type {
             buffer.readInt();
         } else if (opcode === 13) {
             const count = buffer.readUnsignedByte();
-            this.questRequirements = Array.from({ length: count }, () => buffer.readUnsignedShort());
+            this.questRequirements = Array.from({ length: count }, () =>
+                buffer.readUnsignedShort(),
+            );
         } else if (opcode === 14) {
             const count = buffer.readUnsignedByte();
             this.skillRequirements = Array.from({ length: count }, () => {
@@ -126,7 +128,7 @@ export class QuestType extends Type {
     }
 
     override post(): void {
-        if (this.sortName === undefined) {
+        if (this.sortName === null) {
             this.sortName = this.name;
         }
     }

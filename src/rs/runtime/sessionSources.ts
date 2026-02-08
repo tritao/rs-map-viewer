@@ -1,10 +1,12 @@
-import { Archive } from "../cache/format/Archive";
 import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { Dat2IndexId, DatIndexId } from "../cache/IndexId";
+import { Archive } from "../cache/format/Archive";
 import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { CacheSession } from "./createCacheSession";
 
-export function tryGetDat2SpriteSource(session: CacheSession): EnumeratingBytesProvider | undefined {
+export function tryGetDat2SpriteSource(
+    session: CacheSession,
+): EnumeratingBytesProvider | undefined {
     const index = session.tryGetIndex(Dat2IndexId.sprites);
     if (!index) {
         return undefined;
@@ -19,4 +21,3 @@ export function tryGetDatMediaArchive(session: CacheSession): Archive | undefine
     }
     return configIndex.tryGetArchive(DatConfigArchiveId.media);
 }
-

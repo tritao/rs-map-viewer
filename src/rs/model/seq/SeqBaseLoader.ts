@@ -1,9 +1,9 @@
-import { CacheInfo } from "../../cache/CacheInfo";
+import { Result, err, ok } from "../../../util/Result";
 import { CacheIndex } from "../../cache/CacheIndex";
-import { BytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
+import { CacheInfo } from "../../cache/CacheInfo";
 import { DecodeError, decodeFailedError, notFoundError } from "../../errors/DecodeError";
+import { BytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { Dat2SeqBase, SeqBase } from "./SeqBase";
-import { err, ok, Result } from "../../../util/Result";
 
 export interface SeqBaseLoader {
     tryLoad(id: number): Result<SeqBase, DecodeError>;
@@ -20,7 +20,10 @@ export class Dat2SeqBaseLoader implements SeqBaseLoader {
         return new Dat2SeqBaseLoader(cacheInfo, new IndexFileBytesProvider(index, 0));
     }
 
-    constructor(readonly cacheInfo: CacheInfo, readonly baseSource: BytesProvider) {}
+    constructor(
+        readonly cacheInfo: CacheInfo,
+        readonly baseSource: BytesProvider,
+    ) {}
 
     tryLoad(id: number): Result<SeqBase, DecodeError> {
         const cached = this.bases.get(id);

@@ -1,8 +1,8 @@
-import { Archive } from "../../cache/format/Archive";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { ArchiveTypeLoader, DatTypeLoader, IndexTypeLoader, TypeLoader } from "../TypeLoader";
+import { Archive } from "../../cache/format/Archive";
 import { ArchiveBytesProvider } from "../../io/BytesProvider";
+import { ArchiveTypeLoader, DatTypeLoader, IndexTypeLoader, TypeLoader } from "../TypeLoader";
 import { SeqType } from "./SeqType";
 
 export type SeqTypeLoader = TypeLoader<SeqType>;

@@ -6,7 +6,7 @@ import { SeqType } from "../../config/seqtype/SeqType";
 import { SeqTypeLoader } from "../../config/seqtype/SeqTypeLoader";
 import { ContourGroundType } from "../../model/ContourGroundType";
 import { Model } from "../../model/Model";
-import { isModelData, ModelData } from "../../model/ModelData";
+import { ModelData, isModelData } from "../../model/ModelData";
 import { ModelLoader } from "../../model/ModelLoader";
 import { SeqFrameLoader } from "../../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../../model/skeletal/SkeletalSeqLoader";
@@ -23,7 +23,7 @@ export type ContourGroundInfo = {
 };
 
 export class LocModelLoader {
-    private readonly mergeLocModelsCache: ModelData[] = new Array(4);
+    private readonly mergeLocModelsCache: ModelData[] = [];
 
     modelDataCache: Map<number, ModelData>;
     entityCache: Map<number, Model | ModelData>;
@@ -91,6 +91,7 @@ export class LocModelLoader {
             }
 
             if (modelCount > 1) {
+                this.mergeLocModelsCache.length = modelCount;
                 model = ModelData.merge(this.mergeLocModelsCache, modelCount);
             }
         } else {

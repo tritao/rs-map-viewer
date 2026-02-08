@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { i32, idiv, maskIndex, mulShift, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -32,14 +33,15 @@ export class EmbossOperation extends TextureOperation {
         this.lightDirectionQ12[1] =
             4096 * (cosElevation * Math.cos(Math.fround(this.lightAzimuthQ12 / 4096)));
         this.lightDirectionQ12[2] = 4096 * Math.sin(Math.fround(this.lightElevationQ12 / 4096));
-        const xSqQ12 = (this.lightDirectionQ12[0] * this.lightDirectionQ12[0]) >> 12;
-        const ySqQ12 = (this.lightDirectionQ12[1] * this.lightDirectionQ12[1]) >> 12;
-        const zSqQ12 = (this.lightDirectionQ12[2] * this.lightDirectionQ12[2]) >> 12;
-        const magnitudeQ12 = (Math.sqrt((xSqQ12 + ySqQ12 + zSqQ12) >> 12) * 4096) | 0;
+        const xSqQ12 = mulShift(this.lightDirectionQ12[0], this.lightDirectionQ12[0], 12);
+        const ySqQ12 = mulShift(this.lightDirectionQ12[1], this.lightDirectionQ12[1], 12);
+        const zSqQ12 = mulShift(this.lightDirectionQ12[2], this.lightDirectionQ12[2], 12);
+        const magnitudeSqQ12 = xSqQ12 + ySqQ12 + zSqQ12;
+        const magnitudeQ12 = i32(Math.sqrt(magnitudeSqQ12 / 4096) * 4096);
         if (magnitudeQ12 !== 0) {
-            this.lightDirectionQ12[0] = (this.lightDirectionQ12[0] << 12) / magnitudeQ12;
-            this.lightDirectionQ12[1] = (this.lightDirectionQ12[1] << 12) / magnitudeQ12;
-            this.lightDirectionQ12[2] = (this.lightDirectionQ12[2] << 12) / magnitudeQ12;
+            this.lightDirectionQ12[0] = idiv(shl(this.lightDirectionQ12[0], 12), magnitudeQ12);
+            this.lightDirectionQ12[1] = idiv(shl(this.lightDirectionQ12[1], 12), magnitudeQ12);
+            this.lightDirectionQ12[2] = idiv(shl(this.lightDirectionQ12[2], 12), magnitudeQ12);
         }
     }
 
@@ -49,24 +51,26 @@ export class EmbossOperation extends TextureOperation {
         }
         const output = this.monochromeImageCache.get(line);
         if (this.monochromeImageCache.dirty) {
-            const widthMult = (this.strengthQ12 * textureGenerator.widthTimes32) >> 12;
+            const widthMult = mulShift(this.strengthQ12, textureGenerator.widthTimes32, 12);
             const prevLine = this.getMonochromeInput(
                 textureGenerator,
                 0,
-                (line - 1) & textureGenerator.heightMask,
+                maskIndex(line - 1, textureGenerator.heightMask),
             );
             const currLine = this.getMonochromeInput(textureGenerator, 0, line);
             const nextLine = this.getMonochromeInput(
                 textureGenerator,
                 0,
-                (line + 1) & textureGenerator.heightMask,
+                maskIndex(line + 1, textureGenerator.heightMask),
             );
             for (let pixel = 0; pixel < textureGenerator.width; pixel++) {
-                const prevPixel = currLine[(pixel - 1) & textureGenerator.widthMask];
-                const nextPixel = currLine[(pixel + 1) & textureGenerator.widthMask];
+                const prevPixel = currLine[maskIndex(pixel - 1, textureGenerator.widthMask)];
+                const nextPixel = currLine[maskIndex(pixel + 1, textureGenerator.widthMask)];
 
-                const gradY = (widthMult * (nextLine[pixel] - prevLine[pixel])) >> 12;
-                const gradX = (widthMult * (prevPixel - nextPixel)) >> 12;
+                const deltaY = nextLine[pixel] - prevLine[pixel];
+                const deltaX = prevPixel - nextPixel;
+                const gradY = mulShift(widthMult, deltaY, 12);
+                const gradX = mulShift(widthMult, deltaX, 12);
 
                 let gradXAbs = gradX >> 4;
                 let gradYAbs = gradY >> 4;
@@ -82,16 +86,16 @@ export class EmbossOperation extends TextureOperation {
                 if (gradYAbs > 255) {
                     gradYAbs = 255;
                 }
-                const invMagnitude =
-                    textureGenerator.inverseSquareRoot[
-                        gradXAbs + (((gradYAbs + 1) * gradYAbs) >> 1)
-                    ] & 0xff;
-                const normalXQ12 = (invMagnitude * gradX) >> 8;
-                const normalYQ12 = (invMagnitude * gradY) >> 8;
-                const normalZQ12 = (invMagnitude * 4096) >> 8;
-                const lightDotXQ12 = (this.lightDirectionQ12[0] * normalXQ12) >> 12;
-                const lightDotYQ12 = (this.lightDirectionQ12[1] * normalYQ12) >> 12;
-                const lightDotZQ12 = (this.lightDirectionQ12[2] * normalZQ12) >> 12;
+                const triProduct = (gradYAbs + 1) * gradYAbs;
+                const tri = triProduct >> 1;
+                const invMagnitude = textureGenerator.inverseSquareRoot[gradXAbs + tri] & 0xff;
+                const normalXQ12 = mulShift(invMagnitude, gradX, 8);
+                const normalYQ12 = mulShift(invMagnitude, gradY, 8);
+                const normalZNumerator = invMagnitude * 4096;
+                const normalZQ12 = normalZNumerator >> 8;
+                const lightDotXQ12 = mulShift(this.lightDirectionQ12[0], normalXQ12, 12);
+                const lightDotYQ12 = mulShift(this.lightDirectionQ12[1], normalYQ12, 12);
+                const lightDotZQ12 = mulShift(this.lightDirectionQ12[2], normalZQ12, 12);
                 output[pixel] = lightDotXQ12 + lightDotYQ12 + lightDotZQ12;
             }
         }

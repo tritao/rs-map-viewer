@@ -5,8 +5,8 @@ import { ByteBuffer } from "../../io/ByteBuffer";
 export class SkeletalBone {
     parentId: number;
     localMatrices: mat4[];
-    modelMatrices: mat4[];
-    invertedModelMatrices: mat4[];
+    modelMatrices: Array<mat4 | undefined>;
+    invertedModelMatrices: Array<mat4 | undefined>;
 
     animMatrix: mat4 = mat4.create();
     updateAnimModelMatrix: boolean = false;
@@ -57,16 +57,17 @@ export class SkeletalBone {
 
     constructor(poseCount: number, buffer: ByteBuffer, matrixCompact: boolean) {
         this.parentId = buffer.readShort();
-        this.localMatrices = new Array(poseCount);
-        this.modelMatrices = new Array(poseCount);
-        this.invertedModelMatrices = new Array(poseCount);
+        this.localMatrices = Array.from({ length: poseCount }, () => undefined as unknown as mat4);
+        this.modelMatrices = Array.from({ length: poseCount }, () => undefined);
+        this.invertedModelMatrices = Array.from({ length: poseCount }, () => undefined);
 
         // Direction vector maybe
-        const unused: number[][] = new Array(poseCount);
+        const unused: number[][] = Array.from({ length: poseCount }, () =>
+            Array.from({ length: 3 }, () => 0),
+        );
 
         for (let i = 0; i < poseCount; i++) {
             this.localMatrices[i] = SkeletalBone.readMat4(buffer, matrixCompact);
-            unused[i] = new Array(3);
             unused[i][0] = buffer.readFloat();
             unused[i][1] = buffer.readFloat();
             unused[i][2] = buffer.readFloat();
@@ -77,9 +78,9 @@ export class SkeletalBone {
 
     extractTransformations(): void {
         const poseCount = this.localMatrices.length;
-        this.rotations = new Array(poseCount);
-        this.translations = new Array(poseCount);
-        this.scalings = new Array(poseCount);
+        this.rotations = Array.from({ length: poseCount }, () => undefined as unknown as vec3);
+        this.translations = Array.from({ length: poseCount }, () => undefined as unknown as vec3);
+        this.scalings = Array.from({ length: poseCount }, () => undefined as unknown as vec3);
 
         const invertedLocalMatrix = mat4.create();
 
@@ -115,7 +116,11 @@ export class SkeletalBone {
             }
             this.modelMatrices[poseId] = modelMatrix;
         }
-        return this.modelMatrices[poseId];
+        const m = this.modelMatrices[poseId];
+        if (m === undefined) {
+            throw new Error("SkeletalBone: missing model matrix (unexpected)");
+        }
+        return m;
     }
 
     getInvertedModelMatrix(poseId: number): mat4 {
@@ -125,7 +130,11 @@ export class SkeletalBone {
                 this.getModelMatrix(poseId),
             );
         }
-        return this.invertedModelMatrices[poseId];
+        const m = this.invertedModelMatrices[poseId];
+        if (m === undefined) {
+            throw new Error("SkeletalBone: missing inverted model matrix (unexpected)");
+        }
+        return m;
     }
 
     setAnimMatrix(animMatrix: mat4): void {

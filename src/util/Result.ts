@@ -15,4 +15,3 @@ export function isOk<T, E>(result: Result<T, E>): result is { ok: true; value: T
 export function isErr<T, E>(result: Result<T, E>): result is { ok: false; error: E } {
     return !result.ok;
 }
-

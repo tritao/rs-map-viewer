@@ -1,4 +1,5 @@
 import { ByteBuffer } from "../../../io/ByteBuffer";
+import { idiv, mulShift, shl } from "../../../util/JavaInt";
 import { TextureGenerator } from "../TextureGenerator";
 import { TextureOperation } from "./TextureOperation";
 
@@ -24,9 +25,9 @@ export class HslOperation extends TextureOperation {
             this.deltaHue = buffer.readSignedShort();
         } else if (field === 1) {
             // TODO: check if this is correct
-            this.deltaSaturation = ((buffer.readByte() << 12) / 100) | 0;
+            this.deltaSaturation = idiv(shl(buffer.readByte(), 12), 100);
         } else if (field === 2) {
-            this.deltaLightness = ((buffer.readByte() << 12) / 100) | 0;
+            this.deltaLightness = idiv(shl(buffer.readByte(), 12), 100);
         }
     }
 
@@ -34,11 +35,11 @@ export class HslOperation extends TextureOperation {
         const maxValue = Math.max(r, g, b);
         const minValue = Math.min(r, g, b);
         const delta = maxValue - minValue;
-        this.lightness = ((maxValue + minValue) / 2) | 0;
+        this.lightness = idiv(maxValue + minValue, 2);
         if (delta > 0) {
-            const invR = ((maxValue - r) << 12) / delta;
-            const invG = ((maxValue - g) << 12) / delta;
-            const invB = ((maxValue - b) << 12) / delta;
+            const invR = idiv(shl(maxValue - r, 12), delta);
+            const invG = idiv(shl(maxValue - g, 12), delta);
+            const invB = idiv(shl(maxValue - b, 12), delta);
             if (r === maxValue) {
                 this.hue = g === minValue ? invB + 0x5000 : 4096 - invG;
             } else if (g === maxValue) {
@@ -46,14 +47,15 @@ export class HslOperation extends TextureOperation {
             } else {
                 this.hue = minValue === r ? invG + 0x3000 : 0x5000 - invR;
             }
-            this.hue = (this.hue / 6) | 0;
+            this.hue = idiv(this.hue, 6);
         } else {
             this.hue = 0;
         }
         if (this.lightness > 0 && this.lightness < 4096) {
-            this.saturation =
-                (delta << 12) /
-                (this.lightness > 2048 ? 8192 - this.lightness * 2 : this.lightness * 2);
+            this.saturation = idiv(
+                shl(delta, 12),
+                this.lightness > 2048 ? 8192 - this.lightness * 2 : this.lightness * 2,
+            );
         } else {
             this.saturation = 0;
         }
@@ -62,17 +64,17 @@ export class HslOperation extends TextureOperation {
     setRgb(hue: number, saturation: number, lightness: number) {
         const q =
             lightness > 2048
-                ? saturation + lightness - ((saturation * lightness) >> 12)
-                : (lightness * (4096 + saturation)) >> 12;
+                ? saturation + lightness - mulShift(saturation, lightness, 12)
+                : mulShift(lightness, 4096 + saturation, 12);
         if (q > 0) {
             const p = lightness - q + lightness;
-            const qMinusPOverQQ12 = ((q - p) << 12) / q;
+            const qMinusPOverQQ12 = idiv(shl(q - p, 12), q);
             const hue6Q12 = hue * 6;
             const hueSector = hue6Q12 >> 12;
             const hueFracQ12 = hue6Q12 - (hueSector << 12);
             let deltaQ12 = q;
-            deltaQ12 = (deltaQ12 * qMinusPOverQQ12) >> 12;
-            deltaQ12 = (hueFracQ12 * deltaQ12) >> 12;
+            deltaQ12 = mulShift(deltaQ12, qMinusPOverQQ12, 12);
+            deltaQ12 = mulShift(hueFracQ12, deltaQ12, 12);
             const pPlusDelta = p + deltaQ12;
             const qMinusDelta = q - deltaQ12;
             if (hueSector === 0) {

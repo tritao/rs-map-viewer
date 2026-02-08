@@ -6,7 +6,9 @@ export class Uint8ArrayReader {
         public offset: number = 0,
     ) {
         if (offset < 0 || offset > data.byteLength) {
-            throw new Error(`Uint8ArrayReader: invalid initial offset=${offset} length=${data.byteLength}`);
+            throw new Error(
+                `Uint8ArrayReader: invalid initial offset=${offset} length=${data.byteLength}`,
+            );
         }
     }
 
@@ -16,7 +18,9 @@ export class Uint8ArrayReader {
 
     seek(offset: number): void {
         if (offset < 0 || offset > this.data.byteLength) {
-            throw new Error(`Uint8ArrayReader: seek out of bounds offset=${offset} length=${this.data.byteLength}`);
+            throw new Error(
+                `Uint8ArrayReader: seek out of bounds offset=${offset} length=${this.data.byteLength}`,
+            );
         }
         this.offset = offset;
     }
@@ -67,7 +71,9 @@ export class Uint8ArrayReader {
             throw new Error("Uint8ArrayReader: invalid length");
         }
         if (this.remaining < length) {
-            throw new Error(`Uint8ArrayReader: truncated bytes length=${length} remaining=${this.remaining}`);
+            throw new Error(
+                `Uint8ArrayReader: truncated bytes length=${length} remaining=${this.remaining}`,
+            );
         }
         const start = this.offset;
         const end = start + length;
@@ -75,4 +81,3 @@ export class Uint8ArrayReader {
         return this.data.subarray(start, end);
     }
 }
-

@@ -3,12 +3,7 @@ export interface ByteSource {
 
     slice(start: number, size: number): ByteSource;
 
-    readInto(
-        offset: number,
-        target: Uint8Array,
-        targetOffset?: number,
-        length?: number,
-    ): void;
+    readInto(offset: number, target: Uint8Array, targetOffset?: number, length?: number): void;
 
     /**
      * Optional fast-path for sources backed by contiguous memory.

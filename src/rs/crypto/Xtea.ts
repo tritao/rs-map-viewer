@@ -1,4 +1,14 @@
+import { i32 } from "../util/JavaInt";
 import { mulU32, toI32, toU32 } from "../util/U32";
+
+export type XteaKey = readonly [i32, i32, i32, i32];
+
+export function asXteaKey(key: readonly number[]): XteaKey {
+    if (key.length !== 4) {
+        throw new Error(`Xtea: key is not 128 bits (len=${key.length})`);
+    }
+    return [i32(key[0]), i32(key[1]), i32(key[2]), i32(key[3])] as const;
+}
 
 export class Xtea {
     static readonly GOLDEN_RATIO: i32 = toI32(0x9e3779b9);
@@ -7,20 +17,18 @@ export class Xtea {
 
     static readonly INITIAL_SUM: i32 = toI32(mulU32(toU32(Xtea.GOLDEN_RATIO), Xtea.ROUNDS));
 
-    static isValidKey(key: Array<number> | null): boolean {
-        return (
-            key !== null &&
-            key.length === 4 &&
-            (key[0] !== 0 || key[1] !== 0 || key[2] !== 0 || key[3] !== 0)
-        );
+    static isValidKey(key: XteaKey | null): boolean {
+        return key !== null && (key[0] !== 0 || key[1] !== 0 || key[2] !== 0 || key[3] !== 0);
     }
 
-    static decryptInPlace(data: Uint8Array, start: number, end: number, key: number[] | null): void {
-        if (key === null || key.length !== 4) {
-            throw new Error("Xtea: key is not 128 bits");
+    static decryptInPlace(data: Uint8Array, start: number, end: number, key: XteaKey | null): void {
+        if (key === null) {
+            throw new Error("Xtea: key is null");
         }
         if (start < 0 || end < start || end > data.byteLength) {
-            throw new Error(`Xtea: invalid range start=${start} end=${end} length=${data.byteLength}`);
+            throw new Error(
+                `Xtea: invalid range start=${start} end=${end} length=${data.byteLength}`,
+            );
         }
 
         const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
