@@ -68,6 +68,7 @@
     "rs:cpp-sanitize": "bash scripts/cpp/sanitize-test.sh",
     "cache:parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/cache-parity.ts",
     "cache:parity-compare": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/compare-parity.ts",
+    "cache:parity-smoke-cpp": "node scripts/cache/parity-smoke-cpp.mjs",
     "export-textures": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/export-textures.ts",
     "generate-fixtures": "npx tsc -p scripts/cache-fixtures/tsconfig.cjs.json && node /tmp/rs-map-viewer-fixtures-gen/scripts/cache-fixtures/generate-fixtures.js"
   },
