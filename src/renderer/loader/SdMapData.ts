@@ -1,13 +1,16 @@
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CollisionData } from "../../rs/scene/CollisionMap";
+import { RenderableType } from "../Renderer";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
-import { RenderableType } from "../Renderer";
 import { MapData } from "./MapData";
-import { SdRenderableData, SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
+import {
+    SdRenderableData,
+    SdRenderableDrawRanges,
+    SdRenderableModelInfoTextures,
+} from "./SdRenderableData";
 
 export class SdMapData extends SdRenderableData implements MapData {
-
     constructor(
         readonly mapX: number,
         readonly mapY: number,
@@ -43,9 +46,20 @@ export class SdMapData extends SdRenderableData implements MapData {
         readonly usedTextureIds: Int32Array,
         readonly loadedTextures: Map<number, Int32Array>,
     ) {
-        super(RenderableType.Map, getMapSquareId(mapX, mapY), cacheName,
-            borderSize, tileRenderFlags, collisionDatas, vertices, indices,
-            modelInfoTextures, drawRanges, locsAnimated, npcs,
-            loadedTextures);
+        super(
+            RenderableType.Map,
+            getMapSquareId(mapX, mapY),
+            cacheName,
+            borderSize,
+            tileRenderFlags,
+            collisionDatas,
+            vertices,
+            indices,
+            modelInfoTextures,
+            drawRanges,
+            locsAnimated,
+            npcs,
+            loadedTextures,
+        );
     }
-};
+}

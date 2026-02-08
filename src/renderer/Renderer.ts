@@ -3,7 +3,7 @@ export enum RenderableType {
     NPC,
     Item,
     Loc,
-    Map
+    Map,
 }
 
 export interface Renderer {
@@ -14,11 +14,7 @@ export interface Renderer {
 
     cleanUp(): void;
 
-    render(
-        time: DOMHighResTimeStamp,
-        deltaTime: DOMHighResTimeStamp,
-        resized: boolean,
-    ): void;
+    render(time: DOMHighResTimeStamp, deltaTime: DOMHighResTimeStamp, resized: boolean): void;
 
     onResize(width: number, height: number): void;
 

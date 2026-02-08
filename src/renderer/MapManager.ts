@@ -27,14 +27,17 @@ export interface MapSquare {
 export class MapSquareInfo {
     mapId: number;
 
-    constructor(readonly mapX: number, readonly mapY: number) {
+    constructor(
+        readonly mapX: number,
+        readonly mapY: number,
+    ) {
         this.mapId = getMapSquareId(mapX, mapY);
     }
 }
 
 export enum MapManagerUpdateMode {
     RenderDistance,
-    Loaded
+    Loaded,
 }
 
 export class MapManager {
@@ -79,7 +82,8 @@ export class MapManager {
                     let hasNeighbour = false;
                     loop: for (let nx = x - 2; nx <= x + 2; nx++) {
                         for (let ny = y - 2; ny <= y + 2; ny++) {
-                            const neighbourExists = mapFileIndex.tryGetTerrainArchiveId(nx, ny) !== undefined;
+                            const neighbourExists =
+                                mapFileIndex.tryGetTerrainArchiveId(nx, ny) !== undefined;
                             if (neighbourExists) {
                                 hasNeighbour = true;
                                 break loop;
@@ -170,9 +174,13 @@ export class MapManager {
         const cameraX = camera.getPosX();
         const cameraZ = camera.getPosZ();
 
-        const { mapStartX, mapEndX, mapStartY, mapEndY } = this.getRenderBounds(camera, renderDistance);
+        const { mapStartX, mapEndX, mapStartY, mapEndY } = this.getRenderBounds(
+            camera,
+            renderDistance,
+        );
 
-        const renderBoundsChanged = this.renderBounds[0] !== mapStartX ||
+        const renderBoundsChanged =
+            this.renderBounds[0] !== mapStartX ||
             this.renderBounds[1] !== mapStartY ||
             this.renderBounds[2] !== mapEndX ||
             this.renderBounds[3] !== mapEndY;
@@ -206,19 +214,32 @@ export class MapManager {
         this.renderBounds[3] = mapEndY;
     }
 
-    private unloadMaps(mapStartX: number, unloadDistance: number, mapEndX: number, mapStartY: number, mapEndY: number) {
+    private unloadMaps(
+        mapStartX: number,
+        unloadDistance: number,
+        mapEndX: number,
+        mapStartY: number,
+        mapEndY: number,
+    ) {
         for (const map of this.mapSquares.values()) {
             const { mapX, mapY } = map;
-            if (mapX < mapStartX - unloadDistance ||
+            if (
+                mapX < mapStartX - unloadDistance ||
                 mapX > mapEndX + unloadDistance ||
                 mapY < mapStartY - unloadDistance ||
-                mapY > mapEndY + unloadDistance) {
+                mapY > mapEndY + unloadDistance
+            ) {
                 this.removeMap(mapX, mapY);
             }
         }
     }
 
-    private updateRenderDistMaps(mapStartX: number, mapEndX: number, mapStartY: number, mapEndY: number) {
+    private updateRenderDistMaps(
+        mapStartX: number,
+        mapEndX: number,
+        mapStartY: number,
+        mapEndY: number,
+    ) {
         this.renderDistMapCount = 0;
 
         for (let x = mapStartX; x <= mapEndX; x++) {
@@ -242,8 +263,10 @@ export class MapManager {
 
         if (this.mode == MapManagerUpdateMode.Loaded) {
             // Go through all loaded maps and calculate max/min.
-            let mapStartX = MapManager.MAX_MAP_X, mapEndX = 0;
-            let mapStartY = MapManager.MAX_MAP_Y, mapEndY = 0;
+            let mapStartX = MapManager.MAX_MAP_X,
+                mapEndX = 0;
+            let mapStartY = MapManager.MAX_MAP_Y,
+                mapEndY = 0;
 
             for (const map of this.mapSquares.values()) {
                 const { mapX, mapY } = map;

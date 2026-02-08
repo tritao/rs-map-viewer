@@ -15,10 +15,10 @@ import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { Scene } from "../../rs/scene/Scene";
 import { DrawRange, newDrawRange } from "../DrawRange";
+import { RenderableType } from "../Renderer";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { LocAnimated } from "../loc/LocAnimated";
 import { Npc } from "../npc/Npc";
-import { RenderableType } from "../Renderer";
 
 const FRAME_RENDER_DELAY = 3;
 
@@ -37,8 +37,11 @@ export type DrawCallRange = {
     drawRanges: DrawRange[];
 };
 
-export type CreateDrawCallFunction = (program: Program, modelInfoTexture: Texture | undefined,
-    drawRanges: DrawRange[]) => DrawCallRange;
+export type CreateDrawCallFunction = (
+    program: Program,
+    modelInfoTexture: Texture | undefined,
+    drawRanges: DrawRange[],
+) => DrawCallRange;
 
 export class WebGLRenderable {
     interleavedBuffer!: VertexBuffer;
@@ -135,8 +138,15 @@ export class WebGLRenderable {
 
         const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
 
-        const renderable = new WebGLRenderable(type, ids, data.borderSize,
-            data.tileRenderFlags, collisionMaps, time, frame);
+        const renderable = new WebGLRenderable(
+            type,
+            ids,
+            data.borderSize,
+            data.tileRenderFlags,
+            collisionMaps,
+            time,
+            frame,
+        );
         renderable.createBuffers(app, data);
         renderable.createHeightMapTexture(app, new Int16Array(), heightMapSize);
         renderable.createModelInfoTextures(app, data);
@@ -178,7 +188,7 @@ export class WebGLRenderable {
                 type: PicoGL.SHORT,
                 wrapS: PicoGL.CLAMP_TO_EDGE,
                 wrapT: PicoGL.CLAMP_TO_EDGE,
-            }
+            },
         );
     }
 
@@ -225,14 +235,19 @@ export class WebGLRenderable {
                     loc.anim,
                     seqType,
                     cycle,
-                    loc.randomStart
-                )
+                    loc.randomStart,
+                ),
             );
         }
     }
 
-    createNpcs(data: SdRenderableData, npcTypeLoader: NpcTypeLoader, basTypeLoader: BasTypeLoader,
-        createDrawCall: CreateDrawCallFunction, npcProgram: Program) {
+    createNpcs(
+        data: SdRenderableData,
+        npcTypeLoader: NpcTypeLoader,
+        basTypeLoader: BasTypeLoader,
+        createDrawCall: CreateDrawCallFunction,
+        npcProgram: Program,
+    ) {
         this.npcs = [];
         for (const npc of data.npcs) {
             const npcResult = npcTypeLoader.tryLoad(npc.id);
@@ -250,8 +265,8 @@ export class WebGLRenderable {
                     npc.walkAnim,
                     npcType,
                     npcType.getIdleSeqId(basTypeLoader),
-                    npcType.getWalkSeqId(basTypeLoader)
-                )
+                    npcType.getWalkSeqId(basTypeLoader),
+                ),
             );
         }
 
@@ -266,64 +281,72 @@ export class WebGLRenderable {
         this.modelInfoTextureLod = createModelInfoTexture(app, data.modelInfoTextures.lod);
         this.modelInfoTextureLodAlpha = createModelInfoTexture(
             app,
-            data.modelInfoTextures.lodAlpha
+            data.modelInfoTextures.lodAlpha,
         );
 
         this.modelInfoTextureInteract = createModelInfoTexture(
             app,
-            data.modelInfoTextures.interact
+            data.modelInfoTextures.interact,
         );
         this.modelInfoTextureInteractAlpha = createModelInfoTexture(
             app,
-            data.modelInfoTextures.interactAlpha
+            data.modelInfoTextures.interactAlpha,
         );
 
         this.modelInfoTextureInteractLod = createModelInfoTexture(
             app,
-            data.modelInfoTextures.interactLod
+            data.modelInfoTextures.interactLod,
         );
         this.modelInfoTextureInteractLodAlpha = createModelInfoTexture(
             app,
-            data.modelInfoTextures.interactLodAlpha
+            data.modelInfoTextures.interactLodAlpha,
         );
     }
 
-    createDrawCalls(data: SdRenderableData, createDrawCall: CreateDrawCallFunction,
-        mainProgram: Program, mainAlphaProgram: Program) {
+    createDrawCalls(
+        data: SdRenderableData,
+        createDrawCall: CreateDrawCallFunction,
+        mainProgram: Program,
+        mainAlphaProgram: Program,
+    ) {
         this.drawCall = createDrawCall(mainProgram, this.modelInfoTexture, data.drawRanges.base);
         this.drawCallAlpha = createDrawCall(
             mainAlphaProgram,
             this.modelInfoTextureAlpha,
-            data.drawRanges.alpha
+            data.drawRanges.alpha,
         );
 
-        this.drawCallLod = createDrawCall(mainProgram, this.modelInfoTextureLod, data.drawRanges.lod);
+        this.drawCallLod = createDrawCall(
+            mainProgram,
+            this.modelInfoTextureLod,
+            data.drawRanges.lod,
+        );
         this.drawCallLodAlpha = createDrawCall(
             mainAlphaProgram,
             this.modelInfoTextureLodAlpha,
-            data.drawRanges.lodAlpha
+            data.drawRanges.lodAlpha,
         );
 
         this.drawCallInteract = createDrawCall(
             mainProgram,
             this.modelInfoTextureInteract,
-            data.drawRanges.interact
+            data.drawRanges.interact,
         );
         this.drawCallInteractAlpha = createDrawCall(
             mainAlphaProgram,
             this.modelInfoTextureInteractAlpha,
-            data.drawRanges.interactAlpha
+            data.drawRanges.interactAlpha,
         );
 
         this.drawCallInteractLod = createDrawCall(
             mainProgram,
             this.modelInfoTextureInteractLod,
-            data.drawRanges.interactLod
+            data.drawRanges.interactLod,
         );
         this.drawCallInteractLodAlpha = createDrawCall(
             mainAlphaProgram,
             this.modelInfoTextureInteractLodAlpha,
-            data.drawRanges.interactLodAlpha
+            data.drawRanges.interactLodAlpha,
         );
     }
 

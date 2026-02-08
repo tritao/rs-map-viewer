@@ -100,11 +100,7 @@ export class VertexBuffer extends DataBuffer {
         const tex0Hi = (textureId >> 10) & 0x1;
         const tex1Hi = (textureId1 >> 10) & 0x1;
         const v3 =
-            tex1Lo |
-            (Number(isTextured1) << 10) |
-            (blend8 << 11) |
-            (tex0Hi << 19) |
-            (tex1Hi << 20);
+            tex1Lo | (Number(isTextured1) << 10) | (blend8 << 11) | (tex0Hi << 19) | (tex1Hi << 20);
 
         const v0u = v0 >>> 0;
         const v1u = v1 >>> 0;
@@ -118,10 +114,10 @@ export class VertexBuffer extends DataBuffer {
             while (index !== undefined && index !== -1) {
                 const base = index * 4;
                 if (
-                    (this.u32[base] >>> 0) === v0u &&
-                    (this.u32[base + 1] >>> 0) === v1u &&
-                    (this.u32[base + 2] >>> 0) === v2u &&
-                    (this.u32[base + 3] >>> 0) === v3u
+                    this.u32[base] >>> 0 === v0u &&
+                    this.u32[base + 1] >>> 0 === v1u &&
+                    this.u32[base + 2] >>> 0 === v2u &&
+                    this.u32[base + 3] >>> 0 === v3u
                 ) {
                     return index;
                 }

@@ -1,13 +1,14 @@
 import Denque from "denque";
 import PicoGL, { Texture } from "picogl";
+
+import { CacheSession } from "../../rs/runtime/createCacheSession";
 import { InputManager } from "../../util/InputManager";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
-import { CacheSession } from "../../rs/runtime/createCacheSession";
 import { Camera } from "../Camera";
+import { RenderableType } from "../Renderer";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { SdRenderableDataLoader } from "../loader/SdRenderableDataLoader";
 import { SdRenderableLoaderInput } from "../loader/SdRenderableLoaderInput";
-import { RenderableType } from "../Renderer";
 import { WebGLMapRenderer } from "./WebGLMapRenderer";
 import { WebGLRenderable } from "./WebGLRenderable";
 
@@ -20,8 +21,11 @@ export class WebGLRenderer extends WebGLMapRenderer {
     loadedRenderables: Map<number, WebGLRenderable> = new Map();
 
     constructor(
-        session: CacheSession, inputManager: InputManager,
-        workerPool: RenderDataWorkerPool, camera: Camera) {
+        session: CacheSession,
+        inputManager: InputManager,
+        workerPool: RenderDataWorkerPool,
+        camera: Camera,
+    ) {
         super(session, workerPool, inputManager, DEFAULT_RENDER_DISTANCE, 0, 0, camera);
         this.setSkyColor(255, 255, 255);
         this.setMaxLevel(0);
@@ -61,10 +65,7 @@ export class WebGLRenderer extends WebGLMapRenderer {
         }
     }
 
-    loadRenderable(
-        data: SdRenderableData,
-        time: number,
-    ): void {
+    loadRenderable(data: SdRenderableData, time: number): void {
         const { ids: id } = data;
 
         const frameCount = this.stats.frameCount;
@@ -154,7 +155,10 @@ export class WebGLRenderer extends WebGLMapRenderer {
         }
     }
 
-    override renderOpaqueNpcPass(npcDataTextureIndex: number, npcDataTexture: Texture | undefined): void {
+    override renderOpaqueNpcPass(
+        npcDataTextureIndex: number,
+        npcDataTexture: Texture | undefined,
+    ): void {
         if (!npcDataTexture) {
             return;
         }
@@ -187,7 +191,6 @@ export class WebGLRenderer extends WebGLMapRenderer {
                 const anim = npc.getAnimationFrames();
 
                 if (anim) {
-
                     const frameId = npc.movementFrame;
                     const frame = anim.frames[frameId];
 

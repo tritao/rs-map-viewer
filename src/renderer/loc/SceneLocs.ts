@@ -1,7 +1,7 @@
+import { loadOrNull } from "../../rs/config/TypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
-import { loadOrNull } from "../../rs/config/TypeLoader";
 import { Model } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneLoc } from "../../rs/scene/SceneLoc";
@@ -110,7 +110,9 @@ export function createSceneLocEntity(
     const locType = loadOrNull(locTypeLoader, id);
 
     const contourGroundType =
-        (locType?.contourGroundType ?? 0) > 0 ? ContourGroundType.VERTEX : ContourGroundType.CENTER_TILE;
+        (locType?.contourGroundType ?? 0) > 0
+            ? ContourGroundType.VERTEX
+            : ContourGroundType.CENTER_TILE;
 
     const sceneX = sceneLoc.x + offsetX;
     const sceneZ = sceneLoc.y + offsetY;

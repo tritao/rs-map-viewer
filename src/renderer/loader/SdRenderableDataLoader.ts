@@ -352,7 +352,13 @@ export class SdRenderableDataLoader
                 );
                 let walkAnim = idleAnim;
                 if (walkSeqId !== -1 && walkSeqId !== idleSeqId) {
-                    walkAnim = addNpcAnimationFrames(npcModelLoader, seqTypeLoader, sceneBuf, npcType, walkSeqId);
+                    walkAnim = addNpcAnimationFrames(
+                        npcModelLoader,
+                        seqTypeLoader,
+                        sceneBuf,
+                        npcType,
+                        walkSeqId,
+                    );
                 }
 
                 npcs.push({
@@ -372,14 +378,7 @@ export class SdRenderableDataLoader
                 console.log("cannot load model data for model id", id);
             }
 
-            const model = modelData!.light(
-                textureLoader,
-                0 + 64,
-                0 + 768,
-                -50,
-                -10,
-                -50,
-            );
+            const model = modelData!.light(textureLoader, 0 + 64, 0 + 768, -50, -10, -50);
 
             const sceneModels: SceneModel[] = [
                 {

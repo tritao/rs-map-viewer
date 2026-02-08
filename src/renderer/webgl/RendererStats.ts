@@ -17,4 +17,4 @@ export class RendererStats {
         this.transparentPassTime = 0;
         this.transparentNpcPassTime = 0;
     }
-};
+}

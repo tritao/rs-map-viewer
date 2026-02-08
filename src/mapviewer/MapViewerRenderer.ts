@@ -1,23 +1,23 @@
 import { Schema } from "leva/dist/declarations/src/types";
 
-import { clamp } from "../util/MathUtil";
-import { MapViewer } from "./MapViewer";
+import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
+import { Camera } from "../renderer/Camera";
 import { InteractType } from "../renderer/InteractType";
 import { INTERACTION_RADIUS } from "../renderer/Interactions";
-import { MenuTargetType } from "../rs/MenuEntry";
-import { isTouchDevice } from "../util/DeviceUtil";
-import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MapManager, MapSquareInfo } from "../renderer/MapManager";
-import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import { SceneBuilder } from "../rs/scene/SceneBuilder";
-import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
-import { InputManager } from "../util/InputManager";
-import { Camera } from "../renderer/Camera";
-import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
+import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
+import { MenuTargetType } from "../rs/MenuEntry";
+import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { CacheSession } from "../rs/runtime/createCacheSession";
+import { SceneBuilder } from "../rs/scene/SceneBuilder";
+import { isTouchDevice } from "../util/DeviceUtil";
+import { InputManager } from "../util/InputManager";
+import { clamp } from "../util/MathUtil";
+import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { MapViewer } from "./MapViewer";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -44,8 +44,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.camera = mapViewer.camera;
         this.pathfinder = mapViewer.pathfinder;
         this.renderer = new WebGLMapRenderer(
-            mapViewer.session, this.workerPool, this.inputManager, mapViewer.renderDistance,
-            mapViewer.unloadDistance, mapViewer.lodDistance, this.camera)
+            mapViewer.session,
+            this.workerPool,
+            this.inputManager,
+            mapViewer.renderDistance,
+            mapViewer.unloadDistance,
+            mapViewer.lodDistance,
+            this.camera,
+        );
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
             this.queueLoadMap.bind(this),
@@ -164,8 +170,12 @@ export class MapViewerRenderer extends RendererMainLoop {
         const frameCount = this.renderer.stats.frameCount;
 
         const mapManagerStart = performance.now();
-        this.mapManager.update(this.camera, frameCount, renderDistance,
-            this.renderer.unloadDistance);
+        this.mapManager.update(
+            this.camera,
+            frameCount,
+            renderDistance,
+            this.renderer.unloadDistance,
+        );
         this.mapManagerTime = performance.now() - mapManagerStart;
 
         this.renderer.visibleMapCount = this.mapManager.visibleMapCount;
@@ -371,7 +381,9 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.mapViewer.debugText = `MapManager: ${this.mapManagerTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyJ")) {
-            this.mapViewer.debugText = `Interactions: ${rendererStats.interactionsTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Interactions: ${rendererStats.interactionsTime.toFixed(
+                2,
+            )}ms`;
         }
         if (this.inputManager.isKeyDown("KeyK")) {
             this.mapViewer.debugText = `Tick: ${rendererStats.tickTime.toFixed(2)}ms`;
@@ -380,10 +392,14 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.mapViewer.debugText = `Opaque Pass: ${rendererStats.opaquePassTime.toFixed(2)}ms`;
         }
         if (this.inputManager.isKeyDown("KeyB")) {
-            this.mapViewer.debugText = `Opaque Npc Pass: ${rendererStats.opaqueNpcPassTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Opaque Npc Pass: ${rendererStats.opaqueNpcPassTime.toFixed(
+                2,
+            )}ms`;
         }
         if (this.inputManager.isKeyDown("KeyN")) {
-            this.mapViewer.debugText = `Transparent Pass: ${rendererStats.transparentPassTime.toFixed(2)}ms`;
+            this.mapViewer.debugText = `Transparent Pass: ${rendererStats.transparentPassTime.toFixed(
+                2,
+            )}ms`;
         }
         if (this.inputManager.isKeyDown("KeyM")) {
             this.mapViewer.debugText = `Transparent Npc Pass: ${rendererStats.transparentNpcPassTime.toFixed(
@@ -411,15 +427,17 @@ export class MapViewerRenderer extends RendererMainLoop {
         // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
     }
 
-    checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
-        closestInteractIndices: Map<number, number[]>): void {
+    checkInteractions(
+        interactReady: boolean,
+        interactBuffer: Float32Array,
+        closestInteractIndices: Map<number, number[]>,
+    ): void {
         const frameCount = this.renderer.stats.frameCount;
 
         const isMouseDown = this.inputManager.dragX !== -1 || this.inputManager.dragY !== -1;
         const picked = this.inputManager.pickX !== -1 && this.inputManager.pickY !== -1;
 
-        if (!interactReady && !picked)
-            return;
+        if (!interactReady && !picked) return;
 
         const menuCooldown = isTouchDevice ? 50 : 10;
 
@@ -457,7 +475,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const interactId = interactBuffer[index];
                 const interactType = interactBuffer[index + 2];
                 if (interactType === InteractType.LOC) {
-                    const locResult = this.mapViewer.session.loaders.locTypeLoader.tryLoad(interactId);
+                    const locResult =
+                        this.mapViewer.session.loaders.locTypeLoader.tryLoad(interactId);
                     if (!locResult.ok) {
                         continue;
                     }
@@ -493,7 +512,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.OBJ) {
-                    const objResult = this.mapViewer.session.loaders.objTypeLoader.tryLoad(interactId);
+                    const objResult =
+                        this.mapViewer.session.loaders.objTypeLoader.tryLoad(interactId);
                     if (!objResult.ok) {
                         continue;
                     }
@@ -529,7 +549,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.NPC) {
-                    const npcResult = this.mapViewer.session.loaders.npcTypeLoader.tryLoad(interactId);
+                    const npcResult =
+                        this.mapViewer.session.loaders.npcTypeLoader.tryLoad(interactId);
                     if (!npcResult.ok) {
                         continue;
                     }

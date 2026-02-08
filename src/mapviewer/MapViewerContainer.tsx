@@ -137,11 +137,7 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
 
             {menuProps && <OsrsMenu {...menuProps} />}
 
-            <MapViewerControls
-                renderer={renderer}
-                hideUi={hideUi}
-                setHideUi={setHideUi}
-            />
+            <MapViewerControls renderer={renderer} hideUi={hideUi} setHideUi={setHideUi} />
 
             {!hideUi && (
                 <span>

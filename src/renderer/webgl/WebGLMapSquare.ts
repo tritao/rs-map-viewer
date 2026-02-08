@@ -1,10 +1,5 @@
 import { vec2 } from "gl-matrix";
-import {
-    App as PicoApp,
-    Program,
-    Texture,
-    UniformBuffer,
-} from "picogl";
+import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
@@ -14,9 +9,9 @@ import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { Scene } from "../../rs/scene/Scene";
 import { DrawRange } from "../DrawRange";
-import { SdMapData } from "../loader/SdMapData";
 import { MapSquareRenderable } from "../MapRenderer";
 import { RenderableType } from "../Renderer";
+import { SdMapData } from "../loader/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
@@ -70,8 +65,15 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
         const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
 
-        const renderable = new WebGLMapSquare(mapX, mapY, borderSize, data.tileRenderFlags,
-            collisionMaps, time, frame);
+        const renderable = new WebGLMapSquare(
+            mapX,
+            mapY,
+            borderSize,
+            data.tileRenderFlags,
+            collisionMaps,
+            time,
+            frame,
+        );
         renderable.createBuffers(app, data);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
@@ -95,8 +97,15 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {
-        super(RenderableType.Map, getMapSquareId(mapX, mapY), borderSize,
-            tileRenderFlags, collisionMaps, timeLoaded, frameLoaded);
+        super(
+            RenderableType.Map,
+            getMapSquareId(mapX, mapY),
+            borderSize,
+            tileRenderFlags,
+            collisionMaps,
+            timeLoaded,
+            frameLoaded,
+        );
     }
 
     processNpcsCollisions() {

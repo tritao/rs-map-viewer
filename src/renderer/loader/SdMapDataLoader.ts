@@ -10,6 +10,8 @@ import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
+import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
+import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { ContourGroundInfo, LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
@@ -42,8 +44,6 @@ import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDataLoader, addNpcAnimationFrames } from "./SdRenderableDataLoader";
-import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
-import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
 
 function loadHeightMapTextureData(scene: Scene): Int16Array {
     const heightMapTextureData = new Int16Array(Scene.MAX_LEVELS * scene.sizeX * scene.sizeY);
@@ -103,10 +103,7 @@ function createObjSceneModel(
     }
 
     let renderLevel = spawn.plane;
-    if (
-        renderLevel < 3 &&
-        (scene.tileRenderFlags[1][tileX][tileY] & TileRenderFlag.Bridge) !== 0
-    ) {
+    if (renderLevel < 3 && (scene.tileRenderFlags[1][tileX][tileY] & TileRenderFlag.Bridge) !== 0) {
         renderLevel = spawn.plane + 1;
     }
 
@@ -437,7 +434,13 @@ function addLocEntities(
             if (group) {
                 group.locs.push(loc);
             } else {
-                const anim = addLocAnimationFrames(locModelLoader, seqTypeLoader, sceneBuf, entity, locType);
+                const anim = addLocAnimationFrames(
+                    locModelLoader,
+                    seqTypeLoader,
+                    sceneBuf,
+                    entity,
+                    locType,
+                );
                 if (!anim) {
                     continue;
                 }
@@ -508,10 +511,22 @@ function createNpcSpawnGroups(
             continue;
         }
 
-        const idleAnim = addNpcAnimationFrames(npcModelLoader, seqTypeLoader, sceneBuf, npcType, idleSeqId);
+        const idleAnim = addNpcAnimationFrames(
+            npcModelLoader,
+            seqTypeLoader,
+            sceneBuf,
+            npcType,
+            idleSeqId,
+        );
         let walkAnim = idleAnim;
         if (walkSeqId !== -1 && walkSeqId !== idleSeqId) {
-            walkAnim = addNpcAnimationFrames(npcModelLoader, seqTypeLoader, sceneBuf, npcType, walkSeqId);
+            walkAnim = addNpcAnimationFrames(
+                npcModelLoader,
+                seqTypeLoader,
+                sceneBuf,
+                npcType,
+                walkSeqId,
+            );
         }
 
         if (!idleAnim) {
@@ -541,7 +556,10 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         }
     }
 
-    private getTextureIdIndexMap(textureLoader: TextureLoader, cacheName: string): Map<number, number> {
+    private getTextureIdIndexMap(
+        textureLoader: TextureLoader,
+        cacheName: string,
+    ): Map<number, number> {
         if (this.cachedTextureIdIndexMap && this.cachedTextureCacheName === cacheName) {
             return this.cachedTextureIdIndexMap;
         }
@@ -655,7 +673,14 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
                 getMapObjSpawns(state.objSpawns, maxLevel, mapX, mapY),
             );
             timeStep("createObjSceneModels", () =>
-                createObjSceneModels(objTypeLoader, objModelLoader, sceneModels, scene, borderSize, objSpawns),
+                createObjSceneModels(
+                    objTypeLoader,
+                    objModelLoader,
+                    sceneModels,
+                    scene,
+                    borderSize,
+                    objSpawns,
+                ),
             );
         }
 
@@ -680,7 +705,13 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         if (loadNpcs) {
             const npcSpawnBytes = state.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
             const cacheNpcSpawns = npcSpawnBytes
-                ? decodeNpcSpawnsFromBytes(scene.tileRenderFlags[1], borderSize, mapX, mapY, npcSpawnBytes)
+                ? decodeNpcSpawnsFromBytes(
+                      scene.tileRenderFlags[1],
+                      borderSize,
+                      mapX,
+                      mapY,
+                      npcSpawnBytes,
+                  )
                 : undefined;
             if (cacheNpcSpawns) {
                 npcSpawns = cacheNpcSpawns.filter((spawn) => {
@@ -729,13 +760,7 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const indices = timeStep("packIndices", () => new Int32Array(sceneBuf.indices));
 
         const minimapBlob = await timeStepAsync("loadMinimapBlob", () =>
-            loadMinimapBlob(
-                state.mapImageRenderer,
-                scene,
-                0,
-                borderSize,
-                false,
-            ),
+            loadMinimapBlob(state.mapImageRenderer, scene, 0, borderSize, false),
         );
 
         const usedTextureIds = Int32Array.from(sceneBuf.usedTextureIds);
@@ -755,7 +780,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
         const loadTexturesMs = performance.now() - loadTexturesStart;
         if (loadTexturesMs > 250) {
             console.log(
-                `load map ${mapX},${mapY}: textures used=${sceneBuf.usedTextureIds.size} missing=${missingTextureCount} decoded=${loadedTextures.size} ms=${loadTexturesMs.toFixed(1)}`,
+                `load map ${mapX},${mapY}: textures used=${
+                    sceneBuf.usedTextureIds.size
+                } missing=${missingTextureCount} decoded=${
+                    loadedTextures.size
+                } ms=${loadTexturesMs.toFixed(1)}`,
             );
         }
 
@@ -769,7 +798,11 @@ export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMap
                 .map(([k, v]) => `${k}=${v.toFixed(1)}ms`)
                 .join(" ");
             console.log(
-                `load map ${mapX},${mapY}: total=${totalMs.toFixed(1)}ms vertices=${sceneBuf.vertexCount()} indices=${sceneBuf.indices.length} models=${sceneModels.length} ${parts}`,
+                `load map ${mapX},${mapY}: total=${totalMs.toFixed(
+                    1,
+                )}ms vertices=${sceneBuf.vertexCount()} indices=${sceneBuf.indices.length} models=${
+                    sceneModels.length
+                } ${parts}`,
             );
         }
 

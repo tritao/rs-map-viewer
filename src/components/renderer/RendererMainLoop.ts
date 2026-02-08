@@ -1,5 +1,6 @@
 import { Renderer } from "../../renderer/Renderer";
 import { pixelRatio } from "../../util/DeviceUtil";
+
 function resizeCanvas(canvas: HTMLCanvasElement) {
     const devicePixelRatio = pixelRatio;
     const width = canvas.offsetWidth * devicePixelRatio;
@@ -85,11 +86,7 @@ export class RendererMainLoop {
 
     update(time: number, deltaTime: number): void {}
 
-    render(
-        time: DOMHighResTimeStamp,
-        deltaTime: DOMHighResTimeStamp,
-        resized: boolean,
-    ): void {
+    render(time: DOMHighResTimeStamp, deltaTime: DOMHighResTimeStamp, resized: boolean): void {
         this.renderer!.render(time, deltaTime, resized);
     }
 

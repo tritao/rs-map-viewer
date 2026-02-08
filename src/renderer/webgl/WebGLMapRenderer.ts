@@ -1,4 +1,5 @@
 import { vec2 } from "gl-matrix";
+import { button, folder } from "leva";
 import {
     DrawCall,
     Framebuffer,
@@ -12,32 +13,31 @@ import {
     VertexBuffer,
 } from "picogl";
 
-import { createTextureArray } from "./PicoTexture";
+import { GameType } from "../../rs/cache/CacheInfo";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import { CacheSession } from "../../rs/runtime/createCacheSession";
+import { TileRenderFlag } from "../../rs/scene/Scene";
 import { isWebGL2Supported, pixelRatio } from "../../util/DeviceUtil";
+import { InputManager } from "../../util/InputManager";
+import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
+import { Camera } from "../Camera";
 import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
 import { INTERACTION_RADIUS, INTERACT_BUFFER_COUNT, Interactions } from "../Interactions";
-import { WebGLMapSquare } from "./WebGLMapSquare";
+import { MapRenderer, TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
+import { FrameStats } from "../Renderer";
 import { SdMapData } from "../loader/SdMapData";
+import { SdMapDataLoader } from "../loader/SdMapDataLoader";
+import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
+import { createTextureArray } from "./PicoTexture";
+import { RendererStats } from "./RendererStats";
+import { WebGLMapSquare } from "./WebGLMapSquare";
+import { WebGLRenderable } from "./WebGLRenderable";
 import {
     FRAME_FXAA_PROGRAM,
     FRAME_PROGRAM,
     createMainProgram,
     createNpcProgram,
 } from "./shaders/Shaders";
-import { InputManager } from "../../util/InputManager";
-import { Camera } from "../Camera";
-import { RendererStats } from "./RendererStats";
-import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { FrameStats } from "../Renderer";
-import { getMaxAnisotropy, MapRenderer, TextureFilterMode } from "../MapRenderer";
-import { SdMapDataLoader } from "../loader/SdMapDataLoader";
-import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
-import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
-import { TileRenderFlag } from "../../rs/scene/Scene";
-import { WebGLRenderable } from "./WebGLRenderable";
-import { GameType } from "../../rs/cache/CacheInfo";
-import { CacheSession } from "../../rs/runtime/createCacheSession";
-import { button, folder } from "leva";
 
 const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
@@ -124,9 +124,17 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     private logTextureDebugStats(): void {
         const cacheInfo = this.session.cache.info;
-        const textureLoader = this.session.loaders.textureLoader as unknown as { constructor?: { name?: string } };
+        const textureLoader = this.session.loaders.textureLoader as unknown as {
+            constructor?: { name?: string };
+        };
         console.log(
-            `texture debug: cache=${cacheInfo.name} game=${cacheInfo.game} rev=${cacheInfo.revision} loader=${textureLoader?.constructor?.name ?? "unknown"} slots=${this.textureSlotCount - 1} visible=${this.visibleTextureIds.size} resident=${this.textureIdToSlot.size} free=${this.freeTextureSlots.length}`,
+            `texture debug: cache=${cacheInfo.name} game=${cacheInfo.game} rev=${
+                cacheInfo.revision
+            } loader=${textureLoader?.constructor?.name ?? "unknown"} slots=${
+                this.textureSlotCount - 1
+            } visible=${this.visibleTextureIds.size} resident=${this.textureIdToSlot.size} free=${
+                this.freeTextureSlots.length
+            }`,
         );
 
         const sampleIds: number[] = [];
@@ -142,7 +150,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const slot = this.textureIdToSlot.get(textureId) ?? 0;
             const pixels = this.texturePixelCache.get(textureId);
             if (!pixels) {
-                console.log(`texture debug: id=${textureId} index=${index} slot=${slot} pixels=missing`);
+                console.log(
+                    `texture debug: id=${textureId} index=${index} slot=${slot} pixels=missing`,
+                );
                 continue;
             }
 
@@ -159,16 +169,24 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             }
             const p0 = pixels[0] | 0;
             console.log(
-                `texture debug: id=${textureId} index=${index} slot=${slot} chroma=${chroma}/${n} p0=0x${(p0 >>> 0).toString(16).padStart(8, "0")}`,
+                `texture debug: id=${textureId} index=${index} slot=${slot} chroma=${chroma}/${n} p0=0x${(
+                    p0 >>> 0
+                )
+                    .toString(16)
+                    .padStart(8, "0")}`,
             );
         }
     }
 
     constructor(
-        readonly session: CacheSession, readonly workerPool: RenderDataWorkerPool,
+        readonly session: CacheSession,
+        readonly workerPool: RenderDataWorkerPool,
         readonly inputManager: InputManager,
-        renderDistance: number, unloadDistance: number, lodDistance: number,
-        readonly camera: Camera) {
+        renderDistance: number,
+        unloadDistance: number,
+        lodDistance: number,
+        readonly camera: Camera,
+    ) {
         super(session.cache, renderDistance, unloadDistance, lodDistance);
         this.dataLoader = new SdMapDataLoader();
         this.stats = new FrameStats();
@@ -183,7 +201,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         return isWebGL2Supported;
     }
 
-    getViewportDimensions(): { width: number; height: number; } {
+    getViewportDimensions(): { width: number; height: number } {
         return { width: this.app.width, height: this.app.height };
     }
 
@@ -327,7 +345,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     initCache(): void {
         const cache = this.session.cache;
-        this.isNewTextureAnim = cache.info.game === GameType.Runescape && cache.info.revision >= 681;
+        this.isNewTextureAnim =
+            cache.info.game === GameType.Runescape && cache.info.revision >= 681;
 
         if (this.app) {
             this.initTextures();
@@ -429,7 +448,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         if (this.textureIds.length + 1 > this.textureSlotCount) {
             console.warn(
-                `Texture array slots capped: textures=${this.textureIds.length} slots=${this.textureSlotCount - 1} maxLayers=${maxArrayLayers}. Some textures may appear missing.`,
+                `Texture array slots capped: textures=${this.textureIds.length} slots=${
+                    this.textureSlotCount - 1
+                } maxLayers=${maxArrayLayers}. Some textures may appear missing.`,
             );
         }
 
@@ -444,7 +465,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = 0; i < maxPreloadTextures; i++) {
             const slot = i + 1;
             const textureId = this.textureIds[i];
-            const texturePixels = textureLoader.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0);
+            const texturePixels = textureLoader.tryGetPixelsArgb(
+                textureId,
+                TEXTURE_SIZE,
+                true,
+                1.0,
+            );
             if (texturePixels) {
                 pixels.set(texturePixels, slot * pixelCount);
             } else {
@@ -571,7 +597,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         const existingSlot = this.textureIdToSlot.get(textureId);
         if (existingSlot !== undefined) {
             this.touchTexture(textureId);
-            return { slot: existingSlot, lutDirty: false, updated: false, status: EnsureTextureStatus.Ok };
+            return {
+                slot: existingSlot,
+                lutDirty: false,
+                updated: false,
+                status: EnsureTextureStatus.Ok,
+            };
         }
 
         if (!this.textureArray) {
@@ -580,7 +611,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         const textureIndex = this.textureIdToIndex.get(textureId);
         if (textureIndex === undefined) {
-            return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.UnknownTexture };
+            return {
+                slot: 0,
+                lutDirty: false,
+                updated: false,
+                status: EnsureTextureStatus.UnknownTexture,
+            };
         }
 
         let slot = this.freeTextureSlots.pop();
@@ -588,7 +624,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             slot = this.evictTextureSlot(protectedTextureIds);
             if (slot === undefined) {
                 // Oversubscribed: keep output stable (missing texture) instead of cycling.
-                return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.Oversubscribed };
+                return {
+                    slot: 0,
+                    lutDirty: false,
+                    updated: false,
+                    status: EnsureTextureStatus.Oversubscribed,
+                };
             }
         }
 
@@ -606,7 +647,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             if (!texturePixels) {
                 console.error("Failed loading texture", textureId);
                 this.freeTextureSlots.push(slot);
-                return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.DecodeFailed };
+                return {
+                    slot: 0,
+                    lutDirty: false,
+                    updated: false,
+                    status: EnsureTextureStatus.DecodeFailed,
+                };
             }
             pixels = texturePixels;
         }
@@ -705,7 +751,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             if (frame - this.debugLastResidencyLogFrame >= 60) {
                 this.debugLastResidencyLogFrame = frame;
                 console.log(
-                    `texture residency: visible=${this.visibleTextureIds.size} slots=${this.textureSlotCount - 1} resident=${this.textureIdToSlot.size} free=${this.freeTextureSlots.length} updated=${updatedCount} missing(oversub~)=${missingOversubscribed} missing(unknown~)=${missingUnknown} missing(decode~)=${missingDecode}`,
+                    `texture residency: visible=${this.visibleTextureIds.size} slots=${
+                        this.textureSlotCount - 1
+                    } resident=${this.textureIdToSlot.size} free=${
+                        this.freeTextureSlots.length
+                    } updated=${updatedCount} missing(oversub~)=${missingOversubscribed} missing(unknown~)=${missingUnknown} missing(decode~)=${missingDecode}`,
                 );
             }
         }
@@ -847,10 +897,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         return mapData;
     }
 
-    loadMap(
-        mapData: SdMapData,
-        time: number,
-    ): void {
+    loadMap(mapData: SdMapData, time: number): void {
         const { mapX, mapY } = mapData;
         this.loadedMaps.set(
             getMapSquareId(mapX, mapY),
@@ -879,7 +926,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.app.resize(width, height);
     }
 
-    update(time: number, deltaTime: number) { }
+    update(time: number, deltaTime: number) {}
 
     render(time: number, deltaTime: number, resized: boolean): void {
         this.npcRenderCount = 0;
@@ -932,7 +979,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             .set(11, this.debugTextureMode as any)
             .update();
 
-        const currInteractions = this.interactions[this.stats.frameCount % this.interactions.length];
+        const currInteractions =
+            this.interactions[this.stats.frameCount % this.interactions.length];
 
         const interactionsStart = performance.now();
         if (!this.inputManager.isPointerLock()) {
@@ -1037,7 +1085,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.frameDrawCall.draw();
         }
 
-        this.loadPending(timeSec)
+        this.loadPending(timeSec);
     }
 
     loadPending(timeSec: number) {
@@ -1083,7 +1131,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 renderPlane < 3 &&
                 (renderable.getTileRenderFlag(1, tileX, tileY) & TileRenderFlag.Bridge) !== 0
             ) {
-                renderPlane ++;
+                renderPlane++;
             }
 
             this.npcRenderData[offset++] = npc.x;
@@ -1195,7 +1243,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 const anim = npc.getAnimationFrames();
 
                 if (anim) {
-
                     const frameId = npc.movementFrame;
                     const frame = anim.frames[frameId];
 
@@ -1298,8 +1345,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
     }
 
-    checkInteractions(interactReady: boolean, interactBuffer: Float32Array,
-        closestInteractIndices: Map<number, number[]>): void {}
+    checkInteractions(
+        interactReady: boolean,
+        interactBuffer: Float32Array,
+        closestInteractIndices: Map<number, number[]>,
+    ): void {}
 
     prepareInteractions(interactions: Interactions): void {
         const interactReady = interactions.check(
@@ -1315,7 +1365,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             return;
         }
 
-        this.checkInteractions(interactReady, this.interactBuffer, this.closestInteractIndices)
+        this.checkInteractions(interactReady, this.interactBuffer, this.closestInteractIndices);
     }
 
     async cleanUp(): Promise<void> {

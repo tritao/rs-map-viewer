@@ -3,31 +3,31 @@ import { TransferDescriptor } from "threads";
 import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
+import { NpcSpawn } from "../data/npc/NpcSpawn";
+import { ObjSpawn } from "../data/obj/ObjSpawn";
+import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarStateProvider } from "../rs/config/vartype/VarProvider";
-import { getMapSquareId } from "../rs/map/MapFileIndex";
+import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
+import { initErrorToString } from "../rs/loaders/InitError";
 import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
+import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
+import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
+import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
+import { Scene } from "../rs/scene/Scene";
+import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { Scene } from "../rs/scene/Scene";
-import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { IndexedSprite } from "../rs/sprite/IndexedSprite";
 import { SpriteLoader } from "../rs/sprite/SpriteLoader";
-import { Hasher } from "../util/Hasher";
 import { LoadedCache } from "../util/Caches";
-import { NpcSpawn } from "../data/npc/NpcSpawn";
-import { ObjSpawn } from "../data/obj/ObjSpawn";
+import { errorToString } from "../util/ErrorUtil";
+import { Hasher } from "../util/Hasher";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
-import { CacheType } from "../rs/cache/CacheType";
-import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
-import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
-import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import { errorToString } from "../util/ErrorUtil";
-import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
-import { initErrorToString } from "../rs/loaders/InitError";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -51,9 +51,7 @@ export type WorkerState = {
     npcSpawns: NpcSpawn[];
 };
 
-type WorkerStateInit =
-    | { ok: true; state: WorkerState }
-    | { ok: false; error: string };
+type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
 
@@ -162,8 +160,8 @@ const worker = {
     initCache(cache: LoadedCache, objSpawns: ObjSpawn[], npcSpawns: NpcSpawn[]) {
         console.log("init worker", cache.info);
         workerStatePromise = initWorker(cache, objSpawns, npcSpawns)
-            .then((state) => ({ ok: true, state } as const))
-            .catch((e) => ({ ok: false, error: errorToString(e) } as const));
+            .then((state) => ({ ok: true, state }) as const)
+            .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
     },
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.init();
@@ -193,8 +191,12 @@ const worker = {
         const workerState = await requireWorkerState();
 
         const pixels =
-            workerState.session.loaders.textureLoader.tryGetPixelsArgb(id, size, flipH, brightness) ??
-            new Int32Array(size * size);
+            workerState.session.loaders.textureLoader.tryGetPixelsArgb(
+                id,
+                size,
+                flipH,
+                brightness,
+            ) ?? new Int32Array(size * size);
 
         return Transfer(pixels, [pixels.buffer]);
     },

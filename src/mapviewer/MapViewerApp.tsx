@@ -4,16 +4,16 @@ import { registerSerializer } from "threads";
 import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
+import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { formatBytes } from "../util/BytesUtil";
-import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { fetchCacheList } from "../util/Caches";
+import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
-import { MapViewer } from "./MapViewer";
-import { MapViewerContainer } from "./MapViewerContainer";
-import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { renderDataLoaderSerializer } from "../worker/RenderDataLoader";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { MapViewer } from "./MapViewer";
+import { MapViewerContainer } from "./MapViewerContainer";
 
 registerSerializer(renderDataLoaderSerializer);
 

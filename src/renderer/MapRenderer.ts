@@ -2,14 +2,15 @@ import Denque from "denque";
 import { vec4 } from "gl-matrix";
 import { folder } from "leva";
 import { Schema } from "leva/dist/declarations/src/types";
+
 import { CollisionMap } from "../rs/scene/CollisionMap";
 import { Scene } from "../rs/scene/Scene";
 import { LoadedCache } from "../util/Caches";
+import { MapSquareInfo } from "./MapManager";
+import { FrameStats, Renderer } from "./Renderer";
 import { MapData } from "./loader/MapData";
 import { LocAnimated } from "./loc/LocAnimated";
-import { MapSquareInfo } from "./MapManager";
 import { Npc } from "./npc/Npc";
-import { FrameStats, Renderer } from "./Renderer";
 import { RendererStats } from "./webgl/RendererStats";
 import { WebGLRenderable } from "./webgl/WebGLRenderable";
 
@@ -63,7 +64,9 @@ export interface MapSquareRenderable {
     delete(): void;
 }
 
-export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapData> implements Renderer {
+export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapData>
+    implements Renderer
+{
     stats = new FrameStats();
     rendererStats = new RendererStats();
 
@@ -105,16 +108,20 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     lodDistance: number;
 
     visibleMapCount: number = 0;
-    visibleMaps: MapSquareInfo[] = []
+    visibleMaps: MapSquareInfo[] = [];
 
-    constructor(readonly cache: LoadedCache,
-        renderDistance: number, unloadDistance: number, lodDistance: number) {
+    constructor(
+        readonly cache: LoadedCache,
+        renderDistance: number,
+        unloadDistance: number,
+        lodDistance: number,
+    ) {
         this.renderDistance = renderDistance;
         this.unloadDistance = unloadDistance;
         this.lodDistance = lodDistance;
     }
 
-    abstract getViewportDimensions(): {width: number, height: number};
+    abstract getViewportDimensions(): { width: number; height: number };
 
     abstract init(canvas: HTMLCanvasElement): Promise<void>;
 
@@ -129,8 +136,8 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     abstract onFrameEnd(): void;
 
     // Maps
-    getMap(mapId: number): MapSquareRenderable|undefined {
-        return this.loadedMaps.get(mapId)
+    getMap(mapId: number): MapSquareRenderable | undefined {
+        return this.loadedMaps.get(mapId);
     }
 
     addMap(mapData: U): void {
@@ -286,7 +293,6 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
             ),
         };
     }
-
 
     setMaxLevel(maxLevel: number): void {
         const updated = this.maxLevel !== maxLevel;

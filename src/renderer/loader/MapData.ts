@@ -13,4 +13,4 @@ export interface MapData {
     smoothTerrain: boolean;
 
     minimapBlob: Blob;
-};
+}

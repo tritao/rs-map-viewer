@@ -11,7 +11,7 @@ export class RenderableManager {
         readonly maxQueuedTasks: number,
         readonly loadRenderableFunction: LoadRenderableFunction,
         readonly removeRenderableFunction: RemoveRenderableFunction,
-    ) { }
+    ) {}
 
     init(): void {
         this.cleanUp();
