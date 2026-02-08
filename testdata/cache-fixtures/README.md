@@ -9,4 +9,4 @@ Regenerate (deterministically) from repo root:
 Notes:
 
 -   Fixtures are designed to avoid depending on external cache downloads.
--   The C++ harness reads these files via `cpp-core` tests.
+-   These fixtures are used for cross-language cache/I/O conformance checks.
