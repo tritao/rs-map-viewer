@@ -51,7 +51,11 @@ function keyOf(e: Entry): string {
     return `${e.indexId}:${e.archiveId}`;
 }
 
-function compareHashInfo(label: string, a: HashInfo | undefined, b: HashInfo | undefined): string[] {
+function compareHashInfo(
+    label: string,
+    a: HashInfo | undefined,
+    b: HashInfo | undefined,
+): string[] {
     if (!a && !b) return [];
     if (!a || !b) return [`${label}: presence mismatch`];
     const diffs: string[] = [];
@@ -79,7 +83,8 @@ function compareEntry(a: Entry, b: Entry): string[] {
             continue;
         }
         if (af.len !== bf.len) diffs.push(`file(${af.fileId}).len ${af.len} != ${bf.len}`);
-        if (af.xxh64 !== bf.xxh64) diffs.push(`file(${af.fileId}).xxh64 ${af.xxh64} != ${bf.xxh64}`);
+        if (af.xxh64 !== bf.xxh64)
+            diffs.push(`file(${af.fileId}).xxh64 ${af.xxh64} != ${bf.xxh64}`);
     }
     return diffs;
 }
@@ -87,7 +92,9 @@ function compareEntry(a: Entry, b: Entry): string[] {
 function main(): void {
     const args = parseArgs(process.argv.slice(2));
     if (!args.a || !args.b) {
-        throw new Error("Usage: compare-parity --a <a.json> --b <b.json> (or positional: <a.json> <b.json>)");
+        throw new Error(
+            "Usage: compare-parity --a <a.json> --b <b.json> (or positional: <a.json> <b.json>)",
+        );
     }
 
     const a = readJson(args.a);
@@ -128,4 +135,3 @@ function main(): void {
 }
 
 main();
-

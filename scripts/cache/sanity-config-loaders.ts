@@ -1,10 +1,10 @@
 import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
-import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
-import { BaseTypeLoader, IndexedDatTypeLoader } from "../../src/rs/config/TypeLoader";
 import { Type } from "../../src/rs/config/Type";
+import { BaseTypeLoader, IndexedDatTypeLoader } from "../../src/rs/config/TypeLoader";
+import { EnumType } from "../../src/rs/config/enumtype/EnumType";
 import { LocType } from "../../src/rs/config/loctype/LocType";
 import { NpcType } from "../../src/rs/config/npctype/NpcType";
-import { EnumType } from "../../src/rs/config/enumtype/EnumType";
+import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
@@ -45,7 +45,10 @@ class FailingDecodeType extends Type {
 }
 
 class FixedBufferLoader extends BaseTypeLoader<FailingDecodeType> {
-    constructor(cacheInfo: CacheInfo, readonly bytes: Uint8Array) {
+    constructor(
+        cacheInfo: CacheInfo,
+        readonly bytes: Uint8Array,
+    ) {
         super(FailingDecodeType, cacheInfo);
     }
 
@@ -167,7 +170,10 @@ function testConfigTypesUseDenseOptionalArrays(): void {
         assert(en.keys.length === 2, "expected EnumType.keys length=2");
         assert(en.stringValues.length === 2, "expected EnumType.stringValues length=2");
         assert(0 in en.keys && 1 in en.keys, "expected EnumType.keys to be dense");
-        assert(0 in en.stringValues && 1 in en.stringValues, "expected EnumType.stringValues to be dense");
+        assert(
+            0 in en.stringValues && 1 in en.stringValues,
+            "expected EnumType.stringValues to be dense",
+        );
     }
 }
 

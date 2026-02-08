@@ -1,11 +1,11 @@
 import fs from "fs";
 import path from "path";
 
-import { Xtea } from "../../src/rs/crypto/Xtea";
+import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
+import { Xtea } from "../../src/rs/crypto/Xtea";
 import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
-import { Archive } from "../../src/rs/cache/format/Archive";
 
 const OUT_DIR = path.resolve("testdata/cache-fixtures");
 
@@ -112,11 +112,15 @@ function genSectorChainDatFixture(): void {
     );
     const readBack = readAllBytes(store.openArchiveReader(indexId, archiveId));
     if (readBack.length !== payload.length) {
-        throw new Error(`SectorChain fixture mismatch: expected len=${payload.length}, got len=${readBack.length}`);
+        throw new Error(
+            `SectorChain fixture mismatch: expected len=${payload.length}, got len=${readBack.length}`,
+        );
     }
     for (let i = 0; i < payload.length; i++) {
         if (payload[i] !== readBack[i]) {
-            throw new Error(`SectorChain fixture mismatch at ${i}: expected=${payload[i]} got=${readBack[i]}`);
+            throw new Error(
+                `SectorChain fixture mismatch at ${i}: expected=${payload[i]} got=${readBack[i]}`,
+            );
         }
     }
 
@@ -167,7 +171,9 @@ function buildMultiFileArchivePayload(
 
     for (let f = 0; f < fileCount; f++) {
         if (fileOffsets[f] !== files[f].length) {
-            throw new Error(`file ${f} not fully consumed: ${fileOffsets[f]} != ${files[f].length}`);
+            throw new Error(
+                `file ${f} not fully consumed: ${fileOffsets[f]} != ${files[f].length}`,
+            );
         }
     }
 

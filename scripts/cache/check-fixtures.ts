@@ -1,20 +1,20 @@
 import fs from "fs";
 import path from "path";
 
+import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
-import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
+import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
 import { Xtea } from "../../src/rs/crypto/Xtea";
 import { notFoundError } from "../../src/rs/errors/DecodeError";
-import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
+import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
+import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
+import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
+import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { SeqBase } from "../../src/rs/model/seq/SeqBase";
 import { Dat2SeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
-import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
-import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
-import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
-import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
 import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
 import { err, ok } from "../../src/util/Result";
 
@@ -26,11 +26,15 @@ function readFileBytes(filePath: string): Uint8Array {
 
 function assertBytesEqual(label: string, actual: Uint8Array, expected: Uint8Array): void {
     if (actual.length !== expected.length) {
-        throw new Error(`${label}: length mismatch (actual=${actual.length} expected=${expected.length})`);
+        throw new Error(
+            `${label}: length mismatch (actual=${actual.length} expected=${expected.length})`,
+        );
     }
     for (let i = 0; i < expected.length; i++) {
         if (actual[i] !== expected[i]) {
-            throw new Error(`${label}: mismatch at byte ${i} (actual=${actual[i]} expected=${expected[i]})`);
+            throw new Error(
+                `${label}: mismatch at byte ${i} (actual=${actual[i]} expected=${expected[i]})`,
+            );
         }
     }
 }
@@ -39,7 +43,11 @@ function checkXtea(): void {
     const dir = path.join(FIXTURES_DIR, "xtea");
     const input = readFileBytes(path.join(dir, "input.bin"));
     const expected = readFileBytes(path.join(dir, "expected.bin"));
-    const key = JSON.parse(fs.readFileSync(path.join(dir, "key.json"), "utf-8")) as number[];
+    const keyArr = JSON.parse(fs.readFileSync(path.join(dir, "key.json"), "utf-8")) as number[];
+    if (keyArr.length !== 4) {
+        throw new Error(`xtea: invalid key length (got=${keyArr.length}, expected=4)`);
+    }
+    const key = keyArr as unknown as readonly [number, number, number, number];
 
     const actual = new Uint8Array(input);
     Xtea.decryptInPlace(actual, 0, actual.length, key);
@@ -51,7 +59,9 @@ function checkSectorChain(): void {
     const dat = readFileBytes(path.join(dir, "main_file_cache.dat"));
     const idx0 = readFileBytes(path.join(dir, "main_file_cache.idx0"));
     const expected = readFileBytes(path.join(dir, "expected-idx0-archive1.bin"));
-    const { indexId, archiveId } = JSON.parse(fs.readFileSync(path.join(dir, "case.json"), "utf-8")) as {
+    const { indexId, archiveId } = JSON.parse(
+        fs.readFileSync(path.join(dir, "case.json"), "utf-8"),
+    ) as {
         indexId: number;
         archiveId: number;
     };
@@ -178,7 +188,11 @@ function checkVarBitType(): void {
         actual.startBit !== expected.startBit ||
         actual.endBit !== expected.endBit
     ) {
-        throw new Error(`varbit-type: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+        throw new Error(
+            `varbit-type: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(
+                expected,
+            )}`,
+        );
     }
 }
 
@@ -209,7 +223,11 @@ function checkModelV1Empty(): void {
         actual.textureFaceCount !== expected.textureFaceCount ||
         actual.priority !== expected.priority
     ) {
-        throw new Error(`model-v1-empty: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+        throw new Error(
+            `model-v1-empty: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(
+                expected,
+            )}`,
+        );
     }
 }
 
@@ -238,7 +256,11 @@ function checkModelV2Triangle(): void {
     };
 
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-        throw new Error(`model-v2-tri: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+        throw new Error(
+            `model-v2-tri: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(
+                expected,
+            )}`,
+        );
     }
 }
 
@@ -289,7 +311,11 @@ function checkDat2SeqFrameMinimal(): void {
     };
 
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-        throw new Error(`dat2-seqframe-min: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+        throw new Error(
+            `dat2-seqframe-min: mismatch\nactual=${JSON.stringify(
+                actual,
+            )} expected=${JSON.stringify(expected)}`,
+        );
     }
 }
 
@@ -311,7 +337,12 @@ function checkDat2SeqFrameNonTrivial(): void {
     const base = new SeqBase(
         0,
         4,
-        [SeqTransformType.ORIGIN, SeqTransformType.TRANSLATE, SeqTransformType.ROTATE, SeqTransformType.ALPHA],
+        [
+            SeqTransformType.ORIGIN,
+            SeqTransformType.TRANSLATE,
+            SeqTransformType.ROTATE,
+            SeqTransformType.ALPHA,
+        ],
         [true, true, true, true],
         new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]),
         [[], [], [], []],
@@ -324,7 +355,9 @@ function checkDat2SeqFrameNonTrivial(): void {
 
     const frameResult = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, bytes);
     if (!frameResult.ok) {
-        throw new Error(`dat2-seqframe-nontrivial: failed decoding frame: ${frameResult.error.message}`);
+        throw new Error(
+            `dat2-seqframe-nontrivial: failed decoding frame: ${frameResult.error.message}`,
+        );
     }
     const frame = frameResult.value;
 
@@ -341,7 +374,9 @@ function checkDat2SeqFrameNonTrivial(): void {
 
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         throw new Error(
-            `dat2-seqframe-nontrivial: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`,
+            `dat2-seqframe-nontrivial: mismatch\nactual=${JSON.stringify(
+                actual,
+            )} expected=${JSON.stringify(expected)}`,
         );
     }
 }

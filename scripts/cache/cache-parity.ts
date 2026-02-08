@@ -1,16 +1,15 @@
 import fs from "fs";
 import path from "path";
-
 import xxhash from "xxhash-wasm";
 
-import { loadCacheFiles, loadCacheInfos } from "./load-util";
-import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
-import { CacheType, detectCacheType, getCacheTypeName } from "../../src/rs/cache/CacheType";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
+import { CacheType, detectCacheType, getCacheTypeName } from "../../src/rs/cache/CacheType";
+import { DatIndexId, LegacyIndexId } from "../../src/rs/cache/IndexId";
+import { Archive } from "../../src/rs/cache/format/Archive";
+import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
-import { Archive } from "../../src/rs/cache/format/Archive";
-import { DatIndexId, LegacyIndexId } from "../../src/rs/cache/IndexId";
+import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
 type Args = {
     cacheName?: string;
@@ -70,11 +69,7 @@ function bytesOf(buffer: ArrayBuffer | undefined): Uint8Array {
     return buffer ? new Uint8Array(buffer) : new Uint8Array(0);
 }
 
-function legacyRawArchiveBytes(
-    bundle: any,
-    indexId: number,
-    archiveId: number,
-): Uint8Array | null {
+function legacyRawArchiveBytes(bundle: any, indexId: number, archiveId: number): Uint8Array | null {
     const legacy = bundle?.legacy;
     if (!legacy) return null;
 
@@ -110,8 +105,9 @@ async function main(): Promise<void> {
         throw new Error("No caches found");
     }
 
-    const cacheInfo: CacheInfo =
-        args.cacheName ? caches.find((c) => c.name === args.cacheName) ?? latest : latest;
+    const cacheInfo: CacheInfo = args.cacheName
+        ? caches.find((c) => c.name === args.cacheName) ?? latest
+        : latest;
 
     const cacheType = detectCacheType(cacheInfo);
     const cacheBundle = loadCacheFiles(cacheInfo);
@@ -122,10 +118,9 @@ async function main(): Promise<void> {
     const hashApi = await xxhash();
 
     const indexIds = (Array.from(cacheSystem.indices.keys()) as number[]).sort((a, b) => a - b);
-    const selectedIndexIds = (args.indices && args.indices.length > 0 ? args.indices : indexIds).slice(
-        0,
-        args.maxIndices,
-    );
+    const selectedIndexIds = (
+        args.indices && args.indices.length > 0 ? args.indices : indexIds
+    ).slice(0, args.maxIndices);
 
     const entries: ParityEntry[] = [];
 
@@ -166,11 +161,17 @@ async function main(): Promise<void> {
 
             if (cacheType === CacheType.Dat2) {
                 const payload = cacheSystem.readContainerPayload(indexId, archiveId, null);
-                entry.containerPayload = { len: payload.byteLength, xxh64: h64Hex(hashApi.h64Raw(payload)) };
+                entry.containerPayload = {
+                    len: payload.byteLength,
+                    xxh64: h64Hex(hashApi.h64Raw(payload)),
+                };
 
                 const archiveRef = index.getArchiveReference(archiveId);
                 if (archiveRef) {
-                    const archive = Archive.decodeFromSource(archiveRef, new Uint8ArrayByteSource(payload));
+                    const archive = Archive.decodeFromSource(
+                        archiveRef,
+                        new Uint8ArrayByteSource(payload),
+                    );
                     entry.files = archive.files
                         .map((f) => ({
                             fileId: f.id,

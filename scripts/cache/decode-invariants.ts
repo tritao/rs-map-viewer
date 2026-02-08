@@ -1,10 +1,11 @@
+import { MapFileLoader, mapBytesErrorToString } from "../../src/rs/map/MapFileLoader";
+import { Dat2SeqFrame, DatSeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { Scene } from "../../src/rs/scene/Scene";
+import { computeSceneTileModelForTile } from "../../src/rs/scene/computeSceneTileModel";
 import {
     TerrainSquareDecodeScratch,
     decodeTerrainSquareFromBytesInto,
 } from "../../src/rs/scene/decodeTerrainSquare";
-import { computeSceneTileModelForTile } from "../../src/rs/scene/computeSceneTileModel";
-import { Dat2SeqFrame, DatSeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -58,7 +59,9 @@ function buildTerrainSquareBytesOldFormat(options?: {
 function testTerrainDecodeScratchReuse(): void {
     const scratch = new TerrainSquareDecodeScratch();
 
-    const withOverlay = buildTerrainSquareBytesOldFormat({ overlayAt00: { overlay: 5, underlay: 1 } });
+    const withOverlay = buildTerrainSquareBytesOldFormat({
+        overlayAt00: { overlay: 5, underlay: 1 },
+    });
     const zeroed = buildTerrainSquareBytesOldFormat();
 
     const overlaysColRef = scratch.tileOverlays[0][0];
@@ -77,7 +80,49 @@ function testTerrainDecodeScratchReuse(): void {
     assert(underlay00AfterSecondDecode === 0, "expected underlay cleared on reuse");
 
     assert(scratch.tileOverlays[0][0] === overlaysColRef, "expected overlay column array reused");
-    assert(scratch.tileUnderlays[0][0] === underlaysColRef, "expected underlay column array reused");
+    assert(
+        scratch.tileUnderlays[0][0] === underlaysColRef,
+        "expected underlay column array reused",
+    );
+}
+
+function testTerrainHeightsGoldenOldFormat(): void {
+    const scratch = new TerrainSquareDecodeScratch();
+    const bytes = new Uint8Array(Scene.MAP_SQUARE_SIZE * Scene.MAP_SQUARE_SIZE * Scene.MAX_LEVELS);
+    decodeTerrainSquareFromBytesInto(scratch, bytes, false, 0, 0);
+
+    // Golden heights for a fully-zeroed square (all v=0 terminators), world origin (0,0).
+    // These constants provide a parity target for the C++ port.
+    assert(scratch.tileHeights[0][0][0] === -312, "expected height[0][0][0] = -312");
+    assert(scratch.tileHeights[0][1][0] === -312, "expected height[0][1][0] = -312");
+    assert(scratch.tileHeights[0][0][1] === -352, "expected height[0][0][1] = -352");
+    assert(scratch.tileHeights[0][63][63] === -240, "expected height[0][63][63] = -240");
+
+    // Levels >0 derive from the previous level with a fixed delta.
+    assert(scratch.tileHeights[1][0][0] === -552, "expected height[1][0][0] = -552");
+    assert(scratch.tileHeights[2][0][0] === -792, "expected height[2][0][0] = -792");
+    assert(scratch.tileHeights[3][0][0] === -1032, "expected height[3][0][0] = -1032");
+}
+
+function testMapFileLoaderErrorShapes(): void {
+    const mapSource = {
+        tryGetArchiveId: () => undefined,
+        tryGetFile: () => undefined,
+        tryGetFileKey: () => undefined,
+    };
+    const mapIndex = {
+        tryGetTerrainArchiveId: () => undefined,
+        tryGetLocArchiveId: () => undefined,
+    };
+
+    const loader = new MapFileLoader(mapSource as any, mapIndex as any);
+    const t = loader.tryLoadTerrainBytes(1, 2);
+    assert(!t.ok, "expected tryLoadTerrainBytes to fail when archive id is missing");
+    assert(t.error.kind === "missing_archive_id", "expected missing_archive_id error");
+    assert(
+        mapBytesErrorToString(t.error).includes("m1_2"),
+        "expected error string to contain m1_2",
+    );
 }
 
 function testComputeSceneTileModelInvariants(): void {
@@ -132,8 +177,14 @@ function testComputeSceneTileModelInvariants(): void {
         textureLoader: {} as any,
     } as any);
     assert(underlayOnly !== undefined, "expected tile model for underlay-only");
-    assert(underlayOnly.faceTextures === undefined, "expected underlay-only tile model to have no overlay/underlay textures");
-    assert(underlayOnly.underlayTextureId === -1, "expected underlay-only tile model to have no underlay texture");
+    assert(
+        underlayOnly.faceTextures === undefined,
+        "expected underlay-only tile model to have no overlay/underlay textures",
+    );
+    assert(
+        underlayOnly.underlayTextureId === -1,
+        "expected underlay-only tile model to have no underlay texture",
+    );
     assert(underlayOnly.shape === 0, "expected underlay-only tile model to use shape=0");
 }
 
@@ -158,12 +209,19 @@ function testTryLoadNeverThrows(): void {
         getFile: () => undefined,
         getFileNamed: () => undefined,
     } as any;
-    const sprite = withSilencedConsoleError(() => SpriteLoader.tryLoadIndexedSpriteDatId(archiveStub, 123, 0));
-    assert(sprite === undefined, "expected SpriteLoader.tryLoadIndexedSpriteDatId to return undefined on missing files");
+    const sprite = withSilencedConsoleError(() =>
+        SpriteLoader.tryLoadIndexedSpriteDatId(archiveStub, 123, 0),
+    );
+    assert(
+        sprite === undefined,
+        "expected SpriteLoader.tryLoadIndexedSpriteDatId to return undefined on missing files",
+    );
 }
 
 function main(): void {
     testTerrainDecodeScratchReuse();
+    testTerrainHeightsGoldenOldFormat();
+    testMapFileLoaderErrorShapes();
     testComputeSceneTileModelInvariants();
     testTryLoadNeverThrows();
     console.log("decode-invariants: ok");

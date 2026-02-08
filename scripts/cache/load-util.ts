@@ -1,16 +1,15 @@
 import fs from "fs";
 import path from "path";
 
+import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
+import { detectCacheType } from "../../src/rs/cache/CacheType";
 import {
     CACHE_FILE,
-    CacheBundleTransfer,
     CacheBuffer,
+    CacheBundleTransfer,
     DAT_INDEX_COUNT,
     parseCacheIndexIdFromFileName,
 } from "../../src/rs/cache/platform/CacheFiles";
-import { CacheInfo, getGameTypeFromName, getLatestCache } from "../../src/rs/cache/CacheInfo";
-import { detectCacheType } from "../../src/rs/cache/CacheType";
-
 import { IDX_ENTRY_SIZE } from "../../src/rs/cache/store/DatLayout";
 
 export class CacheInfoJson {
@@ -21,7 +20,7 @@ export class CacheInfoJson {
         public revision: number,
         public timestamp: string,
         public size: number,
-    ) { }
+    ) {}
 }
 
 export type CacheList = {
@@ -41,8 +40,17 @@ export type LoadedCache = {
 export function loadCacheInfos(): CacheInfo[] {
     const json = fs.readFileSync("./caches/caches.json", "utf8");
     var infos: CacheInfoJson[] = JSON.parse(json);
-    return infos.map(info => new CacheInfo(info.name, getGameTypeFromName(info.game),
-        info.environment, info.revision, info.timestamp, info.size))
+    return infos.map(
+        (info) =>
+            new CacheInfo(
+                info.name,
+                getGameTypeFromName(info.game),
+                info.environment,
+                info.revision,
+                info.timestamp,
+                info.size,
+            ),
+    );
 }
 
 export function loadCacheList(caches: CacheInfo[]): CacheList {
@@ -119,7 +127,12 @@ export function loadCacheFiles(cache: CacheInfo): CacheBundleTransfer {
     const modelsPath = path.join(cachePath, "models");
     const titlePath = path.join(cachePath, "title");
 
-    if (!fs.existsSync(configPath) || !fs.existsSync(mediaPath) || !fs.existsSync(texturesPath) || !fs.existsSync(modelsPath)) {
+    if (
+        !fs.existsSync(configPath) ||
+        !fs.existsSync(mediaPath) ||
+        !fs.existsSync(texturesPath) ||
+        !fs.existsSync(modelsPath)
+    ) {
         throw new Error("Missing required legacy cache files");
     }
 
