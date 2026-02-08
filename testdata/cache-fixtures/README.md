@@ -10,3 +10,4 @@ Notes:
 
 -   Fixtures are designed to avoid depending on external cache downloads.
 -   These fixtures are used for cross-language cache/I/O conformance checks.
+-   These fixtures are used for cross-language cache/I/O conformance checks (including C++ harness tests).
