@@ -36,23 +36,31 @@ type WasmBackendModule = {
         outPackedPtr: number,
         outPackedIntLength: number,
     ): number;
-    _rs_pack_draw_commands(
+    _rs_pack_scene_staging(
+        tileHeightsPtr: number,
+        levels: number,
+        sizeX: number,
+        sizeY: number,
+        unitsTileHeightBasis: number,
+        bucketCmdCountsPtr: number,
         cmdOffsetsPtr: number,
         cmdElementsPtr: number,
         cmdInstanceCountsPtr: number,
-        cmdCount: number,
+        totalCmdCount: number,
         packedInstancesPtr: number,
         packedInstancesLength: number,
         outDrawRangesPtr: number,
         outDrawRangesLength: number,
-        outModelInfoPtr: number,
-        outModelInfoLength: number,
+        outModelInfoConcatPtr: number,
+        outModelInfoConcatLength: number,
+        outHeightMapPtr: number,
+        outHeightMapLength: number,
     ): number;
 };
 
 const CAP_HEIGHTMAP = 1 << 0;
 const CAP_NPC_DECODE = 1 << 1;
-const CAP_DRAW_PACK = 1 << 2;
+const CAP_SCENE_PACK = 1 << 3;
 
 function parseArgs(argv: string[]): { iterations: number } {
     let iterations = 40;
@@ -195,6 +203,44 @@ function buildExpectedModelInfo(
     return out;
 }
 
+function buildExpectedModelInfoConcat(
+    bucketCmdCounts: Int32Array,
+    cmdInstanceCounts: Int32Array,
+    packedInstances: Int32Array,
+): Uint16Array {
+    let totalLength = 0;
+    let cmdCursor = 0;
+    for (let bucket = 0; bucket < bucketCmdCounts.length; bucket++) {
+        const cmdCount = bucketCmdCounts[bucket] | 0;
+        const counts = cmdInstanceCounts.subarray(cmdCursor, cmdCursor + cmdCount);
+        totalLength += modelInfoLengthFromInstanceCounts(counts, cmdCount);
+        cmdCursor += cmdCount;
+    }
+    const out = new Uint16Array(totalLength);
+
+    cmdCursor = 0;
+    let instanceCursor = 0;
+    let outCursor = 0;
+    for (let bucket = 0; bucket < bucketCmdCounts.length; bucket++) {
+        const cmdCount = bucketCmdCounts[bucket] | 0;
+        const counts = cmdInstanceCounts.subarray(cmdCursor, cmdCursor + cmdCount);
+        let bucketInstances = 0;
+        for (let i = 0; i < counts.length; i++) {
+            bucketInstances += counts[i] | 0;
+        }
+        const bucketPacked = packedInstances.subarray(
+            instanceCursor * 8,
+            (instanceCursor + bucketInstances) * 8,
+        );
+        const bucketModelInfo = buildExpectedModelInfo(cmdCount, counts, bucketPacked);
+        out.set(bucketModelInfo, outCursor);
+        outCursor += bucketModelInfo.length;
+        cmdCursor += cmdCount;
+        instanceCursor += bucketInstances;
+    }
+    return out;
+}
+
 async function loadWasmBackendModule(): Promise<WasmBackendModule> {
     const root = process.cwd();
     const wasmDir = path.resolve(root, "public/wasm");
@@ -222,7 +268,7 @@ async function main(): Promise<void> {
     assert(abi === 1, `Unexpected ABI version ${abi}`);
     assert((caps & CAP_HEIGHTMAP) !== 0, "WASM capability missing: heightmap");
     assert((caps & CAP_NPC_DECODE) !== 0, "WASM capability missing: npc decode");
-    assert((caps & CAP_DRAW_PACK) !== 0, "WASM capability missing: draw pack");
+    assert((caps & CAP_SCENE_PACK) !== 0, "WASM capability missing: scene pack");
 
     let heightmapCases = 0;
     for (let i = 0; i < iterations; i++) {
@@ -341,14 +387,30 @@ async function main(): Promise<void> {
         }
     }
 
-    let drawPackCases = 0;
+    let scenePackCases = 0;
     for (let i = 0; i < iterations; i++) {
-        const cmdCount = randomInt(24);
-        const cmdOffsets = new Int32Array(cmdCount);
-        const cmdElements = new Int32Array(cmdCount);
-        const cmdInstanceCounts = new Int32Array(cmdCount);
+        const levels = 4;
+        const sizeX = 32;
+        const sizeY = 32;
+        const basis = 8;
+        const tileHeights = new Int32Array(levels * (sizeX + 1) * (sizeY + 1));
+        for (let j = 0; j < tileHeights.length; j++) {
+            tileHeights[j] = ((Math.random() * 4000) | 0) - 2000;
+        }
+
+        const bucketCmdCounts = new Int32Array(8);
+        let totalCmdCount = 0;
+        for (let bucket = 0; bucket < bucketCmdCounts.length; bucket++) {
+            const n = randomInt(5);
+            bucketCmdCounts[bucket] = n;
+            totalCmdCount += n;
+        }
+
+        const cmdOffsets = new Int32Array(totalCmdCount);
+        const cmdElements = new Int32Array(totalCmdCount);
+        const cmdInstanceCounts = new Int32Array(totalCmdCount);
         let totalInstances = 0;
-        for (let j = 0; j < cmdCount; j++) {
+        for (let j = 0; j < totalCmdCount; j++) {
             cmdOffsets[j] = randomInt(200000);
             cmdElements[j] = randomInt(50000);
             const count = randomInt(8);
@@ -368,58 +430,92 @@ async function main(): Promise<void> {
             packedInstances[off + 7] = randomInt(1 << 20);
         }
 
-        const expectedDrawRanges = new Int32Array(cmdCount * 3);
-        for (let j = 0; j < cmdCount; j++) {
+        const expectedHeightMap = buildTsHeightMap(tileHeights, levels, sizeX, sizeY, basis);
+        const expectedDrawRanges = new Int32Array(totalCmdCount * 3);
+        for (let j = 0; j < totalCmdCount; j++) {
             const off = j * 3;
             expectedDrawRanges[off + 0] = cmdOffsets[j] | 0;
             expectedDrawRanges[off + 1] = cmdElements[j] | 0;
             expectedDrawRanges[off + 2] = cmdInstanceCounts[j] | 0;
         }
-        const expectedModelInfo = buildExpectedModelInfo(cmdCount, cmdInstanceCounts, packedInstances);
+        const expectedModelInfoConcat = buildExpectedModelInfoConcat(
+            bucketCmdCounts,
+            cmdInstanceCounts,
+            packedInstances,
+        );
 
-        const cmdOffsetsPtr = cmdOffsets.length > 0 ? module._malloc(cmdOffsets.length * 4) : 0;
-        const cmdElementsPtr = cmdElements.length > 0 ? module._malloc(cmdElements.length * 4) : 0;
-        const cmdCountsPtr = cmdInstanceCounts.length > 0 ? module._malloc(cmdInstanceCounts.length * 4) : 0;
-        const instancesPtr = packedInstances.length > 0 ? module._malloc(packedInstances.length * 4) : 0;
+        const inHeightsPtr = module._malloc(tileHeights.length * 4);
+        const inBucketCountsPtr = module._malloc(bucketCmdCounts.length * 4);
+        const inOffsetsPtr = cmdOffsets.length > 0 ? module._malloc(cmdOffsets.length * 4) : 0;
+        const inElementsPtr = cmdElements.length > 0 ? module._malloc(cmdElements.length * 4) : 0;
+        const inInstanceCountsPtr =
+            cmdInstanceCounts.length > 0 ? module._malloc(cmdInstanceCounts.length * 4) : 0;
+        const inPackedInstancesPtr =
+            packedInstances.length > 0 ? module._malloc(packedInstances.length * 4) : 0;
         const outDrawRangesPtr =
             expectedDrawRanges.length > 0 ? module._malloc(expectedDrawRanges.length * 4) : 0;
-        const outModelInfoPtr = module._malloc(expectedModelInfo.length * 2);
+        const outModelInfoConcatPtr = module._malloc(expectedModelInfoConcat.length * 2);
+        const outHeightMapPtr = module._malloc(expectedHeightMap.length * 2);
         assert(
-            (cmdOffsets.length === 0 || cmdOffsetsPtr !== 0) &&
-                (cmdElements.length === 0 || cmdElementsPtr !== 0) &&
-                (cmdInstanceCounts.length === 0 || cmdCountsPtr !== 0) &&
-                (packedInstances.length === 0 || instancesPtr !== 0) &&
+            inHeightsPtr !== 0 &&
+                inBucketCountsPtr !== 0 &&
+                (cmdOffsets.length === 0 || inOffsetsPtr !== 0) &&
+                (cmdElements.length === 0 || inElementsPtr !== 0) &&
+                (cmdInstanceCounts.length === 0 || inInstanceCountsPtr !== 0) &&
+                (packedInstances.length === 0 || inPackedInstancesPtr !== 0) &&
                 (expectedDrawRanges.length === 0 || outDrawRangesPtr !== 0) &&
-                outModelInfoPtr !== 0,
+                outModelInfoConcatPtr !== 0 &&
+                outHeightMapPtr !== 0,
             "malloc failed",
         );
 
         try {
+            module.HEAP32.set(tileHeights, inHeightsPtr >> 2);
+            module.HEAP32.set(bucketCmdCounts, inBucketCountsPtr >> 2);
             if (cmdOffsets.length > 0) {
-                module.HEAP32.set(cmdOffsets, cmdOffsetsPtr >> 2);
-            }
-            if (cmdElements.length > 0) {
-                module.HEAP32.set(cmdElements, cmdElementsPtr >> 2);
-            }
-            if (cmdInstanceCounts.length > 0) {
-                module.HEAP32.set(cmdInstanceCounts, cmdCountsPtr >> 2);
+                module.HEAP32.set(cmdOffsets, inOffsetsPtr >> 2);
+                module.HEAP32.set(cmdElements, inElementsPtr >> 2);
+                module.HEAP32.set(cmdInstanceCounts, inInstanceCountsPtr >> 2);
             }
             if (packedInstances.length > 0) {
-                module.HEAP32.set(packedInstances, instancesPtr >> 2);
+                module.HEAP32.set(packedInstances, inPackedInstancesPtr >> 2);
             }
-            const ok = module._rs_pack_draw_commands(
-                cmdOffsetsPtr,
-                cmdElementsPtr,
-                cmdCountsPtr,
-                cmdCount,
-                instancesPtr,
+            const ok = module._rs_pack_scene_staging(
+                inHeightsPtr,
+                levels,
+                sizeX,
+                sizeY,
+                basis,
+                inBucketCountsPtr,
+                inOffsetsPtr,
+                inElementsPtr,
+                inInstanceCountsPtr,
+                totalCmdCount,
+                inPackedInstancesPtr,
                 packedInstances.length,
                 outDrawRangesPtr,
                 expectedDrawRanges.length,
-                outModelInfoPtr,
-                expectedModelInfo.length,
+                outModelInfoConcatPtr,
+                expectedModelInfoConcat.length,
+                outHeightMapPtr,
+                expectedHeightMap.length,
             );
-            assert(ok === 1, "draw pack wasm call failed");
+            assert(ok === 1, "scene pack wasm call failed");
+
+            const wasmHeightMap = new Int16Array(expectedHeightMap.length);
+            wasmHeightMap.set(
+                module.HEAP16.subarray(
+                    outHeightMapPtr >> 1,
+                    (outHeightMapPtr >> 1) + expectedHeightMap.length,
+                ),
+            );
+            for (let k = 0; k < expectedHeightMap.length; k++) {
+                if (wasmHeightMap[k] !== expectedHeightMap[k]) {
+                    throw new Error(
+                        `scene pack heightmap mismatch at ${k}: wasm=${wasmHeightMap[k]} ts=${expectedHeightMap[k]}`,
+                    );
+                }
+            }
 
             const wasmDrawRanges = new Int32Array(expectedDrawRanges.length);
             if (expectedDrawRanges.length > 0) {
@@ -430,41 +526,45 @@ async function main(): Promise<void> {
                     ),
                 );
             }
-            const wasmModelInfo = new Uint16Array(expectedModelInfo.length);
-            wasmModelInfo.set(
-                module.HEAPU16.subarray(
-                    outModelInfoPtr >> 1,
-                    (outModelInfoPtr >> 1) + expectedModelInfo.length,
-                ),
-            );
-
             for (let k = 0; k < expectedDrawRanges.length; k++) {
                 if (wasmDrawRanges[k] !== expectedDrawRanges[k]) {
                     throw new Error(
-                        `draw range mismatch at ${k}: wasm=${wasmDrawRanges[k]} ts=${expectedDrawRanges[k]}`,
+                        `scene pack draw range mismatch at ${k}: wasm=${wasmDrawRanges[k]} ts=${expectedDrawRanges[k]}`,
                     );
                 }
             }
-            for (let k = 0; k < expectedModelInfo.length; k++) {
-                if (wasmModelInfo[k] !== expectedModelInfo[k]) {
+
+            const wasmModelInfoConcat = new Uint16Array(expectedModelInfoConcat.length);
+            wasmModelInfoConcat.set(
+                module.HEAPU16.subarray(
+                    outModelInfoConcatPtr >> 1,
+                    (outModelInfoConcatPtr >> 1) + expectedModelInfoConcat.length,
+                ),
+            );
+            for (let k = 0; k < expectedModelInfoConcat.length; k++) {
+                if (wasmModelInfoConcat[k] !== expectedModelInfoConcat[k]) {
                     throw new Error(
-                        `model info mismatch at ${k}: wasm=${wasmModelInfo[k]} ts=${expectedModelInfo[k]}`,
+                        `scene pack model info mismatch at ${k}: wasm=${wasmModelInfoConcat[k]} ts=${expectedModelInfoConcat[k]}`,
                     );
                 }
             }
-            drawPackCases++;
+
+            scenePackCases++;
         } finally {
-            if (cmdOffsetsPtr) module._free(cmdOffsetsPtr);
-            if (cmdElementsPtr) module._free(cmdElementsPtr);
-            if (cmdCountsPtr) module._free(cmdCountsPtr);
-            if (instancesPtr) module._free(instancesPtr);
+            module._free(inHeightsPtr);
+            module._free(inBucketCountsPtr);
+            if (inOffsetsPtr) module._free(inOffsetsPtr);
+            if (inElementsPtr) module._free(inElementsPtr);
+            if (inInstanceCountsPtr) module._free(inInstanceCountsPtr);
+            if (inPackedInstancesPtr) module._free(inPackedInstancesPtr);
             if (outDrawRangesPtr) module._free(outDrawRangesPtr);
-            module._free(outModelInfoPtr);
+            module._free(outModelInfoConcatPtr);
+            module._free(outHeightMapPtr);
         }
     }
 
     console.log(
-        `map-render-wasm-parity: abi=${abi} caps=${caps} heightmapCases=${heightmapCases} npcCases=${npcCases} drawPackCases=${drawPackCases} ok`,
+        `map-render-wasm-parity: abi=${abi} caps=${caps} heightmapCases=${heightmapCases} npcCases=${npcCases} scenePackCases=${scenePackCases} ok`,
     );
 }
 

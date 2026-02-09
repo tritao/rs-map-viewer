@@ -1,7 +1,6 @@
 let backendModulePromise;
-const CAP_HEIGHTMAP = 1 << 0;
 const CAP_NPC_DECODE = 1 << 1;
-const CAP_DRAW_PACK = 1 << 2;
+const CAP_SCENE_PACK = 1 << 3;
 
 function createWasmModuleLocator(path) {
     return new URL(path, import.meta.url).href;
@@ -25,7 +24,6 @@ async function tryLoadBackendModule() {
             if (
                 typeof backendModule._rs_map_render_bridge_abi_version !== "function" ||
                 typeof backendModule._rs_map_render_bridge_capabilities !== "function" ||
-                typeof backendModule._rs_heightmap_from_scene_tile_heights !== "function" ||
                 typeof backendModule._rs_decode_npc_spawns_from_bytes !== "function" ||
                 typeof backendModule._malloc !== "function" ||
                 typeof backendModule._free !== "function"
@@ -40,13 +38,13 @@ async function tryLoadBackendModule() {
             }
             backendModule.__rsCapabilities = backendModule._rs_map_render_bridge_capabilities() | 0;
             if (
-                (backendModule.__rsCapabilities & CAP_DRAW_PACK) !== 0 &&
-                typeof backendModule._rs_pack_draw_commands !== "function"
+                (backendModule.__rsCapabilities & CAP_SCENE_PACK) !== 0 &&
+                typeof backendModule._rs_pack_scene_staging !== "function"
             ) {
                 console.warn(
-                    "[map-render-backend] draw-pack capability advertised but export is missing",
+                    "[map-render-backend] scene-pack capability advertised but export is missing",
                 );
-                backendModule.__rsCapabilities &= ~CAP_DRAW_PACK;
+                backendModule.__rsCapabilities &= ~CAP_SCENE_PACK;
             }
             return backendModule;
         } catch (e) {
@@ -55,69 +53,6 @@ async function tryLoadBackendModule() {
         }
     })();
     return backendModulePromise;
-}
-
-function buildHeightMapWithWasm(backendModule, staging) {
-    if ((backendModule.__rsCapabilities & CAP_HEIGHTMAP) === 0) {
-        return undefined;
-    }
-    const tileHeights = staging.sceneTileHeights;
-    const levels = staging.levels | 0;
-    const sizeX = staging.sizeX | 0;
-    const sizeY = staging.sizeY | 0;
-    const unitsTileHeightBasis = staging.unitsTileHeightBasis | 0;
-    const outLength = (levels * sizeX * sizeY) | 0;
-    if (
-        !(tileHeights instanceof Int32Array) ||
-        levels <= 0 ||
-        sizeX <= 0 ||
-        sizeY <= 0 ||
-        unitsTileHeightBasis <= 0 ||
-        outLength <= 0
-    ) {
-        return undefined;
-    }
-
-    const inBytes = tileHeights.length * 4;
-    const outBytes = outLength * 2;
-    const inPtr = backendModule._malloc(inBytes);
-    const outPtr = backendModule._malloc(outBytes);
-    if (!inPtr || !outPtr) {
-        if (inPtr) backendModule._free(inPtr);
-        if (outPtr) backendModule._free(outPtr);
-        return undefined;
-    }
-
-    try {
-        backendModule.HEAP32.set(tileHeights, inPtr >> 2);
-        const ok = backendModule._rs_heightmap_from_scene_tile_heights(
-            inPtr,
-            levels,
-            sizeX,
-            sizeY,
-            unitsTileHeightBasis,
-            outPtr,
-            outLength,
-        );
-        if (ok !== 1) {
-            return undefined;
-        }
-        const heightMap = new Int16Array(outLength);
-        heightMap.set(backendModule.HEAP16.subarray(outPtr >> 1, (outPtr >> 1) + outLength));
-        return heightMap;
-    } finally {
-        backendModule._free(inPtr);
-        backendModule._free(outPtr);
-    }
-}
-
-function modelInfoLengthFromInstanceCounts(instanceCounts, cmdCount) {
-    let totalInstances = 0;
-    for (let i = 0; i < instanceCounts.length; i++) {
-        totalInstances += instanceCounts[i] | 0;
-    }
-    const dataLength = Math.ceil((cmdCount * 4 + totalInstances) / 16) * 16;
-    return Math.max(dataLength, 16) * 4;
 }
 
 function modelInfoLengthFromDrawCommands(drawCommands) {
@@ -140,21 +75,100 @@ const DRAW_BUCKET_KEYS = [
     "interactLodAlpha",
 ];
 
-const drawPackScratch = {
+const scenePackFlattenScratch = {
     offsets: new Int32Array(0),
     elements: new Int32Array(0),
     instanceCounts: new Int32Array(0),
     packedInstances: new Int32Array(0),
 };
 
+function newHeapScratchEntry() {
+    return {
+        ptr: 0,
+        capacity: 0,
+    };
+}
+
+const scenePackHeapScratch = {
+    module: undefined,
+    i32: {
+        tileHeights: newHeapScratchEntry(),
+        bucketCounts: newHeapScratchEntry(),
+        offsets: newHeapScratchEntry(),
+        elements: newHeapScratchEntry(),
+        instanceCounts: newHeapScratchEntry(),
+        packedInstances: newHeapScratchEntry(),
+        outDrawRanges: newHeapScratchEntry(),
+    },
+    i16: {
+        outHeightMap: newHeapScratchEntry(),
+    },
+    u16: {
+        outModelInfoConcat: newHeapScratchEntry(),
+    },
+};
+
+function freeHeapScratchGroup(module, group) {
+    for (const value of Object.values(group)) {
+        if (value.ptr) {
+            module._free(value.ptr);
+            value.ptr = 0;
+            value.capacity = 0;
+        }
+    }
+}
+
+function clearScenePackHeapScratch() {
+    const module = scenePackHeapScratch.module;
+    if (!module) {
+        return;
+    }
+    freeHeapScratchGroup(module, scenePackHeapScratch.i32);
+    freeHeapScratchGroup(module, scenePackHeapScratch.i16);
+    freeHeapScratchGroup(module, scenePackHeapScratch.u16);
+    scenePackHeapScratch.module = undefined;
+}
+
+function prepareScenePackHeapScratch(backendModule) {
+    if (scenePackHeapScratch.module && scenePackHeapScratch.module !== backendModule) {
+        clearScenePackHeapScratch();
+    }
+    if (!scenePackHeapScratch.module) {
+        scenePackHeapScratch.module = backendModule;
+    }
+}
+
+function ensureScenePackHeapBuffer(backendModule, group, key, minLength, bytesPerElement) {
+    if (minLength <= 0) {
+        return 0;
+    }
+    const entry = group[key];
+    if (entry.capacity >= minLength && entry.ptr) {
+        return entry.ptr;
+    }
+    if (entry.ptr) {
+        backendModule._free(entry.ptr);
+        entry.ptr = 0;
+        entry.capacity = 0;
+    }
+    const nextCapacity = Math.max(minLength, entry.capacity * 2, 16);
+    const ptr = backendModule._malloc(nextCapacity * bytesPerElement);
+    if (!ptr) {
+        return 0;
+    }
+    entry.ptr = ptr;
+    entry.capacity = nextCapacity;
+    return ptr;
+}
+
 function ensureInt32Scratch(name, minLength) {
-    const current = drawPackScratch[name];
+    const current = scenePackFlattenScratch[name];
     if (current.length >= minLength) {
         return current;
     }
     const nextLength = Math.max(minLength, current.length * 2, 16);
     const next = new Int32Array(nextLength);
-    drawPackScratch[name] = next;
+    scenePackFlattenScratch[name] = next;
     return next;
 }
 
@@ -197,132 +211,72 @@ function validateStagingDrawCommands(staging) {
     return undefined;
 }
 
-function packDrawBucketWithWasm(backendModule, drawCommands) {
-    const cmdCount = drawCommands.length | 0;
-    if (cmdCount === 0) {
-        return {
-            drawRanges: [],
-            modelInfo: new Uint16Array(64),
-        };
-    }
+function flattenStagingDrawCommands(drawCommands) {
+    const bucketCmdCounts = new Int32Array(DRAW_BUCKET_KEYS.length);
+    const bucketModelInfoLengths = new Int32Array(DRAW_BUCKET_KEYS.length);
 
-    const offsetsScratch = ensureInt32Scratch("offsets", cmdCount);
-    const elementsScratch = ensureInt32Scratch("elements", cmdCount);
-    const countsScratch = ensureInt32Scratch("instanceCounts", cmdCount);
-    const offsets = offsetsScratch.subarray(0, cmdCount);
-    const elements = elementsScratch.subarray(0, cmdCount);
-    const instanceCounts = countsScratch.subarray(0, cmdCount);
+    let totalCmdCount = 0;
     let totalInstances = 0;
-    for (let i = 0; i < cmdCount; i++) {
-        const command = drawCommands[i];
-        offsets[i] = command.offset | 0;
-        elements[i] = command.elements | 0;
-        const instanceCount = command.instances.length | 0;
-        instanceCounts[i] = instanceCount;
-        totalInstances += instanceCount;
-    }
-    const packedInstancesLength = totalInstances * 8;
-    const packedInstancesScratch = ensureInt32Scratch("packedInstances", packedInstancesLength);
-    const packedInstances = packedInstancesScratch.subarray(0, packedInstancesLength);
-    let instanceOffset = 0;
-    for (let i = 0; i < cmdCount; i++) {
-        const command = drawCommands[i];
-        for (let j = 0; j < command.instances.length; j++) {
-            const instance = command.instances[j];
-            packedInstances[instanceOffset++] = instance.sceneX | 0;
-            packedInstances[instanceOffset++] = instance.sceneZ | 0;
-            packedInstances[instanceOffset++] = instance.heightOffset | 0;
-            packedInstances[instanceOffset++] = instance.level | 0;
-            packedInstances[instanceOffset++] = instance.contourGround | 0;
-            packedInstances[instanceOffset++] = instance.priority | 0;
-            packedInstances[instanceOffset++] = instance.interactType | 0;
-            packedInstances[instanceOffset++] = instance.interactId | 0;
-        }
-    }
-
-    const expectedModelInfoLength = modelInfoLengthFromInstanceCounts(instanceCounts, cmdCount);
-    const drawRangesLength = cmdCount * 3;
-    const inOffsetsPtr = backendModule._malloc(cmdCount * 4);
-    const inElementsPtr = backendModule._malloc(cmdCount * 4);
-    const inCountsPtr = backendModule._malloc(cmdCount * 4);
-    const inInstancesPtr = packedInstances.length > 0 ? backendModule._malloc(packedInstances.length * 4) : 0;
-    const outDrawRangesPtr = backendModule._malloc(drawRangesLength * 4);
-    const outModelInfoPtr = backendModule._malloc(expectedModelInfoLength * 2);
-    if (
-        !inOffsetsPtr ||
-        !inElementsPtr ||
-        !inCountsPtr ||
-        (packedInstances.length > 0 && !inInstancesPtr) ||
-        !outDrawRangesPtr ||
-        !outModelInfoPtr
-    ) {
-        if (inOffsetsPtr) backendModule._free(inOffsetsPtr);
-        if (inElementsPtr) backendModule._free(inElementsPtr);
-        if (inCountsPtr) backendModule._free(inCountsPtr);
-        if (inInstancesPtr) backendModule._free(inInstancesPtr);
-        if (outDrawRangesPtr) backendModule._free(outDrawRangesPtr);
-        if (outModelInfoPtr) backendModule._free(outModelInfoPtr);
-        return undefined;
-    }
-
-    try {
-        backendModule.HEAP32.set(offsets, inOffsetsPtr >> 2);
-        backendModule.HEAP32.set(elements, inElementsPtr >> 2);
-        backendModule.HEAP32.set(instanceCounts, inCountsPtr >> 2);
-        if (packedInstances.length > 0) {
-            backendModule.HEAP32.set(packedInstances, inInstancesPtr >> 2);
-        }
-
-        const ok = backendModule._rs_pack_draw_commands(
-            inOffsetsPtr,
-            inElementsPtr,
-            inCountsPtr,
-            cmdCount,
-            inInstancesPtr,
-            packedInstances.length | 0,
-            outDrawRangesPtr,
-            drawRangesLength,
-            outModelInfoPtr,
-            expectedModelInfoLength,
-        );
-        if (ok !== 1) {
-            return undefined;
-        }
-
-        const drawRangesPacked = backendModule.HEAP32.subarray(
-            outDrawRangesPtr >> 2,
-            (outDrawRangesPtr >> 2) + drawRangesLength,
-        );
-        const drawRanges = new Array(cmdCount);
+    let modelInfoConcatLength = 0;
+    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
+        const key = DRAW_BUCKET_KEYS[bucket];
+        const commands = drawCommands[key];
+        const cmdCount = commands.length | 0;
+        bucketCmdCounts[bucket] = cmdCount;
+        totalCmdCount += cmdCount;
         for (let i = 0; i < cmdCount; i++) {
-            const off = i * 3;
-            drawRanges[i] = [
-                drawRangesPacked[off + 0] | 0,
-                drawRangesPacked[off + 1] | 0,
-                drawRangesPacked[off + 2] | 0,
-            ];
+            totalInstances += commands[i].instances.length | 0;
         }
-
-        const modelInfo = new Uint16Array(expectedModelInfoLength);
-        modelInfo.set(
-            backendModule.HEAPU16.subarray(
-                outModelInfoPtr >> 1,
-                (outModelInfoPtr >> 1) + expectedModelInfoLength,
-            ),
-        );
-
-        return {
-            drawRanges,
-            modelInfo,
-        };
-    } finally {
-        backendModule._free(inOffsetsPtr);
-        backendModule._free(inElementsPtr);
-        backendModule._free(inCountsPtr);
-        backendModule._free(inInstancesPtr);
-        backendModule._free(outDrawRangesPtr);
-        backendModule._free(outModelInfoPtr);
+        const modelInfoLength = modelInfoLengthFromDrawCommands(commands) | 0;
+        bucketModelInfoLengths[bucket] = modelInfoLength;
+        modelInfoConcatLength += modelInfoLength;
     }
+
+    const offsetsScratch = ensureInt32Scratch("offsets", totalCmdCount);
+    const elementsScratch = ensureInt32Scratch("elements", totalCmdCount);
+    const countsScratch = ensureInt32Scratch("instanceCounts", totalCmdCount);
+    const packedInstancesScratch = ensureInt32Scratch("packedInstances", totalInstances * 8);
+    const offsets = offsetsScratch.subarray(0, totalCmdCount);
+    const elements = elementsScratch.subarray(0, totalCmdCount);
+    const instanceCounts = countsScratch.subarray(0, totalCmdCount);
+    const packedInstances = packedInstancesScratch.subarray(0, totalInstances * 8);
+
+    let cmdOffset = 0;
+    let instanceOffset = 0;
+    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
+        const key = DRAW_BUCKET_KEYS[bucket];
+        const commands = drawCommands[key];
+        for (let i = 0; i < commands.length; i++) {
+            const command = commands[i];
+            offsets[cmdOffset] = command.offset | 0;
+            elements[cmdOffset] = command.elements | 0;
+            const count = command.instances.length | 0;
+            instanceCounts[cmdOffset] = count;
+            cmdOffset++;
+            for (let j = 0; j < count; j++) {
+                const instance = command.instances[j];
+                packedInstances[instanceOffset++] = instance.sceneX | 0;
+                packedInstances[instanceOffset++] = instance.sceneZ | 0;
+                packedInstances[instanceOffset++] = instance.heightOffset | 0;
+                packedInstances[instanceOffset++] = instance.level | 0;
+                packedInstances[instanceOffset++] = instance.contourGround | 0;
+                packedInstances[instanceOffset++] = instance.priority | 0;
+                packedInstances[instanceOffset++] = instance.interactType | 0;
+                packedInstances[instanceOffset++] = instance.interactId | 0;
+            }
+        }
+    }
+
+    return {
+        bucketCmdCounts,
+        bucketModelInfoLengths,
+        totalCmdCount,
+        modelInfoConcatLength,
+        offsets,
+        elements,
+        instanceCounts,
+        packedInstances,
+    };
 }
 
 export const __mapRenderBridgeInternals = {
@@ -331,29 +285,199 @@ export const __mapRenderBridgeInternals = {
     validateStagingDrawCommands,
 };
 
-function buildDrawRangesAndModelInfoWithWasm(backendModule, staging) {
-    if ((backendModule.__rsCapabilities & CAP_DRAW_PACK) === 0) {
+function buildSceneWithWasm(backendModule, staging) {
+    if ((backendModule.__rsCapabilities & CAP_SCENE_PACK) === 0) {
         return undefined;
     }
-    if (typeof backendModule._rs_pack_draw_commands !== "function") {
+    if (typeof backendModule._rs_pack_scene_staging !== "function") {
         return undefined;
     }
     if (!staging.drawCommands) {
         return undefined;
     }
+    const tileHeights = staging.sceneTileHeights;
+    const levels = staging.levels | 0;
+    const sizeX = staging.sizeX | 0;
+    const sizeY = staging.sizeY | 0;
+    const unitsTileHeightBasis = staging.unitsTileHeightBasis | 0;
+    if (
+        !(tileHeights instanceof Int32Array) ||
+        levels <= 0 ||
+        sizeX <= 0 ||
+        sizeY <= 0 ||
+        unitsTileHeightBasis <= 0
+    ) {
+        return undefined;
+    }
+
+    const flattened = flattenStagingDrawCommands(staging.drawCommands);
+    const drawRangesLength = flattened.totalCmdCount * 3;
+    const outHeightMapLength = levels * sizeX * sizeY;
+    prepareScenePackHeapScratch(backendModule);
+
+    const inHeightsPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "tileHeights",
+        tileHeights.length,
+        4,
+    );
+    const inBucketCountsPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "bucketCounts",
+        flattened.bucketCmdCounts.length,
+        4,
+    );
+    const inOffsetsPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "offsets",
+        flattened.totalCmdCount,
+        4,
+    );
+    const inElementsPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "elements",
+        flattened.totalCmdCount,
+        4,
+    );
+    const inInstanceCountsPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "instanceCounts",
+        flattened.totalCmdCount,
+        4,
+    );
+    const inPackedInstancesPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "packedInstances",
+        flattened.packedInstances.length,
+        4,
+    );
+    const outDrawRangesPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i32,
+        "outDrawRanges",
+        drawRangesLength,
+        4,
+    );
+    const outModelInfoConcatPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.u16,
+        "outModelInfoConcat",
+        flattened.modelInfoConcatLength,
+        2,
+    );
+    const outHeightMapPtr = ensureScenePackHeapBuffer(
+        backendModule,
+        scenePackHeapScratch.i16,
+        "outHeightMap",
+        outHeightMapLength,
+        2,
+    );
+    if (
+        !inHeightsPtr ||
+        !inBucketCountsPtr ||
+        (flattened.totalCmdCount > 0 && (!inOffsetsPtr || !inElementsPtr || !inInstanceCountsPtr)) ||
+        (flattened.packedInstances.length > 0 && !inPackedInstancesPtr) ||
+        (drawRangesLength > 0 && !outDrawRangesPtr) ||
+        !outModelInfoConcatPtr ||
+        !outHeightMapPtr
+    ) {
+        clearScenePackHeapScratch();
+        return undefined;
+    }
+
+    backendModule.HEAP32.set(tileHeights, inHeightsPtr >> 2);
+    backendModule.HEAP32.set(flattened.bucketCmdCounts, inBucketCountsPtr >> 2);
+    if (flattened.totalCmdCount > 0) {
+        backendModule.HEAP32.set(flattened.offsets, inOffsetsPtr >> 2);
+        backendModule.HEAP32.set(flattened.elements, inElementsPtr >> 2);
+        backendModule.HEAP32.set(flattened.instanceCounts, inInstanceCountsPtr >> 2);
+    }
+    if (flattened.packedInstances.length > 0) {
+        backendModule.HEAP32.set(flattened.packedInstances, inPackedInstancesPtr >> 2);
+    }
+
+    const ok = backendModule._rs_pack_scene_staging(
+        inHeightsPtr,
+        levels,
+        sizeX,
+        sizeY,
+        unitsTileHeightBasis,
+        inBucketCountsPtr,
+        inOffsetsPtr,
+        inElementsPtr,
+        inInstanceCountsPtr,
+        flattened.totalCmdCount | 0,
+        inPackedInstancesPtr,
+        flattened.packedInstances.length | 0,
+        outDrawRangesPtr,
+        drawRangesLength,
+        outModelInfoConcatPtr,
+        flattened.modelInfoConcatLength | 0,
+        outHeightMapPtr,
+        outHeightMapLength,
+    );
+    if (ok !== 1) {
+        return undefined;
+    }
+
+    const heightMapTextureData = new Int16Array(outHeightMapLength);
+    heightMapTextureData.set(
+        backendModule.HEAP16.subarray(outHeightMapPtr >> 1, (outHeightMapPtr >> 1) + outHeightMapLength),
+    );
+
+    const drawRangesPacked = new Int32Array(drawRangesLength);
+    if (drawRangesLength > 0) {
+        drawRangesPacked.set(
+            backendModule.HEAP32.subarray(
+                outDrawRangesPtr >> 2,
+                (outDrawRangesPtr >> 2) + drawRangesLength,
+            ),
+        );
+    }
+    const modelInfoConcat = new Uint16Array(flattened.modelInfoConcatLength);
+    modelInfoConcat.set(
+        backendModule.HEAPU16.subarray(
+            outModelInfoConcatPtr >> 1,
+            (outModelInfoConcatPtr >> 1) + flattened.modelInfoConcatLength,
+        ),
+    );
 
     const drawRanges = {};
     const modelInfoTextures = {};
-    for (const key of DRAW_BUCKET_KEYS) {
-        const packed = packDrawBucketWithWasm(backendModule, staging.drawCommands[key]);
-        if (!packed) {
-            return undefined;
+    let cmdCursor = 0;
+    let modelInfoCursor = 0;
+    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
+        const key = DRAW_BUCKET_KEYS[bucket];
+        const cmdCount = flattened.bucketCmdCounts[bucket] | 0;
+        const bucketRanges = new Array(cmdCount);
+        for (let i = 0; i < cmdCount; i++) {
+            const off = (cmdCursor + i) * 3;
+            bucketRanges[i] = [
+                drawRangesPacked[off + 0] | 0,
+                drawRangesPacked[off + 1] | 0,
+                drawRangesPacked[off + 2] | 0,
+            ];
         }
-        drawRanges[key] = packed.drawRanges;
-        modelInfoTextures[key] = packed.modelInfo;
+        drawRanges[key] = bucketRanges;
+        cmdCursor += cmdCount;
+
+        const modelInfoLength = flattened.bucketModelInfoLengths[bucket] | 0;
+        const bucketModelInfo = new Uint16Array(modelInfoLength);
+        bucketModelInfo.set(
+            modelInfoConcat.subarray(modelInfoCursor, modelInfoCursor + modelInfoLength),
+        );
+        modelInfoTextures[key] = bucketModelInfo;
+        modelInfoCursor += modelInfoLength;
     }
 
     return {
+        heightMapTextureData,
         drawRanges,
         modelInfoTextures,
     };
@@ -525,26 +649,19 @@ export const cppWasmMapRenderDataBridge = {
             console.warn(`[map-render-backend] invalid staging payload: ${stagingError}`);
             return tsPayloadResult;
         }
-        const heightMapTextureData = buildHeightMapWithWasm(backendModule, tsPayloadResult.data.staging);
-        if (!heightMapTextureData) {
-            return tsPayloadResult;
+        const scenePackResult = buildSceneWithWasm(backendModule, tsPayloadResult.data.staging);
+        if (scenePackResult) {
+            return {
+                data: {
+                    ...tsPayloadResult.data,
+                    heightMapTextureData: scenePackResult.heightMapTextureData,
+                    drawRanges: scenePackResult.drawRanges,
+                    modelInfoTextures: scenePackResult.modelInfoTextures,
+                    staging: undefined,
+                },
+            };
         }
-        const drawPackResult = buildDrawRangesAndModelInfoWithWasm(
-            backendModule,
-            tsPayloadResult.data.staging,
-        );
-        if (!drawPackResult) {
-            return tsPayloadResult;
-        }
-        return {
-            data: {
-                ...tsPayloadResult.data,
-                heightMapTextureData,
-                drawRanges: drawPackResult.drawRanges,
-                modelInfoTextures: drawPackResult.modelInfoTextures,
-                staging: undefined,
-            },
-        };
+        return tsPayloadResult;
     },
     async decodeNpcSpawnsFromBytes(
         tileRenderFlagsLevel1,
@@ -571,6 +688,7 @@ export const cppWasmMapRenderDataBridge = {
         );
     },
     reset() {
+        clearScenePackHeapScratch();
         backendModulePromise = undefined;
     },
 };

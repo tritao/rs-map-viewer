@@ -15,14 +15,17 @@ extern "C" {
 
 static constexpr rs::i32 RS_MAP_RENDER_CAP_HEIGHTMAP = 1 << 0;
 static constexpr rs::i32 RS_MAP_RENDER_CAP_NPC_DECODE = 1 << 1;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_DRAW_PACK = 1 << 2;
+static constexpr rs::i32 RS_MAP_RENDER_CAP_SCENE_PACK = 1 << 3;
+static constexpr rs::i32 RS_DRAW_BUCKET_COUNT = 8;
 
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_abi_version() {
     return 1;
 }
 
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_capabilities() {
-    return RS_MAP_RENDER_CAP_HEIGHTMAP | RS_MAP_RENDER_CAP_NPC_DECODE | RS_MAP_RENDER_CAP_DRAW_PACK;
+    return RS_MAP_RENDER_CAP_HEIGHTMAP |
+           RS_MAP_RENDER_CAP_NPC_DECODE |
+           RS_MAP_RENDER_CAP_SCENE_PACK;
 }
 
 RS_WASM_KEEPALIVE rs::i32 rs_heightmap_from_scene_tile_heights(
@@ -155,24 +158,40 @@ static rs::i32 roundHeightOffsetDiv8Js(rs::i32 heightOffset) noexcept {
     return -(((-heightOffset) + 3) / 8);
 }
 
-RS_WASM_KEEPALIVE rs::i32 rs_pack_draw_commands(
+static rs::i32 modelInfoTextureLengthFromCounts(rs::i32 cmdCount, rs::i32 instanceCount) noexcept {
+    const rs::i32 dataLengthRounded = ((cmdCount * 4 + instanceCount + 15) / 16) * 16;
+    return (dataLengthRounded > 16 ? dataLengthRounded : 16) * 4;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_pack_scene_staging(
+    const rs::i32* tileHeights,
+    rs::i32 levels,
+    rs::i32 sizeX,
+    rs::i32 sizeY,
+    rs::i32 unitsTileHeightBasis,
+    const rs::i32* bucketCmdCounts,
     const rs::i32* cmdOffsets,
     const rs::i32* cmdElements,
     const rs::i32* cmdInstanceCounts,
-    rs::i32 cmdCount,
+    rs::i32 totalCmdCount,
     const rs::i32* packedInstances,
     rs::i32 packedInstancesLength,
     rs::i32* outDrawRanges,
     rs::i32 outDrawRangesLength,
-    rs::u16* outModelInfoTexture,
-    rs::i32 outModelInfoTextureLength) {
-    if (cmdCount < 0 || packedInstancesLength < 0 || outDrawRangesLength < 0 || outModelInfoTextureLength < 0) {
+    rs::u16* outModelInfoTextureConcat,
+    rs::i32 outModelInfoTextureConcatLength,
+    rs::i16* outHeightMap,
+    rs::i32 outHeightMapLength) {
+    if (!tileHeights || !bucketCmdCounts || !outModelInfoTextureConcat || !outHeightMap) {
         return -1;
     }
-    if (!outModelInfoTexture) {
+    if (levels <= 0 || sizeX <= 0 || sizeY <= 0 || unitsTileHeightBasis <= 0) {
         return -1;
     }
-    if (cmdCount > 0 && (!cmdOffsets || !cmdElements || !cmdInstanceCounts)) {
+    if (totalCmdCount < 0 || packedInstancesLength < 0 || outDrawRangesLength < 0 || outModelInfoTextureConcatLength < 0) {
+        return -1;
+    }
+    if (totalCmdCount > 0 && (!cmdOffsets || !cmdElements || !cmdInstanceCounts)) {
         return -1;
     }
     if (outDrawRangesLength > 0 && !outDrawRanges) {
@@ -182,69 +201,112 @@ RS_WASM_KEEPALIVE rs::i32 rs_pack_draw_commands(
         return -1;
     }
 
-    rs::i32 totalInstances = 0;
-    for (rs::i32 i = 0; i < cmdCount; i++) {
-        const rs::i32 n = cmdInstanceCounts[i];
+    const rs::i32 expectedHeightMapLength = levels * sizeX * sizeY;
+    if (outHeightMapLength != expectedHeightMapLength) {
+        return -2;
+    }
+    if (rs_heightmap_from_scene_tile_heights(
+            tileHeights,
+            levels,
+            sizeX,
+            sizeY,
+            unitsTileHeightBasis,
+            outHeightMap,
+            outHeightMapLength) != 1) {
+        return -1;
+    }
+
+    rs::i32 expectedTotalCmdCount = 0;
+    for (rs::i32 bucket = 0; bucket < RS_DRAW_BUCKET_COUNT; bucket++) {
+        const rs::i32 n = bucketCmdCounts[bucket];
         if (n < 0) {
             return -1;
         }
-        totalInstances += n;
+        expectedTotalCmdCount += n;
     }
-
-    const rs::i32 expectedPackedInstancesLength = totalInstances * 8;
-    if (packedInstancesLength != expectedPackedInstancesLength) {
+    if (expectedTotalCmdCount != totalCmdCount) {
         return -2;
     }
 
-    const rs::i32 expectedDrawRangesLength = cmdCount * 3;
+    const rs::i32 expectedDrawRangesLength = totalCmdCount * 3;
     if (outDrawRangesLength != expectedDrawRangesLength) {
         return -2;
     }
 
-    const rs::i32 dataLengthRounded = ((cmdCount * 4 + totalInstances + 15) / 16) * 16;
-    const rs::i32 expectedModelInfoTextureLength = (dataLengthRounded > 16 ? dataLengthRounded : 16) * 4;
-    if (outModelInfoTextureLength != expectedModelInfoTextureLength) {
+    rs::i32 cmdCursor = 0;
+    rs::i32 instanceCursor = 0;
+    rs::i32 modelInfoCursor = 0;
+
+    for (rs::i32 bucket = 0; bucket < RS_DRAW_BUCKET_COUNT; bucket++) {
+        const rs::i32 cmdCount = bucketCmdCounts[bucket];
+        rs::i32 bucketInstanceCount = 0;
+        for (rs::i32 i = 0; i < cmdCount; i++) {
+            const rs::i32 n = cmdInstanceCounts[cmdCursor + i];
+            if (n < 0) {
+                return -1;
+            }
+            bucketInstanceCount += n;
+        }
+
+        const rs::i32 bucketModelInfoLength = modelInfoTextureLengthFromCounts(cmdCount, bucketInstanceCount);
+        if (modelInfoCursor + bucketModelInfoLength > outModelInfoTextureConcatLength) {
+            return -2;
+        }
+        for (rs::i32 i = 0; i < bucketModelInfoLength; i++) {
+            outModelInfoTextureConcat[modelInfoCursor + i] = 0;
+        }
+
+        rs::i32 dataOffset = 0;
+        for (rs::i32 i = 0; i < cmdCount; i++) {
+            const rs::i32 cmdIndex = cmdCursor + i;
+            const rs::i32 outDrawOff = cmdIndex * 3;
+            outDrawRanges[outDrawOff + 0] = cmdOffsets[cmdIndex];
+            outDrawRanges[outDrawOff + 1] = cmdElements[cmdIndex];
+            outDrawRanges[outDrawOff + 2] = cmdInstanceCounts[cmdIndex];
+
+            outModelInfoTextureConcat[modelInfoCursor + i * 4] = static_cast<rs::u16>(cmdCount + dataOffset);
+            dataOffset += cmdInstanceCounts[cmdIndex];
+        }
+
+        for (rs::i32 i = 0; i < bucketInstanceCount; i++) {
+            const rs::i32 inOff = (instanceCursor + i) * 8;
+            if (inOff + 7 >= packedInstancesLength) {
+                return -2;
+            }
+            const rs::i32 sceneX = packedInstances[inOff + 0];
+            const rs::i32 sceneZ = packedInstances[inOff + 1];
+            const rs::i32 heightOffset = packedInstances[inOff + 2];
+            const rs::i32 level = packedInstances[inOff + 3];
+            const rs::i32 contourGround = packedInstances[inOff + 4];
+            const rs::i32 priority = packedInstances[inOff + 5];
+            const rs::i32 interactType = packedInstances[inOff + 6];
+            const rs::i32 interactId = packedInstances[inOff + 7];
+
+            const rs::i32 outOff = modelInfoCursor + cmdCount * 4 + i * 4;
+            outModelInfoTextureConcat[outOff + 0] = static_cast<rs::u16>(sceneX | (level << 14));
+            outModelInfoTextureConcat[outOff + 1] = static_cast<rs::u16>(sceneZ | (contourGround << 14));
+            const rs::i32 packed3 =
+                (priority & 0x7) |
+                ((interactId >> 16) << 3) |
+                (interactType << 4) |
+                (roundHeightOffsetDiv8Js(heightOffset) << 6);
+            outModelInfoTextureConcat[outOff + 2] = static_cast<rs::u16>(packed3);
+            outModelInfoTextureConcat[outOff + 3] = static_cast<rs::u16>(interactId);
+        }
+
+        cmdCursor += cmdCount;
+        instanceCursor += bucketInstanceCount;
+        modelInfoCursor += bucketModelInfoLength;
+    }
+
+    if (cmdCursor != totalCmdCount) {
         return -2;
     }
-
-    for (rs::i32 i = 0; i < outModelInfoTextureLength; i++) {
-        outModelInfoTexture[i] = 0;
+    if (instanceCursor * 8 != packedInstancesLength) {
+        return -2;
     }
-
-    for (rs::i32 i = 0; i < cmdCount; i++) {
-        const rs::i32 outOff = i * 3;
-        outDrawRanges[outOff + 0] = cmdOffsets[i];
-        outDrawRanges[outOff + 1] = cmdElements[i];
-        outDrawRanges[outOff + 2] = cmdInstanceCounts[i];
-    }
-
-    rs::i32 dataOffset = 0;
-    for (rs::i32 i = 0; i < cmdCount; i++) {
-        outModelInfoTexture[i * 4] = static_cast<rs::u16>(cmdCount + dataOffset);
-        dataOffset += cmdInstanceCounts[i];
-    }
-
-    for (rs::i32 i = 0; i < totalInstances; i++) {
-        const rs::i32 inOff = i * 8;
-        const rs::i32 sceneX = packedInstances[inOff + 0];
-        const rs::i32 sceneZ = packedInstances[inOff + 1];
-        const rs::i32 heightOffset = packedInstances[inOff + 2];
-        const rs::i32 level = packedInstances[inOff + 3];
-        const rs::i32 contourGround = packedInstances[inOff + 4];
-        const rs::i32 priority = packedInstances[inOff + 5];
-        const rs::i32 interactType = packedInstances[inOff + 6];
-        const rs::i32 interactId = packedInstances[inOff + 7];
-
-        const rs::i32 outOff = cmdCount * 4 + i * 4;
-        outModelInfoTexture[outOff + 0] = static_cast<rs::u16>(sceneX | (level << 14));
-        outModelInfoTexture[outOff + 1] = static_cast<rs::u16>(sceneZ | (contourGround << 14));
-        const rs::i32 packed3 =
-            (priority & 0x7) |
-            ((interactId >> 16) << 3) |
-            (interactType << 4) |
-            (roundHeightOffsetDiv8Js(heightOffset) << 6);
-        outModelInfoTexture[outOff + 2] = static_cast<rs::u16>(packed3);
-        outModelInfoTexture[outOff + 3] = static_cast<rs::u16>(interactId);
+    if (modelInfoCursor != outModelInfoTextureConcatLength) {
+        return -2;
     }
 
     return 1;

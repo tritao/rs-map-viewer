@@ -274,7 +274,7 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
     target_link_libraries(rs_map_render_backend PRIVATE rs)
 
     set(RS_MAP_RENDER_EXPORTED_FUNCTIONS
-        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_pack_draw_commands']"
+        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_pack_scene_staging']"
     )
 
     target_link_options(rs_map_render_backend PRIVATE
