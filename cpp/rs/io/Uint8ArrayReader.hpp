@@ -28,6 +28,7 @@ public:
     Status readMedium(u32* out) noexcept;
     Status readInt(i32* out) noexcept;
     Status readUnsignedInt(u32* out) noexcept;
+    Status readFloat(float* out) noexcept;
 
     Status readBigSmart(i32* out) noexcept;
     Status readUnsignedSmart(i32* out) noexcept;

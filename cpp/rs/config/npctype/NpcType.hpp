@@ -10,6 +10,7 @@
 #include "../../types.hpp"
 #include "../ParamsMap.hpp"
 #include "../TypeDecode.hpp"
+#include "../vartype/VarProvider.hpp"
 
 namespace rs {
 
@@ -961,7 +962,44 @@ struct NpcType {
 
         return Status::Unsupported;
     }
+
+    [[nodiscard]] i32 resolveTransformIndex(const VarProvider& varProvider) const noexcept {
+        if (transforms.empty()) {
+            return -1;
+        }
+        if (transformVarbit != -1) {
+            return varProvider.getVarbit(transformVarbit);
+        }
+        if (transformVarp != -1) {
+            return varProvider.getVarp(transformVarp);
+        }
+        return -1;
+    }
+
+    [[nodiscard]] i32 resolveTransformId(i32 transformIndex) const noexcept {
+        if (transforms.empty()) {
+            return -1;
+        }
+        i32 transformId = transforms[transforms.size() - 1];
+        if (transformIndex >= 0 && transformIndex < static_cast<i32>(transforms.size()) - 1) {
+            transformId = transforms[static_cast<std::size_t>(transformIndex)];
+        }
+        return transformId;
+    }
+
+    template <typename TryLoadFn>
+    [[nodiscard]] const NpcType* transform(const VarProvider& varProvider, const TryLoadFn& tryLoad) const noexcept {
+        const i32 transformId = resolveTransformId(resolveTransformIndex(varProvider));
+        if (transformId == -1) {
+            return nullptr;
+        }
+        const NpcType* transformed = nullptr;
+        const Status s = tryLoad(transformId, &transformed);
+        if (!ok(s)) {
+            return nullptr;
+        }
+        return transformed;
+    }
 };
 
 } // namespace rs
-

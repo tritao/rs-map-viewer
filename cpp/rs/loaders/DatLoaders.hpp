@@ -9,16 +9,15 @@
 #include "../types.hpp"
 #include "CacheSession.hpp"
 #include "InitError.hpp"
-#include "OldConfigLoaders.hpp"
 
 namespace rs {
 
 // High-level loader assembly for Dat caches (pre-dat2), mirroring `src/rs/loaders/DatLoaders.ts`.
 //
-// NOTE: This is a minimal Dat loader stack: old config types + textures + map sprites.
+// NOTE: This is a minimal Dat loader stack: textures + map sprites.
+// Configs are provided through `session.config` (tagged by cache layout).
 struct DatLoaders final {
     CacheSession session{};
-    OldConfigLoaders configs{};
 
     // Media sprites from configs index media archive (mapscene.dat + mapfunction.dat).
     Vec<IndexedSprite> mapScenes{};

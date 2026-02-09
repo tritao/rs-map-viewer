@@ -20,7 +20,7 @@ namespace rs {
 
 // Minimal Dat/Legacy config loader set, mirroring TS DatLoaders/LegacyLoaders.
 // Uses legacy `<name>.dat` streams and `<name>.dat`+`<name>.idx` indexed blobs from the config archive.
-struct OldConfigLoaders final {
+struct DatLegacyConfigLoaders final {
     // Own the config archive to keep file byte buffers alive for indexed loaders.
     Archive configArchive{};
 
@@ -33,18 +33,18 @@ struct OldConfigLoaders final {
     // Present only for Dat caches where revision >= 254.
     DatTypeLoader<VarBitType> varbits{};
 
-    static Expected<OldConfigLoaders, InitError> tryCreate(
+    static Expected<DatLegacyConfigLoaders, InitError> tryCreate(
         const CacheInfo& cacheInfo,
         CacheType cacheType,
         Archive configArchive,
         Allocator& alloc) noexcept {
-        OldConfigLoaders out{};
+        DatLegacyConfigLoaders out{};
         out.configArchive = rs::move(configArchive);
 
         {
             auto r = DatTypeLoader<OverlayFloorType>::fromNamedFiles(cacheInfo, out.configArchive, "flo", alloc);
             if (!r.isOk()) {
-                return Expected<OldConfigLoaders, InitError>::err(
+                return Expected<DatLegacyConfigLoaders, InitError>::err(
                     InitError::decodeFailed(r.status(), "DatTypeLoader<OverlayFloorType>(flo)"));
             }
             out.floors = rs::move(r.value());
@@ -52,7 +52,7 @@ struct OldConfigLoaders final {
         {
             auto r = DatTypeLoader<SeqType>::fromNamedFiles(cacheInfo, out.configArchive, "seq", alloc);
             if (!r.isOk()) {
-                return Expected<OldConfigLoaders, InitError>::err(
+                return Expected<DatLegacyConfigLoaders, InitError>::err(
                     InitError::decodeFailed(r.status(), "DatTypeLoader<SeqType>(seq)"));
             }
             out.seqs = rs::move(r.value());
@@ -60,7 +60,7 @@ struct OldConfigLoaders final {
         {
             auto r = IndexedDatTypeLoader<LocType>::fromNamedFiles(cacheInfo, out.configArchive, "loc", alloc);
             if (!r.isOk()) {
-                return Expected<OldConfigLoaders, InitError>::err(
+                return Expected<DatLegacyConfigLoaders, InitError>::err(
                     InitError::decodeFailed(r.status(), "IndexedDatTypeLoader<LocType>(loc)"));
             }
             out.locs = rs::move(r.value());
@@ -68,7 +68,7 @@ struct OldConfigLoaders final {
         {
             auto r = IndexedDatTypeLoader<NpcType>::fromNamedFiles(cacheInfo, out.configArchive, "npc", alloc);
             if (!r.isOk()) {
-                return Expected<OldConfigLoaders, InitError>::err(
+                return Expected<DatLegacyConfigLoaders, InitError>::err(
                     InitError::decodeFailed(r.status(), "IndexedDatTypeLoader<NpcType>(npc)"));
             }
             out.npcs = rs::move(r.value());
@@ -76,7 +76,7 @@ struct OldConfigLoaders final {
         {
             auto r = IndexedDatTypeLoader<ObjType>::fromNamedFiles(cacheInfo, out.configArchive, "obj", alloc);
             if (!r.isOk()) {
-                return Expected<OldConfigLoaders, InitError>::err(
+                return Expected<DatLegacyConfigLoaders, InitError>::err(
                     InitError::decodeFailed(r.status(), "IndexedDatTypeLoader<ObjType>(obj)"));
             }
             out.objs = rs::move(r.value());
@@ -88,13 +88,13 @@ struct OldConfigLoaders final {
         if (cacheType == CacheType::Dat && cacheInfo.revision >= 254) {
             auto r = DatTypeLoader<VarBitType>::fromNamedFiles(cacheInfo, out.configArchive, "varbit", alloc);
             if (!r.isOk()) {
-                return Expected<OldConfigLoaders, InitError>::err(
+                return Expected<DatLegacyConfigLoaders, InitError>::err(
                     InitError::decodeFailed(r.status(), "DatTypeLoader<VarBitType>(varbit)"));
             }
             out.varbits = rs::move(r.value());
         }
 
-        return Expected<OldConfigLoaders, InitError>::ok(rs::move(out));
+        return Expected<DatLegacyConfigLoaders, InitError>::ok(rs::move(out));
     }
 };
 

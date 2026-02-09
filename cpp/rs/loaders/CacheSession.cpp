@@ -1,12 +1,48 @@
 #include "CacheSession.hpp"
 
+#include "DatLegacyConfigLoaders.hpp"
+#include "../cache/ConfigArchiveId.hpp"
 #include "../cache/format/ArchiveFile.hpp"
 #include "../cache/IndexId.hpp"
+#include "../config/defaults/GraphicsDefaults.hpp"
 #include "../core/Move.hpp"
 #include "../core/Status.hpp"
 #include "../types.hpp"
 
 namespace rs {
+
+Expected<GraphicsDefaults, InitError> CacheSession::tryGetGraphicsDefaults(Allocator& alloc) const noexcept {
+    if (!cacheSystem) {
+        return Expected<GraphicsDefaults, InitError>::err(
+            InitError::invalidArgument("CacheSession: cacheSystem is null"));
+    }
+    auto r = GraphicsDefaults::tryCreate(cacheInfo, *cacheSystem, alloc);
+    if (!r.isOk()) {
+        return Expected<GraphicsDefaults, InitError>::err(
+            InitError::decodeFailed(r.status(), "GraphicsDefaults::tryCreate"));
+    }
+    return Expected<GraphicsDefaults, InitError>::ok(rs::move(r.value()));
+}
+
+static Status tryGetIndexChecked(const CacheSystem& cacheSystem, i32 indexId, const CacheIndex** out) noexcept {
+    if (!out) return Status::InvalidArgument;
+    *out = nullptr;
+    return cacheSystem.getIndex(indexId, out);
+}
+
+static Expected<Archive, InitError> tryGetArchiveChecked(
+    const CacheSystem& cacheSystem,
+    i32 indexId,
+    i32 archiveId,
+    const char* context,
+    Allocator& alloc) noexcept {
+    auto archRes = cacheSystem.getArchive(indexId, archiveId, alloc);
+    if (!archRes.isOk()) {
+        return Expected<Archive, InitError>::err(
+            InitError::missingArchive(indexId, archiveId, archRes.status(), context));
+    }
+    return Expected<Archive, InitError>::ok(rs::move(archRes.value()));
+}
 
 static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
     const CacheSystem& cacheSystem,
@@ -21,10 +57,14 @@ static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
 
     if (cacheType == CacheType::Dat) {
         // Dat textures: stored in configs index (0), archive id 6 (DatConfigArchiveId::textures).
-        auto archRes = cacheSystem.getArchive(static_cast<i32>(DatIndexId::configs), static_cast<i32>(DatConfigArchiveId::textures), alloc);
+        auto archRes = tryGetArchiveChecked(
+            cacheSystem,
+            static_cast<i32>(DatIndexId::configs),
+            static_cast<i32>(DatConfigArchiveId::textures),
+            "dat textures archive",
+            alloc);
         if (!archRes.isOk()) {
-            return Expected<TextureLoaders, InitError>::err(
-                InitError::missingArchive(static_cast<i32>(DatIndexId::configs), static_cast<i32>(DatConfigArchiveId::textures), archRes.status(), "dat textures archive"));
+            return Expected<TextureLoaders, InitError>::err(rs::move(archRes.error()));
         }
         Archive archive = rs::move(archRes.value());
 
@@ -48,10 +88,14 @@ static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
 
     if (cacheType == CacheType::Legacy) {
         // Legacy textures: stored in textures index (2), archive id 0.
-        auto archRes = cacheSystem.getArchive(static_cast<i32>(LegacyIndexId::textures), 0, alloc);
+        auto archRes = tryGetArchiveChecked(
+            cacheSystem,
+            static_cast<i32>(LegacyIndexId::textures),
+            0,
+            "legacy textures archive",
+            alloc);
         if (!archRes.isOk()) {
-            return Expected<TextureLoaders, InitError>::err(
-                InitError::missingArchive(static_cast<i32>(LegacyIndexId::textures), 0, archRes.status(), "legacy textures archive"));
+            return Expected<TextureLoaders, InitError>::err(rs::move(archRes.error()));
         }
         Archive archive = rs::move(archRes.value());
 
@@ -69,7 +113,7 @@ static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
 
     // Sprites: index id 8 (archiveId=spriteId, fileId=0).
     const CacheIndex* spriteIndex = nullptr;
-    Status s = cacheSystem.getIndex(static_cast<i32>(Dat2IndexId::sprites), &spriteIndex);
+    Status s = tryGetIndexChecked(cacheSystem, static_cast<i32>(Dat2IndexId::sprites), &spriteIndex);
     if (!ok(s) || !spriteIndex) {
         return Expected<TextureLoaders, InitError>::err(
             InitError::missingIndex(static_cast<i32>(Dat2IndexId::sprites), ok(s) ? Status::NotFound : s, "sprites index"));
@@ -108,7 +152,7 @@ static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
     if (rules.texture.mode == TextureMode::Materials) {
         // Fetch texture definitions index (smart addressing differs by cache layout).
         const CacheIndex* textureIndex = nullptr;
-        s = cacheSystem.getIndex(static_cast<i32>(Dat2IndexId::textures), &textureIndex);
+        s = tryGetIndexChecked(cacheSystem, static_cast<i32>(Dat2IndexId::textures), &textureIndex);
         if (!ok(s) || !textureIndex) {
             return Expected<TextureLoaders, InitError>::err(
                 InitError::missingIndex(static_cast<i32>(Dat2IndexId::textures), ok(s) ? Status::NotFound : s, "textures index"));
@@ -116,7 +160,7 @@ static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
 
         // Materials: rs2 index 26, archive 0 file 0.
         const CacheIndex* materialsIndex = nullptr;
-        s = cacheSystem.getIndex(static_cast<i32>(Rs2IndexId::materials), &materialsIndex);
+        s = tryGetIndexChecked(cacheSystem, static_cast<i32>(Rs2IndexId::materials), &materialsIndex);
         if (!ok(s) || !materialsIndex) {
             return Expected<TextureLoaders, InitError>::err(
                 InitError::missingIndex(static_cast<i32>(Rs2IndexId::materials), ok(s) ? Status::NotFound : s, "materials index"));
@@ -182,6 +226,124 @@ static Expected<TextureLoaders, InitError> tryCreateTextureLoaders(
     return Expected<TextureLoaders, InitError>::ok(rs::move(out));
 }
 
+static ModelLoaders createModelLoaders(const CacheSystem& cacheSystem, const CacheInfo& cacheInfo, Allocator& alloc) noexcept {
+    ModelLoaders out{};
+    const CacheType cacheType = detectCacheType(cacheInfo);
+
+    i32 modelIndexId = -1;
+    i32 seqFrameIndexId = -1;
+    if (cacheType == CacheType::Dat2) {
+        modelIndexId = static_cast<i32>(Dat2IndexId::models);
+        seqFrameIndexId = static_cast<i32>(Dat2IndexId::animations);
+    } else if (cacheType == CacheType::Dat) {
+        modelIndexId = static_cast<i32>(DatIndexId::models);
+        seqFrameIndexId = static_cast<i32>(DatIndexId::animations);
+    }
+
+    if (modelIndexId >= 0) {
+        const CacheIndex* modelIndex = nullptr;
+        const Status s = tryGetIndexChecked(cacheSystem, modelIndexId, &modelIndex);
+        if (ok(s) && modelIndex) {
+            out.modelBytes = IndexFileBytesProvider(modelIndex, /*fileId=*/0);
+            out.models = IndexModelLoader(out.modelBytes, alloc);
+            out.modelKind = ModelLoaders::ModelKind::Index;
+            out.modelStatus = Status::Ok;
+        } else {
+            out.modelKind = ModelLoaders::ModelKind::None;
+            out.modelStatus = ok(s) ? Status::NotFound : s;
+        }
+    } else if (cacheType == CacheType::Legacy) {
+        auto archRes = cacheSystem.getArchive(static_cast<i32>(LegacyIndexId::models), 0, alloc);
+        if (!archRes.isOk()) {
+            out.modelKind = ModelLoaders::ModelKind::None;
+            out.modelStatus = archRes.status();
+        } else {
+            auto legacyRes = LegacyModelLoader::create(archRes.value(), alloc);
+            if (!legacyRes.isOk()) {
+                out.modelKind = ModelLoaders::ModelKind::None;
+                out.modelStatus = legacyRes.status();
+            } else {
+                out.legacyModels = rs::move(legacyRes.value());
+                out.modelKind = ModelLoaders::ModelKind::Legacy;
+                out.modelStatus = Status::Ok;
+            }
+        }
+    }
+
+    if (seqFrameIndexId >= 0) {
+        const CacheIndex* seqFrameIndex = nullptr;
+        const Status s = tryGetIndexChecked(cacheSystem, seqFrameIndexId, &seqFrameIndex);
+        if (ok(s) && seqFrameIndex) {
+            out.seqFrameBytes = IndexFileBytesProvider(seqFrameIndex, /*fileId=*/0);
+            out.seqFrameStatus = Status::Ok;
+            if (cacheType == CacheType::Dat) {
+                auto datFramesRes = DatSeqFrameLoader::create(out.seqFrameBytes, alloc);
+                if (!datFramesRes.isOk()) {
+                    out.seqFrameStatus = datFramesRes.status();
+                    out.seqFrameKind = ModelLoaders::SeqFrameKind::None;
+                } else {
+                    out.datSeqFrames = rs::move(datFramesRes.value());
+                    out.seqFrameKind = ModelLoaders::SeqFrameKind::Dat;
+                }
+            }
+        } else {
+            out.seqFrameStatus = ok(s) ? Status::NotFound : s;
+        }
+    }
+
+    if (cacheType == CacheType::Dat2) {
+        const CacheIndex* animationsIndex = nullptr;
+        const CacheIndex* skeletonsIndex = nullptr;
+        const Status animS = tryGetIndexChecked(cacheSystem, static_cast<i32>(Dat2IndexId::animations), &animationsIndex);
+        const Status skelS = tryGetIndexChecked(cacheSystem, static_cast<i32>(Dat2IndexId::skeletons), &skeletonsIndex);
+        if (ok(animS) && animationsIndex && ok(skelS) && skeletonsIndex) {
+            out.skeletalSeqBytes = PackedIdGroupBytesProvider(animationsIndex);
+            out.skeletalSeqStatus = Status::Ok;
+
+            out.seqBaseStatus = Status::Ok;
+            out.seqFrameKind = ModelLoaders::SeqFrameKind::Dat2;
+            const IndexFileBytesProvider baseSource(skeletonsIndex, /*fileId=*/0);
+            out.seqBases = Dat2SeqBaseLoader(cacheInfo, baseSource, alloc);
+            out.seqFrames = Dat2SeqFrameLoader(
+                cacheInfo,
+                PackedIdGroupBytesProvider(animationsIndex),
+                Dat2SeqBaseLoader(cacheInfo, baseSource, alloc),
+                alloc);
+            out.skeletalSeqs = ProviderSkeletalSeqLoader(
+                PackedIdGroupBytesProvider(animationsIndex),
+                Dat2SeqBaseLoader(cacheInfo, baseSource, alloc),
+                alloc);
+        } else if (!ok(animS)) {
+            out.skeletalSeqStatus = animS;
+            out.seqBaseStatus = ok(skelS) ? Status::NotFound : skelS;
+        } else if (!ok(skelS)) {
+            out.skeletalSeqStatus = skelS;
+            out.seqBaseStatus = skelS;
+        } else {
+            out.skeletalSeqStatus = Status::NotFound;
+            out.seqBaseStatus = Status::NotFound;
+        }
+    }
+
+    if (cacheType == CacheType::Legacy) {
+        auto modelArchiveRes = cacheSystem.getArchive(static_cast<i32>(LegacyIndexId::models), 0, alloc);
+        if (modelArchiveRes.isOk()) {
+            auto seqRes = LegacySeqFrameLoader::create(modelArchiveRes.value(), alloc);
+            if (seqRes.isOk()) {
+                out.legacySeqFrames = rs::move(seqRes.value());
+                out.seqFrameKind = ModelLoaders::SeqFrameKind::Legacy;
+                out.seqFrameStatus = Status::Ok;
+            } else {
+                out.seqFrameStatus = seqRes.status();
+            }
+        } else {
+            out.seqFrameStatus = modelArchiveRes.status();
+        }
+    }
+
+    return out;
+}
+
 Expected<CacheSession, InitError> CacheSession::tryCreate(const CacheSystem& cacheSystem, const CacheInfo& cacheInfo, Allocator& alloc) noexcept {
     CacheSession out{};
     out.cacheSystem = &cacheSystem;
@@ -194,12 +356,36 @@ Expected<CacheSession, InitError> CacheSession::tryCreate(const CacheSystem& cac
         if (!cfgRes.isOk()) {
             return Expected<CacheSession, InitError>::err(rs::move(cfgRes.error()));
         }
-        out.configs = rs::move(cfgRes.value());
-        out.configsStatus = Status::Ok;
+        out.config.kind = CacheSession::ConfigLayerKind::Dat2;
+        out.config.status = Status::Ok;
+        out.config.dat2 = rs::move(cfgRes.value());
+        out.config.datLegacy = DatLegacyConfigLoaders{};
     } else {
-        // Config loaders for Dat/Legacy are not ported yet.
-        out.configs = ConfigLoaders{};
-        out.configsStatus = Status::Unsupported;
+        // Dat/Legacy: load named .dat/.idx config streams.
+        i32 indexId = -1;
+        i32 archiveId = -1;
+        if (cacheType == CacheType::Dat) {
+            indexId = static_cast<i32>(DatIndexId::configs);
+            archiveId = static_cast<i32>(DatConfigArchiveId::configs);
+        } else {
+            indexId = static_cast<i32>(LegacyIndexId::configs);
+            archiveId = 0;
+        }
+
+        auto archRes = tryGetArchiveChecked(cacheSystem, indexId, archiveId, "old configs archive", alloc);
+        if (!archRes.isOk()) {
+            return Expected<CacheSession, InitError>::err(rs::move(archRes.error()));
+        }
+
+        auto oldRes = DatLegacyConfigLoaders::tryCreate(cacheInfo, cacheType, rs::move(archRes.value()), alloc);
+        if (!oldRes.isOk()) {
+            return Expected<CacheSession, InitError>::err(rs::move(oldRes.error()));
+        }
+
+        out.config.kind = CacheSession::ConfigLayerKind::DatLegacy;
+        out.config.status = Status::Ok;
+        out.config.dat2 = ConfigLoaders{};
+        out.config.datLegacy = rs::move(oldRes.value());
     }
 
     auto texRes = tryCreateTextureLoaders(cacheSystem, cacheInfo, out.rules, alloc);
@@ -207,6 +393,7 @@ Expected<CacheSession, InitError> CacheSession::tryCreate(const CacheSystem& cac
         return Expected<CacheSession, InitError>::err(rs::move(texRes.error()));
     }
     out.textures = rs::move(texRes.value());
+    out.modelLoaders = createModelLoaders(cacheSystem, cacheInfo, alloc);
 
     return Expected<CacheSession, InitError>::ok(rs::move(out));
 }

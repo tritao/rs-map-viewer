@@ -46,20 +46,6 @@ Expected<DatLoaders, InitError> DatLoaders::tryCreate(
     }
     out.session = rs::move(sessionRes.value());
 
-    // Config archive: configs index (0), archive id 2.
-    {
-        auto cfgRes = cacheSystem.getArchive(static_cast<i32>(DatIndexId::configs), static_cast<i32>(DatConfigArchiveId::configs), alloc);
-        if (!cfgRes.isOk()) {
-            return Expected<DatLoaders, InitError>::err(
-                InitError::missingArchive(static_cast<i32>(DatIndexId::configs), static_cast<i32>(DatConfigArchiveId::configs), cfgRes.status(), "dat config archive"));
-        }
-        auto loadersRes = OldConfigLoaders::tryCreate(cacheInfo, CacheType::Dat, rs::move(cfgRes.value()), alloc);
-        if (!loadersRes.isOk()) {
-            return Expected<DatLoaders, InitError>::err(rs::move(loadersRes.error()));
-        }
-        out.configs = rs::move(loadersRes.value());
-    }
-
     // Media archive: configs index (0), archive id 4.
     auto mediaRes = cacheSystem.getArchive(static_cast<i32>(DatIndexId::configs), static_cast<i32>(DatConfigArchiveId::media), alloc);
     if (!mediaRes.isOk()) {

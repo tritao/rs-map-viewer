@@ -45,20 +45,6 @@ Expected<LegacyLoaders, InitError> LegacyLoaders::tryCreate(
     }
     out.session = rs::move(sessionRes.value());
 
-    // Config archive: configs index (0), archive id 0.
-    {
-        auto cfgRes = cacheSystem.getArchive(static_cast<i32>(LegacyIndexId::configs), 0, alloc);
-        if (!cfgRes.isOk()) {
-            return Expected<LegacyLoaders, InitError>::err(
-                InitError::missingArchive(static_cast<i32>(LegacyIndexId::configs), 0, cfgRes.status(), "legacy config archive"));
-        }
-        auto loadersRes = OldConfigLoaders::tryCreate(cacheInfo, CacheType::Legacy, rs::move(cfgRes.value()), alloc);
-        if (!loadersRes.isOk()) {
-            return Expected<LegacyLoaders, InitError>::err(rs::move(loadersRes.error()));
-        }
-        out.configs = rs::move(loadersRes.value());
-    }
-
     // Media archive: index id 1, archive id 0.
     auto mediaRes = cacheSystem.getArchive(static_cast<i32>(LegacyIndexId::media), 0, alloc);
     if (!mediaRes.isOk()) {

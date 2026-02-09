@@ -5,6 +5,15 @@
 
 namespace rs {
 
+Loaders::Capabilities Loaders::capabilitiesFor(const CacheSession& session) noexcept {
+    Capabilities caps{};
+    caps.cacheType = detectCacheType(session.cacheInfo);
+    caps.hasQuestTypeLoader = session.hasQuestTypeLoader();
+    caps.hasSkeletalSeqLoader = session.hasSkeletalSeqLoader();
+    caps.hasDistinctUnderlayTypeLoader = session.hasDistinctUnderlayTypeLoader();
+    return caps;
+}
+
 Expected<Loaders, InitError> Loaders::tryCreate(
     const CacheSystem& cacheSystem,
     const CacheInfo& cacheInfo,
@@ -20,6 +29,7 @@ Expected<Loaders, InitError> Loaders::tryCreate(
         }
         out.kind = LoadersKind::Dat2;
         out.dat2 = rs::move(r.value());
+        out.capabilities = capabilitiesFor(out.dat2.session);
         return Expected<Loaders, InitError>::ok(rs::move(out));
     }
 
@@ -30,6 +40,7 @@ Expected<Loaders, InitError> Loaders::tryCreate(
         }
         out.kind = LoadersKind::Dat;
         out.dat = rs::move(r.value());
+        out.capabilities = capabilitiesFor(out.dat.session);
         return Expected<Loaders, InitError>::ok(rs::move(out));
     }
 
@@ -40,6 +51,7 @@ Expected<Loaders, InitError> Loaders::tryCreate(
         }
         out.kind = LoadersKind::Legacy;
         out.legacy = rs::move(r.value());
+        out.capabilities = capabilitiesFor(out.legacy.session);
         return Expected<Loaders, InitError>::ok(rs::move(out));
     }
 
@@ -47,4 +59,3 @@ Expected<Loaders, InitError> Loaders::tryCreate(
 }
 
 } // namespace rs
-

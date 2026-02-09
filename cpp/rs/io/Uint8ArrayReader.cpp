@@ -157,6 +157,21 @@ Status Uint8ArrayReader::readUnsignedInt(u32* out) noexcept {
     return Status::Ok;
 }
 
+Status Uint8ArrayReader::readFloat(float* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    u32 bits = 0;
+    const Status s = readUnsignedInt(&bits);
+    if (!ok(s)) {
+        return s;
+    }
+    float f = 0.0f;
+    std::memcpy(&f, &bits, sizeof(float));
+    *out = f;
+    return Status::Ok;
+}
+
 Status Uint8ArrayReader::readBigSmart(i32* out) noexcept {
     if (!out) {
         return Status::InvalidArgument;

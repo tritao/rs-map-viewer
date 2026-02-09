@@ -179,7 +179,14 @@ Expected<Dat2Loaders, InitError> Dat2Loaders::tryCreate(
     out.session = rs::move(sessionRes.value());
 
     // Assemble optional map sprite metadata, mirroring TS rules.
-    if (out.session.rules.mapScenes == MapScenesMode::Archive) {
+    MapScenesMode mapScenesMode = MapScenesMode::GraphicsDefaults;
+    MapFunctionsMode mapFunctionsMode = MapFunctionsMode::GraphicsDefaults;
+    if (!ok(out.session.tryGetMapRules(&mapScenesMode, &mapFunctionsMode))) {
+        return Expected<Dat2Loaders, InitError>::err(
+            InitError::invalidArgument("Dat2Loaders: failed to get map rules"));
+    }
+
+    if (mapScenesMode == MapScenesMode::Archive) {
         auto r = fillSpriteIdTableFromMapScenesArchive(out.mapSceneSpriteIds, cacheInfo, cacheSystem, alloc);
         if (!r.isOk()) {
             return Expected<Dat2Loaders, InitError>::err(rs::move(r.error()));
@@ -188,8 +195,15 @@ Expected<Dat2Loaders, InitError> Dat2Loaders::tryCreate(
         tryLoadDefaultsSpriteGroup(out, true, cacheInfo, cacheSystem, alloc);
     }
 
-    if (out.session.rules.mapFunctions == MapFunctionsMode::OsrsArchive || out.session.rules.mapFunctions == MapFunctionsMode::Rs2Archive) {
-        auto r = fillSpriteIdTableFromMapFunctionsArchive(out.mapElementSpriteIds, cacheInfo, cacheSystem, out.session.rules, alloc);
+    if (mapFunctionsMode == MapFunctionsMode::OsrsArchive || mapFunctionsMode == MapFunctionsMode::Rs2Archive) {
+        CacheRules rules{};
+        const CacheRules* rulesPtr = nullptr;
+        if (!ok(out.session.tryGetCacheRules(&rulesPtr)) || !rulesPtr) {
+            return Expected<Dat2Loaders, InitError>::err(
+                InitError::invalidArgument("Dat2Loaders: failed to get cache rules"));
+        }
+        rules = *rulesPtr;
+        auto r = fillSpriteIdTableFromMapFunctionsArchive(out.mapElementSpriteIds, cacheInfo, cacheSystem, rules, alloc);
         if (!r.isOk()) {
             return Expected<Dat2Loaders, InitError>::err(rs::move(r.error()));
         }
@@ -201,4 +215,3 @@ Expected<Dat2Loaders, InitError> Dat2Loaders::tryCreate(
 }
 
 } // namespace rs
-

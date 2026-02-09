@@ -10,6 +10,7 @@
 #include "../../types.hpp"
 #include "../ParamsMap.hpp"
 #include "../TypeDecode.hpp"
+#include "../vartype/VarProvider.hpp"
 
 namespace rs {
 
@@ -427,6 +428,10 @@ struct LocType {
                 v = -1;
             }
             seqId = v;
+            return Status::Ok;
+        }
+        if (opcode == 25) {
+            // TS marks opcode 25 as legacy no-op ("disposeAlpha?").
             return Status::Ok;
         }
         if (opcode == 27) {
@@ -1015,11 +1020,53 @@ struct LocType {
             ambientSoundSize = static_cast<i32>(v);
             return Status::Ok;
         }
+        if (opcode == 189 || opcode == 190 || opcode == 191) {
+            // TS treats these as revision-gated unknown/no-op fields.
+            return Status::Ok;
+        }
         if (opcode == 249) {
             return readParamsMap(reader, *ctx.strings, *ctx.alloc, &params);
         }
 
         return Status::Unsupported;
+    }
+
+    [[nodiscard]] i32 resolveTransformIndex(const VarProvider& varProvider) const noexcept {
+        if (transforms.empty()) {
+            return -1;
+        }
+        if (transformVarbit != -1) {
+            return varProvider.getVarbit(transformVarbit);
+        }
+        if (transformVarp != -1) {
+            return varProvider.getVarp(transformVarp);
+        }
+        return -1;
+    }
+
+    [[nodiscard]] i32 resolveTransformId(i32 transformIndex) const noexcept {
+        if (transforms.empty()) {
+            return -1;
+        }
+        i32 transformId = transforms[transforms.size() - 1];
+        if (transformIndex >= 0 && transformIndex < static_cast<i32>(transforms.size()) - 1) {
+            transformId = transforms[static_cast<std::size_t>(transformIndex)];
+        }
+        return transformId;
+    }
+
+    template <typename TryLoadFn>
+    [[nodiscard]] const LocType* transform(const VarProvider& varProvider, const TryLoadFn& tryLoad) const noexcept {
+        const i32 transformId = resolveTransformId(resolveTransformIndex(varProvider));
+        if (transformId == -1) {
+            return nullptr;
+        }
+        const LocType* transformed = nullptr;
+        const Status s = tryLoad(transformId, &transformed);
+        if (!ok(s)) {
+            return nullptr;
+        }
+        return transformed;
     }
 
     void post() noexcept {
@@ -1041,4 +1088,3 @@ struct LocType {
 };
 
 } // namespace rs
-

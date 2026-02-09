@@ -195,6 +195,7 @@ endif()
 
 if (RS_BUILD_TOOLS)
     add_executable(rs_cli
+        tools/CliCacheOpen.cpp
         tools/rs_cli.cpp
     )
 
