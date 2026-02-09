@@ -83,6 +83,8 @@
     "rs:cpp-map-render-wasm": "bash scripts/cpp/build-map-render-wasm.sh",
     "rs:map-render-wasm-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-wasm-parity.ts",
     "rs:map-render-contract-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-contract-regression.ts",
+    "rs:map-render-scene-pack-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-scene-pack-parity.ts",
+    "rs:map-render-backend-shadow": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-backend-shadow.ts",
     "rs:map-render-backend-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-backend-parity.ts",
     "rs:map-render-backend-bench": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-backend-bench.ts",
     "cache:parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/cache-parity.ts",
