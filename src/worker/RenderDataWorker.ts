@@ -143,7 +143,10 @@ async function initWorker(
         locModelLoader,
         varProvider,
     });
-    const sceneBackendKind = options?.sceneBackend ?? "ts";
+    const mapRenderBackendKind = options?.mapRenderBackend ?? "ts";
+    // For cpp-wasm map-render, use the cpp-wasm scene seam by default as well.
+    const sceneBackendKind =
+        options?.sceneBackend ?? (mapRenderBackendKind === "cpp-wasm" ? "cpp-wasm" : "ts");
     const sceneBuildBackend = createSceneBuildBackend(sceneBackendKind, {
         sceneBuilder,
         mapBytesProvider,
@@ -156,7 +159,6 @@ async function initWorker(
         mapScenes,
         mapFunctions,
     );
-    const mapRenderBackendKind = options?.mapRenderBackend ?? "ts";
     const mapRenderDataBackend = createMapRenderDataBackend(
         mapRenderBackendKind,
         {
