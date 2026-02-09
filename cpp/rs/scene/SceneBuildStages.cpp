@@ -1,9 +1,12 @@
 #include "SceneBuildStages.hpp"
 
+#include <cmath>
+
 #include "../cache/CacheInfo.hpp"
 #include "../config/loctype/LocType.hpp"
 #include "../map/LocPlacementsDecode.hpp"
 #include "../map/TerrainSquareDecode.hpp"
+#include "../util/ColorUtil.hpp"
 
 namespace rs {
 
@@ -15,6 +18,14 @@ constexpr i16 kWaterOverlayIdPlusOne = 6; // SceneBuilder.WATER_OVERLAY_ID + 1
 constexpr u8 kRenderBlocked = static_cast<u8>(SceneTileRenderFlag::Blocked);
 constexpr u8 kRenderBridge = static_cast<u8>(SceneTileRenderFlag::Bridge);
 constexpr u8 kRenderOnLower = static_cast<u8>(SceneTileRenderFlag::RenderOnLowerLevel);
+constexpr i32 kBlendRadius = 5; // SceneBuilder.BLEND_RADIUS
+
+constexpr i32 kLightDirX = -50;
+constexpr i32 kLightDirY = -10;
+constexpr i32 kLightDirZ = -50;
+constexpr i32 kLightIntensityBase = 96;
+constexpr i32 kLightIntensityFactor = 768;
+constexpr i32 kHeightScale = 65536;
 
 static i32 floorDiv(i32 n, i32 d) noexcept {
     const i32 q = n / d;
@@ -151,6 +162,212 @@ static void loadEmptyTerrain(
             scene.height(level, tileX, tileY) = scene.height(level, tileX - 1, tileY - 1);
         }
     }
+}
+
+static Status blendUnderlaysForLevel(
+    const SceneRuntimeServices& services,
+    SceneData& scene,
+    i32 level,
+    Vec<i32>* outColors) noexcept {
+    if (!outColors) {
+        return Status::InvalidArgument;
+    }
+    outColors->clear();
+    auto rr = outColors->resize(static_cast<std::size_t>(scene.sizeX) * static_cast<std::size_t>(scene.sizeY));
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    for (std::size_t i = 0; i < outColors->size(); i++) {
+        (*outColors)[i] = -1;
+    }
+
+    if (!services.underlayTypes) {
+        return Status::Ok;
+    }
+
+    const i32 maxSize = (scene.sizeX > scene.sizeY) ? scene.sizeX : scene.sizeY;
+    Vec<i32> hues(scene.allocator());
+    Vec<i32> sats(scene.allocator());
+    Vec<i32> light(scene.allocator());
+    Vec<i32> mul(scene.allocator());
+    Vec<i32> num(scene.allocator());
+
+    rr = hues.resize(static_cast<std::size_t>(maxSize));
+    if (!rr.isOk()) return rr.status();
+    rr = sats.resize(static_cast<std::size_t>(maxSize));
+    if (!rr.isOk()) return rr.status();
+    rr = light.resize(static_cast<std::size_t>(maxSize));
+    if (!rr.isOk()) return rr.status();
+    rr = mul.resize(static_cast<std::size_t>(maxSize));
+    if (!rr.isOk()) return rr.status();
+    rr = num.resize(static_cast<std::size_t>(maxSize));
+    if (!rr.isOk()) return rr.status();
+
+    for (i32 i = 0; i < maxSize; i++) {
+        hues[static_cast<std::size_t>(i)] = 0;
+        sats[static_cast<std::size_t>(i)] = 0;
+        light[static_cast<std::size_t>(i)] = 0;
+        mul[static_cast<std::size_t>(i)] = 0;
+        num[static_cast<std::size_t>(i)] = 0;
+    }
+
+    const i32 blendStartX = -kBlendRadius;
+    const i32 blendStartY = -kBlendRadius;
+    const i32 blendEndX = scene.sizeX + kBlendRadius;
+    const i32 blendEndY = scene.sizeY + kBlendRadius;
+
+    for (i32 xi = blendStartX; xi < blendEndX; xi++) {
+        for (i32 yi = 0; yi < scene.sizeY; yi++) {
+            const i32 xEast = xi + kBlendRadius;
+            if (xEast >= 0 && xEast < scene.sizeX) {
+                const i32 underlayId = static_cast<i32>(scene.underlay(level, xEast, yi));
+                if (underlayId > 0) {
+                    const UnderlayFloorType* underlay = nullptr;
+                    const Status s = services.underlayTypes->tryLoad(underlayId - 1, &underlay);
+                    if (ok(s) && underlay) {
+                        hues[static_cast<std::size_t>(yi)] += underlay->hue;
+                        sats[static_cast<std::size_t>(yi)] += underlay->saturation;
+                        light[static_cast<std::size_t>(yi)] += underlay->lightness;
+                        mul[static_cast<std::size_t>(yi)] += underlay->hueMultiplier;
+                        num[static_cast<std::size_t>(yi)]++;
+                    }
+                }
+            }
+            const i32 xWest = xi - kBlendRadius;
+            if (xWest >= 0 && xWest < scene.sizeX) {
+                const i32 underlayId = static_cast<i32>(scene.underlay(level, xWest, yi));
+                if (underlayId > 0) {
+                    const UnderlayFloorType* underlay = nullptr;
+                    const Status s = services.underlayTypes->tryLoad(underlayId - 1, &underlay);
+                    if (ok(s) && underlay) {
+                        hues[static_cast<std::size_t>(yi)] -= underlay->hue;
+                        sats[static_cast<std::size_t>(yi)] -= underlay->saturation;
+                        light[static_cast<std::size_t>(yi)] -= underlay->lightness;
+                        mul[static_cast<std::size_t>(yi)] -= underlay->hueMultiplier;
+                        num[static_cast<std::size_t>(yi)]--;
+                    }
+                }
+            }
+        }
+
+        if (xi < 0 || xi >= scene.sizeX) {
+            continue;
+        }
+
+        i32 runningHues = 0;
+        i32 runningSat = 0;
+        i32 runningLight = 0;
+        i32 runningMultiplier = 0;
+        i32 runningNumber = 0;
+
+        for (i32 yi = blendStartY; yi < blendEndY; yi++) {
+            const i32 yNorth = yi + kBlendRadius;
+            if (yNorth >= 0 && yNorth < scene.sizeY) {
+                runningHues += hues[static_cast<std::size_t>(yNorth)];
+                runningSat += sats[static_cast<std::size_t>(yNorth)];
+                runningLight += light[static_cast<std::size_t>(yNorth)];
+                runningMultiplier += mul[static_cast<std::size_t>(yNorth)];
+                runningNumber += num[static_cast<std::size_t>(yNorth)];
+            }
+            const i32 ySouth = yi - kBlendRadius;
+            if (ySouth >= 0 && ySouth < scene.sizeY) {
+                runningHues -= hues[static_cast<std::size_t>(ySouth)];
+                runningSat -= sats[static_cast<std::size_t>(ySouth)];
+                runningLight -= light[static_cast<std::size_t>(ySouth)];
+                runningMultiplier -= mul[static_cast<std::size_t>(ySouth)];
+                runningNumber -= num[static_cast<std::size_t>(ySouth)];
+            }
+
+            if (yi < 0 || yi >= scene.sizeY) {
+                continue;
+            }
+
+            const i32 underlayId = static_cast<i32>(scene.underlay(level, xi, yi));
+            if (underlayId <= 0 || runningMultiplier == 0 || runningNumber == 0) {
+                continue;
+            }
+
+            const i32 avgHue = static_cast<i32>((static_cast<i64>(runningHues) * 256) / runningMultiplier);
+            const i32 avgSat = static_cast<i32>(runningSat / runningNumber);
+            const i32 avgLight = static_cast<i32>(runningLight / runningNumber);
+            (*outColors)[static_cast<std::size_t>(xi) * static_cast<std::size_t>(scene.sizeY) + static_cast<std::size_t>(yi)] =
+                packHsl(avgHue, avgSat, avgLight);
+        }
+    }
+
+    return Status::Ok;
+}
+
+static void calculateTileLightsForLevel(SceneData& scene, i32 level) noexcept {
+    const i32 lightMagnitude = static_cast<i32>(
+        std::sqrt(static_cast<double>(kLightDirX * kLightDirX + kLightDirY * kLightDirY + kLightDirZ * kLightDirZ)));
+    const i32 lightIntensityProduct = lightMagnitude * kLightIntensityFactor;
+    const i32 lightIntensity = lightIntensityProduct >> 8;
+    if (lightIntensity == 0) {
+        return;
+    }
+
+    for (i32 x = 0; x < scene.sizeX; x++) {
+        for (i32 y = 0; y < scene.sizeY; y++) {
+            scene.lightValue(level, x, y) = 0;
+        }
+    }
+
+    for (i32 x = 1; x < scene.sizeX - 1; x++) {
+        for (i32 y = 1; y < scene.sizeY - 1; y++) {
+            const i32 heightDeltaX = scene.height(level, x + 1, y) - scene.height(level, x - 1, y);
+            const i32 heightDeltaY = scene.height(level, x, y + 1) - scene.height(level, x, y - 1);
+
+            const i32 tileNormalLength = static_cast<i32>(
+                std::sqrt(static_cast<double>(heightDeltaY * heightDeltaY + heightDeltaX * heightDeltaX + kHeightScale)));
+            if (tileNormalLength <= 0) {
+                continue;
+            }
+            const i32 normalizedTileNormalX = static_cast<i32>((heightDeltaX * 256) / tileNormalLength);
+            const i32 normalizedTileNormalY = static_cast<i32>(kHeightScale / tileNormalLength);
+            const i32 normalizedTileNormalZ = static_cast<i32>((heightDeltaY * 256) / tileNormalLength);
+            const i32 dot = normalizedTileNormalX * kLightDirX +
+                normalizedTileNormalY * kLightDirY +
+                normalizedTileNormalZ * kLightDirZ;
+            const double lit = static_cast<double>(dot) / static_cast<double>(lightIntensity) +
+                static_cast<double>(kLightIntensityBase);
+            const i32 sunLight = static_cast<i32>(std::trunc(lit));
+            const u16 wrapped = static_cast<u16>(static_cast<u32>(sunLight) & 0xFFFFu);
+            scene.lightValue(level, x, y) = static_cast<i16>(wrapped);
+        }
+    }
+}
+
+static Status buildFinalizeSummaries(
+    const SceneRuntimeServices& services,
+    SceneData* scene) noexcept {
+    if (!scene) {
+        return Status::InvalidArgument;
+    }
+    Vec<i32> blended(scene->allocator());
+    for (i32 level = 0; level < scene->levels; level++) {
+        const Status bs = blendUnderlaysForLevel(services, *scene, level, &blended);
+        if (!ok(bs)) {
+            return bs;
+        }
+        calculateTileLightsForLevel(*scene, level);
+        for (i32 x = 0; x < scene->sizeX; x++) {
+            for (i32 y = 0; y < scene->sizeY; y++) {
+                const std::size_t idx = static_cast<std::size_t>(x) * static_cast<std::size_t>(scene->sizeY) + static_cast<std::size_t>(y);
+                scene->blendedUnderlay(level, x, y) = blended[idx];
+                scene->modelPresent(level, x, y) = 0;
+                if (x <= 0 || y <= 0 || x >= scene->sizeX - 1 || y >= scene->sizeY - 1) {
+                    continue;
+                }
+                const i32 underlayId = static_cast<i32>(scene->underlay(level, x, y)) - 1;
+                const i32 overlayId = static_cast<i32>(scene->overlay(level, x, y)) - 1;
+                if (underlayId != -1 || overlayId != -1) {
+                    scene->modelPresent(level, x, y) = 1;
+                }
+            }
+        }
+    }
+    return Status::Ok;
 }
 
 } // namespace
@@ -311,6 +528,31 @@ Status decodeLocsStage(
                     }
                 }
 
+                i32 seqId = resolved ? resolved->seqId : -1;
+                if (resolved && seqId == -1 && !resolved->randomSeqIds.empty()) {
+                    seqId = resolved->randomSeqIds[0];
+                }
+                const bool isEntity = (seqId != -1) ||
+                    (resolved && !resolved->transforms.empty()) ||
+                    context.locLoadType == SceneLocLoadType::NoModels;
+
+                i32 modelSignature = 0;
+                bool modelAvailable = false;
+                if (!isEntity && context.locLoadType == SceneLocLoadType::Models) {
+                    if (!services.locModels || !resolved) {
+                        return Status::InvalidArgument;
+                    }
+                    const Status ms = services.locModels->tryResolveModelSignature(
+                        *resolved,
+                        p.type,
+                        p.rotation,
+                        &modelSignature);
+                    if (!ok(ms)) {
+                        continue;
+                    }
+                    modelAvailable = true;
+                }
+
                 SceneLocPlacement placed{};
                 placed.originalId = p.id;
                 placed.resolvedId = resolved ? resolved->id : p.id;
@@ -319,6 +561,9 @@ Status decodeLocsStage(
                 placed.tileY = sceneY;
                 placed.type = p.type;
                 placed.rotation = p.rotation;
+                placed.renderKind = static_cast<u8>(isEntity ? 0 : 1);
+                placed.modelAvailable = static_cast<u8>(modelAvailable ? 1 : 0);
+                placed.modelSignature = modelAvailable ? modelSignature : 0;
                 auto rr = scene->locPlacements.pushBack(placed);
                 if (!rr.isOk()) {
                     return rr.status();
@@ -333,7 +578,6 @@ Status finalizeSceneStage(
     const SceneRuntimeServices& services,
     const SceneBuildContext& context,
     SceneData* scene) noexcept {
-    (void)services;
     if (!scene) {
         return Status::InvalidArgument;
     }
@@ -349,6 +593,10 @@ Status finalizeSceneStage(
                 scene->minLevel(level, x, y) = static_cast<u8>(minLevel);
             }
         }
+    }
+    const Status summaryStatus = buildFinalizeSummaries(services, scene);
+    if (!ok(summaryStatus)) {
+        return summaryStatus;
     }
     (void)context;
     return Status::Ok;

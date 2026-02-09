@@ -26,6 +26,9 @@ struct SceneLocPlacement final {
     i32 tileY = 0;
     i32 type = 0;
     i32 rotation = 0;
+    u8 renderKind = 0; // 0: entity/proxy, 1: static model
+    u8 modelAvailable = 0;
+    i32 modelSignature = 0;
 };
 
 struct SceneData final {
@@ -44,6 +47,9 @@ struct SceneData final {
     // Terrain collision and post-finalize metadata.
     Vec<u8> blockedByFloor{};
     Vec<u8> tileMinLevels{};
+    Vec<u8> tileModelPresent{};
+    Vec<i16> tileLightValues{};
+    Vec<i32> blendedUnderlayHsl{};
 
     Vec<SceneLocPlacement> locPlacements{};
 
@@ -64,6 +70,9 @@ struct SceneData final {
         tileRotations = Vec<u8>(alloc);
         blockedByFloor = Vec<u8>(alloc);
         tileMinLevels = Vec<u8>(alloc);
+        tileModelPresent = Vec<u8>(alloc);
+        tileLightValues = Vec<i16>(alloc);
+        blendedUnderlayHsl = Vec<i32>(alloc);
         locPlacements = Vec<SceneLocPlacement>(alloc);
 
         const std::size_t levelCount = static_cast<std::size_t>(levels);
@@ -85,6 +94,12 @@ struct SceneData final {
         rr = blockedByFloor.resize(levelCount * tileCount);
         if (!rr.isOk()) return rr;
         rr = tileMinLevels.resize(levelCount * tileCount);
+        if (!rr.isOk()) return rr;
+        rr = tileModelPresent.resize(levelCount * tileCount);
+        if (!rr.isOk()) return rr;
+        rr = tileLightValues.resize(levelCount * tileCount);
+        if (!rr.isOk()) return rr;
+        rr = blendedUnderlayHsl.resize(levelCount * tileCount);
         if (!rr.isOk()) return rr;
         return Result<void>::ok();
     }
@@ -138,7 +153,17 @@ struct SceneData final {
     u8& minLevel(i32 level, i32 tileX, i32 tileY) noexcept { return tileMinLevels[tileIdx(level, tileX, tileY)]; }
     const u8& minLevel(i32 level, i32 tileX, i32 tileY) const noexcept { return tileMinLevels[tileIdx(level, tileX, tileY)]; }
 
+    u8& modelPresent(i32 level, i32 tileX, i32 tileY) noexcept { return tileModelPresent[tileIdx(level, tileX, tileY)]; }
+    const u8& modelPresent(i32 level, i32 tileX, i32 tileY) const noexcept { return tileModelPresent[tileIdx(level, tileX, tileY)]; }
+
+    i16& lightValue(i32 level, i32 tileX, i32 tileY) noexcept { return tileLightValues[tileIdx(level, tileX, tileY)]; }
+    const i16& lightValue(i32 level, i32 tileX, i32 tileY) const noexcept { return tileLightValues[tileIdx(level, tileX, tileY)]; }
+
+    i32& blendedUnderlay(i32 level, i32 tileX, i32 tileY) noexcept { return blendedUnderlayHsl[tileIdx(level, tileX, tileY)]; }
+    const i32& blendedUnderlay(i32 level, i32 tileX, i32 tileY) const noexcept { return blendedUnderlayHsl[tileIdx(level, tileX, tileY)]; }
+
     [[nodiscard]] Allocator& allocator() noexcept { return *alloc_; }
+    [[nodiscard]] const Allocator& allocator() const noexcept { return *alloc_; }
 
 private:
     Allocator* alloc_ = nullptr;

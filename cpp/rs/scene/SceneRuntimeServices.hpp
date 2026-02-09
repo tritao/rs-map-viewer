@@ -24,9 +24,15 @@ struct LocTypeService {
     virtual Status tryLoad(i32 id, const LocType** out) const noexcept = 0;
 };
 
-// Typed placeholder until the C++ loc-model runtime service is introduced.
 struct LocModelService {
     virtual ~LocModelService() = default;
+    // Resolves whether a placement can be materialized as a static model and returns
+    // a stable signature for parity/debug surfaces.
+    virtual Status tryResolveModelSignature(
+        const LocType& locType,
+        i32 placementType,
+        i32 rotation,
+        i32* outSignature) const noexcept = 0;
 };
 
 // Mirrors `src/rs/scene/SceneRuntimeServices.ts` and keeps scene dependencies explicit.
