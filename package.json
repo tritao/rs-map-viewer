@@ -62,6 +62,7 @@
     "rs:loc-square-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/loc-square-parity.ts",
     "rs:npc-spawn-square-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/npc-spawn-square-parity.ts",
     "rs:map-square-inputs-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-square-inputs-parity.ts",
+    "rs:scene-square-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/scene-square-parity.ts",
     "rs:model-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/model-parity.ts",
     "rs:model-status-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/model-status-parity.ts",
     "rs:seqframe-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/seqframe-parity.ts",

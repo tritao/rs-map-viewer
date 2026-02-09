@@ -75,6 +75,7 @@
 #include "../rs/map/NpcSpawnsDecode.hpp"
 #include "../rs/map/TerrainSquare.hpp"
 #include "../rs/map/TerrainSquareDecode.hpp"
+#include "../rs/scene/BuildSceneFromMapBytesProvider.hpp"
 #include "../rs/model/skeletal/SkeletalEval.hpp"
 #include "../rs/types.hpp"
 #include "../rs/util/XXHash64.hpp"
@@ -98,6 +99,7 @@ static void printUsage() {
     std::cerr << "  loc_square_hashes   Hash decoded loc placements for map squares (dat2 only)\n\n";
     std::cerr << "  npc_spawn_square_hashes   Hash decoded npc spawns for map squares (dat2 only)\n\n";
     std::cerr << "  map_square_inputs_hashes   Hash combined decoded map-square inputs (dat2 only)\n\n";
+    std::cerr << "  scene_square_hashes   Hash staged scene outputs (terrain fill + loc transforms + min-levels, dat2 only)\n\n";
     std::cerr << "  model_hashes   Hash decoded model fields for ids (dat2/dat/legacy)\n\n";
     std::cerr << "  seq_frame_hashes   Hash decoded seq-frame fields for ids (dat2/dat/legacy)\n\n";
     std::cerr << "  skeletal_seq_hashes   Hash decoded skeletal-seq fields for ids (dat2/dat/legacy)\n\n";
@@ -168,6 +170,11 @@ static void printUsage() {
     std::cerr << "  --revision <n>\n";
     std::cerr << "  --squares <comma-separated mapX_mapY>\n";
     std::cerr << "\nmap_square_inputs_hashes args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --squares <comma-separated mapX_mapY>\n";
+    std::cerr << "\nscene_square_hashes args:\n";
     std::cerr << "  --cache <name-or-path>\n";
     std::cerr << "  --game <classic|runescape|oldschool>\n";
     std::cerr << "  --revision <n>\n";
@@ -2591,6 +2598,251 @@ static int cmdMapSquareInputsHashes(int argc, char** argv) {
     return 0;
 }
 
+static rs::Status copySpanToVec(rs::Span<const rs::u8> src, rs::Vec<rs::u8>* out) noexcept {
+    if (!out) return rs::Status::InvalidArgument;
+    out->clear();
+    auto rr = out->resize(src.size());
+    if (!rr.isOk()) return rr.status();
+    for (std::size_t i = 0; i < src.size(); i++) {
+        (*out)[i] = src[i];
+    }
+    return rs::Status::Ok;
+}
+
+class SessionVarProvider final : public rs::VarProvider {
+public:
+    explicit SessionVarProvider(const rs::CacheSession& session) noexcept : session_(&session) {}
+
+    rs::i32 getVarp(rs::i32 id) const noexcept override {
+        return session_ ? session_->getVarp(id) : 0;
+    }
+
+    rs::i32 getVarbit(rs::i32 id) const noexcept override {
+        return session_ ? session_->getVarbit(id) : 0;
+    }
+
+private:
+    const rs::CacheSession* session_ = nullptr;
+};
+
+class SessionLocTypeService final : public rs::LocTypeService {
+public:
+    explicit SessionLocTypeService(const rs::CacheSession& session) noexcept : session_(&session) {}
+
+    rs::Status tryLoad(rs::i32 id, const rs::LocType** out) const noexcept override {
+        if (!session_) {
+            if (out) *out = nullptr;
+            return rs::Status::InvalidArgument;
+        }
+        return session_->tryGetLocType(id, out);
+    }
+
+private:
+    const rs::CacheSession* session_ = nullptr;
+};
+
+class SessionMapBytesProvider final : public rs::MapBytesProvider {
+public:
+    SessionMapBytesProvider(
+        const rs::CacheSession& session,
+        const std::unordered_map<rs::i32, rs::XteaKey>& keysByArchiveId,
+        rs::Allocator& alloc) noexcept
+        : session_(&session), keysByArchiveId_(&keysByArchiveId), alloc_(&alloc) {}
+
+    rs::Status tryLoadTerrainBytes(rs::i32 mapX, rs::i32 mapY, rs::Vec<rs::u8>* out) const noexcept override {
+        return tryLoadMapBytes('m', mapX, mapY, false, out);
+    }
+
+    rs::Status tryLoadLocBytes(rs::i32 mapX, rs::i32 mapY, rs::Vec<rs::u8>* out) const noexcept override {
+        return tryLoadMapBytes('l', mapX, mapY, true, out);
+    }
+
+    rs::Status tryLoadNpcSpawnBytes(rs::i32 mapX, rs::i32 mapY, rs::Vec<rs::u8>* out) const noexcept override {
+        return tryLoadMapBytes('n', mapX, mapY, true, out);
+    }
+
+private:
+    rs::Status tryLoadMapBytes(
+        char prefix,
+        rs::i32 mapX,
+        rs::i32 mapY,
+        bool encrypted,
+        rs::Vec<rs::u8>* out) const noexcept {
+        if (!session_ || !out || !alloc_) {
+            return rs::Status::InvalidArgument;
+        }
+        out->clear();
+
+        char name[48];
+        const int n = std::snprintf(name, sizeof(name), "%c%d_%d", prefix, static_cast<int>(mapX), static_cast<int>(mapY));
+        if (n <= 0 || static_cast<std::size_t>(n) >= sizeof(name)) {
+            return rs::Status::OutOfRange;
+        }
+
+        rs::i32 archiveId = -1;
+        const rs::Status mapIdStatus = session_->tryGetMapArchiveId(name, &archiveId);
+        if (!rs::ok(mapIdStatus) || archiveId < 0) {
+            return rs::Status::NotFound;
+        }
+
+        const rs::XteaKey* keyPtr = nullptr;
+        if (encrypted && keysByArchiveId_) {
+            const auto it = keysByArchiveId_->find(archiveId);
+            if (it != keysByArchiveId_->end()) {
+                keyPtr = &it->second;
+            }
+        }
+
+        auto archRes = encrypted
+            ? session_->tryGetMapArchiveKey(archiveId, keyPtr, *alloc_)
+            : session_->tryGetMapArchive(archiveId, *alloc_);
+        if (!archRes.isOk()) {
+            // TS MapFileLoader.getLocBytes/getNpcSpawnBytes returns undefined on load/decrypt
+            // failure; treat encrypted map archive failures as missing so scene stages skip them.
+            if (encrypted) {
+                return rs::Status::NotFound;
+            }
+            return archRes.status();
+        }
+        rs::Archive arch = std::move(archRes.value());
+        const rs::ArchiveFile* file = arch.getFile(0);
+        if (!file) {
+            return rs::Status::NotFound;
+        }
+
+        return copySpanToVec(file->data.span(), out);
+    }
+
+    const rs::CacheSession* session_ = nullptr;
+    const std::unordered_map<rs::i32, rs::XteaKey>* keysByArchiveId_ = nullptr;
+    rs::Allocator* alloc_ = nullptr;
+};
+
+static rs::i32 hashSceneData(const rs::SceneData& scene) {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x53434e48); // 'SCNH'
+
+    h = fnv1a32UpdateInt(h, 0x48454954); // 'HEIT'
+    for (std::size_t i = 0; i < scene.tileHeights.size(); i++) h = fnv1a32UpdateInt(h, scene.tileHeights[i]);
+
+    h = fnv1a32UpdateInt(h, 0x464c4147); // 'FLAG'
+    for (std::size_t i = 0; i < scene.tileRenderFlags.size(); i++) h = fnv1a32UpdateInt(h, scene.tileRenderFlags[i]);
+
+    h = fnv1a32UpdateInt(h, 0x554e444c); // 'UNDL'
+    for (std::size_t i = 0; i < scene.tileUnderlays.size(); i++) h = fnv1a32UpdateInt(h, scene.tileUnderlays[i]);
+
+    h = fnv1a32UpdateInt(h, 0x4f564552); // 'OVER'
+    for (std::size_t i = 0; i < scene.tileOverlays.size(); i++) h = fnv1a32UpdateInt(h, scene.tileOverlays[i]);
+
+    h = fnv1a32UpdateInt(h, 0x53484150); // 'SHAP'
+    for (std::size_t i = 0; i < scene.tileShapes.size(); i++) h = fnv1a32UpdateInt(h, scene.tileShapes[i]);
+
+    h = fnv1a32UpdateInt(h, 0x524f5441); // 'ROTA'
+    for (std::size_t i = 0; i < scene.tileRotations.size(); i++) h = fnv1a32UpdateInt(h, scene.tileRotations[i]);
+
+    h = fnv1a32UpdateInt(h, 0x424c4b44); // 'BLKD'
+    for (std::size_t i = 0; i < scene.blockedByFloor.size(); i++) h = fnv1a32UpdateInt(h, scene.blockedByFloor[i]);
+
+    h = fnv1a32UpdateInt(h, 0x4d494e4c); // 'MINL'
+    for (std::size_t i = 0; i < scene.tileMinLevels.size(); i++) h = fnv1a32UpdateInt(h, scene.tileMinLevels[i]);
+
+    h = fnv1a32UpdateInt(h, 0x4c4f4353); // 'LOCS'
+    for (std::size_t i = 0; i < scene.locPlacements.size(); i++) {
+        const rs::SceneLocPlacement& p = scene.locPlacements[i];
+        h = fnv1a32UpdateInt(h, p.originalId);
+        h = fnv1a32UpdateInt(h, p.resolvedId);
+        h = fnv1a32UpdateInt(h, p.level);
+        h = fnv1a32UpdateInt(h, p.tileX);
+        h = fnv1a32UpdateInt(h, p.tileY);
+        h = fnv1a32UpdateInt(h, p.type);
+        h = fnv1a32UpdateInt(h, p.rotation);
+    }
+
+    return static_cast<rs::i32>(h);
+}
+
+static int cmdSceneSquareHashes(int argc, char** argv) {
+    const LocSquareHashArgs args = parseLocSquareHashArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.squares.empty()) {
+        throw std::runtime_error("Missing --squares <comma-separated mapX_mapY>");
+    }
+
+    const std::unordered_map<rs::i32, rs::XteaKey> keysByArchiveId = loadKeysJsonIfPresent(cacheDir);
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/true);
+    rs::CacheSystem& cacheSystem = opened.cacheSystem;
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
+
+    SessionLocTypeService locTypes(session);
+    SessionVarProvider varProvider(session);
+    SessionMapBytesProvider mapBytes(session, keysByArchiveId, alloc);
+
+    rs::SceneRuntimeServices services{};
+    services.locTypes = &locTypes;
+    services.varProvider = &varProvider;
+    services.cacheInfo = &cacheInfo;
+
+    const bool newTerrainFormat = (cacheInfo.game == rs::GameType::Oldschool && cacheInfo.revision >= 209);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"newTerrainFormat\": " << (newTerrainFormat ? "true" : "false") << ",\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.squares.size(); i++) {
+        const int mapX = args.squares[i].first;
+        const int mapY = args.squares[i].second;
+
+        const rs::SceneBuildContext context = rs::createSceneBuildContext(
+            mapX * rs::TerrainConstants::MAP_SQUARE_SIZE,
+            mapY * rs::TerrainConstants::MAP_SQUARE_SIZE,
+            rs::TerrainConstants::MAP_SQUARE_SIZE,
+            rs::TerrainConstants::MAP_SQUARE_SIZE,
+            false,
+            rs::SceneLocLoadType::NoModels);
+
+        rs::SceneData scene{};
+        const rs::Status s = rs::buildSceneFromMapBytesProvider(services, mapBytes, context, &scene, alloc);
+
+        std::cout << "    { \"mapX\": " << mapX << ", \"mapY\": " << mapY;
+        if (!rs::ok(s)) {
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(s)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(s) << " }";
+        } else {
+            std::cout << ", \"ok\": true, \"hash\": " << hashSceneData(scene)
+                      << ", \"locCount\": " << scene.locPlacements.size() << " }";
+        }
+
+        if (i + 1 < args.squares.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
 static rs::u32 hashUnderlayFloorType(const rs::UnderlayFloorType& t) noexcept {
     rs::u32 h = 2166136261u;
     h = fnv1a32UpdateInt(h, 0x554e444c); // 'UNDL'
@@ -4472,52 +4724,42 @@ static int cmdTransformSnapshot(int argc, char** argv) {
 
     rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
 
+    for (const auto& kv : args.varps) {
+        session.setVarp(static_cast<rs::i32>(kv.first), static_cast<rs::i32>(kv.second));
+    }
+
+    std::unordered_map<int, int> unresolvedVarbits;
+    for (const auto& kv : args.varbits) {
+        const rs::i32 id = static_cast<rs::i32>(kv.first);
+        const rs::i32 value = static_cast<rs::i32>(kv.second);
+        if (!session.setVarbit(id, value)) {
+            unresolvedVarbits.emplace(kv.first, kv.second);
+        }
+    }
+
     struct SnapshotVarProvider final : rs::VarProvider {
         const rs::CacheSession& session;
-        const std::unordered_map<int, int>& varps;
-        const std::unordered_map<int, int>& directVarbits;
+        const std::unordered_map<int, int>& unresolvedVarbits;
 
         SnapshotVarProvider(
             const rs::CacheSession& session_,
-            const std::unordered_map<int, int>& varps_,
-            const std::unordered_map<int, int>& directVarbits_) noexcept
-            : session(session_), varps(varps_), directVarbits(directVarbits_) {}
+            const std::unordered_map<int, int>& unresolvedVarbits_) noexcept
+            : session(session_), unresolvedVarbits(unresolvedVarbits_) {}
 
         rs::i32 getVarp(rs::i32 id) const noexcept override {
-            const auto it = varps.find(static_cast<int>(id));
-            if (it == varps.end()) {
-                return 0;
-            }
-            return static_cast<rs::i32>(it->second);
+            return session.getVarp(id);
         }
 
         rs::i32 getVarbit(rs::i32 id) const noexcept override {
-            const auto forced = directVarbits.find(static_cast<int>(id));
-            if (forced != directVarbits.end()) {
+            const auto forced = unresolvedVarbits.find(static_cast<int>(id));
+            if (forced != unresolvedVarbits.end()) {
                 return static_cast<rs::i32>(forced->second);
             }
-
-            const rs::VarBitType* varbit = nullptr;
-            const rs::Status s = session.tryGetVarBitType(id, &varbit);
-            if (!rs::ok(s) || !varbit) {
-                return 0;
-            }
-
-            const rs::i32 baseValue = getVarp(varbit->baseVar);
-            const rs::i32 startBit = (varbit->startBit < 0) ? 0 : ((varbit->startBit > 31) ? 31 : varbit->startBit);
-            const rs::i32 endBit = (varbit->endBit < 0) ? 0 : ((varbit->endBit > 31) ? 31 : varbit->endBit);
-            const rs::i32 width = endBit - startBit;
-            if (width <= 0) {
-                return 0;
-            }
-
-            const rs::u32 mask = (width >= 31) ? 0x7fffffffu : ((1u << width) - 1u);
-            const rs::i32 shifted = (startBit >= 31) ? ((baseValue < 0) ? -1 : 0) : (baseValue >> startBit);
-            return static_cast<rs::i32>(static_cast<rs::u32>(shifted) & mask);
+            return session.getVarbit(id);
         }
     };
 
-    const SnapshotVarProvider varProvider(session, args.varps, args.varbits);
+    const SnapshotVarProvider varProvider(session, unresolvedVarbits);
 
     const auto writeAssignments = [&](const std::unordered_map<int, int>& values) {
         std::vector<std::pair<int, int>> items;
@@ -5441,6 +5683,9 @@ int main(int argc, char** argv) {
         }
         if (cmd == "map_square_inputs_hashes") {
             return cmdMapSquareInputsHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "scene_square_hashes") {
+            return cmdSceneSquareHashes(argc - 2, argv + 2);
         }
         if (cmd == "model_hashes") {
             return cmdModelHashes(argc - 2, argv + 2);

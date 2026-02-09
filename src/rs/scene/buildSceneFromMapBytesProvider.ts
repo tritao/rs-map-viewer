@@ -1,7 +1,13 @@
 import { MapBytesProvider } from "../map/MapBytesProvider";
-import { getMapSquareId } from "../map/MapFileIndex";
 import { Scene } from "./Scene";
 import { LocLoadType, SceneBuilder } from "./SceneBuilder";
+import {
+    createSceneBuildContext,
+    decodeLocsStage,
+    decodeTerrainStage,
+    fillEmptyTerrainStage,
+    finalizeSceneStage,
+} from "./SceneBuildStages";
 
 export function buildSceneFromMapBytesProvider(
     sceneBuilder: SceneBuilder,
@@ -13,66 +19,20 @@ export function buildSceneFromMapBytesProvider(
     smoothUnderlays: boolean = false,
     locLoadType: LocLoadType = LocLoadType.MODELS,
 ): Scene {
-    const scene = new Scene(Scene.MAX_LEVELS, sizeX, sizeY);
+    const context = createSceneBuildContext(
+        baseX,
+        baseY,
+        sizeX,
+        sizeY,
+        smoothUnderlays,
+        locLoadType,
+    );
+    const scene = new Scene(Scene.MAX_LEVELS, context.sizeX, context.sizeY);
 
-    const mapStartX = Math.floor(baseX / Scene.MAP_SQUARE_SIZE);
-    const mapStartY = Math.floor(baseY / Scene.MAP_SQUARE_SIZE);
-
-    const mapEndX = Math.ceil((baseX + sizeX) / Scene.MAP_SQUARE_SIZE);
-    const mapEndY = Math.ceil((baseY + sizeY) / Scene.MAP_SQUARE_SIZE);
-
-    const emptyTerrainIds = new Set<number>();
-
-    for (let mx = mapStartX; mx < mapEndX; mx++) {
-        for (let my = mapStartY; my < mapEndY; my++) {
-            const terrainData = mapBytesProvider.getTerrainBytes(mx, my);
-            if (terrainData) {
-                const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
-                const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-                sceneBuilder.decodeTerrain(scene, terrainData, offsetX, offsetY, baseX, baseY);
-            } else {
-                emptyTerrainIds.add(getMapSquareId(mx, my));
-            }
-        }
-    }
-
-    for (let mx = mapStartX; mx < mapEndX; mx++) {
-        for (let my = mapStartY; my < mapEndY; my++) {
-            if (!emptyTerrainIds.has(getMapSquareId(mx, my))) {
-                continue;
-            }
-            const endX = (mx + 1) * Scene.MAP_SQUARE_SIZE;
-            const endY = (my + 1) * Scene.MAP_SQUARE_SIZE;
-            const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
-            const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-            const tileX = Math.max(offsetX, 0);
-            const tileY = Math.max(offsetY, 0);
-            const emptySizeX = endX - baseX - tileX;
-            const emptySizeY = endY - baseY - tileY;
-            for (let level = 0; level < scene.levels; level++) {
-                sceneBuilder.loadEmptyTerrain(scene, level, tileX, tileY, emptySizeX, emptySizeY);
-            }
-        }
-    }
-
-    for (let mx = mapStartX; mx < mapEndX; mx++) {
-        for (let my = mapStartY; my < mapEndY; my++) {
-            const locData = mapBytesProvider.getLocBytes(mx, my);
-            if (!locData) {
-                continue;
-            }
-            const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
-            const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-            sceneBuilder.decodeLocs(scene, locData, offsetX, offsetY, locLoadType);
-        }
-    }
-
-    sceneBuilder.addTileModels(scene, smoothUnderlays);
-    scene.setTileMinLevels();
-
-    if (locLoadType === LocLoadType.MODELS) {
-        scene.light(sceneBuilder.textureLoader, -50, -10, -50);
-    }
+    const emptyTerrainIds = decodeTerrainStage(sceneBuilder, mapBytesProvider, scene, context);
+    fillEmptyTerrainStage(sceneBuilder, scene, context, emptyTerrainIds);
+    decodeLocsStage(sceneBuilder, mapBytesProvider, scene, context);
+    finalizeSceneStage(sceneBuilder, scene, context);
 
     return scene;
 }

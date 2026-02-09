@@ -349,6 +349,12 @@ Expected<CacheSession, InitError> CacheSession::tryCreate(const CacheSystem& cac
     out.cacheSystem = &cacheSystem;
     out.cacheInfo = cacheInfo;
     out.rules = computeCacheRules(cacheInfo, cacheSystem);
+    out.varManager = VarManager(alloc);
+    Status varInit = out.varManager.init();
+    if (!ok(varInit)) {
+        return Expected<CacheSession, InitError>::err(
+            InitError::decodeFailed(varInit, "VarManager::init"));
+    }
 
     const CacheType cacheType = detectCacheType(cacheInfo);
     if (cacheType == CacheType::Dat2) {
@@ -394,6 +400,14 @@ Expected<CacheSession, InitError> CacheSession::tryCreate(const CacheSystem& cac
     }
     out.textures = rs::move(texRes.value());
     out.modelLoaders = createModelLoaders(cacheSystem, cacheInfo, alloc);
+
+    if (out.hasQuestTypeLoader()) {
+        out.varManager.setQuestsCompleted(
+            out.config.dat2.quests,
+            [&out](i32 varbitId, const VarBitType** varbit) noexcept -> Status {
+                return out.tryGetVarBitType(varbitId, varbit);
+            });
+    }
 
     return Expected<CacheSession, InitError>::ok(rs::move(out));
 }

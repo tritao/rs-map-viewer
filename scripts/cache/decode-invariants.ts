@@ -1,3 +1,9 @@
+import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
+import { LocType } from "../../src/rs/config/loctype/LocType";
+import { VarManager } from "../../src/rs/config/vartype/VarManager";
+import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
+import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
+import { notFoundError } from "../../src/rs/errors/DecodeError";
 import { MapFileLoader, mapBytesErrorToString } from "../../src/rs/map/MapFileLoader";
 import { Dat2SeqFrame, DatSeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { Scene } from "../../src/rs/scene/Scene";
@@ -7,6 +13,7 @@ import {
     decodeTerrainSquareFromBytesInto,
 } from "../../src/rs/scene/decodeTerrainSquare";
 import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
+import { err, ok } from "../../src/util/Result";
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
@@ -218,12 +225,79 @@ function testTryLoadNeverThrows(): void {
     );
 }
 
+function testLocTransformUsesVarManagerProvider(): void {
+    const cacheInfo = new CacheInfo("unit", GameType.Oldschool, "test", 0, "1970-01-01", 0);
+
+    const baseLoc = new LocType(100, cacheInfo);
+    baseLoc.transformVarbit = 7;
+    baseLoc.transformVarp = -1;
+    baseLoc.transforms = [200, 201, 202];
+
+    const altA = new LocType(200, cacheInfo);
+    altA.name = "altA";
+    const altB = new LocType(201, cacheInfo);
+    altB.name = "altB";
+    const fallback = new LocType(202, cacheInfo);
+    fallback.name = "fallback";
+
+    const locs = new Map<number, LocType>([
+        [200, altA],
+        [201, altB],
+        [202, fallback],
+    ]);
+    const locLoader = {
+        tryLoad: (id: number) => {
+            const loc = locs.get(id);
+            return loc ? ok(loc) : err(notFoundError("LocType", id));
+        },
+        getCount: () => locs.size,
+        clearCache: () => {},
+    };
+
+    const varbit = new VarBitType(7, cacheInfo);
+    varbit.baseVar = 3;
+    varbit.startBit = 1;
+    varbit.endBit = 3;
+    const varbitLoader = {
+        tryLoad: (id: number) => (id === 7 ? ok(varbit) : err(notFoundError("VarBitType", id))),
+        getCount: () => 1,
+        clearCache: () => {},
+    };
+
+    const varManager = new VarManager(varbitLoader);
+    const varProvider = new VarManagerProvider(varManager);
+
+    // baseVar=3 bits [1,3) = 00 => transform index 0 => id 200
+    varManager.setVarp(3, 0);
+    assert(
+        baseLoc.transform(varProvider, locLoader as any)?.id === 200,
+        "expected transform index 0 through VarManagerProvider",
+    );
+
+    // bits [1,3) = 01 => transform index 1 => id 201
+    varManager.setVarp(3, 2);
+    assert(
+        baseLoc.transform(varProvider, locLoader as any)?.id === 201,
+        "expected transform index 1 through VarManagerProvider",
+    );
+
+    // provider.set should update VarManager-backed state.
+    const nextValues = new Int32Array(varManager.values.length);
+    nextValues[3] = 6; // bits [1,3) = 11 => index 3 => fallback id (last) = 202
+    varProvider.set(nextValues);
+    assert(
+        baseLoc.transform(varProvider, locLoader as any)?.id === 202,
+        "expected fallback transform for out-of-range index through VarManagerProvider.set",
+    );
+}
+
 function main(): void {
     testTerrainDecodeScratchReuse();
     testTerrainHeightsGoldenOldFormat();
     testMapFileLoaderErrorShapes();
     testComputeSceneTileModelInvariants();
     testTryLoadNeverThrows();
+    testLocTransformUsesVarManagerProvider();
     console.log("decode-invariants: ok");
 }
 

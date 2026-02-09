@@ -1,9 +1,7 @@
 import { CacheInfo, GameType } from "../cache/CacheInfo";
-import { FloorTypeLoader, OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
 import { OverlayFloorType } from "../config/floortype/OverlayFloorType";
 import { LocModelType } from "../config/loctype/LocModelType";
 import { LocType } from "../config/loctype/LocType";
-import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { getMapSquareId } from "../map/MapFileIndex";
 import { ContourGroundType } from "../model/ContourGroundType";
@@ -12,6 +10,7 @@ import { TextureLoader } from "../texture/TextureLoader";
 import { packHsl } from "../util/ColorUtil";
 import { CollisionMap } from "./CollisionMap";
 import { packLocPlacement } from "./LocPlacementFlag";
+import { SceneRuntimeServices } from "./SceneRuntimeServices";
 import { Scene, TileRenderFlag } from "./Scene";
 import { OverlayCornerSet, OverlayEdgeSet } from "./SceneTileModel";
 import { computeSceneTileModelForTile } from "./computeSceneTileModel";
@@ -24,7 +23,7 @@ import {
 import { Entity } from "./entity/Entity";
 import { EntityType, calculateEntityTag, getIdFromTag, hasEntityTag } from "./entity/EntityTag";
 import { LocEntity } from "./entity/LocEntity";
-import { ContourGroundInfo, LocModelLoader } from "./model/LocModelLoader";
+import { ContourGroundInfo } from "./model/LocModelLoader";
 
 export enum LocLoadType {
     MODELS,
@@ -78,18 +77,40 @@ export class SceneBuilder {
 
     private readonly terrainSquareScratch = new TerrainSquareDecodeScratch();
 
+    readonly cacheInfo: CacheInfo;
+    readonly services: SceneRuntimeServices;
+
     newTerrainFormat: boolean;
 
-    constructor(
-        readonly cacheInfo: CacheInfo,
-        readonly underlayTypeLoader: FloorTypeLoader,
-        readonly overlayTypeLoader: OverlayFloorTypeLoader,
-        readonly locTypeLoader: LocTypeLoader,
-        readonly textureLoader: TextureLoader,
-        readonly locModelLoader: LocModelLoader,
-    ) {
+    constructor(cacheInfo: CacheInfo, services: SceneRuntimeServices) {
+        this.cacheInfo = cacheInfo;
+        this.services = services;
         this.newTerrainFormat =
             this.cacheInfo.game === GameType.Oldschool && this.cacheInfo.revision >= 209;
+    }
+
+    get textureLoader() {
+        return this.services.textureLoader;
+    }
+
+    private get underlayTypeLoader() {
+        return this.services.underlayTypeLoader;
+    }
+
+    private get overlayTypeLoader() {
+        return this.services.overlayTypeLoader;
+    }
+
+    private get locTypeLoader() {
+        return this.services.locTypeLoader;
+    }
+
+    private get locModelLoader() {
+        return this.services.locModelLoader;
+    }
+
+    private get varProvider() {
+        return this.services.varProvider;
     }
 
     static fillEmptyTerrain(info: CacheInfo): boolean {
@@ -247,7 +268,13 @@ export class SceneBuilder {
         if (!locResult.ok) {
             return;
         }
-        const locType = locResult.value;
+        let locType = locResult.value;
+        if (locType.transforms) {
+            const transformed = locType.transform(this.varProvider, this.locTypeLoader);
+            if (transformed) {
+                locType = transformed;
+            }
+        }
 
         let sizeX = locType.sizeX;
         let sizeY = locType.sizeY;

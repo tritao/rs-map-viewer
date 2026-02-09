@@ -49,6 +49,8 @@ set(RS_SOURCES
 	    rs/map/TerrainSquareDecode.cpp
 	    rs/map/LocPlacementsDecode.cpp
 	    rs/map/NpcSpawnsDecode.cpp
+	    rs/scene/SceneBuildStages.cpp
+	    rs/scene/BuildSceneFromMapBytesProvider.cpp
 	    rs/loaders/ConfigLoaders.cpp
 	    rs/loaders/CacheSession.cpp
 	    rs/loaders/Dat2Loaders.cpp

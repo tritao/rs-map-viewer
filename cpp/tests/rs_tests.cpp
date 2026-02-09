@@ -67,6 +67,7 @@
 #include "../rs/loaders/CacheSession.hpp"
 #include "../rs/map/TerrainSquare.hpp"
 #include "../rs/map/TerrainSquareDecode.hpp"
+#include "../rs/scene/BuildSceneFromMapBytesProvider.hpp"
 
 namespace {
 
@@ -1584,6 +1585,141 @@ static int test_cache_session_config_layer_api() {
     return 0;
 }
 
+static int test_scene_build_stage_context_api() {
+    {
+        const rs::SceneBuildMapBounds bounds = rs::computeSceneBuildMapBounds(-1, -1, 65, 65);
+        if (bounds.mapStartX != -1 || bounds.mapStartY != -1 || bounds.mapEndX != 1 || bounds.mapEndY != 1) {
+            return fail("SceneBuildMapBounds floor/ceil mapping mismatch");
+        }
+    }
+
+    const rs::SceneBuildContext context = rs::createSceneBuildContext(
+        -1,
+        -1,
+        65,
+        65,
+        true,
+        rs::SceneLocLoadType::NoModels);
+    if (!context.smoothUnderlays || context.locLoadType != rs::SceneLocLoadType::NoModels) {
+        return fail("SceneBuildContext flags mismatch");
+    }
+
+    struct DummyMapBytesProvider final : public rs::MapBytesProvider {
+        mutable int terrainCalls = 0;
+        mutable int locCalls = 0;
+        mutable int npcCalls = 0;
+
+        rs::Status tryLoadTerrainBytes(rs::i32, rs::i32, rs::Vec<rs::u8>* out) const noexcept override {
+            terrainCalls++;
+            if (out) out->clear();
+            return rs::Status::NotFound;
+        }
+
+        rs::Status tryLoadLocBytes(rs::i32, rs::i32, rs::Vec<rs::u8>* out) const noexcept override {
+            locCalls++;
+            if (out) out->clear();
+            return rs::Status::NotFound;
+        }
+
+        rs::Status tryLoadNpcSpawnBytes(rs::i32, rs::i32, rs::Vec<rs::u8>* out) const noexcept override {
+            npcCalls++;
+            if (out) out->clear();
+            return rs::Status::NotFound;
+        }
+    } provider;
+
+    struct DummyLocTypes final : public rs::LocTypeService {
+        rs::Status tryLoad(rs::i32, const rs::LocType** out) const noexcept override {
+            if (out) *out = nullptr;
+            return rs::Status::NotFound;
+        }
+    } locTypes;
+
+    rs::SceneRuntimeServices services{};
+    services.locTypes = &locTypes;
+    rs::SceneData scene{};
+    rs::Allocator& alloc = rs::defaultAllocator();
+    const rs::Status s = rs::buildSceneFromMapBytesProvider(services, provider, context, &scene, alloc);
+    if (!rs::ok(s)) {
+        return fail("buildSceneFromMapBytesProvider scaffold expected Ok");
+    }
+
+    // decode + empty-fill probes for terrain, plus one loc decode pass.
+    if (provider.terrainCalls != 8 || provider.locCalls != 4) {
+        return fail("scene stage probe count mismatch");
+    }
+    if (provider.npcCalls != 0) {
+        return fail("scene stage npc probe count mismatch");
+    }
+
+    return 0;
+}
+
+static int test_var_manager_core(rs::Allocator& alloc) {
+    rs::VarManager vars(alloc);
+    rs::Status s = vars.init(16);
+    if (!rs::ok(s)) return fail("VarManager: init failed");
+
+    if (vars.getVarp(2) != 0) return fail("VarManager: default getVarp mismatch");
+    if (!vars.setVarp(2, 123)) return fail("VarManager: setVarp expected true");
+    if (vars.setVarp(2, 123)) return fail("VarManager: setVarp expected false on same value");
+    if (vars.getVarp(2) != 123) return fail("VarManager: getVarp after set mismatch");
+
+    rs::VarBitType vb{};
+    vb.baseVar = 5;
+    vb.startBit = 1;
+    vb.endBit = 3; // width=2 => mask=0b111
+
+    const auto tryGetVarBitType = [&](rs::i32 id, const rs::VarBitType** out) -> rs::Status {
+        if (!out) return rs::Status::InvalidArgument;
+        if (id == 10) {
+            *out = &vb;
+            return rs::Status::Ok;
+        }
+        *out = nullptr;
+        return rs::Status::NotFound;
+    };
+
+    if (!vars.setVarbit(10, 5, tryGetVarBitType)) {
+        return fail("VarManager: setVarbit expected true");
+    }
+    if (vars.getVarbit(10, tryGetVarBitType) != 5) {
+        return fail("VarManager: getVarbit mismatch");
+    }
+    if (vars.getVarp(5) != 10) {
+        return fail("VarManager: base varp bits mismatch");
+    }
+
+    // Out-of-range varbit value is clamped to 0 (TS parity).
+    if (!vars.setVarbit(10, 99, tryGetVarBitType)) {
+        return fail("VarManager: setVarbit clamp-to-zero expected true");
+    }
+    if (vars.getVarbit(10, tryGetVarBitType) != 0) {
+        return fail("VarManager: setVarbit clamp-to-zero mismatch");
+    }
+
+    if (vars.setVarbit(999, 1, tryGetVarBitType)) {
+        return fail("VarManager: setVarbit unknown id expected false");
+    }
+    if (vars.getVarbit(999, tryGetVarBitType) != 0) {
+        return fail("VarManager: getVarbit unknown id expected zero");
+    }
+
+    const rs::i32 seed[3] = {7, 8, 9};
+    s = vars.set(rs::Span<const rs::i32>(seed, 3));
+    if (!rs::ok(s)) return fail("VarManager: set span failed");
+    if (vars.getVarp(0) != 7 || vars.getVarp(1) != 8 || vars.getVarp(2) != 9) {
+        return fail("VarManager: set span values mismatch");
+    }
+
+    vars.clear();
+    if (vars.getVarp(0) != 0 || vars.getVarp(1) != 0) {
+        return fail("VarManager: clear mismatch");
+    }
+
+    return 0;
+}
+
 static int test_loaders_capabilities_contract() {
     {
         rs::CacheSession session{};
@@ -2468,6 +2604,8 @@ int main() {
         if (int r = test_model_data_decode_and_loader(alloc, compression)) return r;
         if (int r = test_old_config_loaders_synthetic(alloc)) return r;
         if (int r = test_cache_session_config_layer_api()) return r;
+        if (int r = test_scene_build_stage_context_api()) return r;
+        if (int r = test_var_manager_core(alloc)) return r;
         if (int r = test_loaders_capabilities_contract()) return r;
         if (int r = test_skeletal_eval_base_only(alloc)) return r;
         if (int r = test_skeletal_eval_base_only_with_curves(alloc)) return r;

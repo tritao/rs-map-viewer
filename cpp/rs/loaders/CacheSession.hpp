@@ -8,6 +8,7 @@
 #include "../core/Result.hpp"
 #include "../core/Status.hpp"
 #include "../crypto/Xtea.hpp"
+#include "../config/vartype/VarManager.hpp"
 #include "../texture/DatTextureLoader.hpp"
 #include "../io/BytesProvider.hpp"
 #include "../model/ModelData.hpp"
@@ -91,6 +92,7 @@ struct CacheSession final {
     const CacheSystem* cacheSystem = nullptr;
     CacheInfo cacheInfo{};
     CacheRules rules{};
+    VarManager varManager{};
 
     // Tagged config loader storage, mirroring TS cache-type dispatch.
     ConfigLayer config{};
@@ -105,6 +107,39 @@ struct CacheSession final {
     [[nodiscard]] bool hasSeqFrameService() const noexcept { return modelLoaders.seqFrameStatus == Status::Ok; }
     [[nodiscard]] Status modelStatus() const noexcept { return modelLoaders.modelStatus; }
     [[nodiscard]] Status seqFrameStatus() const noexcept { return modelLoaders.seqFrameStatus; }
+    [[nodiscard]] const VarManager& getVarManager() const noexcept { return varManager; }
+    [[nodiscard]] VarManager& getVarManager() noexcept { return varManager; }
+
+    void clearVarValues() noexcept { varManager.clear(); }
+
+    Status setVarValues(Span<const i32> values) noexcept {
+        return varManager.set(values);
+    }
+
+    [[nodiscard]] i32 getVarp(i32 id) const noexcept {
+        return varManager.getVarp(id);
+    }
+
+    bool setVarp(i32 id, i32 value) noexcept {
+        return varManager.setVarp(id, value);
+    }
+
+    [[nodiscard]] i32 getVarbit(i32 id) const noexcept {
+        return varManager.getVarbit(
+            id,
+            [this](i32 varbitId, const VarBitType** out) noexcept -> Status {
+                return this->tryGetVarBitType(varbitId, out);
+            });
+    }
+
+    bool setVarbit(i32 id, i32 value) noexcept {
+        return varManager.setVarbit(
+            id,
+            value,
+            [this](i32 varbitId, const VarBitType** out) noexcept -> Status {
+                return this->tryGetVarBitType(varbitId, out);
+            });
+    }
 
     Status tryGetCacheRules(const CacheRules** out) const noexcept {
         if (!out) return Status::InvalidArgument;

@@ -62,7 +62,11 @@ struct TerrainSquare final {
     u8& rotation(i32 level, i32 x, i32 y) noexcept { return tileRotations[idx(level, x, y)]; }
 
     const i32& height(i32 level, i32 x, i32 y) const noexcept { return tileHeights[idx(level, x, y)]; }
+    const u8& renderFlags(i32 level, i32 x, i32 y) const noexcept { return tileRenderFlags[idx(level, x, y)]; }
+    const u16& underlay(i32 level, i32 x, i32 y) const noexcept { return tileUnderlays[idx(level, x, y)]; }
+    const i16& overlay(i32 level, i32 x, i32 y) const noexcept { return tileOverlays[idx(level, x, y)]; }
+    const u8& shape(i32 level, i32 x, i32 y) const noexcept { return tileShapes[idx(level, x, y)]; }
+    const u8& rotation(i32 level, i32 x, i32 y) const noexcept { return tileRotations[idx(level, x, y)]; }
 };
 
 } // namespace rs
-

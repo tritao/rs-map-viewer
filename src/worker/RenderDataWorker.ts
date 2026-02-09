@@ -7,7 +7,7 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
-import { VarStateProvider } from "../rs/config/vartype/VarProvider";
+import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
 import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
 import { initErrorToString } from "../rs/loaders/InitError";
 import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
@@ -36,7 +36,7 @@ const hasherPromise = Hasher.init();
 
 export type WorkerState = {
     session: CacheSession;
-    varProvider: VarStateProvider;
+    varProvider: VarManagerProvider;
     mapBytesProvider: MapBytesProvider;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
@@ -89,13 +89,12 @@ async function initWorker(
         seqTypeLoader,
         seqFrameLoader,
         mapFileLoader,
-        varBitTypeLoader,
         mapScenes,
         mapFunctions,
     } = session.loaders;
     const skeletalSeqLoader = session.getSkeletalSeqLoader();
 
-    const varProvider = new VarStateProvider(varBitTypeLoader, session.varManager.values);
+    const varProvider = new VarManagerProvider(session.varManager);
 
     const mapBytesProvider = new MapFileBytesProvider(mapFileLoader, cache.xteas);
 
@@ -120,14 +119,14 @@ async function initWorker(
         varProvider,
     );
 
-    const sceneBuilder = new SceneBuilder(
-        cache.info,
+    const sceneBuilder = new SceneBuilder(cache.info, {
         underlayTypeLoader,
         overlayTypeLoader,
         locTypeLoader,
         textureLoader,
         locModelLoader,
-    );
+        varProvider,
+    });
 
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,

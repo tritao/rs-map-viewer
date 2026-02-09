@@ -1,0 +1,43 @@
+#pragma once
+
+#include "../cache/CacheInfo.hpp"
+#include "../config/floortype/FloorTypeLoaders.hpp"
+#include "../config/loctype/LocTypeLoader.hpp"
+#include "../config/vartype/VarProvider.hpp"
+#include "../core/Status.hpp"
+#include "../texture/procedural/ProceduralSources.hpp"
+
+namespace rs {
+
+struct UnderlayTypeService {
+    virtual ~UnderlayTypeService() = default;
+    virtual Status tryLoad(i32 id, const UnderlayFloorType** out) const noexcept = 0;
+};
+
+struct OverlayTypeService {
+    virtual ~OverlayTypeService() = default;
+    virtual Status tryLoad(i32 id, const OverlayFloorType** out) const noexcept = 0;
+};
+
+struct LocTypeService {
+    virtual ~LocTypeService() = default;
+    virtual Status tryLoad(i32 id, const LocType** out) const noexcept = 0;
+};
+
+// Typed placeholder until the C++ loc-model runtime service is introduced.
+struct LocModelService {
+    virtual ~LocModelService() = default;
+};
+
+// Mirrors `src/rs/scene/SceneRuntimeServices.ts` and keeps scene dependencies explicit.
+struct SceneRuntimeServices final {
+    const UnderlayTypeService* underlayTypes = nullptr;
+    const OverlayTypeService* overlayTypes = nullptr;
+    const LocTypeService* locTypes = nullptr;
+    const ITextureSource* textureSource = nullptr;
+    const LocModelService* locModels = nullptr;
+    const VarProvider* varProvider = nullptr;
+    const CacheInfo* cacheInfo = nullptr;
+};
+
+} // namespace rs

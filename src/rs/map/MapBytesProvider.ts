@@ -1,5 +1,5 @@
 import { XteaMap } from "../../util/Caches";
-import { MapFileLoader } from "./MapFileLoader";
+import { MapFileService } from "../loaders/Loaders";
 
 export interface MapBytesProvider {
     getTerrainBytes(mapX: number, mapY: number): Uint8Array | undefined;
@@ -9,7 +9,7 @@ export interface MapBytesProvider {
 
 export class MapFileBytesProvider implements MapBytesProvider {
     constructor(
-        readonly mapFileLoader: MapFileLoader,
+        readonly mapFileLoader: MapFileService,
         readonly xteasMap: XteaMap,
     ) {}
 

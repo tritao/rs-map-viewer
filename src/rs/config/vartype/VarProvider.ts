@@ -1,5 +1,6 @@
 import { BIT_MASKS } from "../../MathConstants";
 import { VarBitTypeLoader } from "./bit/VarBitTypeLoader";
+import { VarManager } from "./VarManager";
 
 export interface VarProvider {
     getVarp(id: number): number;
@@ -37,5 +38,24 @@ export class VarStateProvider implements VarProvider {
         const mask = BIT_MASKS[endBit - startBit];
         const baseValue = this.values[baseVar] ?? 0;
         return (baseValue >> startBit) & mask;
+    }
+}
+
+/**
+ * Mutable var access backed directly by `VarManager`.
+ */
+export class VarManagerProvider implements VarProvider {
+    constructor(readonly varManager: VarManager) {}
+
+    set(values: Int32Array): void {
+        this.varManager.set(values);
+    }
+
+    getVarp(id: number): number {
+        return this.varManager.getVarp(id);
+    }
+
+    getVarbit(id: number): number {
+        return this.varManager.getVarbit(id);
     }
 }
