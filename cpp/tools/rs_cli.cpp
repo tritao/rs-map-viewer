@@ -1306,6 +1306,23 @@ static const char* textureModeName(rs::TextureMode m) {
     }
 }
 
+static const char* mapScenesModeName(rs::MapScenesMode m) {
+    switch (m) {
+        case rs::MapScenesMode::Archive: return "archive";
+        case rs::MapScenesMode::GraphicsDefaults: return "graphics_defaults";
+        default: return "unknown";
+    }
+}
+
+static const char* mapFunctionsModeName(rs::MapFunctionsMode m) {
+    switch (m) {
+        case rs::MapFunctionsMode::OsrsArchive: return "osrs_archive";
+        case rs::MapFunctionsMode::Rs2Archive: return "rs2_archive";
+        case rs::MapFunctionsMode::GraphicsDefaults: return "graphics_defaults";
+        default: return "unknown";
+    }
+}
+
 static rs::CacheSession createSessionOrThrow(
     rs::CacheSystem& cacheSystem,
     const rs::CacheInfo& cacheInfo,
@@ -5129,6 +5146,12 @@ static int cmdSessionContract(int argc, char** argv) {
     const bool hasMapFileService = session.hasMapFileService();
     const bool hasModelService = session.hasModelService();
     const bool hasSeqFrameService = session.hasSeqFrameService();
+    const rs::Status configStatus = session.configStatus();
+    const rs::Status textureStatus = session.textureStatus();
+    const rs::Status modelStatus = session.modelStatus();
+    const rs::Status seqFrameStatus = session.seqFrameStatus();
+    const rs::Status skeletalSeqStatus = session.skeletalSeqStatus();
+    const rs::Status seqBaseStatus = session.seqBaseStatus();
 
     rs::MapScenesMode mapScenesMode = rs::MapScenesMode::GraphicsDefaults;
     rs::MapFunctionsMode mapFunctionsMode = rs::MapFunctionsMode::GraphicsDefaults;
@@ -5139,6 +5162,19 @@ static int cmdSessionContract(int argc, char** argv) {
     if (!rs::ok(session.tryGetTextureRules(&textureRules))) {
         throw std::runtime_error("tryGetTextureRules failed");
     }
+
+    const rs::CacheIndex* idx = nullptr;
+    const rs::Status mapIndexStatus = session.tryGetMapIndex(&idx);
+    const bool hasMapIndex = rs::ok(mapIndexStatus) && idx != nullptr;
+    idx = nullptr;
+    const rs::Status modelsIndexStatus = session.tryGetModelsIndex(&idx);
+    const bool hasModelsIndex = rs::ok(modelsIndexStatus) && idx != nullptr;
+    idx = nullptr;
+    const rs::Status seqFramesIndexStatus = session.tryGetSeqFramesIndex(&idx);
+    const bool hasSeqFramesIndex = rs::ok(seqFramesIndexStatus) && idx != nullptr;
+    idx = nullptr;
+    const rs::Status spritesIndexStatus = session.tryGetSpritesIndex(&idx);
+    const bool hasSpritesIndex = rs::ok(spritesIndexStatus) && idx != nullptr;
 
     session.clearCaches();
 
@@ -5155,7 +5191,7 @@ static int cmdSessionContract(int argc, char** argv) {
     }
 
     std::cout << "{\n";
-    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"schema\": 2,\n";
     std::cout << "  \"cache\": { \"name\": ";
     writeJsonEscaped(std::cout, cacheName);
     std::cout << ", \"game\": ";
@@ -5171,6 +5207,54 @@ static int cmdSessionContract(int argc, char** argv) {
     std::cout << "  \"hasSeqFrameService\": " << (hasSeqFrameService ? "true" : "false") << ",\n";
     std::cout << "  \"hasTextureService\": " << (hasTextureService ? "true" : "false") << ",\n";
     std::cout << "  \"hasMapFileService\": " << (hasMapFileService ? "true" : "false") << ",\n";
+    std::cout << "  \"rules\": {\n";
+    std::cout << "    \"isIndexConfigs\": " << (session.rules.isIndexConfigs ? "true" : "false") << ",\n";
+    std::cout << "    \"textureMode\": ";
+    writeJsonEscaped(std::cout, std::string(textureModeName(textureRules.mode)));
+    std::cout << ",\n";
+    std::cout << "    \"textureHasAlphaMaterialField\": " << (textureRules.hasAlphaMaterialField ? "true" : "false") << ",\n";
+    std::cout << "    \"textureHasAlphaOperation\": " << (textureRules.hasAlphaOperation ? "true" : "false") << ",\n";
+    std::cout << "    \"mapScenesMode\": ";
+    writeJsonEscaped(std::cout, std::string(mapScenesModeName(mapScenesMode)));
+    std::cout << ",\n";
+    std::cout << "    \"mapFunctionsMode\": ";
+    writeJsonEscaped(std::cout, std::string(mapFunctionsModeName(mapFunctionsMode)));
+    std::cout << "\n";
+    std::cout << "  },\n";
+    std::cout << "  \"services\": {\n";
+    std::cout << "    \"configStatus\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(configStatus)));
+    std::cout << ",\n";
+    std::cout << "    \"textureStatus\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(textureStatus)));
+    std::cout << ",\n";
+    std::cout << "    \"modelStatus\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(modelStatus)));
+    std::cout << ",\n";
+    std::cout << "    \"seqFrameStatus\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(seqFrameStatus)));
+    std::cout << ",\n";
+    std::cout << "    \"skeletalSeqStatus\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(skeletalSeqStatus)));
+    std::cout << ",\n";
+    std::cout << "    \"seqBaseStatus\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(seqBaseStatus)));
+    std::cout << "\n";
+    std::cout << "  },\n";
+    std::cout << "  \"indexes\": {\n";
+    std::cout << "    \"map\": { \"status\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(mapIndexStatus)));
+    std::cout << ", \"present\": " << (hasMapIndex ? "true" : "false") << " },\n";
+    std::cout << "    \"models\": { \"status\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(modelsIndexStatus)));
+    std::cout << ", \"present\": " << (hasModelsIndex ? "true" : "false") << " },\n";
+    std::cout << "    \"seqFrames\": { \"status\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(seqFramesIndexStatus)));
+    std::cout << ", \"present\": " << (hasSeqFramesIndex ? "true" : "false") << " },\n";
+    std::cout << "    \"sprites\": { \"status\": ";
+    writeJsonEscaped(std::cout, std::string(statusName(spritesIndexStatus)));
+    std::cout << ", \"present\": " << (hasSpritesIndex ? "true" : "false") << " }\n";
+    std::cout << "  },\n";
     std::cout << "  \"ok\": true\n";
     std::cout << "}\n";
     return 0;

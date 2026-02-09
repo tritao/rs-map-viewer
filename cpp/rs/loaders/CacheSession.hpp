@@ -103,6 +103,8 @@ struct CacheSession final {
     [[nodiscard]] bool hasTextureService() const noexcept { return textures.status == Status::Ok; }
     [[nodiscard]] bool hasModelService() const noexcept { return modelLoaders.modelStatus == Status::Ok; }
     [[nodiscard]] bool hasSeqFrameService() const noexcept { return modelLoaders.seqFrameStatus == Status::Ok; }
+    [[nodiscard]] Status modelStatus() const noexcept { return modelLoaders.modelStatus; }
+    [[nodiscard]] Status seqFrameStatus() const noexcept { return modelLoaders.seqFrameStatus; }
 
     Status tryGetCacheRules(const CacheRules** out) const noexcept {
         if (!out) return Status::InvalidArgument;

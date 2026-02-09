@@ -14,7 +14,21 @@
         "hasModelService": true,
         "hasSeqFrameService": true,
         "hasTextureService": true,
-        "hasMapFileService": true
+        "hasMapFileService": true,
+        "rules": {
+          "isIndexConfigs": false,
+          "textureMode": "sprite",
+          "textureHasAlphaMaterialField": false,
+          "textureHasAlphaOperation": false,
+          "mapScenesMode": "graphics_defaults",
+          "mapFunctionsMode": "osrs_archive"
+        },
+        "indexes": {
+          "map": { "present": true },
+          "models": { "present": true },
+          "seqFrames": { "present": true },
+          "sprites": { "present": true }
+        }
       },
       "expectedCpp": {
         "cacheType": "dat2",
@@ -24,7 +38,29 @@
         "hasModelService": true,
         "hasSeqFrameService": true,
         "hasTextureService": true,
-        "hasMapFileService": true
+        "hasMapFileService": true,
+        "rules": {
+          "isIndexConfigs": false,
+          "textureMode": "sprite",
+          "textureHasAlphaMaterialField": false,
+          "textureHasAlphaOperation": false,
+          "mapScenesMode": "graphics_defaults",
+          "mapFunctionsMode": "osrs_archive"
+        },
+        "services": {
+          "configStatus": "Ok",
+          "textureStatus": "Ok",
+          "modelStatus": "Ok",
+          "seqFrameStatus": "Ok",
+          "skeletalSeqStatus": "Ok",
+          "seqBaseStatus": "Ok"
+        },
+        "indexes": {
+          "map": { "status": "Ok", "present": true },
+          "models": { "status": "Ok", "present": true },
+          "seqFrames": { "status": "Ok", "present": true },
+          "sprites": { "status": "Ok", "present": true }
+        }
       }
     },
     {
@@ -40,7 +76,21 @@
         "hasModelService": true,
         "hasSeqFrameService": true,
         "hasTextureService": true,
-        "hasMapFileService": true
+        "hasMapFileService": true,
+        "rules": {
+          "isIndexConfigs": false,
+          "textureMode": "sprite",
+          "textureHasAlphaMaterialField": false,
+          "textureHasAlphaOperation": false,
+          "mapScenesMode": "archive",
+          "mapFunctionsMode": "rs2_archive"
+        },
+        "indexes": {
+          "map": { "present": true },
+          "models": { "present": true },
+          "seqFrames": { "present": true },
+          "sprites": { "present": false }
+        }
       },
       "expectedCpp": {
         "cacheType": "dat",
@@ -50,7 +100,29 @@
         "hasModelService": true,
         "hasSeqFrameService": true,
         "hasTextureService": true,
-        "hasMapFileService": true
+        "hasMapFileService": true,
+        "rules": {
+          "isIndexConfigs": false,
+          "textureMode": "sprite",
+          "textureHasAlphaMaterialField": false,
+          "textureHasAlphaOperation": false,
+          "mapScenesMode": "archive",
+          "mapFunctionsMode": "rs2_archive"
+        },
+        "services": {
+          "configStatus": "Ok",
+          "textureStatus": "Ok",
+          "modelStatus": "Ok",
+          "seqFrameStatus": "Ok",
+          "skeletalSeqStatus": "Unsupported",
+          "seqBaseStatus": "Unsupported"
+        },
+        "indexes": {
+          "map": { "status": "Ok", "present": true },
+          "models": { "status": "Ok", "present": true },
+          "seqFrames": { "status": "Ok", "present": true },
+          "sprites": { "status": "Unsupported", "present": false }
+        }
       }
     },
     {
@@ -66,7 +138,21 @@
         "hasModelService": true,
         "hasSeqFrameService": true,
         "hasTextureService": true,
-        "hasMapFileService": true
+        "hasMapFileService": true,
+        "rules": {
+          "isIndexConfigs": false,
+          "textureMode": "sprite",
+          "textureHasAlphaMaterialField": false,
+          "textureHasAlphaOperation": false,
+          "mapScenesMode": "graphics_defaults",
+          "mapFunctionsMode": "graphics_defaults"
+        },
+        "indexes": {
+          "map": { "present": true },
+          "models": { "present": true },
+          "seqFrames": { "present": true },
+          "sprites": { "present": false }
+        }
       },
       "expectedCpp": {
         "cacheType": "legacy",
@@ -76,7 +162,29 @@
         "hasModelService": true,
         "hasSeqFrameService": true,
         "hasTextureService": true,
-        "hasMapFileService": true
+        "hasMapFileService": true,
+        "rules": {
+          "isIndexConfigs": false,
+          "textureMode": "sprite",
+          "textureHasAlphaMaterialField": false,
+          "textureHasAlphaOperation": false,
+          "mapScenesMode": "graphics_defaults",
+          "mapFunctionsMode": "graphics_defaults"
+        },
+        "services": {
+          "configStatus": "Ok",
+          "textureStatus": "Ok",
+          "modelStatus": "Ok",
+          "seqFrameStatus": "Ok",
+          "skeletalSeqStatus": "Unsupported",
+          "seqBaseStatus": "Unsupported"
+        },
+        "indexes": {
+          "map": { "status": "Ok", "present": true },
+          "models": { "status": "Ok", "present": true },
+          "seqFrames": { "status": "Ok", "present": true },
+          "sprites": { "status": "Unsupported", "present": false }
+        }
       }
     }
   ]

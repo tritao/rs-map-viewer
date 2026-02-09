@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-import { detectCacheType } from "../../src/rs/cache/CacheType";
+import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
+import { Dat2IndexId, DatIndexId, LegacyIndexId } from "../../src/rs/cache/IndexId";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
+import { computeCacheRules } from "../../src/rs/loaders/CacheRules";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
@@ -24,6 +26,20 @@ type Case = {
         hasSeqFrameService: boolean;
         hasTextureService: boolean;
         hasMapFileService: boolean;
+        rules?: {
+            isIndexConfigs: boolean;
+            textureMode: "sprite" | "materials" | "old_procedural" | "dat";
+            textureHasAlphaMaterialField: boolean;
+            textureHasAlphaOperation: boolean;
+            mapScenesMode: "archive" | "graphics_defaults";
+            mapFunctionsMode: "osrs_archive" | "rs2_archive" | "graphics_defaults";
+        };
+        indexes?: {
+            map: { present: boolean };
+            models: { present: boolean };
+            seqFrames: { present: boolean };
+            sprites: { present: boolean };
+        };
     };
     expectedCpp?: {
         cacheType: "dat2" | "dat" | "legacy";
@@ -124,6 +140,109 @@ function runCase(c: Case): void {
         c.expectedTs.hasMapFileService,
         `${c.label}: map file service availability mismatch`,
     );
+
+    if (c.expectedTs.rules) {
+        const rules = computeCacheRules(info, cacheSystem);
+        assert.equal(
+            rules.isIndexConfigs,
+            c.expectedTs.rules.isIndexConfigs,
+            `${c.label}: rules.isIndexConfigs mismatch`,
+        );
+        if (rules.texture.mode === "sprite") {
+            assert.equal(c.expectedTs.rules.textureMode, "sprite", `${c.label}: rules.textureMode mismatch`);
+            assert.equal(
+                c.expectedTs.rules.textureHasAlphaMaterialField,
+                false,
+                `${c.label}: rules.textureHasAlphaMaterialField mismatch`,
+            );
+            assert.equal(
+                c.expectedTs.rules.textureHasAlphaOperation,
+                false,
+                `${c.label}: rules.textureHasAlphaOperation mismatch`,
+            );
+        } else if (rules.texture.mode === "materials") {
+            assert.equal(c.expectedTs.rules.textureMode, "materials", `${c.label}: rules.textureMode mismatch`);
+            assert.equal(
+                c.expectedTs.rules.textureHasAlphaMaterialField,
+                rules.texture.hasAlphaMaterialField,
+                `${c.label}: rules.textureHasAlphaMaterialField mismatch`,
+            );
+            assert.equal(
+                c.expectedTs.rules.textureHasAlphaOperation,
+                rules.texture.hasAlphaOperation,
+                `${c.label}: rules.textureHasAlphaOperation mismatch`,
+            );
+        } else if (rules.texture.mode === "old_procedural") {
+            assert.equal(
+                c.expectedTs.rules.textureMode,
+                "old_procedural",
+                `${c.label}: rules.textureMode mismatch`,
+            );
+            assert.equal(
+                c.expectedTs.rules.textureHasAlphaMaterialField,
+                false,
+                `${c.label}: rules.textureHasAlphaMaterialField mismatch`,
+            );
+            assert.equal(
+                c.expectedTs.rules.textureHasAlphaOperation,
+                false,
+                `${c.label}: rules.textureHasAlphaOperation mismatch`,
+            );
+        }
+        assert.equal(
+            c.expectedTs.rules.mapScenesMode,
+            rules.mapScenes.mode,
+            `${c.label}: rules.mapScenesMode mismatch`,
+        );
+        assert.equal(
+            c.expectedTs.rules.mapFunctionsMode,
+            rules.mapFunctions.mode,
+            `${c.label}: rules.mapFunctionsMode mismatch`,
+        );
+    }
+
+    if (c.expectedTs.indexes) {
+        const mapIndexId =
+            type === CacheType.Dat2
+                ? Dat2IndexId.maps
+                : type === CacheType.Dat
+                  ? DatIndexId.maps
+                  : LegacyIndexId.maps;
+        const modelsIndexId =
+            type === CacheType.Dat2
+                ? Dat2IndexId.models
+                : type === CacheType.Dat
+                  ? DatIndexId.models
+                  : LegacyIndexId.models;
+        const seqFramesIndexId =
+            type === CacheType.Dat2
+                ? Dat2IndexId.animations
+                : type === CacheType.Dat
+                  ? DatIndexId.animations
+                  : LegacyIndexId.models;
+
+        assert.equal(
+            !!session.tryGetIndex(mapIndexId),
+            c.expectedTs.indexes.map.present,
+            `${c.label}: indexes.map.present mismatch`,
+        );
+        assert.equal(
+            !!session.tryGetIndex(modelsIndexId),
+            c.expectedTs.indexes.models.present,
+            `${c.label}: indexes.models.present mismatch`,
+        );
+        assert.equal(
+            !!session.tryGetIndex(seqFramesIndexId),
+            c.expectedTs.indexes.seqFrames.present,
+            `${c.label}: indexes.seqFrames.present mismatch`,
+        );
+        const spritesPresent = type === CacheType.Dat2 ? !!session.tryGetIndex(Dat2IndexId.sprites) : false;
+        assert.equal(
+            spritesPresent,
+            c.expectedTs.indexes.sprites.present,
+            `${c.label}: indexes.sprites.present mismatch`,
+        );
+    }
 
     session.clearCaches();
 

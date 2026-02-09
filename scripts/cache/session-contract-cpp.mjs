@@ -45,6 +45,9 @@ function main() {
     ]);
     process.stdout.write(out);
     const parsed = JSON.parse(out);
+    if ((parsed.schema | 0) < 2) {
+      throw new Error(`${c.label}: expected schema >= 2`);
+    }
     if (parsed.cacheType !== c.expectedCpp.cacheType) {
       throw new Error(`${c.label}: cacheType mismatch (${parsed.cacheType} != ${c.expectedCpp.cacheType})`);
     }
@@ -68,6 +71,51 @@ function main() {
     }
     if (parsed.hasMapFileService !== c.expectedCpp.hasMapFileService) {
       throw new Error(`${c.label}: map file service availability mismatch`);
+    }
+
+    if (c.expectedCpp.rules) {
+      if (!parsed.rules) throw new Error(`${c.label}: missing rules section`);
+      if (parsed.rules.isIndexConfigs !== c.expectedCpp.rules.isIndexConfigs) {
+        throw new Error(`${c.label}: rules.isIndexConfigs mismatch`);
+      }
+      if (parsed.rules.textureMode !== c.expectedCpp.rules.textureMode) {
+        throw new Error(`${c.label}: rules.textureMode mismatch`);
+      }
+      if (parsed.rules.textureHasAlphaMaterialField !== c.expectedCpp.rules.textureHasAlphaMaterialField) {
+        throw new Error(`${c.label}: rules.textureHasAlphaMaterialField mismatch`);
+      }
+      if (parsed.rules.textureHasAlphaOperation !== c.expectedCpp.rules.textureHasAlphaOperation) {
+        throw new Error(`${c.label}: rules.textureHasAlphaOperation mismatch`);
+      }
+      if (parsed.rules.mapScenesMode !== c.expectedCpp.rules.mapScenesMode) {
+        throw new Error(`${c.label}: rules.mapScenesMode mismatch`);
+      }
+      if (parsed.rules.mapFunctionsMode !== c.expectedCpp.rules.mapFunctionsMode) {
+        throw new Error(`${c.label}: rules.mapFunctionsMode mismatch`);
+      }
+    }
+
+    if (c.expectedCpp.services) {
+      if (!parsed.services) throw new Error(`${c.label}: missing services section`);
+      for (const [k, v] of Object.entries(c.expectedCpp.services)) {
+        if (parsed.services[k] !== v) {
+          throw new Error(`${c.label}: services.${k} mismatch (${parsed.services[k]} != ${v})`);
+        }
+      }
+    }
+
+    if (c.expectedCpp.indexes) {
+      if (!parsed.indexes) throw new Error(`${c.label}: missing indexes section`);
+      for (const [k, expected] of Object.entries(c.expectedCpp.indexes)) {
+        const got = parsed.indexes[k];
+        if (!got) throw new Error(`${c.label}: missing indexes.${k}`);
+        if (got.status !== expected.status) {
+          throw new Error(`${c.label}: indexes.${k}.status mismatch (${got.status} != ${expected.status})`);
+        }
+        if (got.present !== expected.present) {
+          throw new Error(`${c.label}: indexes.${k}.present mismatch (${got.present} != ${expected.present})`);
+        }
+      }
     }
   }
 
