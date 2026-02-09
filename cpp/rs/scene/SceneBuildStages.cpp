@@ -536,21 +536,30 @@ Status decodeLocsStage(
                     (resolved && !resolved->transforms.empty()) ||
                     context.locLoadType == SceneLocLoadType::NoModels;
 
-                i32 modelSignature = 0;
+                SceneStaticModelInfo staticModel{};
                 bool modelAvailable = false;
                 if (!isEntity && context.locLoadType == SceneLocLoadType::Models) {
                     if (!services.locModels || !resolved) {
                         return Status::InvalidArgument;
                     }
-                    const Status ms = services.locModels->tryResolveModelSignature(
+                    const Status ms = services.locModels->tryResolveStaticModelInfo(
                         *resolved,
                         p.type,
                         p.rotation,
-                        &modelSignature);
+                        &staticModel);
                     if (!ok(ms)) {
                         continue;
                     }
                     modelAvailable = true;
+                }
+
+                SceneSkeletalInfo skeletal{};
+                bool skeletalAvailable = false;
+                if (services.locModels && seqId >= 0) {
+                    const Status ss = services.locModels->tryResolveSkeletalInfo(seqId, &skeletal);
+                    if (ok(ss)) {
+                        skeletalAvailable = true;
+                    }
                 }
 
                 SceneLocPlacement placed{};
@@ -563,7 +572,20 @@ Status decodeLocsStage(
                 placed.rotation = p.rotation;
                 placed.renderKind = static_cast<u8>(isEntity ? 0 : 1);
                 placed.modelAvailable = static_cast<u8>(modelAvailable ? 1 : 0);
-                placed.modelSignature = modelAvailable ? modelSignature : 0;
+                placed.modelSignature = modelAvailable ? staticModel.signature : 0;
+                placed.modelVerticesCount = modelAvailable ? staticModel.verticesCount : 0;
+                placed.modelFaceCount = modelAvailable ? staticModel.faceCount : 0;
+                placed.modelTextureFaceCount = modelAvailable ? staticModel.textureFaceCount : 0;
+                placed.modelHasMayaGroups = static_cast<u8>((modelAvailable && staticModel.hasMayaGroups) ? 1 : 0);
+                placed.sequenceId = seqId;
+                placed.animMayaId = skeletalAvailable ? skeletal.animMayaId : -1;
+                placed.skeletalBaseId = skeletalAvailable ? skeletal.baseId : -1;
+                placed.skeletalPoseId = skeletalAvailable ? skeletal.poseId : 0;
+                placed.skeletalCurveCount = skeletalAvailable ? skeletal.curveCount : 0;
+                placed.skeletalAvailable = static_cast<u8>(skeletalAvailable ? 1 : 0);
+                placed.skeletalHasAlpha = static_cast<u8>((skeletalAvailable && skeletal.hasAlphaTransform) ? 1 : 0);
+                placed.skeletalFrame = skeletalAvailable ? skeletal.frame : 0;
+                placed.skeletalFrameHash = skeletalAvailable ? skeletal.frameHash : 0;
                 auto rr = scene->locPlacements.pushBack(placed);
                 if (!rr.isOk()) {
                     return rr.status();
