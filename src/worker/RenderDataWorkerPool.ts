@@ -8,7 +8,7 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
-import { RenderDataWorker } from "./RenderDataWorker";
+import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -30,9 +30,14 @@ export class RenderDataWorkerPool {
         readonly size: number,
     ) {}
 
-    initCache(cache: LoadedCache, objSpawns: ObjSpawn[], npcSpawns: NpcSpawn[]): void {
+    initCache(
+        cache: LoadedCache,
+        objSpawns: ObjSpawn[],
+        npcSpawns: NpcSpawn[],
+        options?: WorkerRuntimeOptions,
+    ): void {
         for (const worker of this.workers) {
-            worker.init.then((w) => w.initCache(cache, objSpawns, npcSpawns));
+            worker.init.then((w) => w.initCache(cache, objSpawns, npcSpawns, options));
         }
     }
 

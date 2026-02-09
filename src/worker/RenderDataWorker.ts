@@ -17,7 +17,6 @@ import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSe
 import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
-import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
@@ -28,6 +27,10 @@ import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
+import { createMapRenderDataBackend } from "./MapRenderDataBackend";
+import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
+import { createSceneBuildBackend } from "./SceneBuildBackend";
+import type { SceneBuildBackend, SceneBuildBackendKind } from "./SceneBuildBackend";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -43,6 +46,8 @@ export type WorkerState = {
     npcModelLoader: NpcModelLoader;
 
     sceneBuilder: SceneBuilder;
+    sceneBuildBackend: SceneBuildBackend;
+    mapRenderDataBackend: MapRenderDataBackend;
 
     mapImageRenderer: MapImageRenderer;
     mapImageCache: Cache;
@@ -52,6 +57,14 @@ export type WorkerState = {
 };
 
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
+
+export type WorkerRuntimeOptions = Readonly<{
+    sceneBackend?: SceneBuildBackendKind;
+    sceneBackendModuleUrl?: string;
+    mapRenderBackend?: MapRenderDataBackendKind;
+    mapRenderBackendModuleUrl?: string;
+    mapRenderTelemetry?: boolean;
+}>;
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
 
@@ -70,6 +83,7 @@ async function initWorker(
     cache: LoadedCache,
     objSpawns: ObjSpawn[],
     npcSpawns: NpcSpawn[],
+    options?: WorkerRuntimeOptions,
 ): Promise<WorkerState> {
     await hasherPromise;
 
@@ -127,12 +141,38 @@ async function initWorker(
         locModelLoader,
         varProvider,
     });
-
+    const sceneBackendKind = options?.sceneBackend ?? "ts";
+    const sceneBuildBackend = createSceneBuildBackend(sceneBackendKind, {
+        sceneBuilder,
+        mapBytesProvider,
+    }, {
+        cppWasmModuleUrl: options?.sceneBackendModuleUrl,
+    });
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,
         mapScenes,
         mapFunctions,
+    );
+    const mapRenderBackendKind = options?.mapRenderBackend ?? "ts";
+    const mapRenderDataBackend = createMapRenderDataBackend(
+        mapRenderBackendKind,
+        {
+            session,
+            mapBytesProvider,
+            locModelLoader,
+            objModelLoader,
+            npcModelLoader,
+            sceneBuildBackend,
+            mapImageRenderer,
+            varProvider,
+            objSpawns,
+            npcSpawns,
+        },
+        {
+            cppWasmModuleUrl: options?.mapRenderBackendModuleUrl,
+            telemetry: options?.mapRenderTelemetry,
+        },
     );
 
     const mapImageCache = await caches.open("map-images");
@@ -146,6 +186,8 @@ async function initWorker(
         npcModelLoader,
 
         sceneBuilder,
+        sceneBuildBackend,
+        mapRenderDataBackend,
 
         mapImageRenderer,
         mapImageCache,
@@ -156,17 +198,24 @@ async function initWorker(
 }
 
 const worker = {
-    initCache(cache: LoadedCache, objSpawns: ObjSpawn[], npcSpawns: NpcSpawn[]) {
+    initCache(
+        cache: LoadedCache,
+        objSpawns: ObjSpawn[],
+        npcSpawns: NpcSpawn[],
+        options?: WorkerRuntimeOptions,
+    ) {
         console.log("init worker", cache.info);
-        workerStatePromise = initWorker(cache, objSpawns, npcSpawns)
+        workerStatePromise = initWorker(cache, objSpawns, npcSpawns, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
     },
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.init();
     },
-    resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
+    async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
+        const workerState = await requireWorkerState();
+        workerState.mapRenderDataBackend.reset();
     },
     async load<I, D>(
         dataLoader: RenderDataLoader<I, D>,
@@ -213,16 +262,14 @@ const worker = {
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
-        const scene = buildSceneFromMapBytesProvider(
-            workerState.sceneBuilder,
-            workerState.mapBytesProvider,
+        const scene = await workerState.sceneBuildBackend.buildScene({
             baseX,
             baseY,
-            mapSize,
-            mapSize,
-            false,
-            LocLoadType.NO_MODELS,
-        );
+            sizeX: mapSize,
+            sizeY: mapSize,
+            smoothTerrain: false,
+            locLoadType: LocLoadType.NO_MODELS,
+        });
 
         const minimapBlob = await loadMinimapBlob(
             workerState.mapImageRenderer,

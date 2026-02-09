@@ -12,6 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(RS_BUILD_TOOLS "Build command-line tools (native only by default)" ON)
 option(RS_BUILD_TESTS "Build tests (native only by default)" ON)
 option(RS_BUILD_WASM_SMOKE "Build a minimal wasm smoke target" OFF)
+option(RS_BUILD_WASM_MAP_RENDER_BACKEND "Build wasm map-render backend module" OFF)
 option(RS_ENABLE_SANITIZERS "Enable ASan+UBSan for native builds" OFF)
 
 if (EMSCRIPTEN)
@@ -20,7 +21,12 @@ if (EMSCRIPTEN)
     set(RS_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     # Default wasm bootstrap: build only the core static library (`librs.a`).
     # Enable RS_BUILD_WASM_SMOKE manually if you want a linked wasm executable wrapper.
-    set(RS_BUILD_WASM_SMOKE OFF CACHE BOOL "" FORCE)
+    if (NOT RS_BUILD_WASM_SMOKE)
+        set(RS_BUILD_WASM_SMOKE OFF CACHE BOOL "" FORCE)
+    endif()
+    if (NOT RS_BUILD_WASM_MAP_RENDER_BACKEND)
+        set(RS_BUILD_WASM_MAP_RENDER_BACKEND OFF CACHE BOOL "" FORCE)
+    endif()
 endif()
 
 set(RS_SOURCES
@@ -254,4 +260,31 @@ if (RS_BUILD_WASM_SMOKE)
             -sFILESYSTEM=0
         )
     endif()
+endif()
+
+if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
+    if (NOT EMSCRIPTEN)
+        message(FATAL_ERROR "RS_BUILD_WASM_MAP_RENDER_BACKEND requires Emscripten")
+    endif()
+
+    add_executable(rs_map_render_backend
+        tools/rs_map_render_backend.cpp
+    )
+
+    target_link_libraries(rs_map_render_backend PRIVATE rs)
+
+    set(RS_MAP_RENDER_EXPORTED_FUNCTIONS
+        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes']"
+    )
+
+    target_link_options(rs_map_render_backend PRIVATE
+        -Wl,--gc-sections
+        -sERROR_ON_UNDEFINED_SYMBOLS=1
+        -sENVIRONMENT=web,worker,node
+        -sFILESYSTEM=0
+        -sMODULARIZE=1
+        -sEXPORT_ES6=1
+        --no-entry
+        "-sEXPORTED_FUNCTIONS=${RS_MAP_RENDER_EXPORTED_FUNCTIONS}"
+    )
 endif()
