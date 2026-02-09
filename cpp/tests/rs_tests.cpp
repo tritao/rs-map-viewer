@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstring>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
@@ -10,6 +11,7 @@
 #include "../rs/cache/CacheIndex.hpp"
 #include "../rs/cache/CacheSystem.hpp"
 #include "../rs/cache/CacheType.hpp"
+#include "../rs/cache/IndexId.hpp"
 #include "../rs/cache/store/CacheStore.hpp"
 #include "../rs/cache/store/DatLayout.hpp"
 #include "../rs/cache/format/Archive.hpp"
@@ -56,7 +58,13 @@
 #include "../rs/texture/procedural/TextureGenerator.hpp"
 #include "../rs/util/ColorUtil.hpp"
 #include "../rs/util/StringHash.hpp"
-#include "../rs/loaders/OldConfigLoaders.hpp"
+#include "../rs/model/ModelData.hpp"
+#include "../rs/model/LegacyModelLoader.hpp"
+#include "../rs/model/ModelLoader.hpp"
+#include "../rs/model/skeletal/SkeletalEval.hpp"
+#include "../rs/loaders/Loaders.hpp"
+#include "../rs/loaders/DatLegacyConfigLoaders.hpp"
+#include "../rs/loaders/CacheSession.hpp"
 #include "../rs/map/TerrainSquare.hpp"
 #include "../rs/map/TerrainSquareDecode.hpp"
 
@@ -77,6 +85,42 @@ static bool eqBytes(const rs::Span<const rs::u8> a, const rs::Span<const rs::u8>
         }
     }
     return true;
+}
+
+static bool fileExists(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    return f.good();
+}
+
+static bool tryReadFileBytes(const std::string& path, std::vector<rs::u8>* out) {
+    if (!out) return false;
+    std::ifstream f(path, std::ios::binary);
+    if (!f.good()) return false;
+    f.seekg(0, std::ios::end);
+    const std::streamsize size = f.tellg();
+    if (size < 0) return false;
+    f.seekg(0, std::ios::beg);
+    out->assign(static_cast<std::size_t>(size), 0);
+    if (size == 0) return true;
+    f.read(reinterpret_cast<char*>(out->data()), size);
+    return static_cast<std::streamsize>(f.gcount()) == size;
+}
+
+static bool tryReadCacheFixtureBytes(const char* relativePath, std::vector<rs::u8>* out) {
+    if (!relativePath || !out) return false;
+    const char* prefixes[] = {
+        "testdata/cache-fixtures/",
+        "../testdata/cache-fixtures/",
+        "../../testdata/cache-fixtures/",
+    };
+    for (std::size_t i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
+        const std::string full = std::string(prefixes[i]) + relativePath;
+        if (!fileExists(full)) {
+            continue;
+        }
+        return tryReadFileBytes(full, out);
+    }
+    return false;
 }
 
 static void appendU16BE(std::vector<rs::u8>& out, rs::u16 v) {
@@ -793,6 +837,454 @@ static int test_indexed_sprite_dat_and_dat_texture_loader(rs::Allocator& alloc) 
     return 0;
 }
 
+static int test_model_data_decode_and_loader(rs::Allocator& alloc, rs::NativeCompressionHandler& compression) {
+    {
+        std::vector<rs::u8> bytes;
+        if (!tryReadCacheFixtureBytes("model-v1-empty/input.bin", &bytes)) {
+            return fail("ModelData V1 empty: failed reading fixture bytes");
+        }
+        rs::ModelData model(alloc);
+        const rs::Status s = rs::decodeModelData(rs::Span<const rs::u8>(bytes.data(), bytes.size()), &model, alloc);
+        if (!rs::ok(s)) return fail("ModelData V1 empty: decode failed");
+        if (model.version != 1 || model.verticesCount != 0 || model.faceCount != 0 ||
+            model.textureFaceCount != 0 || model.priority != 0) {
+            return fail("ModelData V1 empty: decoded fields mismatch");
+        }
+    }
+
+    std::vector<rs::u8> v2Bytes;
+    if (!tryReadCacheFixtureBytes("model-v2-tri/input.bin", &v2Bytes)) {
+        return fail("ModelData V2 tri: failed reading fixture bytes");
+    }
+
+    {
+        rs::ModelData model(alloc);
+        const rs::Status s = rs::decodeModelData(rs::Span<const rs::u8>(v2Bytes.data(), v2Bytes.size()), &model, alloc);
+        if (!rs::ok(s)) return fail("ModelData V2 tri: decode failed");
+        if (model.version != 2 || model.verticesCount != 3 || model.faceCount != 1) {
+            return fail("ModelData V2 tri: basic fields mismatch");
+        }
+        if (model.indices1.size() != 1 || model.indices2.size() != 1 || model.indices3.size() != 1) {
+            return fail("ModelData V2 tri: index vector size mismatch");
+        }
+        if (model.indices1[0] != 0 || model.indices2[0] != 1 || model.indices3[0] != 2) {
+            return fail("ModelData V2 tri: index values mismatch");
+        }
+        if (model.faceColors.size() != 1 || model.faceColors[0] != 0x1234) {
+            return fail("ModelData V2 tri: face color mismatch");
+        }
+    }
+
+    {
+        // V2 textured + face render flags.
+        const std::vector<rs::u8> bytes = {
+            0x00, 0x00, 0x00, // vertex flags (3)
+            0x01,             // face index type
+            0x03,             // face flag: render type + textured (coord index 0)
+            0x40, 0x41, 0x41, // face index data (smart2: 0,1,1)
+            0x12, 0x34,       // face color
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // texture mapping p/m/n
+            // footer (21 bytes) + markers (2 bytes)
+            0x00, 0x03, // vertexCount
+            0x00, 0x01, // faceCount
+            0x01,       // texTriangleCount
+            0x01,       // usesTextures
+            0x00,       // priority
+            0x00,       // hasFaceAlphas
+            0x00,       // hasFaceSkins
+            0x00,       // hasVertexSkins
+            0x00,       // hasMayaGroups
+            0x00, 0x00, // vertexDeltaXLen
+            0x00, 0x00, // vertexDeltaYLen
+            0x00, 0x00, // vertexDeltaZLen
+            0x00, 0x03, // faceIndexDataLen
+            0x00, 0x00, // vertexSkinAndMayaLen
+            0xFF, 0xFE, // marker
+        };
+
+        rs::ModelData model(alloc);
+        const rs::Status s = rs::decodeModelData(rs::Span<const rs::u8>(bytes.data(), bytes.size()), &model, alloc);
+        if (!rs::ok(s)) return fail("ModelData V2 textured: decode failed");
+        if (model.version != 2 || model.textureFaceCount != 1) {
+            return fail("ModelData V2 textured: version/texture count mismatch");
+        }
+        if (!model.hasFaceRenderTypes || model.faceRenderTypes.size() != 1 || model.faceRenderTypes[0] != 1) {
+            return fail("ModelData V2 textured: faceRenderTypes mismatch");
+        }
+        if (!model.hasFaceTextures || model.faceTextures.size() != 1 || model.faceTextures[0] != 0x1234) {
+            return fail("ModelData V2 textured: faceTextures mismatch");
+        }
+        if (!model.hasTextureCoords || model.textureCoords.size() != 1 || model.textureCoords[0] != 0) {
+            return fail("ModelData V2 textured: textureCoords mismatch");
+        }
+        if (model.faceColors[0] != 127) {
+            return fail("ModelData V2 textured: faceColors transformed mismatch");
+        }
+        if (model.textureMappingP.size() != 1 || model.textureMappingP[0] != 0 ||
+            model.textureMappingM[0] != 0 || model.textureMappingN[0] != 0) {
+            return fail("ModelData V2 textured: textureMapping mismatch");
+        }
+    }
+
+    {
+        // V3 with optional face/skin/alpha/texture fields and simple mapping.
+        const std::vector<rs::u8> bytes = {
+            0x00,                   // textureRenderType[0] = simple
+            0x00, 0x00, 0x00,       // vertex flags
+            0x01,                   // faceRenderType
+            0x01,                   // faceIndexType
+            0x05,                   // facePriority
+            0x07,                   // faceSkin
+            0x01, 0x02, 0x03,       // vertexSkins
+            0x04,                   // faceAlpha
+            0x40, 0x41, 0x41,       // faceIndexData (smart2: 0,1,1)
+            0x00, 0x02,             // faceTexture -> id=1
+            0x01,                   // textureCoord -> 0
+            0x12, 0x34,             // faceColor
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x02, // simple texture mapping
+            // footer (24 bytes) + markers (2 bytes)
+            0x00, 0x03, // vertexCount
+            0x00, 0x01, // faceCount
+            0x01,       // texTriangleCount
+            0x01,       // hasFaceRenderTypes
+            0xFF,       // priorityOrFlag
+            0x01,       // hasFaceAlphas
+            0x01,       // hasFaceSkins
+            0x01,       // hasFaceTextures
+            0x01,       // hasVertexSkins
+            0x00,       // hasMayaGroups
+            0x00, 0x00, // vertexDeltaXLen
+            0x00, 0x00, // vertexDeltaYLen
+            0x00, 0x00, // vertexDeltaZLen
+            0x00, 0x03, // faceIndexLen
+            0x00, 0x01, // textureCoordLen
+            0x00, 0x03, // vertexSkinAndMayaLen
+            0xFF, 0xFD, // marker
+        };
+
+        rs::ModelData model(alloc);
+        const rs::Status s = rs::decodeModelData(rs::Span<const rs::u8>(bytes.data(), bytes.size()), &model, alloc);
+        if (!rs::ok(s)) return fail(std::string("ModelData V3 optional: decode failed status=") + std::to_string(static_cast<int>(s)));
+        if (model.version != 3 || model.verticesCount != 3 || model.faceCount != 1 || model.textureFaceCount != 1) {
+            return fail("ModelData V3 optional: base field mismatch");
+        }
+        if (!model.hasFaceRenderTypes || model.faceRenderTypes[0] != 1) {
+            return fail("ModelData V3 optional: faceRenderTypes mismatch");
+        }
+        if (!model.hasFaceRenderPriorities || model.faceRenderPriorities[0] != 5) {
+            return fail("ModelData V3 optional: faceRenderPriorities mismatch");
+        }
+        if (!model.hasFaceAlphas || model.faceAlphas[0] != 4) {
+            return fail("ModelData V3 optional: faceAlphas mismatch");
+        }
+        if (!model.hasFaceSkins || model.faceSkins[0] != 7) {
+            return fail("ModelData V3 optional: faceSkins mismatch");
+        }
+        if (!model.hasVertexSkins || model.vertexSkins.size() != 3 ||
+            model.vertexSkins[0] != 1 || model.vertexSkins[1] != 2 || model.vertexSkins[2] != 3) {
+            return fail("ModelData V3 optional: vertexSkins mismatch");
+        }
+        if (!model.hasFaceTextures || model.faceTextures[0] != 1) {
+            return fail("ModelData V3 optional: faceTextures mismatch");
+        }
+        if (!model.hasTextureCoords || model.textureCoords[0] != 0) {
+            return fail("ModelData V3 optional: textureCoords mismatch");
+        }
+        if (model.indices1[0] != 0 || model.indices2[0] != 1 || model.indices3[0] != 2) {
+            return fail("ModelData V3 optional: indices mismatch");
+        }
+        if (model.textureMappingP[0] != 0 || model.textureMappingM[0] != 1 || model.textureMappingN[0] != 2) {
+            return fail("ModelData V3 optional: mapping mismatch");
+        }
+    }
+
+    {
+        // V1 with version flag -> version=13, verifies decode-scale-down path.
+        const std::vector<rs::u8> bytes = {
+            0x00,                   // textureRenderType[0]
+            0x01, 0x00, 0x00,       // vertex flags
+            0x01,                   // faceRenderType
+            0x01,                   // faceIndexType
+            0x05,                   // facePriority
+            0x07,                   // faceSkin
+            0x01, 0x02, 0x03,       // vertexSkins
+            0x04,                   // faceAlpha
+            0x40, 0x41, 0x41,       // faceIndexData (smart2: 0,1,1)
+            0x00, 0x02,             // faceTexture -> id=1
+            0x01,                   // textureCoord -> 0
+            0x12, 0x34,             // faceColor
+            0x4D,                   // x delta=13 (smart2) and version byte at len-30
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x02, // simple texture mapping
+            // footer (21 bytes) + markers (2 bytes)
+            0x00, 0x03, // vertexCount
+            0x00, 0x01, // faceCount
+            0x01,       // texFaceCount
+            0x09,       // flags (render types + hasVersion)
+            0xFF,       // modelPriority
+            0x01,       // hasFaceAlpha
+            0x01,       // hasFaceSkins
+            0x01,       // hasFaceTextures
+            0x01,       // hasVertexSkins
+            0x00, 0x01, // modelVerticesXLen
+            0x00, 0x00, // modelVerticesYLen
+            0x00, 0x00, // modelVerticesZLen
+            0x00, 0x03, // faceIndicesLen
+            0x00, 0x01, // textureIndicesLen
+            0xFF, 0xFF, // marker
+        };
+
+        rs::ModelData model(alloc);
+        const rs::Status s = rs::decodeModelData(rs::Span<const rs::u8>(bytes.data(), bytes.size()), &model, alloc);
+        if (!rs::ok(s)) return fail("ModelData V1 version13: decode failed");
+        if (model.version != 77) return fail("ModelData V1 version13: version mismatch");
+        if (model.verticesX.size() != 3 || model.verticesX[0] != 3 || model.verticesX[1] != 3 || model.verticesX[2] != 3) {
+            return fail("ModelData V1 version13: scale-down mismatch");
+        }
+        if (!model.hasFaceRenderTypes || model.faceRenderTypes[0] != 1) {
+            return fail("ModelData V1 version13: faceRenderTypes mismatch");
+        }
+        if (!model.hasFaceRenderPriorities || model.faceRenderPriorities[0] != 5) {
+            return fail("ModelData V1 version13: face priority mismatch");
+        }
+        if (!model.hasFaceTextures || model.faceTextures[0] != 1 ||
+            !model.hasTextureCoords || model.textureCoords[0] != 0) {
+            return fail("ModelData V1 version13: texture fields mismatch");
+        }
+    }
+
+    {
+        // Loader path: index-backed model bytes -> typed decode.
+        FakeStore store;
+        const rs::i32 modelsIndexId = static_cast<rs::i32>(rs::Dat2IndexId::models);
+        store.dat2MetaByIndexId[modelsIndexId] =
+            makeContainerNone(makeRefTableProtocol5SingleArchiveSingleFile(0, 0));
+        store.archivesByIndexAndArchiveId[std::make_pair(modelsIndexId, 0)] = makeContainerNone(v2Bytes);
+
+        auto idxRes = rs::CacheIndex::fromStore(rs::CacheType::Dat2, modelsIndexId, store, compression, alloc);
+        if (!idxRes.isOk()) {
+            return fail("ModelLoader: CacheIndex::fromStore(Dat2) expected Ok");
+        }
+        rs::CacheIndex idx = rs::move(idxRes.value());
+
+        rs::IndexModelLoader loader(rs::IndexFileBytesProvider(&idx, 0), alloc);
+        if (loader.getCount() != 1) {
+            return fail("ModelLoader: getCount mismatch");
+        }
+
+        rs::ModelData model(alloc);
+        rs::Status s = loader.tryLoad(0, &model);
+        if (!rs::ok(s)) return fail("ModelLoader: tryLoad(0) failed");
+        if (model.version != 2 || model.verticesCount != 3 || model.faceCount != 1 ||
+            model.indices1[0] != 0 || model.indices2[0] != 1 || model.indices3[0] != 2 ||
+            model.faceColors[0] != 0x1234) {
+            return fail("ModelLoader: decoded model mismatch");
+        }
+
+        s = loader.tryLoad(1, &model);
+        if (s != rs::Status::NotFound) return fail("ModelLoader: expected NotFound for missing id");
+        s = loader.tryLoad(1, &model);
+        if (s != rs::Status::NotFound) return fail("ModelLoader: expected cached NotFound for missing id");
+        loader.clearCache();
+        s = loader.tryLoad(1, &model);
+        if (s != rs::Status::NotFound) return fail("ModelLoader: expected NotFound after clearCache");
+    }
+
+    {
+        // Legacy loader path: archive-backed split model streams.
+        auto makeVec = [&](const std::vector<rs::u8>& src) -> rs::Result<rs::Vec<rs::u8>> {
+            rs::Vec<rs::u8> outBytes(alloc);
+            auto rr = outBytes.resize(src.size());
+            if (!rr.isOk()) return rs::Result<rs::Vec<rs::u8>>::err(rr.status());
+            for (std::size_t i = 0; i < src.size(); i++) outBytes[i] = src[i];
+            return rs::Result<rs::Vec<rs::u8>>::ok(std::move(outBytes));
+        };
+
+        const struct NamedFile {
+            const char* name;
+            std::vector<rs::u8> bytes;
+        } named[] = {
+            {"ob_head.dat",   {0x00,0x01, 0x00,0x00, 0x00,0x03, 0x00,0x01, 0x01, 0x01, 0xFF, 0x01, 0x01, 0x01}},
+            {"ob_face1.dat",  {0x12,0x34}},
+            {"ob_face2.dat",  {0x03}},
+            {"ob_face3.dat",  {0x05}},
+            {"ob_face4.dat",  {0x04}},
+            {"ob_face5.dat",  {0x07}},
+            {"ob_point1.dat", {0x00,0x00,0x00}},
+            {"ob_point2.dat", {}},
+            {"ob_point3.dat", {}},
+            {"ob_point4.dat", {}},
+            {"ob_point5.dat", {0x01,0x02,0x03}},
+            {"ob_vertex1.dat",{0x40,0x41,0x41}},
+            {"ob_vertex2.dat",{0x01}},
+            {"ob_axis.dat",   {0x00,0x00,0x00,0x00,0x00,0x00}},
+        };
+
+        rs::Vec<rs::ArchiveFile> files(alloc);
+        for (std::size_t i = 0; i < sizeof(named) / sizeof(named[0]); i++) {
+            auto vecRes = makeVec(named[i].bytes);
+            if (!vecRes.isOk()) return fail("LegacyModelLoader test: makeVec failed");
+            auto pr = files.emplaceBack(
+                static_cast<rs::i32>(i),
+                0,
+                std::move(vecRes.value()),
+                rs::hashOld(named[i].name));
+            if (!pr.isOk()) return fail("LegacyModelLoader test: files.emplaceBack failed");
+        }
+
+        rs::Archive modelArchive(0, static_cast<rs::i32>(files.size() - 1), std::move(files), alloc);
+        auto loaderRes = rs::LegacyModelLoader::create(modelArchive, alloc);
+        if (!loaderRes.isOk()) return fail("LegacyModelLoader::create failed");
+        rs::LegacyModelLoader loader = std::move(loaderRes.value());
+        if (loader.getCount() != 1) return fail("LegacyModelLoader: count mismatch");
+
+        rs::ModelData model(alloc);
+        rs::Status s = loader.tryLoad(0, &model);
+        if (!rs::ok(s)) return fail("LegacyModelLoader: tryLoad(0) failed");
+        if (!model.hasFaceRenderTypes || model.faceRenderTypes[0] != 1) {
+            return fail("LegacyModelLoader: faceRenderTypes mismatch");
+        }
+        if (!model.hasFaceTextures || model.faceTextures[0] != 0x1234) {
+            return fail("LegacyModelLoader: faceTextures mismatch");
+        }
+        if (!model.hasTextureCoords || model.textureCoords[0] != 0) {
+            return fail("LegacyModelLoader: textureCoords mismatch");
+        }
+        if (!model.hasFaceRenderPriorities || model.faceRenderPriorities[0] != 5) {
+            return fail("LegacyModelLoader: priority mismatch");
+        }
+        if (!model.hasFaceAlphas || model.faceAlphas[0] != 4) {
+            return fail("LegacyModelLoader: alpha mismatch");
+        }
+        if (!model.hasFaceSkins || model.faceSkins[0] != 7) {
+            return fail("LegacyModelLoader: face skin mismatch");
+        }
+        if (!model.hasVertexSkins || model.vertexSkins.size() != 3 ||
+            model.vertexSkins[0] != 1 || model.vertexSkins[1] != 2 || model.vertexSkins[2] != 3) {
+            return fail("LegacyModelLoader: vertex skins mismatch");
+        }
+        if (model.textureMappingP[0] != 0 || model.textureMappingM[0] != 0 || model.textureMappingN[0] != 0) {
+            return fail("LegacyModelLoader: mapping mismatch");
+        }
+    }
+
+    {
+        // Legacy seq-frame loader path: archive-backed base/frame streams.
+        auto makeVec = [&](const std::vector<rs::u8>& src) -> rs::Result<rs::Vec<rs::u8>> {
+            rs::Vec<rs::u8> outBytes(alloc);
+            auto rr = outBytes.resize(src.size());
+            if (!rr.isOk()) return rs::Result<rs::Vec<rs::u8>>::err(rr.status());
+            for (std::size_t i = 0; i < src.size(); i++) outBytes[i] = src[i];
+            return rs::Result<rs::Vec<rs::u8>>::ok(std::move(outBytes));
+        };
+        const char* fileNames[] = {
+            "base_head.dat",
+            "base_type.dat",
+            "base_label.dat",
+            "frame_head.dat",
+            "frame_tran1.dat",
+            "frame_tran2.dat",
+            "frame_del.dat",
+        };
+
+        rs::Vec<rs::ArchiveFile> files(alloc);
+        for (std::size_t i = 0; i < sizeof(fileNames) / sizeof(fileNames[0]); i++) {
+            const std::string rel = std::string("legacy-seqframe-streams/") + fileNames[i];
+            std::vector<rs::u8> fixtureBytes;
+            if (!tryReadCacheFixtureBytes(rel.c_str(), &fixtureBytes)) {
+                return fail("LegacySeqFrameLoader test: failed reading fixture bytes");
+            }
+            auto vecRes = makeVec(fixtureBytes);
+            if (!vecRes.isOk()) return fail("LegacySeqFrameLoader test: makeVec failed");
+            auto pr = files.emplaceBack(
+                static_cast<rs::i32>(i),
+                0,
+                std::move(vecRes.value()),
+                rs::hashOld(fileNames[i]));
+            if (!pr.isOk()) return fail("LegacySeqFrameLoader test: files.emplaceBack failed");
+        }
+
+        rs::Archive modelArchive(0, static_cast<rs::i32>(files.size() - 1), std::move(files), alloc);
+        auto loaderRes = rs::LegacySeqFrameLoader::create(modelArchive, alloc);
+        if (!loaderRes.isOk()) return fail("LegacySeqFrameLoader::create failed");
+        rs::LegacySeqFrameLoader loader = std::move(loaderRes.value());
+        if (loader.getCount() != 1) return fail("LegacySeqFrameLoader: count mismatch");
+
+        rs::SeqFrame frame(alloc);
+        rs::Status s = loader.tryLoad(0, &frame);
+        if (!rs::ok(s)) return fail("LegacySeqFrameLoader: tryLoad(0) failed");
+        if (frame.frameLength != 4 || frame.baseId != 0 || frame.transformCount != 2) {
+            return fail("LegacySeqFrameLoader: frame header mismatch");
+        }
+        if (!frame.hasAlphaTransform || frame.hasColorTransform) {
+            return fail("LegacySeqFrameLoader: transform flags mismatch");
+        }
+        if (frame.transformGroups.size() != 2 || frame.transformGroups[0] != 1 || frame.transformGroups[1] != 2) {
+            return fail("LegacySeqFrameLoader: transform groups mismatch");
+        }
+        if (frame.transformX[0] != 1 || frame.transformY[0] != 2 || frame.transformZ[0] != 3) {
+            return fail("LegacySeqFrameLoader: translate transform mismatch");
+        }
+        if (frame.transformX[1] != 4 || frame.transformY[1] != 0 || frame.transformZ[1] != 0) {
+            return fail("LegacySeqFrameLoader: alpha transform mismatch");
+        }
+        if (frame.resetOriginGroups[0] != 0 || frame.resetOriginGroups[1] != -1) {
+            return fail("LegacySeqFrameLoader: reset-origin mismatch");
+        }
+        s = loader.tryLoad(1, &frame);
+        if (s != rs::Status::NotFound) return fail("LegacySeqFrameLoader: expected NotFound for missing id");
+    }
+
+    {
+        // Dat seq-frame loader path: index-backed frame-map decode.
+        std::vector<rs::u8> datFrameMapBytes;
+        if (!tryReadCacheFixtureBytes("dat-seqframe-map/input.bin", &datFrameMapBytes)) {
+            return fail("DatSeqFrameLoader test: failed reading fixture bytes");
+        }
+
+        FakeStore store;
+        const rs::i32 animIndexId = static_cast<rs::i32>(rs::Dat2IndexId::animations);
+        store.dat2MetaByIndexId[animIndexId] =
+            makeContainerNone(makeRefTableProtocol5SingleArchiveSingleFile(0, 0));
+        store.archivesByIndexAndArchiveId[std::make_pair(animIndexId, 0)] =
+            makeContainerNone(datFrameMapBytes);
+
+        auto idxRes = rs::CacheIndex::fromStore(rs::CacheType::Dat2, animIndexId, store, compression, alloc);
+        if (!idxRes.isOk()) {
+            return fail("DatSeqFrameLoader test: CacheIndex::fromStore failed");
+        }
+        rs::CacheIndex idx = rs::move(idxRes.value());
+
+        auto loaderRes = rs::DatSeqFrameLoader::create(rs::IndexFileBytesProvider(&idx, 0), alloc);
+        if (!loaderRes.isOk()) {
+            return fail("DatSeqFrameLoader::create failed");
+        }
+        rs::DatSeqFrameLoader loader = rs::move(loaderRes.value());
+        if (loader.getCount() != 8) {
+            return fail("DatSeqFrameLoader: count mismatch");
+        }
+
+        rs::SeqFrame frame(alloc);
+        rs::Status s = loader.tryLoad(7, &frame);
+        if (!rs::ok(s)) return fail("DatSeqFrameLoader: tryLoad(7) failed");
+        if (frame.frameLength != 3 || frame.transformCount != 1) {
+            return fail("DatSeqFrameLoader: frame header mismatch");
+        }
+        if (frame.transformGroups.size() != 1 || frame.transformGroups[0] != 0) {
+            return fail("DatSeqFrameLoader: transform group mismatch");
+        }
+        if (frame.transformX[0] != 1 || frame.transformY[0] != 2 || frame.transformZ[0] != 3) {
+            return fail("DatSeqFrameLoader: transform value mismatch");
+        }
+        if (frame.hasAlphaTransform || frame.hasColorTransform) {
+            return fail("DatSeqFrameLoader: alpha/color flags mismatch");
+        }
+        s = loader.tryLoad(6, &frame);
+        if (s != rs::Status::NotFound) return fail("DatSeqFrameLoader: expected NotFound for missing id");
+    }
+
+    return 0;
+}
+
 static int test_old_config_loaders_synthetic(rs::Allocator& alloc) {
     // Synthetic old config archive with named files:
     // flo.dat, seq.dat, varbit.dat (DatTypeLoader)
@@ -864,54 +1356,294 @@ static int test_old_config_loaders_synthetic(rs::Allocator& alloc) {
     }
 
     rs::Archive configArchive(0, static_cast<rs::i32>(files.size() - 1), std::move(files), alloc);
-    auto res = rs::OldConfigLoaders::tryCreate(cacheInfo, rs::CacheType::Dat, std::move(configArchive), alloc);
+    auto res = rs::DatLegacyConfigLoaders::tryCreate(cacheInfo, rs::CacheType::Dat, std::move(configArchive), alloc);
     if (!res.isOk()) {
-        return fail("OldConfigLoaders::tryCreate expected Ok");
+        return fail("DatLegacyConfigLoaders::tryCreate expected Ok");
     }
-    rs::OldConfigLoaders loaders = std::move(res.value());
+    rs::DatLegacyConfigLoaders loaders = std::move(res.value());
 
     {
         const rs::OverlayFloorType* v = nullptr;
         const rs::Status s = loaders.floors.get(0, &v);
         if (!rs::ok(s) || !v) {
-            return fail("OldConfigLoaders: floors.get(0) expected Ok");
+            return fail("DatLegacyConfigLoaders: floors.get(0) expected Ok");
         }
     }
     {
         const rs::SeqType* v = nullptr;
         const rs::Status s = loaders.seqs.get(0, &v);
         if (!rs::ok(s) || !v) {
-            return fail("OldConfigLoaders: seqs.get(0) expected Ok");
+            return fail("DatLegacyConfigLoaders: seqs.get(0) expected Ok");
         }
     }
     {
         const rs::VarBitType* v = nullptr;
         const rs::Status s = loaders.varbits.get(0, &v);
         if (!rs::ok(s) || !v) {
-            return fail("OldConfigLoaders: varbits.get(0) expected Ok");
+            return fail("DatLegacyConfigLoaders: varbits.get(0) expected Ok");
         }
     }
     {
         const rs::LocType* v = nullptr;
         const rs::Status s = loaders.locs.get(0, &v);
         if (!rs::ok(s) || !v) {
-            return fail("OldConfigLoaders: locs.get(0) expected Ok");
+            return fail("DatLegacyConfigLoaders: locs.get(0) expected Ok");
         }
     }
     {
         const rs::NpcType* v = nullptr;
         const rs::Status s = loaders.npcs.get(0, &v);
         if (!rs::ok(s) || !v) {
-            return fail("OldConfigLoaders: npcs.get(0) expected Ok");
+            return fail("DatLegacyConfigLoaders: npcs.get(0) expected Ok");
         }
     }
     {
         const rs::ObjType* v = nullptr;
         const rs::Status s = loaders.objs.get(0, &v);
         if (!rs::ok(s) || !v) {
-            return fail("OldConfigLoaders: objs.get(0) expected Ok");
+            return fail("DatLegacyConfigLoaders: objs.get(0) expected Ok");
         }
     }
+
+    return 0;
+}
+
+static int test_cache_session_config_layer_api() {
+    rs::CacheSession session{};
+
+    if (session.configKind() != rs::CacheSession::ConfigLayerKind::Dat2) {
+        return fail("CacheSession configKind default mismatch");
+    }
+    if (session.configStatus() != rs::Status::Unsupported) {
+        return fail("CacheSession configStatus default mismatch");
+    }
+    if (session.hasQuestTypeLoader()) {
+        return fail("CacheSession hasQuestTypeLoader default mismatch");
+    }
+    if (session.hasSkeletalSeqLoader()) {
+        return fail("CacheSession hasSkeletalSeqLoader default mismatch");
+    }
+    if (session.tryGetMapRules(nullptr, nullptr) != rs::Status::InvalidArgument) {
+        return fail("CacheSession map rules invalid-arg mismatch");
+    }
+    if (session.tryGetTextureRules(nullptr) != rs::Status::InvalidArgument) {
+        return fail("CacheSession texture rules invalid-arg mismatch");
+    }
+    if (session.tryGetMapIndex(nullptr) != rs::Status::InvalidArgument) {
+        return fail("CacheSession map index invalid-arg mismatch");
+    }
+    {
+        const rs::CacheIndex* idx = nullptr;
+        if (session.tryGetMapIndex(&idx) != rs::Status::InvalidArgument || idx) {
+            return fail("CacheSession map index null-system mismatch");
+        }
+    }
+    {
+        rs::i32 archiveId = -1;
+        if (session.tryGetMapArchiveId("m50_50", &archiveId) != rs::Status::InvalidArgument) {
+            return fail("CacheSession map archive id null-system mismatch");
+        }
+    }
+    {
+        session.cacheInfo.game = rs::GameType::Runescape;
+        session.cacheInfo.revision = 377; // Dat
+        const rs::CacheIndex* idx = nullptr;
+        if (session.tryGetSpritesIndex(&idx) != rs::Status::Unsupported) {
+            return fail("CacheSession sprites index capability mismatch");
+        }
+    }
+    {
+        session.cacheInfo.game = rs::GameType::Classic;
+        session.cacheInfo.revision = 1;
+        const rs::CacheIndex* idx = nullptr;
+        if (session.tryGetModelsIndex(&idx) != rs::Status::Unsupported) {
+            return fail("CacheSession models index classic capability mismatch");
+        }
+        if (session.tryGetSeqFramesIndex(&idx) != rs::Status::Unsupported) {
+            return fail("CacheSession seq frames index classic capability mismatch");
+        }
+    }
+    // Restore Dat2 defaults for remaining checks.
+    session.cacheInfo.game = rs::GameType::Runescape;
+    session.cacheInfo.revision = 600;
+    {
+        rs::MapScenesMode mapScenes = rs::MapScenesMode::GraphicsDefaults;
+        rs::MapFunctionsMode mapFunctions = rs::MapFunctionsMode::GraphicsDefaults;
+        if (session.tryGetMapRules(&mapScenes, &mapFunctions) != rs::Status::Ok) {
+            return fail("CacheSession map rules accessor mismatch");
+        }
+        rs::TextureRules texture{};
+        if (session.tryGetTextureRules(&texture) != rs::Status::Ok) {
+            return fail("CacheSession texture rules accessor mismatch");
+        }
+    }
+    if (session.textureMode() != rs::TextureMode::Sprite) {
+        return fail("CacheSession textureMode default mismatch");
+    }
+    if (session.textureStatus() != rs::Status::Ok) {
+        return fail("CacheSession textureStatus default mismatch");
+    }
+
+    {
+        const rs::ProceduralTextureLoader* proc = nullptr;
+        if (session.tryGetProceduralTextureLoader(&proc) != rs::Status::Unsupported) {
+            return fail("CacheSession procedural texture loader mode gate mismatch");
+        }
+    }
+
+    {
+        // Dat2-dispatch path with empty loaders should return OutOfRange (no decoded entries).
+        session.config.kind = rs::CacheSession::ConfigLayerKind::Dat2;
+        session.config.status = rs::Status::Ok;
+        session.rules.quests = rs::QuestMode::None;
+        if (!session.hasDistinctUnderlayTypeLoader()) {
+            return fail("CacheSession Dat2 underlay capability mismatch");
+        }
+        if (session.hasQuestTypeLoader()) {
+            return fail("CacheSession Dat2 quest capability mismatch");
+        }
+
+        const rs::LocType* loc = nullptr;
+        const rs::NpcType* npc = nullptr;
+        const rs::ObjType* obj = nullptr;
+        const rs::SeqType* seq = nullptr;
+        const rs::VarBitType* vb = nullptr;
+        const rs::OverlayFloorType* ov = nullptr;
+        const rs::UnderlayFloorType* un = nullptr;
+        const rs::QuestType* quest = nullptr;
+
+        if (session.tryGetLocType(0, &loc) != rs::Status::OutOfRange) return fail("CacheSession Dat2 loc dispatch mismatch");
+        if (session.tryGetNpcType(0, &npc) != rs::Status::OutOfRange) return fail("CacheSession Dat2 npc dispatch mismatch");
+        if (session.tryGetObjType(0, &obj) != rs::Status::OutOfRange) return fail("CacheSession Dat2 obj dispatch mismatch");
+        if (session.tryGetSeqType(0, &seq) != rs::Status::OutOfRange) return fail("CacheSession Dat2 seq dispatch mismatch");
+        if (session.tryGetVarBitType(0, &vb) != rs::Status::OutOfRange) return fail("CacheSession Dat2 varbit dispatch mismatch");
+        if (session.tryGetOverlayFloorType(0, &ov) != rs::Status::OutOfRange) return fail("CacheSession Dat2 overlay dispatch mismatch");
+        if (session.tryGetUnderlayFloorType(0, &un) != rs::Status::OutOfRange) return fail("CacheSession Dat2 underlay dispatch mismatch");
+        if (session.tryGetQuestType(0, &quest) != rs::Status::Unsupported) return fail("CacheSession Dat2 quest dispatch unsupported mismatch");
+    }
+
+    {
+        // Dat2 quest capability path.
+        session.config.kind = rs::CacheSession::ConfigLayerKind::Dat2;
+        session.config.status = rs::Status::Ok;
+        session.rules.quests = rs::QuestMode::Archive;
+        if (!session.hasQuestTypeLoader()) {
+            return fail("CacheSession Dat2 quest capability archive mismatch");
+        }
+        const rs::QuestTypeLoader* ql = nullptr;
+        if (session.tryGetQuestTypeLoader(&ql) != rs::Status::Ok || !ql) {
+            return fail("CacheSession Dat2 quest loader accessor mismatch");
+        }
+        const rs::QuestType* quest = nullptr;
+        if (session.tryGetQuestType(0, &quest) != rs::Status::OutOfRange) {
+            return fail("CacheSession Dat2 quest dispatch mismatch");
+        }
+    }
+
+    {
+        // Dat/Legacy-dispatch path with empty loaders should return OutOfRange for shared types
+        // and Unsupported for underlays.
+        session.config.kind = rs::CacheSession::ConfigLayerKind::DatLegacy;
+        session.config.status = rs::Status::Ok;
+        if (session.hasDistinctUnderlayTypeLoader()) {
+            return fail("CacheSession DatLegacy underlay capability mismatch");
+        }
+
+        const rs::LocType* loc = nullptr;
+        const rs::OverlayFloorType* ov = nullptr;
+        const rs::UnderlayFloorType* un = nullptr;
+
+        if (session.tryGetLocType(0, &loc) != rs::Status::OutOfRange) return fail("CacheSession DatLegacy loc dispatch mismatch");
+        if (session.tryGetOverlayFloorType(0, &ov) != rs::Status::OutOfRange) return fail("CacheSession DatLegacy overlay dispatch mismatch");
+        if (session.tryGetUnderlayFloorType(0, &un) != rs::Status::Unsupported) return fail("CacheSession DatLegacy underlay dispatch mismatch");
+    }
+
+    {
+        // Status gate should short-circuit all accessors regardless of layout kind.
+        session.config.kind = rs::CacheSession::ConfigLayerKind::Dat2;
+        session.config.status = rs::Status::Unsupported;
+        const rs::LocType* loc = nullptr;
+        if (session.tryGetLocType(0, &loc) != rs::Status::Unsupported) {
+            return fail("CacheSession config status gate mismatch");
+        }
+    }
+
+    {
+        // Texture status gate should short-circuit texture accessors.
+        session.textures.status = rs::Status::Unsupported;
+        const auto texRes = session.tryGetTexturePixelsArgb(0, 64, false, 1.0f, rs::defaultAllocator());
+        if (texRes.status() != rs::Status::Unsupported) {
+            return fail("CacheSession texture status gate mismatch");
+        }
+        const rs::ProceduralTextureLoader* proc = nullptr;
+        if (session.tryGetProceduralTextureLoader(&proc) != rs::Status::Unsupported) {
+            return fail("CacheSession procedural loader status gate mismatch");
+        }
+    }
+
+    return 0;
+}
+
+static int test_loaders_capabilities_contract() {
+    {
+        rs::CacheSession session{};
+        session.cacheInfo.game = rs::GameType::Runescape;
+        session.cacheInfo.revision = 600;
+        session.config.kind = rs::CacheSession::ConfigLayerKind::Dat2;
+        session.config.status = rs::Status::Ok;
+        const rs::Loaders::Capabilities caps = rs::Loaders::capabilitiesFor(session);
+        if (caps.cacheType != rs::CacheType::Dat2) return fail("Loaders caps Dat2 cacheType mismatch");
+        if (!caps.hasDistinctUnderlayTypeLoader) return fail("Loaders caps Dat2 underlay capability mismatch");
+        if (caps.hasQuestTypeLoader) return fail("Loaders caps Dat2 quest capability mismatch");
+        if (caps.hasSkeletalSeqLoader) return fail("Loaders caps Dat2 skeletal capability mismatch");
+    }
+    {
+        rs::CacheSession session{};
+        session.cacheInfo.game = rs::GameType::Runescape;
+        session.cacheInfo.revision = 377;
+        session.config.kind = rs::CacheSession::ConfigLayerKind::DatLegacy;
+        session.config.status = rs::Status::Ok;
+        const rs::Loaders::Capabilities caps = rs::Loaders::capabilitiesFor(session);
+        if (caps.cacheType != rs::CacheType::Dat) return fail("Loaders caps Dat cacheType mismatch");
+        if (caps.hasDistinctUnderlayTypeLoader) return fail("Loaders caps Dat underlay capability mismatch");
+    }
+    {
+        rs::CacheSession session{};
+        session.cacheInfo.game = rs::GameType::Runescape;
+        session.cacheInfo.revision = 225;
+        session.config.kind = rs::CacheSession::ConfigLayerKind::DatLegacy;
+        session.config.status = rs::Status::Ok;
+        const rs::Loaders::Capabilities caps = rs::Loaders::capabilitiesFor(session);
+        if (caps.cacheType != rs::CacheType::Legacy) return fail("Loaders caps Legacy cacheType mismatch");
+        if (caps.hasDistinctUnderlayTypeLoader) return fail("Loaders caps Legacy underlay capability mismatch");
+    }
+
+    rs::Loaders l{};
+    l.kind = rs::LoadersKind::Dat2;
+    l.dat2.session.cacheInfo.game = rs::GameType::Runescape;
+    l.dat2.session.cacheInfo.revision = 600;
+    l.dat2.session.config.kind = rs::CacheSession::ConfigLayerKind::Dat2;
+    l.dat2.session.config.status = rs::Status::Ok;
+    l.dat2.session.rules.quests = rs::QuestMode::Archive;
+    const rs::Loaders::Capabilities dat2Caps = rs::Loaders::capabilitiesFor(l.dat2.session);
+    if (!dat2Caps.hasQuestTypeLoader) return fail("Loaders caps Dat2 session quest capability mismatch");
+    if (l.tryGetSession() != &l.dat2.session) return fail("Loaders tryGetSession Dat2 mismatch");
+    l.kind = rs::LoadersKind::Dat;
+    l.dat.session.cacheInfo.game = rs::GameType::Runescape;
+    l.dat.session.cacheInfo.revision = 377;
+    l.dat.session.config.kind = rs::CacheSession::ConfigLayerKind::DatLegacy;
+    l.dat.session.config.status = rs::Status::Ok;
+    const rs::Loaders::Capabilities datCaps = rs::Loaders::capabilitiesFor(l.dat.session);
+    if (datCaps.hasQuestTypeLoader) return fail("Loaders caps Dat session quest capability mismatch");
+    if (l.tryGetSession() != &l.dat.session) return fail("Loaders tryGetSession Dat mismatch");
+    l.kind = rs::LoadersKind::Legacy;
+    l.legacy.session.cacheInfo.game = rs::GameType::Runescape;
+    l.legacy.session.cacheInfo.revision = 225;
+    l.legacy.session.config.kind = rs::CacheSession::ConfigLayerKind::DatLegacy;
+    l.legacy.session.config.status = rs::Status::Ok;
+    const rs::Loaders::Capabilities legacyCaps = rs::Loaders::capabilitiesFor(l.legacy.session);
+    if (legacyCaps.hasQuestTypeLoader) return fail("Loaders caps Legacy session quest capability mismatch");
+    if (l.tryGetSession() != &l.legacy.session) return fail("Loaders tryGetSession Legacy mismatch");
 
     return 0;
 }
@@ -1355,6 +2087,273 @@ static int test_config_misc_goldens(rs::Allocator& alloc) {
     return 0;
 }
 
+static int test_skeletal_eval_base_only(rs::Allocator& alloc) {
+    rs::SeqBase base(123, alloc);
+    base.hasSkeletalBase = true;
+    base.skeletalBoneCount = 1;
+    base.skeletalBase.poseCount = 1;
+
+    auto rr = base.skeletalBase.parentIds.resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: parentIds resize failed");
+    rr = base.skeletalBase.localMatrices.resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: localMatrices resize failed");
+    rr = base.skeletalBase.rotations.resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: rotations resize failed");
+    rr = base.skeletalBase.translations.resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: translations resize failed");
+    rr = base.skeletalBase.scalings.resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: scalings resize failed");
+
+    base.skeletalBase.parentIds[0] = -1;
+    rs::mat4Identity(&base.skeletalBase.localMatrices[0]);
+    base.skeletalBase.rotations[0] = rs::Vec3f{0.0f, 0.0f, 0.0f};
+    base.skeletalBase.translations[0] = rs::Vec3f{5.0f, 0.0f, 0.0f};
+    base.skeletalBase.scalings[0] = rs::Vec3f{1.0f, 1.0f, 1.0f};
+
+    rs::SkeletalSeq seq{};
+    seq.id = 77;
+    seq.baseId = base.id;
+    seq.poseId = 0;
+    seq.curveCount = 0;
+
+    rs::Vec<rs::Mat4f> finalMatrices(alloc);
+    rs::Status s = rs::computeSkeletalFinalMatricesBaseOnly(base, seq, &finalMatrices, alloc);
+    if (!rs::ok(s)) return fail("skeletal base-only: compute final matrices failed");
+    if (finalMatrices.size() != 1) return fail("skeletal base-only: unexpected final matrix count");
+    if (finalMatrices[0].v[12] < 4.999f || finalMatrices[0].v[12] > 5.001f) {
+        return fail("skeletal base-only: unexpected final translation x");
+    }
+
+    rs::ModelData model(alloc);
+    s = rs::initRequiredVec(&model.verticesX, 1);
+    if (!rs::ok(s)) return fail("skeletal base-only: model.verticesX resize failed");
+    s = rs::initRequiredVec(&model.verticesY, 1);
+    if (!rs::ok(s)) return fail("skeletal base-only: model.verticesY resize failed");
+    s = rs::initRequiredVec(&model.verticesZ, 1);
+    if (!rs::ok(s)) return fail("skeletal base-only: model.verticesZ resize failed");
+    model.verticesCount = 1;
+    model.verticesX[0] = 0;
+    model.verticesY[0] = 0;
+    model.verticesZ[0] = 0;
+
+    s = rs::initOptionalNestedIntVec(true, 1, &model.animMayaGroups, &model.animMayaScales, &model);
+    if (!rs::ok(s)) return fail("skeletal base-only: model maya groups init failed");
+    rr = model.animMayaGroups[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: model animMayaGroups[0] resize failed");
+    rr = model.animMayaScales[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only: model animMayaScales[0] resize failed");
+    model.animMayaGroups[0][0] = 0;
+    model.animMayaScales[0][0] = 255;
+
+    s = rs::applySkeletalToModelBaseOnly(&model, base, seq, /*frame=*/0, alloc);
+    if (!rs::ok(s)) return fail("skeletal base-only: apply to model failed");
+    if (model.verticesX[0] != 5 || model.verticesY[0] != 0 || model.verticesZ[0] != 0) {
+        return fail("skeletal base-only: transformed vertex mismatch");
+    }
+
+    return 0;
+}
+
+static int test_skeletal_eval_curve_unsupported(rs::Allocator& alloc) {
+    rs::SeqBase base(124, alloc);
+    base.hasSkeletalBase = true;
+    base.skeletalBoneCount = 1;
+    base.skeletalBase.poseCount = 1;
+
+    auto rr = base.skeletalBase.parentIds.resize(1);
+    if (!rr.isOk()) return fail("skeletal unsupported: parentIds resize failed");
+    rr = base.skeletalBase.localMatrices.resize(1);
+    if (!rr.isOk()) return fail("skeletal unsupported: localMatrices resize failed");
+    rr = base.skeletalBase.rotations.resize(1);
+    if (!rr.isOk()) return fail("skeletal unsupported: rotations resize failed");
+    rr = base.skeletalBase.translations.resize(1);
+    if (!rr.isOk()) return fail("skeletal unsupported: translations resize failed");
+    rr = base.skeletalBase.scalings.resize(1);
+    if (!rr.isOk()) return fail("skeletal unsupported: scalings resize failed");
+
+    base.skeletalBase.parentIds[0] = -1;
+    rs::mat4Identity(&base.skeletalBase.localMatrices[0]);
+    base.skeletalBase.rotations[0] = rs::Vec3f{0.0f, 0.0f, 0.0f};
+    base.skeletalBase.translations[0] = rs::Vec3f{0.0f, 0.0f, 0.0f};
+    base.skeletalBase.scalings[0] = rs::Vec3f{1.0f, 1.0f, 1.0f};
+
+    rs::SkeletalSeq seq{};
+    seq.id = 78;
+    seq.baseId = base.id;
+    seq.poseId = 0;
+    seq.curveCount = 1;
+
+    rs::Vec<rs::Mat4f> finalMatrices(alloc);
+    rs::Status s = rs::computeSkeletalFinalMatricesBaseOnly(base, seq, &finalMatrices, alloc);
+    if (s != rs::Status::Unsupported) return fail("skeletal unsupported: expected compute Unsupported");
+
+    rs::ModelData model(alloc);
+    s = rs::initRequiredVec(&model.verticesX, 1);
+    if (!rs::ok(s)) return fail("skeletal unsupported: model.verticesX resize failed");
+    s = rs::initRequiredVec(&model.verticesY, 1);
+    if (!rs::ok(s)) return fail("skeletal unsupported: model.verticesY resize failed");
+    s = rs::initRequiredVec(&model.verticesZ, 1);
+    if (!rs::ok(s)) return fail("skeletal unsupported: model.verticesZ resize failed");
+    model.verticesCount = 1;
+    model.hasMayaGroups = true;
+
+    s = rs::applySkeletalToModelBaseOnly(&model, base, seq, /*frame=*/0, alloc);
+    if (s != rs::Status::Unsupported) return fail("skeletal unsupported: expected apply Unsupported");
+
+    return 0;
+}
+
+static int test_skeletal_eval_curve_supported(rs::Allocator& alloc) {
+    rs::SeqBase base(125, alloc);
+    base.hasSkeletalBase = true;
+    base.skeletalBoneCount = 1;
+    base.skeletalBase.poseCount = 1;
+
+    auto rr = base.skeletalBase.parentIds.resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: parentIds resize failed");
+    rr = base.skeletalBase.localMatrices.resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: localMatrices resize failed");
+    rr = base.skeletalBase.rotations.resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: rotations resize failed");
+    rr = base.skeletalBase.translations.resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: translations resize failed");
+    rr = base.skeletalBase.scalings.resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: scalings resize failed");
+
+    base.skeletalBase.parentIds[0] = -1;
+    rs::mat4Identity(&base.skeletalBase.localMatrices[0]);
+    base.skeletalBase.rotations[0] = rs::Vec3f{0.0f, 0.0f, 0.0f};
+    base.skeletalBase.translations[0] = rs::Vec3f{0.0f, 0.0f, 0.0f};
+    base.skeletalBase.scalings[0] = rs::Vec3f{1.0f, 1.0f, 1.0f};
+
+    rs::SkeletalSeq seq(alloc);
+    seq.id = 79;
+    seq.baseId = base.id;
+    seq.poseId = 0;
+    seq.curveCount = 1;
+
+    rs::SkeletalCurveBinding binding(alloc);
+    binding.transformType = rs::SkeletalTransformType::BONE;
+    binding.boneIndex = 0;
+    binding.curveIndex = 3; // translation.x
+    binding.curve.startTick = 0;
+    binding.curve.endTick = 1;
+    rr = binding.curve.values.resize(2);
+    if (!rr.isOk()) return fail("skeletal curve: values resize failed");
+    binding.curve.values[0] = 2.0f;
+    binding.curve.values[1] = 4.0f;
+    rr = seq.bindings.pushBack(rs::move(binding));
+    if (!rr.isOk()) return fail("skeletal curve: push binding failed");
+
+    rs::Vec<rs::Mat4f> finalMatrices(alloc);
+    rs::Status s = rs::computeSkeletalFinalMatrices(base, seq, /*frame=*/1, &finalMatrices, alloc);
+    if (!rs::ok(s)) return fail("skeletal curve: compute final matrices failed");
+    if (finalMatrices.size() != 1) return fail("skeletal curve: unexpected final matrix count");
+    if (finalMatrices[0].v[12] < 3.999f || finalMatrices[0].v[12] > 4.001f) {
+        return fail("skeletal curve: expected curve-overridden translation x=4");
+    }
+
+    rs::ModelData model(alloc);
+    s = rs::initRequiredVec(&model.verticesX, 1);
+    if (!rs::ok(s)) return fail("skeletal curve: model.verticesX resize failed");
+    s = rs::initRequiredVec(&model.verticesY, 1);
+    if (!rs::ok(s)) return fail("skeletal curve: model.verticesY resize failed");
+    s = rs::initRequiredVec(&model.verticesZ, 1);
+    if (!rs::ok(s)) return fail("skeletal curve: model.verticesZ resize failed");
+    model.verticesCount = 1;
+    model.verticesX[0] = 0;
+    model.verticesY[0] = 0;
+    model.verticesZ[0] = 0;
+
+    s = rs::initOptionalNestedIntVec(true, 1, &model.animMayaGroups, &model.animMayaScales, &model);
+    if (!rs::ok(s)) return fail("skeletal curve: model maya groups init failed");
+    rr = model.animMayaGroups[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: model animMayaGroups[0] resize failed");
+    rr = model.animMayaScales[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: model animMayaScales[0] resize failed");
+    model.animMayaGroups[0][0] = 0;
+    model.animMayaScales[0][0] = 255;
+
+    s = rs::applySkeletalToModel(&model, base, seq, /*frame=*/1, alloc);
+    if (!rs::ok(s)) return fail("skeletal curve: apply to model failed");
+    if (model.verticesX[0] != 4 || model.verticesY[0] != 0 || model.verticesZ[0] != 0) {
+        return fail("skeletal curve: transformed vertex mismatch");
+    }
+
+    return 0;
+}
+
+static int test_skeletal_alpha_curve_selection_and_truncation(rs::Allocator& alloc) {
+    rs::SeqBase base(126, alloc);
+    base.count = 1;
+    auto rr = base.types.resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: base.types resize failed");
+    rr = base.labels.resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: base.labels resize failed");
+    base.types[0] = rs::SeqTransformType::ALPHA;
+    base.labels[0] = rs::Vec<rs::i32>(alloc);
+    rr = base.labels[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: base.labels[0] resize failed");
+    base.labels[0][0] = 0;
+
+    rs::SkeletalSeq seq(alloc);
+    seq.id = 80;
+    seq.baseId = base.id;
+    seq.poseId = 0;
+    seq.curveCount = 2;
+    seq.hasAlphaTransform = true;
+
+    rs::SkeletalCurveBinding alphaBinding(alloc);
+    alphaBinding.transformType = rs::SkeletalTransformType::ALPHA;
+    alphaBinding.boneIndex = 0;
+    alphaBinding.curveIndex = 0;
+    alphaBinding.curve.startTick = 0;
+    alphaBinding.curve.endTick = 0;
+    rr = alphaBinding.curve.values.resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: alphaBinding values resize failed");
+    alphaBinding.curve.values[0] = 0.9f;
+    alphaBinding.curve.minValue = 0.9f;
+    alphaBinding.curve.maxValue = 0.9f;
+    rr = seq.bindings.pushBack(rs::move(alphaBinding));
+    if (!rr.isOk()) return fail("skeletal alpha: push alphaBinding failed");
+
+    rs::SkeletalCurveBinding sharedBinding(alloc);
+    sharedBinding.transformType = rs::SkeletalTransformType::TYPE_2;
+    sharedBinding.boneIndex = 0;
+    sharedBinding.curveIndex = 0;
+    sharedBinding.curve.startTick = 0;
+    sharedBinding.curve.endTick = 0;
+    rr = sharedBinding.curve.values.resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: sharedBinding values resize failed");
+    sharedBinding.curve.values[0] = 0.1f;
+    sharedBinding.curve.minValue = 0.1f;
+    sharedBinding.curve.maxValue = 0.1f;
+    rr = seq.bindings.pushBack(rs::move(sharedBinding));
+    if (!rr.isOk()) return fail("skeletal alpha: push sharedBinding failed");
+
+    rs::ModelData model(alloc);
+    model.faceCount = 1;
+    rs::Status s = rs::initRequiredVec(&model.faceSkins, 1);
+    if (!rs::ok(s)) return fail("skeletal alpha: model.faceSkins resize failed");
+    model.hasFaceSkins = true;
+    model.faceSkins[0] = 0;
+
+    s = rs::initRequiredVec(&model.faceAlphas, 1);
+    if (!rs::ok(s)) return fail("skeletal alpha: model.faceAlphas resize failed");
+    model.hasFaceAlphas = true;
+    model.faceAlphas[0] = static_cast<rs::i8>(10);
+
+    s = rs::applySkeletalAlphaToModel(&model, base, seq, /*frame=*/0, alloc);
+    if (!rs::ok(s)) return fail("skeletal alpha: apply failed");
+
+    const int alpha = static_cast<unsigned char>(model.faceAlphas[0]);
+    if (alpha != 35) {
+        return fail("skeletal alpha: expected shared-table selection with truncation alpha=35");
+    }
+
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -1370,7 +2369,14 @@ int main() {
         if (int r = test_varbit_type_loaders(alloc, compression)) return r;
         if (int r = test_sprite_decode_packed_sprite_archive(alloc)) return r;
         if (int r = test_indexed_sprite_dat_and_dat_texture_loader(alloc)) return r;
+        if (int r = test_model_data_decode_and_loader(alloc, compression)) return r;
         if (int r = test_old_config_loaders_synthetic(alloc)) return r;
+        if (int r = test_cache_session_config_layer_api()) return r;
+        if (int r = test_loaders_capabilities_contract()) return r;
+        if (int r = test_skeletal_eval_base_only(alloc)) return r;
+        if (int r = test_skeletal_eval_curve_unsupported(alloc)) return r;
+        if (int r = test_skeletal_eval_curve_supported(alloc)) return r;
+        if (int r = test_skeletal_alpha_curve_selection_and_truncation(alloc)) return r;
 	        if (int r = test_sprite_texture_loader_pixels(alloc, compression)) return r;
 
 	        if (int r = test_config_floor_types(alloc)) return r;
