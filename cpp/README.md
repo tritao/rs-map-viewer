@@ -80,3 +80,16 @@ Optional smoke executable wrapper (disabled by default):
 -   `BUILD_DIR=cpp/build-wasm-smoke bash -c 'emcmake cmake -S cpp -B cpp/build-wasm-smoke -DCMAKE_BUILD_TYPE=Release -DRS_BUILD_WASM_SMOKE=ON && cmake --build cpp/build-wasm-smoke -j'`
 -   `cpp/build-wasm-smoke/rs_wasm_smoke.wasm`
 -   `cpp/build-wasm-smoke/rs_wasm_smoke.js`
+
+Map-render backend wasm module (for TS worker bridge):
+
+-   `npm run -s rs:cpp-map-render-wasm`
+-   outputs copied to:
+    -   `public/wasm/rs_map_render_backend.js`
+    -   `public/wasm/rs_map_render_backend.wasm`
+-   parity smoke:
+    -   `npm run -s rs:map-render-wasm-parity -- --iterations 20`
+-   real square payload parity (TS vs wasm decode+heightmap path):
+    -   `npm run -s rs:map-render-backend-parity -- --cache osrs-221_2024-04-17 --limit 4`
+-   backend benchmark (no minimap blob encoding):
+    -   `npm run -s rs:map-render-backend-bench -- --cache osrs-221_2024-04-17 --limit 4 --warmup 1 --iterations 3 --backend both`

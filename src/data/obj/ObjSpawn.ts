@@ -1,4 +1,4 @@
-import objSpawnsUrl from "./obj-spawns.json?url";
+const objSpawnsUrl = new URL("./obj-spawns.json", import.meta.url).href;
 
 export interface ObjSpawn {
     id: number;
