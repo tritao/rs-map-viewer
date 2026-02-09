@@ -712,9 +712,6 @@ function buildTsSceneHashForSquare(
                 if (!(sceneX > 0 && sceneY > 0 && sceneX < state.sizeX - 1 && sceneY < state.sizeY - 1)) {
                     continue;
                 }
-                if ((state.tileRenderFlags[tileIndex(state, 0, sceneX, sceneY)] & 0x8) !== 0) {
-                    continue;
-                }
 
                 const locResult = locTypeLoader.tryLoad(p.id);
                 if (!locResult.ok) continue;

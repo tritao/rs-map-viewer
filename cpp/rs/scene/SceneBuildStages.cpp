@@ -45,6 +45,8 @@ static i32 ceilDiv(i32 n, i32 d) noexcept {
     return q;
 }
 
+static i32 mapSquareId(i32 mapX, i32 mapY) noexcept { return (mapX << 8) + mapY; }
+
 static bool isNewTerrainFormat(const SceneRuntimeServices& services) noexcept {
     if (!services.cacheInfo) {
         return false;
@@ -386,14 +388,12 @@ SceneBuildContext createSceneBuildContext(
     i32 baseY,
     i32 sizeX,
     i32 sizeY,
-    bool smoothUnderlays,
     SceneLocLoadType locLoadType) noexcept {
     SceneBuildContext out{};
     out.baseX = baseX;
     out.baseY = baseY;
     out.sizeX = sizeX;
     out.sizeY = sizeY;
-    out.smoothUnderlays = smoothUnderlays;
     out.locLoadType = locLoadType;
     out.bounds = computeSceneBuildMapBounds(baseX, baseY, sizeX, sizeY);
     return out;
@@ -408,11 +408,16 @@ Status decodeTerrainStage(
     if (!scene || !scratch) {
         return Status::InvalidArgument;
     }
+    scratch->emptyTerrainMapIds.clear();
     const bool newFormat = isNewTerrainFormat(services);
     for (i32 mx = context.bounds.mapStartX; mx < context.bounds.mapEndX; mx++) {
         for (i32 my = context.bounds.mapStartY; my < context.bounds.mapEndY; my++) {
             const Status s = mapBytesProvider.tryLoadTerrainBytes(mx, my, &scratch->bytes);
             if (s == Status::NotFound) {
+                auto rr = scratch->emptyTerrainMapIds.pushBack(mapSquareId(mx, my));
+                if (!rr.isOk()) {
+                    return rr.status();
+                }
                 continue;
             }
             if (!ok(s)) {
@@ -437,23 +442,26 @@ Status decodeTerrainStage(
 
 Status fillEmptyTerrainStage(
     const SceneRuntimeServices& services,
-    const MapBytesProvider& mapBytesProvider,
     const SceneBuildContext& context,
-    SceneData* scene) noexcept {
-    if (!scene) {
+    SceneData* scene,
+    SceneBuildScratch* scratch) noexcept {
+    if (!scene || !scratch) {
         return Status::InvalidArgument;
     }
-    Vec<u8> bytes(scene->allocator());
+    const auto isMissingTerrain = [&scratch](i32 mx, i32 my) noexcept -> bool {
+        const i32 id = mapSquareId(mx, my);
+        for (std::size_t i = 0; i < scratch->emptyTerrainMapIds.size(); i++) {
+            if (scratch->emptyTerrainMapIds[i] == id) {
+                return true;
+            }
+        }
+        return false;
+    };
     for (i32 mx = context.bounds.mapStartX; mx < context.bounds.mapEndX; mx++) {
         for (i32 my = context.bounds.mapStartY; my < context.bounds.mapEndY; my++) {
-            const Status s = mapBytesProvider.tryLoadTerrainBytes(mx, my, &bytes);
-            if (ok(s)) {
+            if (!isMissingTerrain(mx, my)) {
                 continue;
             }
-            if (s != Status::NotFound) {
-                return s;
-            }
-
             const i32 endX = (mx + 1) * kMapSquareSize;
             const i32 endY = (my + 1) * kMapSquareSize;
             const i32 offsetX = mx * kMapSquareSize - context.baseX;
@@ -510,9 +518,6 @@ Status decodeLocsStage(
                 const i32 sceneY = p.localY + offsetY;
 
                 if (!(sceneX > 0 && sceneY > 0 && sceneX < scene->sizeX - 1 && sceneY < scene->sizeY - 1)) {
-                    continue;
-                }
-                if ((scene->renderFlag(0, sceneX, sceneY) & kRenderOnLower) != 0) {
                     continue;
                 }
 

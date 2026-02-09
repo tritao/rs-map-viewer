@@ -31,7 +31,6 @@ struct SceneBuildContext final {
     i32 baseY = 0;
     i32 sizeX = 0;
     i32 sizeY = 0;
-    bool smoothUnderlays = false;
     SceneLocLoadType locLoadType = SceneLocLoadType::Models;
     SceneBuildMapBounds bounds{};
 };
@@ -46,10 +45,12 @@ struct MapBytesProvider {
 struct SceneBuildScratch final {
     TerrainSquare terrain{};
     Vec<LocPlacement> locPlacements{};
+    Vec<i32> emptyTerrainMapIds{};
     Vec<u8> bytes{};
 
     Result<void> init(Allocator& alloc) noexcept {
         locPlacements = Vec<LocPlacement>(alloc);
+        emptyTerrainMapIds = Vec<i32>(alloc);
         bytes = Vec<u8>(alloc);
         return terrain.init(alloc);
     }
@@ -62,7 +63,6 @@ SceneBuildContext createSceneBuildContext(
     i32 baseY,
     i32 sizeX,
     i32 sizeY,
-    bool smoothUnderlays,
     SceneLocLoadType locLoadType
 ) noexcept;
 
@@ -76,9 +76,9 @@ Status decodeTerrainStage(
 
 Status fillEmptyTerrainStage(
     const SceneRuntimeServices& services,
-    const MapBytesProvider& mapBytesProvider,
     const SceneBuildContext& context,
-    SceneData* scene
+    SceneData* scene,
+    SceneBuildScratch* scratch
 ) noexcept;
 
 Status decodeLocsStage(

@@ -3031,7 +3031,6 @@ static int cmdSceneSquareHashes(int argc, char** argv) {
             mapY * rs::TerrainConstants::MAP_SQUARE_SIZE,
             rs::TerrainConstants::MAP_SQUARE_SIZE,
             rs::TerrainConstants::MAP_SQUARE_SIZE,
-            false,
             locLoadType);
 
         rs::SceneData scene{};

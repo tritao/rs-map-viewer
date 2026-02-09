@@ -1598,9 +1598,8 @@ static int test_scene_build_stage_context_api() {
         -1,
         65,
         65,
-        true,
         rs::SceneLocLoadType::NoModels);
-    if (!context.smoothUnderlays || context.locLoadType != rs::SceneLocLoadType::NoModels) {
+    if (context.locLoadType != rs::SceneLocLoadType::NoModels) {
         return fail("SceneBuildContext flags mismatch");
     }
 
@@ -1644,8 +1643,8 @@ static int test_scene_build_stage_context_api() {
         return fail("buildSceneFromMapBytesProvider scaffold expected Ok");
     }
 
-    // decode + empty-fill probes for terrain, plus one loc decode pass.
-    if (provider.terrainCalls != 8 || provider.locCalls != 4) {
+    // Single terrain decode probe pass + one loc decode pass.
+    if (provider.terrainCalls != 4 || provider.locCalls != 4) {
         return fail("scene stage probe count mismatch");
     }
     if (provider.npcCalls != 0) {

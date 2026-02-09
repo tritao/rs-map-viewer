@@ -26,7 +26,7 @@ Status buildSceneFromMapBytesProvider(
     if (!ok(s)) {
         return s;
     }
-    s = fillEmptyTerrainStage(services, mapBytesProvider, context, outScene);
+    s = fillEmptyTerrainStage(services, context, outScene, &scratch);
     if (!ok(s)) {
         return s;
     }

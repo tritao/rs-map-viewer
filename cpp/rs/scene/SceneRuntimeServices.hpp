@@ -5,7 +5,6 @@
 #include "../config/loctype/LocTypeLoader.hpp"
 #include "../config/vartype/VarProvider.hpp"
 #include "../core/Status.hpp"
-#include "../texture/procedural/ProceduralSources.hpp"
 
 namespace rs {
 
@@ -38,7 +37,6 @@ struct SceneRuntimeServices final {
     const UnderlayTypeService* underlayTypes = nullptr;
     const OverlayTypeService* overlayTypes = nullptr;
     const LocTypeService* locTypes = nullptr;
-    const ITextureSource* textureSource = nullptr;
     const LocModelService* locModels = nullptr;
     const VarProvider* varProvider = nullptr;
     const CacheInfo* cacheInfo = nullptr;
