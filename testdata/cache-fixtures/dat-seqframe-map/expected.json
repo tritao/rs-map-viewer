@@ -1,0 +1,25 @@
+{
+  "frameId": 7,
+  "missingFrameId": 6,
+  "frame": {
+    "frameLength": 3,
+    "transformCount": 1,
+    "transformGroups": [
+      0
+    ],
+    "transformX": [
+      1
+    ],
+    "transformY": [
+      2
+    ],
+    "transformZ": [
+      3
+    ],
+    "resetOriginGroups": [
+      -1
+    ],
+    "hasAlphaTransform": false,
+    "hasColorTransform": false
+  }
+}

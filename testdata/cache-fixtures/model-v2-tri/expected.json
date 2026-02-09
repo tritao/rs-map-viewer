@@ -2,9 +2,16 @@
   "version": 2,
   "verticesCount": 3,
   "faceCount": 1,
-  "indices1": [0],
-  "indices2": [1],
-  "indices3": [2],
-  "faceColors": [4660]
+  "indices1": [
+    0
+  ],
+  "indices2": [
+    1
+  ],
+  "indices3": [
+    2
+  ],
+  "faceColors": [
+    4660
+  ]
 }
-

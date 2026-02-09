@@ -6,6 +6,13 @@ import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
 import { Xtea } from "../../src/rs/crypto/Xtea";
 import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
+import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame } from "../../src/rs/model/seq/SeqFrame";
+import { SeqBase } from "../../src/rs/model/seq/SeqBase";
+import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
+import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
+import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
+import { ok, err } from "../../src/util/Result";
+import { notFoundError } from "../../src/rs/errors/DecodeError";
 
 const OUT_DIR = path.resolve("testdata/cache-fixtures");
 
@@ -40,7 +47,7 @@ function genXteaFixture(): void {
     const dir = path.join(OUT_DIR, "xtea");
     mkdirp(dir);
 
-    const key = [0x11223344, 0x55667788, 0x99aabbcc, 0xddeeff00];
+    const key: [number, number, number, number] = [0x11223344, 0x55667788, 0x99aabbcc, 0xddeeff00];
 
     const input = new Uint8Array(64);
     for (let i = 0; i < input.length; i++) {
@@ -246,10 +253,254 @@ function genArchiveSplitFixture(): void {
     fs.writeFileSync(path.join(dir, "case.json"), JSON.stringify({ fileCount: 2, chunks: 2 }));
 }
 
+function genModelFixtures(): void {
+    {
+        const dir = path.join(OUT_DIR, "model-v1-empty");
+        mkdirp(dir);
+        const input = new Uint8Array([
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+        ]);
+        writeFileBytes(path.join(dir, "input.bin"), input);
+        fs.writeFileSync(
+            path.join(dir, "expected.json"),
+            JSON.stringify(
+                {
+                    version: 1,
+                    verticesCount: 0,
+                    faceCount: 0,
+                    textureFaceCount: 0,
+                    priority: 0,
+                },
+                null,
+                2,
+            ),
+        );
+    }
+
+    {
+        const dir = path.join(OUT_DIR, "model-v2-tri");
+        mkdirp(dir);
+        const input = new Uint8Array([
+            0x00, 0x00, 0x00, 0x01, 0x40, 0x41, 0x41, 0x12,
+            0x34, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0xff, 0xfe,
+        ]);
+        writeFileBytes(path.join(dir, "input.bin"), input);
+        fs.writeFileSync(
+            path.join(dir, "expected.json"),
+            JSON.stringify(
+                {
+                    version: 2,
+                    verticesCount: 3,
+                    faceCount: 1,
+                    indices1: [0],
+                    indices2: [1],
+                    indices3: [2],
+                    faceColors: [0x1234],
+                },
+                null,
+                2,
+            ),
+        );
+    }
+}
+
+type SeqFrameExpected = {
+    frameLength: number;
+    transformCount: number;
+    transformGroups: number[];
+    transformX: number[];
+    transformY: number[];
+    transformZ: number[];
+    resetOriginGroups: number[];
+    hasAlphaTransform: boolean;
+    hasColorTransform: boolean;
+};
+
+function seqFrameToExpected(frame: SeqFrame): SeqFrameExpected {
+    return {
+        frameLength: frame.frameLength,
+        transformCount: frame.transformCount,
+        transformGroups: frame.transformGroups,
+        transformX: frame.transformX,
+        transformY: frame.transformY,
+        transformZ: frame.transformZ,
+        resetOriginGroups: frame.resetOriginGroups,
+        hasAlphaTransform: frame.hasAlphaTransform,
+        hasColorTransform: frame.hasColorTransform,
+    };
+}
+
+function genLegacySeqFrameFixture(): void {
+    const dir = path.join(OUT_DIR, "legacy-seqframe-streams");
+    mkdirp(dir);
+
+    const files: Record<string, Uint8Array> = {
+        "base_head.dat": new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x03]),
+        "base_type.dat": new Uint8Array([0x00, 0x01, 0x05]),
+        "base_label.dat": new Uint8Array([0x01, 0x00, 0x01, 0x01, 0x00]),
+        "frame_head.dat": new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]),
+        "frame_tran1.dat": new Uint8Array([0x00, 0x07, 0x01]),
+        "frame_tran2.dat": new Uint8Array([0x41, 0x42, 0x43, 0x44]),
+        "frame_del.dat": new Uint8Array([0x04]),
+    };
+    for (const [name, bytes] of Object.entries(files)) {
+        writeFileBytes(path.join(dir, name), bytes);
+    }
+
+    const provider: NamedBytesProvider = {
+        getBytes(name: string): Uint8Array | undefined {
+            return files[name];
+        },
+    };
+
+    const frames = LegacySeqFrame.load(provider);
+    const frame0 = frames[0];
+    if (!frame0) {
+        throw new Error("legacy-seqframe-streams: failed decoding frame 0");
+    }
+
+    fs.writeFileSync(
+        path.join(dir, "expected.json"),
+        JSON.stringify(
+            {
+                frameId: 0,
+                missingFrameId: 1,
+                frame: seqFrameToExpected(frame0),
+            },
+            null,
+            2,
+        ),
+    );
+}
+
+function genDatSeqFrameMapFixture(): void {
+    const dir = path.join(OUT_DIR, "dat-seqframe-map");
+    mkdirp(dir);
+
+    const input = new Uint8Array([
+        // frame map section
+        0x00,
+        0x01, // frameCount
+        0x00,
+        0x07, // frameId
+        0x01, // count
+        // flags section
+        0x07,
+        // transform section (smart2: 1, 2, 3)
+        0x41,
+        0x42,
+        0x43,
+        // frame length section
+        0x03,
+        // base section
+        0x01,
+        0x01,
+        0x00,
+        // footer
+        0x00,
+        0x03, // frameMapOffset
+        0x00,
+        0x01, // flagOffset
+        0x00,
+        0x03, // transformOffset
+        0x00,
+        0x01, // frameLengthOffset
+    ]);
+    writeFileBytes(path.join(dir, "input.bin"), input);
+
+    const frames = new Map<number, SeqFrame>();
+    const result = DatSeqFrame.tryLoadResult(frames, input, undefined, 0);
+    if (!result.ok) {
+        throw new Error(`dat-seqframe-map: failed decoding fixture: ${result.error.message}`);
+    }
+    const frame = frames.get(7);
+    if (!frame) {
+        throw new Error("dat-seqframe-map: missing frame id 7 after decode");
+    }
+
+    fs.writeFileSync(
+        path.join(dir, "expected.json"),
+        JSON.stringify(
+            {
+                frameId: 7,
+                missingFrameId: 6,
+                frame: seqFrameToExpected(frame),
+            },
+            null,
+            2,
+        ),
+    );
+}
+
+function genDat2SeqFrameFixtures(): void {
+    {
+        const dir = path.join(OUT_DIR, "dat2-seqframe-min");
+        mkdirp(dir);
+        const input = new Uint8Array([0x00, 0x00, 0x01, 0x01, 0x40]);
+        writeFileBytes(path.join(dir, "input.bin"), input);
+
+        const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
+        const base = new SeqBase(
+            0,
+            1,
+            [SeqTransformType.TRANSLATE],
+            [true],
+            new Uint16Array([0xffff]),
+            [[]],
+        );
+        const baseLoader = {
+            tryLoad: (id: number) => (id === 0 ? ok(base) : err(notFoundError("SeqBase", id))),
+            tryGet: (id: number) => (id === 0 ? base : undefined),
+            clearCache: () => {},
+        };
+        const result = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, input);
+        if (!result.ok) {
+            throw new Error(`dat2-seqframe-min: failed decoding fixture: ${result.error.message}`);
+        }
+        fs.writeFileSync(path.join(dir, "expected.json"), JSON.stringify(seqFrameToExpected(result.value), null, 2));
+    }
+
+    {
+        const dir = path.join(OUT_DIR, "dat2-seqframe-nontrivial");
+        mkdirp(dir);
+        const input = new Uint8Array([0x00, 0x00, 0x04, 0x00, 0x07, 0x01, 0x01, 0x45, 0x3d, 0x42, 0x50, 0x41]);
+        writeFileBytes(path.join(dir, "input.bin"), input);
+
+        const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
+        const base = new SeqBase(
+            0,
+            4,
+            [SeqTransformType.ORIGIN, SeqTransformType.TRANSLATE, SeqTransformType.ROTATE, SeqTransformType.ALPHA],
+            [true, true, true, true],
+            new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]),
+            [[], [], [], []],
+        );
+        const baseLoader = {
+            tryLoad: (id: number) => (id === 0 ? ok(base) : err(notFoundError("SeqBase", id))),
+            tryGet: (id: number) => (id === 0 ? base : undefined),
+            clearCache: () => {},
+        };
+        const result = Dat2SeqFrame.tryLoadResult(cacheInfo, baseLoader, input);
+        if (!result.ok) {
+            throw new Error(
+                `dat2-seqframe-nontrivial: failed decoding fixture: ${result.error.message}`,
+            );
+        }
+        fs.writeFileSync(path.join(dir, "expected.json"), JSON.stringify(seqFrameToExpected(result.value), null, 2));
+    }
+}
+
 function main(): void {
     genXteaFixture();
     genSectorChainDatFixture();
     genArchiveSplitFixture();
+    genModelFixtures();
+    genLegacySeqFrameFixture();
+    genDatSeqFrameMapFixture();
+    genDat2SeqFrameFixtures();
     console.log(`Wrote fixtures under ${OUT_DIR}`);
 }
 

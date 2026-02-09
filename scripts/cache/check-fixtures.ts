@@ -13,12 +13,24 @@ import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { SeqBase } from "../../src/rs/model/seq/SeqBase";
-import { Dat2SeqFrame } from "../../src/rs/model/seq/SeqFrame";
+import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
 import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
 import { err, ok } from "../../src/util/Result";
 
 const FIXTURES_DIR = path.resolve("testdata/cache-fixtures");
+
+type SeqFrameExpected = {
+    frameLength: number;
+    transformCount: number;
+    transformGroups: number[];
+    transformX: number[];
+    transformY: number[];
+    transformZ: number[];
+    resetOriginGroups: number[];
+    hasAlphaTransform: boolean;
+    hasColorTransform: boolean;
+};
 
 function readFileBytes(filePath: string): Uint8Array {
     return new Uint8Array(fs.readFileSync(filePath));
@@ -37,6 +49,20 @@ function assertBytesEqual(label: string, actual: Uint8Array, expected: Uint8Arra
             );
         }
     }
+}
+
+function toExpected(frame: SeqFrame): SeqFrameExpected {
+    return {
+        frameLength: frame.frameLength,
+        transformCount: frame.transformCount,
+        transformGroups: frame.transformGroups,
+        transformX: frame.transformX,
+        transformY: frame.transformY,
+        transformZ: frame.transformZ,
+        resetOriginGroups: frame.resetOriginGroups,
+        hasAlphaTransform: frame.hasAlphaTransform,
+        hasColorTransform: frame.hasColorTransform,
+    };
 }
 
 function checkXtea(): void {
@@ -267,16 +293,7 @@ function checkModelV2Triangle(): void {
 function checkDat2SeqFrameMinimal(): void {
     const dir = path.join(FIXTURES_DIR, "dat2-seqframe-min");
     const bytes = readFileBytes(path.join(dir, "input.bin"));
-    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
-        transformCount: number;
-        transformGroups: number[];
-        transformX: number[];
-        transformY: number[];
-        transformZ: number[];
-        resetOriginGroups: number[];
-        hasAlphaTransform: boolean;
-        hasColorTransform: boolean;
-    };
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as SeqFrameExpected;
 
     const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
     const base = new SeqBase(
@@ -299,16 +316,7 @@ function checkDat2SeqFrameMinimal(): void {
     }
     const frame = frameResult.value;
 
-    const actual = {
-        transformCount: frame.transformCount,
-        transformGroups: frame.transformGroups,
-        transformX: frame.transformX,
-        transformY: frame.transformY,
-        transformZ: frame.transformZ,
-        resetOriginGroups: frame.resetOriginGroups,
-        hasAlphaTransform: frame.hasAlphaTransform,
-        hasColorTransform: frame.hasColorTransform,
-    };
+    const actual = toExpected(frame);
 
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         throw new Error(
@@ -322,16 +330,7 @@ function checkDat2SeqFrameMinimal(): void {
 function checkDat2SeqFrameNonTrivial(): void {
     const dir = path.join(FIXTURES_DIR, "dat2-seqframe-nontrivial");
     const bytes = readFileBytes(path.join(dir, "input.bin"));
-    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
-        transformCount: number;
-        transformGroups: number[];
-        transformX: number[];
-        transformY: number[];
-        transformZ: number[];
-        resetOriginGroups: number[];
-        hasAlphaTransform: boolean;
-        hasColorTransform: boolean;
-    };
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as SeqFrameExpected;
 
     const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
     const base = new SeqBase(
@@ -361,22 +360,93 @@ function checkDat2SeqFrameNonTrivial(): void {
     }
     const frame = frameResult.value;
 
-    const actual = {
-        transformCount: frame.transformCount,
-        transformGroups: frame.transformGroups,
-        transformX: frame.transformX,
-        transformY: frame.transformY,
-        transformZ: frame.transformZ,
-        resetOriginGroups: frame.resetOriginGroups,
-        hasAlphaTransform: frame.hasAlphaTransform,
-        hasColorTransform: frame.hasColorTransform,
-    };
+    const actual = toExpected(frame);
 
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         throw new Error(
             `dat2-seqframe-nontrivial: mismatch\nactual=${JSON.stringify(
                 actual,
             )} expected=${JSON.stringify(expected)}`,
+        );
+    }
+}
+
+function checkLegacySeqFrameStreams(): void {
+    const dir = path.join(FIXTURES_DIR, "legacy-seqframe-streams");
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        frameId: number;
+        missingFrameId: number;
+        frame: SeqFrameExpected;
+    };
+
+    const fileNames = [
+        "base_head.dat",
+        "base_type.dat",
+        "base_label.dat",
+        "frame_head.dat",
+        "frame_tran1.dat",
+        "frame_tran2.dat",
+        "frame_del.dat",
+    ];
+    const files = new Map<string, Uint8Array>();
+    for (const name of fileNames) {
+        files.set(name, readFileBytes(path.join(dir, name)));
+    }
+    const provider: NamedBytesProvider = {
+        getBytes: (name: string) => files.get(name),
+    };
+
+    const frames = LegacySeqFrame.load(provider);
+    const frame = frames[expected.frameId];
+    if (!frame) {
+        throw new Error(`legacy-seqframe-streams: missing frame ${expected.frameId}`);
+    }
+    const missing = frames[expected.missingFrameId];
+    if (missing) {
+        throw new Error(
+            `legacy-seqframe-streams: expected missing frame ${expected.missingFrameId}`,
+        );
+    }
+
+    const actual = toExpected(frame);
+    if (JSON.stringify(actual) !== JSON.stringify(expected.frame)) {
+        throw new Error(
+            `legacy-seqframe-streams: mismatch\nactual=${JSON.stringify(
+                actual,
+            )} expected=${JSON.stringify(expected.frame)}`,
+        );
+    }
+}
+
+function checkDatSeqFrameMap(): void {
+    const dir = path.join(FIXTURES_DIR, "dat-seqframe-map");
+    const input = readFileBytes(path.join(dir, "input.bin"));
+    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as {
+        frameId: number;
+        missingFrameId: number;
+        frame: SeqFrameExpected;
+    };
+
+    const frames = new Map<number, SeqFrame>();
+    const result = DatSeqFrame.tryLoadResult(frames, input, undefined, 0);
+    if (!result.ok) {
+        throw new Error(`dat-seqframe-map: decode failed: ${result.error.message}`);
+    }
+
+    const frame = frames.get(expected.frameId);
+    if (!frame) {
+        throw new Error(`dat-seqframe-map: missing frame ${expected.frameId}`);
+    }
+    if (frames.has(expected.missingFrameId)) {
+        throw new Error(`dat-seqframe-map: expected missing frame ${expected.missingFrameId}`);
+    }
+
+    const actual = toExpected(frame);
+    if (JSON.stringify(actual) !== JSON.stringify(expected.frame)) {
+        throw new Error(
+            `dat-seqframe-map: mismatch\nactual=${JSON.stringify(actual)} expected=${JSON.stringify(
+                expected.frame,
+            )}`,
         );
     }
 }
@@ -389,6 +459,8 @@ function main(): void {
     checkVarBitType();
     checkModelV1Empty();
     checkModelV2Triangle();
+    checkLegacySeqFrameStreams();
+    checkDatSeqFrameMap();
     checkDat2SeqFrameMinimal();
     checkDat2SeqFrameNonTrivial();
     console.log("OK: cache fixtures");
