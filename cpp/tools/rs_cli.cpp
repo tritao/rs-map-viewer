@@ -2684,18 +2684,12 @@ public:
     SessionLocModelService(const rs::CacheSession& session, rs::Allocator& alloc) noexcept
         : session_(&session), alloc_(&alloc) {}
 
-    rs::Status tryResolveStaticModelInfo(
+    rs::Status tryValidateStaticModelPlacement(
         const rs::LocType& locType,
         rs::i32 placementType,
-        rs::i32 rotation,
-        rs::SceneStaticModelInfo* out) const noexcept override {
-        if (out) {
-            *out = rs::SceneStaticModelInfo{};
-        }
+        rs::i32 rotation) const noexcept override {
+        (void)rotation;
         if (!session_ || !alloc_) {
-            return rs::Status::InvalidArgument;
-        }
-        if (!out) {
             return rs::Status::InvalidArgument;
         }
 
@@ -2725,38 +2719,6 @@ public:
             return rs::Status::NotFound;
         }
 
-        rs::u32 h = 2166136261u;
-        h = fnv1a32UpdateInt(h, 0x4c4d534d); // 'LMSM'
-        h = fnv1a32UpdateInt(h, normalizedType);
-        h = fnv1a32UpdateInt(h, rotation);
-        h = fnv1a32UpdateInt(h, locType.isRotated ? 1 : 0);
-        h = fnv1a32UpdateInt(h, locType.modelSizeX);
-        h = fnv1a32UpdateInt(h, locType.modelSizeHeight);
-        h = fnv1a32UpdateInt(h, locType.modelSizeY);
-        h = fnv1a32UpdateInt(h, locType.offsetX);
-        h = fnv1a32UpdateInt(h, locType.offsetHeight);
-        h = fnv1a32UpdateInt(h, locType.offsetY);
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(locType.recolorFrom.size()));
-        for (std::size_t i = 0; i < locType.recolorFrom.size(); i++) {
-            h = fnv1a32UpdateInt(h, locType.recolorFrom[i]);
-        }
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(locType.recolorTo.size()));
-        for (std::size_t i = 0; i < locType.recolorTo.size(); i++) {
-            h = fnv1a32UpdateInt(h, locType.recolorTo[i]);
-        }
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(locType.retextureFrom.size()));
-        for (std::size_t i = 0; i < locType.retextureFrom.size(); i++) {
-            h = fnv1a32UpdateInt(h, locType.retextureFrom[i]);
-        }
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(locType.retextureTo.size()));
-        for (std::size_t i = 0; i < locType.retextureTo.size(); i++) {
-            h = fnv1a32UpdateInt(h, locType.retextureTo[i]);
-        }
-
-        rs::i32 totalVertices = 0;
-        rs::i32 totalFaces = 0;
-        rs::i32 totalTextureFaces = 0;
-        bool hasMayaGroups = false;
         for (std::size_t i = 0; i < ids->size(); i++) {
             const rs::i32 modelId = (*ids)[i];
             rs::ModelData model(*alloc_);
@@ -2764,71 +2726,7 @@ public:
             if (!rs::ok(s)) {
                 return s;
             }
-            h = fnv1a32UpdateInt(h, modelId);
-            h = fnv1a32UpdateInt(h, static_cast<rs::i32>(hashMaterializedModel(model)));
-            totalVertices += model.verticesCount;
-            totalFaces += model.faceCount;
-            totalTextureFaces += model.textureFaceCount;
-            if (!hasMayaGroups && modelHasMayaGroups(model)) {
-                hasMayaGroups = true;
-            }
         }
-        out->signature = static_cast<rs::i32>(h);
-        out->verticesCount = totalVertices;
-        out->faceCount = totalFaces;
-        out->textureFaceCount = totalTextureFaces;
-        out->hasMayaGroups = hasMayaGroups;
-        return rs::Status::Ok;
-    }
-
-    rs::Status tryResolveSkeletalInfo(
-        rs::i32 seqId,
-        rs::SceneSkeletalInfo* out) const noexcept override {
-        if (out) {
-            *out = rs::SceneSkeletalInfo{};
-            out->seqId = seqId;
-        }
-        if (!session_ || !alloc_) {
-            return rs::Status::InvalidArgument;
-        }
-        if (!out || seqId < 0) {
-            return rs::Status::InvalidArgument;
-        }
-
-        const rs::SeqType* seq = nullptr;
-        rs::Status s = session_->tryGetSeqType(seqId, &seq);
-        if (!rs::ok(s)) {
-            return s;
-        }
-        if (!seq) {
-            return rs::Status::NotFound;
-        }
-        if (seq->animMayaId < 0) {
-            return rs::Status::NotFound;
-        }
-
-        rs::SkeletalSeq skeletal(*alloc_);
-        s = session_->tryLoadSkeletalSeq(seq->animMayaId, &skeletal);
-        if (!rs::ok(s)) {
-            return s;
-        }
-
-        const rs::i32 frame = seq->animMayaStart;
-        rs::Vec<rs::Mat4f> finalMatrices(*alloc_);
-        s = session_->tryComputeSkeletalFinalMatrices(seq->animMayaId, frame, &finalMatrices, *alloc_);
-        if (!rs::ok(s)) {
-            return s;
-        }
-
-        out->seqId = seqId;
-        out->animMayaId = seq->animMayaId;
-        out->baseId = skeletal.baseId;
-        out->poseId = skeletal.poseId;
-        out->curveCount = skeletal.curveCount;
-        out->hasAlphaTransform = skeletal.hasAlphaTransform;
-        out->frame = frame;
-        out->frameHash = static_cast<rs::i32>(
-            hashSkeletalFinalMatrices(rs::Span<const rs::Mat4f>(finalMatrices.data(), finalMatrices.size())));
         return rs::Status::Ok;
     }
 
@@ -2845,67 +2743,6 @@ private:
             default:
                 return placementType;
         }
-    }
-
-    static bool modelHasMayaGroups(const rs::ModelData& model) noexcept {
-        if (!model.hasMayaGroups || model.animMayaGroups.empty()) {
-            return false;
-        }
-        for (std::size_t i = 0; i < model.animMayaGroups.size(); i++) {
-            if (!model.animMayaGroups[i].empty()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    template <typename T>
-    static rs::u32 hashVec(rs::u32 h, const rs::Vec<T>& values) noexcept {
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(values.size()));
-        for (std::size_t i = 0; i < values.size(); i++) {
-            h = fnv1a32UpdateInt(h, static_cast<rs::i32>(values[i]));
-        }
-        return h;
-    }
-
-    static rs::u32 hashMaterializedModel(const rs::ModelData& model) noexcept {
-        rs::u32 h = 2166136261u;
-        h = fnv1a32UpdateInt(h, 0x4c4d4448); // 'LMDH'
-        h = fnv1a32UpdateInt(h, model.version);
-        h = fnv1a32UpdateInt(h, model.verticesCount);
-        h = fnv1a32UpdateInt(h, model.faceCount);
-        h = fnv1a32UpdateInt(h, model.textureFaceCount);
-        h = hashVec(h, model.verticesX);
-        h = hashVec(h, model.verticesY);
-        h = hashVec(h, model.verticesZ);
-        h = hashVec(h, model.indices1);
-        h = hashVec(h, model.indices2);
-        h = hashVec(h, model.indices3);
-        h = hashVec(h, model.faceColors);
-        h = hashVec(h, model.textureRenderTypes);
-        h = hashVec(h, model.textureMappingP);
-        h = hashVec(h, model.textureMappingM);
-        h = hashVec(h, model.textureMappingN);
-        h = hashVec(h, model.textureScaleX);
-        h = hashVec(h, model.textureScaleY);
-        h = hashVec(h, model.textureScaleZ);
-        h = hashVec(h, model.textureRotation);
-        h = hashVec(h, model.textureDirection);
-        h = hashVec(h, model.textureSpeed);
-        h = hashVec(h, model.textureTransU);
-        h = hashVec(h, model.textureTransV);
-        h = hashVec(h, model.vertexSkins);
-        h = hashVec(h, model.faceSkins);
-        h = fnv1a32UpdateInt(h, model.hasMayaGroups ? 1 : 0);
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(model.animMayaGroups.size()));
-        for (std::size_t i = 0; i < model.animMayaGroups.size(); i++) {
-            h = hashVec(h, model.animMayaGroups[i]);
-        }
-        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(model.animMayaScales.size()));
-        for (std::size_t i = 0; i < model.animMayaScales.size(); i++) {
-            h = hashVec(h, model.animMayaScales[i]);
-        }
-        return h;
     }
 
     const rs::CacheSession* session_ = nullptr;
@@ -3036,22 +2873,6 @@ static rs::i32 hashSceneData(const rs::SceneData& scene) {
         h = fnv1a32UpdateInt(h, p.tileY);
         h = fnv1a32UpdateInt(h, p.type);
         h = fnv1a32UpdateInt(h, p.rotation);
-        h = fnv1a32UpdateInt(h, p.renderKind);
-        h = fnv1a32UpdateInt(h, p.modelAvailable);
-        h = fnv1a32UpdateInt(h, p.modelSignature);
-        h = fnv1a32UpdateInt(h, p.modelVerticesCount);
-        h = fnv1a32UpdateInt(h, p.modelFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelTextureFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelHasMayaGroups);
-        h = fnv1a32UpdateInt(h, p.sequenceId);
-        h = fnv1a32UpdateInt(h, p.animMayaId);
-        h = fnv1a32UpdateInt(h, p.skeletalBaseId);
-        h = fnv1a32UpdateInt(h, p.skeletalPoseId);
-        h = fnv1a32UpdateInt(h, p.skeletalCurveCount);
-        h = fnv1a32UpdateInt(h, p.skeletalAvailable);
-        h = fnv1a32UpdateInt(h, p.skeletalHasAlpha);
-        h = fnv1a32UpdateInt(h, p.skeletalFrame);
-        h = fnv1a32UpdateInt(h, p.skeletalFrameHash);
     }
 
     return static_cast<rs::i32>(h);
@@ -3125,22 +2946,13 @@ static rs::i32 hashSceneLocRenderSection(const rs::SceneData& scene) {
     h = fnv1a32UpdateInt(h, 0x4c4f4358); // 'LOCX'
     for (std::size_t i = 0; i < scene.locPlacements.size(); i++) {
         const rs::SceneLocPlacement& p = scene.locPlacements[i];
-        h = fnv1a32UpdateInt(h, p.renderKind);
-        h = fnv1a32UpdateInt(h, p.modelAvailable);
-        h = fnv1a32UpdateInt(h, p.modelSignature);
-        h = fnv1a32UpdateInt(h, p.modelVerticesCount);
-        h = fnv1a32UpdateInt(h, p.modelFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelTextureFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelHasMayaGroups);
-        h = fnv1a32UpdateInt(h, p.sequenceId);
-        h = fnv1a32UpdateInt(h, p.animMayaId);
-        h = fnv1a32UpdateInt(h, p.skeletalBaseId);
-        h = fnv1a32UpdateInt(h, p.skeletalPoseId);
-        h = fnv1a32UpdateInt(h, p.skeletalCurveCount);
-        h = fnv1a32UpdateInt(h, p.skeletalAvailable);
-        h = fnv1a32UpdateInt(h, p.skeletalHasAlpha);
-        h = fnv1a32UpdateInt(h, p.skeletalFrame);
-        h = fnv1a32UpdateInt(h, p.skeletalFrameHash);
+        h = fnv1a32UpdateInt(h, p.originalId);
+        h = fnv1a32UpdateInt(h, p.resolvedId);
+        h = fnv1a32UpdateInt(h, p.level);
+        h = fnv1a32UpdateInt(h, p.tileX);
+        h = fnv1a32UpdateInt(h, p.tileY);
+        h = fnv1a32UpdateInt(h, p.type);
+        h = fnv1a32UpdateInt(h, p.rotation);
     }
     return static_cast<rs::i32>(h);
 }

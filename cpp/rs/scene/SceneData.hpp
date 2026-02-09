@@ -26,22 +26,6 @@ struct SceneLocPlacement final {
     i32 tileY = 0;
     i32 type = 0;
     i32 rotation = 0;
-    u8 renderKind = 0; // 0: entity/proxy, 1: static model
-    u8 modelAvailable = 0;
-    i32 modelSignature = 0;
-    i32 modelVerticesCount = 0;
-    i32 modelFaceCount = 0;
-    i32 modelTextureFaceCount = 0;
-    u8 modelHasMayaGroups = 0;
-    i32 sequenceId = -1;
-    i32 animMayaId = -1;
-    i32 skeletalBaseId = -1;
-    i32 skeletalPoseId = 0;
-    i32 skeletalCurveCount = 0;
-    u8 skeletalAvailable = 0;
-    u8 skeletalHasAlpha = 0;
-    i32 skeletalFrame = 0;
-    i32 skeletalFrameHash = 0;
 };
 
 struct SceneData final {
