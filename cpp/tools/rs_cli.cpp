@@ -178,6 +178,7 @@ static void printUsage() {
     std::cerr << "  --cache <name-or-path>\n";
     std::cerr << "  --game <classic|runescape|oldschool>\n";
     std::cerr << "  --revision <n>\n";
+    std::cerr << "  --locLoadType <models|no_models> (default: no_models)\n";
     std::cerr << "  --squares <comma-separated mapX_mapY>\n";
     std::cerr << "\nmodel_hashes args:\n";
     std::cerr << "  --cache <name-or-path>\n";
@@ -248,6 +249,7 @@ struct LocSquareHashArgs {
     std::string cacheNameOrPath;
     std::string gameName;
     int revision = -1;
+    std::string locLoadType = "no_models";
     std::vector<std::pair<int, int>> squares;
 };
 
@@ -1264,6 +1266,8 @@ static LocSquareHashArgs parseLocSquareHashArgs(int argc, char** argv) {
             args.gameName = argv[++i];
         } else if (a == "--revision" && i + 1 < argc) {
             args.revision = std::stoi(argv[++i]);
+        } else if (a == "--locLoadType" && i + 1 < argc) {
+            args.locLoadType = argv[++i];
         } else if (a == "--squares" && i + 1 < argc) {
             std::string raw = argv[++i];
             std::size_t start = 0;
@@ -2641,6 +2645,118 @@ private:
     const rs::CacheSession* session_ = nullptr;
 };
 
+class SessionUnderlayTypeService final : public rs::UnderlayTypeService {
+public:
+    explicit SessionUnderlayTypeService(const rs::CacheSession& session) noexcept : session_(&session) {}
+
+    rs::Status tryLoad(rs::i32 id, const rs::UnderlayFloorType** out) const noexcept override {
+        if (!session_) {
+            if (out) *out = nullptr;
+            return rs::Status::InvalidArgument;
+        }
+        return session_->tryGetUnderlayFloorType(id, out);
+    }
+
+private:
+    const rs::CacheSession* session_ = nullptr;
+};
+
+class SessionOverlayTypeService final : public rs::OverlayTypeService {
+public:
+    explicit SessionOverlayTypeService(const rs::CacheSession& session) noexcept : session_(&session) {}
+
+    rs::Status tryLoad(rs::i32 id, const rs::OverlayFloorType** out) const noexcept override {
+        if (!session_) {
+            if (out) *out = nullptr;
+            return rs::Status::InvalidArgument;
+        }
+        return session_->tryGetOverlayFloorType(id, out);
+    }
+
+private:
+    const rs::CacheSession* session_ = nullptr;
+};
+
+class SessionLocModelService final : public rs::LocModelService {
+public:
+    SessionLocModelService(const rs::CacheSession& session, rs::Allocator& alloc) noexcept
+        : session_(&session), alloc_(&alloc) {}
+
+    rs::Status tryResolveModelSignature(
+        const rs::LocType& locType,
+        rs::i32 placementType,
+        rs::i32 rotation,
+        rs::i32* outSignature) const noexcept override {
+        (void)rotation;
+        if (outSignature) *outSignature = 0;
+        if (!session_ || !alloc_) {
+            return rs::Status::InvalidArgument;
+        }
+
+        const rs::i32 normalizedType = normalizeModelType(placementType);
+
+        const rs::Vec<rs::i32>* ids = nullptr;
+        if (locType.types.empty()) {
+            if (normalizedType != 10 || locType.models.empty()) {
+                return rs::Status::NotFound;
+            }
+            ids = &locType.models[0];
+        } else {
+            rs::i32 idx = -1;
+            for (std::size_t i = 0; i < locType.types.size(); i++) {
+                if (locType.types[i] == normalizedType) {
+                    idx = static_cast<rs::i32>(i);
+                    break;
+                }
+            }
+            if (idx < 0 || static_cast<std::size_t>(idx) >= locType.models.size()) {
+                return rs::Status::NotFound;
+            }
+            ids = &locType.models[static_cast<std::size_t>(idx)];
+        }
+
+        if (!ids || ids->empty()) {
+            return rs::Status::NotFound;
+        }
+
+        rs::u32 h = 2166136261u;
+        for (std::size_t i = 0; i < ids->size(); i++) {
+            const rs::i32 modelId = (*ids)[i];
+            rs::ModelData model(*alloc_);
+            const rs::Status s = session_->tryLoadModel(modelId, &model);
+            if (!rs::ok(s)) {
+                return s;
+            }
+            h = fnv1a32UpdateInt(h, modelId);
+            h = fnv1a32UpdateInt(h, model.verticesCount);
+            h = fnv1a32UpdateInt(h, model.faceCount);
+            h = fnv1a32UpdateInt(h, model.textureFaceCount);
+        }
+        if (outSignature) {
+            *outSignature = static_cast<rs::i32>(h);
+        }
+        return rs::Status::Ok;
+    }
+
+private:
+    static rs::i32 normalizeModelType(rs::i32 placementType) noexcept {
+        switch (placementType) {
+            case 11: // NORMAL_DIAGONAL
+                return 10; // NORMAL
+            case 5: // WALL_DECORATION_OUTSIDE
+            case 6: // WALL_DECORATION_DIAGONAL_OUTSIDE
+            case 7: // WALL_DECORATION_DIAGONAL_INSIDE
+            case 8: // WALL_DECORATION_DIAGONAL_DOUBLE
+                return 4; // WALL_DECORATION_INSIDE
+            default:
+                return placementType;
+        }
+    }
+
+    const rs::CacheSession* session_ = nullptr;
+    rs::Allocator* alloc_ = nullptr;
+};
+
 class SessionMapBytesProvider final : public rs::MapBytesProvider {
 public:
     SessionMapBytesProvider(
@@ -2746,6 +2862,61 @@ static rs::i32 hashSceneData(const rs::SceneData& scene) {
     h = fnv1a32UpdateInt(h, 0x4d494e4c); // 'MINL'
     for (std::size_t i = 0; i < scene.tileMinLevels.size(); i++) h = fnv1a32UpdateInt(h, scene.tileMinLevels[i]);
 
+    h = fnv1a32UpdateInt(h, 0x544d4f44); // 'TMOD'
+    for (std::size_t i = 0; i < scene.tileModelPresent.size(); i++) h = fnv1a32UpdateInt(h, scene.tileModelPresent[i]);
+
+    h = fnv1a32UpdateInt(h, 0x544c4954); // 'TLIT'
+    for (std::size_t i = 0; i < scene.tileLightValues.size(); i++) h = fnv1a32UpdateInt(h, scene.tileLightValues[i]);
+
+    h = fnv1a32UpdateInt(h, 0x424c4e44); // 'BLND'
+    for (std::size_t i = 0; i < scene.blendedUnderlayHsl.size(); i++) h = fnv1a32UpdateInt(h, scene.blendedUnderlayHsl[i]);
+
+    h = fnv1a32UpdateInt(h, 0x4c4f4353); // 'LOCS'
+    for (std::size_t i = 0; i < scene.locPlacements.size(); i++) {
+        const rs::SceneLocPlacement& p = scene.locPlacements[i];
+        h = fnv1a32UpdateInt(h, p.originalId);
+        h = fnv1a32UpdateInt(h, p.resolvedId);
+        h = fnv1a32UpdateInt(h, p.level);
+        h = fnv1a32UpdateInt(h, p.tileX);
+        h = fnv1a32UpdateInt(h, p.tileY);
+        h = fnv1a32UpdateInt(h, p.type);
+        h = fnv1a32UpdateInt(h, p.rotation);
+        h = fnv1a32UpdateInt(h, p.renderKind);
+        h = fnv1a32UpdateInt(h, p.modelAvailable);
+        h = fnv1a32UpdateInt(h, p.modelSignature);
+    }
+
+    return static_cast<rs::i32>(h);
+}
+
+static rs::i32 hashSceneDataLegacy(const rs::SceneData& scene) {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x53434e48); // 'SCNH'
+
+    h = fnv1a32UpdateInt(h, 0x48454954); // 'HEIT'
+    for (std::size_t i = 0; i < scene.tileHeights.size(); i++) h = fnv1a32UpdateInt(h, scene.tileHeights[i]);
+
+    h = fnv1a32UpdateInt(h, 0x464c4147); // 'FLAG'
+    for (std::size_t i = 0; i < scene.tileRenderFlags.size(); i++) h = fnv1a32UpdateInt(h, scene.tileRenderFlags[i]);
+
+    h = fnv1a32UpdateInt(h, 0x554e444c); // 'UNDL'
+    for (std::size_t i = 0; i < scene.tileUnderlays.size(); i++) h = fnv1a32UpdateInt(h, scene.tileUnderlays[i]);
+
+    h = fnv1a32UpdateInt(h, 0x4f564552); // 'OVER'
+    for (std::size_t i = 0; i < scene.tileOverlays.size(); i++) h = fnv1a32UpdateInt(h, scene.tileOverlays[i]);
+
+    h = fnv1a32UpdateInt(h, 0x53484150); // 'SHAP'
+    for (std::size_t i = 0; i < scene.tileShapes.size(); i++) h = fnv1a32UpdateInt(h, scene.tileShapes[i]);
+
+    h = fnv1a32UpdateInt(h, 0x524f5441); // 'ROTA'
+    for (std::size_t i = 0; i < scene.tileRotations.size(); i++) h = fnv1a32UpdateInt(h, scene.tileRotations[i]);
+
+    h = fnv1a32UpdateInt(h, 0x424c4b44); // 'BLKD'
+    for (std::size_t i = 0; i < scene.blockedByFloor.size(); i++) h = fnv1a32UpdateInt(h, scene.blockedByFloor[i]);
+
+    h = fnv1a32UpdateInt(h, 0x4d494e4c); // 'MINL'
+    for (std::size_t i = 0; i < scene.tileMinLevels.size(); i++) h = fnv1a32UpdateInt(h, scene.tileMinLevels[i]);
+
     h = fnv1a32UpdateInt(h, 0x4c4f4353); // 'LOCS'
     for (std::size_t i = 0; i < scene.locPlacements.size(); i++) {
         const rs::SceneLocPlacement& p = scene.locPlacements[i];
@@ -2757,7 +2928,39 @@ static rs::i32 hashSceneData(const rs::SceneData& scene) {
         h = fnv1a32UpdateInt(h, p.type);
         h = fnv1a32UpdateInt(h, p.rotation);
     }
+    return static_cast<rs::i32>(h);
+}
 
+static rs::i32 hashSceneTileModelSection(const rs::SceneData& scene) {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x544d4f44); // 'TMOD'
+    for (std::size_t i = 0; i < scene.tileModelPresent.size(); i++) h = fnv1a32UpdateInt(h, scene.tileModelPresent[i]);
+    return static_cast<rs::i32>(h);
+}
+
+static rs::i32 hashSceneTileLightSection(const rs::SceneData& scene) {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x544c4954); // 'TLIT'
+    for (std::size_t i = 0; i < scene.tileLightValues.size(); i++) h = fnv1a32UpdateInt(h, scene.tileLightValues[i]);
+    return static_cast<rs::i32>(h);
+}
+
+static rs::i32 hashSceneBlendedUnderlaySection(const rs::SceneData& scene) {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x424c4e44); // 'BLND'
+    for (std::size_t i = 0; i < scene.blendedUnderlayHsl.size(); i++) h = fnv1a32UpdateInt(h, scene.blendedUnderlayHsl[i]);
+    return static_cast<rs::i32>(h);
+}
+
+static rs::i32 hashSceneLocRenderSection(const rs::SceneData& scene) {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x4c4f4358); // 'LOCX'
+    for (std::size_t i = 0; i < scene.locPlacements.size(); i++) {
+        const rs::SceneLocPlacement& p = scene.locPlacements[i];
+        h = fnv1a32UpdateInt(h, p.renderKind);
+        h = fnv1a32UpdateInt(h, p.modelAvailable);
+        h = fnv1a32UpdateInt(h, p.modelSignature);
+    }
     return static_cast<rs::i32>(h);
 }
 
@@ -2772,6 +2975,14 @@ static int cmdSceneSquareHashes(int argc, char** argv) {
     }
     if (args.squares.empty()) {
         throw std::runtime_error("Missing --squares <comma-separated mapX_mapY>");
+    }
+    rs::SceneLocLoadType locLoadType = rs::SceneLocLoadType::NoModels;
+    if (args.locLoadType == "models") {
+        locLoadType = rs::SceneLocLoadType::Models;
+    } else if (args.locLoadType == "no_models") {
+        locLoadType = rs::SceneLocLoadType::NoModels;
+    } else {
+        throw std::runtime_error("Invalid --locLoadType value (expected models|no_models)");
     }
 
     const std::unordered_map<rs::i32, rs::XteaKey> keysByArchiveId = loadKeysJsonIfPresent(cacheDir);
@@ -2788,12 +2999,18 @@ static int cmdSceneSquareHashes(int argc, char** argv) {
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
     rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
+    SessionUnderlayTypeService underlayTypes(session);
+    SessionOverlayTypeService overlayTypes(session);
     SessionLocTypeService locTypes(session);
+    SessionLocModelService locModels(session, alloc);
     SessionVarProvider varProvider(session);
     SessionMapBytesProvider mapBytes(session, keysByArchiveId, alloc);
 
     rs::SceneRuntimeServices services{};
+    services.underlayTypes = &underlayTypes;
+    services.overlayTypes = &overlayTypes;
     services.locTypes = &locTypes;
+    services.locModels = &locModels;
     services.varProvider = &varProvider;
     services.cacheInfo = &cacheInfo;
 
@@ -2806,6 +3023,9 @@ static int cmdSceneSquareHashes(int argc, char** argv) {
     std::cout << ", \"game\": ";
     writeJsonEscaped(std::cout, args.gameName);
     std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"locLoadType\": ";
+    writeJsonEscaped(std::cout, args.locLoadType);
+    std::cout << ",\n";
     std::cout << "  \"newTerrainFormat\": " << (newTerrainFormat ? "true" : "false") << ",\n";
     std::cout << "  \"entries\": [\n";
 
@@ -2819,7 +3039,7 @@ static int cmdSceneSquareHashes(int argc, char** argv) {
             rs::TerrainConstants::MAP_SQUARE_SIZE,
             rs::TerrainConstants::MAP_SQUARE_SIZE,
             false,
-            rs::SceneLocLoadType::NoModels);
+            locLoadType);
 
         rs::SceneData scene{};
         const rs::Status s = rs::buildSceneFromMapBytesProvider(services, mapBytes, context, &scene, alloc);
@@ -2831,7 +3051,37 @@ static int cmdSceneSquareHashes(int argc, char** argv) {
             std::cout << ", \"statusCode\": " << static_cast<int>(s) << " }";
         } else {
             std::cout << ", \"ok\": true, \"hash\": " << hashSceneData(scene)
-                      << ", \"locCount\": " << scene.locPlacements.size() << " }";
+                      << ", \"legacyHash\": " << hashSceneDataLegacy(scene)
+                      << ", \"tileModelHash\": " << hashSceneTileModelSection(scene)
+                      << ", \"tileLightHash\": " << hashSceneTileLightSection(scene)
+                      << ", \"blendedUnderlayHash\": " << hashSceneBlendedUnderlaySection(scene)
+                      << ", \"locRenderHash\": " << hashSceneLocRenderSection(scene)
+                      << ", \"locCount\": " << scene.locPlacements.size();
+            std::size_t nonZeroLight = 0;
+            for (std::size_t si = 0; si < scene.tileLightValues.size(); si++) {
+                if (scene.tileLightValues[si] != 0) {
+                    nonZeroLight++;
+                }
+            }
+            std::cout << ", \"tileLightNonZero\": " << nonZeroLight
+                      << ", \"tileLightSample\": [";
+            const std::size_t sampleCount = std::min<std::size_t>(16, scene.tileLightValues.size());
+            for (std::size_t si = 0; si < sampleCount; si++) {
+                if (si > 0) std::cout << ",";
+                std::cout << scene.tileLightValues[si];
+            }
+            std::cout << "], \"tileLightProbe\": [";
+            const std::size_t probes[] = {65, 66, 67, 68, 129, 130, 131, 132};
+            for (std::size_t pi = 0; pi < sizeof(probes) / sizeof(probes[0]); pi++) {
+                const std::size_t idx = probes[pi];
+                if (pi > 0) std::cout << ",";
+                if (idx < scene.tileLightValues.size()) {
+                    std::cout << scene.tileLightValues[idx];
+                } else {
+                    std::cout << 0;
+                }
+            }
+            std::cout << "] }";
         }
 
         if (i + 1 < args.squares.size()) std::cout << ",";
