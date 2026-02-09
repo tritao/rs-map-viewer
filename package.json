@@ -71,6 +71,7 @@
     "rs:skeletal-seq-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/skeletal-seq-parity.ts",
     "rs:skeletal-eval-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/skeletal-eval-parity.ts",
     "rs:skeletal-model-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/skeletal-model-parity.ts",
+    "rs:skeletal-eval-bench-cpp": "./cpp/build/rs_cli skeletal_eval_bench --cache osrs-221_2024-04-17 --game oldschool --revision 221 --ids 208732160 --maxFrames 8 --iterations 100 --warmup 10",
     "rs:procedural-op-usage": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/procedural-op-usage.ts",
     "rs:session-contract": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/session-contract.ts",
     "rs:session-contract-cpp": "node scripts/cache/session-contract-cpp.mjs",

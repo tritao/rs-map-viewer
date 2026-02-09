@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -101,6 +102,7 @@ static void printUsage() {
     std::cerr << "  seq_frame_hashes   Hash decoded seq-frame fields for ids (dat2/dat/legacy)\n\n";
     std::cerr << "  skeletal_seq_hashes   Hash decoded skeletal-seq fields for ids (dat2/dat/legacy)\n\n";
     std::cerr << "  skeletal_eval_hashes   Hash sampled skeletal final-matrix evaluation for seq ids\n\n";
+    std::cerr << "  skeletal_eval_bench   Benchmark skeletal final-matrix evaluation throughput\n\n";
     std::cerr << "  skeletal_model_hashes   Hash model vertices after skeletal application for seq:model pairs\n\n";
     std::cerr << "  seq_type_frame_lengths   Emit effective seq frame lengths for seq ids (dat2/dat/legacy)\n\n";
     std::cerr << "  anim_selection_snapshot   Snapshot NPC/LOC animation seq selection + frame resolution (dat2/dat/legacy)\n\n";
@@ -125,6 +127,14 @@ static void printUsage() {
     std::cerr << "  --revision <n>\n";
     std::cerr << "  --ids <comma-separated>\n";
     std::cerr << "  --maxFrames <n> (default: 8)\n";
+    std::cerr << "\nskeletal_eval_bench args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "  --maxFrames <n> (default: 8)\n";
+    std::cerr << "  --iterations <n> (default: 100)\n";
+    std::cerr << "  --warmup <n> (default: 10)\n";
     std::cerr << "\nskeletal_model_hashes args:\n";
     std::cerr << "  --cache <name-or-path>\n";
     std::cerr << "  --game <classic|runescape|oldschool>\n";
@@ -273,6 +283,15 @@ struct SkeletalEvalHashArgs final {
     std::vector<int> ids;
 };
 
+struct SkeletalEvalBenchArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    int maxFrames = 8;
+    int iterations = 100;
+    int warmup = 10;
+    std::vector<int> ids;
+};
 
 struct SkeletalModelHashArgs final {
     std::string cacheNameOrPath;
@@ -961,6 +980,29 @@ static SkeletalEvalHashArgs parseSkeletalEvalHashArgs(int argc, char** argv) {
             args.revision = std::stoi(argv[++i]);
         } else if (a == "--maxFrames" && i + 1 < argc) {
             args.maxFrames = std::stoi(argv[++i]);
+        } else if (a == "--ids" && i + 1 < argc) {
+            args.ids = parseCsvInts(argv[++i]);
+        }
+    }
+    return args;
+}
+
+static SkeletalEvalBenchArgs parseSkeletalEvalBenchArgs(int argc, char** argv) {
+    SkeletalEvalBenchArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--maxFrames" && i + 1 < argc) {
+            args.maxFrames = std::stoi(argv[++i]);
+        } else if (a == "--iterations" && i + 1 < argc) {
+            args.iterations = std::stoi(argv[++i]);
+        } else if (a == "--warmup" && i + 1 < argc) {
+            args.warmup = std::stoi(argv[++i]);
         } else if (a == "--ids" && i + 1 < argc) {
             args.ids = parseCsvInts(argv[++i]);
         }
@@ -3753,6 +3795,138 @@ static int cmdSkeletalEvalHashes(int argc, char** argv) {
     return 0;
 }
 
+static int cmdSkeletalEvalBench(int argc, char** argv) {
+    const SkeletalEvalBenchArgs args = parseSkeletalEvalBenchArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.maxFrames <= 0) {
+        throw std::runtime_error("Invalid --maxFrames");
+    }
+    if (args.iterations <= 0) {
+        throw std::runtime_error("Invalid --iterations");
+    }
+    if (args.warmup < 0) {
+        throw std::runtime_error("Invalid --warmup");
+    }
+    if (args.ids.empty()) {
+        throw std::runtime_error("Missing --ids <comma-separated>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    rs::i64 totalSamples = 0;
+    rs::i64 okSamples = 0;
+    rs::i64 errorSamples = 0;
+    rs::i64 totalBoneMatrices = 0;
+    std::unordered_map<int, rs::i64> errorStatusCounts;
+
+    auto runPasses = [&](int passes, bool collectStats) {
+        for (int it = 0; it < passes; it++) {
+            for (std::size_t i = 0; i < args.ids.size(); i++) {
+                const rs::i32 id = static_cast<rs::i32>(args.ids[i]);
+                for (rs::i32 frame = 0; frame < static_cast<rs::i32>(args.maxFrames); frame++) {
+                    rs::Vec<rs::Mat4f> finalMatrices(alloc);
+                    const rs::Status s = session.tryComputeSkeletalFinalMatrices(id, frame, &finalMatrices, alloc);
+                    if (!collectStats) continue;
+                    totalSamples++;
+                    if (rs::ok(s)) {
+                        okSamples++;
+                        totalBoneMatrices += static_cast<rs::i64>(finalMatrices.size());
+                    } else {
+                        errorSamples++;
+                        errorStatusCounts[static_cast<int>(s)] += 1;
+                    }
+                }
+            }
+        }
+    };
+
+    if (args.warmup > 0) {
+        runPasses(args.warmup, false);
+    }
+
+    const auto t0 = std::chrono::steady_clock::now();
+    runPasses(args.iterations, true);
+    const auto t1 = std::chrono::steady_clock::now();
+    const auto elapsedNs =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+    const double elapsedMs = static_cast<double>(elapsedNs) / 1.0e6;
+    const double nsPerSample = (totalSamples > 0) ? static_cast<double>(elapsedNs) / static_cast<double>(totalSamples) : 0.0;
+    const double nsPerBone = (totalBoneMatrices > 0) ? static_cast<double>(elapsedNs) / static_cast<double>(totalBoneMatrices) : 0.0;
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"ids\": " << args.ids.size() << ",\n";
+    std::cout << "  \"maxFrames\": " << args.maxFrames << ",\n";
+    std::cout << "  \"iterations\": " << args.iterations << ",\n";
+    std::cout << "  \"warmup\": " << args.warmup << ",\n";
+    std::cout << "  \"samples\": " << totalSamples << ",\n";
+    std::cout << "  \"okSamples\": " << okSamples << ",\n";
+    std::cout << "  \"errorSamples\": " << errorSamples << ",\n";
+    std::cout << "  \"totalBoneMatrices\": " << totalBoneMatrices << ",\n";
+    std::cout << "  \"elapsedMs\": " << elapsedMs << ",\n";
+    std::cout << "  \"nsPerSample\": " << nsPerSample << ",\n";
+    std::cout << "  \"nsPerBoneMatrix\": " << nsPerBone << ",\n";
+    std::cout << "  \"errorStatusCounts\": {";
+    bool first = true;
+    for (const auto& kv : errorStatusCounts) {
+        if (!first) std::cout << ", ";
+        first = false;
+        writeJsonEscaped(std::cout, std::string(statusName(static_cast<rs::Status>(kv.first))));
+        std::cout << ": " << kv.second;
+    }
+    std::cout << " }\n";
+    std::cout << "}\n";
+    return 0;
+}
+
 static int cmdSkeletalModelHashes(int argc, char** argv) {
     const SkeletalModelHashArgs args = parseSkeletalModelHashArgs(argc, argv);
     const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
@@ -5195,6 +5369,9 @@ int main(int argc, char** argv) {
         }
         if (cmd == "skeletal_eval_hashes") {
             return cmdSkeletalEvalHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "skeletal_eval_bench") {
+            return cmdSkeletalEvalBench(argc - 2, argv + 2);
         }
         if (cmd == "skeletal_model_hashes") {
             return cmdSkeletalModelHashes(argc - 2, argv + 2);

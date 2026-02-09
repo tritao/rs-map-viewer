@@ -44,6 +44,7 @@ Animation + transform parity:
 -   `npm run -s rs:skeletal-seq-parity -- --cache osrs-221_2024-04-17 --limit 30`
 -   `npm run -s rs:skeletal-eval-parity -- --cache osrs-221_2024-04-17 --limit 20 --maxFrames 8`
 -   `npm run -s rs:skeletal-model-parity -- --cache osrs-221_2024-04-17 --limit 20 --maxFrames 4`
+-   `./cpp/build/rs_cli skeletal_eval_bench --cache osrs-221_2024-04-17 --game oldschool --revision 221 --ids 208732160 --maxFrames 8 --iterations 100 --warmup 10`
 
 End-to-end C++ pre-merge parity sweep:
 
