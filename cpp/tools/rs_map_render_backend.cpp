@@ -3,6 +3,8 @@
 #include "../rs/core/Allocator.hpp"
 #include "../rs/core/Span.hpp"
 #include "../rs/core/Vec.hpp"
+#include "../rs/core/Status.hpp"
+#include "../rs/render/ScenePack.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -151,19 +153,14 @@ RS_WASM_KEEPALIVE rs::i32 rs_decode_npc_spawns_from_bytes(
     return outCount;
 }
 
-static rs::i32 roundHeightOffsetDiv8Js(rs::i32 heightOffset) noexcept {
-    if (heightOffset >= 0) {
-        return (heightOffset + 4) / 8;
+static rs::i32 scenePackStatusCode(const rs::Status s) noexcept {
+    if (s == rs::Status::SizeMismatch || s == rs::Status::OutOfRange) {
+        return -2;
     }
-    return -(((-heightOffset) + 3) / 8);
+    return -1;
 }
 
-static rs::i32 modelInfoTextureLengthFromCounts(rs::i32 cmdCount, rs::i32 instanceCount) noexcept {
-    const rs::i32 dataLengthRounded = ((cmdCount * 4 + instanceCount + 15) / 16) * 16;
-    return (dataLengthRounded > 16 ? dataLengthRounded : 16) * 4;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_pack_scene_staging(
+RS_WASM_KEEPALIVE rs::i32 rs_pack_scene_pack_input(
     const rs::i32* tileHeights,
     rs::i32 levels,
     rs::i32 sizeX,
@@ -216,97 +213,35 @@ RS_WASM_KEEPALIVE rs::i32 rs_pack_scene_staging(
         return -1;
     }
 
-    rs::i32 expectedTotalCmdCount = 0;
-    for (rs::i32 bucket = 0; bucket < RS_DRAW_BUCKET_COUNT; bucket++) {
-        const rs::i32 n = bucketCmdCounts[bucket];
-        if (n < 0) {
-            return -1;
-        }
-        expectedTotalCmdCount += n;
-    }
-    if (expectedTotalCmdCount != totalCmdCount) {
-        return -2;
+    rs::ScenePackPlan scenePackPlan{};
+    const rs::Status planStatus = rs::buildScenePackPlan(
+        rs::Span<const rs::i32>(bucketCmdCounts, static_cast<std::size_t>(RS_DRAW_BUCKET_COUNT)),
+        rs::Span<const rs::i32>(cmdInstanceCounts, static_cast<std::size_t>(totalCmdCount)),
+        &scenePackPlan);
+    if (!rs::ok(planStatus)) {
+        return scenePackStatusCode(planStatus);
     }
 
-    const rs::i32 expectedDrawRangesLength = totalCmdCount * 3;
+    const rs::i32 expectedDrawRangesLength = scenePackPlan.totalCmdCount * 3;
     if (outDrawRangesLength != expectedDrawRangesLength) {
         return -2;
     }
-
-    rs::i32 cmdCursor = 0;
-    rs::i32 instanceCursor = 0;
-    rs::i32 modelInfoCursor = 0;
-
-    for (rs::i32 bucket = 0; bucket < RS_DRAW_BUCKET_COUNT; bucket++) {
-        const rs::i32 cmdCount = bucketCmdCounts[bucket];
-        rs::i32 bucketInstanceCount = 0;
-        for (rs::i32 i = 0; i < cmdCount; i++) {
-            const rs::i32 n = cmdInstanceCounts[cmdCursor + i];
-            if (n < 0) {
-                return -1;
-            }
-            bucketInstanceCount += n;
-        }
-
-        const rs::i32 bucketModelInfoLength = modelInfoTextureLengthFromCounts(cmdCount, bucketInstanceCount);
-        if (modelInfoCursor + bucketModelInfoLength > outModelInfoTextureConcatLength) {
-            return -2;
-        }
-        for (rs::i32 i = 0; i < bucketModelInfoLength; i++) {
-            outModelInfoTextureConcat[modelInfoCursor + i] = 0;
-        }
-
-        rs::i32 dataOffset = 0;
-        for (rs::i32 i = 0; i < cmdCount; i++) {
-            const rs::i32 cmdIndex = cmdCursor + i;
-            const rs::i32 outDrawOff = cmdIndex * 3;
-            outDrawRanges[outDrawOff + 0] = cmdOffsets[cmdIndex];
-            outDrawRanges[outDrawOff + 1] = cmdElements[cmdIndex];
-            outDrawRanges[outDrawOff + 2] = cmdInstanceCounts[cmdIndex];
-
-            outModelInfoTextureConcat[modelInfoCursor + i * 4] = static_cast<rs::u16>(cmdCount + dataOffset);
-            dataOffset += cmdInstanceCounts[cmdIndex];
-        }
-
-        for (rs::i32 i = 0; i < bucketInstanceCount; i++) {
-            const rs::i32 inOff = (instanceCursor + i) * 8;
-            if (inOff + 7 >= packedInstancesLength) {
-                return -2;
-            }
-            const rs::i32 sceneX = packedInstances[inOff + 0];
-            const rs::i32 sceneZ = packedInstances[inOff + 1];
-            const rs::i32 heightOffset = packedInstances[inOff + 2];
-            const rs::i32 level = packedInstances[inOff + 3];
-            const rs::i32 contourGround = packedInstances[inOff + 4];
-            const rs::i32 priority = packedInstances[inOff + 5];
-            const rs::i32 interactType = packedInstances[inOff + 6];
-            const rs::i32 interactId = packedInstances[inOff + 7];
-
-            const rs::i32 outOff = modelInfoCursor + cmdCount * 4 + i * 4;
-            outModelInfoTextureConcat[outOff + 0] = static_cast<rs::u16>(sceneX | (level << 14));
-            outModelInfoTextureConcat[outOff + 1] = static_cast<rs::u16>(sceneZ | (contourGround << 14));
-            const rs::i32 packed3 =
-                (priority & 0x7) |
-                ((interactId >> 16) << 3) |
-                (interactType << 4) |
-                (roundHeightOffsetDiv8Js(heightOffset) << 6);
-            outModelInfoTextureConcat[outOff + 2] = static_cast<rs::u16>(packed3);
-            outModelInfoTextureConcat[outOff + 3] = static_cast<rs::u16>(interactId);
-        }
-
-        cmdCursor += cmdCount;
-        instanceCursor += bucketInstanceCount;
-        modelInfoCursor += bucketModelInfoLength;
-    }
-
-    if (cmdCursor != totalCmdCount) {
+    if (outModelInfoTextureConcatLength != scenePackPlan.totalModelInfoLength) {
         return -2;
     }
-    if (instanceCursor * 8 != packedInstancesLength) {
-        return -2;
-    }
-    if (modelInfoCursor != outModelInfoTextureConcatLength) {
-        return -2;
+
+    const rs::Status packStatus = rs::packSceneDrawRangesAndModelInfo(
+        scenePackPlan,
+        rs::Span<const rs::i32>(cmdOffsets, static_cast<std::size_t>(totalCmdCount)),
+        rs::Span<const rs::i32>(cmdElements, static_cast<std::size_t>(totalCmdCount)),
+        rs::Span<const rs::i32>(cmdInstanceCounts, static_cast<std::size_t>(totalCmdCount)),
+        rs::Span<const rs::i32>(packedInstances, static_cast<std::size_t>(packedInstancesLength)),
+        rs::Span<rs::i32>(outDrawRanges, static_cast<std::size_t>(outDrawRangesLength)),
+        rs::Span<rs::u16>(
+            outModelInfoTextureConcat,
+            static_cast<std::size_t>(outModelInfoTextureConcatLength)));
+    if (!rs::ok(packStatus)) {
+        return scenePackStatusCode(packStatus);
     }
 
     return 1;

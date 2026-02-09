@@ -39,7 +39,7 @@ async function tryLoadBackendModule() {
             backendModule.__rsCapabilities = backendModule._rs_map_render_bridge_capabilities() | 0;
             if (
                 (backendModule.__rsCapabilities & CAP_SCENE_PACK) !== 0 &&
-                typeof backendModule._rs_pack_scene_staging !== "function"
+                typeof backendModule._rs_pack_scene_pack_input !== "function"
             ) {
                 console.warn(
                     "[map-render-backend] scene-pack capability advertised but export is missing",
@@ -259,7 +259,7 @@ function buildSceneWithWasm(backendModule, scenePackInput) {
     if ((backendModule.__rsCapabilities & CAP_SCENE_PACK) === 0) {
         return undefined;
     }
-    if (typeof backendModule._rs_pack_scene_staging !== "function") {
+    if (typeof backendModule._rs_pack_scene_pack_input !== "function") {
         return undefined;
     }
     const tileHeights = scenePackInput.sceneTileHeights;
@@ -369,7 +369,7 @@ function buildSceneWithWasm(backendModule, scenePackInput) {
         backendModule.HEAP32.set(packedInstances, inPackedInstancesPtr >> 2);
     }
 
-    const ok = backendModule._rs_pack_scene_staging(
+    const ok = backendModule._rs_pack_scene_pack_input(
         inHeightsPtr,
         levels,
         sizeX,

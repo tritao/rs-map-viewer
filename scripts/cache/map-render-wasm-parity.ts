@@ -36,7 +36,7 @@ type WasmBackendModule = {
         outPackedPtr: number,
         outPackedIntLength: number,
     ): number;
-    _rs_pack_scene_staging(
+    _rs_pack_scene_pack_input(
         tileHeightsPtr: number,
         levels: number,
         sizeX: number,
@@ -480,7 +480,7 @@ async function main(): Promise<void> {
             if (packedInstances.length > 0) {
                 module.HEAP32.set(packedInstances, inPackedInstancesPtr >> 2);
             }
-            const ok = module._rs_pack_scene_staging(
+            const ok = module._rs_pack_scene_pack_input(
                 inHeightsPtr,
                 levels,
                 sizeX,

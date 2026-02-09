@@ -55,6 +55,7 @@ set(RS_SOURCES
 	    rs/map/TerrainSquareDecode.cpp
 	    rs/map/LocPlacementsDecode.cpp
 	    rs/map/NpcSpawnsDecode.cpp
+	    rs/render/ScenePack.cpp
 	    rs/scene/SceneBuildStages.cpp
 	    rs/scene/BuildSceneFromMapBytesProvider.cpp
 	    rs/loaders/ConfigLoaders.cpp
@@ -274,7 +275,7 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
     target_link_libraries(rs_map_render_backend PRIVATE rs)
 
     set(RS_MAP_RENDER_EXPORTED_FUNCTIONS
-        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_pack_scene_staging']"
+        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_pack_scene_pack_input']"
     )
 
     target_link_options(rs_map_render_backend PRIVATE
