@@ -267,7 +267,6 @@ async function main(): Promise<void> {
     async function runTs(): Promise<void> {
         for (const input of inputs) {
             const result = await tsBackend.buildMapDataPayload(input, {
-                includeStagingSceneHeights: false,
                 includeMinimapBlob: false,
             });
             if (!result.data) {
@@ -279,8 +278,7 @@ async function main(): Promise<void> {
     async function runCppWasm(): Promise<void> {
         for (const input of inputs) {
             const tsResult = await tsWithWasmNpcBackend.buildMapDataPayload(input, {
-                includeStagingSceneHeights: true,
-                includeStagingDrawCommands: true,
+                includeScenePackInput: true,
                 preferWasmPacking: true,
                 includeMinimapBlob: false,
             });

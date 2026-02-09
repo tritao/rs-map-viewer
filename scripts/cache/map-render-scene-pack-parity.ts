@@ -15,7 +15,11 @@ import { SceneBuilder } from "../../src/rs/scene/SceneBuilder";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../src/rs/scene/model/ObjModelLoader";
-import type { MapRenderDataPayload } from "../../src/worker/MapRenderDataContract";
+import type {
+    MapRenderDataPayload,
+    MapRenderDataPayloadResult,
+    MapRenderScenePackInput,
+} from "../../src/worker/MapRenderDataContract";
 import { createSceneBuildBackend } from "../../src/worker/SceneBuildBackend";
 import { loadCache, loadCacheInfos } from "./load-util";
 
@@ -53,8 +57,8 @@ const DRAW_BUCKET_KEYS: readonly DrawBucketKey[] = [
 type WasmBridge = Readonly<{
     buildMapData(
         input: SdMapLoaderInput,
-        tsPayloadResult: { data: MapRenderDataPayload | undefined },
-    ): Promise<{ data: MapRenderDataPayload | undefined } | undefined>;
+        tsPayloadResult: MapRenderDataPayloadResult,
+    ): Promise<MapRenderDataPayloadResult | undefined>;
     decodeNpcSpawnsFromBytes(
         tileRenderFlagsLevel1: Uint8Array[],
         borderSize: number,
@@ -184,11 +188,12 @@ type BucketDigest = Readonly<{
 
 function digestBucket(
     key: DrawBucketKey,
-    stagedPayload: MapRenderDataPayload,
+    bucketIndex: number,
+    scenePackInput: MapRenderScenePackInput,
     tsPayload: MapRenderDataPayload,
     wasmPayload: MapRenderDataPayload,
 ): BucketDigest {
-    const drawCommandCount = stagedPayload.staging?.drawCommands?.[key].length ?? 0;
+    const drawCommandCount = scenePackInput.bucketCmdCounts[bucketIndex] | 0;
     return {
         drawCommandCount,
         tsDrawRangeCount: tsPayload.drawRanges[key].length | 0,
@@ -328,36 +333,34 @@ async function main(): Promise<void> {
         };
 
         const tsPayloadResult = await tsBackend.buildMapDataPayload(input, {
-            includeStagingSceneHeights: false,
             includeMinimapBlob: false,
         });
-        const stagedPayloadResult = await tsBackend.buildMapDataPayload(input, {
-            includeStagingSceneHeights: true,
-            includeStagingDrawCommands: true,
+        const scenePackPayloadResult = await tsBackend.buildMapDataPayload(input, {
+            includeScenePackInput: true,
             preferWasmPacking: true,
             includeMinimapBlob: false,
         });
 
-        if (!tsPayloadResult.data || !stagedPayloadResult.data) {
+        if (!tsPayloadResult.data || !scenePackPayloadResult.data) {
             mismatches++;
             console.error(`payload presence mismatch at ${square.mapX},${square.mapY}`);
             continue;
         }
+        if (!scenePackPayloadResult.scenePackInput) {
+            mismatches++;
+            console.error(`scenePackInput missing at ${square.mapX},${square.mapY}`);
+            continue;
+        }
 
-        const wasmPayloadResult = await wasmBridge.buildMapData(input, stagedPayloadResult);
+        const wasmPayloadResult = await wasmBridge.buildMapData(input, scenePackPayloadResult);
         if (!wasmPayloadResult?.data) {
             mismatches++;
             console.error(`wasm bridge returned empty payload at ${square.mapX},${square.mapY}`);
             continue;
         }
-        if (wasmPayloadResult.data.staging !== undefined) {
-            mismatches++;
-            console.error(`staging not cleared by wasm at ${square.mapX},${square.mapY}`);
-            continue;
-        }
 
         const tsPayload = tsPayloadResult.data;
-        const stagedPayload = stagedPayloadResult.data;
+        const scenePackInput = scenePackPayloadResult.scenePackInput;
         const wasmPayload = wasmPayloadResult.data;
 
         const tsCore = coreDigest(tsPayload);
@@ -369,9 +372,10 @@ async function main(): Promise<void> {
             console.error(`  wasm=${JSON.stringify(wasmCore)}`);
         }
 
-        for (const key of DRAW_BUCKET_KEYS) {
-            const tsDigest = digestBucket(key, stagedPayload, tsPayload, tsPayload);
-            const wasmDigest = digestBucket(key, stagedPayload, tsPayload, wasmPayload);
+        for (let i = 0; i < DRAW_BUCKET_KEYS.length; i++) {
+            const key = DRAW_BUCKET_KEYS[i];
+            const tsDigest = digestBucket(key, i, scenePackInput, tsPayload, tsPayload);
+            const wasmDigest = digestBucket(key, i, scenePackInput, tsPayload, wasmPayload);
             if (JSON.stringify(tsDigest) !== JSON.stringify(wasmDigest)) {
                 mismatches++;
                 console.error(`bucket mismatch at ${square.mapX},${square.mapY} key=${key}`);

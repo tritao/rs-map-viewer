@@ -9,41 +9,18 @@ import { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
 import { NpcData } from "../renderer/npc/NpcData";
 import type { RenderDataResult } from "./RenderDataLoader";
 
-export type StagingDrawCommandInstance = Readonly<{
-    sceneX: number;
-    sceneZ: number;
-    heightOffset: number;
-    level: number;
-    contourGround: number;
-    priority: number;
-    interactType: number;
-    interactId: number;
-}>;
-
-export type StagingDrawCommand = Readonly<{
-    offset: number;
-    elements: number;
-    instances: ReadonlyArray<StagingDrawCommandInstance>;
-}>;
-
-export type StagingDrawCommandBuckets = Readonly<{
-    base: ReadonlyArray<StagingDrawCommand>;
-    alpha: ReadonlyArray<StagingDrawCommand>;
-    lod: ReadonlyArray<StagingDrawCommand>;
-    lodAlpha: ReadonlyArray<StagingDrawCommand>;
-    interact: ReadonlyArray<StagingDrawCommand>;
-    interactAlpha: ReadonlyArray<StagingDrawCommand>;
-    interactLod: ReadonlyArray<StagingDrawCommand>;
-    interactLodAlpha: ReadonlyArray<StagingDrawCommand>;
-}>;
-
-export type MapRenderDataStaging = Readonly<{
+export type MapRenderScenePackInput = Readonly<{
     sceneTileHeights: Int32Array;
     levels: number;
     sizeX: number;
     sizeY: number;
     unitsTileHeightBasis: number;
-    drawCommands?: StagingDrawCommandBuckets;
+    bucketCmdCounts: Int32Array;
+    bucketModelInfoLengths: Int32Array;
+    cmdOffsets: Int32Array;
+    cmdElements: Int32Array;
+    cmdInstanceCounts: Int32Array;
+    packedInstances: Int32Array;
 }>;
 
 export type MapRenderDataPayload = Readonly<{
@@ -68,11 +45,11 @@ export type MapRenderDataPayload = Readonly<{
     npcs: NpcData[];
     usedTextureIds: Int32Array;
     loadedTextures: ReadonlyArray<readonly [number, Int32Array]>;
-    staging?: MapRenderDataStaging;
 }>;
 
 export type MapRenderDataPayloadResult = Readonly<{
     data: MapRenderDataPayload | undefined;
+    scenePackInput?: MapRenderScenePackInput;
 }>;
 
 const DRAW_BUCKET_KEYS = [
@@ -99,16 +76,6 @@ function modelInfoLengthFromDrawRanges(drawRanges: readonly DrawRange[]): number
     return modelInfoLengthFromCount(drawRanges.length, totalInstances);
 }
 
-function modelInfoLengthFromStagingDrawCommands(
-    commands: ReadonlyArray<StagingDrawCommand>,
-): number {
-    let totalInstances = 0;
-    for (let i = 0; i < commands.length; i++) {
-        totalInstances += commands[i].instances.length | 0;
-    }
-    return modelInfoLengthFromCount(commands.length, totalInstances);
-}
-
 export function validateMapRenderPayload(data: MapRenderDataPayload): string[] {
     const issues: string[] = [];
 
@@ -123,56 +90,14 @@ export function validateMapRenderPayload(data: MapRenderDataPayload): string[] {
     }
 
     for (const key of DRAW_BUCKET_KEYS) {
-        const stagingDrawCommands = data.staging?.drawCommands?.[key];
         const drawRanges = data.drawRanges[key];
         const modelInfoTexture = data.modelInfoTextures[key];
-        if (stagingDrawCommands) {
-            const expectedDrawRangeCount = stagingDrawCommands.length;
-            if (drawRanges.length !== expectedDrawRangeCount && drawRanges.length !== 0) {
-                issues.push(
-                    `drawRanges.${key} length mismatch expected=${expectedDrawRangeCount} got=${drawRanges.length}`,
-                );
-            }
-            const expectedModelInfoLength = modelInfoLengthFromStagingDrawCommands(stagingDrawCommands);
-            if (
-                modelInfoTexture.length !== expectedModelInfoLength &&
-                modelInfoTexture.length !== 0
-            ) {
-                issues.push(
-                    `modelInfoTextures.${key} length mismatch expected=${expectedModelInfoLength} got=${modelInfoTexture.length}`,
-                );
-            }
-            continue;
-        }
         const expectedModelInfoLength = modelInfoLengthFromDrawRanges(drawRanges);
         if (modelInfoTexture.length !== expectedModelInfoLength) {
             issues.push(
                 `modelInfoTextures.${key} length mismatch expected=${expectedModelInfoLength} got=${modelInfoTexture.length}`,
             );
         }
-    }
-
-    if (data.staging) {
-        const levels = data.staging.levels | 0;
-        const sizeX = data.staging.sizeX | 0;
-        const sizeY = data.staging.sizeY | 0;
-        if (levels !== levelsFromFlags) {
-            issues.push(`staging.levels mismatch expected=${levelsFromFlags} got=${levels}`);
-        }
-        if (sizeX !== sizeXFromFlags) {
-            issues.push(`staging.sizeX mismatch expected=${sizeXFromFlags} got=${sizeX}`);
-        }
-        if (sizeY !== sizeYFromFlags) {
-            issues.push(`staging.sizeY mismatch expected=${sizeYFromFlags} got=${sizeY}`);
-        }
-
-        const expectedSceneTileHeightsLength = levels * (sizeX + 1) * (sizeY + 1);
-        if (data.staging.sceneTileHeights.length !== expectedSceneTileHeightsLength) {
-            issues.push(
-                `staging.sceneTileHeights length mismatch expected=${expectedSceneTileHeightsLength} got=${data.staging.sceneTileHeights.length}`,
-            );
-        }
-        // drawCommands-aware draw/model-info validation is handled above.
     }
 
     return issues;

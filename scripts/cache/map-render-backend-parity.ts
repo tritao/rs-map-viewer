@@ -392,12 +392,10 @@ async function main(): Promise<void> {
         };
 
         const tsResult = await tsBackend.buildMapDataPayload(input, {
-            includeStagingSceneHeights: true,
             includeMinimapBlob: false,
         });
         const tsWasmNpcResult = await tsWithWasmNpcBackend.buildMapDataPayload(input, {
-            includeStagingSceneHeights: true,
-            includeStagingDrawCommands: true,
+            includeScenePackInput: true,
             preferWasmPacking: true,
             includeMinimapBlob: false,
         });
@@ -416,16 +414,8 @@ async function main(): Promise<void> {
             console.error(`wasm bridge returned empty payload at ${square.mapX},${square.mapY}`);
             continue;
         }
-        if (wasmResult.data.staging !== undefined) {
-            mismatches++;
-            console.error(`wasm heightmap stage did not clear staging at ${square.mapX},${square.mapY}`);
-            continue;
-        }
 
-        const expected = {
-            ...tsResult.data,
-            staging: undefined,
-        };
+        const expected = tsResult.data;
         const expectedDigest = digestPayload(expected);
         const actualDigest = digestPayload(wasmResult.data);
 

@@ -36,8 +36,8 @@ const CPP_WASM_OUTCOME_KEYS = [
     "success",
     "bridgeMissing",
     "tsPayloadEmpty",
+    "scenePackInputMissing",
     "bridgeReturnedEmpty",
-    "bridgeKeptStaging",
     "validationFailed",
     "bridgeError",
 ] as const;
@@ -50,8 +50,8 @@ function createCppWasmBuildOutcomeStats(): CppWasmBuildOutcomeStats {
         success: 0,
         bridgeMissing: 0,
         tsPayloadEmpty: 0,
+        scenePackInputMissing: 0,
         bridgeReturnedEmpty: 0,
-        bridgeKeptStaging: 0,
         validationFailed: 0,
         bridgeError: 0,
     };
@@ -61,9 +61,8 @@ const CPP_WASM_SHADOW_OUTCOME_KEYS = [
     "skipped",
     "success",
     "bridgeMissing",
-    "stagedPayloadEmpty",
+    "scenePackInputMissing",
     "bridgeReturnedEmpty",
-    "bridgeKeptStaging",
     "validationFailed",
     "digestMismatch",
     "bridgeError",
@@ -77,9 +76,8 @@ function createCppWasmShadowOutcomeStats(): CppWasmShadowOutcomeStats {
         skipped: 0,
         success: 0,
         bridgeMissing: 0,
-        stagedPayloadEmpty: 0,
+        scenePackInputMissing: 0,
         bridgeReturnedEmpty: 0,
-        bridgeKeptStaging: 0,
         validationFailed: 0,
         digestMismatch: 0,
         bridgeError: 0,
@@ -181,20 +179,6 @@ function digestMismatchKeys(
         "modelInfoHash",
     ];
     return keys.filter((key) => expected[key] !== actual[key]);
-}
-
-function stripStagingFromPayloadResult(
-    result: MapRenderDataPayloadResult,
-): MapRenderDataPayloadResult {
-    if (!result.data || result.data.staging === undefined) {
-        return result;
-    }
-    return {
-        data: {
-            ...result.data,
-            staging: undefined,
-        },
-    };
 }
 
 class TsMapRenderDataBackend implements MapRenderDataBackend {
@@ -408,8 +392,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             return this.fallback.buildMapData(input);
         }
         const tsPayloadResult = await this.fallback.buildMapDataPayload(input, {
-            includeStagingSceneHeights: true,
-            includeStagingDrawCommands: true,
+            includeScenePackInput: true,
             preferWasmPacking: true,
             includeMinimapBlob: this.shouldIncludeMinimapBlob(),
         });
@@ -421,19 +404,19 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             );
             return payloadResultToRenderDataResult(tsPayloadResult);
         }
+        if (!tsPayloadResult.scenePackInput) {
+            this.trackOutcome(
+                "scenePackInputMissing",
+                input,
+                t0 !== undefined ? performance.now() - t0 : undefined,
+            );
+            return this.fallback.buildMapData(input);
+        }
         try {
             const payloadResult = await bridge.buildMapData(input, tsPayloadResult);
             if (!payloadResult?.data) {
                 this.trackOutcome(
                     "bridgeReturnedEmpty",
-                    input,
-                    t0 !== undefined ? performance.now() - t0 : undefined,
-                );
-                return this.fallback.buildMapData(input);
-            }
-            if (payloadResult.data.staging !== undefined) {
-                this.trackOutcome(
-                    "bridgeKeptStaging",
                     input,
                     t0 !== undefined ? performance.now() - t0 : undefined,
                 );
@@ -476,19 +459,14 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         input: SdMapLoaderInput,
         t0: number | undefined,
     ): Promise<RenderDataResult<SdMapData | undefined>> {
-        const tsBaselineWithStaging = await this.fallback.buildMapDataPayload(input, {
-            includeStagingSceneHeights: true,
-            includeStagingDrawCommands: true,
+        const tsBaseline = await this.fallback.buildMapDataPayload(input, {
+            includeScenePackInput: true,
             includeMinimapBlob: this.shouldIncludeMinimapBlob(),
         });
-        if (!tsBaselineWithStaging.data) {
-            return payloadResultToRenderDataResult(tsBaselineWithStaging);
-        }
-        const tsBaseline = stripStagingFromPayloadResult(tsBaselineWithStaging);
-        const tsBaselineData = tsBaseline.data;
-        if (!tsBaselineData) {
+        if (!tsBaseline.data) {
             return payloadResultToRenderDataResult(tsBaseline);
         }
+        const tsBaselineData = tsBaseline.data;
         if (!this.shouldRunShadowSample()) {
             this.trackShadowOutcome(
                 "skipped",
@@ -508,9 +486,9 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             return payloadResultToRenderDataResult(tsBaseline);
         }
 
-        if (!tsBaselineWithStaging.data.staging) {
+        if (!tsBaseline.scenePackInput) {
             this.trackShadowOutcome(
-                "stagedPayloadEmpty",
+                "scenePackInputMissing",
                 input,
                 t0 !== undefined ? performance.now() - t0 : undefined,
             );
@@ -518,18 +496,10 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         }
 
         try {
-            const payloadResult = await bridge.buildMapData(input, tsBaselineWithStaging);
+            const payloadResult = await bridge.buildMapData(input, tsBaseline);
             if (!payloadResult?.data) {
                 this.trackShadowOutcome(
                     "bridgeReturnedEmpty",
-                    input,
-                    t0 !== undefined ? performance.now() - t0 : undefined,
-                );
-                return payloadResultToRenderDataResult(tsBaseline);
-            }
-            if (payloadResult.data.staging !== undefined) {
-                this.trackShadowOutcome(
-                    "bridgeKeptStaging",
                     input,
                     t0 !== undefined ? performance.now() - t0 : undefined,
                 );

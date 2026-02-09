@@ -55,15 +55,6 @@ async function tryLoadBackendModule() {
     return backendModulePromise;
 }
 
-function modelInfoLengthFromDrawCommands(drawCommands) {
-    let totalInstances = 0;
-    for (let i = 0; i < drawCommands.length; i++) {
-        totalInstances += drawCommands[i].instances.length | 0;
-    }
-    const dataLength = Math.ceil((drawCommands.length * 4 + totalInstances) / 16) * 16;
-    return Math.max(dataLength, 16) * 4;
-}
-
 const DRAW_BUCKET_KEYS = [
     "base",
     "alpha",
@@ -74,13 +65,6 @@ const DRAW_BUCKET_KEYS = [
     "interactLod",
     "interactLodAlpha",
 ];
-
-const scenePackFlattenScratch = {
-    offsets: new Int32Array(0),
-    elements: new Int32Array(0),
-    instanceCounts: new Int32Array(0),
-    packedInstances: new Int32Array(0),
-};
 
 function newHeapScratchEntry() {
     return {
@@ -161,157 +145,140 @@ function ensureScenePackHeapBuffer(backendModule, group, key, minLength, bytesPe
     return ptr;
 }
 
-function ensureInt32Scratch(name, minLength) {
-    const current = scenePackFlattenScratch[name];
-    if (current.length >= minLength) {
-        return current;
-    }
-    const nextLength = Math.max(minLength, current.length * 2, 16);
-    const next = new Int32Array(nextLength);
-    scenePackFlattenScratch[name] = next;
-    return next;
+
+function modelInfoLengthFromCounts(cmdCount, totalInstances) {
+    const dataLength = Math.ceil((cmdCount * 4 + totalInstances) / 16) * 16;
+    return Math.max(dataLength, 16) * 4;
 }
 
-function validateStagingDrawCommands(staging) {
-    const drawCommands = staging.drawCommands;
-    if (!drawCommands) {
-        return undefined;
+function validateScenePackInput(scenePackInput, payload) {
+    if (!scenePackInput || typeof scenePackInput !== "object") {
+        return "missing scenePackInput";
     }
-    for (const key of DRAW_BUCKET_KEYS) {
-        const bucket = drawCommands[key];
-        if (!Array.isArray(bucket)) {
-            return `drawCommands.${key} must be an array`;
+    const levels = scenePackInput.levels | 0;
+    const sizeX = scenePackInput.sizeX | 0;
+    const sizeY = scenePackInput.sizeY | 0;
+    const unitsTileHeightBasis = scenePackInput.unitsTileHeightBasis | 0;
+    if (levels <= 0 || sizeX <= 0 || sizeY <= 0 || unitsTileHeightBasis <= 0) {
+        return `invalid scenePackInput dimensions levels=${levels} sizeX=${sizeX} sizeY=${sizeY} basis=${unitsTileHeightBasis}`;
+    }
+    const sceneTileHeights = scenePackInput.sceneTileHeights;
+    if (!(sceneTileHeights instanceof Int32Array)) {
+        return "scenePackInput.sceneTileHeights must be Int32Array";
+    }
+    const expectedHeightsLength = levels * (sizeX + 1) * (sizeY + 1);
+    if (sceneTileHeights.length !== expectedHeightsLength) {
+        return `scenePackInput.sceneTileHeights length mismatch expected=${expectedHeightsLength} got=${sceneTileHeights.length}`;
+    }
+
+    const bucketCmdCounts = scenePackInput.bucketCmdCounts;
+    const bucketModelInfoLengths = scenePackInput.bucketModelInfoLengths;
+    const cmdOffsets = scenePackInput.cmdOffsets;
+    const cmdElements = scenePackInput.cmdElements;
+    const cmdInstanceCounts = scenePackInput.cmdInstanceCounts;
+    const packedInstances = scenePackInput.packedInstances;
+    if (
+        !(bucketCmdCounts instanceof Int32Array) ||
+        !(bucketModelInfoLengths instanceof Int32Array) ||
+        !(cmdOffsets instanceof Int32Array) ||
+        !(cmdElements instanceof Int32Array) ||
+        !(cmdInstanceCounts instanceof Int32Array) ||
+        !(packedInstances instanceof Int32Array)
+    ) {
+        return "scenePackInput typed arrays are invalid";
+    }
+    if (bucketCmdCounts.length !== DRAW_BUCKET_KEYS.length) {
+        return `scenePackInput.bucketCmdCounts length mismatch expected=${DRAW_BUCKET_KEYS.length} got=${bucketCmdCounts.length}`;
+    }
+    if (bucketModelInfoLengths.length !== DRAW_BUCKET_KEYS.length) {
+        return `scenePackInput.bucketModelInfoLengths length mismatch expected=${DRAW_BUCKET_KEYS.length} got=${bucketModelInfoLengths.length}`;
+    }
+    if (cmdOffsets.length !== cmdElements.length || cmdOffsets.length !== cmdInstanceCounts.length) {
+        return "scenePackInput command array lengths mismatch";
+    }
+
+    let totalCmdCount = 0;
+    for (let bucket = 0; bucket < bucketCmdCounts.length; bucket++) {
+        const count = bucketCmdCounts[bucket] | 0;
+        if (count < 0) {
+            return `scenePackInput.bucketCmdCounts[${bucket}] must be >= 0`;
         }
-        for (let i = 0; i < bucket.length; i++) {
-            const command = bucket[i];
-            if (!command || !Array.isArray(command.instances)) {
-                return `drawCommands.${key}[${i}] missing instances array`;
+        totalCmdCount += count;
+    }
+    if (totalCmdCount !== cmdOffsets.length) {
+        return `scenePackInput total cmd count mismatch expected=${totalCmdCount} got=${cmdOffsets.length}`;
+    }
+
+    let totalInstances = 0;
+    let cmdCursor = 0;
+    for (let bucket = 0; bucket < bucketCmdCounts.length; bucket++) {
+        const bucketCmdCount = bucketCmdCounts[bucket] | 0;
+        let bucketInstances = 0;
+        for (let i = 0; i < bucketCmdCount; i++) {
+            const count = cmdInstanceCounts[cmdCursor + i] | 0;
+            if (count < 0) {
+                return `scenePackInput.cmdInstanceCounts[${cmdCursor + i}] must be >= 0`;
             }
-            if (!Number.isFinite(command.offset) || !Number.isFinite(command.elements)) {
-                return `drawCommands.${key}[${i}] offset/elements must be finite numbers`;
-            }
-            for (let j = 0; j < command.instances.length; j++) {
-                const instance = command.instances[j];
-                if (
-                    !instance ||
-                    !Number.isFinite(instance.sceneX) ||
-                    !Number.isFinite(instance.sceneZ) ||
-                    !Number.isFinite(instance.heightOffset) ||
-                    !Number.isFinite(instance.level) ||
-                    !Number.isFinite(instance.contourGround) ||
-                    !Number.isFinite(instance.priority) ||
-                    !Number.isFinite(instance.interactType) ||
-                    !Number.isFinite(instance.interactId)
-                ) {
-                    return `drawCommands.${key}[${i}].instances[${j}] contains non-numeric fields`;
-                }
-            }
+            bucketInstances += count;
+        }
+        const expectedModelInfoLength = modelInfoLengthFromCounts(bucketCmdCount, bucketInstances);
+        if ((bucketModelInfoLengths[bucket] | 0) !== expectedModelInfoLength) {
+            return `scenePackInput.bucketModelInfoLengths[${bucket}] mismatch expected=${expectedModelInfoLength} got=${bucketModelInfoLengths[bucket] | 0}`;
+        }
+        cmdCursor += bucketCmdCount;
+        totalInstances += bucketInstances;
+    }
+    if (packedInstances.length !== totalInstances * 8) {
+        return `scenePackInput.packedInstances length mismatch expected=${totalInstances * 8} got=${packedInstances.length}`;
+    }
+
+    if (payload) {
+        const payloadLevels = payload.tileRenderFlags?.length | 0;
+        const payloadSizeX = payload.tileRenderFlags?.[0]?.length | 0;
+        const payloadSizeY = payload.tileRenderFlags?.[0]?.[0]?.length | 0;
+        if (payloadLevels > 0 && payloadLevels !== levels) {
+            return `scenePackInput.levels mismatch expected=${payloadLevels} got=${levels}`;
+        }
+        if (payloadSizeX > 0 && payloadSizeX !== sizeX) {
+            return `scenePackInput.sizeX mismatch expected=${payloadSizeX} got=${sizeX}`;
+        }
+        if (payloadSizeY > 0 && payloadSizeY !== sizeY) {
+            return `scenePackInput.sizeY mismatch expected=${payloadSizeY} got=${sizeY}`;
         }
     }
+
     return undefined;
 }
 
-function flattenStagingDrawCommands(drawCommands) {
-    const bucketCmdCounts = new Int32Array(DRAW_BUCKET_KEYS.length);
-    const bucketModelInfoLengths = new Int32Array(DRAW_BUCKET_KEYS.length);
-
-    let totalCmdCount = 0;
-    let totalInstances = 0;
-    let modelInfoConcatLength = 0;
-    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
-        const key = DRAW_BUCKET_KEYS[bucket];
-        const commands = drawCommands[key];
-        const cmdCount = commands.length | 0;
-        bucketCmdCounts[bucket] = cmdCount;
-        totalCmdCount += cmdCount;
-        for (let i = 0; i < cmdCount; i++) {
-            totalInstances += commands[i].instances.length | 0;
-        }
-        const modelInfoLength = modelInfoLengthFromDrawCommands(commands) | 0;
-        bucketModelInfoLengths[bucket] = modelInfoLength;
-        modelInfoConcatLength += modelInfoLength;
-    }
-
-    const offsetsScratch = ensureInt32Scratch("offsets", totalCmdCount);
-    const elementsScratch = ensureInt32Scratch("elements", totalCmdCount);
-    const countsScratch = ensureInt32Scratch("instanceCounts", totalCmdCount);
-    const packedInstancesScratch = ensureInt32Scratch("packedInstances", totalInstances * 8);
-    const offsets = offsetsScratch.subarray(0, totalCmdCount);
-    const elements = elementsScratch.subarray(0, totalCmdCount);
-    const instanceCounts = countsScratch.subarray(0, totalCmdCount);
-    const packedInstances = packedInstancesScratch.subarray(0, totalInstances * 8);
-
-    let cmdOffset = 0;
-    let instanceOffset = 0;
-    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
-        const key = DRAW_BUCKET_KEYS[bucket];
-        const commands = drawCommands[key];
-        for (let i = 0; i < commands.length; i++) {
-            const command = commands[i];
-            offsets[cmdOffset] = command.offset | 0;
-            elements[cmdOffset] = command.elements | 0;
-            const count = command.instances.length | 0;
-            instanceCounts[cmdOffset] = count;
-            cmdOffset++;
-            for (let j = 0; j < count; j++) {
-                const instance = command.instances[j];
-                packedInstances[instanceOffset++] = instance.sceneX | 0;
-                packedInstances[instanceOffset++] = instance.sceneZ | 0;
-                packedInstances[instanceOffset++] = instance.heightOffset | 0;
-                packedInstances[instanceOffset++] = instance.level | 0;
-                packedInstances[instanceOffset++] = instance.contourGround | 0;
-                packedInstances[instanceOffset++] = instance.priority | 0;
-                packedInstances[instanceOffset++] = instance.interactType | 0;
-                packedInstances[instanceOffset++] = instance.interactId | 0;
-            }
-        }
-    }
-
-    return {
-        bucketCmdCounts,
-        bucketModelInfoLengths,
-        totalCmdCount,
-        modelInfoConcatLength,
-        offsets,
-        elements,
-        instanceCounts,
-        packedInstances,
-    };
-}
-
 export const __mapRenderBridgeInternals = {
-    modelInfoLengthFromDrawCommands,
-    validateStagingAgainstPayload,
-    validateStagingDrawCommands,
+    modelInfoLengthFromCounts,
+    validateScenePackInput,
 };
 
-function buildSceneWithWasm(backendModule, staging) {
+function buildSceneWithWasm(backendModule, scenePackInput) {
     if ((backendModule.__rsCapabilities & CAP_SCENE_PACK) === 0) {
         return undefined;
     }
     if (typeof backendModule._rs_pack_scene_staging !== "function") {
         return undefined;
     }
-    if (!staging.drawCommands) {
-        return undefined;
+    const tileHeights = scenePackInput.sceneTileHeights;
+    const levels = scenePackInput.levels | 0;
+    const sizeX = scenePackInput.sizeX | 0;
+    const sizeY = scenePackInput.sizeY | 0;
+    const unitsTileHeightBasis = scenePackInput.unitsTileHeightBasis | 0;
+    const bucketCmdCounts = scenePackInput.bucketCmdCounts;
+    const bucketModelInfoLengths = scenePackInput.bucketModelInfoLengths;
+    const cmdOffsets = scenePackInput.cmdOffsets;
+    const cmdElements = scenePackInput.cmdElements;
+    const cmdInstanceCounts = scenePackInput.cmdInstanceCounts;
+    const packedInstances = scenePackInput.packedInstances;
+    const totalCmdCount = cmdOffsets.length | 0;
+    const drawRangesLength = totalCmdCount * 3;
+    let modelInfoConcatLength = 0;
+    for (let i = 0; i < bucketModelInfoLengths.length; i++) {
+        modelInfoConcatLength += bucketModelInfoLengths[i] | 0;
     }
-    const tileHeights = staging.sceneTileHeights;
-    const levels = staging.levels | 0;
-    const sizeX = staging.sizeX | 0;
-    const sizeY = staging.sizeY | 0;
-    const unitsTileHeightBasis = staging.unitsTileHeightBasis | 0;
-    if (
-        !(tileHeights instanceof Int32Array) ||
-        levels <= 0 ||
-        sizeX <= 0 ||
-        sizeY <= 0 ||
-        unitsTileHeightBasis <= 0
-    ) {
-        return undefined;
-    }
-
-    const flattened = flattenStagingDrawCommands(staging.drawCommands);
-    const drawRangesLength = flattened.totalCmdCount * 3;
     const outHeightMapLength = levels * sizeX * sizeY;
     prepareScenePackHeapScratch(backendModule);
 
@@ -326,35 +293,35 @@ function buildSceneWithWasm(backendModule, staging) {
         backendModule,
         scenePackHeapScratch.i32,
         "bucketCounts",
-        flattened.bucketCmdCounts.length,
+        bucketCmdCounts.length,
         4,
     );
     const inOffsetsPtr = ensureScenePackHeapBuffer(
         backendModule,
         scenePackHeapScratch.i32,
         "offsets",
-        flattened.totalCmdCount,
+        totalCmdCount,
         4,
     );
     const inElementsPtr = ensureScenePackHeapBuffer(
         backendModule,
         scenePackHeapScratch.i32,
         "elements",
-        flattened.totalCmdCount,
+        totalCmdCount,
         4,
     );
     const inInstanceCountsPtr = ensureScenePackHeapBuffer(
         backendModule,
         scenePackHeapScratch.i32,
         "instanceCounts",
-        flattened.totalCmdCount,
+        totalCmdCount,
         4,
     );
     const inPackedInstancesPtr = ensureScenePackHeapBuffer(
         backendModule,
         scenePackHeapScratch.i32,
         "packedInstances",
-        flattened.packedInstances.length,
+        packedInstances.length,
         4,
     );
     const outDrawRangesPtr = ensureScenePackHeapBuffer(
@@ -368,7 +335,7 @@ function buildSceneWithWasm(backendModule, staging) {
         backendModule,
         scenePackHeapScratch.u16,
         "outModelInfoConcat",
-        flattened.modelInfoConcatLength,
+        modelInfoConcatLength,
         2,
     );
     const outHeightMapPtr = ensureScenePackHeapBuffer(
@@ -381,8 +348,8 @@ function buildSceneWithWasm(backendModule, staging) {
     if (
         !inHeightsPtr ||
         !inBucketCountsPtr ||
-        (flattened.totalCmdCount > 0 && (!inOffsetsPtr || !inElementsPtr || !inInstanceCountsPtr)) ||
-        (flattened.packedInstances.length > 0 && !inPackedInstancesPtr) ||
+        (totalCmdCount > 0 && (!inOffsetsPtr || !inElementsPtr || !inInstanceCountsPtr)) ||
+        (packedInstances.length > 0 && !inPackedInstancesPtr) ||
         (drawRangesLength > 0 && !outDrawRangesPtr) ||
         !outModelInfoConcatPtr ||
         !outHeightMapPtr
@@ -392,14 +359,14 @@ function buildSceneWithWasm(backendModule, staging) {
     }
 
     backendModule.HEAP32.set(tileHeights, inHeightsPtr >> 2);
-    backendModule.HEAP32.set(flattened.bucketCmdCounts, inBucketCountsPtr >> 2);
-    if (flattened.totalCmdCount > 0) {
-        backendModule.HEAP32.set(flattened.offsets, inOffsetsPtr >> 2);
-        backendModule.HEAP32.set(flattened.elements, inElementsPtr >> 2);
-        backendModule.HEAP32.set(flattened.instanceCounts, inInstanceCountsPtr >> 2);
+    backendModule.HEAP32.set(bucketCmdCounts, inBucketCountsPtr >> 2);
+    if (totalCmdCount > 0) {
+        backendModule.HEAP32.set(cmdOffsets, inOffsetsPtr >> 2);
+        backendModule.HEAP32.set(cmdElements, inElementsPtr >> 2);
+        backendModule.HEAP32.set(cmdInstanceCounts, inInstanceCountsPtr >> 2);
     }
-    if (flattened.packedInstances.length > 0) {
-        backendModule.HEAP32.set(flattened.packedInstances, inPackedInstancesPtr >> 2);
+    if (packedInstances.length > 0) {
+        backendModule.HEAP32.set(packedInstances, inPackedInstancesPtr >> 2);
     }
 
     const ok = backendModule._rs_pack_scene_staging(
@@ -412,13 +379,13 @@ function buildSceneWithWasm(backendModule, staging) {
         inOffsetsPtr,
         inElementsPtr,
         inInstanceCountsPtr,
-        flattened.totalCmdCount | 0,
+        totalCmdCount,
         inPackedInstancesPtr,
-        flattened.packedInstances.length | 0,
+        packedInstances.length | 0,
         outDrawRangesPtr,
         drawRangesLength,
         outModelInfoConcatPtr,
-        flattened.modelInfoConcatLength | 0,
+        modelInfoConcatLength | 0,
         outHeightMapPtr,
         outHeightMapLength,
     );
@@ -440,11 +407,11 @@ function buildSceneWithWasm(backendModule, staging) {
             ),
         );
     }
-    const modelInfoConcat = new Uint16Array(flattened.modelInfoConcatLength);
+    const modelInfoConcat = new Uint16Array(modelInfoConcatLength);
     modelInfoConcat.set(
         backendModule.HEAPU16.subarray(
             outModelInfoConcatPtr >> 1,
-            (outModelInfoConcatPtr >> 1) + flattened.modelInfoConcatLength,
+            (outModelInfoConcatPtr >> 1) + modelInfoConcatLength,
         ),
     );
 
@@ -454,7 +421,7 @@ function buildSceneWithWasm(backendModule, staging) {
     let modelInfoCursor = 0;
     for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
         const key = DRAW_BUCKET_KEYS[bucket];
-        const cmdCount = flattened.bucketCmdCounts[bucket] | 0;
+        const cmdCount = bucketCmdCounts[bucket] | 0;
         const bucketRanges = new Array(cmdCount);
         for (let i = 0; i < cmdCount; i++) {
             const off = (cmdCursor + i) * 3;
@@ -467,7 +434,7 @@ function buildSceneWithWasm(backendModule, staging) {
         drawRanges[key] = bucketRanges;
         cmdCursor += cmdCount;
 
-        const modelInfoLength = flattened.bucketModelInfoLengths[bucket] | 0;
+        const modelInfoLength = bucketModelInfoLengths[bucket] | 0;
         const bucketModelInfo = new Uint16Array(modelInfoLength);
         bucketModelInfo.set(
             modelInfoConcat.subarray(modelInfoCursor, modelInfoCursor + modelInfoLength),
@@ -481,46 +448,6 @@ function buildSceneWithWasm(backendModule, staging) {
         drawRanges,
         modelInfoTextures,
     };
-}
-
-function validateStagingAgainstPayload(payload) {
-    const staging = payload?.staging;
-    if (!staging) {
-        return "missing staging payload";
-    }
-    const levels = staging.levels | 0;
-    const sizeX = staging.sizeX | 0;
-    const sizeY = staging.sizeY | 0;
-    if (levels <= 0 || sizeX <= 0 || sizeY <= 0) {
-        return `invalid staging dimensions levels=${levels} sizeX=${sizeX} sizeY=${sizeY}`;
-    }
-    const expectedSceneHeightsLength = levels * (sizeX + 1) * (sizeY + 1);
-    if (!(staging.sceneTileHeights instanceof Int32Array)) {
-        return "staging.sceneTileHeights must be Int32Array";
-    }
-    if (staging.sceneTileHeights.length !== expectedSceneHeightsLength) {
-        return `staging.sceneTileHeights length mismatch expected=${expectedSceneHeightsLength} got=${staging.sceneTileHeights.length}`;
-    }
-    const drawCommandError = validateStagingDrawCommands(staging);
-    if (drawCommandError) {
-        return drawCommandError;
-    }
-    if (staging.drawCommands) {
-        for (const key of DRAW_BUCKET_KEYS) {
-            const expectedDrawRangeCount = staging.drawCommands[key].length | 0;
-            const drawRangeLength = payload.drawRanges[key]?.length | 0;
-            if (drawRangeLength !== expectedDrawRangeCount && drawRangeLength !== 0) {
-                return `drawRanges.${key} length mismatch expected=${expectedDrawRangeCount} got=${drawRangeLength}`;
-            }
-            const expectedModelInfoLength = modelInfoLengthFromDrawCommands(staging.drawCommands[key]);
-            const modelInfoLength = payload.modelInfoTextures[key]?.length | 0;
-            if (modelInfoLength !== expectedModelInfoLength && modelInfoLength !== 0) {
-                return `modelInfoTextures.${key} length mismatch expected=${expectedModelInfoLength} got=${modelInfoLength}`;
-            }
-        }
-    }
-
-    return undefined;
 }
 
 function flattenFlagsLevel1(tileRenderFlagsLevel1) {
@@ -637,28 +564,35 @@ function decodeNpcSpawnsWithWasm(
 
 export const cppWasmMapRenderDataBridge = {
     async buildMapData(_input, tsPayloadResult) {
-        if (!tsPayloadResult?.data?.staging) {
+        const payload = tsPayloadResult?.data;
+        if (!payload) {
             return tsPayloadResult;
         }
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
             return tsPayloadResult;
         }
-        const stagingError = validateStagingAgainstPayload(tsPayloadResult.data);
-        if (stagingError) {
-            console.warn(`[map-render-backend] invalid staging payload: ${stagingError}`);
+
+        const scenePackInput = tsPayloadResult.scenePackInput;
+        if (!scenePackInput) {
             return tsPayloadResult;
         }
-        const scenePackResult = buildSceneWithWasm(backendModule, tsPayloadResult.data.staging);
+
+        const scenePackError = validateScenePackInput(scenePackInput, payload);
+        if (scenePackError) {
+            console.warn(`[map-render-backend] invalid scene-pack input: ${scenePackError}`);
+            return tsPayloadResult;
+        }
+        const scenePackResult = buildSceneWithWasm(backendModule, scenePackInput);
         if (scenePackResult) {
             return {
                 data: {
-                    ...tsPayloadResult.data,
+                    ...payload,
                     heightMapTextureData: scenePackResult.heightMapTextureData,
                     drawRanges: scenePackResult.drawRanges,
                     modelInfoTextures: scenePackResult.modelInfoTextures,
-                    staging: undefined,
                 },
+                scenePackInput: undefined,
             };
         }
         return tsPayloadResult;

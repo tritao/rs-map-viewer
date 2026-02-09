@@ -23,7 +23,7 @@ import type { MapImageRenderer } from "../../rs/render/minimap/MapImageRenderer"
 import { loadMinimapBlob } from "../../worker/MinimapData";
 import {
     MapRenderDataPayloadResult,
-    MapRenderDataStaging,
+    MapRenderScenePackInput,
     sdMapDataToPayload,
 } from "../../worker/MapRenderDataContract";
 import type { SceneBuildBackend } from "../../worker/SceneBuildBackend";
@@ -83,8 +83,7 @@ export type NpcSpawnDecodeBackend = Readonly<{
 }>;
 
 export type BuildMapDataPayloadOptions = Readonly<{
-    includeStagingSceneHeights?: boolean;
-    includeStagingDrawCommands?: boolean;
+    includeScenePackInput?: boolean;
     preferWasmPacking?: boolean;
     includeMinimapBlob?: boolean;
 }>;
@@ -131,9 +130,20 @@ function createEmptyModelInfoTextures(): SdRenderableModelInfoTextures {
     };
 }
 
-function getStagingDrawCommands(
+type ScenePackDrawCommandBuckets = Readonly<{
+    base: ReadonlyArray<DrawCommand>;
+    alpha: ReadonlyArray<DrawCommand>;
+    lod: ReadonlyArray<DrawCommand>;
+    lodAlpha: ReadonlyArray<DrawCommand>;
+    interact: ReadonlyArray<DrawCommand>;
+    interactAlpha: ReadonlyArray<DrawCommand>;
+    interactLod: ReadonlyArray<DrawCommand>;
+    interactLodAlpha: ReadonlyArray<DrawCommand>;
+}>;
+
+function getScenePackDrawCommandBuckets(
     sceneBuf: SceneBuffer,
-): MapRenderDataStaging["drawCommands"] {
+): ScenePackDrawCommandBuckets {
     return {
         base: sceneBuf.drawCommands,
         alpha: sceneBuf.drawCommandsAlpha,
@@ -146,10 +156,20 @@ function getStagingDrawCommands(
     };
 }
 
-function createStagingSceneHeights(
-    scene: Scene,
-    drawCommands?: MapRenderDataStaging["drawCommands"],
-): MapRenderDataStaging {
+type DrawCommandBucketKey = keyof ScenePackDrawCommandBuckets;
+
+const DRAW_BUCKET_KEYS: readonly DrawCommandBucketKey[] = [
+    "base",
+    "alpha",
+    "lod",
+    "lodAlpha",
+    "interact",
+    "interactAlpha",
+    "interactLod",
+    "interactLodAlpha",
+];
+
+function flattenSceneTileHeights(scene: Scene): Int32Array {
     const levels = scene.levels;
     const sizeX = scene.sizeX;
     const sizeY = scene.sizeY;
@@ -162,13 +182,88 @@ function createStagingSceneHeights(
             }
         }
     }
+    return sceneTileHeights;
+}
+
+type ScenePackDrawCommandLike = Readonly<{
+    instances: ReadonlyArray<unknown>;
+}>;
+
+function modelInfoLengthFromDrawCommands(
+    commands: ReadonlyArray<ScenePackDrawCommandLike>,
+): number {
+    let totalInstances = 0;
+    for (let i = 0; i < commands.length; i++) {
+        totalInstances += commands[i].instances.length | 0;
+    }
+    const dataLength = Math.ceil((commands.length * 4 + totalInstances) / 16) * 16;
+    return Math.max(dataLength, 16) * 4;
+}
+
+function createScenePackInput(
+    scene: Scene,
+    drawCommands: ScenePackDrawCommandBuckets,
+): MapRenderScenePackInput {
+    const bucketCmdCounts = new Int32Array(DRAW_BUCKET_KEYS.length);
+    const bucketModelInfoLengths = new Int32Array(DRAW_BUCKET_KEYS.length);
+
+    let totalCmdCount = 0;
+    let totalInstances = 0;
+    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
+        const key = DRAW_BUCKET_KEYS[bucket];
+        const commands = drawCommands[key];
+        const cmdCount = commands.length | 0;
+        bucketCmdCounts[bucket] = cmdCount;
+        totalCmdCount += cmdCount;
+        bucketModelInfoLengths[bucket] = modelInfoLengthFromDrawCommands(commands);
+        for (let i = 0; i < cmdCount; i++) {
+            totalInstances += commands[i].instances.length | 0;
+        }
+    }
+
+    const cmdOffsets = new Int32Array(totalCmdCount);
+    const cmdElements = new Int32Array(totalCmdCount);
+    const cmdInstanceCounts = new Int32Array(totalCmdCount);
+    const packedInstances = new Int32Array(totalInstances * 8);
+
+    let cmdCursor = 0;
+    let instanceCursor = 0;
+    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
+        const key = DRAW_BUCKET_KEYS[bucket];
+        const commands = drawCommands[key];
+        for (let i = 0; i < commands.length; i++) {
+            const command = commands[i];
+            cmdOffsets[cmdCursor] = command.offset | 0;
+            cmdElements[cmdCursor] = command.elements | 0;
+            const instanceCount = command.instances.length | 0;
+            cmdInstanceCounts[cmdCursor] = instanceCount;
+            cmdCursor++;
+            for (let j = 0; j < instanceCount; j++) {
+                const instance = command.instances[j];
+                packedInstances[instanceCursor++] = instance.sceneX | 0;
+                packedInstances[instanceCursor++] = instance.sceneZ | 0;
+                packedInstances[instanceCursor++] = instance.heightOffset | 0;
+                packedInstances[instanceCursor++] = instance.level | 0;
+                packedInstances[instanceCursor++] = instance.contourGround | 0;
+                packedInstances[instanceCursor++] = instance.priority | 0;
+                packedInstances[instanceCursor++] = instance.interactType | 0;
+                packedInstances[instanceCursor++] = instance.interactId | 0;
+            }
+        }
+    }
+
     return {
-        sceneTileHeights,
-        levels,
-        sizeX,
-        sizeY,
+        sceneTileHeights: flattenSceneTileHeights(scene),
+        levels: scene.levels,
+        sizeX: scene.sizeX,
+        sizeY: scene.sizeY,
         unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
-        drawCommands,
+        bucketCmdCounts,
+        bucketModelInfoLengths,
+        cmdOffsets,
+        cmdElements,
+        cmdInstanceCounts,
+        packedInstances,
     };
 }
 
@@ -912,9 +1007,9 @@ export class SdMapRenderDataTsBackend {
         const npcs = timeStep("createNpcDatas", () => createNpcDatas(npcSpawnGroups));
 
         const preferWasmPacking = options?.preferWasmPacking === true;
-        const includeStagingDrawCommands = options?.includeStagingDrawCommands === true;
-        const useWasmDrawPacking = preferWasmPacking && includeStagingDrawCommands;
-        const useWasmHeightMapPacking = preferWasmPacking && options?.includeStagingSceneHeights === true;
+        const includeScenePackInput = options?.includeScenePackInput === true;
+        const useWasmDrawPacking = preferWasmPacking && includeScenePackInput;
+        const useWasmHeightMapPacking = preferWasmPacking && includeScenePackInput;
 
         const drawRanges = useWasmDrawPacking
             ? createEmptyDrawRanges()
@@ -928,9 +1023,18 @@ export class SdMapRenderDataTsBackend {
             ? new Int16Array(0)
             : timeStep("loadHeightMapTextureData", () => loadHeightMapTextureData(scene));
 
-        const drawCommands =
-            includeStagingDrawCommands
-                ? timeStep("collectDrawCommandsForStaging", () => getStagingDrawCommands(sceneBuf))
+        const drawCommandsForPacking =
+            includeScenePackInput
+                ? timeStep("collectDrawCommandsForPacking", () =>
+                      getScenePackDrawCommandBuckets(sceneBuf),
+                  )
+                : undefined;
+
+        const scenePackInput =
+            includeScenePackInput && drawCommandsForPacking
+                ? timeStep("createScenePackInput", () =>
+                      createScenePackInput(scene, drawCommandsForPacking),
+                  )
                 : undefined;
 
         const vertices = sceneBuf.vertexBuf.byteArray();
@@ -1021,17 +1125,9 @@ export class SdMapRenderDataTsBackend {
             loadedTextures,
         );
 
-        if (options?.includeStagingSceneHeights) {
-            return {
-                data: {
-                    ...sdMapDataToPayload(data),
-                    staging: createStagingSceneHeights(scene, drawCommands),
-                },
-            };
-        }
-
         return {
             data: sdMapDataToPayload(data),
+            scenePackInput,
         };
     }
 

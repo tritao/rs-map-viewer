@@ -2,9 +2,7 @@ import assert from "node:assert/strict";
 
 import type {
     MapRenderDataPayload,
-    MapRenderDataStaging,
-    StagingDrawCommand,
-    StagingDrawCommandBuckets,
+    MapRenderScenePackInput,
 } from "../../src/worker/MapRenderDataContract";
 import { validateMapRenderPayload } from "../../src/worker/MapRenderDataContract";
 import { __mapRenderBridgeInternals } from "../../public/wasm/rs_map_render_backend_bridge.mjs";
@@ -30,34 +28,23 @@ const DRAW_BUCKET_KEYS: readonly DrawBucketKey[] = [
     "interactLodAlpha",
 ];
 
+const EMPTY_MODEL_INFO_LENGTH = 64;
+
 type BridgeInternals = {
-    modelInfoLengthFromDrawCommands(drawCommands: ReadonlyArray<StagingDrawCommand>): number;
-    validateStagingAgainstPayload(payload: MapRenderDataPayload): string | undefined;
-    validateStagingDrawCommands(staging: MapRenderDataStaging): string | undefined;
+    modelInfoLengthFromCounts(cmdCount: number, totalInstances: number): number;
+    validateScenePackInput(
+        scenePackInput: MapRenderScenePackInput,
+        payload?: MapRenderDataPayload,
+    ): string | undefined;
 };
 
 const bridgeInternals = __mapRenderBridgeInternals as BridgeInternals;
 
-function createDrawCommands(): StagingDrawCommandBuckets {
+function createDrawRanges(
+    base: ReadonlyArray<readonly [number, number, number]> = [],
+): MapRenderDataPayload["drawRanges"] {
     return {
-        base: [
-            {
-                offset: 0,
-                elements: 6,
-                instances: [
-                    {
-                        sceneX: 3200,
-                        sceneZ: 3201,
-                        heightOffset: -16,
-                        level: 0,
-                        contourGround: 0,
-                        priority: 0,
-                        interactType: 0,
-                        interactId: 65535,
-                    },
-                ],
-            },
-        ],
+        base: base.map((r) => [r[0], r[1], r[2]]),
         alpha: [],
         lod: [],
         lodAlpha: [],
@@ -68,30 +55,19 @@ function createDrawCommands(): StagingDrawCommandBuckets {
     };
 }
 
-function createDrawRanges(sizeByKey: Partial<Record<DrawBucketKey, number>> = {}) {
+function createModelInfoTextures(
+    lengthByKey: Partial<Record<DrawBucketKey, number>> = {},
+): MapRenderDataPayload["modelInfoTextures"] {
     return {
-        base: new Array(sizeByKey.base ?? 0).fill([0, 0, 0]),
-        alpha: new Array(sizeByKey.alpha ?? 0).fill([0, 0, 0]),
-        lod: new Array(sizeByKey.lod ?? 0).fill([0, 0, 0]),
-        lodAlpha: new Array(sizeByKey.lodAlpha ?? 0).fill([0, 0, 0]),
-        interact: new Array(sizeByKey.interact ?? 0).fill([0, 0, 0]),
-        interactAlpha: new Array(sizeByKey.interactAlpha ?? 0).fill([0, 0, 0]),
-        interactLod: new Array(sizeByKey.interactLod ?? 0).fill([0, 0, 0]),
-        interactLodAlpha: new Array(sizeByKey.interactLodAlpha ?? 0).fill([0, 0, 0]),
-    } as MapRenderDataPayload["drawRanges"];
-}
-
-function createModelInfoTextures(lengthByKey: Partial<Record<DrawBucketKey, number>> = {}) {
-    return {
-        base: new Uint16Array(lengthByKey.base ?? 0),
-        alpha: new Uint16Array(lengthByKey.alpha ?? 0),
-        lod: new Uint16Array(lengthByKey.lod ?? 0),
-        lodAlpha: new Uint16Array(lengthByKey.lodAlpha ?? 0),
-        interact: new Uint16Array(lengthByKey.interact ?? 0),
-        interactAlpha: new Uint16Array(lengthByKey.interactAlpha ?? 0),
-        interactLod: new Uint16Array(lengthByKey.interactLod ?? 0),
-        interactLodAlpha: new Uint16Array(lengthByKey.interactLodAlpha ?? 0),
-    } as MapRenderDataPayload["modelInfoTextures"];
+        base: new Uint16Array(lengthByKey.base ?? EMPTY_MODEL_INFO_LENGTH),
+        alpha: new Uint16Array(lengthByKey.alpha ?? EMPTY_MODEL_INFO_LENGTH),
+        lod: new Uint16Array(lengthByKey.lod ?? EMPTY_MODEL_INFO_LENGTH),
+        lodAlpha: new Uint16Array(lengthByKey.lodAlpha ?? EMPTY_MODEL_INFO_LENGTH),
+        interact: new Uint16Array(lengthByKey.interact ?? EMPTY_MODEL_INFO_LENGTH),
+        interactAlpha: new Uint16Array(lengthByKey.interactAlpha ?? EMPTY_MODEL_INFO_LENGTH),
+        interactLod: new Uint16Array(lengthByKey.interactLod ?? EMPTY_MODEL_INFO_LENGTH),
+        interactLodAlpha: new Uint16Array(lengthByKey.interactLodAlpha ?? EMPTY_MODEL_INFO_LENGTH),
+    };
 }
 
 function createPayload(overrides: Partial<MapRenderDataPayload> = {}): MapRenderDataPayload {
@@ -124,6 +100,35 @@ function createPayload(overrides: Partial<MapRenderDataPayload> = {}): MapRender
     };
 }
 
+function createScenePackInput(
+    overrides: Partial<MapRenderScenePackInput> = {},
+): MapRenderScenePackInput {
+    const bucketCmdCounts = new Int32Array(DRAW_BUCKET_KEYS.length);
+    bucketCmdCounts[0] = 1;
+
+    const bucketModelInfoLengths = new Int32Array(DRAW_BUCKET_KEYS.length);
+    bucketModelInfoLengths.fill(EMPTY_MODEL_INFO_LENGTH);
+    bucketModelInfoLengths[0] = bridgeInternals.modelInfoLengthFromCounts(1, 1);
+
+    const base: MapRenderScenePackInput = {
+        sceneTileHeights: new Int32Array(4),
+        levels: 1,
+        sizeX: 1,
+        sizeY: 1,
+        unitsTileHeightBasis: 8,
+        bucketCmdCounts,
+        bucketModelInfoLengths,
+        cmdOffsets: new Int32Array([0]),
+        cmdElements: new Int32Array([6]),
+        cmdInstanceCounts: new Int32Array([1]),
+        packedInstances: new Int32Array([3200, 3201, -16, 0, 0, 0, 0, 65535]),
+    };
+    return {
+        ...base,
+        ...overrides,
+    };
+}
+
 function assertIncludes(haystack: string, needle: string): void {
     assert.ok(
         haystack.includes(needle),
@@ -132,150 +137,98 @@ function assertIncludes(haystack: string, needle: string): void {
 }
 
 function runContractValidationChecks(): void {
-    const drawCommands = createDrawCommands();
-    const stagedPayload = createPayload({
-        staging: {
-            sceneTileHeights: new Int32Array(4),
-            levels: 1,
-            sizeX: 1,
-            sizeY: 1,
-            unitsTileHeightBasis: 8,
-            drawCommands,
-        },
-        drawRanges: createDrawRanges(),
-        modelInfoTextures: createModelInfoTextures(),
-    });
-    assert.deepEqual(
-        validateMapRenderPayload(stagedPayload),
-        [],
-        "staged payload with placeholder draw/model buffers should validate",
-    );
+    const validPayload = createPayload();
+    assert.deepEqual(validateMapRenderPayload(validPayload), [], "expected valid payload");
 
-    const wrongDrawRangeCountPayload = createPayload({
-        staging: stagedPayload.staging,
-        drawRanges: createDrawRanges({ base: 2 }),
-        modelInfoTextures: createModelInfoTextures(),
+    const wrongModelInfoPayload = createPayload({
+        drawRanges: createDrawRanges([[0, 0, 33]]),
+        modelInfoTextures: createModelInfoTextures({ base: EMPTY_MODEL_INFO_LENGTH }),
     });
-    const drawRangeIssues = validateMapRenderPayload(wrongDrawRangeCountPayload);
-    assert.ok(drawRangeIssues.length > 0, "expected draw range mismatch issue");
-    assertIncludes(drawRangeIssues[0], "drawRanges.base length mismatch");
-
-    const wrongModelInfoLengthPayload = createPayload({
-        staging: stagedPayload.staging,
-        drawRanges: createDrawRanges(),
-        modelInfoTextures: createModelInfoTextures({ base: 5 }),
-    });
-    const modelInfoIssues = validateMapRenderPayload(wrongModelInfoLengthPayload);
+    const modelInfoIssues = validateMapRenderPayload(wrongModelInfoPayload);
     assert.ok(modelInfoIssues.length > 0, "expected model info mismatch issue");
     assertIncludes(modelInfoIssues[0], "modelInfoTextures.base length mismatch");
 
-    const nonStagingPayload = createPayload({
-        drawRanges: createDrawRanges({ base: 1 }),
-        modelInfoTextures: createModelInfoTextures({ base: 5 }),
+    const wrongHeightMapPayload = createPayload({
+        heightMapTextureData: new Int16Array(0),
     });
-    const nonStagingIssues = validateMapRenderPayload(nonStagingPayload);
-    assert.ok(nonStagingIssues.length > 0, "expected non-staging model info mismatch");
-    assertIncludes(nonStagingIssues[0], "modelInfoTextures.base length mismatch");
+    const heightMapIssues = validateMapRenderPayload(wrongHeightMapPayload);
+    assert.ok(heightMapIssues.length > 0, "expected height map mismatch issue");
+    assertIncludes(heightMapIssues[0], "heightMapTextureData length mismatch");
 }
 
 function runBridgeValidationChecks(): void {
-    const drawCommands = createDrawCommands();
-    const payload = createPayload({
-        staging: {
-            sceneTileHeights: new Int32Array(4),
-            levels: 1,
-            sizeX: 1,
-            sizeY: 1,
-            unitsTileHeightBasis: 8,
-            drawCommands,
-        },
-        drawRanges: createDrawRanges(),
-        modelInfoTextures: createModelInfoTextures(),
-    });
+    const payload = createPayload();
+    const scenePackInput = createScenePackInput();
+
     assert.equal(
-        bridgeInternals.validateStagingAgainstPayload(payload),
+        bridgeInternals.validateScenePackInput(scenePackInput, payload),
         undefined,
-        "expected valid staging payload",
+        "expected valid scene-pack input",
     );
     assert.equal(
-        bridgeInternals.validateStagingDrawCommands(payload.staging!),
-        undefined,
-        "expected valid draw command buckets",
-    );
-    assert.equal(
-        bridgeInternals.modelInfoLengthFromDrawCommands(drawCommands.base),
+        bridgeInternals.modelInfoLengthFromCounts(1, 1),
         64,
         "expected model info length rounding parity",
     );
 
-    const brokenBucketPayload = createPayload({
-        staging: {
-            ...payload.staging!,
-            drawCommands: {
-                ...drawCommands,
-                base: undefined as unknown as ReadonlyArray<StagingDrawCommand>,
-            },
-        },
+    const brokenBucketCounts = createScenePackInput({
+        bucketCmdCounts: new Int32Array(DRAW_BUCKET_KEYS.length - 1),
     });
-    const brokenBucketError = bridgeInternals.validateStagingAgainstPayload(brokenBucketPayload);
-    assert.ok(brokenBucketError, "expected broken bucket validation error");
-    assertIncludes(brokenBucketError, "drawCommands.base must be an array");
-
-    const brokenInstancePayload = createPayload({
-        staging: {
-            ...payload.staging!,
-            drawCommands: {
-                ...drawCommands,
-                base: [
-                    {
-                        ...drawCommands.base[0],
-                        instances: [
-                            {
-                                ...drawCommands.base[0].instances[0],
-                                sceneX: Number.NaN,
-                            },
-                        ],
-                    },
-                ],
-            },
-        },
-    });
-    const brokenInstanceError = bridgeInternals.validateStagingAgainstPayload(brokenInstancePayload);
-    assert.ok(brokenInstanceError, "expected broken instance validation error");
-    assertIncludes(brokenInstanceError, "contains non-numeric fields");
-
-    const drawRangeMismatchPayload = createPayload({
-        staging: payload.staging,
-        drawRanges: createDrawRanges({ base: 2 }),
-        modelInfoTextures: createModelInfoTextures(),
-    });
-    const drawRangeMismatchError = bridgeInternals.validateStagingAgainstPayload(
-        drawRangeMismatchPayload,
+    const brokenBucketCountsError = bridgeInternals.validateScenePackInput(
+        brokenBucketCounts,
+        payload,
     );
-    assert.ok(drawRangeMismatchError, "expected draw range mismatch validation error");
-    assertIncludes(drawRangeMismatchError, "drawRanges.base length mismatch");
-
-    const modelInfoMismatchPayload = createPayload({
-        staging: payload.staging,
-        drawRanges: createDrawRanges(),
-        modelInfoTextures: createModelInfoTextures({ base: 5 }),
-    });
-    const modelInfoMismatchError = bridgeInternals.validateStagingAgainstPayload(
-        modelInfoMismatchPayload,
+    assert.ok(brokenBucketCountsError, "expected invalid bucket count error");
+    assertIncludes(
+        brokenBucketCountsError,
+        "scenePackInput.bucketCmdCounts length mismatch",
     );
-    assert.ok(modelInfoMismatchError, "expected model info mismatch validation error");
-    assertIncludes(modelInfoMismatchError, "modelInfoTextures.base length mismatch");
-}
 
-function checkDrawBucketCoverage(): void {
-    const drawCommands = createDrawCommands();
-    for (const key of DRAW_BUCKET_KEYS) {
-        assert.ok(Array.isArray(drawCommands[key]), `missing draw command bucket "${key}"`);
-    }
+    const brokenModelInfo = createScenePackInput({
+        bucketModelInfoLengths: new Int32Array([
+            65,
+            EMPTY_MODEL_INFO_LENGTH,
+            EMPTY_MODEL_INFO_LENGTH,
+            EMPTY_MODEL_INFO_LENGTH,
+            EMPTY_MODEL_INFO_LENGTH,
+            EMPTY_MODEL_INFO_LENGTH,
+            EMPTY_MODEL_INFO_LENGTH,
+            EMPTY_MODEL_INFO_LENGTH,
+        ]),
+    });
+    const brokenModelInfoError = bridgeInternals.validateScenePackInput(brokenModelInfo, payload);
+    assert.ok(brokenModelInfoError, "expected invalid model-info length error");
+    assertIncludes(
+        brokenModelInfoError,
+        "scenePackInput.bucketModelInfoLengths[0] mismatch",
+    );
+
+    const brokenPackedInstances = createScenePackInput({
+        packedInstances: new Int32Array([3200, 3201, -16, 0]),
+    });
+    const brokenPackedInstancesError = bridgeInternals.validateScenePackInput(
+        brokenPackedInstances,
+        payload,
+    );
+    assert.ok(brokenPackedInstancesError, "expected invalid packed instance length error");
+    assertIncludes(
+        brokenPackedInstancesError,
+        "scenePackInput.packedInstances length mismatch",
+    );
+
+    const payloadSizeMismatch = createScenePackInput({
+        sizeX: 2,
+        sceneTileHeights: new Int32Array(6),
+    });
+    const payloadSizeMismatchError = bridgeInternals.validateScenePackInput(
+        payloadSizeMismatch,
+        payload,
+    );
+    assert.ok(payloadSizeMismatchError, "expected payload/scene-pack size mismatch");
+    assertIncludes(payloadSizeMismatchError, "scenePackInput.sizeX mismatch");
 }
 
 async function main(): Promise<void> {
-    checkDrawBucketCoverage();
     runContractValidationChecks();
     runBridgeValidationChecks();
     console.log("map-render-contract-regression: ok");
