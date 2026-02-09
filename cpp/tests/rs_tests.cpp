@@ -2154,7 +2154,7 @@ static int test_skeletal_eval_base_only(rs::Allocator& alloc) {
     return 0;
 }
 
-static int test_skeletal_eval_curve_unsupported(rs::Allocator& alloc) {
+static int test_skeletal_eval_base_only_with_curves(rs::Allocator& alloc) {
     rs::SeqBase base(124, alloc);
     base.hasSkeletalBase = true;
     base.skeletalBoneCount = 1;
@@ -2177,28 +2177,58 @@ static int test_skeletal_eval_curve_unsupported(rs::Allocator& alloc) {
     base.skeletalBase.translations[0] = rs::Vec3f{0.0f, 0.0f, 0.0f};
     base.skeletalBase.scalings[0] = rs::Vec3f{1.0f, 1.0f, 1.0f};
 
-    rs::SkeletalSeq seq{};
+    rs::SkeletalSeq seq(alloc);
     seq.id = 78;
     seq.baseId = base.id;
     seq.poseId = 0;
     seq.curveCount = 1;
 
+    rr = seq.boneCurves.resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only curves: boneCurves resize failed");
+    rr = seq.boneCurves[0].resize(9);
+    if (!rr.isOk()) return fail("skeletal base-only curves: boneCurves[0] resize failed");
+    seq.boneCurves[0][3].hasCurve = true; // translation.x
+    seq.boneCurves[0][3].curve.startTick = 0;
+    seq.boneCurves[0][3].curve.endTick = 1;
+    rr = seq.boneCurves[0][3].curve.values.resize(2);
+    if (!rr.isOk()) return fail("skeletal base-only curves: values resize failed");
+    seq.boneCurves[0][3].curve.values[0] = 2.0f;
+    seq.boneCurves[0][3].curve.values[1] = 4.0f;
+
     rs::Vec<rs::Mat4f> finalMatrices(alloc);
     rs::Status s = rs::computeSkeletalFinalMatricesBaseOnly(base, seq, &finalMatrices, alloc);
-    if (s != rs::Status::Unsupported) return fail("skeletal unsupported: expected compute Unsupported");
+    if (!rs::ok(s)) return fail("skeletal base-only curves: compute final matrices failed");
+    if (finalMatrices.size() != 1) return fail("skeletal base-only curves: unexpected final matrix count");
+    if (finalMatrices[0].v[12] < 1.999f || finalMatrices[0].v[12] > 2.001f) {
+        return fail("skeletal base-only curves: expected curve-overridden translation x=2 (frame=0)");
+    }
 
     rs::ModelData model(alloc);
     s = rs::initRequiredVec(&model.verticesX, 1);
-    if (!rs::ok(s)) return fail("skeletal unsupported: model.verticesX resize failed");
+    if (!rs::ok(s)) return fail("skeletal base-only curves: model.verticesX resize failed");
     s = rs::initRequiredVec(&model.verticesY, 1);
-    if (!rs::ok(s)) return fail("skeletal unsupported: model.verticesY resize failed");
+    if (!rs::ok(s)) return fail("skeletal base-only curves: model.verticesY resize failed");
     s = rs::initRequiredVec(&model.verticesZ, 1);
-    if (!rs::ok(s)) return fail("skeletal unsupported: model.verticesZ resize failed");
+    if (!rs::ok(s)) return fail("skeletal base-only curves: model.verticesZ resize failed");
     model.verticesCount = 1;
-    model.hasMayaGroups = true;
+    model.verticesX[0] = 0;
+    model.verticesY[0] = 0;
+    model.verticesZ[0] = 0;
+
+    s = rs::initOptionalNestedIntVec(true, 1, &model.animMayaGroups, &model.animMayaScales, &model);
+    if (!rs::ok(s)) return fail("skeletal base-only curves: model maya groups init failed");
+    rr = model.animMayaGroups[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only curves: model animMayaGroups[0] resize failed");
+    rr = model.animMayaScales[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal base-only curves: model animMayaScales[0] resize failed");
+    model.animMayaGroups[0][0] = 0;
+    model.animMayaScales[0][0] = 255;
 
     s = rs::applySkeletalToModelBaseOnly(&model, base, seq, /*frame=*/0, alloc);
-    if (s != rs::Status::Unsupported) return fail("skeletal unsupported: expected apply Unsupported");
+    if (!rs::ok(s)) return fail("skeletal base-only curves: apply to model failed");
+    if (model.verticesX[0] != 2 || model.verticesY[0] != 0 || model.verticesZ[0] != 0) {
+        return fail("skeletal base-only curves: transformed vertex mismatch");
+    }
 
     return 0;
 }
@@ -2232,18 +2262,17 @@ static int test_skeletal_eval_curve_supported(rs::Allocator& alloc) {
     seq.poseId = 0;
     seq.curveCount = 1;
 
-    rs::SkeletalCurveBinding binding(alloc);
-    binding.transformType = rs::SkeletalTransformType::BONE;
-    binding.boneIndex = 0;
-    binding.curveIndex = 3; // translation.x
-    binding.curve.startTick = 0;
-    binding.curve.endTick = 1;
-    rr = binding.curve.values.resize(2);
+    rr = seq.boneCurves.resize(1);
+    if (!rr.isOk()) return fail("skeletal curve: boneCurves resize failed");
+    rr = seq.boneCurves[0].resize(9);
+    if (!rr.isOk()) return fail("skeletal curve: boneCurves[0] resize failed");
+    seq.boneCurves[0][3].hasCurve = true; // translation.x
+    seq.boneCurves[0][3].curve.startTick = 0;
+    seq.boneCurves[0][3].curve.endTick = 1;
+    rr = seq.boneCurves[0][3].curve.values.resize(2);
     if (!rr.isOk()) return fail("skeletal curve: values resize failed");
-    binding.curve.values[0] = 2.0f;
-    binding.curve.values[1] = 4.0f;
-    rr = seq.bindings.pushBack(rs::move(binding));
-    if (!rr.isOk()) return fail("skeletal curve: push binding failed");
+    seq.boneCurves[0][3].curve.values[0] = 2.0f;
+    seq.boneCurves[0][3].curve.values[1] = 4.0f;
 
     rs::Vec<rs::Mat4f> finalMatrices(alloc);
     rs::Status s = rs::computeSkeletalFinalMatrices(base, seq, /*frame=*/1, &finalMatrices, alloc);
@@ -2379,33 +2408,24 @@ static int test_skeletal_alpha_curve_selection_and_truncation(rs::Allocator& all
     seq.curveCount = 2;
     seq.hasAlphaTransform = true;
 
-    rs::SkeletalCurveBinding alphaBinding(alloc);
-    alphaBinding.transformType = rs::SkeletalTransformType::ALPHA;
-    alphaBinding.boneIndex = 0;
-    alphaBinding.curveIndex = 0;
-    alphaBinding.curve.startTick = 0;
-    alphaBinding.curve.endTick = 0;
-    rr = alphaBinding.curve.values.resize(1);
-    if (!rr.isOk()) return fail("skeletal alpha: alphaBinding values resize failed");
-    alphaBinding.curve.values[0] = 0.9f;
-    alphaBinding.curve.minValue = 0.9f;
-    alphaBinding.curve.maxValue = 0.9f;
-    rr = seq.bindings.pushBack(rs::move(alphaBinding));
-    if (!rr.isOk()) return fail("skeletal alpha: push alphaBinding failed");
+    rr = seq.curves.resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: curves resize failed");
+    rr = seq.curves[0].resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: curves[0] resize failed");
 
-    rs::SkeletalCurveBinding sharedBinding(alloc);
-    sharedBinding.transformType = rs::SkeletalTransformType::TYPE_2;
-    sharedBinding.boneIndex = 0;
-    sharedBinding.curveIndex = 0;
-    sharedBinding.curve.startTick = 0;
-    sharedBinding.curve.endTick = 0;
-    rr = sharedBinding.curve.values.resize(1);
-    if (!rr.isOk()) return fail("skeletal alpha: sharedBinding values resize failed");
-    sharedBinding.curve.values[0] = 0.1f;
-    sharedBinding.curve.minValue = 0.1f;
-    sharedBinding.curve.maxValue = 0.1f;
-    rr = seq.bindings.pushBack(rs::move(sharedBinding));
-    if (!rr.isOk()) return fail("skeletal alpha: push sharedBinding failed");
+    // Decode-order semantics: shared non-bone curves table, later curveIndex=0 write wins.
+    seq.curves[0][0].hasCurve = true;
+    seq.curves[0][0].curve.startTick = 0;
+    seq.curves[0][0].curve.endTick = 0;
+    rr = seq.curves[0][0].curve.values.resize(1);
+    if (!rr.isOk()) return fail("skeletal alpha: curves[0][0] values resize failed");
+    seq.curves[0][0].curve.values[0] = 0.9f;
+    seq.curves[0][0].curve.minValue = 0.9f;
+    seq.curves[0][0].curve.maxValue = 0.9f;
+
+    seq.curves[0][0].curve.values[0] = 0.1f;
+    seq.curves[0][0].curve.minValue = 0.1f;
+    seq.curves[0][0].curve.maxValue = 0.1f;
 
     rs::ModelData model(alloc);
     model.faceCount = 1;
@@ -2450,7 +2470,7 @@ int main() {
         if (int r = test_cache_session_config_layer_api()) return r;
         if (int r = test_loaders_capabilities_contract()) return r;
         if (int r = test_skeletal_eval_base_only(alloc)) return r;
-        if (int r = test_skeletal_eval_curve_unsupported(alloc)) return r;
+        if (int r = test_skeletal_eval_base_only_with_curves(alloc)) return r;
         if (int r = test_skeletal_eval_curve_supported(alloc)) return r;
         if (int r = test_seqtype_frame_length_edge_cases(alloc)) return r;
         if (int r = test_skeletal_alpha_curve_selection_and_truncation(alloc)) return r;

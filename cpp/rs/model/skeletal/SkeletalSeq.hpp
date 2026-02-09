@@ -13,13 +13,11 @@
 
 namespace rs {
 
-struct SkeletalCurveBinding final {
-    SkeletalTransformType transformType = SkeletalTransformType::TYPE_0;
-    i32 boneIndex = 0;
-    i32 curveIndex = 0;
+struct SkeletalCurveSlot final {
+    bool hasCurve = false;
     SkeletalCurve curve{};
 
-    explicit SkeletalCurveBinding(Allocator& alloc = defaultAllocator()) noexcept
+    explicit SkeletalCurveSlot(Allocator& alloc = defaultAllocator()) noexcept
         : curve(0, alloc) {}
 };
 
@@ -31,11 +29,47 @@ struct SkeletalSeq final {
     i32 poseId = 0;
     i32 curveCount = 0;
     bool hasAlphaTransform = false;
-    Vec<SkeletalCurveBinding> bindings{};
+    Vec<Vec<SkeletalCurveSlot>> boneCurves{};
+    Vec<Vec<SkeletalCurveSlot>> curves{};
 
     explicit SkeletalSeq(Allocator& alloc = defaultAllocator()) noexcept
-        : bindings(alloc) {}
+        : boneCurves(alloc),
+          curves(alloc) {}
+
+    [[nodiscard]] const SkeletalCurve* tryGetBoneCurve(i32 boneIndex, i32 curveIndex) const noexcept {
+        if (boneIndex < 0 || curveIndex < 0) return nullptr;
+        if (static_cast<std::size_t>(boneIndex) >= boneCurves.size()) return nullptr;
+        const Vec<SkeletalCurveSlot>& channels = boneCurves[static_cast<std::size_t>(boneIndex)];
+        if (static_cast<std::size_t>(curveIndex) >= channels.size()) return nullptr;
+        const SkeletalCurveSlot& slot = channels[static_cast<std::size_t>(curveIndex)];
+        return slot.hasCurve ? &slot.curve : nullptr;
+    }
+
+    [[nodiscard]] const SkeletalCurve* tryGetCurve(i32 transformIndex, i32 curveIndex) const noexcept {
+        if (transformIndex < 0 || curveIndex < 0) return nullptr;
+        if (static_cast<std::size_t>(transformIndex) >= curves.size()) return nullptr;
+        const Vec<SkeletalCurveSlot>& channels = curves[static_cast<std::size_t>(transformIndex)];
+        if (static_cast<std::size_t>(curveIndex) >= channels.size()) return nullptr;
+        const SkeletalCurveSlot& slot = channels[static_cast<std::size_t>(curveIndex)];
+        return slot.hasCurve ? &slot.curve : nullptr;
+    }
 };
+
+inline Status ensureSkeletalCurveChannels(
+    Vec<Vec<SkeletalCurveSlot>>* table,
+    i32 tableIndex,
+    i32 channelCount) noexcept {
+    if (!table) return Status::InvalidArgument;
+    if (tableIndex < 0 || channelCount <= 0) return Status::Ok;
+    if (static_cast<std::size_t>(tableIndex) >= table->size()) return Status::Ok;
+
+    Vec<SkeletalCurveSlot>& channels = (*table)[static_cast<std::size_t>(tableIndex)];
+    if (!channels.empty()) return Status::Ok;
+
+    auto rr = channels.resize(static_cast<std::size_t>(channelCount));
+    if (!rr.isOk()) return rr.status();
+    return Status::Ok;
+}
 
 inline Status decodeDat2SkeletalSeq(
     const Dat2SeqBaseLoader& baseLoader,
@@ -89,7 +123,13 @@ inline Status decodeDat2SkeletalSeq(
         return s;
     }
 
-    out->bindings.clear();
+    const i32 boneCount = base->skeletalBase.boneCount();
+    auto rr = out->boneCurves.resize(static_cast<std::size_t>(boneCount >= 0 ? boneCount : 0));
+    if (!rr.isOk()) return rr.status();
+    rr = out->curves.resize(static_cast<std::size_t>(base->count >= 0 ? base->count : 0));
+    if (!rr.isOk()) return rr.status();
+    for (std::size_t i = 0; i < out->boneCurves.size(); i++) out->boneCurves[i].clear();
+    for (std::size_t i = 0; i < out->curves.size(); i++) out->curves[i].clear();
     out->hasAlphaTransform = false;
 
     bool hasAlphaTransform = false;
@@ -116,13 +156,23 @@ inline Status decodeDat2SkeletalSeq(
         if (!ok(s)) return s;
 
         if (curveIndex >= 0) {
-            auto br = out->bindings.emplaceBack(SkeletalCurveBinding(defaultAllocator()));
-            if (!br.isOk()) return br.status();
-            SkeletalCurveBinding* binding = br.value();
-            binding->transformType = transformType;
-            binding->boneIndex = boneIndex;
-            binding->curveIndex = curveIndex;
-            binding->curve = rs::move(curve);
+            Vec<Vec<SkeletalCurveSlot>>* target = nullptr;
+            if (transformType == SkeletalTransformType::BONE) {
+                target = &out->boneCurves;
+            } else {
+                target = &out->curves;
+            }
+            const i32 channelCount = getSkeletalCurveCount(transformType);
+            s = ensureSkeletalCurveChannels(target, boneIndex, channelCount);
+            if (!ok(s)) return s;
+            if (boneIndex >= 0 &&
+                static_cast<std::size_t>(boneIndex) < target->size() &&
+                channelCount > 0 &&
+                curveIndex < channelCount) {
+                SkeletalCurveSlot& slot = (*target)[static_cast<std::size_t>(boneIndex)][static_cast<std::size_t>(curveIndex)];
+                slot.hasCurve = true;
+                slot.curve = rs::move(curve);
+            }
         }
 
         if (transformType == SkeletalTransformType::ALPHA) {

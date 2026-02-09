@@ -210,28 +210,15 @@ inline Status computeSkeletalFinalMatrices(
         Vec3f scaling = sk.scalings[sk.matrixIndex(boneId, poseId)];
         Vec3f translation = sk.translations[sk.matrixIndex(boneId, poseId)];
 
-        for (std::size_t i = 0; i < seq.bindings.size(); i++) {
-            const SkeletalCurveBinding& binding = seq.bindings[i];
-            if (binding.transformType != SkeletalTransformType::BONE) {
-                continue;
-            }
-            if (binding.boneIndex != boneId) {
-                continue;
-            }
-            const float v = getSkeletalCurveValue(binding.curve, frame);
-            switch (binding.curveIndex) {
-                case 0: rotation.x = v; break;
-                case 1: rotation.y = v; break;
-                case 2: rotation.z = v; break;
-                case 3: translation.x = v; break;
-                case 4: translation.y = v; break;
-                case 5: translation.z = v; break;
-                case 6: scaling.x = v; break;
-                case 7: scaling.y = v; break;
-                case 8: scaling.z = v; break;
-                default: break;
-            }
-        }
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 0)) rotation.x = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 1)) rotation.y = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 2)) rotation.z = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 3)) translation.x = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 4)) translation.y = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 5)) translation.z = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 6)) scaling.x = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 7)) scaling.y = getSkeletalCurveValue(*curve, frame);
+        if (const SkeletalCurve* curve = seq.tryGetBoneCurve(boneId, 8)) scaling.z = getSkeletalCurveValue(*curve, frame);
 
         Quatf qx{}, qy{}, qz{}, q{};
         quatSetAxisAngle(Vec3f{1.0f, 0.0f, 0.0f}, rotation.x, &qx);
@@ -401,22 +388,12 @@ inline Status applySkeletalAlphaToModel(
             continue;
         }
 
-        // TS transformSkeletalAlpha reads skeletalSeq.curves[i][0] for each ALPHA transform index.
-        // In TS decode, `curves` stores all non-BONE transforms in a shared table, so last
-        // non-BONE curveIndex=0 binding for this transform index wins (not strictly ALPHA-only).
-        const SkeletalCurveBinding* selected = nullptr;
-        for (std::size_t bi = 0; bi < seq.bindings.size(); bi++) {
-            const SkeletalCurveBinding& binding = seq.bindings[bi];
-            if (binding.transformType == SkeletalTransformType::BONE) continue;
-            if (binding.boneIndex != transformIndex) continue;
-            if (binding.curveIndex != 0) continue;
-            selected = &binding;
-        }
+        const SkeletalCurve* selected = seq.tryGetCurve(transformIndex, 0);
         if (!selected) {
             continue;
         }
 
-        const double deltaAlpha = static_cast<double>(getSkeletalCurveValue(selected->curve, frame)) * 255.0;
+        const double deltaAlpha = static_cast<double>(getSkeletalCurveValue(*selected, frame)) * 255.0;
         const Vec<i32>& labels = base.labels[ti];
         for (std::size_t li = 0; li < labels.size(); li++) {
             const i32 label = labels[li];
@@ -458,8 +435,6 @@ inline Status applySkeletalToModelBaseOnly(
     Allocator& alloc) noexcept {
     if (!model) return Status::InvalidArgument;
     if (!model->hasMayaGroups) return Status::Ok;
-    if (seq.curveCount > 0) return Status::Unsupported;
-
     return applySkeletalToModel(model, base, seq, frame, alloc);
 }
 
@@ -468,7 +443,6 @@ inline Status computeSkeletalFinalMatricesBaseOnly(
     const SkeletalSeq& seq,
     Vec<Mat4f>* outFinalMatrices,
     Allocator& alloc) noexcept {
-    if (seq.curveCount > 0) return Status::Unsupported;
     return computeSkeletalFinalMatrices(base, seq, /*frame=*/0, outFinalMatrices, alloc);
 }
 
