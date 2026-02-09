@@ -203,8 +203,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
 
-        const seqFrameLoader = this.mapViewer.session.loaders.seqFrameLoader;
-        const seqTypeLoader = this.mapViewer.session.loaders.seqTypeLoader;
+        const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
+        const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
 
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
@@ -475,8 +475,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const interactId = interactBuffer[index];
                 const interactType = interactBuffer[index + 2];
                 if (interactType === InteractType.LOC) {
-                    const locResult =
-                        this.mapViewer.session.loaders.locTypeLoader.tryLoad(interactId);
+                    const locResult = this.mapViewer.session.tryLoadLocType(interactId);
                     if (!locResult.ok) {
                         continue;
                     }
@@ -512,8 +511,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.OBJ) {
-                    const objResult =
-                        this.mapViewer.session.loaders.objTypeLoader.tryLoad(interactId);
+                    const objResult = this.mapViewer.session.tryLoadObjType(interactId);
                     if (!objResult.ok) {
                         continue;
                     }
@@ -549,17 +547,16 @@ export class MapViewerRenderer extends RendererMainLoop {
                         onClick: this.mapViewer.onExamine,
                     });
                 } else if (interactType === InteractType.NPC) {
-                    const npcResult =
-                        this.mapViewer.session.loaders.npcTypeLoader.tryLoad(interactId);
+                    const npcResult = this.mapViewer.session.tryLoadNpcType(interactId);
                     if (!npcResult.ok) {
                         continue;
                     }
                     let npcType = npcResult.value;
-                    if (npcType.transforms) {
-                        const transformed = npcType.transform(
-                            this.mapViewer.session.varManager,
-                            this.mapViewer.session.loaders.npcTypeLoader,
-                        );
+                        if (npcType.transforms) {
+                            const transformed = npcType.transform(
+                                this.mapViewer.session.varManager,
+                                this.mapViewer.session.getNpcTypeLoader(),
+                            );
                         if (!transformed) {
                             continue;
                         }

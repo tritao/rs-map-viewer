@@ -10,6 +10,15 @@ This document exists to keep the TypeScript implementation "C++-shaped" while we
     -   Owns `loaders` (decoded type caches, error caches, etc).
     -   `tryFork()` mirrors "thread-local services" in C++ (new loader caches, same underlying store).
 -   `Loaders` (`src/rs/loaders/Loaders.ts`): the stable surface for callers.
+    -   Includes explicit `capabilities` so callers do not infer support from optional fields alone.
+    -   Capability booleans must mirror optional loader fields (contract checked by script below).
+
+## Contract checks
+
+-   Runtime contract check script:
+    -   `npm run -s rs:session-contract`
+    -   Verifies Dat2/Dat/Legacy `CacheSession` creation, `Loaders.capabilities` invariants,
+        `clearCaches()`, and `tryFork()` behavior.
 
 ## Error / return conventions
 

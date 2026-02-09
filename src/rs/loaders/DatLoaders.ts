@@ -40,7 +40,7 @@ import {
     missingIndex,
     missingNamedFile,
 } from "./InitError";
-import { Loaders } from "./Loaders";
+import { Loaders, createLoaderCapabilities } from "./Loaders";
 
 function requireIndex(
     cacheSystem: CacheSystem,
@@ -216,6 +216,8 @@ export function tryCreateDatLoaders(
     const mediaSource = new ArchiveNamedBytesProvider(mediaArchive);
 
     return ok({
+        capabilities: createLoaderCapabilities(CacheType.Dat, false, false, false),
+
         underlayTypeLoader: floTypeLoader,
         overlayTypeLoader: floTypeLoader,
 

@@ -81,7 +81,7 @@ import {
     missingFile,
     missingIndex,
 } from "./InitError";
-import { Loaders, OptionalIndexedSprite } from "./Loaders";
+import { Loaders, OptionalIndexedSprite, createLoaderCapabilities } from "./Loaders";
 
 function requireIndex(
     cacheSystem: CacheSystem,
@@ -543,6 +543,13 @@ export function tryCreateDat2Loaders(
     }
 
     return ok({
+        capabilities: createLoaderCapabilities(
+            CacheType.Dat2,
+            !!questTypeLoader,
+            !!skeletalSeqLoader,
+            true,
+        ),
+
         underlayTypeLoader,
         overlayTypeLoader,
 

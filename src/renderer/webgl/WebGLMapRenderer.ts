@@ -124,7 +124,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     private logTextureDebugStats(): void {
         const cacheInfo = this.session.cache.info;
-        const textureLoader = this.session.loaders.textureLoader as unknown as {
+        const textureLoader = this.session.getTextureLoader() as unknown as {
             constructor?: { name?: string };
         };
         console.log(
@@ -381,7 +381,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initTextures(): void {
-        const textureLoader = this.session.loaders.textureLoader;
+        const textureLoader = this.session.getTextureLoader();
 
         const allTextureIds = textureLoader.getTextureIds();
 
@@ -418,7 +418,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initTextureArray() {
-        const textureLoader = this.session.loaders.textureLoader;
+        const textureLoader = this.session.getTextureLoader();
 
         if (this.textureArray) {
             this.textureArray.delete();
@@ -638,7 +638,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
 
         if (!pixels) {
-            const texturePixels = this.session.loaders.textureLoader.tryGetPixelsArgb(
+            const texturePixels = this.session.getTextureLoader().tryGetPixelsArgb(
                 textureId,
                 TEXTURE_SIZE,
                 true,
@@ -846,7 +846,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initMaterialsTexture(): void {
-        const textureLoader = this.session.loaders.textureLoader;
+        const textureLoader = this.session.getTextureLoader();
 
         if (this.textureMaterials) {
             this.textureMaterials.delete();
@@ -902,9 +902,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.loadedMaps.set(
             getMapSquareId(mapX, mapY),
             WebGLMapSquare.load(
-                this.session.loaders.seqTypeLoader,
-                this.session.loaders.npcTypeLoader,
-                this.session.loaders.basTypeLoader,
+                this.session.getSeqTypeLoader(),
+                this.session.getNpcTypeLoader(),
+                this.session.getBasTypeLoader(),
                 this.app,
                 this.mainProgram!,
                 this.mainAlphaProgram!,

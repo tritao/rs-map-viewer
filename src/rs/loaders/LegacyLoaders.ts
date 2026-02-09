@@ -2,6 +2,7 @@ import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
+import { CacheType } from "../cache/CacheType";
 import { LegacyIndexId } from "../cache/IndexId";
 import { Archive } from "../cache/format/Archive";
 import { BasTypeLoader, DummyBasTypeLoader } from "../config/bastype/BasTypeLoader";
@@ -37,7 +38,7 @@ import {
     missingArchive,
     missingIndex,
 } from "./InitError";
-import { Loaders } from "./Loaders";
+import { Loaders, createLoaderCapabilities } from "./Loaders";
 
 function requireIndex(
     cacheSystem: CacheSystem,
@@ -152,6 +153,8 @@ export function tryCreateLegacyLoaders(
     }
 
     return ok({
+        capabilities: createLoaderCapabilities(CacheType.Legacy, false, false, false),
+
         underlayTypeLoader: floTypeLoader,
         overlayTypeLoader: floTypeLoader,
 

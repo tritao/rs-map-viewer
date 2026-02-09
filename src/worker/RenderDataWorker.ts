@@ -88,12 +88,12 @@ async function initWorker(
         textureLoader,
         seqTypeLoader,
         seqFrameLoader,
-        skeletalSeqLoader,
         mapFileLoader,
         varBitTypeLoader,
         mapScenes,
         mapFunctions,
     } = session.loaders;
+    const skeletalSeqLoader = session.getSkeletalSeqLoader();
 
     const varProvider = new VarStateProvider(varBitTypeLoader, session.varManager.values);
 
@@ -191,7 +191,7 @@ const worker = {
         const workerState = await requireWorkerState();
 
         const pixels =
-            workerState.session.loaders.textureLoader.tryGetPixelsArgb(
+            workerState.session.getTextureLoader().tryGetPixelsArgb(
                 id,
                 size,
                 flipH,
@@ -279,7 +279,7 @@ const worker = {
 
         const zip = new JSZip();
 
-        const textureLoader = workerState.session.loaders.textureLoader;
+        const textureLoader = workerState.session.getTextureLoader();
 
         const textureSize = 128;
 
