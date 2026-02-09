@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "cache": "osrs-221_2024-04-17",
+      "label": "dat2",
+      "game": "oldschool",
+      "revision": 221,
+      "expectedTs": {
+        "cacheType": "dat2",
+        "hasQuestTypeLoader": false,
+        "hasSkeletalSeqLoader": true,
+        "hasDistinctUnderlayTypeLoader": true,
+        "hasModelService": true,
+        "hasSeqFrameService": true,
+        "hasTextureService": true,
+        "hasMapFileService": true
+      },
+      "expectedCpp": {
+        "cacheType": "dat2",
+        "hasQuestTypeLoader": false,
+        "hasSkeletalSeqLoader": true,
+        "hasDistinctUnderlayTypeLoader": true,
+        "hasModelService": true,
+        "hasSeqFrameService": true,
+        "hasTextureService": true,
+        "hasMapFileService": true
+      }
+    },
+    {
+      "cache": "rs2-377_2006-05-02",
+      "label": "dat",
+      "game": "runescape",
+      "revision": 377,
+      "expectedTs": {
+        "cacheType": "dat",
+        "hasQuestTypeLoader": false,
+        "hasSkeletalSeqLoader": false,
+        "hasDistinctUnderlayTypeLoader": false,
+        "hasModelService": true,
+        "hasSeqFrameService": true,
+        "hasTextureService": true,
+        "hasMapFileService": true
+      },
+      "expectedCpp": {
+        "cacheType": "dat",
+        "hasQuestTypeLoader": false,
+        "hasSkeletalSeqLoader": false,
+        "hasDistinctUnderlayTypeLoader": false,
+        "hasModelService": true,
+        "hasSeqFrameService": true,
+        "hasTextureService": true,
+        "hasMapFileService": true
+      }
+    },
+    {
+      "cache": "rs2-225_2004-05-06",
+      "label": "legacy",
+      "game": "runescape",
+      "revision": 225,
+      "expectedTs": {
+        "cacheType": "legacy",
+        "hasQuestTypeLoader": false,
+        "hasSkeletalSeqLoader": false,
+        "hasDistinctUnderlayTypeLoader": false,
+        "hasModelService": true,
+        "hasSeqFrameService": true,
+        "hasTextureService": true,
+        "hasMapFileService": true
+      },
+      "expectedCpp": {
+        "cacheType": "legacy",
+        "hasQuestTypeLoader": false,
+        "hasSkeletalSeqLoader": false,
+        "hasDistinctUnderlayTypeLoader": false,
+        "hasModelService": true,
+        "hasSeqFrameService": true,
+        "hasTextureService": true,
+        "hasMapFileService": true
+      }
+    }
+  ]
+}
