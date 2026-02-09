@@ -14,6 +14,7 @@
 #include <string_view>
 #include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,7 @@
 #include "../rs/cache/format/ArchiveFile.hpp"
 #include "../rs/cache/format/Container.hpp"
 #include "../rs/cache/store/DatLayout.hpp"
+#include "../rs/cache/store/CacheStore.hpp"
 #include "../rs/cache/store/SectorChainStore.hpp"
 #include "../rs/compression/NativeCompressionHandler.hpp"
 #include "../rs/core/Allocator.hpp"
@@ -37,6 +39,7 @@
 #include "../rs/loaders/CacheSession.hpp"
 #include "../rs/loaders/ConfigLoaders.hpp"
 #include "../rs/loaders/InitError.hpp"
+#include "../rs/loaders/Loaders.hpp"
 #include "../rs/io/ByteSource.hpp"
 #include "../rs/io/FileByteSource.hpp"
 #include "../rs/io/Uint8ArrayByteSource.hpp"
@@ -58,6 +61,7 @@
 #include "../rs/config/spotanimtype/SpotAnimType.hpp"
 #include "../rs/config/structtype/StructType.hpp"
 #include "../rs/config/vartype/VarBitType.hpp"
+#include "../rs/config/vartype/VarProvider.hpp"
 #include "../rs/config/vartype/client/VarClientIntType.hpp"
 #include "../rs/config/vartype/client/VarClientStrType.hpp"
 #include "../rs/config/vartype/player/VarPlayerType.hpp"
@@ -70,10 +74,15 @@
 #include "../rs/map/NpcSpawnsDecode.hpp"
 #include "../rs/map/TerrainSquare.hpp"
 #include "../rs/map/TerrainSquareDecode.hpp"
+#include "../rs/model/skeletal/SkeletalEval.hpp"
 #include "../rs/types.hpp"
 #include "../rs/util/XXHash64.hpp"
+#include "CliCacheOpen.hpp"
 
 namespace fs = std::filesystem;
+using CacheKind = rscli::CacheKind;
+using Dat2CliCache = rscli::Dat2CliCache;
+using GenericCliCache = rscli::GenericCliCache;
 
 namespace {
 
@@ -88,7 +97,16 @@ static void printUsage() {
     std::cerr << "  loc_square_hashes   Hash decoded loc placements for map squares (dat2 only)\n\n";
     std::cerr << "  npc_spawn_square_hashes   Hash decoded npc spawns for map squares (dat2 only)\n\n";
     std::cerr << "  map_square_inputs_hashes   Hash combined decoded map-square inputs (dat2 only)\n\n";
+    std::cerr << "  model_hashes   Hash decoded model fields for ids (dat2/dat/legacy)\n\n";
+    std::cerr << "  seq_frame_hashes   Hash decoded seq-frame fields for ids (dat2/dat/legacy)\n\n";
+    std::cerr << "  skeletal_seq_hashes   Hash decoded skeletal-seq fields for ids (dat2/dat/legacy)\n\n";
+    std::cerr << "  skeletal_eval_hashes   Hash sampled skeletal final-matrix evaluation for seq ids\n\n";
+    std::cerr << "  skeletal_model_hashes   Hash model vertices after skeletal application for seq:model pairs\n\n";
+    std::cerr << "  seq_type_frame_lengths   Emit effective seq frame lengths for seq ids (dat2/dat/legacy)\n\n";
+    std::cerr << "  anim_selection_snapshot   Snapshot NPC/LOC animation seq selection + frame resolution (dat2/dat/legacy)\n\n";
+    std::cerr << "  transform_snapshot   Snapshot NPC/LOC transform chains with varbit/varp values (dat2/dat/legacy)\n\n";
     std::cerr << "  config_type_hashes   Hash decoded config/type fields for ids (dat2 only)\n\n";
+    std::cerr << "  session_contract   Validate C++ session contract for one cache\n\n";
     std::cerr << "parity args:\n";
     std::cerr << "  --cache <name-or-path>\n";
     std::cerr << "  --out <path>\n";
@@ -101,6 +119,18 @@ static void printUsage() {
     std::cerr << "  --game <classic|runescape|oldschool>\n";
     std::cerr << "  --revision <n>\n";
     std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "\nskeletal_eval_hashes args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "  --maxFrames <n> (default: 8)\n";
+    std::cerr << "\nskeletal_model_hashes args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --pairs <comma-separated seqId:modelId>\n";
+    std::cerr << "  --frame <n> (default: 0)\n";
     std::cerr << "  --size <n> (default: 128)\n";
     std::cerr << "  --brightness <f> (default: 1.0)\n";
     std::cerr << "  --flipH\n";
@@ -132,12 +162,53 @@ static void printUsage() {
     std::cerr << "  --game <classic|runescape|oldschool>\n";
     std::cerr << "  --revision <n>\n";
     std::cerr << "  --squares <comma-separated mapX_mapY>\n";
+    std::cerr << "\nmodel_hashes args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "\nseq_frame_hashes args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "\nskeletal_seq_hashes args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "\nseq_type_frame_lengths args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "  --maxFrames <n> (default: 20)\n";
+    std::cerr << "\nanim_selection_snapshot args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --npcIds <comma-separated>\n";
+    std::cerr << "  --locIds <comma-separated>\n";
+    std::cerr << "  --maxFrames <n> (default: 8)\n";
+    std::cerr << "\ntransform_snapshot args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
+    std::cerr << "  --npcIds <comma-separated>\n";
+    std::cerr << "  --locIds <comma-separated>\n";
+    std::cerr << "  --varps <comma-separated varpId=value>\n";
+    std::cerr << "  --varbits <comma-separated varbitId=value>\n";
+    std::cerr << "  --maxSteps <n> (default: 8)\n";
     std::cerr << "\nconfig_type_hashes args:\n";
     std::cerr << "  --cache <name-or-path>\n";
     std::cerr << "  --game <classic|runescape|oldschool>\n";
     std::cerr << "  --revision <n>\n";
     std::cerr << "  --kind <underlay|overlay|varbit|enum|param|loc|npc|obj|seq|spotanim>\n";
     std::cerr << "  --ids <comma-separated>\n";
+    std::cerr << "\nsession_contract args:\n";
+    std::cerr << "  --cache <name-or-path>\n";
+    std::cerr << "  --game <classic|runescape|oldschool>\n";
+    std::cerr << "  --revision <n>\n";
 }
 
 struct ParityArgs {
@@ -173,7 +244,80 @@ struct ConfigTypeHashArgs final {
     std::vector<int> ids;
 };
 
+struct ModelHashArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    std::vector<int> ids;
+};
+
+struct SeqFrameHashArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    std::vector<int> ids;
+};
+
+struct SkeletalSeqHashArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    std::vector<int> ids;
+};
+
+struct SkeletalEvalHashArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    int maxFrames = 8;
+    std::vector<int> ids;
+};
+
+struct SkeletalModelHashArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    int frame = 0;
+    std::vector<std::pair<int, int>> pairs; // seqId:modelId
+};
+
+struct SeqTypeFrameLengthsArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    int maxFrames = 20;
+    std::vector<int> ids;
+};
+
+struct AnimSelectionSnapshotArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    int maxFrames = 8;
+    std::vector<int> npcIds;
+    std::vector<int> locIds;
+};
+
+struct TransformSnapshotArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+    int maxSteps = 8;
+    std::vector<int> npcIds;
+    std::vector<int> locIds;
+    std::unordered_map<int, int> varps;
+    std::unordered_map<int, int> varbits;
+};
+
+struct SessionContractArgs final {
+    std::string cacheNameOrPath;
+    std::string gameName;
+    int revision = -1;
+};
+
 static const char* statusName(rs::Status s);
+static std::vector<std::string> parseJsonStringArray(std::string_view s);
+static std::vector<int> parseCsvInts(const std::string& raw);
 
 static std::string h64Hex(rs::u64 v) {
     char buf[17];
@@ -232,7 +376,10 @@ static bool startsWith(const std::string& s, const char* prefix) {
 template <typename HasIndexFileFn>
 static std::vector<rs::i32> collectDat2IndexIdsForCacheSession(HasIndexFileFn&& hasIndexFile, bool includeMaps) {
     const int mapsIndexId = static_cast<int>(rs::Dat2IndexId::maps);
+    const int animationsIndexId = static_cast<int>(rs::Dat2IndexId::animations);
+    const int skeletonsIndexId = static_cast<int>(rs::Dat2IndexId::skeletons);
     const int configsIndexId = static_cast<int>(rs::Dat2IndexId::configs);
+    const int modelsIndexId = static_cast<int>(rs::Dat2IndexId::models);
     const int spritesIndexId = static_cast<int>(rs::Dat2IndexId::sprites);
     const int texturesIndexId = static_cast<int>(rs::Dat2IndexId::textures);
 
@@ -264,7 +411,10 @@ static std::vector<rs::i32> collectDat2IndexIdsForCacheSession(HasIndexFileFn&& 
     out.reserve(16);
 
     if (includeMaps) out.push_back(static_cast<rs::i32>(mapsIndexId));
+    if (hasIndexFile(animationsIndexId)) out.push_back(static_cast<rs::i32>(animationsIndexId));
+    if (hasIndexFile(skeletonsIndexId)) out.push_back(static_cast<rs::i32>(skeletonsIndexId));
     out.push_back(static_cast<rs::i32>(configsIndexId));
+    if (hasIndexFile(modelsIndexId)) out.push_back(static_cast<rs::i32>(modelsIndexId));
     out.push_back(static_cast<rs::i32>(spritesIndexId));
     out.push_back(static_cast<rs::i32>(texturesIndexId));
 
@@ -366,12 +516,6 @@ static void writeJsonEscaped(std::ostream& os, const std::string& s) {
     os << '"';
 }
 
-enum class CacheKind {
-    Dat2,
-    Dat,
-    Legacy,
-};
-
 static rs::i32 fnv1a32Ints(const rs::Span<const rs::i32> ints) {
     rs::u32 h = 2166136261u;
     for (std::size_t i = 0; i < ints.size(); i++) {
@@ -470,155 +614,16 @@ static rs::Status decodeTypeAndHash(
     return rs::Status::Ok;
 }
 
-static std::optional<CacheKind> detectCacheKind(const fs::path& cacheDir) {
-    const fs::path dat2Path = cacheDir / "main_file_cache.dat2";
-    const fs::path idx255Path = cacheDir / "main_file_cache.idx255";
-    if (fileExists(dat2Path) && fileExists(idx255Path)) {
-        return CacheKind::Dat2;
-    }
-
-    const fs::path datPath = cacheDir / "main_file_cache.dat";
-    if (fileExists(datPath)) {
-        // Consider it a Dat cache if idx0 exists; we’ll validate more strictly while loading.
-        const fs::path idx0Path = cacheDir / "main_file_cache.idx0";
-        if (fileExists(idx0Path)) {
-            return CacheKind::Dat;
-        }
-    }
-
-    const fs::path configPath = cacheDir / "config";
-    const fs::path mediaPath = cacheDir / "media";
-    const fs::path texturesPath = cacheDir / "textures";
-    const fs::path modelsPath = cacheDir / "models";
-    if (fileExists(configPath) && fileExists(mediaPath) && fileExists(texturesPath) && fileExists(modelsPath)) {
-        return CacheKind::Legacy;
-    }
-
-    return std::nullopt;
-}
-
-struct Dat2CliCache final {
-    std::vector<std::unique_ptr<rs::ByteSource>> ownedSources;
-    std::unique_ptr<rs::SectorChainStore> store;
-    rs::CacheSystem cacheSystem;
-};
-
-static int detectDat2MaxIndexId(const fs::path& cacheDir) {
-    int maxIdx = -1;
-    for (const auto& ent : fs::directory_iterator(cacheDir)) {
-        const auto name = ent.path().filename().string();
-        if (!startsWith(name, "main_file_cache.idx")) {
-            continue;
-        }
-        const std::string suffix = name.substr(std::strlen("main_file_cache.idx"));
-        if (suffix == "255" || suffix.empty()) {
-            continue;
-        }
-        bool okDigits = true;
-        for (char c : suffix) {
-            if (!std::isdigit(static_cast<unsigned char>(c))) {
-                okDigits = false;
-                break;
-            }
-        }
-        if (!okDigits) {
-            continue;
-        }
-        const int id = std::stoi(suffix);
-        maxIdx = std::max(maxIdx, id);
-    }
-    return maxIdx;
-}
-
-static bool dat2HasIndexFile(const fs::path& cacheDir, int indexId) {
-    const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(indexId));
-    if (!fileExists(idxPath)) {
-        return false;
-    }
-    std::error_code ec;
-    const std::uintmax_t sz = fs::file_size(idxPath, ec);
-    return !ec && sz > 0;
-}
-
-static Dat2CliCache openDat2CacheSystemForCliWithIndexIds(
-    const fs::path& cacheDir,
-    rs::CacheInfo cacheInfo,
-    const rs::Span<const rs::i32> indexIds,
-    rs::NativeCompressionHandler& compression,
-    rs::Allocator& alloc) {
-    const auto kindOpt = detectCacheKind(cacheDir);
-    if (!kindOpt || *kindOpt != CacheKind::Dat2) {
-        throw std::runtime_error("Only dat2 caches are supported");
-    }
-
-    const fs::path dataPath = cacheDir / "main_file_cache.dat2";
-    const fs::path metaPath = cacheDir / "main_file_cache.idx255";
-    if (!fileExists(dataPath) || !fileExists(metaPath)) {
-        throw std::runtime_error("Missing dat2 cache files");
-    }
-
-    const int maxIdx = detectDat2MaxIndexId(cacheDir);
-    if (maxIdx < 0) {
-        throw std::runtime_error("Failed to detect max idx id");
-    }
-
-    Dat2CliCache out;
-
-    auto addFileSource = [&](const fs::path& p) -> const rs::ByteSource* {
-        const std::string pathStr = p.string();
-        auto opened = rs::FileByteSource::open(pathStr.c_str());
-        if (!opened.isOk()) {
-            throw std::runtime_error("Failed to open file: " + pathStr);
-        }
-        out.ownedSources.push_back(std::make_unique<rs::FileByteSource>(std::move(opened.value())));
-        return out.ownedSources.back().get();
-    };
-
-    rs::Vec<const rs::ByteSource*> indexFiles(rs::defaultAllocator());
-    if (!indexFiles.resize(static_cast<std::size_t>(maxIdx + 1)).isOk()) {
-        throw std::runtime_error("Out of memory");
-    }
-    for (std::size_t i = 0; i < indexFiles.size(); i++) {
-        indexFiles[i] = nullptr;
-    }
-
-    const rs::ByteSource* dataSrc = addFileSource(dataPath);
-    const rs::ByteSource* metaSrc = addFileSource(metaPath);
-    for (int idx = 0; idx <= maxIdx; idx++) {
-        const fs::path idxPath = cacheDir / ("main_file_cache.idx" + std::to_string(idx));
-        if (!fileExists(idxPath)) continue;
-        indexFiles[static_cast<std::size_t>(idx)] = addFileSource(idxPath);
-    }
-
-    out.store = std::make_unique<rs::SectorChainStore>(dataSrc, std::move(indexFiles), metaSrc);
-    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
-    if (cacheType != rs::CacheType::Dat2) {
-        throw std::runtime_error("Expected cacheType=dat2 for the provided game/revision");
-    }
-
-    auto cacheSysRes = rs::CacheSystem::fromStore(cacheType, *out.store, indexIds, compression, alloc);
-    if (!cacheSysRes.isOk()) {
-        throw std::runtime_error(std::string("Failed to create CacheSystem: ") + statusName(cacheSysRes.status()));
-    }
-    out.cacheSystem = std::move(cacheSysRes.value());
-    return out;
-}
-
 static Dat2CliCache openDat2CacheSystemForCli(
     const fs::path& cacheDir,
     rs::CacheInfo cacheInfo,
     rs::NativeCompressionHandler& compression,
     rs::Allocator& alloc,
     bool includeMaps) {
-    const std::vector<rs::i32> indexIds =
-        collectDat2IndexIdsForCacheSession([&](int indexId) { return dat2HasIndexFile(cacheDir, indexId); }, includeMaps);
-
-    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
-    if (cacheType != rs::CacheType::Dat2) {
-        throw std::runtime_error("Expected cacheType=dat2 for the provided game/revision");
-    }
-
-    return openDat2CacheSystemForCliWithIndexIds(
+    const std::vector<rs::i32> indexIds = collectDat2IndexIdsForCacheSession(
+        [&](int indexId) { return rscli::dat2HasIndexFile(cacheDir, indexId); },
+        includeMaps);
+    return rscli::openDat2CacheSystemForCliWithIndexIds(
         cacheDir,
         cacheInfo,
         rs::Span<const rs::i32>(indexIds.data(), indexIds.size()),
@@ -641,6 +646,32 @@ static const char* statusName(rs::Status s) {
         case rs::Status::ChecksumMismatch: return "ChecksumMismatch";
         case rs::Status::SizeMismatch: return "SizeMismatch";
         default: return "Unknown";
+    }
+}
+
+static const char* statusErrorClass(rs::Status s) {
+    switch (s) {
+        case rs::Status::NotFound:
+        case rs::Status::OutOfRange:
+            return "not_found";
+        case rs::Status::BadFormat:
+        case rs::Status::Truncated:
+        case rs::Status::DecompressFailed:
+        case rs::Status::ChecksumMismatch:
+        case rs::Status::SizeMismatch:
+            return "decode_failed";
+        default:
+            return "other";
+    }
+}
+
+static const char* cacheTypeName(rs::CacheType t) {
+    switch (t) {
+        case rs::CacheType::Dat2: return "dat2";
+        case rs::CacheType::Dat: return "dat";
+        case rs::CacheType::Legacy: return "legacy";
+        case rs::CacheType::Classic: return "classic";
+        default: return "unknown";
     }
 }
 
@@ -836,6 +867,305 @@ static ConfigTypeHashArgs parseConfigTypeHashArgs(int argc, char** argv) {
     return args;
 }
 
+static ModelHashArgs parseModelHashArgs(int argc, char** argv) {
+    ModelHashArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--ids" && i + 1 < argc) {
+            std::string raw = argv[++i];
+            std::size_t start = 0;
+            while (start < raw.size()) {
+                const std::size_t comma = raw.find(',', start);
+                const std::size_t end = (comma == std::string::npos) ? raw.size() : comma;
+                std::string part = raw.substr(start, end - start);
+                part.erase(part.begin(),
+                           std::find_if(part.begin(), part.end(), [](unsigned char c) { return !std::isspace(c); }));
+                part.erase(
+                    std::find_if(part.rbegin(), part.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+                    part.end());
+                if (!part.empty()) {
+                    args.ids.push_back(std::stoi(part));
+                }
+                start = (comma == std::string::npos) ? raw.size() : comma + 1;
+            }
+        }
+    }
+    return args;
+}
+
+static SeqFrameHashArgs parseSeqFrameHashArgs(int argc, char** argv) {
+    SeqFrameHashArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--ids" && i + 1 < argc) {
+            std::string raw = argv[++i];
+            std::size_t start = 0;
+            while (start < raw.size()) {
+                const std::size_t comma = raw.find(',', start);
+                const std::size_t end = (comma == std::string::npos) ? raw.size() : comma;
+                std::string part = raw.substr(start, end - start);
+                part.erase(part.begin(),
+                           std::find_if(part.begin(), part.end(), [](unsigned char c) { return !std::isspace(c); }));
+                part.erase(
+                    std::find_if(part.rbegin(), part.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+                    part.end());
+                if (!part.empty()) {
+                    args.ids.push_back(std::stoi(part));
+                }
+                start = (comma == std::string::npos) ? raw.size() : comma + 1;
+            }
+        }
+    }
+    return args;
+}
+
+static SkeletalSeqHashArgs parseSkeletalSeqHashArgs(int argc, char** argv) {
+    SkeletalSeqHashArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--ids" && i + 1 < argc) {
+            args.ids = parseCsvInts(argv[++i]);
+        }
+    }
+    return args;
+}
+
+static SkeletalEvalHashArgs parseSkeletalEvalHashArgs(int argc, char** argv) {
+    SkeletalEvalHashArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--maxFrames" && i + 1 < argc) {
+            args.maxFrames = std::stoi(argv[++i]);
+        } else if (a == "--ids" && i + 1 < argc) {
+            args.ids = parseCsvInts(argv[++i]);
+        }
+    }
+    return args;
+}
+
+static SeqTypeFrameLengthsArgs parseSeqTypeFrameLengthsArgs(int argc, char** argv) {
+    SeqTypeFrameLengthsArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--maxFrames" && i + 1 < argc) {
+            args.maxFrames = std::stoi(argv[++i]);
+        } else if (a == "--ids" && i + 1 < argc) {
+            std::string raw = argv[++i];
+            std::size_t start = 0;
+            while (start < raw.size()) {
+                const std::size_t comma = raw.find(',', start);
+                const std::size_t end = (comma == std::string::npos) ? raw.size() : comma;
+                std::string part = raw.substr(start, end - start);
+                part.erase(part.begin(),
+                           std::find_if(part.begin(), part.end(), [](unsigned char c) { return !std::isspace(c); }));
+                part.erase(
+                    std::find_if(part.rbegin(), part.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+                    part.end());
+                if (!part.empty()) {
+                    args.ids.push_back(std::stoi(part));
+                }
+                start = (comma == std::string::npos) ? raw.size() : comma + 1;
+            }
+        }
+    }
+    return args;
+}
+
+static std::vector<int> parseCsvInts(const std::string& raw) {
+    std::vector<int> out;
+    std::size_t start = 0;
+    while (start < raw.size()) {
+        const std::size_t comma = raw.find(',', start);
+        const std::size_t end = (comma == std::string::npos) ? raw.size() : comma;
+        std::string part = raw.substr(start, end - start);
+        part.erase(part.begin(),
+                   std::find_if(part.begin(), part.end(), [](unsigned char c) { return !std::isspace(c); }));
+        part.erase(
+            std::find_if(part.rbegin(), part.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+            part.end());
+        if (!part.empty()) {
+            out.push_back(std::stoi(part));
+        }
+        start = (comma == std::string::npos) ? raw.size() : comma + 1;
+    }
+    return out;
+}
+
+static std::vector<std::pair<int, int>> parseCsvPairs(const std::string& raw) {
+    std::vector<std::pair<int, int>> out;
+    std::size_t start = 0;
+    while (start < raw.size()) {
+        const std::size_t comma = raw.find(',', start);
+        const std::size_t end = (comma == std::string::npos) ? raw.size() : comma;
+        std::string part = raw.substr(start, end - start);
+        part.erase(part.begin(),
+                   std::find_if(part.begin(), part.end(), [](unsigned char c) { return !std::isspace(c); }));
+        part.erase(
+            std::find_if(part.rbegin(), part.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+            part.end());
+        if (!part.empty()) {
+            const std::size_t sep = part.find(':');
+            if (sep == std::string::npos) {
+                throw std::runtime_error("Invalid pair (expected a:b): " + part);
+            }
+            const int a = std::stoi(part.substr(0, sep));
+            const int b = std::stoi(part.substr(sep + 1));
+            out.push_back({a, b});
+        }
+        start = (comma == std::string::npos) ? raw.size() : comma + 1;
+    }
+    return out;
+}
+
+static std::unordered_map<int, int> parseCsvIntAssignments(const std::string& raw) {
+    std::unordered_map<int, int> out;
+    std::size_t start = 0;
+    while (start < raw.size()) {
+        const std::size_t comma = raw.find(',', start);
+        const std::size_t end = (comma == std::string::npos) ? raw.size() : comma;
+        std::string part = raw.substr(start, end - start);
+        part.erase(part.begin(),
+                   std::find_if(part.begin(), part.end(), [](unsigned char c) { return !std::isspace(c); }));
+        part.erase(
+            std::find_if(part.rbegin(), part.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+            part.end());
+        if (!part.empty()) {
+            const std::size_t eq = part.find('=');
+            if (eq == std::string::npos) {
+                throw std::runtime_error("Invalid assignment (expected id=value): " + part);
+            }
+            std::string key = part.substr(0, eq);
+            std::string value = part.substr(eq + 1);
+            key.erase(key.begin(),
+                      std::find_if(key.begin(), key.end(), [](unsigned char c) { return !std::isspace(c); }));
+            key.erase(
+                std::find_if(key.rbegin(), key.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+                key.end());
+            value.erase(value.begin(),
+                        std::find_if(value.begin(), value.end(), [](unsigned char c) { return !std::isspace(c); }));
+            value.erase(
+                std::find_if(value.rbegin(), value.rend(), [](unsigned char c) { return !std::isspace(c); }).base(),
+                value.end());
+            if (key.empty() || value.empty()) {
+                throw std::runtime_error("Invalid assignment (empty key/value): " + part);
+            }
+            out[std::stoi(key)] = std::stoi(value);
+        }
+        start = (comma == std::string::npos) ? raw.size() : comma + 1;
+    }
+    return out;
+}
+
+static AnimSelectionSnapshotArgs parseAnimSelectionSnapshotArgs(int argc, char** argv) {
+    AnimSelectionSnapshotArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--maxFrames" && i + 1 < argc) {
+            args.maxFrames = std::stoi(argv[++i]);
+        } else if (a == "--npcIds" && i + 1 < argc) {
+            args.npcIds = parseCsvInts(argv[++i]);
+        } else if (a == "--locIds" && i + 1 < argc) {
+            args.locIds = parseCsvInts(argv[++i]);
+        }
+    }
+    return args;
+}
+
+static TransformSnapshotArgs parseTransformSnapshotArgs(int argc, char** argv) {
+    TransformSnapshotArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--maxSteps" && i + 1 < argc) {
+            args.maxSteps = std::stoi(argv[++i]);
+        } else if (a == "--npcIds" && i + 1 < argc) {
+            args.npcIds = parseCsvInts(argv[++i]);
+        } else if (a == "--locIds" && i + 1 < argc) {
+            args.locIds = parseCsvInts(argv[++i]);
+        } else if (a == "--varps" && i + 1 < argc) {
+            args.varps = parseCsvIntAssignments(argv[++i]);
+        } else if (a == "--varbits" && i + 1 < argc) {
+            args.varbits = parseCsvIntAssignments(argv[++i]);
+        }
+    }
+    return args;
+}
+
+static SkeletalModelHashArgs parseSkeletalModelHashArgs(int argc, char** argv) {
+    SkeletalModelHashArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        } else if (a == "--frame" && i + 1 < argc) {
+            args.frame = std::stoi(argv[++i]);
+        } else if (a == "--pairs" && i + 1 < argc) {
+            args.pairs = parseCsvPairs(argv[++i]);
+        }
+    }
+    return args;
+}
+
+static SessionContractArgs parseSessionContractArgs(int argc, char** argv) {
+    SessionContractArgs args;
+    for (int i = 0; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--cache" && i + 1 < argc) {
+            args.cacheNameOrPath = argv[++i];
+        } else if (a == "--game" && i + 1 < argc) {
+            args.gameName = argv[++i];
+        } else if (a == "--revision" && i + 1 < argc) {
+            args.revision = std::stoi(argv[++i]);
+        }
+    }
+    return args;
+}
+
 static TerrainSquareHashArgs parseTerrainSquareHashArgs(int argc, char** argv) {
     TerrainSquareHashArgs args;
     for (int i = 0; i < argc; i++) {
@@ -933,6 +1263,55 @@ static const char* textureModeName(rs::TextureMode m) {
     }
 }
 
+static rs::CacheSession createSessionOrThrow(
+    rs::CacheSystem& cacheSystem,
+    const rs::CacheInfo& cacheInfo,
+    rs::Allocator& alloc) {
+    auto sessionRes = rs::CacheSession::tryCreate(cacheSystem, cacheInfo, alloc);
+    if (!sessionRes.isOk()) {
+        throw std::runtime_error(initErrorToString(sessionRes.error()));
+    }
+    rs::CacheSession session = std::move(sessionRes.value());
+
+    const rs::Loaders::Capabilities sessionCaps = rs::Loaders::capabilitiesFor(session);
+    if (session.hasQuestTypeLoader() != sessionCaps.hasQuestTypeLoader ||
+        session.hasSkeletalSeqLoader() != sessionCaps.hasSkeletalSeqLoader ||
+        session.hasDistinctUnderlayTypeLoader() != sessionCaps.hasDistinctUnderlayTypeLoader) {
+        throw std::runtime_error("session method/capability mismatch");
+    }
+
+    return session;
+}
+
+static void assertSessionStatusContract(rs::CacheSession& session, const rs::Loaders::Capabilities& sessionCaps) {
+    const rs::UnderlayFloorType* underlay = nullptr;
+    const rs::Status underlayStatus = session.tryGetUnderlayFloorType(0, &underlay);
+    if (sessionCaps.hasDistinctUnderlayTypeLoader) {
+        if (!(underlayStatus == rs::Status::Ok || underlayStatus == rs::Status::OutOfRange ||
+              underlayStatus == rs::Status::NotFound || underlayStatus == rs::Status::Unsupported)) {
+            throw std::runtime_error("underlay status mismatch for dat2 capability");
+        }
+    } else if (underlayStatus != rs::Status::Unsupported) {
+        throw std::runtime_error("underlay status mismatch for non-dat2 capability");
+    }
+
+    const rs::CacheIndex* spritesIndex = nullptr;
+    const rs::Status spriteIndexStatus = session.tryGetSpritesIndex(&spritesIndex);
+    if (sessionCaps.cacheType == rs::CacheType::Dat2) {
+        if (!(spriteIndexStatus == rs::Status::Ok || spriteIndexStatus == rs::Status::NotFound)) {
+            throw std::runtime_error("sprites index status mismatch for dat2");
+        }
+    } else if (spriteIndexStatus != rs::Status::Unsupported) {
+        throw std::runtime_error("sprites index status mismatch for non-dat2");
+    }
+
+    rs::i32 missingMapArchiveId = -1;
+    const rs::Status missingMapStatus = session.tryGetMapArchiveId("__missing_contract_probe__", &missingMapArchiveId);
+    if (!(missingMapStatus == rs::Status::NotFound || missingMapStatus == rs::Status::Unsupported)) {
+        throw std::runtime_error("missing map archive status mismatch");
+    }
+}
+
 static int cmdParity(int argc, char** argv) {
     const ParityArgs args = parseParityArgs(argc, argv);
     const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
@@ -959,7 +1338,7 @@ static int cmdParity(int argc, char** argv) {
 
     std::vector<Entry> entries;
 
-    const auto kindOpt = detectCacheKind(cacheDir);
+    const auto kindOpt = rscli::detectCacheKind(cacheDir);
     if (!kindOpt) {
         throw std::runtime_error("Could not detect cache kind (expected dat2, dat, or legacy layout)");
     }
@@ -1401,14 +1780,10 @@ static int cmdTextureHashes(int argc, char** argv) {
     Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
 
-    auto sessionRes = rs::CacheSession::tryCreate(cacheSystem, cacheInfo, alloc);
-    if (!sessionRes.isOk()) {
-        throw std::runtime_error(initErrorToString(sessionRes.error()));
-    }
-    rs::CacheSession session = std::move(sessionRes.value());
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
-    const rs::TextureMode mode = session.textures.mode;
-    if (session.textures.status == rs::Status::Unsupported) {
+    const rs::TextureMode mode = session.textureMode();
+    if (session.textureStatus() == rs::Status::Unsupported) {
         throw std::runtime_error("Unsupported texture mode for this cache");
     }
 
@@ -1430,16 +1805,12 @@ static int cmdTextureHashes(int argc, char** argv) {
     for (std::size_t i = 0; i < args.ids.size(); i++) {
         const int id = args.ids[i];
 
-        rs::Result<rs::Vec<rs::i32>> pixRes = rs::Result<rs::Vec<rs::i32>>::err(rs::Status::Unsupported);
-        if (mode == rs::TextureMode::Sprite) {
-            pixRes = session.textures.sprite.tryGetPixelsArgb(static_cast<rs::i32>(id), args.size, args.flipH, args.brightness, alloc);
-        } else if (mode == rs::TextureMode::Dat) {
-            pixRes = session.textures.dat.tryGetPixelsArgb(static_cast<rs::i32>(id), args.size, args.flipH, args.brightness, alloc);
-        } else if (mode == rs::TextureMode::Materials) {
-            pixRes = session.textures.procedural.tryGetPixelsArgb(static_cast<rs::i32>(id), args.size, args.flipH, args.brightness, alloc);
-        } else {
-            pixRes = session.textures.oldProcedural.tryGetPixelsArgb(static_cast<rs::i32>(id), args.size, args.flipH, args.brightness, alloc);
-        }
+        rs::Result<rs::Vec<rs::i32>> pixRes = session.tryGetTexturePixelsArgb(
+            static_cast<rs::i32>(id),
+            args.size,
+            args.flipH,
+            args.brightness,
+            alloc);
 
         std::cout << "    { \"id\": " << id;
         if (!pixRes.isOk()) {
@@ -1489,8 +1860,6 @@ static int cmdTerrainSquareHashes(int argc, char** argv) {
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::NativeCompressionHandler compression;
 
-    const int mapsIndexId = static_cast<int>(rs::Dat2IndexId::maps);
-
     rs::CacheInfo cacheInfo{};
     const std::string cacheName = cacheDir.filename().string();
     cacheInfo.name = cacheName.c_str();
@@ -1499,12 +1868,7 @@ static int cmdTerrainSquareHashes(int argc, char** argv) {
 
     Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/true);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
-
-    const rs::CacheIndex* mapIndex = nullptr;
-    rs::Status s = cacheSystem.getIndex(static_cast<rs::i32>(mapsIndexId), &mapIndex);
-    if (!rs::ok(s) || !mapIndex) {
-        throw std::runtime_error("Failed to get maps index");
-    }
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
     rs::TerrainSquare square{};
     auto rr = square.init(alloc);
@@ -1529,15 +1893,16 @@ static int cmdTerrainSquareHashes(int argc, char** argv) {
         const int mapY = args.squares[i].second;
 
         const std::string name = "m" + std::to_string(mapX) + "_" + std::to_string(mapY);
-        const rs::i32 archiveId = mapIndex->getArchiveId(name.c_str());
+        rs::i32 archiveId = -1;
+        const rs::Status mapIdStatus = session.tryGetMapArchiveId(name.c_str(), &archiveId);
 
         std::cout << "    { \"mapX\": " << mapX << ", \"mapY\": " << mapY;
-        if (archiveId < 0) {
+        if (!rs::ok(mapIdStatus) || archiveId < 0) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string("NotFound"));
             std::cout << ", \"statusCode\": " << static_cast<int>(rs::Status::NotFound) << " }";
         } else {
-            auto archRes = mapIndex->getArchive(archiveId, alloc);
+            auto archRes = session.tryGetMapArchive(archiveId, alloc);
             if (!archRes.isOk()) {
                 std::cout << ", \"ok\": false, \"status\": ";
                 writeJsonEscaped(std::cout, std::string(statusName(archRes.status())));
@@ -1700,8 +2065,6 @@ static int cmdLocSquareHashes(int argc, char** argv) {
 
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::NativeCompressionHandler compression;
-    const int mapsIndexId = static_cast<int>(rs::Dat2IndexId::maps);
-
     rs::CacheInfo cacheInfo{};
     const std::string cacheName = cacheDir.filename().string();
     cacheInfo.name = cacheName.c_str();
@@ -1710,11 +2073,7 @@ static int cmdLocSquareHashes(int argc, char** argv) {
     Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/true);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
 
-    const rs::CacheIndex* mapIndex = nullptr;
-    rs::Status s = cacheSystem.getIndex(static_cast<rs::i32>(mapsIndexId), &mapIndex);
-    if (!rs::ok(s) || !mapIndex) {
-        throw std::runtime_error("Failed to get maps index");
-    }
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
     std::cout << "{\n";
     std::cout << "  \"schema\": 1,\n";
@@ -1730,10 +2089,11 @@ static int cmdLocSquareHashes(int argc, char** argv) {
         const int mapY = args.squares[i].second;
 
         const std::string name = "l" + std::to_string(mapX) + "_" + std::to_string(mapY);
-        const rs::i32 archiveId = mapIndex->getArchiveId(name.c_str());
+        rs::i32 archiveId = -1;
+        const rs::Status mapIdStatus = session.tryGetMapArchiveId(name.c_str(), &archiveId);
 
         std::cout << "    { \"mapX\": " << mapX << ", \"mapY\": " << mapY;
-        if (archiveId < 0) {
+        if (!rs::ok(mapIdStatus) || archiveId < 0) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string("NotFound"));
             std::cout << ", \"statusCode\": " << static_cast<int>(rs::Status::NotFound) << " }";
@@ -1744,7 +2104,7 @@ static int cmdLocSquareHashes(int argc, char** argv) {
                 keyPtr = &it->second;
             }
 
-            auto archRes = mapIndex->getArchiveKey(archiveId, keyPtr, alloc);
+            auto archRes = session.tryGetMapArchiveKey(archiveId, keyPtr, alloc);
             if (!archRes.isOk()) {
                 std::cout << ", \"ok\": false, \"status\": ";
                 writeJsonEscaped(std::cout, std::string(statusName(archRes.status())));
@@ -1816,12 +2176,7 @@ static int cmdNpcSpawnSquareHashes(int argc, char** argv) {
     Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/true);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
 
-    const int mapsIndexId = static_cast<int>(rs::Dat2IndexId::maps);
-    const rs::CacheIndex* mapIndex = nullptr;
-    rs::Status s = cacheSystem.getIndex(static_cast<rs::i32>(mapsIndexId), &mapIndex);
-    if (!rs::ok(s) || !mapIndex) {
-        throw std::runtime_error("Failed to get maps index");
-    }
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
     rs::TerrainSquare terrain{};
     auto rr = terrain.init(alloc);
@@ -1847,26 +2202,29 @@ static int cmdNpcSpawnSquareHashes(int argc, char** argv) {
         const std::string npcName = "n" + std::to_string(mapX) + "_" + std::to_string(mapY);
         const std::string terrainName = "m" + std::to_string(mapX) + "_" + std::to_string(mapY);
 
-        const rs::i32 locArchiveId = mapIndex->getArchiveId(locName.c_str());
-        const rs::i32 npcArchiveId = mapIndex->getArchiveId(npcName.c_str());
-        const rs::i32 terrainArchiveId = mapIndex->getArchiveId(terrainName.c_str());
+        rs::i32 locArchiveId = -1;
+        rs::i32 npcArchiveId = -1;
+        rs::i32 terrainArchiveId = -1;
+        const rs::Status locIdStatus = session.tryGetMapArchiveId(locName.c_str(), &locArchiveId);
+        const rs::Status npcIdStatus = session.tryGetMapArchiveId(npcName.c_str(), &npcArchiveId);
+        const rs::Status terrainIdStatus = session.tryGetMapArchiveId(terrainName.c_str(), &terrainArchiveId);
 
         std::cout << "    { \"mapX\": " << mapX << ", \"mapY\": " << mapY;
-        if (npcArchiveId < 0) {
+        if (!rs::ok(npcIdStatus) || npcArchiveId < 0) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string("NotFound"));
             std::cout << ", \"statusCode\": " << static_cast<int>(rs::Status::NotFound) << " }";
-        } else if (locArchiveId < 0) {
+        } else if (!rs::ok(locIdStatus) || locArchiveId < 0) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string("NotFound"));
             std::cout << ", \"statusCode\": " << static_cast<int>(rs::Status::NotFound) << " }";
-        } else if (terrainArchiveId < 0) {
+        } else if (!rs::ok(terrainIdStatus) || terrainArchiveId < 0) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string("NotFound"));
             std::cout << ", \"statusCode\": " << static_cast<int>(rs::Status::NotFound) << " }";
         } else {
             // Decode terrain first to get level-1 render flags for bridge adjustments.
-            auto terrRes = mapIndex->getArchive(terrainArchiveId, alloc);
+            auto terrRes = session.tryGetMapArchive(terrainArchiveId, alloc);
             if (!terrRes.isOk()) {
                 std::cout << ", \"ok\": false, \"status\": ";
                 writeJsonEscaped(std::cout, std::string(statusName(terrRes.status())));
@@ -1897,7 +2255,7 @@ static int cmdNpcSpawnSquareHashes(int argc, char** argv) {
                             keyPtr = &it->second;
                         }
 
-                        auto archRes = mapIndex->getArchiveKey(npcArchiveId, keyPtr, alloc);
+                        auto archRes = session.tryGetMapArchiveKey(npcArchiveId, keyPtr, alloc);
                         if (!archRes.isOk()) {
                             std::cout << ", \"ok\": false, \"status\": ";
                             writeJsonEscaped(std::cout, std::string(statusName(archRes.status())));
@@ -1981,15 +2339,9 @@ static int cmdMapSquareInputsHashes(int argc, char** argv) {
 
     Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/true);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
     const std::unordered_map<rs::i32, rs::XteaKey> keysByArchiveId = loadKeysJsonIfPresent(cacheDir);
-
-    const int mapsIndexId = static_cast<int>(rs::Dat2IndexId::maps);
-    const rs::CacheIndex* mapIndex = nullptr;
-    rs::Status s = cacheSystem.getIndex(static_cast<rs::i32>(mapsIndexId), &mapIndex);
-    if (!rs::ok(s) || !mapIndex) {
-        throw std::runtime_error("Failed to get maps index");
-    }
 
     rs::TerrainSquare terrain{};
     auto rr = terrain.init(alloc);
@@ -2016,17 +2368,20 @@ static int cmdMapSquareInputsHashes(int argc, char** argv) {
         const std::string locName = "l" + std::to_string(mapX) + "_" + std::to_string(mapY);
         const std::string npcName = "n" + std::to_string(mapX) + "_" + std::to_string(mapY);
 
-        const rs::i32 terrainArchiveId = mapIndex->getArchiveId(terrainName.c_str());
-        const rs::i32 locArchiveId = mapIndex->getArchiveId(locName.c_str());
-        const rs::i32 npcArchiveId = mapIndex->getArchiveId(npcName.c_str());
+        rs::i32 terrainArchiveId = -1;
+        rs::i32 locArchiveId = -1;
+        rs::i32 npcArchiveId = -1;
+        const rs::Status terrainIdStatus = session.tryGetMapArchiveId(terrainName.c_str(), &terrainArchiveId);
+        const rs::Status locIdStatus = session.tryGetMapArchiveId(locName.c_str(), &locArchiveId);
+        const rs::Status npcIdStatus = session.tryGetMapArchiveId(npcName.c_str(), &npcArchiveId);
 
         std::cout << "    { \"mapX\": " << mapX << ", \"mapY\": " << mapY;
-        if (terrainArchiveId < 0 || locArchiveId < 0) {
+        if (!rs::ok(terrainIdStatus) || !rs::ok(locIdStatus) || terrainArchiveId < 0 || locArchiveId < 0) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string("NotFound"));
             std::cout << ", \"statusCode\": " << static_cast<int>(rs::Status::NotFound) << " }";
         } else {
-            auto terrRes = mapIndex->getArchive(terrainArchiveId, alloc);
+            auto terrRes = session.tryGetMapArchive(terrainArchiveId, alloc);
             if (!terrRes.isOk()) {
                 std::cout << ", \"ok\": false, \"status\": ";
                 writeJsonEscaped(std::cout, std::string(statusName(terrRes.status())));
@@ -2057,7 +2412,7 @@ static int cmdMapSquareInputsHashes(int argc, char** argv) {
                             keyPtr = &itKey->second;
                         }
 
-                        auto locRes = mapIndex->getArchiveKey(locArchiveId, keyPtr, alloc);
+                        auto locRes = session.tryGetMapArchiveKey(locArchiveId, keyPtr, alloc);
                         if (!locRes.isOk()) {
                             std::cout << ", \"ok\": false, \"status\": ";
                             writeJsonEscaped(std::cout, std::string(statusName(locRes.status())));
@@ -2081,8 +2436,8 @@ static int cmdMapSquareInputsHashes(int argc, char** argv) {
                                     bool hasNpc = false;
                                     rs::Status ns = rs::Status::Ok;
 
-                                    if (npcArchiveId >= 0) {
-                                        auto npcRes = mapIndex->getArchiveKey(npcArchiveId, keyPtr, alloc);
+                                    if (rs::ok(npcIdStatus) && npcArchiveId >= 0) {
+                                        auto npcRes = session.tryGetMapArchiveKey(npcArchiveId, keyPtr, alloc);
                                         if (npcRes.isOk()) {
                                             rs::Archive npc = std::move(npcRes.value());
                                             const rs::ArchiveFile* npcFile = npc.getFile(0);
@@ -2849,6 +3204,1406 @@ static rs::u32 hashGraphicsDefaults(const rs::GraphicsDefaults& t) noexcept {
     return h;
 }
 
+template <typename T>
+static rs::u32 fnv1a32UpdateVec(rs::u32 h, const rs::Vec<T>& v) noexcept {
+    h = fnv1a32UpdateInt(h, static_cast<rs::i32>(v.size()));
+    for (std::size_t i = 0; i < v.size(); i++) {
+        h = fnv1a32UpdateInt(h, static_cast<rs::i32>(v[i]));
+    }
+    return h;
+}
+
+template <typename T>
+static rs::u32 fnv1a32UpdateOptionalVec(rs::u32 h, bool present, const rs::Vec<T>& v) noexcept {
+    h = fnv1a32UpdateInt(h, present ? 1 : 0);
+    if (present) {
+        h = fnv1a32UpdateVec(h, v);
+    }
+    return h;
+}
+
+static rs::u32 fnv1a32UpdateNestedVec(rs::u32 h, bool present, const rs::Vec<rs::Vec<rs::i32>>& v) noexcept {
+    h = fnv1a32UpdateInt(h, present ? 1 : 0);
+    if (!present) {
+        return h;
+    }
+    h = fnv1a32UpdateInt(h, static_cast<rs::i32>(v.size()));
+    for (std::size_t i = 0; i < v.size(); i++) {
+        h = fnv1a32UpdateVec(h, v[i]);
+    }
+    return h;
+}
+
+static rs::u32 hashModelData(const rs::ModelData& m) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x4d444154); // 'MDAT'
+    h = fnv1a32UpdateInt(h, m.version);
+    h = fnv1a32UpdateInt(h, m.verticesCount);
+    h = fnv1a32UpdateInt(h, m.usedVertexCount);
+    h = fnv1a32UpdateInt(h, m.faceCount);
+    h = fnv1a32UpdateInt(h, m.textureFaceCount);
+    h = fnv1a32UpdateInt(h, m.priority);
+    h = fnv1a32UpdateVec(h, m.verticesX);
+    h = fnv1a32UpdateVec(h, m.verticesY);
+    h = fnv1a32UpdateVec(h, m.verticesZ);
+    h = fnv1a32UpdateVec(h, m.indices1);
+    h = fnv1a32UpdateVec(h, m.indices2);
+    h = fnv1a32UpdateVec(h, m.indices3);
+    h = fnv1a32UpdateVec(h, m.faceColors);
+    h = fnv1a32UpdateOptionalVec(h, m.hasFaceRenderTypes, m.faceRenderTypes);
+    h = fnv1a32UpdateOptionalVec(h, m.hasFaceRenderPriorities, m.faceRenderPriorities);
+    h = fnv1a32UpdateOptionalVec(h, m.hasFaceAlphas, m.faceAlphas);
+    h = fnv1a32UpdateOptionalVec(h, m.hasTextureCoords, m.textureCoords);
+    h = fnv1a32UpdateOptionalVec(h, m.hasFaceTextures, m.faceTextures);
+    h = fnv1a32UpdateVec(h, m.textureRenderTypes);
+    h = fnv1a32UpdateVec(h, m.textureMappingP);
+    h = fnv1a32UpdateVec(h, m.textureMappingM);
+    h = fnv1a32UpdateVec(h, m.textureMappingN);
+    h = fnv1a32UpdateVec(h, m.textureScaleX);
+    h = fnv1a32UpdateVec(h, m.textureScaleY);
+    h = fnv1a32UpdateVec(h, m.textureScaleZ);
+    h = fnv1a32UpdateVec(h, m.textureRotation);
+    h = fnv1a32UpdateVec(h, m.textureDirection);
+    h = fnv1a32UpdateVec(h, m.textureSpeed);
+    h = fnv1a32UpdateVec(h, m.textureTransU);
+    h = fnv1a32UpdateVec(h, m.textureTransV);
+    h = fnv1a32UpdateOptionalVec(h, m.hasVertexSkins, m.vertexSkins);
+    h = fnv1a32UpdateOptionalVec(h, m.hasFaceSkins, m.faceSkins);
+    h = fnv1a32UpdateNestedVec(h, m.hasMayaGroups, m.animMayaGroups);
+    h = fnv1a32UpdateNestedVec(h, m.hasMayaGroups, m.animMayaScales);
+    return h;
+}
+
+static rs::u32 hashSeqFrame(const rs::SeqFrame& f) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x53514652); // 'SQFR'
+    h = fnv1a32UpdateInt(h, f.frameLength);
+    h = fnv1a32UpdateInt(h, f.baseId);
+    h = fnv1a32UpdateInt(h, f.transformCount);
+    h = fnv1a32UpdateInt(h, f.hasAlphaTransform ? 1 : 0);
+    h = fnv1a32UpdateInt(h, f.hasColorTransform ? 1 : 0);
+    h = fnv1a32UpdateVec(h, f.transformGroups);
+    h = fnv1a32UpdateVec(h, f.transformX);
+    h = fnv1a32UpdateVec(h, f.transformY);
+    h = fnv1a32UpdateVec(h, f.transformZ);
+    h = fnv1a32UpdateVec(h, f.resetOriginGroups);
+    return h;
+}
+
+static rs::u32 hashSkeletalSeq(const rs::SkeletalSeq& s) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x534b454c); // 'SKEL'
+    h = fnv1a32UpdateInt(h, s.id);
+    h = fnv1a32UpdateInt(h, s.version);
+    h = fnv1a32UpdateInt(h, s.baseId);
+    h = fnv1a32UpdateInt(h, s.poseId);
+    h = fnv1a32UpdateInt(h, s.curveCount);
+    h = fnv1a32UpdateInt(h, s.hasAlphaTransform ? 1 : 0);
+    return h;
+}
+
+static rs::u32 fnv1a32UpdateFloat(rs::u32 h, float v) noexcept {
+    rs::u32 bits = 0;
+    static_assert(sizeof(float) == sizeof(rs::u32), "float size mismatch");
+    std::memcpy(&bits, &v, sizeof(bits));
+    h ^= (bits) & 0xFFu;
+    h *= 16777619u;
+    h ^= (bits >> 8) & 0xFFu;
+    h *= 16777619u;
+    h ^= (bits >> 16) & 0xFFu;
+    h *= 16777619u;
+    h ^= (bits >> 24) & 0xFFu;
+    h *= 16777619u;
+    return h;
+}
+
+static rs::u32 hashSkeletalFinalMatrices(const rs::Span<const rs::Mat4f> mats) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x534b464d); // 'SKFM'
+    h = fnv1a32UpdateInt(h, static_cast<rs::i32>(mats.size()));
+    for (std::size_t i = 0; i < mats.size(); i++) {
+        for (int e = 0; e < 16; e++) {
+            h = fnv1a32UpdateFloat(h, mats[i].v[e]);
+        }
+    }
+    return h;
+}
+
+static rs::u32 hashModelVertices(const rs::ModelData& m) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x534b4d44); // 'SKMD'
+    h = fnv1a32UpdateInt(h, m.verticesCount);
+    for (std::size_t i = 0; i < m.verticesX.size(); i++) {
+        h = fnv1a32UpdateInt(h, m.verticesX[i]);
+    }
+    for (std::size_t i = 0; i < m.verticesY.size(); i++) {
+        h = fnv1a32UpdateInt(h, m.verticesY[i]);
+    }
+    for (std::size_t i = 0; i < m.verticesZ.size(); i++) {
+        h = fnv1a32UpdateInt(h, m.verticesZ[i]);
+    }
+    return h;
+}
+
+static rs::u32 hashModelFaceAlphas(const rs::ModelData& m) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateInt(h, 0x534b4d41); // 'SKMA'
+    const bool has = m.hasFaceAlphas && !m.faceAlphas.empty();
+    h = fnv1a32UpdateInt(h, has ? 1 : 0);
+    h = fnv1a32UpdateInt(h, static_cast<rs::i32>(m.faceAlphas.size()));
+    for (std::size_t i = 0; i < m.faceAlphas.size(); i++) {
+        const rs::i32 a = static_cast<unsigned char>(m.faceAlphas[i]);
+        h = fnv1a32UpdateInt(h, a);
+    }
+    return h;
+}
+
+static int cmdModelHashes(int argc, char** argv) {
+    const ModelHashArgs args = parseModelHashArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.ids.empty()) {
+        throw std::runtime_error("Missing --ids <comma-separated>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.ids.size(); i++) {
+        const int id = args.ids[i];
+        std::cout << "    { \"id\": " << id;
+
+        rs::ModelData model(alloc);
+        const rs::Status st = session.tryLoadModel(static_cast<rs::i32>(id), &model);
+        if (!rs::ok(st)) {
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            const rs::u32 hash = hashModelData(model);
+            std::cout << ", \"ok\": true, \"hash\": " << static_cast<rs::i32>(hash) << " }";
+        }
+
+        if (i + 1 < args.ids.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdSeqFrameHashes(int argc, char** argv) {
+    const SeqFrameHashArgs args = parseSeqFrameHashArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.ids.empty()) {
+        throw std::runtime_error("Missing --ids <comma-separated>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"hasSeqFrameService\": " << (session.hasSeqFrameService() ? "true" : "false") << ",\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.ids.size(); i++) {
+        const int id = args.ids[i];
+        std::cout << "    { \"id\": " << id;
+
+        rs::SeqFrame frame(alloc);
+        const rs::Status st = session.tryLoadSeqFrame(static_cast<rs::i32>(id), &frame);
+        if (!rs::ok(st)) {
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            const rs::u32 hash = hashSeqFrame(frame);
+            std::cout << ", \"ok\": true, \"hash\": " << static_cast<rs::i32>(hash) << " }";
+        }
+
+        if (i + 1 < args.ids.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdSkeletalSeqHashes(int argc, char** argv) {
+    const SkeletalSeqHashArgs args = parseSkeletalSeqHashArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.ids.empty()) {
+        throw std::runtime_error("Missing --ids <comma-separated>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"hasSkeletalSeqLoader\": " << (session.hasSkeletalSeqLoader() ? "true" : "false") << ",\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.ids.size(); i++) {
+        const int id = args.ids[i];
+        std::cout << "    { \"id\": " << id;
+
+        rs::SkeletalSeq seq{};
+        const rs::Status st = session.tryLoadSkeletalSeq(static_cast<rs::i32>(id), &seq);
+        if (!rs::ok(st)) {
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            const rs::u32 hash = hashSkeletalSeq(seq);
+            std::cout << ", \"ok\": true";
+            std::cout << ", \"hash\": " << static_cast<rs::i32>(hash);
+            std::cout << ", \"version\": " << seq.version;
+            std::cout << ", \"baseId\": " << seq.baseId;
+            std::cout << ", \"poseId\": " << seq.poseId;
+            std::cout << ", \"curveCount\": " << seq.curveCount;
+            std::cout << ", \"hasAlphaTransform\": " << (seq.hasAlphaTransform ? "true" : "false");
+            std::cout << " }";
+        }
+
+        if (i + 1 < args.ids.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdSkeletalEvalHashes(int argc, char** argv) {
+    const SkeletalEvalHashArgs args = parseSkeletalEvalHashArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.maxFrames <= 0) {
+        throw std::runtime_error("Invalid --maxFrames");
+    }
+    if (args.ids.empty()) {
+        throw std::runtime_error("Missing --ids <comma-separated>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"maxFrames\": " << args.maxFrames << ",\n";
+    std::cout << "  \"hasSkeletalSeqLoader\": " << (session.hasSkeletalSeqLoader() ? "true" : "false") << ",\n";
+    std::cout << "  \"hasSeqBaseService\": " << (session.hasSeqBaseService() ? "true" : "false") << ",\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.ids.size(); i++) {
+        const rs::i32 id = static_cast<rs::i32>(args.ids[i]);
+        std::cout << "    { \"id\": " << id;
+
+        rs::SkeletalSeq seq{};
+        rs::Status st = session.tryLoadSkeletalSeq(id, &seq);
+        if (!rs::ok(st)) {
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            const rs::i32 sampleCount = static_cast<rs::i32>(args.maxFrames);
+            std::cout << ", \"ok\": true";
+            std::cout << ", \"baseId\": " << seq.baseId;
+            std::cout << ", \"poseId\": " << seq.poseId;
+            std::cout << ", \"curveCount\": " << seq.curveCount;
+            std::cout << ", \"frameCount\": " << sampleCount;
+            std::cout << ", \"samples\": [";
+            for (rs::i32 si = 0; si < sampleCount; si++) {
+                const rs::i32 frame = si;
+                rs::Vec<rs::Mat4f> finalMatrices(alloc);
+                const rs::Status es = session.tryComputeSkeletalFinalMatrices(id, frame, &finalMatrices, alloc);
+                if (si > 0) std::cout << ", ";
+                std::cout << "{ \"frame\": " << frame;
+                if (!rs::ok(es)) {
+                    std::cout << ", \"ok\": false, \"status\": ";
+                    writeJsonEscaped(std::cout, std::string(statusName(es)));
+                    std::cout << ", \"errorClass\": ";
+                    writeJsonEscaped(std::cout, std::string(statusErrorClass(es)));
+                } else {
+                    const rs::u32 hash = hashSkeletalFinalMatrices(rs::Span<const rs::Mat4f>(finalMatrices.data(), finalMatrices.size()));
+                    std::cout << ", \"ok\": true";
+                    std::cout << ", \"boneCount\": " << finalMatrices.size();
+                    std::cout << ", \"hash\": " << static_cast<rs::i32>(hash);
+                }
+                std::cout << " }";
+            }
+            std::cout << "] }";
+        }
+
+        if (i + 1 < args.ids.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdSkeletalModelHashes(int argc, char** argv) {
+    const SkeletalModelHashArgs args = parseSkeletalModelHashArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.pairs.empty()) {
+        throw std::runtime_error("Missing --pairs <seqId:modelId,...>");
+    }
+    if (args.frame < 0) {
+        throw std::runtime_error("Invalid --frame");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"frame\": " << args.frame << ",\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.pairs.size(); i++) {
+        const rs::i32 seqId = static_cast<rs::i32>(args.pairs[i].first);
+        const rs::i32 modelId = static_cast<rs::i32>(args.pairs[i].second);
+        std::cout << "    { \"seqId\": " << seqId << ", \"modelId\": " << modelId;
+
+        rs::SkeletalSeq seq{};
+        rs::Status st = session.tryLoadSkeletalSeq(seqId, &seq);
+        if (!rs::ok(st)) {
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            rs::ModelData model(alloc);
+            st = session.tryLoadModel(modelId, &model);
+            if (!rs::ok(st)) {
+                std::cout << ", \"ok\": false, \"status\": ";
+                writeJsonEscaped(std::cout, std::string(statusName(st)));
+                std::cout << ", \"errorClass\": ";
+                writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+                std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+            } else {
+                const rs::i32 evalFrame = static_cast<rs::i32>(args.frame);
+                const rs::Status as = session.tryApplySkeletalSeqToModel(seqId, evalFrame, &model, alloc);
+                if (!rs::ok(as)) {
+                    std::cout << ", \"ok\": false, \"status\": ";
+                    writeJsonEscaped(std::cout, std::string(statusName(as)));
+                    std::cout << ", \"errorClass\": ";
+                    writeJsonEscaped(std::cout, std::string(statusErrorClass(as)));
+                    std::cout << ", \"statusCode\": " << static_cast<int>(as) << " }";
+                } else {
+                    const rs::u32 hash = hashModelVertices(model);
+                    const rs::u32 alphaHash = hashModelFaceAlphas(model);
+                    std::cout << ", \"ok\": true";
+                    std::cout << ", \"baseId\": " << seq.baseId;
+                    std::cout << ", \"poseId\": " << seq.poseId;
+                    std::cout << ", \"curveCount\": " << seq.curveCount;
+                    std::cout << ", \"vertexCount\": " << model.verticesCount;
+                    std::cout << ", \"hash\": " << static_cast<rs::i32>(hash);
+                    std::cout << ", \"hasFaceAlphas\": " << (model.hasFaceAlphas ? "true" : "false");
+                    std::cout << ", \"alphaHash\": " << static_cast<rs::i32>(alphaHash);
+                    std::cout << " }";
+                }
+            }
+        }
+
+        if (i + 1 < args.pairs.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdSeqTypeFrameLengths(int argc, char** argv) {
+    const SeqTypeFrameLengthsArgs args = parseSeqTypeFrameLengthsArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.maxFrames <= 0) {
+        throw std::runtime_error("Invalid --maxFrames");
+    }
+    if (args.ids.empty()) {
+        throw std::runtime_error("Missing --ids <comma-separated>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"maxFrames\": " << args.maxFrames << ",\n";
+    std::cout << "  \"entries\": [\n";
+
+    for (std::size_t i = 0; i < args.ids.size(); i++) {
+        const int id = args.ids[i];
+        std::cout << "    { \"id\": " << id;
+
+        const rs::SeqType* seq = nullptr;
+        rs::Status st = session.tryGetSeqType(static_cast<rs::i32>(id), &seq);
+        if (!rs::ok(st) || !seq) {
+            if (rs::ok(st)) st = rs::Status::NotFound;
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            const std::size_t totalFrames = seq->frameLengths.size();
+            const std::size_t takeFrames = std::min<std::size_t>(totalFrames, static_cast<std::size_t>(args.maxFrames));
+            std::cout << ", \"ok\": true, \"frameCount\": " << totalFrames << ", \"lengths\": [";
+            for (std::size_t fi = 0; fi < takeFrames; fi++) {
+                rs::i32 frameLength = seq->frameLengths[fi];
+                if ((cacheType == rs::CacheType::Dat || cacheType == rs::CacheType::Legacy) && frameLength == 0) {
+                    rs::i32 frameId = -1;
+                    if (fi < seq->frameIds.size()) {
+                        frameId = seq->frameIds[fi];
+                    }
+                    if (frameId >= 0) {
+                        rs::SeqFrame frame(alloc);
+                        const rs::Status fs = session.tryLoadSeqFrame(frameId, &frame);
+                        if (rs::ok(fs)) {
+                            frameLength = frame.frameLength;
+                        }
+                    }
+                    if (frameLength == 0) {
+                        frameLength = 1;
+                    }
+                }
+                if (fi > 0) std::cout << ", ";
+                std::cout << frameLength;
+            }
+            std::cout << "] }";
+        }
+
+        if (i + 1 < args.ids.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdAnimSelectionSnapshot(int argc, char** argv) {
+    const AnimSelectionSnapshotArgs args = parseAnimSelectionSnapshotArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.maxFrames <= 0) {
+        throw std::runtime_error("Invalid --maxFrames");
+    }
+    if (args.npcIds.empty() && args.locIds.empty()) {
+        throw std::runtime_error("Missing --npcIds and/or --locIds");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
+
+    auto writeSeqResolution = [&](rs::i32 seqId) {
+        std::cout << "{ \"seqId\": " << seqId;
+        if (seqId < 0) {
+            std::cout << ", \"ok\": true, \"mode\": \"none\", \"frameCount\": 0, \"samples\": [] }";
+            return;
+        }
+
+        const rs::SeqType* seq = nullptr;
+        rs::Status st = session.tryGetSeqType(seqId, &seq);
+        if (!rs::ok(st) || !seq) {
+            if (rs::ok(st)) st = rs::Status::NotFound;
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+            return;
+        }
+
+        const bool skeletalMode = seq->animMayaId >= 0;
+        if (skeletalMode) {
+            const rs::i32 frameCount = seq->animMayaEnd - seq->animMayaStart;
+            rs::SkeletalSeq skeletal{};
+            const rs::Status sks = session.tryLoadSkeletalSeq(seq->animMayaId, &skeletal);
+
+            std::cout << ", \"ok\": true, \"mode\": \"skeletal\", \"frameCount\": " << frameCount;
+            std::cout << ", \"animMayaId\": " << seq->animMayaId;
+            std::cout << ", \"animMayaStart\": " << seq->animMayaStart;
+            std::cout << ", \"animMayaEnd\": " << seq->animMayaEnd;
+            std::cout << ", \"skeletalOk\": " << (rs::ok(sks) ? "true" : "false");
+            if (!rs::ok(sks)) {
+                std::cout << ", \"skeletalStatus\": ";
+                writeJsonEscaped(std::cout, std::string(statusName(sks)));
+                std::cout << ", \"skeletalErrorClass\": ";
+                writeJsonEscaped(std::cout, std::string(statusErrorClass(sks)));
+            } else {
+                std::cout << ", \"skeletalHasAlphaTransform\": " << (skeletal.hasAlphaTransform ? "true" : "false");
+            }
+            std::cout << ", \"samples\": [";
+            const std::size_t sampleCount =
+                (frameCount > 0) ? std::min<std::size_t>(static_cast<std::size_t>(frameCount), static_cast<std::size_t>(args.maxFrames)) : 0;
+            for (std::size_t i = 0; i < sampleCount; i++) {
+                if (i > 0) std::cout << ", ";
+                std::cout << "{ \"frame\": " << i << " }";
+            }
+            std::cout << "] }";
+            return;
+        }
+
+        const std::size_t frameCount = seq->frameIds.size();
+        const std::size_t sampleCount = std::min<std::size_t>(frameCount, static_cast<std::size_t>(args.maxFrames));
+        std::cout << ", \"ok\": true, \"mode\": \"frame\", \"rotateNormals\": "
+                  << (seq->rotateNormals ? "true" : "false")
+                  << ", \"frameCount\": " << frameCount
+                  << ", \"samples\": [";
+        for (std::size_t i = 0; i < sampleCount; i++) {
+            const rs::i32 frameId = seq->frameIds[i];
+            rs::i32 frameLength = (i < seq->frameLengths.size()) ? seq->frameLengths[i] : 0;
+            if ((cacheType == rs::CacheType::Dat || cacheType == rs::CacheType::Legacy) && frameLength == 0) {
+                if (frameId >= 0) {
+                    rs::SeqFrame frameLenProbe(alloc);
+                    const rs::Status fs = session.tryLoadSeqFrame(frameId, &frameLenProbe);
+                    if (rs::ok(fs)) {
+                        frameLength = frameLenProbe.frameLength;
+                    }
+                }
+                if (frameLength == 0) {
+                    frameLength = 1;
+                }
+            }
+
+            rs::SeqFrame frame(alloc);
+            rs::Status fs = rs::Status::NotFound;
+            if (frameId >= 0) {
+                fs = session.tryLoadSeqFrame(frameId, &frame);
+            }
+
+            if (i > 0) std::cout << ", ";
+            std::cout << "{ \"frame\": " << i
+                      << ", \"frameId\": " << frameId
+                      << ", \"frameLength\": " << frameLength
+                      << ", \"frameOk\": " << (rs::ok(fs) ? "true" : "false");
+            if (!rs::ok(fs)) {
+                std::cout << ", \"frameStatus\": ";
+                writeJsonEscaped(std::cout, std::string(statusName(fs)));
+                std::cout << ", \"frameErrorClass\": ";
+                writeJsonEscaped(std::cout, std::string(statusErrorClass(fs)));
+            } else {
+                std::cout << ", \"hasAlphaTransform\": " << (frame.hasAlphaTransform ? "true" : "false")
+                          << ", \"hasColorTransform\": " << (frame.hasColorTransform ? "true" : "false");
+            }
+            std::cout << " }";
+        }
+        std::cout << "] }";
+    };
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"maxFrames\": " << args.maxFrames << ",\n";
+    std::cout << "  \"npcs\": [\n";
+    for (std::size_t i = 0; i < args.npcIds.size(); i++) {
+        const rs::i32 id = static_cast<rs::i32>(args.npcIds[i]);
+        std::cout << "    { \"id\": " << id;
+        const rs::NpcType* npc = nullptr;
+        rs::Status st = session.tryGetNpcType(id, &npc);
+        if (!rs::ok(st) || !npc) {
+            if (rs::ok(st)) st = rs::Status::NotFound;
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            rs::i32 idleSeqId = npc->idleSeqId;
+            rs::i32 walkSeqId = npc->walkSeqId;
+            rs::Status basStatus = rs::Status::NotFound;
+            if (npc->basTypeId != -1) {
+                const rs::BasType* bas = nullptr;
+                basStatus = session.tryGetBasType(npc->basTypeId, &bas);
+                if (rs::ok(basStatus) && bas) {
+                    idleSeqId = bas->idleSeqId;
+                    walkSeqId = bas->walkSeqId;
+                } else {
+                    idleSeqId = -1;
+                    walkSeqId = -1;
+                }
+            }
+            std::cout << ", \"ok\": true";
+            std::cout << ", \"basTypeId\": " << npc->basTypeId;
+            std::cout << ", \"npcIdleSeqId\": " << npc->idleSeqId;
+            std::cout << ", \"npcWalkSeqId\": " << npc->walkSeqId;
+            std::cout << ", \"idleSeqId\": " << idleSeqId;
+            std::cout << ", \"walkSeqId\": " << walkSeqId;
+            if (npc->basTypeId != -1) {
+                std::cout << ", \"basStatus\": ";
+                writeJsonEscaped(std::cout, std::string(statusName(basStatus)));
+                std::cout << ", \"basErrorClass\": ";
+                writeJsonEscaped(std::cout, std::string(statusErrorClass(basStatus)));
+            }
+            std::cout << ", \"idle\": ";
+            writeSeqResolution(idleSeqId);
+            std::cout << ", \"walk\": ";
+            writeSeqResolution(walkSeqId);
+            std::cout << " }";
+        }
+        if (i + 1 < args.npcIds.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+    std::cout << "  ],\n";
+    std::cout << "  \"locs\": [\n";
+    for (std::size_t i = 0; i < args.locIds.size(); i++) {
+        const rs::i32 id = static_cast<rs::i32>(args.locIds[i]);
+        std::cout << "    { \"id\": " << id;
+        const rs::LocType* loc = nullptr;
+        rs::Status st = session.tryGetLocType(id, &loc);
+        if (!rs::ok(st) || !loc) {
+            if (rs::ok(st)) st = rs::Status::NotFound;
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            rs::i32 selectedSeqId = loc->seqId;
+            const char* source = "seqId";
+            if (selectedSeqId == -1) {
+                if (loc->randomSeqIds.size() > 0) {
+                    selectedSeqId = loc->randomSeqIds[0];
+                    source = "randomSeqIds_0";
+                } else {
+                    source = "none";
+                }
+            }
+            std::cout << ", \"ok\": true";
+            std::cout << ", \"seqId\": " << loc->seqId;
+            std::cout << ", \"randomSeqCount\": " << loc->randomSeqIds.size();
+            std::cout << ", \"selectedSeqId\": " << selectedSeqId;
+            std::cout << ", \"selectionSource\": ";
+            writeJsonEscaped(std::cout, std::string(source));
+            std::cout << ", \"seq\": ";
+            writeSeqResolution(selectedSeqId);
+            std::cout << " }";
+        }
+        if (i + 1 < args.locIds.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdTransformSnapshot(int argc, char** argv) {
+    const TransformSnapshotArgs args = parseTransformSnapshotArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+    if (args.maxSteps <= 0) {
+        throw std::runtime_error("Invalid --maxSteps");
+    }
+    if (args.npcIds.empty() && args.locIds.empty()) {
+        throw std::runtime_error("Missing --npcIds and/or --locIds");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+
+    struct SnapshotVarProvider final : rs::VarProvider {
+        const rs::CacheSession& session;
+        const std::unordered_map<int, int>& varps;
+        const std::unordered_map<int, int>& directVarbits;
+
+        SnapshotVarProvider(
+            const rs::CacheSession& session_,
+            const std::unordered_map<int, int>& varps_,
+            const std::unordered_map<int, int>& directVarbits_) noexcept
+            : session(session_), varps(varps_), directVarbits(directVarbits_) {}
+
+        rs::i32 getVarp(rs::i32 id) const noexcept override {
+            const auto it = varps.find(static_cast<int>(id));
+            if (it == varps.end()) {
+                return 0;
+            }
+            return static_cast<rs::i32>(it->second);
+        }
+
+        rs::i32 getVarbit(rs::i32 id) const noexcept override {
+            const auto forced = directVarbits.find(static_cast<int>(id));
+            if (forced != directVarbits.end()) {
+                return static_cast<rs::i32>(forced->second);
+            }
+
+            const rs::VarBitType* varbit = nullptr;
+            const rs::Status s = session.tryGetVarBitType(id, &varbit);
+            if (!rs::ok(s) || !varbit) {
+                return 0;
+            }
+
+            const rs::i32 baseValue = getVarp(varbit->baseVar);
+            const rs::i32 startBit = (varbit->startBit < 0) ? 0 : ((varbit->startBit > 31) ? 31 : varbit->startBit);
+            const rs::i32 endBit = (varbit->endBit < 0) ? 0 : ((varbit->endBit > 31) ? 31 : varbit->endBit);
+            const rs::i32 width = endBit - startBit;
+            if (width <= 0) {
+                return 0;
+            }
+
+            const rs::u32 mask = (width >= 31) ? 0x7fffffffu : ((1u << width) - 1u);
+            const rs::i32 shifted = (startBit >= 31) ? ((baseValue < 0) ? -1 : 0) : (baseValue >> startBit);
+            return static_cast<rs::i32>(static_cast<rs::u32>(shifted) & mask);
+        }
+    };
+
+    const SnapshotVarProvider varProvider(session, args.varps, args.varbits);
+
+    const auto writeAssignments = [&](const std::unordered_map<int, int>& values) {
+        std::vector<std::pair<int, int>> items;
+        items.reserve(values.size());
+        for (const auto& kv : values) {
+            items.push_back(kv);
+        }
+        std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::cout << "[";
+        for (std::size_t i = 0; i < items.size(); i++) {
+            if (i > 0) std::cout << ", ";
+            std::cout << "{ \"id\": " << items[i].first << ", \"value\": " << items[i].second << " }";
+        }
+        std::cout << "]";
+    };
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"maxSteps\": " << args.maxSteps << ",\n";
+    std::cout << "  \"varps\": ";
+    writeAssignments(args.varps);
+    std::cout << ",\n";
+    std::cout << "  \"varbits\": ";
+    writeAssignments(args.varbits);
+    std::cout << ",\n";
+
+    std::cout << "  \"npcs\": [\n";
+    for (std::size_t i = 0; i < args.npcIds.size(); i++) {
+        const rs::i32 id = static_cast<rs::i32>(args.npcIds[i]);
+        std::cout << "    { \"id\": " << id;
+        const rs::NpcType* npc = nullptr;
+        rs::Status st = session.tryGetNpcType(id, &npc);
+        if (!rs::ok(st) || !npc) {
+            if (rs::ok(st)) st = rs::Status::NotFound;
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            std::vector<rs::i32> visitedIds;
+            visitedIds.push_back(id);
+            std::unordered_set<rs::i32> seen;
+            seen.insert(id);
+
+            const rs::NpcType* current = npc;
+            std::string terminal = "no_transforms";
+            rs::Status terminalStatus = rs::Status::Ok;
+            bool hasTerminalStatus = false;
+            bool done = false;
+
+            std::cout << ", \"ok\": true, \"chain\": [";
+            std::size_t chainCount = 0;
+            for (int step = 0; step < args.maxSteps; step++) {
+                if (current->transforms.empty()) {
+                    terminal = "no_transforms";
+                    done = true;
+                    break;
+                }
+
+                const rs::i32 transformIndex = current->resolveTransformIndex(varProvider);
+                const rs::i32 selectedId = current->resolveTransformId(transformIndex);
+
+                if (chainCount > 0) std::cout << ", ";
+                std::cout << "{ \"sourceId\": " << current->id
+                          << ", \"transformVarbit\": " << current->transformVarbit
+                          << ", \"transformVarp\": " << current->transformVarp
+                          << ", \"transformIndex\": " << transformIndex
+                          << ", \"selectedId\": " << selectedId;
+
+                if (selectedId == -1) {
+                    std::cout << ", \"selectedStatus\": \"TransformMinusOne\" }";
+                    terminal = "transform_minus_one";
+                    done = true;
+                    chainCount++;
+                    break;
+                }
+
+                if (seen.find(selectedId) != seen.end()) {
+                    std::cout << ", \"selectedStatus\": \"Cycle\" }";
+                    visitedIds.push_back(selectedId);
+                    terminal = "cycle";
+                    done = true;
+                    chainCount++;
+                    break;
+                }
+
+                const rs::NpcType* next = nullptr;
+                const rs::Status nextStatus = session.tryGetNpcType(selectedId, &next);
+                if (!rs::ok(nextStatus) || !next) {
+                    const rs::Status norm = rs::ok(nextStatus) ? rs::Status::NotFound : nextStatus;
+                    std::cout << ", \"selectedStatus\": ";
+                    writeJsonEscaped(std::cout, std::string(statusName(norm)));
+                    std::cout << ", \"selectedErrorClass\": ";
+                    writeJsonEscaped(std::cout, std::string(statusErrorClass(norm)));
+                    std::cout << " }";
+                    terminal = "loader_error";
+                    terminalStatus = norm;
+                    hasTerminalStatus = true;
+                    done = true;
+                    chainCount++;
+                    break;
+                }
+
+                std::cout << ", \"selectedStatus\": \"Ok\" }";
+                seen.insert(selectedId);
+                visitedIds.push_back(selectedId);
+                current = next;
+                chainCount++;
+            }
+            if (!done) {
+                terminal = "max_steps";
+            }
+            std::cout << "]";
+
+            std::cout << ", \"visitedIds\": [";
+            for (std::size_t vi = 0; vi < visitedIds.size(); vi++) {
+                if (vi > 0) std::cout << ", ";
+                std::cout << visitedIds[vi];
+            }
+            std::cout << "]";
+            std::cout << ", \"finalId\": " << visitedIds.back();
+            std::cout << ", \"terminal\": ";
+            writeJsonEscaped(std::cout, terminal);
+            if (hasTerminalStatus) {
+                std::cout << ", \"terminalStatus\": ";
+                writeJsonEscaped(std::cout, std::string(statusName(terminalStatus)));
+                std::cout << ", \"terminalErrorClass\": ";
+                writeJsonEscaped(std::cout, std::string(statusErrorClass(terminalStatus)));
+            }
+            std::cout << " }";
+        }
+        if (i + 1 < args.npcIds.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+    std::cout << "  ],\n";
+
+    std::cout << "  \"locs\": [\n";
+    for (std::size_t i = 0; i < args.locIds.size(); i++) {
+        const rs::i32 id = static_cast<rs::i32>(args.locIds[i]);
+        std::cout << "    { \"id\": " << id;
+        const rs::LocType* loc = nullptr;
+        rs::Status st = session.tryGetLocType(id, &loc);
+        if (!rs::ok(st) || !loc) {
+            if (rs::ok(st)) st = rs::Status::NotFound;
+            std::cout << ", \"ok\": false, \"status\": ";
+            writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
+            std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
+        } else {
+            std::vector<rs::i32> visitedIds;
+            visitedIds.push_back(id);
+            std::unordered_set<rs::i32> seen;
+            seen.insert(id);
+
+            const rs::LocType* current = loc;
+            std::string terminal = "no_transforms";
+            rs::Status terminalStatus = rs::Status::Ok;
+            bool hasTerminalStatus = false;
+            bool done = false;
+
+            std::cout << ", \"ok\": true, \"chain\": [";
+            std::size_t chainCount = 0;
+            for (int step = 0; step < args.maxSteps; step++) {
+                if (current->transforms.empty()) {
+                    terminal = "no_transforms";
+                    done = true;
+                    break;
+                }
+
+                const rs::i32 transformIndex = current->resolveTransformIndex(varProvider);
+                const rs::i32 selectedId = current->resolveTransformId(transformIndex);
+
+                if (chainCount > 0) std::cout << ", ";
+                std::cout << "{ \"sourceId\": " << current->id
+                          << ", \"transformVarbit\": " << current->transformVarbit
+                          << ", \"transformVarp\": " << current->transformVarp
+                          << ", \"transformIndex\": " << transformIndex
+                          << ", \"selectedId\": " << selectedId;
+
+                if (selectedId == -1) {
+                    std::cout << ", \"selectedStatus\": \"TransformMinusOne\" }";
+                    terminal = "transform_minus_one";
+                    done = true;
+                    chainCount++;
+                    break;
+                }
+
+                if (seen.find(selectedId) != seen.end()) {
+                    std::cout << ", \"selectedStatus\": \"Cycle\" }";
+                    visitedIds.push_back(selectedId);
+                    terminal = "cycle";
+                    done = true;
+                    chainCount++;
+                    break;
+                }
+
+                const rs::LocType* next = nullptr;
+                const rs::Status nextStatus = session.tryGetLocType(selectedId, &next);
+                if (!rs::ok(nextStatus) || !next) {
+                    const rs::Status norm = rs::ok(nextStatus) ? rs::Status::NotFound : nextStatus;
+                    std::cout << ", \"selectedStatus\": ";
+                    writeJsonEscaped(std::cout, std::string(statusName(norm)));
+                    std::cout << ", \"selectedErrorClass\": ";
+                    writeJsonEscaped(std::cout, std::string(statusErrorClass(norm)));
+                    std::cout << " }";
+                    terminal = "loader_error";
+                    terminalStatus = norm;
+                    hasTerminalStatus = true;
+                    done = true;
+                    chainCount++;
+                    break;
+                }
+
+                std::cout << ", \"selectedStatus\": \"Ok\" }";
+                seen.insert(selectedId);
+                visitedIds.push_back(selectedId);
+                current = next;
+                chainCount++;
+            }
+            if (!done) {
+                terminal = "max_steps";
+            }
+            std::cout << "]";
+
+            std::cout << ", \"visitedIds\": [";
+            for (std::size_t vi = 0; vi < visitedIds.size(); vi++) {
+                if (vi > 0) std::cout << ", ";
+                std::cout << visitedIds[vi];
+            }
+            std::cout << "]";
+            std::cout << ", \"finalId\": " << visitedIds.back();
+            std::cout << ", \"terminal\": ";
+            writeJsonEscaped(std::cout, terminal);
+            if (hasTerminalStatus) {
+                std::cout << ", \"terminalStatus\": ";
+                writeJsonEscaped(std::cout, std::string(statusName(terminalStatus)));
+                std::cout << ", \"terminalErrorClass\": ";
+                writeJsonEscaped(std::cout, std::string(statusErrorClass(terminalStatus)));
+            }
+            std::cout << " }";
+        }
+        if (i + 1 < args.locIds.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+    std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
 static int cmdConfigTypeHashes(int argc, char** argv) {
     const ConfigTypeHashArgs args = parseConfigTypeHashArgs(argc, argv);
     const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
@@ -2879,14 +4634,14 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
     const int idxRs2Defaults = static_cast<int>(rs::Rs2IndexId::defaults);
     const int idxSprites = static_cast<int>(rs::Dat2IndexId::sprites);
     const int idxOsrsDefaults = static_cast<int>(rs::OsrsIndexId::graphicDefaults);
-    if (dat2HasIndexFile(cacheDir, idxLocs)) indexIds.push_back(static_cast<rs::i32>(idxLocs));
-    if (dat2HasIndexFile(cacheDir, idxNpcs)) indexIds.push_back(static_cast<rs::i32>(idxNpcs));
-    if (dat2HasIndexFile(cacheDir, idxObjs)) indexIds.push_back(static_cast<rs::i32>(idxObjs));
-    if (dat2HasIndexFile(cacheDir, idxSeqs)) indexIds.push_back(static_cast<rs::i32>(idxSeqs));
-    if (dat2HasIndexFile(cacheDir, idxVarBits)) indexIds.push_back(static_cast<rs::i32>(idxVarBits));
-    if (dat2HasIndexFile(cacheDir, idxRs2Defaults)) indexIds.push_back(static_cast<rs::i32>(idxRs2Defaults));
-    if (dat2HasIndexFile(cacheDir, idxSprites)) indexIds.push_back(static_cast<rs::i32>(idxSprites));
-    if (dat2HasIndexFile(cacheDir, idxOsrsDefaults)) indexIds.push_back(static_cast<rs::i32>(idxOsrsDefaults));
+    if (rscli::dat2HasIndexFile(cacheDir, idxLocs)) indexIds.push_back(static_cast<rs::i32>(idxLocs));
+    if (rscli::dat2HasIndexFile(cacheDir, idxNpcs)) indexIds.push_back(static_cast<rs::i32>(idxNpcs));
+    if (rscli::dat2HasIndexFile(cacheDir, idxObjs)) indexIds.push_back(static_cast<rs::i32>(idxObjs));
+    if (rscli::dat2HasIndexFile(cacheDir, idxSeqs)) indexIds.push_back(static_cast<rs::i32>(idxSeqs));
+    if (rscli::dat2HasIndexFile(cacheDir, idxVarBits)) indexIds.push_back(static_cast<rs::i32>(idxVarBits));
+    if (rscli::dat2HasIndexFile(cacheDir, idxRs2Defaults)) indexIds.push_back(static_cast<rs::i32>(idxRs2Defaults));
+    if (rscli::dat2HasIndexFile(cacheDir, idxSprites)) indexIds.push_back(static_cast<rs::i32>(idxSprites));
+    if (rscli::dat2HasIndexFile(cacheDir, idxOsrsDefaults)) indexIds.push_back(static_cast<rs::i32>(idxOsrsDefaults));
 
     rs::CacheInfo cacheInfo{};
     const std::string cacheName = cacheDir.filename().string();
@@ -2899,18 +4654,23 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
         throw std::runtime_error("config_type_hashes requires cacheType=dat2 for the provided game/revision");
     }
 
-    Dat2CliCache opened = openDat2CacheSystemForCliWithIndexIds(
+    Dat2CliCache opened = rscli::openDat2CacheSystemForCliWithIndexIds(
         cacheDir,
         cacheInfo,
         rs::Span<const rs::i32>(indexIds.data(), indexIds.size()),
         compression,
         alloc);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
-    const rs::CacheRules rules = rs::computeCacheRules(cacheInfo, cacheSystem);
+    const rs::CacheRules* rulesPtr = nullptr;
+    if (!rs::ok(session.tryGetCacheRules(&rulesPtr)) || !rulesPtr) {
+        throw std::runtime_error("Failed to get cache rules from session");
+    }
+    const rs::CacheRules rules = *rulesPtr;
 
     const rs::CacheIndex* configIndex = nullptr;
-    rs::Status configIndexStatus = cacheSystem.getIndex(static_cast<rs::i32>(rs::Dat2IndexId::configs), &configIndex);
+    rs::Status configIndexStatus = session.tryGetIndex(static_cast<rs::i32>(rs::Dat2IndexId::configs), &configIndex);
     if (!rs::ok(configIndexStatus) || !configIndex) {
         configIndex = nullptr;
     }
@@ -2919,7 +4679,8 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
         rules.isIndexConfigs &&
         (args.kind == "loc" || args.kind == "npc" || args.kind == "obj" || args.kind == "seq" || args.kind == "varbit");
 
-    const rs::CacheIndex* indexConfigsIndex = nullptr;
+    rs::i32 indexConfigsIndexId = -1;
+    bool hasIndexConfigsIndex = false;
     rs::i32 indexConfigsFileIdBits = 0;
     if (wantIndexConfigs) {
         rs::i32 indexId = -1;
@@ -2939,9 +4700,11 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
             indexId = static_cast<rs::i32>(rs::Rs2IndexId::varbits);
             indexConfigsFileIdBits = 10;
         }
-        const rs::Status s = cacheSystem.getIndex(indexId, &indexConfigsIndex);
-        if (!rs::ok(s) || !indexConfigsIndex) {
-            indexConfigsIndex = nullptr;
+        const rs::CacheIndex* indexConfigsIndex = nullptr;
+        const rs::Status s = session.tryGetIndex(indexId, &indexConfigsIndex);
+        if (rs::ok(s) && indexConfigsIndex) {
+            indexConfigsIndexId = indexId;
+            hasIndexConfigsIndex = true;
         }
     }
 
@@ -2980,7 +4743,7 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
     std::optional<rs::Archive> configArchiveOpt;
     if (!wantIndexConfigs) {
         if (dat2ConfigArchiveId >= 0) {
-            auto archRes = cacheSystem.getArchive(static_cast<rs::i32>(rs::Dat2IndexId::configs), dat2ConfigArchiveId, alloc);
+            auto archRes = session.tryGetArchive(static_cast<rs::i32>(rs::Dat2IndexId::configs), dat2ConfigArchiveId, alloc);
             if (archRes.isOk()) {
                 configArchiveOpt = std::move(archRes.value());
             } else if (archRes.status() != rs::Status::NotFound) {
@@ -3005,9 +4768,9 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
     std::optional<rs::GraphicsDefaults> graphicsDefaultsOpt;
     rs::Status graphicsDefaultsStatus = rs::Status::Ok;
     if (args.kind == "graphics_defaults") {
-        auto gdRes = rs::GraphicsDefaults::tryCreate(cacheInfo, cacheSystem, alloc);
+        auto gdRes = session.tryGetGraphicsDefaults(alloc);
         if (!gdRes.isOk()) {
-            graphicsDefaultsStatus = gdRes.status();
+            graphicsDefaultsStatus = gdRes.error().status;
         } else {
             graphicsDefaultsOpt = std::move(gdRes.value());
         }
@@ -3027,7 +4790,7 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
                 hash = hashGraphicsDefaults(*graphicsDefaultsOpt);
             }
         } else if (wantIndexConfigs) {
-            if (!indexConfigsIndex || indexConfigsFileIdBits <= 0) {
+            if (!hasIndexConfigsIndex || indexConfigsFileIdBits <= 0) {
                 st = rs::Status::NotFound;
             } else {
                 const rs::i32 fileIdMask = static_cast<rs::i32>((1u << static_cast<rs::u32>(indexConfigsFileIdBits)) - 1u);
@@ -3036,7 +4799,7 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
 
                 auto it = indexArchiveCache.find(archiveId);
                 if (it == indexArchiveCache.end()) {
-                    auto archRes = indexConfigsIndex->getArchive(archiveId, alloc);
+                    auto archRes = session.tryGetArchive(indexConfigsIndexId, archiveId, alloc);
                     if (!archRes.isOk()) {
                         st = archRes.status();
                     } else {
@@ -3141,6 +4904,8 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
         if (!rs::ok(st)) {
             std::cout << ", \"ok\": false, \"status\": ";
             writeJsonEscaped(std::cout, std::string(statusName(st)));
+            std::cout << ", \"errorClass\": ";
+            writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
             std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
         } else {
             std::cout << ", \"ok\": true, \"hash\": " << static_cast<rs::i32>(hash) << " }";
@@ -3151,6 +4916,109 @@ static int cmdConfigTypeHashes(int argc, char** argv) {
     }
 
     std::cout << "  ]\n";
+    std::cout << "}\n";
+    return 0;
+}
+
+static int cmdSessionContract(int argc, char** argv) {
+    const SessionContractArgs args = parseSessionContractArgs(argc, argv);
+    const fs::path cacheDir = resolveCacheDir(args.cacheNameOrPath);
+    if (args.gameName.empty()) {
+        throw std::runtime_error("Missing --game <classic|runescape|oldschool>");
+    }
+    if (args.revision < 0) {
+        throw std::runtime_error("Missing --revision <n>");
+    }
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::NativeCompressionHandler compression;
+
+    rs::CacheInfo cacheInfo{};
+    const std::string cacheName = cacheDir.filename().string();
+    cacheInfo.name = cacheName.c_str();
+    cacheInfo.game = parseGameType(args.gameName);
+    cacheInfo.revision = static_cast<rs::i32>(args.revision);
+
+    const rs::CacheType expectedType = rs::detectCacheType(cacheInfo);
+    const std::optional<CacheKind> kind = rscli::detectCacheKind(cacheDir);
+    if (!kind.has_value()) {
+        throw std::runtime_error("Unable to detect cache kind from files");
+    }
+
+    if ((*kind == CacheKind::Dat2 && expectedType != rs::CacheType::Dat2) ||
+        (*kind == CacheKind::Dat && expectedType != rs::CacheType::Dat) ||
+        (*kind == CacheKind::Legacy && expectedType != rs::CacheType::Legacy)) {
+        throw std::runtime_error("Provided --game/--revision does not match detected cache files");
+    }
+
+    std::optional<Dat2CliCache> dat2Opened;
+    std::optional<GenericCliCache> genericOpened;
+    rs::CacheSystem* cacheSystem = nullptr;
+    if (*kind == CacheKind::Dat2) {
+        dat2Opened.emplace(openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/true));
+        cacheSystem = &dat2Opened->cacheSystem;
+    } else if (*kind == CacheKind::Dat) {
+        genericOpened.emplace(rscli::openDatCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    } else {
+        genericOpened.emplace(rscli::openLegacyCacheSystemForCli(cacheDir, cacheInfo, compression, alloc));
+        cacheSystem = &genericOpened->cacheSystem;
+    }
+
+    if (!cacheSystem) {
+        throw std::runtime_error("Failed to initialize cache system");
+    }
+
+    rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
+    const rs::Loaders::Capabilities sessionCaps = rs::Loaders::capabilitiesFor(session);
+    assertSessionStatusContract(session, sessionCaps);
+    const bool hasTextureService = session.hasTextureService();
+    const bool hasMapFileService = session.hasMapFileService();
+    const bool hasModelService = session.hasModelService();
+    const bool hasSeqFrameService = session.hasSeqFrameService();
+
+    rs::MapScenesMode mapScenesMode = rs::MapScenesMode::GraphicsDefaults;
+    rs::MapFunctionsMode mapFunctionsMode = rs::MapFunctionsMode::GraphicsDefaults;
+    if (!rs::ok(session.tryGetMapRules(&mapScenesMode, &mapFunctionsMode))) {
+        throw std::runtime_error("tryGetMapRules failed");
+    }
+    rs::TextureRules textureRules{};
+    if (!rs::ok(session.tryGetTextureRules(&textureRules))) {
+        throw std::runtime_error("tryGetTextureRules failed");
+    }
+
+    session.clearCaches();
+
+    auto forkRes = session.tryFork(alloc);
+    if (!forkRes.isOk()) {
+        throw std::runtime_error(initErrorToString(forkRes.error()));
+    }
+    const rs::Loaders::Capabilities forkCaps = rs::Loaders::capabilitiesFor(forkRes.value());
+    if (forkCaps.cacheType != sessionCaps.cacheType ||
+        forkCaps.hasQuestTypeLoader != sessionCaps.hasQuestTypeLoader ||
+        forkCaps.hasSkeletalSeqLoader != sessionCaps.hasSkeletalSeqLoader ||
+        forkCaps.hasDistinctUnderlayTypeLoader != sessionCaps.hasDistinctUnderlayTypeLoader) {
+        throw std::runtime_error("fork capabilities mismatch");
+    }
+
+    std::cout << "{\n";
+    std::cout << "  \"schema\": 1,\n";
+    std::cout << "  \"cache\": { \"name\": ";
+    writeJsonEscaped(std::cout, cacheName);
+    std::cout << ", \"game\": ";
+    writeJsonEscaped(std::cout, args.gameName);
+    std::cout << ", \"revision\": " << args.revision << " },\n";
+    std::cout << "  \"cacheType\": ";
+    writeJsonEscaped(std::cout, std::string(cacheTypeName(sessionCaps.cacheType)));
+    std::cout << ",\n";
+    std::cout << "  \"hasQuestTypeLoader\": " << (sessionCaps.hasQuestTypeLoader ? "true" : "false") << ",\n";
+    std::cout << "  \"hasSkeletalSeqLoader\": " << (sessionCaps.hasSkeletalSeqLoader ? "true" : "false") << ",\n";
+    std::cout << "  \"hasDistinctUnderlayTypeLoader\": " << (sessionCaps.hasDistinctUnderlayTypeLoader ? "true" : "false") << ",\n";
+    std::cout << "  \"hasModelService\": " << (hasModelService ? "true" : "false") << ",\n";
+    std::cout << "  \"hasSeqFrameService\": " << (hasSeqFrameService ? "true" : "false") << ",\n";
+    std::cout << "  \"hasTextureService\": " << (hasTextureService ? "true" : "false") << ",\n";
+    std::cout << "  \"hasMapFileService\": " << (hasMapFileService ? "true" : "false") << ",\n";
+    std::cout << "  \"ok\": true\n";
     std::cout << "}\n";
     return 0;
 }
@@ -3183,30 +5051,30 @@ static int cmdTextureOpHashes(int argc, char** argv) {
     Dat2CliCache opened = openDat2CacheSystemForCli(cacheDir, cacheInfo, compression, alloc, /*includeMaps=*/false);
     rs::CacheSystem& cacheSystem = opened.cacheSystem;
 
-    auto sessionRes = rs::CacheSession::tryCreate(cacheSystem, cacheInfo, alloc);
-    if (!sessionRes.isOk()) {
-        throw std::runtime_error(initErrorToString(sessionRes.error()));
-    }
-    rs::CacheSession session = std::move(sessionRes.value());
+    rs::CacheSession session = createSessionOrThrow(cacheSystem, cacheInfo, alloc);
 
-    if (session.textures.mode == rs::TextureMode::Sprite) {
+    if (session.textureMode() == rs::TextureMode::Sprite) {
         throw std::runtime_error("texture_op_hashes only supports procedural texture modes");
     }
 
-    if (session.textures.mode != rs::TextureMode::Materials) {
+    if (session.textureMode() != rs::TextureMode::Materials) {
         throw std::runtime_error("texture_op_hashes currently supports materials procedural textures only");
     }
 
-    rs::ProceduralTextureLoader& procLoader = session.textures.procedural;
+    const rs::ProceduralTextureLoader* procLoader = nullptr;
+    const rs::Status procStatus = session.tryGetProceduralTextureLoader(&procLoader);
+    if (!rs::ok(procStatus) || !procLoader) {
+        throw std::runtime_error(std::string("Failed to get procedural texture loader: ") + statusName(procStatus));
+    }
 
     const rs::ProceduralTextureDefinition* def = nullptr;
-    rs::Status s = procLoader.getTextureDefinition(static_cast<rs::i32>(args.id), &def);
+    rs::Status s = procLoader->getTextureDefinition(static_cast<rs::i32>(args.id), &def);
     if (!rs::ok(s) || !def) {
         throw std::runtime_error(std::string("Texture definition not found: ") + statusName(s));
     }
 
     const rs::CacheIndex* spriteIndex = nullptr;
-    s = cacheSystem.getIndex(static_cast<rs::i32>(rs::Dat2IndexId::sprites), &spriteIndex);
+    s = session.tryGetSpritesIndex(&spriteIndex);
     if (!rs::ok(s) || !spriteIndex) {
         throw std::runtime_error("Failed to get sprites index");
     }
@@ -3214,7 +5082,7 @@ static int cmdTextureOpHashes(int argc, char** argv) {
     rs::CacheSpriteSource spriteSource(*spriteIndex);
     rs::TextureGenerator gen(alloc);
     gen.spriteSource = &spriteSource;
-    gen.textureSource = &procLoader;
+    gen.textureSource = procLoader;
 
     const rs::Span<rs::TextureOperation* const> ops = def->procedural.operations();
     for (std::size_t i = 0; i < ops.size(); i++) {
@@ -3337,8 +5205,35 @@ int main(int argc, char** argv) {
         if (cmd == "map_square_inputs_hashes") {
             return cmdMapSquareInputsHashes(argc - 2, argv + 2);
         }
+        if (cmd == "model_hashes") {
+            return cmdModelHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "seq_frame_hashes") {
+            return cmdSeqFrameHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "skeletal_seq_hashes") {
+            return cmdSkeletalSeqHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "skeletal_eval_hashes") {
+            return cmdSkeletalEvalHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "skeletal_model_hashes") {
+            return cmdSkeletalModelHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "seq_type_frame_lengths") {
+            return cmdSeqTypeFrameLengths(argc - 2, argv + 2);
+        }
+        if (cmd == "anim_selection_snapshot") {
+            return cmdAnimSelectionSnapshot(argc - 2, argv + 2);
+        }
+        if (cmd == "transform_snapshot") {
+            return cmdTransformSnapshot(argc - 2, argv + 2);
+        }
         if (cmd == "config_type_hashes") {
             return cmdConfigTypeHashes(argc - 2, argv + 2);
+        }
+        if (cmd == "session_contract") {
+            return cmdSessionContract(argc - 2, argv + 2);
         }
 
         std::cerr << "Unknown command: " << cmd << "\n\n";
