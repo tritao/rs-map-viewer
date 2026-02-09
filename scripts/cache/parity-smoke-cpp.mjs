@@ -5,7 +5,7 @@ import { execSync } from "node:child_process";
 
 const CASES = [
   {
-    cache: "osrs-221_2024-05-15",
+    cache: "osrs-221_2024-04-17",
     args: "--indices 0 --maxIndices 1 --maxArchives 10",
     key: "osrs221",
   },
@@ -48,6 +48,29 @@ function main() {
     run(`./cpp/build/rs_cli parity --cache ${c.cache} ${c.args} --out ${cppOut}`);
     run(`npm run -s cache:parity-compare -- --a ${tsOut} --b ${cppOut}`);
   }
+
+  run("npm run -s rs:session-contract-cpp");
+  run("npm run -s rs:model-parity -- --cache osrs-221_2024-04-17 --limit 40");
+  run("npm run -s rs:model-parity -- --cache rs2-377_2006-05-02 --limit 40");
+  run("npm run -s rs:model-parity -- --cache rs2-225_2004-05-06 --limit 40");
+  run("npm run -s rs:model-status-parity -- --cache osrs-221_2024-04-17 --limit 40");
+  run("npm run -s rs:model-status-parity -- --cache rs2-377_2006-05-02 --limit 40");
+  run("npm run -s rs:model-status-parity -- --cache rs2-225_2004-05-06 --limit 40");
+  run("npm run -s rs:seqframe-parity -- --cache osrs-221_2024-04-17 --limit 40");
+  run("npm run -s rs:seqframe-parity -- --cache rs2-377_2006-05-02 --limit 40");
+  run("npm run -s rs:seqframe-parity -- --cache rs2-225_2004-05-06 --limit 40");
+  run("npm run -s rs:seqtype-frame-length-parity -- --cache osrs-221_2024-04-17 --limit 30 --maxFrames 20");
+  run("npm run -s rs:seqtype-frame-length-parity -- --cache rs2-377_2006-05-02 --limit 30 --maxFrames 20");
+  run("npm run -s rs:seqtype-frame-length-parity -- --cache rs2-225_2004-05-06 --limit 30 --maxFrames 20");
+  run("npm run -s rs:anim-selection-parity -- --cache osrs-221_2024-04-17 --npcLimit 20 --locLimit 20 --maxFrames 8");
+  run("npm run -s rs:anim-selection-parity -- --cache rs2-377_2006-05-02 --npcLimit 20 --locLimit 20 --maxFrames 8");
+  run("npm run -s rs:anim-selection-parity -- --cache rs2-225_2004-05-06 --npcLimit 20 --locLimit 20 --maxFrames 8");
+  run("npm run -s rs:transform-parity -- --cache osrs-221_2024-04-17 --npcLimit 20 --locLimit 20 --maxSteps 8");
+  run("npm run -s rs:transform-parity -- --cache rs2-377_2006-05-02 --npcLimit 20 --locLimit 20 --maxSteps 8");
+  run("npm run -s rs:transform-parity -- --cache rs2-225_2004-05-06 --npcLimit 20 --locLimit 20 --maxSteps 8");
+  run("npm run -s rs:skeletal-seq-parity -- --cache osrs-221_2024-04-17 --limit 30");
+  run("npm run -s rs:skeletal-eval-parity -- --cache osrs-221_2024-04-17 --limit 20 --maxFrames 8");
+  run("npm run -s rs:skeletal-model-parity -- --cache osrs-221_2024-04-17 --limit 20 --maxFrames 4");
 }
 
 main();
