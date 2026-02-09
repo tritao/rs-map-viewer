@@ -432,6 +432,29 @@ struct CacheSession final {
             : config.datLegacy.seqs.get(id, out);
     }
 
+    Status tryGetSeqTypeFrameLength(const SeqType& seq, i32 frame, i32* outFrameLength) const noexcept {
+        return seq.tryGetFrameLength(
+            detectCacheType(cacheInfo),
+            frame,
+            [this](i32 frameId, i32* outLen) noexcept -> bool {
+                if (!outLen) return false;
+                SeqFrame seqFrame(defaultAllocator());
+                const Status s = tryLoadSeqFrame(frameId, &seqFrame);
+                if (!ok(s)) return false;
+                *outLen = seqFrame.frameLength;
+                return true;
+            },
+            outFrameLength);
+    }
+
+    Status tryGetSeqTypeFrameLength(i32 seqId, i32 frame, i32* outFrameLength) const noexcept {
+        const SeqType* seq = nullptr;
+        Status s = tryGetSeqType(seqId, &seq);
+        if (!ok(s)) return s;
+        if (!seq) return Status::NotFound;
+        return tryGetSeqTypeFrameLength(*seq, frame, outFrameLength);
+    }
+
     Status tryGetBasType(i32 id, const BasType** out) const noexcept {
         if (config.status != Status::Ok) return config.status;
         if (config.kind != ConfigLayerKind::Dat2) {

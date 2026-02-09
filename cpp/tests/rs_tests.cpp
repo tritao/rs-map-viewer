@@ -2283,6 +2283,82 @@ static int test_skeletal_eval_curve_supported(rs::Allocator& alloc) {
     return 0;
 }
 
+static int test_seqtype_frame_length_edge_cases(rs::Allocator& alloc) {
+    const rs::CacheInfo datInfo{
+        .name = "test",
+        .game = rs::GameType::Runescape,
+        .environment = "test",
+        .revision = 377,
+        .timestamp = "1970-01-01",
+        .size = 0,
+    };
+
+    rs::SeqType seq(1, datInfo);
+    auto rr = seq.frameLengths.resize(4);
+    if (!rr.isOk()) return fail("seqtype frame-length: frameLengths resize failed");
+    rr = seq.frameIds.resize(4);
+    if (!rr.isOk()) return fail("seqtype frame-length: frameIds resize failed");
+    seq.frameLengths[0] = 0;
+    seq.frameLengths[1] = 0;
+    seq.frameLengths[2] = 7;
+    seq.frameLengths[3] = 0;
+    seq.frameIds[0] = 100;
+    seq.frameIds[1] = 101;
+    seq.frameIds[2] = 102;
+    seq.frameIds[3] = -1;
+
+    const auto tryGetMock = [](rs::i32 frameId, rs::i32* out) -> bool {
+        if (!out) return false;
+        if (frameId == 100) {
+            *out = 4;
+            return true;
+        }
+        if (frameId == 101) {
+            *out = 0;
+            return true;
+        }
+        return false;
+    };
+
+    rs::i32 frameLength = 0;
+    rs::Status s = seq.tryGetFrameLength(rs::CacheType::Dat, 0, tryGetMock, &frameLength);
+    if (!rs::ok(s) || frameLength != 4) {
+        return fail("seqtype frame-length: Dat fallback from SeqFrame mismatch");
+    }
+
+    s = seq.tryGetFrameLength(rs::CacheType::Dat, 1, tryGetMock, &frameLength);
+    if (!rs::ok(s) || frameLength != 1) {
+        return fail("seqtype frame-length: Dat zero fallback-to-1 mismatch");
+    }
+
+    s = seq.tryGetFrameLength(rs::CacheType::Dat, 2, tryGetMock, &frameLength);
+    if (!rs::ok(s) || frameLength != 7) {
+        return fail("seqtype frame-length: Dat non-zero frameLength mismatch");
+    }
+
+    s = seq.tryGetFrameLength(rs::CacheType::Dat, 3, tryGetMock, &frameLength);
+    if (!rs::ok(s) || frameLength != 1) {
+        return fail("seqtype frame-length: Dat missing frameId fallback-to-1 mismatch");
+    }
+
+    s = seq.tryGetFrameLength(rs::CacheType::Legacy, 0, tryGetMock, &frameLength);
+    if (!rs::ok(s) || frameLength != 4) {
+        return fail("seqtype frame-length: Legacy fallback from SeqFrame mismatch");
+    }
+
+    s = seq.tryGetFrameLength(rs::CacheType::Dat2, 0, tryGetMock, &frameLength);
+    if (!rs::ok(s) || frameLength != 0) {
+        return fail("seqtype frame-length: Dat2 should not apply zero fallback");
+    }
+
+    s = seq.tryGetFrameLength(rs::CacheType::Dat, 9, tryGetMock, &frameLength);
+    if (s != rs::Status::OutOfRange) {
+        return fail("seqtype frame-length: expected OutOfRange for invalid frame index");
+    }
+
+    return 0;
+}
+
 static int test_skeletal_alpha_curve_selection_and_truncation(rs::Allocator& alloc) {
     rs::SeqBase base(126, alloc);
     base.count = 1;
@@ -2376,6 +2452,7 @@ int main() {
         if (int r = test_skeletal_eval_base_only(alloc)) return r;
         if (int r = test_skeletal_eval_curve_unsupported(alloc)) return r;
         if (int r = test_skeletal_eval_curve_supported(alloc)) return r;
+        if (int r = test_seqtype_frame_length_edge_cases(alloc)) return r;
         if (int r = test_skeletal_alpha_curve_selection_and_truncation(alloc)) return r;
 	        if (int r = test_sprite_texture_loader_pixels(alloc, compression)) return r;
 

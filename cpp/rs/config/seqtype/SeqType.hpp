@@ -76,6 +76,44 @@ struct SeqType {
         return cacheInfo.game == GameType::Oldschool && cacheInfo.revision >= 220;
     }
 
+    template <typename TryGetFrameLengthFn>
+    Status tryGetFrameLength(
+        CacheType cacheType,
+        i32 frame,
+        TryGetFrameLengthFn&& tryGetFrameLength,
+        i32* outFrameLength) const {
+        if (!outFrameLength) return Status::InvalidArgument;
+        *outFrameLength = 0;
+        if (frame < 0 || static_cast<std::size_t>(frame) >= frameLengths.size()) {
+            return Status::OutOfRange;
+        }
+
+        i32 frameLength = frameLengths[static_cast<std::size_t>(frame)];
+        if ((cacheType == CacheType::Dat || cacheType == CacheType::Legacy) && frameLength == 0) {
+            i32 frameId = -1;
+            if (static_cast<std::size_t>(frame) < frameIds.size()) {
+                frameId = frameIds[static_cast<std::size_t>(frame)];
+            }
+            if (frameId >= 0) {
+                i32 loadedFrameLength = 0;
+                if (tryGetFrameLength(frameId, &loadedFrameLength) && loadedFrameLength > 0) {
+                    frameLength = loadedFrameLength;
+                }
+            }
+            if (frameLength == 0) {
+                frameLength = 1;
+            }
+        }
+
+        *outFrameLength = frameLength;
+        return Status::Ok;
+    }
+
+    Status tryGetFrameLength(CacheType cacheType, i32 frame, i32* outFrameLength) const noexcept {
+        const auto noLookup = [](i32, i32*) noexcept -> bool { return false; };
+        return tryGetFrameLength(cacheType, frame, noLookup, outFrameLength);
+    }
+
     Status decodeOpcode(u8 opcode, Uint8ArrayReader& reader, const TypeDecodeContext& ctx) noexcept {
         if (!ctx.alloc) {
             return Status::InvalidArgument;
@@ -612,4 +650,3 @@ struct SeqType {
 };
 
 } // namespace rs
-

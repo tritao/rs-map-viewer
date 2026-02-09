@@ -273,6 +273,7 @@ struct SkeletalEvalHashArgs final {
     std::vector<int> ids;
 };
 
+
 struct SkeletalModelHashArgs final {
     std::string cacheNameOrPath;
     std::string gameName;
@@ -3929,7 +3930,6 @@ static int cmdSeqTypeFrameLengths(int argc, char** argv) {
     }
 
     rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
-    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
 
     std::cout << "{\n";
     std::cout << "  \"schema\": 1,\n";
@@ -3959,22 +3959,10 @@ static int cmdSeqTypeFrameLengths(int argc, char** argv) {
             const std::size_t takeFrames = std::min<std::size_t>(totalFrames, static_cast<std::size_t>(args.maxFrames));
             std::cout << ", \"ok\": true, \"frameCount\": " << totalFrames << ", \"lengths\": [";
             for (std::size_t fi = 0; fi < takeFrames; fi++) {
-                rs::i32 frameLength = seq->frameLengths[fi];
-                if ((cacheType == rs::CacheType::Dat || cacheType == rs::CacheType::Legacy) && frameLength == 0) {
-                    rs::i32 frameId = -1;
-                    if (fi < seq->frameIds.size()) {
-                        frameId = seq->frameIds[fi];
-                    }
-                    if (frameId >= 0) {
-                        rs::SeqFrame frame(alloc);
-                        const rs::Status fs = session.tryLoadSeqFrame(frameId, &frame);
-                        if (rs::ok(fs)) {
-                            frameLength = frame.frameLength;
-                        }
-                    }
-                    if (frameLength == 0) {
-                        frameLength = 1;
-                    }
+                rs::i32 frameLength = 0;
+                rs::Status ls = session.tryGetSeqTypeFrameLength(*seq, static_cast<rs::i32>(fi), &frameLength);
+                if (!rs::ok(ls) && fi < seq->frameLengths.size()) {
+                    frameLength = seq->frameLengths[fi];
                 }
                 if (fi > 0) std::cout << ", ";
                 std::cout << frameLength;
@@ -4047,7 +4035,6 @@ static int cmdAnimSelectionSnapshot(int argc, char** argv) {
     }
 
     rs::CacheSession session = createSessionOrThrow(*cacheSystem, cacheInfo, alloc);
-    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
 
     auto writeSeqResolution = [&](rs::i32 seqId) {
         std::cout << "{ \"seqId\": " << seqId;
@@ -4106,18 +4093,10 @@ static int cmdAnimSelectionSnapshot(int argc, char** argv) {
                   << ", \"samples\": [";
         for (std::size_t i = 0; i < sampleCount; i++) {
             const rs::i32 frameId = seq->frameIds[i];
-            rs::i32 frameLength = (i < seq->frameLengths.size()) ? seq->frameLengths[i] : 0;
-            if ((cacheType == rs::CacheType::Dat || cacheType == rs::CacheType::Legacy) && frameLength == 0) {
-                if (frameId >= 0) {
-                    rs::SeqFrame frameLenProbe(alloc);
-                    const rs::Status fs = session.tryLoadSeqFrame(frameId, &frameLenProbe);
-                    if (rs::ok(fs)) {
-                        frameLength = frameLenProbe.frameLength;
-                    }
-                }
-                if (frameLength == 0) {
-                    frameLength = 1;
-                }
+            rs::i32 frameLength = 0;
+            rs::Status ls = session.tryGetSeqTypeFrameLength(*seq, static_cast<rs::i32>(i), &frameLength);
+            if (!rs::ok(ls) && i < seq->frameLengths.size()) {
+                frameLength = seq->frameLengths[i];
             }
 
             rs::SeqFrame frame(alloc);
