@@ -9,32 +9,41 @@ import { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
 import { NpcData } from "../renderer/npc/NpcData";
 import type { RenderDataResult } from "./RenderDataLoader";
 
+export type StagingDrawCommandInstance = Readonly<{
+    sceneX: number;
+    sceneZ: number;
+    heightOffset: number;
+    level: number;
+    contourGround: number;
+    priority: number;
+    interactType: number;
+    interactId: number;
+}>;
+
+export type StagingDrawCommand = Readonly<{
+    offset: number;
+    elements: number;
+    instances: ReadonlyArray<StagingDrawCommandInstance>;
+}>;
+
+export type StagingDrawCommandBuckets = Readonly<{
+    base: ReadonlyArray<StagingDrawCommand>;
+    alpha: ReadonlyArray<StagingDrawCommand>;
+    lod: ReadonlyArray<StagingDrawCommand>;
+    lodAlpha: ReadonlyArray<StagingDrawCommand>;
+    interact: ReadonlyArray<StagingDrawCommand>;
+    interactAlpha: ReadonlyArray<StagingDrawCommand>;
+    interactLod: ReadonlyArray<StagingDrawCommand>;
+    interactLodAlpha: ReadonlyArray<StagingDrawCommand>;
+}>;
+
 export type MapRenderDataStaging = Readonly<{
     sceneTileHeights: Int32Array;
     levels: number;
     sizeX: number;
     sizeY: number;
     unitsTileHeightBasis: number;
-    drawRangeCounts: Readonly<{
-        base: number;
-        alpha: number;
-        lod: number;
-        lodAlpha: number;
-        interact: number;
-        interactAlpha: number;
-        interactLod: number;
-        interactLodAlpha: number;
-    }>;
-    modelInfoLengths: Readonly<{
-        base: number;
-        alpha: number;
-        lod: number;
-        lodAlpha: number;
-        interact: number;
-        interactAlpha: number;
-        interactLod: number;
-        interactLodAlpha: number;
-    }>;
+    drawCommands?: StagingDrawCommandBuckets;
 }>;
 
 export type MapRenderDataPayload = Readonly<{
@@ -66,6 +75,40 @@ export type MapRenderDataPayloadResult = Readonly<{
     data: MapRenderDataPayload | undefined;
 }>;
 
+const DRAW_BUCKET_KEYS = [
+    "base",
+    "alpha",
+    "lod",
+    "lodAlpha",
+    "interact",
+    "interactAlpha",
+    "interactLod",
+    "interactLodAlpha",
+] as const;
+
+function modelInfoLengthFromCount(cmdCount: number, totalInstances: number): number {
+    const dataLength = Math.ceil((cmdCount * 4 + totalInstances) / 16) * 16;
+    return Math.max(dataLength, 16) * 4;
+}
+
+function modelInfoLengthFromDrawRanges(drawRanges: readonly DrawRange[]): number {
+    let totalInstances = 0;
+    for (let i = 0; i < drawRanges.length; i++) {
+        totalInstances += drawRanges[i][2] | 0;
+    }
+    return modelInfoLengthFromCount(drawRanges.length, totalInstances);
+}
+
+function modelInfoLengthFromStagingDrawCommands(
+    commands: ReadonlyArray<StagingDrawCommand>,
+): number {
+    let totalInstances = 0;
+    for (let i = 0; i < commands.length; i++) {
+        totalInstances += commands[i].instances.length | 0;
+    }
+    return modelInfoLengthFromCount(commands.length, totalInstances);
+}
+
 export function validateMapRenderPayload(data: MapRenderDataPayload): string[] {
     const issues: string[] = [];
 
@@ -77,6 +120,36 @@ export function validateMapRenderPayload(data: MapRenderDataPayload): string[] {
         issues.push(
             `heightMapTextureData length mismatch expected=${expectedHeightMapLengthFromFlags} got=${data.heightMapTextureData.length}`,
         );
+    }
+
+    for (const key of DRAW_BUCKET_KEYS) {
+        const stagingDrawCommands = data.staging?.drawCommands?.[key];
+        const drawRanges = data.drawRanges[key];
+        const modelInfoTexture = data.modelInfoTextures[key];
+        if (stagingDrawCommands) {
+            const expectedDrawRangeCount = stagingDrawCommands.length;
+            if (drawRanges.length !== expectedDrawRangeCount && drawRanges.length !== 0) {
+                issues.push(
+                    `drawRanges.${key} length mismatch expected=${expectedDrawRangeCount} got=${drawRanges.length}`,
+                );
+            }
+            const expectedModelInfoLength = modelInfoLengthFromStagingDrawCommands(stagingDrawCommands);
+            if (
+                modelInfoTexture.length !== expectedModelInfoLength &&
+                modelInfoTexture.length !== 0
+            ) {
+                issues.push(
+                    `modelInfoTextures.${key} length mismatch expected=${expectedModelInfoLength} got=${modelInfoTexture.length}`,
+                );
+            }
+            continue;
+        }
+        const expectedModelInfoLength = modelInfoLengthFromDrawRanges(drawRanges);
+        if (modelInfoTexture.length !== expectedModelInfoLength) {
+            issues.push(
+                `modelInfoTextures.${key} length mismatch expected=${expectedModelInfoLength} got=${modelInfoTexture.length}`,
+            );
+        }
     }
 
     if (data.staging) {
@@ -99,90 +172,7 @@ export function validateMapRenderPayload(data: MapRenderDataPayload): string[] {
                 `staging.sceneTileHeights length mismatch expected=${expectedSceneTileHeightsLength} got=${data.staging.sceneTileHeights.length}`,
             );
         }
-
-        const drawRangeCounts = data.staging.drawRangeCounts;
-        if (data.drawRanges.base.length !== drawRangeCounts.base) {
-            issues.push(
-                `drawRanges.base length mismatch expected=${drawRangeCounts.base} got=${data.drawRanges.base.length}`,
-            );
-        }
-        if (data.drawRanges.alpha.length !== drawRangeCounts.alpha) {
-            issues.push(
-                `drawRanges.alpha length mismatch expected=${drawRangeCounts.alpha} got=${data.drawRanges.alpha.length}`,
-            );
-        }
-        if (data.drawRanges.lod.length !== drawRangeCounts.lod) {
-            issues.push(
-                `drawRanges.lod length mismatch expected=${drawRangeCounts.lod} got=${data.drawRanges.lod.length}`,
-            );
-        }
-        if (data.drawRanges.lodAlpha.length !== drawRangeCounts.lodAlpha) {
-            issues.push(
-                `drawRanges.lodAlpha length mismatch expected=${drawRangeCounts.lodAlpha} got=${data.drawRanges.lodAlpha.length}`,
-            );
-        }
-        if (data.drawRanges.interact.length !== drawRangeCounts.interact) {
-            issues.push(
-                `drawRanges.interact length mismatch expected=${drawRangeCounts.interact} got=${data.drawRanges.interact.length}`,
-            );
-        }
-        if (data.drawRanges.interactAlpha.length !== drawRangeCounts.interactAlpha) {
-            issues.push(
-                `drawRanges.interactAlpha length mismatch expected=${drawRangeCounts.interactAlpha} got=${data.drawRanges.interactAlpha.length}`,
-            );
-        }
-        if (data.drawRanges.interactLod.length !== drawRangeCounts.interactLod) {
-            issues.push(
-                `drawRanges.interactLod length mismatch expected=${drawRangeCounts.interactLod} got=${data.drawRanges.interactLod.length}`,
-            );
-        }
-        if (data.drawRanges.interactLodAlpha.length !== drawRangeCounts.interactLodAlpha) {
-            issues.push(
-                `drawRanges.interactLodAlpha length mismatch expected=${drawRangeCounts.interactLodAlpha} got=${data.drawRanges.interactLodAlpha.length}`,
-            );
-        }
-
-        const modelInfoLengths = data.staging.modelInfoLengths;
-        if (data.modelInfoTextures.base.length !== modelInfoLengths.base) {
-            issues.push(
-                `modelInfoTextures.base length mismatch expected=${modelInfoLengths.base} got=${data.modelInfoTextures.base.length}`,
-            );
-        }
-        if (data.modelInfoTextures.alpha.length !== modelInfoLengths.alpha) {
-            issues.push(
-                `modelInfoTextures.alpha length mismatch expected=${modelInfoLengths.alpha} got=${data.modelInfoTextures.alpha.length}`,
-            );
-        }
-        if (data.modelInfoTextures.lod.length !== modelInfoLengths.lod) {
-            issues.push(
-                `modelInfoTextures.lod length mismatch expected=${modelInfoLengths.lod} got=${data.modelInfoTextures.lod.length}`,
-            );
-        }
-        if (data.modelInfoTextures.lodAlpha.length !== modelInfoLengths.lodAlpha) {
-            issues.push(
-                `modelInfoTextures.lodAlpha length mismatch expected=${modelInfoLengths.lodAlpha} got=${data.modelInfoTextures.lodAlpha.length}`,
-            );
-        }
-        if (data.modelInfoTextures.interact.length !== modelInfoLengths.interact) {
-            issues.push(
-                `modelInfoTextures.interact length mismatch expected=${modelInfoLengths.interact} got=${data.modelInfoTextures.interact.length}`,
-            );
-        }
-        if (data.modelInfoTextures.interactAlpha.length !== modelInfoLengths.interactAlpha) {
-            issues.push(
-                `modelInfoTextures.interactAlpha length mismatch expected=${modelInfoLengths.interactAlpha} got=${data.modelInfoTextures.interactAlpha.length}`,
-            );
-        }
-        if (data.modelInfoTextures.interactLod.length !== modelInfoLengths.interactLod) {
-            issues.push(
-                `modelInfoTextures.interactLod length mismatch expected=${modelInfoLengths.interactLod} got=${data.modelInfoTextures.interactLod.length}`,
-            );
-        }
-        if (data.modelInfoTextures.interactLodAlpha.length !== modelInfoLengths.interactLodAlpha) {
-            issues.push(
-                `modelInfoTextures.interactLodAlpha length mismatch expected=${modelInfoLengths.interactLodAlpha} got=${data.modelInfoTextures.interactLodAlpha.length}`,
-            );
-        }
+        // drawCommands-aware draw/model-info validation is handled above.
     }
 
     return issues;

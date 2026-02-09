@@ -6,6 +6,7 @@ import { decodeNpcSpawnsFromBytes } from "../../src/rs/scene/decodeNpcSpawns";
 type WasmBackendModule = {
     HEAP32: Int32Array;
     HEAP16: Int16Array;
+    HEAPU16: Uint16Array;
     HEAPU8: Uint8Array;
     _malloc(size: number): number;
     _free(ptr: number): void;
@@ -35,10 +36,23 @@ type WasmBackendModule = {
         outPackedPtr: number,
         outPackedIntLength: number,
     ): number;
+    _rs_pack_draw_commands(
+        cmdOffsetsPtr: number,
+        cmdElementsPtr: number,
+        cmdInstanceCountsPtr: number,
+        cmdCount: number,
+        packedInstancesPtr: number,
+        packedInstancesLength: number,
+        outDrawRangesPtr: number,
+        outDrawRangesLength: number,
+        outModelInfoPtr: number,
+        outModelInfoLength: number,
+    ): number;
 };
 
 const CAP_HEIGHTMAP = 1 << 0;
 const CAP_NPC_DECODE = 1 << 1;
+const CAP_DRAW_PACK = 1 << 2;
 
 function parseArgs(argv: string[]): { iterations: number } {
     let iterations = 40;
@@ -135,6 +149,52 @@ function flattenFlags(flags: Uint8Array[]): { flat: Uint8Array; width: number } 
     return { flat, width };
 }
 
+function modelInfoLengthFromInstanceCounts(instanceCounts: Int32Array, cmdCount: number): number {
+    let totalInstances = 0;
+    for (let i = 0; i < instanceCounts.length; i++) {
+        totalInstances += instanceCounts[i] | 0;
+    }
+    const dataLength = Math.ceil((cmdCount * 4 + totalInstances) / 16) * 16;
+    return Math.max(dataLength, 16) * 4;
+}
+
+function buildExpectedModelInfo(
+    cmdCount: number,
+    instanceCounts: Int32Array,
+    packedInstances: Int32Array,
+): Uint16Array {
+    const outLength = modelInfoLengthFromInstanceCounts(instanceCounts, cmdCount);
+    const out = new Uint16Array(outLength);
+    let dataOffset = 0;
+    for (let i = 0; i < cmdCount; i++) {
+        out[i * 4] = (cmdCount + dataOffset) & 0xffff;
+        dataOffset += instanceCounts[i] | 0;
+    }
+    let inOffset = 0;
+    for (let i = 0; i < packedInstances.length / 8; i++) {
+        const sceneX = packedInstances[inOffset++] | 0;
+        const sceneZ = packedInstances[inOffset++] | 0;
+        const heightOffset = packedInstances[inOffset++] | 0;
+        const level = packedInstances[inOffset++] | 0;
+        const contourGround = packedInstances[inOffset++] | 0;
+        const priority = packedInstances[inOffset++] | 0;
+        const interactType = packedInstances[inOffset++] | 0;
+        const interactId = packedInstances[inOffset++] | 0;
+
+        const outOffset = cmdCount * 4 + i * 4;
+        out[outOffset + 0] = (sceneX | (level << 14)) & 0xffff;
+        out[outOffset + 1] = (sceneZ | (contourGround << 14)) & 0xffff;
+        out[outOffset + 2] =
+            ((priority & 0x7) |
+                ((interactId >> 16) << 3) |
+                (interactType << 4) |
+                (Math.round(heightOffset / 8) << 6)) &
+            0xffff;
+        out[outOffset + 3] = interactId & 0xffff;
+    }
+    return out;
+}
+
 async function loadWasmBackendModule(): Promise<WasmBackendModule> {
     const root = process.cwd();
     const wasmDir = path.resolve(root, "public/wasm");
@@ -162,6 +222,7 @@ async function main(): Promise<void> {
     assert(abi === 1, `Unexpected ABI version ${abi}`);
     assert((caps & CAP_HEIGHTMAP) !== 0, "WASM capability missing: heightmap");
     assert((caps & CAP_NPC_DECODE) !== 0, "WASM capability missing: npc decode");
+    assert((caps & CAP_DRAW_PACK) !== 0, "WASM capability missing: draw pack");
 
     let heightmapCases = 0;
     for (let i = 0; i < iterations; i++) {
@@ -280,8 +341,130 @@ async function main(): Promise<void> {
         }
     }
 
+    let drawPackCases = 0;
+    for (let i = 0; i < iterations; i++) {
+        const cmdCount = randomInt(24);
+        const cmdOffsets = new Int32Array(cmdCount);
+        const cmdElements = new Int32Array(cmdCount);
+        const cmdInstanceCounts = new Int32Array(cmdCount);
+        let totalInstances = 0;
+        for (let j = 0; j < cmdCount; j++) {
+            cmdOffsets[j] = randomInt(200000);
+            cmdElements[j] = randomInt(50000);
+            const count = randomInt(8);
+            cmdInstanceCounts[j] = count;
+            totalInstances += count;
+        }
+        const packedInstances = new Int32Array(totalInstances * 8);
+        for (let p = 0; p < totalInstances; p++) {
+            const off = p * 8;
+            packedInstances[off + 0] = randomInt(16384);
+            packedInstances[off + 1] = randomInt(16384);
+            packedInstances[off + 2] = randomInt(8192) - 4096;
+            packedInstances[off + 3] = randomInt(4);
+            packedInstances[off + 4] = randomInt(3);
+            packedInstances[off + 5] = randomInt(8);
+            packedInstances[off + 6] = randomInt(8);
+            packedInstances[off + 7] = randomInt(1 << 20);
+        }
+
+        const expectedDrawRanges = new Int32Array(cmdCount * 3);
+        for (let j = 0; j < cmdCount; j++) {
+            const off = j * 3;
+            expectedDrawRanges[off + 0] = cmdOffsets[j] | 0;
+            expectedDrawRanges[off + 1] = cmdElements[j] | 0;
+            expectedDrawRanges[off + 2] = cmdInstanceCounts[j] | 0;
+        }
+        const expectedModelInfo = buildExpectedModelInfo(cmdCount, cmdInstanceCounts, packedInstances);
+
+        const cmdOffsetsPtr = cmdOffsets.length > 0 ? module._malloc(cmdOffsets.length * 4) : 0;
+        const cmdElementsPtr = cmdElements.length > 0 ? module._malloc(cmdElements.length * 4) : 0;
+        const cmdCountsPtr = cmdInstanceCounts.length > 0 ? module._malloc(cmdInstanceCounts.length * 4) : 0;
+        const instancesPtr = packedInstances.length > 0 ? module._malloc(packedInstances.length * 4) : 0;
+        const outDrawRangesPtr =
+            expectedDrawRanges.length > 0 ? module._malloc(expectedDrawRanges.length * 4) : 0;
+        const outModelInfoPtr = module._malloc(expectedModelInfo.length * 2);
+        assert(
+            (cmdOffsets.length === 0 || cmdOffsetsPtr !== 0) &&
+                (cmdElements.length === 0 || cmdElementsPtr !== 0) &&
+                (cmdInstanceCounts.length === 0 || cmdCountsPtr !== 0) &&
+                (packedInstances.length === 0 || instancesPtr !== 0) &&
+                (expectedDrawRanges.length === 0 || outDrawRangesPtr !== 0) &&
+                outModelInfoPtr !== 0,
+            "malloc failed",
+        );
+
+        try {
+            if (cmdOffsets.length > 0) {
+                module.HEAP32.set(cmdOffsets, cmdOffsetsPtr >> 2);
+            }
+            if (cmdElements.length > 0) {
+                module.HEAP32.set(cmdElements, cmdElementsPtr >> 2);
+            }
+            if (cmdInstanceCounts.length > 0) {
+                module.HEAP32.set(cmdInstanceCounts, cmdCountsPtr >> 2);
+            }
+            if (packedInstances.length > 0) {
+                module.HEAP32.set(packedInstances, instancesPtr >> 2);
+            }
+            const ok = module._rs_pack_draw_commands(
+                cmdOffsetsPtr,
+                cmdElementsPtr,
+                cmdCountsPtr,
+                cmdCount,
+                instancesPtr,
+                packedInstances.length,
+                outDrawRangesPtr,
+                expectedDrawRanges.length,
+                outModelInfoPtr,
+                expectedModelInfo.length,
+            );
+            assert(ok === 1, "draw pack wasm call failed");
+
+            const wasmDrawRanges = new Int32Array(expectedDrawRanges.length);
+            if (expectedDrawRanges.length > 0) {
+                wasmDrawRanges.set(
+                    module.HEAP32.subarray(
+                        outDrawRangesPtr >> 2,
+                        (outDrawRangesPtr >> 2) + expectedDrawRanges.length,
+                    ),
+                );
+            }
+            const wasmModelInfo = new Uint16Array(expectedModelInfo.length);
+            wasmModelInfo.set(
+                module.HEAPU16.subarray(
+                    outModelInfoPtr >> 1,
+                    (outModelInfoPtr >> 1) + expectedModelInfo.length,
+                ),
+            );
+
+            for (let k = 0; k < expectedDrawRanges.length; k++) {
+                if (wasmDrawRanges[k] !== expectedDrawRanges[k]) {
+                    throw new Error(
+                        `draw range mismatch at ${k}: wasm=${wasmDrawRanges[k]} ts=${expectedDrawRanges[k]}`,
+                    );
+                }
+            }
+            for (let k = 0; k < expectedModelInfo.length; k++) {
+                if (wasmModelInfo[k] !== expectedModelInfo[k]) {
+                    throw new Error(
+                        `model info mismatch at ${k}: wasm=${wasmModelInfo[k]} ts=${expectedModelInfo[k]}`,
+                    );
+                }
+            }
+            drawPackCases++;
+        } finally {
+            if (cmdOffsetsPtr) module._free(cmdOffsetsPtr);
+            if (cmdElementsPtr) module._free(cmdElementsPtr);
+            if (cmdCountsPtr) module._free(cmdCountsPtr);
+            if (instancesPtr) module._free(instancesPtr);
+            if (outDrawRangesPtr) module._free(outDrawRangesPtr);
+            module._free(outModelInfoPtr);
+        }
+    }
+
     console.log(
-        `map-render-wasm-parity: abi=${abi} caps=${caps} heightmapCases=${heightmapCases} npcCases=${npcCases} ok`,
+        `map-render-wasm-parity: abi=${abi} caps=${caps} heightmapCases=${heightmapCases} npcCases=${npcCases} drawPackCases=${drawPackCases} ok`,
     );
 }
 

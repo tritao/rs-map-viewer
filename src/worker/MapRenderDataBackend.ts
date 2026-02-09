@@ -29,6 +29,31 @@ export interface MapRenderDataBackend {
     reset(): void;
 }
 
+const CPP_WASM_OUTCOME_KEYS = [
+    "success",
+    "bridgeMissing",
+    "tsPayloadEmpty",
+    "bridgeReturnedEmpty",
+    "bridgeKeptStaging",
+    "validationFailed",
+    "bridgeError",
+] as const;
+
+type CppWasmBuildOutcome = (typeof CPP_WASM_OUTCOME_KEYS)[number];
+type CppWasmBuildOutcomeStats = Record<CppWasmBuildOutcome, number>;
+
+function createCppWasmBuildOutcomeStats(): CppWasmBuildOutcomeStats {
+    return {
+        success: 0,
+        bridgeMissing: 0,
+        tsPayloadEmpty: 0,
+        bridgeReturnedEmpty: 0,
+        bridgeKeptStaging: 0,
+        validationFailed: 0,
+        bridgeError: 0,
+    };
+}
+
 class TsMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "ts";
     private readonly backend: SdMapRenderDataTsBackend;
@@ -109,6 +134,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "cpp-wasm";
     private bridgePromise: Promise<CppWasmMapRenderDataBridge | undefined> | undefined;
     private readonly fallback: TsMapRenderDataBackend;
+    private readonly outcomeStats: CppWasmBuildOutcomeStats = createCppWasmBuildOutcomeStats();
+    private buildCalls = 0;
 
     constructor(
         deps: MapRenderDataBackendDeps,
@@ -154,24 +181,73 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         return this.bridgePromise;
     }
 
+    private trackOutcome(
+        outcome: CppWasmBuildOutcome,
+        input: SdMapLoaderInput,
+        totalMs?: number,
+        details?: string,
+    ): void {
+        this.outcomeStats[outcome]++;
+        this.buildCalls++;
+        if (!this.options?.telemetry) {
+            return;
+        }
+        const suffix = details ? ` details=${details}` : "";
+        const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
+        console.log(
+            `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=${outcome}${timing}${suffix}`,
+        );
+        if (this.buildCalls % 25 === 0) {
+            const summary = CPP_WASM_OUTCOME_KEYS.map(
+                (k) => `${k}=${this.outcomeStats[k]}`,
+            ).join(" ");
+            console.log(`[map-render] backend=cpp-wasm outcomes ${summary}`);
+        }
+    }
+
     async buildMapData(
         input: SdMapLoaderInput,
     ): Promise<RenderDataResult<SdMapData | undefined>> {
         const t0 = this.options?.telemetry ? performance.now() : 0;
         const bridge = await this.loadBridge();
         if (!bridge) {
+            this.trackOutcome(
+                "bridgeMissing",
+                input,
+                this.options?.telemetry ? performance.now() - t0 : undefined,
+            );
             return this.fallback.buildMapData(input);
         }
         const tsPayloadResult = await this.fallback.buildMapDataPayload(input, {
             includeStagingSceneHeights: true,
+            includeStagingDrawCommands: true,
+            preferWasmPacking: true,
         });
         if (!tsPayloadResult.data) {
+            this.trackOutcome(
+                "tsPayloadEmpty",
+                input,
+                this.options?.telemetry ? performance.now() - t0 : undefined,
+            );
             return payloadResultToRenderDataResult(tsPayloadResult);
         }
         try {
             const payloadResult = await bridge.buildMapData(input, tsPayloadResult);
             if (!payloadResult?.data) {
-                return payloadResultToRenderDataResult(tsPayloadResult);
+                this.trackOutcome(
+                    "bridgeReturnedEmpty",
+                    input,
+                    this.options?.telemetry ? performance.now() - t0 : undefined,
+                );
+                return this.fallback.buildMapData(input);
+            }
+            if (payloadResult.data.staging !== undefined) {
+                this.trackOutcome(
+                    "bridgeKeptStaging",
+                    input,
+                    this.options?.telemetry ? performance.now() - t0 : undefined,
+                );
+                return this.fallback.buildMapData(input);
             }
             const validationIssues = validateMapRenderPayload(payloadResult.data);
             if (validationIssues.length > 0) {
@@ -180,20 +256,29 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                         "; ",
                     )}`,
                 );
-                return payloadResultToRenderDataResult(tsPayloadResult);
-            }
-            if (this.options?.telemetry) {
-                const dt = performance.now() - t0;
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm totalMs=${dt.toFixed(
-                        1,
-                    )} usedWasmHeightMap=${payloadResult.data.staging === undefined}`,
+                this.trackOutcome(
+                    "validationFailed",
+                    input,
+                    this.options?.telemetry ? performance.now() - t0 : undefined,
+                    validationIssues[0],
                 );
+                return this.fallback.buildMapData(input);
             }
+            this.trackOutcome(
+                "success",
+                input,
+                this.options?.telemetry ? performance.now() - t0 : undefined,
+            );
             return payloadResultToRenderDataResult(payloadResult);
         } catch (e) {
             console.warn(`[map-render-backend] cpp-wasm buildMapData failed: ${errorToString(e)}`);
-            return payloadResultToRenderDataResult(tsPayloadResult);
+            this.trackOutcome(
+                "bridgeError",
+                input,
+                this.options?.telemetry ? performance.now() - t0 : undefined,
+                errorToString(e),
+            );
+            return this.fallback.buildMapData(input);
         }
     }
 

@@ -84,6 +84,8 @@ export type NpcSpawnDecodeBackend = Readonly<{
 
 export type BuildMapDataPayloadOptions = Readonly<{
     includeStagingSceneHeights?: boolean;
+    includeStagingDrawCommands?: boolean;
+    preferWasmPacking?: boolean;
     includeMinimapBlob?: boolean;
 }>;
 
@@ -103,10 +105,50 @@ function loadHeightMapTextureData(scene: Scene): Int16Array {
     return heightMapTextureData;
 }
 
+function createEmptyDrawRanges(): SdRenderableDrawRanges {
+    return {
+        base: [],
+        alpha: [],
+        lod: [],
+        lodAlpha: [],
+        interact: [],
+        interactAlpha: [],
+        interactLod: [],
+        interactLodAlpha: [],
+    };
+}
+
+function createEmptyModelInfoTextures(): SdRenderableModelInfoTextures {
+    return {
+        base: new Uint16Array(0),
+        alpha: new Uint16Array(0),
+        lod: new Uint16Array(0),
+        lodAlpha: new Uint16Array(0),
+        interact: new Uint16Array(0),
+        interactAlpha: new Uint16Array(0),
+        interactLod: new Uint16Array(0),
+        interactLodAlpha: new Uint16Array(0),
+    };
+}
+
+function getStagingDrawCommands(
+    sceneBuf: SceneBuffer,
+): MapRenderDataStaging["drawCommands"] {
+    return {
+        base: sceneBuf.drawCommands,
+        alpha: sceneBuf.drawCommandsAlpha,
+        lod: sceneBuf.drawCommandsLod,
+        lodAlpha: sceneBuf.drawCommandsLodAlpha,
+        interact: sceneBuf.drawCommandsInteract,
+        interactAlpha: sceneBuf.drawCommandsInteractAlpha,
+        interactLod: sceneBuf.drawCommandsInteractLod,
+        interactLodAlpha: sceneBuf.drawCommandsInteractLodAlpha,
+    };
+}
+
 function createStagingSceneHeights(
     scene: Scene,
-    drawRanges: SdRenderableDrawRanges,
-    modelInfoTextures: SdRenderableModelInfoTextures,
+    drawCommands?: MapRenderDataStaging["drawCommands"],
 ): MapRenderDataStaging {
     const levels = scene.levels;
     const sizeX = scene.sizeX;
@@ -126,26 +168,7 @@ function createStagingSceneHeights(
         sizeX,
         sizeY,
         unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
-        drawRangeCounts: {
-            base: drawRanges.base.length,
-            alpha: drawRanges.alpha.length,
-            lod: drawRanges.lod.length,
-            lodAlpha: drawRanges.lodAlpha.length,
-            interact: drawRanges.interact.length,
-            interactAlpha: drawRanges.interactAlpha.length,
-            interactLod: drawRanges.interactLod.length,
-            interactLodAlpha: drawRanges.interactLodAlpha.length,
-        },
-        modelInfoLengths: {
-            base: modelInfoTextures.base.length,
-            alpha: modelInfoTextures.alpha.length,
-            lod: modelInfoTextures.lod.length,
-            lodAlpha: modelInfoTextures.lodAlpha.length,
-            interact: modelInfoTextures.interact.length,
-            interactAlpha: modelInfoTextures.interactAlpha.length,
-            interactLod: modelInfoTextures.interactLod.length,
-            interactLodAlpha: modelInfoTextures.interactLodAlpha.length,
-        },
+        drawCommands,
     };
 }
 
@@ -888,17 +911,27 @@ export class SdMapRenderDataTsBackend {
         );
         const npcs = timeStep("createNpcDatas", () => createNpcDatas(npcSpawnGroups));
 
-        const drawRanges = timeStep("getDrawRanges", () =>
-            SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY),
-        );
+        const preferWasmPacking = options?.preferWasmPacking === true;
+        const includeStagingDrawCommands = options?.includeStagingDrawCommands === true;
+        const useWasmDrawPacking = preferWasmPacking && includeStagingDrawCommands;
+        const useWasmHeightMapPacking = preferWasmPacking && options?.includeStagingSceneHeights === true;
 
-        const modelInfoTextures = timeStep("getModelInfoTextures", () =>
-            SdRenderableDataLoader.getModelInfoTextures(sceneBuf),
-        );
+        const drawRanges = useWasmDrawPacking
+            ? createEmptyDrawRanges()
+            : timeStep("getDrawRanges", () => SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY));
 
-        const heightMapTextureData = timeStep("loadHeightMapTextureData", () =>
-            loadHeightMapTextureData(scene),
-        );
+        const modelInfoTextures = useWasmDrawPacking
+            ? createEmptyModelInfoTextures()
+            : timeStep("getModelInfoTextures", () => SdRenderableDataLoader.getModelInfoTextures(sceneBuf));
+
+        const heightMapTextureData = useWasmHeightMapPacking
+            ? new Int16Array(0)
+            : timeStep("loadHeightMapTextureData", () => loadHeightMapTextureData(scene));
+
+        const drawCommands =
+            includeStagingDrawCommands
+                ? timeStep("collectDrawCommandsForStaging", () => getStagingDrawCommands(sceneBuf))
+                : undefined;
 
         const vertices = sceneBuf.vertexBuf.byteArray();
         const indices = timeStep("packIndices", () => new Int32Array(sceneBuf.indices));
@@ -992,7 +1025,7 @@ export class SdMapRenderDataTsBackend {
             return {
                 data: {
                     ...sdMapDataToPayload(data),
-                    staging: createStagingSceneHeights(scene, drawRanges, modelInfoTextures),
+                    staging: createStagingSceneHeights(scene, drawCommands),
                 },
             };
         }

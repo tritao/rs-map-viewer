@@ -397,6 +397,8 @@ async function main(): Promise<void> {
         });
         const tsWasmNpcResult = await tsWithWasmNpcBackend.buildMapDataPayload(input, {
             includeStagingSceneHeights: true,
+            includeStagingDrawCommands: true,
+            preferWasmPacking: true,
             includeMinimapBlob: false,
         });
 

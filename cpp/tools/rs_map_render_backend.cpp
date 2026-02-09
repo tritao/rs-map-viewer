@@ -15,13 +15,14 @@ extern "C" {
 
 static constexpr rs::i32 RS_MAP_RENDER_CAP_HEIGHTMAP = 1 << 0;
 static constexpr rs::i32 RS_MAP_RENDER_CAP_NPC_DECODE = 1 << 1;
+static constexpr rs::i32 RS_MAP_RENDER_CAP_DRAW_PACK = 1 << 2;
 
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_abi_version() {
     return 1;
 }
 
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_capabilities() {
-    return RS_MAP_RENDER_CAP_HEIGHTMAP | RS_MAP_RENDER_CAP_NPC_DECODE;
+    return RS_MAP_RENDER_CAP_HEIGHTMAP | RS_MAP_RENDER_CAP_NPC_DECODE | RS_MAP_RENDER_CAP_DRAW_PACK;
 }
 
 RS_WASM_KEEPALIVE rs::i32 rs_heightmap_from_scene_tile_heights(
@@ -145,6 +146,108 @@ RS_WASM_KEEPALIVE rs::i32 rs_decode_npc_spawns_from_bytes(
         outCount++;
     }
     return outCount;
+}
+
+static rs::i32 roundHeightOffsetDiv8Js(rs::i32 heightOffset) noexcept {
+    if (heightOffset >= 0) {
+        return (heightOffset + 4) / 8;
+    }
+    return -(((-heightOffset) + 3) / 8);
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_pack_draw_commands(
+    const rs::i32* cmdOffsets,
+    const rs::i32* cmdElements,
+    const rs::i32* cmdInstanceCounts,
+    rs::i32 cmdCount,
+    const rs::i32* packedInstances,
+    rs::i32 packedInstancesLength,
+    rs::i32* outDrawRanges,
+    rs::i32 outDrawRangesLength,
+    rs::u16* outModelInfoTexture,
+    rs::i32 outModelInfoTextureLength) {
+    if (cmdCount < 0 || packedInstancesLength < 0 || outDrawRangesLength < 0 || outModelInfoTextureLength < 0) {
+        return -1;
+    }
+    if (!outModelInfoTexture) {
+        return -1;
+    }
+    if (cmdCount > 0 && (!cmdOffsets || !cmdElements || !cmdInstanceCounts)) {
+        return -1;
+    }
+    if (outDrawRangesLength > 0 && !outDrawRanges) {
+        return -1;
+    }
+    if (packedInstancesLength > 0 && !packedInstances) {
+        return -1;
+    }
+
+    rs::i32 totalInstances = 0;
+    for (rs::i32 i = 0; i < cmdCount; i++) {
+        const rs::i32 n = cmdInstanceCounts[i];
+        if (n < 0) {
+            return -1;
+        }
+        totalInstances += n;
+    }
+
+    const rs::i32 expectedPackedInstancesLength = totalInstances * 8;
+    if (packedInstancesLength != expectedPackedInstancesLength) {
+        return -2;
+    }
+
+    const rs::i32 expectedDrawRangesLength = cmdCount * 3;
+    if (outDrawRangesLength != expectedDrawRangesLength) {
+        return -2;
+    }
+
+    const rs::i32 dataLengthRounded = ((cmdCount * 4 + totalInstances + 15) / 16) * 16;
+    const rs::i32 expectedModelInfoTextureLength = (dataLengthRounded > 16 ? dataLengthRounded : 16) * 4;
+    if (outModelInfoTextureLength != expectedModelInfoTextureLength) {
+        return -2;
+    }
+
+    for (rs::i32 i = 0; i < outModelInfoTextureLength; i++) {
+        outModelInfoTexture[i] = 0;
+    }
+
+    for (rs::i32 i = 0; i < cmdCount; i++) {
+        const rs::i32 outOff = i * 3;
+        outDrawRanges[outOff + 0] = cmdOffsets[i];
+        outDrawRanges[outOff + 1] = cmdElements[i];
+        outDrawRanges[outOff + 2] = cmdInstanceCounts[i];
+    }
+
+    rs::i32 dataOffset = 0;
+    for (rs::i32 i = 0; i < cmdCount; i++) {
+        outModelInfoTexture[i * 4] = static_cast<rs::u16>(cmdCount + dataOffset);
+        dataOffset += cmdInstanceCounts[i];
+    }
+
+    for (rs::i32 i = 0; i < totalInstances; i++) {
+        const rs::i32 inOff = i * 8;
+        const rs::i32 sceneX = packedInstances[inOff + 0];
+        const rs::i32 sceneZ = packedInstances[inOff + 1];
+        const rs::i32 heightOffset = packedInstances[inOff + 2];
+        const rs::i32 level = packedInstances[inOff + 3];
+        const rs::i32 contourGround = packedInstances[inOff + 4];
+        const rs::i32 priority = packedInstances[inOff + 5];
+        const rs::i32 interactType = packedInstances[inOff + 6];
+        const rs::i32 interactId = packedInstances[inOff + 7];
+
+        const rs::i32 outOff = cmdCount * 4 + i * 4;
+        outModelInfoTexture[outOff + 0] = static_cast<rs::u16>(sceneX | (level << 14));
+        outModelInfoTexture[outOff + 1] = static_cast<rs::u16>(sceneZ | (contourGround << 14));
+        const rs::i32 packed3 =
+            (priority & 0x7) |
+            ((interactId >> 16) << 3) |
+            (interactType << 4) |
+            (roundHeightOffsetDiv8Js(heightOffset) << 6);
+        outModelInfoTexture[outOff + 2] = static_cast<rs::u16>(packed3);
+        outModelInfoTexture[outOff + 3] = static_cast<rs::u16>(interactId);
+    }
+
+    return 1;
 }
 
 } // extern "C"
