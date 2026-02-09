@@ -13,6 +13,7 @@ option(RS_BUILD_TOOLS "Build command-line tools (native only by default)" ON)
 option(RS_BUILD_TESTS "Build tests (native only by default)" ON)
 option(RS_BUILD_WASM_SMOKE "Build a minimal wasm smoke target" OFF)
 option(RS_BUILD_WASM_MAP_RENDER_BACKEND "Build wasm map-render backend module" OFF)
+option(RS_BUILD_WASM_SCENE_BACKEND "Build wasm scene backend module" OFF)
 option(RS_ENABLE_SANITIZERS "Enable ASan+UBSan for native builds" OFF)
 
 if (EMSCRIPTEN)
@@ -26,6 +27,9 @@ if (EMSCRIPTEN)
     endif()
     if (NOT RS_BUILD_WASM_MAP_RENDER_BACKEND)
         set(RS_BUILD_WASM_MAP_RENDER_BACKEND OFF CACHE BOOL "" FORCE)
+    endif()
+    if (NOT RS_BUILD_WASM_SCENE_BACKEND)
+        set(RS_BUILD_WASM_SCENE_BACKEND OFF CACHE BOOL "" FORCE)
     endif()
 endif()
 
@@ -287,5 +291,32 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
         -sEXPORT_ES6=1
         --no-entry
         "-sEXPORTED_FUNCTIONS=${RS_MAP_RENDER_EXPORTED_FUNCTIONS}"
+    )
+endif()
+
+if (RS_BUILD_WASM_SCENE_BACKEND)
+    if (NOT EMSCRIPTEN)
+        message(FATAL_ERROR "RS_BUILD_WASM_SCENE_BACKEND requires Emscripten")
+    endif()
+
+    add_executable(rs_scene_backend
+        tools/rs_scene_backend.cpp
+    )
+
+    target_link_libraries(rs_scene_backend PRIVATE rs)
+
+    set(RS_SCENE_EXPORTED_FUNCTIONS
+        "['_malloc','_free','_rs_scene_bridge_abi_version','_rs_scene_bridge_capabilities','_rs_build_scene_data_from_map_squares']"
+    )
+
+    target_link_options(rs_scene_backend PRIVATE
+        -Wl,--gc-sections
+        -sERROR_ON_UNDEFINED_SYMBOLS=1
+        -sENVIRONMENT=web,worker,node
+        -sFILESYSTEM=0
+        -sMODULARIZE=1
+        -sEXPORT_ES6=1
+        --no-entry
+        "-sEXPORTED_FUNCTIONS=${RS_SCENE_EXPORTED_FUNCTIONS}"
     )
 endif()

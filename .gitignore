@@ -36,6 +36,7 @@ cpp/build-debug/
 cpp/build-sanitize/
 cpp/build-wasm/
 cpp/build-wasm-map-render/
+cpp/build-wasm-scene/
 cpp/.cache/
 
 # vendored / nested repos (local dev)
