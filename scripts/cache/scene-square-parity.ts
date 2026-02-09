@@ -26,7 +26,6 @@ import {
     decodeTerrainSquareFromBytesInto,
 } from "../../src/rs/scene/decodeTerrainSquare";
 import { decodeLocPlacementsFromBytes } from "../../src/rs/scene/decodeLocPlacements";
-import { SkeletalPools } from "../../src/rs/model/skeletal/SkeletalPools";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = { cacheName?: string; limit: number; locLoadType: "models" | "no_models" };
@@ -39,22 +38,6 @@ type TsSceneLocPlacement = {
     tileY: number;
     type: number;
     rotation: number;
-    renderKind: number;
-    modelAvailable: number;
-    modelSignature: number;
-    modelVerticesCount: number;
-    modelFaceCount: number;
-    modelTextureFaceCount: number;
-    modelHasMayaGroups: number;
-    sequenceId: number;
-    animMayaId: number;
-    skeletalBaseId: number;
-    skeletalPoseId: number;
-    skeletalCurveCount: number;
-    skeletalAvailable: number;
-    skeletalHasAlpha: number;
-    skeletalFrame: number;
-    skeletalFrameHash: number;
 };
 
 type TsSceneState = {
@@ -109,15 +92,6 @@ function fnv1a32UpdateInt(h: number, v: number): number {
     h ^= (x >>> 24) & 0xff;
     h = Math.imul(h, 16777619);
     return h >>> 0;
-}
-
-const FLOAT_BYTES = new ArrayBuffer(4);
-const FLOAT_VIEW = new DataView(FLOAT_BYTES);
-
-function fnv1a32UpdateFloat(h: number, v: number): number {
-    FLOAT_VIEW.setFloat32(0, v, true);
-    const bits = FLOAT_VIEW.getUint32(0, true);
-    return fnv1a32UpdateInt(h, bits);
 }
 
 function isNewTerrainFormat(cacheInfo: CacheInfo): boolean {
@@ -326,247 +300,37 @@ function normalizeModelType(placementType: number): number {
     }
 }
 
-type TsModelDataLike = {
-    version?: number;
-    verticesCount: number;
-    usedVertexCount?: number;
-    faceCount: number;
-    textureFaceCount: number;
-    priority?: number;
-    verticesX: Int32Array;
-    verticesY: Int32Array;
-    verticesZ: Int32Array;
-    indices1: Int32Array;
-    indices2: Int32Array;
-    indices3: Int32Array;
-    faceColors: Uint16Array;
-    faceRenderTypes?: Int8Array;
-    faceRenderPriorities?: Int8Array;
-    faceAlphas?: Int8Array;
-    textureCoords?: Int8Array;
-    faceTextures?: Int16Array;
-    textureRenderTypes?: Int8Array;
-    textureMappingP?: Int16Array;
-    textureMappingM?: Int16Array;
-    textureMappingN?: Int16Array;
-    textureScaleX?: Int32Array;
-    textureScaleY?: Int32Array;
-    textureScaleZ?: Int32Array;
-    textureRotation?: Int8Array;
-    textureDirection?: Int8Array;
-    textureSpeed?: Int32Array;
-    textureTransU?: Int32Array;
-    textureTransV?: Int32Array;
-    vertexSkins?: Int32Array;
-    faceSkins?: Int32Array;
-    animMayaGroups?: Int32Array[];
-    animMayaScales?: Int32Array[];
-};
-
-type TsStaticModelInfo = {
-    signature: number;
-    verticesCount: number;
-    faceCount: number;
-    textureFaceCount: number;
-    hasMayaGroups: boolean;
-};
-
-type TsSkeletalInfo = {
-    seqId: number;
-    animMayaId: number;
-    baseId: number;
-    poseId: number;
-    curveCount: number;
-    hasAlphaTransform: boolean;
-    frame: number;
-    frameHash: number;
-};
-
-function fnv1a32UpdateArray(
-    h: number,
-    values: ArrayLike<number> | undefined,
-): number {
-    const size = values ? values.length : 0;
-    h = fnv1a32UpdateInt(h, size | 0);
-    if (!values) return h;
-    for (let i = 0; i < values.length; i++) {
-        h = fnv1a32UpdateInt(h, values[i] | 0);
-    }
-    return h;
-}
-
-function fnv1a32UpdateOptionalArray(
-    h: number,
-    values: ArrayLike<number> | undefined,
-): number {
-    const present = values !== undefined;
-    h = fnv1a32UpdateInt(h, present ? 1 : 0);
-    if (!present) return h;
-    return fnv1a32UpdateArray(h, values);
-}
-
-function fnv1a32UpdateNestedInt32Arrays(
-    h: number,
-    values: Int32Array[] | undefined,
-): number {
-    const present = values !== undefined;
-    h = fnv1a32UpdateInt(h, present ? 1 : 0);
-    if (!present) return h;
-    h = fnv1a32UpdateInt(h, values.length | 0);
-    for (let i = 0; i < values.length; i++) {
-        h = fnv1a32UpdateArray(h, values[i]);
-    }
-    return h;
-}
-
-function hasMayaGroups(model: TsModelDataLike): boolean {
-    if (!model.animMayaGroups || !model.animMayaScales) return false;
-    for (let i = 0; i < model.animMayaGroups.length; i++) {
-        if (model.animMayaGroups[i] && model.animMayaGroups[i].length > 0) return true;
-    }
-    return false;
-}
-
-function hashModelDataDetailed(model: TsModelDataLike): number {
-    let h = 2166136261 >>> 0;
-    h = fnv1a32UpdateInt(h, 0x4c4d4448); // 'LMDH'
-    h = fnv1a32UpdateInt(h, (model.version ?? -1) | 0);
-    h = fnv1a32UpdateInt(h, model.verticesCount | 0);
-    h = fnv1a32UpdateInt(h, model.faceCount | 0);
-    h = fnv1a32UpdateInt(h, model.textureFaceCount | 0);
-    h = fnv1a32UpdateArray(h, model.verticesX);
-    h = fnv1a32UpdateArray(h, model.verticesY);
-    h = fnv1a32UpdateArray(h, model.verticesZ);
-    h = fnv1a32UpdateArray(h, model.indices1);
-    h = fnv1a32UpdateArray(h, model.indices2);
-    h = fnv1a32UpdateArray(h, model.indices3);
-    h = fnv1a32UpdateArray(h, model.faceColors);
-    h = fnv1a32UpdateArray(h, model.textureRenderTypes);
-    h = fnv1a32UpdateArray(h, model.textureMappingP);
-    h = fnv1a32UpdateArray(h, model.textureMappingM);
-    h = fnv1a32UpdateArray(h, model.textureMappingN);
-    h = fnv1a32UpdateArray(h, model.textureScaleX);
-    h = fnv1a32UpdateArray(h, model.textureScaleY);
-    h = fnv1a32UpdateArray(h, model.textureScaleZ);
-    h = fnv1a32UpdateArray(h, model.textureRotation);
-    h = fnv1a32UpdateArray(h, model.textureDirection);
-    h = fnv1a32UpdateArray(h, model.textureSpeed);
-    h = fnv1a32UpdateArray(h, model.textureTransU);
-    h = fnv1a32UpdateArray(h, model.textureTransV);
-    h = fnv1a32UpdateArray(h, model.vertexSkins);
-    h = fnv1a32UpdateArray(h, model.faceSkins);
-    h = fnv1a32UpdateInt(h, model.animMayaGroups !== undefined ? 1 : 0);
-    h = fnv1a32UpdateNestedInt32Arrays(h, model.animMayaGroups);
-    h = fnv1a32UpdateNestedInt32Arrays(h, model.animMayaScales);
-    return h | 0;
-}
-
-function tryResolveLocModelInfo(
-    locTypeLoader: LocTypeLoader,
-    modelLoader: { tryGet(id: number): TsModelDataLike | undefined },
-    resolvedId: number,
+function tryValidateStaticLocModelPlacement(
+    locType: {
+        types?: ArrayLike<number>;
+        models?: ArrayLike<ArrayLike<number>>;
+    },
     placementType: number,
-    rotation: number,
-): TsStaticModelInfo | undefined {
-    const locResult = locTypeLoader.tryLoad(resolvedId);
-    if (!locResult.ok) return undefined;
-    const locType = locResult.value;
+    modelLoader: { tryGet(id: number): unknown | undefined },
+): boolean {
     const normalizedType = normalizeModelType(placementType);
 
-    let modelIds: readonly number[] | undefined;
-    if (!locType.types) {
-        if (normalizedType !== LocModelType.NORMAL) return undefined;
+    let modelIds: ArrayLike<number> | undefined;
+    if (locType.types === undefined) {
+        if (normalizedType !== LocModelType.NORMAL) return false;
         modelIds = locType.models?.[0];
     } else {
-        const idx = locType.types.findIndex((t) => t === normalizedType);
-        if (idx < 0) return undefined;
+        let idx = -1;
+        for (let i = 0; i < locType.types.length; i++) {
+            if ((locType.types[i] | 0) === normalizedType) {
+                idx = i;
+                break;
+            }
+        }
+        if (idx < 0) return false;
         modelIds = locType.models?.[idx];
     }
-    if (!modelIds || modelIds.length === 0) return undefined;
+    if (!modelIds || modelIds.length === 0) return false;
 
-    let h = 2166136261 >>> 0;
-    h = fnv1a32UpdateInt(h, 0x4c4d534d); // 'LMSM'
-    h = fnv1a32UpdateInt(h, normalizedType | 0);
-    h = fnv1a32UpdateInt(h, rotation | 0);
-    h = fnv1a32UpdateInt(h, locType.isRotated ? 1 : 0);
-    h = fnv1a32UpdateInt(h, locType.modelSizeX | 0);
-    h = fnv1a32UpdateInt(h, locType.modelSizeHeight | 0);
-    h = fnv1a32UpdateInt(h, locType.modelSizeY | 0);
-    h = fnv1a32UpdateInt(h, locType.offsetX | 0);
-    h = fnv1a32UpdateInt(h, locType.offsetHeight | 0);
-    h = fnv1a32UpdateInt(h, locType.offsetY | 0);
-    h = fnv1a32UpdateArray(h, locType.recolorFrom);
-    h = fnv1a32UpdateArray(h, locType.recolorTo);
-    h = fnv1a32UpdateArray(h, locType.retextureFrom);
-    h = fnv1a32UpdateArray(h, locType.retextureTo);
-
-    let totalVertices = 0;
-    let totalFaces = 0;
-    let totalTextureFaces = 0;
-    let maya = false;
-    for (const modelId of modelIds) {
-        const model = modelLoader.tryGet(modelId);
-        if (!model) return undefined;
-        h = fnv1a32UpdateInt(h, modelId);
-        h = fnv1a32UpdateInt(h, hashModelDataDetailed(model));
-        totalVertices += model.verticesCount | 0;
-        totalFaces += model.faceCount | 0;
-        totalTextureFaces += model.textureFaceCount | 0;
-        maya ||= hasMayaGroups(model);
+    for (let i = 0; i < modelIds.length; i++) {
+        if (!modelLoader.tryGet(modelIds[i] | 0)) return false;
     }
-    return {
-        signature: h | 0,
-        verticesCount: totalVertices | 0,
-        faceCount: totalFaces | 0,
-        textureFaceCount: totalTextureFaces | 0,
-        hasMayaGroups: maya,
-    };
-}
-
-function hashSkeletalFinalMatrices(seq: any, frame: number): number {
-    const pools = new SkeletalPools();
-    pools.reset();
-    const base = seq.skeletalBase;
-    base.updateAnimMatrices(seq, frame, pools);
-    const boneCount = base.getBoneCount();
-    let h = 2166136261 >>> 0;
-    h = fnv1a32UpdateInt(h, 0x534b464d); // 'SKFM'
-    h = fnv1a32UpdateInt(h, boneCount | 0);
-    for (let i = 0; i < boneCount; i++) {
-        const bone = base.getBone(i);
-        if (!bone) continue;
-        const m = bone.getFinalMatrix(seq.poseId);
-        for (let e = 0; e < 16; e++) {
-            h = fnv1a32UpdateFloat(h, m[e]);
-        }
-    }
-    return h | 0;
-}
-
-function tryResolveSkeletalInfo(
-    seqTypeLoader: { tryLoad(id: number): { ok: true; value: any } | { ok: false } },
-    skeletalSeqLoader: { tryLoad(id: number): { ok: true; value: any } | { ok: false } } | undefined,
-    seqId: number,
-): TsSkeletalInfo | undefined {
-    if (seqId < 0 || !skeletalSeqLoader) return undefined;
-    const seqTypeResult = seqTypeLoader.tryLoad(seqId);
-    if (!seqTypeResult.ok) return undefined;
-    const seqType = seqTypeResult.value;
-    if ((seqType.animMayaId | 0) < 0) return undefined;
-    const sk = skeletalSeqLoader.tryLoad(seqType.animMayaId | 0);
-    if (!sk.ok) return undefined;
-    const skeletalSeq = sk.value;
-    const frame = seqType.animMayaStart | 0;
-    return {
-        seqId: seqId | 0,
-        animMayaId: seqType.animMayaId | 0,
-        baseId: skeletalSeq.base.id | 0,
-        poseId: skeletalSeq.poseId | 0,
-        curveCount: skeletalSeq.curveCount | 0,
-        hasAlphaTransform: Boolean(skeletalSeq.hasAlphaTransform),
-        frame,
-        frameHash: hashSkeletalFinalMatrices(skeletalSeq, frame),
-    };
+    return true;
 }
 
 function blendUnderlaysForLevel(
@@ -778,22 +542,6 @@ function hashSceneState(state: TsSceneState): number {
         h = fnv1a32UpdateInt(h, p.tileY);
         h = fnv1a32UpdateInt(h, p.type);
         h = fnv1a32UpdateInt(h, p.rotation);
-        h = fnv1a32UpdateInt(h, p.renderKind);
-        h = fnv1a32UpdateInt(h, p.modelAvailable);
-        h = fnv1a32UpdateInt(h, p.modelSignature);
-        h = fnv1a32UpdateInt(h, p.modelVerticesCount);
-        h = fnv1a32UpdateInt(h, p.modelFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelTextureFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelHasMayaGroups);
-        h = fnv1a32UpdateInt(h, p.sequenceId);
-        h = fnv1a32UpdateInt(h, p.animMayaId);
-        h = fnv1a32UpdateInt(h, p.skeletalBaseId);
-        h = fnv1a32UpdateInt(h, p.skeletalPoseId);
-        h = fnv1a32UpdateInt(h, p.skeletalCurveCount);
-        h = fnv1a32UpdateInt(h, p.skeletalAvailable);
-        h = fnv1a32UpdateInt(h, p.skeletalHasAlpha);
-        h = fnv1a32UpdateInt(h, p.skeletalFrame);
-        h = fnv1a32UpdateInt(h, p.skeletalFrameHash);
     }
 
     return h | 0;
@@ -871,22 +619,13 @@ function hashLocRenderSection(state: TsSceneState): number {
     let h = 2166136261 >>> 0;
     h = fnv1a32UpdateInt(h, 0x4c4f4358); // 'LOCX'
     for (const p of state.locPlacements) {
-        h = fnv1a32UpdateInt(h, p.renderKind);
-        h = fnv1a32UpdateInt(h, p.modelAvailable);
-        h = fnv1a32UpdateInt(h, p.modelSignature);
-        h = fnv1a32UpdateInt(h, p.modelVerticesCount);
-        h = fnv1a32UpdateInt(h, p.modelFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelTextureFaceCount);
-        h = fnv1a32UpdateInt(h, p.modelHasMayaGroups);
-        h = fnv1a32UpdateInt(h, p.sequenceId);
-        h = fnv1a32UpdateInt(h, p.animMayaId);
-        h = fnv1a32UpdateInt(h, p.skeletalBaseId);
-        h = fnv1a32UpdateInt(h, p.skeletalPoseId);
-        h = fnv1a32UpdateInt(h, p.skeletalCurveCount);
-        h = fnv1a32UpdateInt(h, p.skeletalAvailable);
-        h = fnv1a32UpdateInt(h, p.skeletalHasAlpha);
-        h = fnv1a32UpdateInt(h, p.skeletalFrame);
-        h = fnv1a32UpdateInt(h, p.skeletalFrameHash);
+        h = fnv1a32UpdateInt(h, p.originalId);
+        h = fnv1a32UpdateInt(h, p.resolvedId);
+        h = fnv1a32UpdateInt(h, p.level);
+        h = fnv1a32UpdateInt(h, p.tileX);
+        h = fnv1a32UpdateInt(h, p.tileY);
+        h = fnv1a32UpdateInt(h, p.type);
+        h = fnv1a32UpdateInt(h, p.rotation);
     }
     return h | 0;
 }
@@ -896,10 +635,8 @@ function buildTsSceneHashForSquare(
     mapBytesProvider: MapBytesProvider,
     varProvider: VarManagerProvider,
     locTypeLoader: LocTypeLoader,
-    seqTypeLoader: { tryLoad(id: number): { ok: true; value: any } | { ok: false } },
     underlayTypeLoader: Pick<FloorTypeLoader, "tryLoad">,
-    modelLoader: { tryGet(id: number): TsModelDataLike | undefined },
-    skeletalSeqLoader: { tryLoad(id: number): { ok: true; value: any } | { ok: false } } | undefined,
+    modelLoader: { tryGet(id: number): unknown | undefined },
     locLoadType: "models" | "no_models",
     mapX: number,
     mapY: number,
@@ -990,37 +727,24 @@ function buildTsSceneHashForSquare(
                 if (seqId === -1 && locType.randomSeqIds && locType.randomSeqIds.length > 0) {
                     seqId = locType.randomSeqIds[0];
                 }
+                const hasTransforms =
+                    locType.transforms !== undefined && locType.transforms.length > 0;
                 const isEntity =
                     seqId !== -1 ||
-                    locType.transforms !== undefined ||
+                    hasTransforms ||
                     locLoadType === "no_models";
 
-                let modelAvailable = 0;
-                let modelSignature = 0;
-                let modelVerticesCount = 0;
-                let modelFaceCount = 0;
-                let modelTextureFaceCount = 0;
-                let modelHasMayaGroups = 0;
                 if (!isEntity && locLoadType === "models") {
-                    const info = tryResolveLocModelInfo(
-                        locTypeLoader,
-                        modelLoader,
-                        locType.id,
+                    const ok = tryValidateStaticLocModelPlacement(
+                        locType,
                         p.type,
-                        p.rotation,
+                        modelLoader,
                     );
-                    if (info === undefined) {
+                    if (!ok) {
                         continue;
                     }
-                    modelAvailable = 1;
-                    modelSignature = info.signature;
-                    modelVerticesCount = info.verticesCount;
-                    modelFaceCount = info.faceCount;
-                    modelTextureFaceCount = info.textureFaceCount;
-                    modelHasMayaGroups = info.hasMayaGroups ? 1 : 0;
                 }
 
-                const skeletal = tryResolveSkeletalInfo(seqTypeLoader, skeletalSeqLoader, seqId);
                 state.locPlacements.push({
                     originalId: p.id,
                     resolvedId: locType.id,
@@ -1029,22 +753,6 @@ function buildTsSceneHashForSquare(
                     tileY: sceneY,
                     type: p.type,
                     rotation: p.rotation,
-                    renderKind: isEntity ? 0 : 1,
-                    modelAvailable,
-                    modelSignature,
-                    modelVerticesCount,
-                    modelFaceCount,
-                    modelTextureFaceCount,
-                    modelHasMayaGroups,
-                    sequenceId: seqId,
-                    animMayaId: skeletal ? skeletal.animMayaId : -1,
-                    skeletalBaseId: skeletal ? skeletal.baseId : -1,
-                    skeletalPoseId: skeletal ? skeletal.poseId : 0,
-                    skeletalCurveCount: skeletal ? skeletal.curveCount : 0,
-                    skeletalAvailable: skeletal ? 1 : 0,
-                    skeletalHasAlpha: skeletal?.hasAlphaTransform ? 1 : 0,
-                    skeletalFrame: skeletal ? skeletal.frame : 0,
-                    skeletalFrameHash: skeletal ? skeletal.frameHash : 0,
                 });
             }
         }
@@ -1130,10 +838,8 @@ async function main(): Promise<void> {
                 mapBytesProvider,
                 varProvider,
                 loaders.locTypeLoader,
-                loaders.seqTypeLoader,
                 loaders.underlayTypeLoader,
                 loaders.modelLoader,
-                loaders.skeletalSeqLoader,
                 args.locLoadType,
                 mapX,
                 mapY,
