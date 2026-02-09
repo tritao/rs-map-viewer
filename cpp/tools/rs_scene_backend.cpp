@@ -261,6 +261,8 @@ RS_WASM_KEEPALIVE rs::i32 rs_build_scene_data_from_map_squares(
     rs::i32 outTileRotationsLength,
     rs::u8* outBlockedByFloor,
     rs::i32 outBlockedByFloorLength,
+    rs::u8* outTileMinLevels,
+    rs::i32 outTileMinLevelsLength,
     rs::i32* outLocPlacements,
     rs::i32 outLocPlacementIntsCapacity) {
     if (sizeX <= 0 || sizeY <= 0 || mapCount < 0 || terrainBytesLength < 0 || locBytesLength < 0) {
@@ -285,7 +287,8 @@ RS_WASM_KEEPALIVE rs::i32 rs_build_scene_data_from_map_squares(
         outTileOverlaysLength != tileCount ||
         outTileShapesLength != tileCount ||
         outTileRotationsLength != tileCount ||
-        outBlockedByFloorLength != tileCount) {
+        outBlockedByFloorLength != tileCount ||
+        outTileMinLevelsLength != tileCount) {
         return -2;
     }
 
@@ -358,6 +361,10 @@ RS_WASM_KEEPALIVE rs::i32 rs_build_scene_data_from_map_squares(
     if (!rs::ok(emptyStatus)) {
         return -1;
     }
+    const rs::Status finalizeStatus = rs::finalizeSceneStage(services, context, &scene);
+    if (!rs::ok(finalizeStatus)) {
+        return -1;
+    }
 
     rs::Vec<rs::SceneLocPlacement> locPlacements(alloc);
     const rs::Status locStatus = collectRawLocPlacements(
@@ -396,7 +403,11 @@ RS_WASM_KEEPALIVE rs::i32 rs_build_scene_data_from_map_squares(
         copyToOutput(
             rs::Span<const rs::u8>(scene.blockedByFloor.data(), scene.blockedByFloor.size()),
             outBlockedByFloor,
-            outBlockedByFloorLength) != 0) {
+            outBlockedByFloorLength) != 0 ||
+        copyToOutput(
+            rs::Span<const rs::u8>(scene.tileMinLevels.data(), scene.tileMinLevels.size()),
+            outTileMinLevels,
+            outTileMinLevelsLength) != 0) {
         return -2;
     }
 

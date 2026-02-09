@@ -42,6 +42,7 @@ export type CppWasmSceneData = Readonly<{
     tileShapes: Uint8Array;
     tileRotations: Uint8Array;
     blockedByFloor: Uint8Array;
+    tileMinLevels: Uint8Array;
     locPlacements: Int32Array;
 }>;
 
@@ -102,6 +103,7 @@ function hydrateSceneFromCppData(
     assertLength(data.tileShapes.length, tileCount, "tileShapes");
     assertLength(data.tileRotations.length, tileCount, "tileRotations");
     assertLength(data.blockedByFloor.length, tileCount, "blockedByFloor");
+    assertLength(data.tileMinLevels.length, tileCount, "tileMinLevels");
     if (data.locPlacements.length % LOC_PLACEMENT_STRIDE !== 0) {
         throw new Error(
             `Invalid locPlacements length: ${data.locPlacements.length} (stride=${LOC_PLACEMENT_STRIDE})`,
@@ -165,7 +167,13 @@ function hydrateSceneFromCppData(
     }
 
     deps.sceneBuilder.addTileModels(scene, input.smoothTerrain);
-    scene.setTileMinLevels();
+    for (let level = 0; level < data.levels; level++) {
+        for (let x = 0; x < data.sizeX; x++) {
+            for (let y = 0; y < data.sizeY; y++) {
+                scene.setTileMinLevel(level, x, y, data.tileMinLevels[tileIndex(level, x, y)]);
+            }
+        }
+    }
     if (input.locLoadType === LocLoadType.MODELS) {
         scene.light(deps.sceneBuilder.textureLoader, -50, -10, -50);
     }

@@ -199,6 +199,7 @@ export const cppWasmSceneBridge = {
         let outTileShapesPtr = 0;
         let outTileRotationsPtr = 0;
         let outBlockedByFloorPtr = 0;
+        let outTileMinLevelsPtr = 0;
         let outLocPlacementsPtr = 0;
 
         try {
@@ -217,6 +218,7 @@ export const cppWasmSceneBridge = {
             outTileShapesPtr = allocHeapBuffer(backendModule, tileCount, 1);
             outTileRotationsPtr = allocHeapBuffer(backendModule, tileCount, 1);
             outBlockedByFloorPtr = allocHeapBuffer(backendModule, tileCount, 1);
+            outTileMinLevelsPtr = allocHeapBuffer(backendModule, tileCount, 1);
             outLocPlacementsPtr = allocHeapBuffer(backendModule, locPlacementIntsCapacity, 4);
 
             if (
@@ -227,6 +229,7 @@ export const cppWasmSceneBridge = {
                 !outTileShapesPtr ||
                 !outTileRotationsPtr ||
                 !outBlockedByFloorPtr ||
+                !outTileMinLevelsPtr ||
                 (locPlacementIntsCapacity > 0 && !outLocPlacementsPtr)
             ) {
                 return undefined;
@@ -268,6 +271,8 @@ export const cppWasmSceneBridge = {
                 outTileRotationsPtr,
                 tileCount,
                 outBlockedByFloorPtr,
+                tileCount,
+                outTileMinLevelsPtr,
                 tileCount,
                 outLocPlacementsPtr,
                 locPlacementIntsCapacity,
@@ -325,6 +330,13 @@ export const cppWasmSceneBridge = {
                     outBlockedByFloorPtr + tileCount,
                 ),
             );
+            const tileMinLevels = new Uint8Array(tileCount);
+            tileMinLevels.set(
+                backendModule.HEAPU8.subarray(
+                    outTileMinLevelsPtr,
+                    outTileMinLevelsPtr + tileCount,
+                ),
+            );
 
             const locPlacementIntsLength = (locPlacementCount | 0) * LOC_PLACEMENT_STRIDE;
             const locPlacements = new Int32Array(locPlacementIntsLength);
@@ -348,6 +360,7 @@ export const cppWasmSceneBridge = {
                 tileShapes,
                 tileRotations,
                 blockedByFloor,
+                tileMinLevels,
                 locPlacements,
             };
         } finally {
@@ -365,6 +378,7 @@ export const cppWasmSceneBridge = {
             if (outTileShapesPtr) backendModule._free(outTileShapesPtr);
             if (outTileRotationsPtr) backendModule._free(outTileRotationsPtr);
             if (outBlockedByFloorPtr) backendModule._free(outBlockedByFloorPtr);
+            if (outTileMinLevelsPtr) backendModule._free(outTileMinLevelsPtr);
             if (outLocPlacementsPtr) backendModule._free(outLocPlacementsPtr);
         }
     },
