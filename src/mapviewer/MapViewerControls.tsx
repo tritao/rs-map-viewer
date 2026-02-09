@@ -46,6 +46,16 @@ export const MapViewerControls = memo(
         const [varType, setVarType] = useState<VarType>(VarType.VARBIT);
         const [varId, setVarId] = useState(0);
         const [varValue, setVarValue] = useState(0);
+        const initialRuntimeOptions = mapViewer.getWorkerRuntimeOptions();
+        const [sceneBackend, setSceneBackend] = useState<"ts" | "cpp-wasm">(
+            initialRuntimeOptions.sceneBackend,
+        );
+        const [mapRenderBackend, setMapRenderBackend] = useState<"ts" | "cpp-wasm">(
+            initialRuntimeOptions.mapRenderBackend,
+        );
+        const [mapRenderTelemetry, setMapRenderTelemetry] = useState<boolean>(
+            initialRuntimeOptions.mapRenderTelemetry,
+        );
 
         const controlsSchema: Schema = {
             Position: { value: positionControls, editable: false },
@@ -293,6 +303,44 @@ export const MapViewerControls = memo(
                     },
                     { collapsed: true },
                 ),
+                Runtime: folder(
+                    {
+                        "Scene Backend": {
+                            value: sceneBackend,
+                            options: {
+                                TS: "ts",
+                                "C++ WASM": "cpp-wasm",
+                            },
+                            onChange: (v: "ts" | "cpp-wasm") => {
+                                setSceneBackend(v);
+                            },
+                        },
+                        "Map Backend": {
+                            value: mapRenderBackend,
+                            options: {
+                                TS: "ts",
+                                "C++ WASM": "cpp-wasm",
+                            },
+                            onChange: (v: "ts" | "cpp-wasm") => {
+                                setMapRenderBackend(v);
+                            },
+                        },
+                        "Map Telemetry": {
+                            value: mapRenderTelemetry,
+                            onChange: (v: boolean) => {
+                                setMapRenderTelemetry(v);
+                            },
+                        },
+                        Apply: button(async () => {
+                            await mapViewer.setWorkerRuntimeOptions({
+                                sceneBackend,
+                                mapRenderBackend,
+                                mapRenderTelemetry,
+                            });
+                        }),
+                    },
+                    { collapsed: true },
+                ),
                 Render: folder(
                     {
                         "Fps Limit": {
@@ -422,6 +470,9 @@ export const MapViewerControls = memo(
                 varType,
                 varId,
                 varValue,
+                sceneBackend,
+                mapRenderBackend,
+                mapRenderTelemetry,
                 pointsControls,
                 isCameraRunning,
                 isExportingSprites,

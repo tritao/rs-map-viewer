@@ -11,6 +11,7 @@ import { fetchCacheList } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
 import { renderDataLoaderSerializer } from "../worker/RenderDataLoader";
+import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
@@ -26,6 +27,28 @@ WebFont.load({
 const cachesPromise = fetchCacheList();
 
 const workerPool = RenderDataWorkerPool.create(isWallpaperEngine ? 1 : 4);
+
+function parseBackendKind(value: string | null): "ts" | "cpp-wasm" {
+    if (value === "cpp" || value === "cpp-wasm") {
+        return "cpp-wasm";
+    }
+    return "ts";
+}
+
+function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntimeOptions {
+    const sceneBackend = parseBackendKind(searchParams.get("sb"));
+    const mapRenderBackend = parseBackendKind(searchParams.get("mrb"));
+    const mapRenderTelemetry = searchParams.get("mrt") === "1";
+    const sceneBackendModuleUrl = searchParams.get("sbm") ?? undefined;
+    const mapRenderBackendModuleUrl = searchParams.get("mrbm") ?? undefined;
+    return {
+        sceneBackend,
+        mapRenderBackend,
+        mapRenderTelemetry,
+        sceneBackendModuleUrl,
+        mapRenderBackendModuleUrl,
+    };
+}
 
 function MapViewerApp() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -59,6 +82,7 @@ function MapViewerApp() {
                 MapViewer.loadCacheContext(cacheInfo, abortController.signal, setDownloadProgress),
                 objSpawnsPromise,
             ]);
+            const runtimeOptions = parseWorkerRuntimeOptions(searchParams);
 
             const mapImageCache = await caches.open("map-images");
 
@@ -68,6 +92,7 @@ function MapViewerApp() {
                 objSpawns,
                 mapImageCache,
                 context,
+                runtimeOptions,
             );
             if (!mapViewerResult.ok) {
                 setErrorMessage(mapViewerResult.error);

@@ -21,6 +21,7 @@ import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -32,6 +33,40 @@ type CacheContext = {
     readonly session: CacheSession;
     readonly npcSpawns: NpcSpawn[];
 };
+
+export type MapViewerRuntimeOptions = Readonly<{
+    sceneBackend: "ts" | "cpp-wasm";
+    mapRenderBackend: "ts" | "cpp-wasm";
+    mapRenderTelemetry: boolean;
+    sceneBackendModuleUrl?: string;
+    mapRenderBackendModuleUrl?: string;
+}>;
+
+const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
+    sceneBackend: "ts",
+    mapRenderBackend: "ts",
+    mapRenderTelemetry: false,
+};
+
+function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
+    return {
+        sceneBackend: options?.sceneBackend ?? DEFAULT_RUNTIME_OPTIONS.sceneBackend,
+        mapRenderBackend: options?.mapRenderBackend ?? DEFAULT_RUNTIME_OPTIONS.mapRenderBackend,
+        mapRenderTelemetry: options?.mapRenderTelemetry ?? DEFAULT_RUNTIME_OPTIONS.mapRenderTelemetry,
+        sceneBackendModuleUrl: options?.sceneBackendModuleUrl,
+        mapRenderBackendModuleUrl: options?.mapRenderBackendModuleUrl,
+    };
+}
+
+function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOptions): boolean {
+    return (
+        a.sceneBackend === b.sceneBackend &&
+        a.mapRenderBackend === b.mapRenderBackend &&
+        a.mapRenderTelemetry === b.mapRenderTelemetry &&
+        a.sceneBackendModuleUrl === b.sceneBackendModuleUrl &&
+        a.mapRenderBackendModuleUrl === b.mapRenderBackendModuleUrl
+    );
+}
 
 export type CacheSwitchStatus =
     | { state: "idle" }
@@ -88,8 +123,11 @@ export class MapViewer {
         objSpawns: ObjSpawn[],
         mapImageCache: Cache,
         context: CacheContext,
+        runtimeOptions?: WorkerRuntimeOptions,
     ): Result<MapViewer, string> {
-        return ok(new MapViewer(workerPool, cacheList, objSpawns, mapImageCache, context));
+        return ok(
+            new MapViewer(workerPool, cacheList, objSpawns, mapImageCache, context, runtimeOptions),
+        );
     }
 
     static async loadCacheContext(
@@ -120,16 +158,25 @@ export class MapViewer {
         readonly objSpawns: ObjSpawn[],
         readonly mapImageCache: Cache,
         context: CacheContext,
+        runtimeOptions?: WorkerRuntimeOptions,
     ) {
         this.cacheContext = context;
+        this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
         this.renderer = new MapViewerRenderer(this);
 
-        this.workerPool.initCache(context.loadedCache, this.objSpawns, context.npcSpawns);
+        this.workerPool.initCache(
+            context.loadedCache,
+            this.objSpawns,
+            context.npcSpawns,
+            this.runtimeOptions,
+        );
         this.clearMapImageUrls();
         this.renderer.initCache();
         this.resetMenu();
         this.updateSearchParams();
     }
+
+    private runtimeOptions: MapViewerRuntimeOptions;
 
     get loadedCache(): LoadedCache {
         return this.cacheContext.loadedCache;
@@ -170,9 +217,47 @@ export class MapViewer {
             params["cache"] = this.loadedCache.info.name;
         }
 
+        if (this.runtimeOptions.sceneBackend !== DEFAULT_RUNTIME_OPTIONS.sceneBackend) {
+            params["sb"] = this.runtimeOptions.sceneBackend === "cpp-wasm" ? "cpp" : "ts";
+        }
+        if (this.runtimeOptions.mapRenderBackend !== DEFAULT_RUNTIME_OPTIONS.mapRenderBackend) {
+            params["mrb"] = this.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
+        }
+        if (this.runtimeOptions.mapRenderTelemetry) {
+            params["mrt"] = "1";
+        }
+        if (this.runtimeOptions.sceneBackendModuleUrl) {
+            params["sbm"] = this.runtimeOptions.sceneBackendModuleUrl;
+        }
+        if (this.runtimeOptions.mapRenderBackendModuleUrl) {
+            params["mrbm"] = this.runtimeOptions.mapRenderBackendModuleUrl;
+        }
+
         params["v"] = 1;
 
         return params;
+    }
+
+    getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
+        return this.runtimeOptions;
+    }
+
+    async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
+        const normalized = normalizeRuntimeOptions(options);
+        if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {
+            return;
+        }
+        this.runtimeOptions = normalized;
+        this.workerPool.initCache(
+            this.cacheContext.loadedCache,
+            this.objSpawns,
+            this.cacheContext.npcSpawns,
+            this.runtimeOptions,
+        );
+        this.clearMapImageUrls();
+        await this.renderer.applyCacheContext();
+        this.resetMenu();
+        this.updateSearchParams();
     }
 
     subscribeSearchParams(listener: (params: URLSearchParamsInit) => void): () => void {
@@ -298,7 +383,12 @@ export class MapViewer {
     private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
         this.cacheContext = context;
 
-        this.workerPool.initCache(context.loadedCache, this.objSpawns, context.npcSpawns);
+        this.workerPool.initCache(
+            context.loadedCache,
+            this.objSpawns,
+            context.npcSpawns,
+            this.runtimeOptions,
+        );
         this.clearMapImageUrls();
 
         await this.renderer.applyCacheContext();
