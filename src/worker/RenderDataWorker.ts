@@ -64,6 +64,8 @@ export type WorkerRuntimeOptions = Readonly<{
     mapRenderBackend?: MapRenderDataBackendKind;
     mapRenderBackendModuleUrl?: string;
     mapRenderTelemetry?: boolean;
+    mapRenderRolloutMode?: "active" | "shadow";
+    mapRenderShadowSampleRate?: number;
 }>;
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
@@ -172,6 +174,8 @@ async function initWorker(
         {
             cppWasmModuleUrl: options?.mapRenderBackendModuleUrl,
             telemetry: options?.mapRenderTelemetry,
+            cppWasmRolloutMode: options?.mapRenderRolloutMode,
+            cppWasmShadowSampleRate: options?.mapRenderShadowSampleRate,
         },
     );
 
