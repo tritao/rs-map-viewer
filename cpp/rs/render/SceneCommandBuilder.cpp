@@ -5376,7 +5376,8 @@ Status deriveSceneLocRenderPlacementStage(
     out->priority = scb::locPlacementPriority(input.placementType);
     out->includeLod = !input.lowDetailPlacement;
     // Any contoured-ground model differs per placement; force per-placement merge.
-    out->forceMerge = resolved.contourGroundType > 0;
+    // Low-detail placements skip contouring, so they can merge normally.
+    out->forceMerge = resolved.contourGroundType > 0 && !input.lowDetailPlacement;
     // Match TS render-data backend: treat a placement as "entity-driven" when it has an active seq,
     // or when either the base or resolved type participates in transforms, or when we explicitly
     // requested a no-model build.
@@ -5385,8 +5386,8 @@ Status deriveSceneLocRenderPlacementStage(
         input.baseHadTransforms ||
         !resolved.transforms.empty() ||
         (input.locLoadType == 1);
-    // Match TS: picking identity uses the base placement id from the map bytes (pre-transform).
-    out->interactId = input.placementId;
+    // Match TS render-data backend: interact id is the resolved loc type id (post-transform).
+    out->interactId = resolved.id;
     return Status::Ok;
 }
 
