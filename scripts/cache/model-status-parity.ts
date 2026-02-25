@@ -4,10 +4,10 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -75,10 +75,7 @@ function fnv1a32UpdateIntArray(h: number, values: ArrayLike<number>): number {
     return h >>> 0;
 }
 
-function fnv1a32UpdateOptionalIntArray(
-    h: number,
-    values: ArrayLike<number> | undefined,
-): number {
+function fnv1a32UpdateOptionalIntArray(h: number, values: ArrayLike<number> | undefined): number {
     h = fnv1a32UpdateInt(h, values ? 1 : 0);
     if (values) {
         h = fnv1a32UpdateIntArray(h, values);

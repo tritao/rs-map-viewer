@@ -4,10 +4,10 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { initErrorToString } from "../../src/rs/loaders/InitError";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import { SkeletalSeq } from "../../src/rs/model/skeletal/SkeletalSeq";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
+import { initErrorToString } from "../../src/rs/loaders/InitError";
+import { SkeletalSeq } from "../../src/rs/model/skeletal/SkeletalSeq";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -20,11 +20,35 @@ type Args = {
 };
 
 type TsEntry =
-    | { id: number; ok: true; hash: number; version: number; baseId: number; poseId: number; curveCount: number; hasAlphaTransform: boolean }
+    | {
+          id: number;
+          ok: true;
+          hash: number;
+          version: number;
+          baseId: number;
+          poseId: number;
+          curveCount: number;
+          hasAlphaTransform: boolean;
+      }
     | { id: number; ok: false; kind: StatusKind };
 type CppEntry =
-    | { id: number; ok: true; hash: number; version: number; baseId: number; poseId: number; curveCount: number; hasAlphaTransform: boolean }
-    | { id: number; ok: false; status: string; statusCode: number; errorClass?: "not_found" | "decode_failed" | "other" };
+    | {
+          id: number;
+          ok: true;
+          hash: number;
+          version: number;
+          baseId: number;
+          poseId: number;
+          curveCount: number;
+          hasAlphaTransform: boolean;
+      }
+    | {
+          id: number;
+          ok: false;
+          status: string;
+          statusCode: number;
+          errorClass?: "not_found" | "decode_failed" | "other";
+      };
 
 function parseArgs(argv: string[]): Args {
     const args: Args = { limit: 40 };
@@ -202,7 +226,11 @@ async function main(): Promise<void> {
                 ts.hasAlphaTransform !== cppEntry.hasAlphaTransform
             ) {
                 mismatches++;
-                console.error(`value mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppEntry)}`);
+                console.error(
+                    `value mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(
+                        cppEntry,
+                    )}`,
+                );
             }
             continue;
         }
@@ -213,12 +241,20 @@ async function main(): Promise<void> {
         }
         const cppClass = cppEntry.errorClass;
         if (ts.kind === "not_found") {
-            if (cppClass !== "not_found" && cppEntry.status !== "NotFound" && cppEntry.status !== "OutOfRange") {
+            if (
+                cppClass !== "not_found" &&
+                cppEntry.status !== "NotFound" &&
+                cppEntry.status !== "OutOfRange"
+            ) {
                 mismatches++;
                 console.error(`status mismatch id=${id}: ts=not_found cpp=${cppEntry.status}`);
             }
         } else if (ts.kind === "decode_failed") {
-            if (cppClass === "not_found" || cppEntry.status === "NotFound" || cppEntry.status === "OutOfRange") {
+            if (
+                cppClass === "not_found" ||
+                cppEntry.status === "NotFound" ||
+                cppEntry.status === "OutOfRange"
+            ) {
                 mismatches++;
                 console.error(`status mismatch id=${id}: ts=decode_failed cpp=${cppEntry.status}`);
             }

@@ -1,18 +1,23 @@
 import fs from "fs";
 import path from "path";
 
+import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
 import { Xtea } from "../../src/rs/crypto/Xtea";
-import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
-import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
-import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame } from "../../src/rs/model/seq/SeqFrame";
-import { SeqBase } from "../../src/rs/model/seq/SeqBase";
-import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
-import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
-import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
-import { ok, err } from "../../src/util/Result";
 import { notFoundError } from "../../src/rs/errors/DecodeError";
+import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
+import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
+import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
+import { SeqBase } from "../../src/rs/model/seq/SeqBase";
+import {
+    Dat2SeqFrame,
+    DatSeqFrame,
+    LegacySeqFrame,
+    SeqFrame,
+} from "../../src/rs/model/seq/SeqFrame";
+import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
+import { err, ok } from "../../src/util/Result";
 
 const OUT_DIR = path.resolve("testdata/cache-fixtures");
 
@@ -258,8 +263,8 @@ function genModelFixtures(): void {
         const dir = path.join(OUT_DIR, "model-v1-empty");
         mkdirp(dir);
         const input = new Uint8Array([
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
         ]);
         writeFileBytes(path.join(dir, "input.bin"), input);
         fs.writeFileSync(
@@ -282,10 +287,9 @@ function genModelFixtures(): void {
         const dir = path.join(OUT_DIR, "model-v2-tri");
         mkdirp(dir);
         const input = new Uint8Array([
-            0x00, 0x00, 0x00, 0x01, 0x40, 0x41, 0x41, 0x12,
-            0x34, 0x00, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0xff, 0xfe,
+            0x00, 0x00, 0x00, 0x01, 0x40, 0x41, 0x41, 0x12, 0x34, 0x00, 0x03, 0x00, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+            0x00, 0x00, 0xff, 0xfe,
         ]);
         writeFileBytes(path.join(dir, "input.bin"), input);
         fs.writeFileSync(
@@ -460,20 +464,30 @@ function genDat2SeqFrameFixtures(): void {
         if (!result.ok) {
             throw new Error(`dat2-seqframe-min: failed decoding fixture: ${result.error.message}`);
         }
-        fs.writeFileSync(path.join(dir, "expected.json"), JSON.stringify(seqFrameToExpected(result.value), null, 2));
+        fs.writeFileSync(
+            path.join(dir, "expected.json"),
+            JSON.stringify(seqFrameToExpected(result.value), null, 2),
+        );
     }
 
     {
         const dir = path.join(OUT_DIR, "dat2-seqframe-nontrivial");
         mkdirp(dir);
-        const input = new Uint8Array([0x00, 0x00, 0x04, 0x00, 0x07, 0x01, 0x01, 0x45, 0x3d, 0x42, 0x50, 0x41]);
+        const input = new Uint8Array([
+            0x00, 0x00, 0x04, 0x00, 0x07, 0x01, 0x01, 0x45, 0x3d, 0x42, 0x50, 0x41,
+        ]);
         writeFileBytes(path.join(dir, "input.bin"), input);
 
         const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
         const base = new SeqBase(
             0,
             4,
-            [SeqTransformType.ORIGIN, SeqTransformType.TRANSLATE, SeqTransformType.ROTATE, SeqTransformType.ALPHA],
+            [
+                SeqTransformType.ORIGIN,
+                SeqTransformType.TRANSLATE,
+                SeqTransformType.ROTATE,
+                SeqTransformType.ALPHA,
+            ],
             [true, true, true, true],
             new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]),
             [[], [], [], []],
@@ -489,7 +503,10 @@ function genDat2SeqFrameFixtures(): void {
                 `dat2-seqframe-nontrivial: failed decoding fixture: ${result.error.message}`,
             );
         }
-        fs.writeFileSync(path.join(dir, "expected.json"), JSON.stringify(seqFrameToExpected(result.value), null, 2));
+        fs.writeFileSync(
+            path.join(dir, "expected.json"),
+            JSON.stringify(seqFrameToExpected(result.value), null, 2),
+        );
     }
 }
 

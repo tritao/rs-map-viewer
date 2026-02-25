@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 
 import type {
+    MapRenderCommandStreamRuntimeInput,
     MapRenderDataPayload,
-    MapRenderScenePackInput,
+    MapRenderRuntimePacket,
 } from "../../src/worker/MapRenderDataContract";
-import { validateMapRenderPayload } from "../../src/worker/MapRenderDataContract";
-import { __mapRenderBridgeInternals } from "../../public/wasm/rs_map_render_backend_bridge.mjs";
+import {
+    payloadToScaffold,
+    runtimePacketToPayload,
+    validateMapRenderPayload,
+} from "../../src/worker/MapRenderDataContract";
+import { validateCommandStreamRuntimeInput } from "../../src/worker/MapRenderRuntimeInputValidation";
 
 type DrawBucketKey =
     | "base"
@@ -17,41 +22,27 @@ type DrawBucketKey =
     | "interactLod"
     | "interactLodAlpha";
 
-const DRAW_BUCKET_KEYS: readonly DrawBucketKey[] = [
-    "base",
-    "alpha",
-    "lod",
-    "lodAlpha",
-    "interact",
-    "interactAlpha",
-    "interactLod",
-    "interactLodAlpha",
-];
-
 const EMPTY_MODEL_INFO_LENGTH = 64;
-
-type BridgeInternals = {
-    modelInfoLengthFromCounts(cmdCount: number, totalInstances: number): number;
-    validateScenePackInput(
-        scenePackInput: MapRenderScenePackInput,
-        payload?: MapRenderDataPayload,
-    ): string | undefined;
-};
-
-const bridgeInternals = __mapRenderBridgeInternals as BridgeInternals;
 
 function createDrawRanges(
     base: ReadonlyArray<readonly [number, number, number]> = [],
 ): MapRenderDataPayload["drawRanges"] {
+    const packedBase = new Int32Array(base.length * 3);
+    for (let i = 0; i < base.length; i++) {
+        const off = i * 3;
+        packedBase[off + 0] = base[i][0] | 0;
+        packedBase[off + 1] = base[i][1] | 0;
+        packedBase[off + 2] = base[i][2] | 0;
+    }
     return {
-        base: base.map((r) => [r[0], r[1], r[2]]),
-        alpha: [],
-        lod: [],
-        lodAlpha: [],
-        interact: [],
-        interactAlpha: [],
-        interactLod: [],
-        interactLodAlpha: [],
+        base: packedBase,
+        alpha: new Int32Array(0),
+        lod: new Int32Array(0),
+        lodAlpha: new Int32Array(0),
+        interact: new Int32Array(0),
+        interactAlpha: new Int32Array(0),
+        interactLod: new Int32Array(0),
+        interactLodAlpha: new Int32Array(0),
     };
 }
 
@@ -84,8 +75,8 @@ function createPayload(overrides: Partial<MapRenderDataPayload> = {}): MapRender
         tileRenderFlags: [[new Uint8Array([0])]],
         collisionDatas: [],
         minimapBlob: new Blob(),
-        vertices: new Uint8Array(0),
-        indices: new Int32Array(0),
+        vertices: new Uint8Array(16),
+        indices: new Int32Array(64),
         modelInfoTextures: createModelInfoTextures(),
         heightMapTextureData: new Int16Array(1),
         drawRanges: createDrawRanges(),
@@ -100,28 +91,20 @@ function createPayload(overrides: Partial<MapRenderDataPayload> = {}): MapRender
     };
 }
 
-function createScenePackInput(
-    overrides: Partial<MapRenderScenePackInput> = {},
-): MapRenderScenePackInput {
-    const bucketCmdCounts = new Int32Array(DRAW_BUCKET_KEYS.length);
-    bucketCmdCounts[0] = 1;
-
-    const bucketModelInfoLengths = new Int32Array(DRAW_BUCKET_KEYS.length);
-    bucketModelInfoLengths.fill(EMPTY_MODEL_INFO_LENGTH);
-    bucketModelInfoLengths[0] = bridgeInternals.modelInfoLengthFromCounts(1, 1);
-
-    const base: MapRenderScenePackInput = {
+function createRuntimeCommandStreamInput(
+    overrides: Partial<MapRenderCommandStreamRuntimeInput> = {},
+): MapRenderCommandStreamRuntimeInput {
+    const base: MapRenderCommandStreamRuntimeInput = {
         sceneTileHeights: new Int32Array(4),
         levels: 1,
         sizeX: 1,
         sizeY: 1,
         unitsTileHeightBasis: 8,
-        bucketCmdCounts,
-        bucketModelInfoLengths,
-        cmdOffsets: new Int32Array([0]),
-        cmdElements: new Int32Array([6]),
-        cmdInstanceCounts: new Int32Array([1]),
-        packedInstances: new Int32Array([3200, 3201, -16, 0, 0, 0, 0, 65535]),
+        cmdBucketIndices: Int32Array.from([0]),
+        cmdOffsets: Int32Array.from([0]),
+        cmdElements: Int32Array.from([6]),
+        cmdInstanceCounts: Int32Array.from([1]),
+        cmdPackedInstances: Int32Array.from([3200, 3201, -16, 0, 0, 0, 0, 65535]),
     };
     return {
         ...base,
@@ -130,10 +113,7 @@ function createScenePackInput(
 }
 
 function assertIncludes(haystack: string, needle: string): void {
-    assert.ok(
-        haystack.includes(needle),
-        `expected "${haystack}" to include "${needle}"`,
-    );
+    assert.ok(haystack.includes(needle), `expected "${haystack}" to include "${needle}"`);
 }
 
 function runContractValidationChecks(): void {
@@ -156,80 +136,119 @@ function runContractValidationChecks(): void {
     assertIncludes(heightMapIssues[0], "heightMapTextureData length mismatch");
 }
 
+function runRuntimePacketPayloadChecks(): void {
+    const scaffoldPayload = createPayload({
+        vertices: new Uint8Array([11, 22, 33, 44]),
+        indices: new Int32Array([7, 8, 9]),
+    });
+    const scaffold = payloadToScaffold(scaffoldPayload);
+
+    const packetBase: MapRenderRuntimePacket = {
+        packetVersion: 1,
+        bucketCmdCounts: new Int32Array(8),
+        bucketModelInfoLengths: new Int32Array(8),
+        drawRangesPacked: new Int32Array(0),
+        modelInfoTextureBuckets: [
+            new Uint16Array(0),
+            new Uint16Array(0),
+            new Uint16Array(0),
+            new Uint16Array(0),
+            new Uint16Array(0),
+            new Uint16Array(0),
+            new Uint16Array(0),
+            new Uint16Array(0),
+        ],
+        heightMapTextureData: new Int16Array(1),
+        vertices: new Uint8Array(0),
+        indices: new Int32Array(0),
+        levels: 1,
+        sizeX: 1,
+        sizeY: 1,
+        unitsTileHeightBasis: 8,
+        totalModelInfoLength: 0,
+    };
+
+    const payloadFallback = runtimePacketToPayload(packetBase, scaffold);
+    assert.ok(payloadFallback, "expected runtime packet payload fallback");
+    assert.equal(
+        payloadFallback?.vertices,
+        scaffold.vertices,
+        "expected scaffold vertices fallback",
+    );
+    assert.equal(payloadFallback?.indices, scaffold.indices, "expected scaffold indices fallback");
+
+    const strictPayloadFallback = runtimePacketToPayload(packetBase, scaffold, {
+        requirePacketGeometry: true,
+    });
+    assert.equal(
+        strictPayloadFallback,
+        undefined,
+        "expected strict runtime packet conversion to reject missing geometry",
+    );
+
+    const packetWithGeometry: MapRenderRuntimePacket = {
+        ...packetBase,
+        vertices: new Uint8Array([1, 2, 3, 4]),
+        indices: new Int32Array([0, 1, 2]),
+    };
+    const payloadWithGeometry = runtimePacketToPayload(packetWithGeometry, scaffold);
+    assert.ok(payloadWithGeometry, "expected runtime packet payload with geometry");
+    assert.notEqual(
+        payloadWithGeometry?.vertices,
+        scaffold.vertices,
+        "expected packet vertices copy to replace scaffold",
+    );
+    assert.notEqual(
+        payloadWithGeometry?.indices,
+        scaffold.indices,
+        "expected packet indices copy to replace scaffold",
+    );
+    assert.deepEqual(
+        Array.from(payloadWithGeometry?.vertices ?? []),
+        [1, 2, 3, 4],
+        "expected packet vertices data",
+    );
+    assert.deepEqual(
+        Array.from(payloadWithGeometry?.indices ?? []),
+        [0, 1, 2],
+        "expected packet indices data",
+    );
+}
+
 function runBridgeValidationChecks(): void {
     const payload = createPayload();
-    const scenePackInput = createScenePackInput();
+    const runtimeCommandStreamInput = createRuntimeCommandStreamInput();
 
     assert.equal(
-        bridgeInternals.validateScenePackInput(scenePackInput, payload),
+        validateCommandStreamRuntimeInput(runtimeCommandStreamInput, payload),
         undefined,
-        "expected valid scene-pack input",
-    );
-    assert.equal(
-        bridgeInternals.modelInfoLengthFromCounts(1, 1),
-        64,
-        "expected model info length rounding parity",
+        "expected valid runtime command stream input",
     );
 
-    const brokenBucketCounts = createScenePackInput({
-        bucketCmdCounts: new Int32Array(DRAW_BUCKET_KEYS.length - 1),
+    const badCommandStreamBuckets = createRuntimeCommandStreamInput({
+        cmdBucketIndices: Int32Array.from([8]),
     });
-    const brokenBucketCountsError = bridgeInternals.validateScenePackInput(
-        brokenBucketCounts,
+    const badCommandStreamBucketsError = validateCommandStreamRuntimeInput(
+        badCommandStreamBuckets,
         payload,
     );
-    assert.ok(brokenBucketCountsError, "expected invalid bucket count error");
-    assertIncludes(
-        brokenBucketCountsError,
-        "scenePackInput.bucketCmdCounts length mismatch",
-    );
+    assert.ok(badCommandStreamBucketsError, "expected command stream bucket mismatch");
+    assertIncludes(badCommandStreamBucketsError, "cmdBucketIndices[0] out of range");
 
-    const brokenModelInfo = createScenePackInput({
-        bucketModelInfoLengths: new Int32Array([
-            65,
-            EMPTY_MODEL_INFO_LENGTH,
-            EMPTY_MODEL_INFO_LENGTH,
-            EMPTY_MODEL_INFO_LENGTH,
-            EMPTY_MODEL_INFO_LENGTH,
-            EMPTY_MODEL_INFO_LENGTH,
-            EMPTY_MODEL_INFO_LENGTH,
-            EMPTY_MODEL_INFO_LENGTH,
-        ]),
+    const badCommandStreamPackedLength = createRuntimeCommandStreamInput({
+        cmdPackedInstances: new Int32Array(0),
     });
-    const brokenModelInfoError = bridgeInternals.validateScenePackInput(brokenModelInfo, payload);
-    assert.ok(brokenModelInfoError, "expected invalid model-info length error");
-    assertIncludes(
-        brokenModelInfoError,
-        "scenePackInput.bucketModelInfoLengths[0] mismatch",
-    );
-
-    const brokenPackedInstances = createScenePackInput({
-        packedInstances: new Int32Array([3200, 3201, -16, 0]),
-    });
-    const brokenPackedInstancesError = bridgeInternals.validateScenePackInput(
-        brokenPackedInstances,
+    const badCommandStreamPackedLengthError = validateCommandStreamRuntimeInput(
+        badCommandStreamPackedLength,
         payload,
     );
-    assert.ok(brokenPackedInstancesError, "expected invalid packed instance length error");
-    assertIncludes(
-        brokenPackedInstancesError,
-        "scenePackInput.packedInstances length mismatch",
-    );
-
-    const payloadSizeMismatch = createScenePackInput({
-        sizeX: 2,
-        sceneTileHeights: new Int32Array(6),
-    });
-    const payloadSizeMismatchError = bridgeInternals.validateScenePackInput(
-        payloadSizeMismatch,
-        payload,
-    );
-    assert.ok(payloadSizeMismatchError, "expected payload/scene-pack size mismatch");
-    assertIncludes(payloadSizeMismatchError, "scenePackInput.sizeX mismatch");
+    assert.ok(badCommandStreamPackedLengthError, "expected command stream packed length mismatch");
+    assertIncludes(badCommandStreamPackedLengthError, "cmdPackedInstances length mismatch");
 }
 
 async function main(): Promise<void> {
     runContractValidationChecks();
+    runRuntimePacketPayloadChecks();
     runBridgeValidationChecks();
     console.log("map-render-contract-regression: ok");
 }

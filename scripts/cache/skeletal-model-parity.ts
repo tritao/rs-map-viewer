@@ -1,21 +1,25 @@
 import { spawnSync } from "child_process";
-
 import { mat4, vec3 } from "gl-matrix";
 
 import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
 import { SkeletalPools } from "../../src/rs/model/skeletal/SkeletalPools";
 import { SkeletalSeq } from "../../src/rs/model/skeletal/SkeletalSeq";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
-import { fnv1a32UpdateInt, statusKindFromCppStatus, toStatusKind, type StatusKind } from "./parity-util";
+import {
+    type StatusKind,
+    fnv1a32UpdateInt,
+    statusKindFromCppStatus,
+    toStatusKind,
+} from "./parity-util";
 
 type Args = {
     cacheName?: string;
@@ -92,8 +96,10 @@ function parseArgs(argv: string[]): Args {
         else if (a === "--pairs") args.pairs = parsePairs(argv[++i]);
     }
     if (!Number.isFinite(args.limit) || args.limit <= 0) throw new Error("Invalid --limit");
-    if (!Number.isFinite(args.frameStart) || args.frameStart < 0) throw new Error("Invalid --frame");
-    if (!Number.isFinite(args.maxFrames) || args.maxFrames <= 0) throw new Error("Invalid --maxFrames");
+    if (!Number.isFinite(args.frameStart) || args.frameStart < 0)
+        throw new Error("Invalid --frame");
+    if (!Number.isFinite(args.maxFrames) || args.maxFrames <= 0)
+        throw new Error("Invalid --maxFrames");
     return args;
 }
 
@@ -108,9 +114,12 @@ function hashModelVertices(model: ModelData): number {
     let h = 2166136261 >>> 0;
     h = fnv1a32UpdateInt(h, 0x534b4d44); // 'SKMD'
     h = fnv1a32UpdateInt(h, model.verticesCount | 0);
-    for (let i = 0; i < model.verticesX.length; i++) h = fnv1a32UpdateInt(h, model.verticesX[i] | 0);
-    for (let i = 0; i < model.verticesY.length; i++) h = fnv1a32UpdateInt(h, model.verticesY[i] | 0);
-    for (let i = 0; i < model.verticesZ.length; i++) h = fnv1a32UpdateInt(h, model.verticesZ[i] | 0);
+    for (let i = 0; i < model.verticesX.length; i++)
+        h = fnv1a32UpdateInt(h, model.verticesX[i] | 0);
+    for (let i = 0; i < model.verticesY.length; i++)
+        h = fnv1a32UpdateInt(h, model.verticesY[i] | 0);
+    for (let i = 0; i < model.verticesZ.length; i++)
+        h = fnv1a32UpdateInt(h, model.verticesZ[i] | 0);
     return h | 0;
 }
 
@@ -160,7 +169,7 @@ function collectSkeletalIds(
         }
         if ((seq.value.curveCount | 0) === 0) baseOnly.add(skeletalId);
         else curveIds.add(skeletalId);
-        if ((baseOnly.size + curveIds.size) >= limit && anyIds.size >= limit) break;
+        if (baseOnly.size + curveIds.size >= limit && anyIds.size >= limit) break;
     }
     if (anyIds.size === 0) {
         const directProbe = Math.max(120000, limit * 10000);
@@ -170,7 +179,7 @@ function collectSkeletalIds(
             anyIds.add(id);
             if ((seq.value.curveCount | 0) === 0) baseOnly.add(id);
             else curveIds.add(id);
-            if ((baseOnly.size + curveIds.size) >= limit && anyIds.size >= limit) break;
+            if (baseOnly.size + curveIds.size >= limit && anyIds.size >= limit) break;
         }
     }
     const preferred = Array.from(curveIds.values()).concat(Array.from(baseOnly.values()));
@@ -293,9 +302,10 @@ function applySkeletalAlphaTs(model: ModelData, seq: SkeletalSeq, frame: number)
     if (!faceAlphas || faceAlphas.length === 0) return;
 
     const base = seq.base;
-    const faceLabels = model.faceLabels && model.faceLabels.length > 0
-        ? model.faceLabels
-        : buildFaceLabelsFromFaceSkins(model);
+    const faceLabels =
+        model.faceLabels && model.faceLabels.length > 0
+            ? model.faceLabels
+            : buildFaceLabelsFromFaceSkins(model);
     if (!faceLabels || faceLabels.length === 0) return;
 
     for (let i = 0; i < base.count; i++) {
@@ -374,14 +384,24 @@ async function main(): Promise<void> {
         for (const [seqId, modelId] of pairs) {
             const seqLoaded = skeletalSeqLoader.tryLoad(seqId);
             if (!seqLoaded.ok) {
-                tsEntries.push({ seqId, modelId, ok: false, kind: toStatusKind((seqLoaded as any).error?.kind) });
+                tsEntries.push({
+                    seqId,
+                    modelId,
+                    ok: false,
+                    kind: toStatusKind((seqLoaded as any).error?.kind),
+                });
                 continue;
             }
             const seq = seqLoaded.value;
 
             const modelLoaded = modelLoader.tryLoad(modelId);
             if (!modelLoaded.ok) {
-                tsEntries.push({ seqId, modelId, ok: false, kind: toStatusKind((modelLoaded as any).error?.kind) });
+                tsEntries.push({
+                    seqId,
+                    modelId,
+                    ok: false,
+                    kind: toStatusKind((modelLoaded as any).error?.kind),
+                });
                 continue;
             }
 
@@ -445,7 +465,9 @@ async function main(): Promise<void> {
             if (ts.ok) {
                 if (!cppEntry.ok) {
                     mismatches++;
-                    console.error(`status mismatch frame=${frame} pair=${key}: ts=ok cpp=${cppEntry.status}`);
+                    console.error(
+                        `status mismatch frame=${frame} pair=${key}: ts=ok cpp=${cppEntry.status}`,
+                    );
                     continue;
                 }
                 if (
@@ -459,7 +481,9 @@ async function main(): Promise<void> {
                 ) {
                     mismatches++;
                     console.error(
-                        `value mismatch frame=${frame} pair=${key}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppEntry)}`,
+                        `value mismatch frame=${frame} pair=${key}\nts=${JSON.stringify(
+                            ts,
+                        )}\ncpp=${JSON.stringify(cppEntry)}`,
                     );
                 }
                 continue;
@@ -482,7 +506,11 @@ async function main(): Promise<void> {
     }
 
     console.log(
-        `skeletal-model-parity: cache=${cacheInfo.name} rev=${cacheInfo.revision} pairs=${pairs.length} frames=${args.frameStart}..${args.frameStart + args.maxFrames - 1} mismatches=${mismatches}`,
+        `skeletal-model-parity: cache=${cacheInfo.name} rev=${cacheInfo.revision} pairs=${
+            pairs.length
+        } frames=${args.frameStart}..${
+            args.frameStart + args.maxFrames - 1
+        } mismatches=${mismatches}`,
     );
     if (mismatches > 0) {
         process.exit(1);

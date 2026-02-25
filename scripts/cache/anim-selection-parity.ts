@@ -4,9 +4,9 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -23,7 +23,13 @@ type Args = {
 
 type SeqResolutionNorm =
     | { seqId: number; ok: false; kind: StatusKind }
-    | { seqId: number; ok: true; mode: "none"; frameCount: number; samples: Array<{ frame: number }> }
+    | {
+          seqId: number;
+          ok: true;
+          mode: "none";
+          frameCount: number;
+          samples: Array<{ frame: number }>;
+      }
     | {
           seqId: number;
           ok: true;
@@ -81,8 +87,12 @@ type LocSnapshotNorm =
           seq: SeqResolutionNorm;
       };
 
-type TryLoadNpcFn = (id: number) => { ok: true; value: any } | { ok: false; error: { kind: string } };
-type TryLoadLocFn = (id: number) => { ok: true; value: any } | { ok: false; error: { kind: string } };
+type TryLoadNpcFn = (
+    id: number,
+) => { ok: true; value: any } | { ok: false; error: { kind: string } };
+type TryLoadLocFn = (
+    id: number,
+) => { ok: true; value: any } | { ok: false; error: { kind: string } };
 
 function parseArgs(argv: string[]): Args {
     const args: Args = {
@@ -142,10 +152,7 @@ function toKind(kind: string | undefined): StatusKind {
     return "other";
 }
 
-function collectNpcIds(
-    tryLoadNpcType: TryLoadNpcFn,
-    limit: number,
-): number[] {
+function collectNpcIds(tryLoadNpcType: TryLoadNpcFn, limit: number): number[] {
     if (limit <= 0) return [];
     const out: number[] = [];
     const maxProbe = Math.max(50000, limit * 3000);
@@ -160,10 +167,7 @@ function collectNpcIds(
     return out;
 }
 
-function collectLocIds(
-    tryLoadLocType: TryLoadLocFn,
-    limit: number,
-): number[] {
+function collectLocIds(tryLoadLocType: TryLoadLocFn, limit: number): number[] {
     if (limit <= 0) return [];
     const out: number[] = [];
     const maxProbe = Math.max(50000, limit * 3000);
@@ -354,7 +358,13 @@ async function main(): Promise<void> {
             const frameId = seq.frameIds[i];
             const frameLength = seq.getFrameLength(seqFrameLoader, i);
             if (frameId < 0) {
-                return { frame: i, frameId, frameLength, frameOk: false, frameKind: "not_found" as const };
+                return {
+                    frame: i,
+                    frameId,
+                    frameLength,
+                    frameOk: false,
+                    frameKind: "not_found" as const,
+                };
             }
             const frameRes = seqFrameLoader.tryLoad(frameId);
             if (!frameRes.ok) {
@@ -491,7 +501,9 @@ async function main(): Promise<void> {
         }
         if (JSON.stringify(ts) !== JSON.stringify(cppNorm)) {
             mismatches++;
-            console.error(`npc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`);
+            console.error(
+                `npc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`,
+            );
         }
     }
     for (const id of locIds) {
@@ -504,7 +516,9 @@ async function main(): Promise<void> {
         }
         if (JSON.stringify(ts) !== JSON.stringify(cppNorm)) {
             mismatches++;
-            console.error(`loc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`);
+            console.error(
+                `loc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`,
+            );
         }
     }
 

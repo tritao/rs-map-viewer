@@ -5,10 +5,10 @@ import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
 import { Dat2IndexId } from "../../src/rs/cache/IndexId";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { SeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -257,12 +257,20 @@ async function main(): Promise<void> {
         }
         const cppClass = cppEntry.errorClass;
         if (ts.kind === "not_found") {
-            if (cppClass !== "not_found" && cppEntry.status !== "NotFound" && cppEntry.status !== "OutOfRange") {
+            if (
+                cppClass !== "not_found" &&
+                cppEntry.status !== "NotFound" &&
+                cppEntry.status !== "OutOfRange"
+            ) {
                 mismatches++;
                 console.error(`status mismatch id=${id}: ts=not_found cpp=${cppEntry.status}`);
             }
         } else {
-            if (cppClass === "not_found" || cppEntry.status === "NotFound" || cppEntry.status === "OutOfRange") {
+            if (
+                cppClass === "not_found" ||
+                cppEntry.status === "NotFound" ||
+                cppEntry.status === "OutOfRange"
+            ) {
                 mismatches++;
                 console.error(`status mismatch id=${id}: ts=decode_failed cpp=${cppEntry.status}`);
             }

@@ -4,14 +4,19 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { SkeletalPools } from "../../src/rs/model/skeletal/SkeletalPools";
 import { SkeletalSeq } from "../../src/rs/model/skeletal/SkeletalSeq";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
-import { fnv1a32UpdateInt, statusKindFromCppStatus, toStatusKind, type StatusKind } from "./parity-util";
+import {
+    type StatusKind,
+    fnv1a32UpdateInt,
+    statusKindFromCppStatus,
+    toStatusKind,
+} from "./parity-util";
 
 type Args = {
     cacheName?: string;
@@ -68,7 +73,8 @@ function parseArgs(argv: string[]): Args {
         }
     }
     if (!Number.isFinite(args.limit) || args.limit <= 0) throw new Error("Invalid --limit");
-    if (!Number.isFinite(args.maxFrames) || args.maxFrames <= 0) throw new Error("Invalid --maxFrames");
+    if (!Number.isFinite(args.maxFrames) || args.maxFrames <= 0)
+        throw new Error("Invalid --maxFrames");
     if (args.ids && args.ids.some((id) => !Number.isFinite(id) || id < 0)) {
         throw new Error("Invalid --ids");
     }
@@ -88,7 +94,10 @@ function fnv1a32UpdateFloat(h: number, v: number): number {
     return fnv1a32UpdateInt(h, bits);
 }
 
-function hashSkeletalFinalMatrices(seq: SkeletalSeq, frame: number): { boneCount: number; hash: number } {
+function hashSkeletalFinalMatrices(
+    seq: SkeletalSeq,
+    frame: number,
+): { boneCount: number; hash: number } {
     const pools = new SkeletalPools();
     pools.reset();
 
@@ -135,7 +144,7 @@ function collectSkeletalIds(
         }
         if ((seq.value.curveCount | 0) === 0) baseOnly.add(skeletalId);
         else curveIds.add(skeletalId);
-        if ((baseOnly.size + curveIds.size) >= limit && anyIds.size >= limit) {
+        if (baseOnly.size + curveIds.size >= limit && anyIds.size >= limit) {
             break;
         }
     }
@@ -148,7 +157,7 @@ function collectSkeletalIds(
             anyIds.add(id);
             if ((seq.value.curveCount | 0) === 0) baseOnly.add(id);
             else curveIds.add(id);
-            if ((baseOnly.size + curveIds.size) >= limit && anyIds.size >= limit) break;
+            if (baseOnly.size + curveIds.size >= limit && anyIds.size >= limit) break;
         }
     }
 
@@ -277,7 +286,11 @@ async function main(): Promise<void> {
                 ts.samples.length !== cppEntry.samples.length
             ) {
                 mismatches++;
-                console.error(`value mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppEntry)}`);
+                console.error(
+                    `value mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(
+                        cppEntry,
+                    )}`,
+                );
                 continue;
             }
 
@@ -291,13 +304,19 @@ async function main(): Promise<void> {
                 }
                 if (!c.ok) {
                     mismatches++;
-                    console.error(`sample status mismatch id=${id} frame=${t.frame}: ts=ok cpp=${JSON.stringify(c)}`);
+                    console.error(
+                        `sample status mismatch id=${id} frame=${
+                            t.frame
+                        }: ts=ok cpp=${JSON.stringify(c)}`,
+                    );
                     continue;
                 }
                 if (t.frame !== c.frame || t.boneCount !== c.boneCount || t.hash !== c.hash) {
                     mismatches++;
                     console.error(
-                        `sample value mismatch id=${id} frame=${t.frame}: ts=${JSON.stringify(t)} cpp=${JSON.stringify(c)}`,
+                        `sample value mismatch id=${id} frame=${t.frame}: ts=${JSON.stringify(
+                            t,
+                        )} cpp=${JSON.stringify(c)}`,
                     );
                 }
             }
@@ -314,7 +333,9 @@ async function main(): Promise<void> {
         const cppKind = statusKind !== "other" ? statusKind : cppEntry.errorClass ?? "other";
         if (ts.kind !== cppKind) {
             mismatches++;
-            console.error(`status mismatch id=${id}: ts=${ts.kind} cpp=${cppEntry.status}/${cppKind}`);
+            console.error(
+                `status mismatch id=${id}: ts=${ts.kind} cpp=${cppEntry.status}/${cppKind}`,
+            );
         }
     }
 

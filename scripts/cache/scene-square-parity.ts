@@ -1,34 +1,34 @@
 import { spawnSync } from "child_process";
 
-import {
-    CacheInfo,
-    GameType,
-    getGameTypeName,
-    getLatestCache,
-} from "../../src/rs/cache/CacheInfo";
+import { CacheInfo, GameType, getGameTypeName, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
 import { Dat2IndexId } from "../../src/rs/cache/IndexId";
-import { asXteaKey } from "../../src/rs/crypto/Xtea";
-import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
+import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
+import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { FloorTypeLoader } from "../../src/rs/config/floortype/FloorTypeLoader";
+import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
 import { LocTypeLoader } from "../../src/rs/config/loctype/LocTypeLoader";
 import { VarManager } from "../../src/rs/config/vartype/VarManager";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
-import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
-import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import { asXteaKey } from "../../src/rs/crypto/Xtea";
+import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { getQuestTypeLoader } from "../../src/rs/loaders/Loaders";
 import { tryCreateLoaders } from "../../src/rs/loaders/createLoaders";
-import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { MapBytesProvider, MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
-import { packHsl } from "../../src/rs/util/ColorUtil";
+import { decodeLocPlacementsFromBytes } from "../../src/rs/scene/decodeLocPlacements";
 import {
     TerrainSquareDecodeScratch,
     decodeTerrainSquareFromBytesInto,
 } from "../../src/rs/scene/decodeTerrainSquare";
-import { decodeLocPlacementsFromBytes } from "../../src/rs/scene/decodeLocPlacements";
+import { packHsl } from "../../src/rs/util/ColorUtil";
 import { loadCache, loadCacheInfos } from "./load-util";
 
-type Args = { cacheName?: string; limit: number; locLoadType: "models" | "no_models" };
+type Args = {
+    cacheName?: string;
+    limit: number;
+    locLoadType: "models" | "no_models";
+    squares?: string[];
+};
 
 type TsSceneLocPlacement = {
     originalId: number;
@@ -64,7 +64,14 @@ function parseArgs(argv: string[]): Args {
         const a = argv[i];
         if (a === "--cache") args.cacheName = argv[++i];
         else if (a === "--limit") args.limit = Number(argv[++i]);
-        else if (a === "--locLoadType") {
+        else if (a === "--squares") {
+            const raw = argv[++i] ?? "";
+            const parsed = raw
+                .split(",")
+                .map((v) => v.trim())
+                .filter((v) => v.length > 0);
+            if (parsed.length > 0) args.squares = parsed;
+        } else if (a === "--locLoadType") {
             const v = argv[++i];
             if (v === "models" || v === "no_models") args.locLoadType = v;
             else throw new Error("Invalid --locLoadType (expected models|no_models)");
@@ -132,7 +139,9 @@ function heightIndex(state: TsSceneState, level: number, x: number, y: number): 
 }
 
 function isWithinBounds(state: TsSceneState, level: number, x: number, y: number): boolean {
-    return level >= 0 && level < state.levels && x >= 0 && x < state.sizeX && y >= 0 && y < state.sizeY;
+    return (
+        level >= 0 && level < state.levels && x >= 0 && x < state.sizeX && y >= 0 && y < state.sizeY
+    );
 }
 
 function applyTerrainSquareToState(
@@ -434,7 +443,9 @@ function calculateTileLightsForLevel(state: TsSceneState, level: number): void {
     const LIGHT_INTENSITY_FACTOR = 768;
     const HEIGHT_SCALE = 65536;
     const lightMagnitude = Math.trunc(
-        Math.sqrt(LIGHT_DIR_X * LIGHT_DIR_X + LIGHT_DIR_Y * LIGHT_DIR_Y + LIGHT_DIR_Z * LIGHT_DIR_Z),
+        Math.sqrt(
+            LIGHT_DIR_X * LIGHT_DIR_X + LIGHT_DIR_Y * LIGHT_DIR_Y + LIGHT_DIR_Z * LIGHT_DIR_Z,
+        ),
     );
     const lightIntensity = (lightMagnitude * LIGHT_INTENSITY_FACTOR) >> 8;
     if (lightIntensity === 0) return;
@@ -492,7 +503,8 @@ function hashSceneState(state: TsSceneState): number {
     h = fnv1a32UpdateInt(h, 0x53434e48); // 'SCNH'
 
     h = fnv1a32UpdateInt(h, 0x48454954); // 'HEIT'
-    for (let i = 0; i < state.tileHeights.length; i++) h = fnv1a32UpdateInt(h, state.tileHeights[i]);
+    for (let i = 0; i < state.tileHeights.length; i++)
+        h = fnv1a32UpdateInt(h, state.tileHeights[i]);
 
     h = fnv1a32UpdateInt(h, 0x464c4147); // 'FLAG'
     for (let i = 0; i < state.tileRenderFlags.length; i++)
@@ -552,7 +564,8 @@ function hashSceneStateLegacy(state: TsSceneState): number {
     h = fnv1a32UpdateInt(h, 0x53434e48); // 'SCNH'
 
     h = fnv1a32UpdateInt(h, 0x48454954); // 'HEIT'
-    for (let i = 0; i < state.tileHeights.length; i++) h = fnv1a32UpdateInt(h, state.tileHeights[i]);
+    for (let i = 0; i < state.tileHeights.length; i++)
+        h = fnv1a32UpdateInt(h, state.tileHeights[i]);
 
     h = fnv1a32UpdateInt(h, 0x464c4147); // 'FLAG'
     for (let i = 0; i < state.tileRenderFlags.length; i++)
@@ -597,21 +610,24 @@ function hashSceneStateLegacy(state: TsSceneState): number {
 function hashTileModelSection(state: TsSceneState): number {
     let h = 2166136261 >>> 0;
     h = fnv1a32UpdateInt(h, 0x544d4f44); // 'TMOD'
-    for (let i = 0; i < state.tileModelPresent.length; i++) h = fnv1a32UpdateInt(h, state.tileModelPresent[i]);
+    for (let i = 0; i < state.tileModelPresent.length; i++)
+        h = fnv1a32UpdateInt(h, state.tileModelPresent[i]);
     return h | 0;
 }
 
 function hashTileLightSection(state: TsSceneState): number {
     let h = 2166136261 >>> 0;
     h = fnv1a32UpdateInt(h, 0x544c4954); // 'TLIT'
-    for (let i = 0; i < state.tileLightValues.length; i++) h = fnv1a32UpdateInt(h, state.tileLightValues[i]);
+    for (let i = 0; i < state.tileLightValues.length; i++)
+        h = fnv1a32UpdateInt(h, state.tileLightValues[i]);
     return h | 0;
 }
 
 function hashBlendedUnderlaySection(state: TsSceneState): number {
     let h = 2166136261 >>> 0;
     h = fnv1a32UpdateInt(h, 0x424c4e44); // 'BLND'
-    for (let i = 0; i < state.blendedUnderlayHsl.length; i++) h = fnv1a32UpdateInt(h, state.blendedUnderlayHsl[i]);
+    for (let i = 0; i < state.blendedUnderlayHsl.length; i++)
+        h = fnv1a32UpdateInt(h, state.blendedUnderlayHsl[i]);
     return h | 0;
 }
 
@@ -677,7 +693,13 @@ function buildTsSceneHashForSquare(
             }
             const offsetX = mx * 64 - baseX;
             const offsetY = my * 64 - baseY;
-            decodeTerrainSquareFromBytesInto(scratch, terrainBytes, newFormat, baseX + offsetX, baseY + offsetY);
+            decodeTerrainSquareFromBytesInto(
+                scratch,
+                terrainBytes,
+                newFormat,
+                baseX + offsetX,
+                baseY + offsetY,
+            );
             applyTerrainSquareToState(state, scratch, offsetX, offsetY);
         }
     }
@@ -709,7 +731,14 @@ function buildTsSceneHashForSquare(
             for (const p of placements) {
                 const sceneX = p.localX + offsetX;
                 const sceneY = p.localY + offsetY;
-                if (!(sceneX > 0 && sceneY > 0 && sceneX < state.sizeX - 1 && sceneY < state.sizeY - 1)) {
+                if (
+                    !(
+                        sceneX > 0 &&
+                        sceneY > 0 &&
+                        sceneX < state.sizeX - 1 &&
+                        sceneY < state.sizeY - 1
+                    )
+                ) {
                     continue;
                 }
 
@@ -726,17 +755,10 @@ function buildTsSceneHashForSquare(
                 }
                 const hasTransforms =
                     locType.transforms !== undefined && locType.transforms.length > 0;
-                const isEntity =
-                    seqId !== -1 ||
-                    hasTransforms ||
-                    locLoadType === "no_models";
+                const isEntity = seqId !== -1 || hasTransforms || locLoadType === "no_models";
 
                 if (!isEntity && locLoadType === "models") {
-                    const ok = tryValidateStaticLocModelPlacement(
-                        locType,
-                        p.type,
-                        modelLoader,
-                    );
+                    const ok = tryValidateStaticLocModelPlacement(locType, p.type, modelLoader);
                     if (!ok) {
                         continue;
                     }
@@ -794,7 +816,11 @@ async function main(): Promise<void> {
         xteas: new Map(Array.from(loaded.xteas.entries(), ([id, key]) => [id, asXteaKey(key)])),
     };
 
-    const cacheSystem = createCacheSystemFromFiles(cache.type, cache.bundle, new JSCompressionHandler());
+    const cacheSystem = createCacheSystemFromFiles(
+        cache.type,
+        cache.bundle,
+        new JSCompressionHandler(),
+    );
     const loadersResult = tryCreateLoaders(cache.info, cacheSystem);
     if (!loadersResult.ok) {
         throw new Error(`Failed to create loaders: ${initErrorToString(loadersResult.error)}`);
@@ -824,11 +850,14 @@ async function main(): Promise<void> {
         locCount: number;
     }> = [];
     const squares: string[] = [];
+    const requestedSquares = args.squares ? new Set(args.squares) : undefined;
 
     outer: for (let mapX = 0; mapX <= 255; mapX++) {
         for (let mapY = 0; mapY <= 255; mapY++) {
-            if (tsEntries.length >= args.limit) break outer;
-            const archiveId = mapsIndex.tryGetArchiveId(`m${mapX}_${mapY}`);
+            if (!requestedSquares && tsEntries.length >= args.limit) break outer;
+            const squareId = String(mapX) + "_" + String(mapY);
+            if (requestedSquares && !requestedSquares.has(squareId)) continue;
+            const archiveId = mapsIndex.tryGetArchiveId("m" + mapX + "_" + mapY);
             if (archiveId === undefined) continue;
             const built = buildTsSceneHashForSquare(
                 cacheInfo,
@@ -855,10 +884,16 @@ async function main(): Promise<void> {
                 tileLightProbe: built.tileLightProbe,
                 locCount: built.locCount,
             });
-            squares.push(`${mapX}_${mapY}`);
+            squares.push(squareId);
+            if (requestedSquares && tsEntries.length >= requestedSquares.size) break outer;
         }
     }
 
+    if (requestedSquares && tsEntries.length !== requestedSquares.size) {
+        const found = new Set(squares);
+        const missing = [...requestedSquares].filter((id) => !found.has(id));
+        throw new Error("Missing scene squares: " + missing.join(","));
+    }
     if (tsEntries.length === 0) throw new Error("No scene squares selected");
 
     const cpp = spawnSync(
@@ -937,10 +972,14 @@ async function main(): Promise<void> {
                     `(tileLightNonZero ts=${ts.tileLightNonZero} cpp=${c.tileLightNonZero})`,
             );
             console.error(
-                `tileLightSample ${key}: ts=${JSON.stringify(ts.tileLightSample)} cpp=${JSON.stringify(c.tileLightSample ?? [])}`,
+                `tileLightSample ${key}: ts=${JSON.stringify(
+                    ts.tileLightSample,
+                )} cpp=${JSON.stringify(c.tileLightSample ?? [])}`,
             );
             console.error(
-                `tileLightProbe ${key}: ts=${JSON.stringify(ts.tileLightProbe)} cpp=${JSON.stringify(c.tileLightProbe ?? [])}`,
+                `tileLightProbe ${key}: ts=${JSON.stringify(
+                    ts.tileLightProbe,
+                )} cpp=${JSON.stringify(c.tileLightProbe ?? [])}`,
             );
         } else if ((c.locCount ?? -1) !== ts.locCount) {
             mismatches++;

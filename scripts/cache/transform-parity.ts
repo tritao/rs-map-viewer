@@ -4,15 +4,21 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { initErrorToString } from "../../src/rs/loaders/InitError";
 import type { VarProvider } from "../../src/rs/config/vartype/VarProvider";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
+import { initErrorToString } from "../../src/rs/loaders/InitError";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
 type StatusKind = "not_found" | "decode_failed" | "other";
-type StepTag = "ok" | "cycle" | "transform_minus_one" | "error_not_found" | "error_decode_failed" | "error_other";
+type StepTag =
+    | "ok"
+    | "cycle"
+    | "transform_minus_one"
+    | "error_not_found"
+    | "error_decode_failed"
+    | "error_other";
 type TerminalTag = "no_transforms" | "transform_minus_one" | "loader_error" | "cycle" | "max_steps";
 
 type Args = {
@@ -73,7 +79,8 @@ function parseArgs(argv: string[]): Args {
     }
     if (!Number.isFinite(args.npcLimit) || args.npcLimit < 0) throw new Error("Invalid --npcLimit");
     if (!Number.isFinite(args.locLimit) || args.locLimit < 0) throw new Error("Invalid --locLimit");
-    if (!Number.isFinite(args.maxSteps) || args.maxSteps <= 0) throw new Error("Invalid --maxSteps");
+    if (!Number.isFinite(args.maxSteps) || args.maxSteps <= 0)
+        throw new Error("Invalid --maxSteps");
     if (args.npcIds && args.npcIds.some((id) => !Number.isFinite(id) || id < 0)) {
         throw new Error("Invalid --npcIds");
     }
@@ -98,11 +105,15 @@ function toKind(kind: string | undefined): StatusKind {
 function kindFromCppStatus(status: string | undefined): StatusKind {
     if (!status) return "other";
     if (status === "NotFound" || status === "OutOfRange") return "not_found";
-    if (status === "DecodeError" || status === "BadFormat" || status === "Truncated") return "decode_failed";
+    if (status === "DecodeError" || status === "BadFormat" || status === "Truncated")
+        return "decode_failed";
     return "other";
 }
 
-function collectNpcIds(tryLoadNpcType: (id: number) => { ok: true; value: any } | { ok: false }, limit: number): number[] {
+function collectNpcIds(
+    tryLoadNpcType: (id: number) => { ok: true; value: any } | { ok: false },
+    limit: number,
+): number[] {
     if (limit <= 0) return [];
     const out: number[] = [];
     const maxProbe = Math.max(50000, limit * 4000);
@@ -117,7 +128,10 @@ function collectNpcIds(tryLoadNpcType: (id: number) => { ok: true; value: any } 
     return out;
 }
 
-function collectLocIds(tryLoadLocType: (id: number) => { ok: true; value: any } | { ok: false }, limit: number): number[] {
+function collectLocIds(
+    tryLoadLocType: (id: number) => { ok: true; value: any } | { ok: false },
+    limit: number,
+): number[] {
     if (limit <= 0) return [];
     const out: number[] = [];
     const maxProbe = Math.max(50000, limit * 4000);
@@ -174,21 +188,21 @@ class SnapshotVarProvider implements VarProvider {
         const width = endBit - startBit;
         if (width <= 0) return 0;
         const baseValue = this.getVarp(t.baseVar | 0) | 0;
-        const mask = width >= 31 ? 0x7fffffff : ((1 << width) - 1);
+        const mask = width >= 31 ? 0x7fffffff : (1 << width) - 1;
         return (baseValue >> startBit) & mask;
     }
 }
 
-function resolveTransformIndex(t: { transformVarbit: number; transformVarp: number }, varProvider: VarProvider): number {
+function resolveTransformIndex(
+    t: { transformVarbit: number; transformVarp: number },
+    varProvider: VarProvider,
+): number {
     if (t.transformVarbit !== -1) return varProvider.getVarbit(t.transformVarbit);
     if (t.transformVarp !== -1) return varProvider.getVarp(t.transformVarp);
     return -1;
 }
 
-function resolveTransformId(
-    transforms: number[] | undefined,
-    transformIndex: number,
-): number {
+function resolveTransformId(transforms: number[] | undefined, transformIndex: number): number {
     if (!transforms || transforms.length === 0) return -1;
     let id = transforms[transforms.length - 1];
     if (transformIndex >= 0 && transformIndex < transforms.length - 1) {
@@ -253,12 +267,14 @@ async function main(): Promise<void> {
     }
     const session = sessionResult.value;
 
-    const npcIds = args.npcIds && args.npcIds.length > 0
-        ? args.npcIds
-        : collectNpcIds((id) => session.tryLoadNpcType(id), args.npcLimit);
-    const locIds = args.locIds && args.locIds.length > 0
-        ? args.locIds
-        : collectLocIds((id) => session.tryLoadLocType(id), args.locLimit);
+    const npcIds =
+        args.npcIds && args.npcIds.length > 0
+            ? args.npcIds
+            : collectNpcIds((id) => session.tryLoadNpcType(id), args.npcLimit);
+    const locIds =
+        args.locIds && args.locIds.length > 0
+            ? args.locIds
+            : collectLocIds((id) => session.tryLoadLocType(id), args.locLimit);
 
     if (npcIds.length === 0 && locIds.length === 0) {
         console.log(
@@ -349,8 +365,8 @@ async function main(): Promise<void> {
                     kind === "not_found"
                         ? "error_not_found"
                         : kind === "decode_failed"
-                          ? "error_decode_failed"
-                          : "error_other";
+                        ? "error_decode_failed"
+                        : "error_other";
                 chain.push(stepOut);
                 terminal = "loader_error";
                 terminalKind = kind;
@@ -433,8 +449,8 @@ async function main(): Promise<void> {
                     kind === "not_found"
                         ? "error_not_found"
                         : kind === "decode_failed"
-                          ? "error_decode_failed"
-                          : "error_other";
+                        ? "error_decode_failed"
+                        : "error_other";
                 chain.push(stepOut);
                 terminal = "loader_error";
                 terminalKind = kind;
@@ -506,7 +522,9 @@ async function main(): Promise<void> {
         }
         if (JSON.stringify(ts) !== JSON.stringify(cppNorm)) {
             mismatches++;
-            console.error(`npc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`);
+            console.error(
+                `npc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`,
+            );
         }
     }
     for (const id of locIds) {
@@ -519,7 +537,9 @@ async function main(): Promise<void> {
         }
         if (JSON.stringify(ts) !== JSON.stringify(cppNorm)) {
             mismatches++;
-            console.error(`loc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`);
+            console.error(
+                `loc mismatch id=${id}\nts=${JSON.stringify(ts)}\ncpp=${JSON.stringify(cppNorm)}`,
+            );
         }
     }
 

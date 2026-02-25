@@ -4,9 +4,9 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
-import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -76,10 +76,7 @@ function pickCache(caches: CacheInfo[], cacheName?: string): CacheInfo {
     return caches.find((c) => c.name === cacheName) ?? latest;
 }
 
-function collectSeqIds(
-    seqTypeLoader: SeqTypeLoaderLike,
-    limit: number,
-): number[] {
+function collectSeqIds(seqTypeLoader: SeqTypeLoaderLike, limit: number): number[] {
     const out: number[] = [];
     const maxProbe = Math.max(20000, limit * 2000);
     for (let id = 0; id < maxProbe && out.length < limit; id++) {
@@ -135,8 +132,8 @@ async function main(): Promise<void> {
                 result.error.kind === "not_found"
                     ? "not_found"
                     : result.error.kind === "decode_failed"
-                      ? "decode_failed"
-                      : "other";
+                    ? "decode_failed"
+                    : "other";
             tsById.set(id, { id, ok: false, kind });
             continue;
         }
@@ -195,7 +192,9 @@ async function main(): Promise<void> {
             ) {
                 mismatches++;
                 console.error(
-                    `id=${id} lengths mismatch ts=${JSON.stringify(ts.lengths)} cpp=${JSON.stringify(cppEntry.lengths)}`,
+                    `id=${id} lengths mismatch ts=${JSON.stringify(
+                        ts.lengths,
+                    )} cpp=${JSON.stringify(cppEntry.lengths)}`,
                 );
             }
         } else {

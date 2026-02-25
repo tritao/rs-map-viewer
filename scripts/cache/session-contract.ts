@@ -5,10 +5,10 @@ import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
 import { Dat2IndexId, DatIndexId, LegacyIndexId } from "../../src/rs/cache/IndexId";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { initErrorToString } from "../../src/rs/loaders/InitError";
-import { computeCacheRules } from "../../src/rs/loaders/CacheRules";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
+import { computeCacheRules } from "../../src/rs/loaders/CacheRules";
+import { initErrorToString } from "../../src/rs/loaders/InitError";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -93,12 +93,12 @@ function runCase(c: Case): void {
     }
     const session = sessionResult.value;
 
-    assert.equal(session.loaders.capabilities.cacheType, type, `${c.label}: cacheType capability mismatch`);
     assert.equal(
-        c.expectedTs.cacheType,
-        c.label,
-        `${c.label}: fixture label/cacheType mismatch`,
+        session.loaders.capabilities.cacheType,
+        type,
+        `${c.label}: cacheType capability mismatch`,
     );
+    assert.equal(c.expectedTs.cacheType, c.label, `${c.label}: fixture label/cacheType mismatch`);
     assert.equal(
         session.loaders.capabilities.hasQuestTypeLoader,
         c.expectedTs.hasQuestTypeLoader,
@@ -149,7 +149,11 @@ function runCase(c: Case): void {
             `${c.label}: rules.isIndexConfigs mismatch`,
         );
         if (rules.texture.mode === "sprite") {
-            assert.equal(c.expectedTs.rules.textureMode, "sprite", `${c.label}: rules.textureMode mismatch`);
+            assert.equal(
+                c.expectedTs.rules.textureMode,
+                "sprite",
+                `${c.label}: rules.textureMode mismatch`,
+            );
             assert.equal(
                 c.expectedTs.rules.textureHasAlphaMaterialField,
                 false,
@@ -161,7 +165,11 @@ function runCase(c: Case): void {
                 `${c.label}: rules.textureHasAlphaOperation mismatch`,
             );
         } else if (rules.texture.mode === "materials") {
-            assert.equal(c.expectedTs.rules.textureMode, "materials", `${c.label}: rules.textureMode mismatch`);
+            assert.equal(
+                c.expectedTs.rules.textureMode,
+                "materials",
+                `${c.label}: rules.textureMode mismatch`,
+            );
             assert.equal(
                 c.expectedTs.rules.textureHasAlphaMaterialField,
                 rules.texture.hasAlphaMaterialField,
@@ -206,20 +214,20 @@ function runCase(c: Case): void {
             type === CacheType.Dat2
                 ? Dat2IndexId.maps
                 : type === CacheType.Dat
-                  ? DatIndexId.maps
-                  : LegacyIndexId.maps;
+                ? DatIndexId.maps
+                : LegacyIndexId.maps;
         const modelsIndexId =
             type === CacheType.Dat2
                 ? Dat2IndexId.models
                 : type === CacheType.Dat
-                  ? DatIndexId.models
-                  : LegacyIndexId.models;
+                ? DatIndexId.models
+                : LegacyIndexId.models;
         const seqFramesIndexId =
             type === CacheType.Dat2
                 ? Dat2IndexId.animations
                 : type === CacheType.Dat
-                  ? DatIndexId.animations
-                  : LegacyIndexId.models;
+                ? DatIndexId.animations
+                : LegacyIndexId.models;
 
         assert.equal(
             !!session.tryGetIndex(mapIndexId),
@@ -236,7 +244,8 @@ function runCase(c: Case): void {
             c.expectedTs.indexes.seqFrames.present,
             `${c.label}: indexes.seqFrames.present mismatch`,
         );
-        const spritesPresent = type === CacheType.Dat2 ? !!session.tryGetIndex(Dat2IndexId.sprites) : false;
+        const spritesPresent =
+            type === CacheType.Dat2 ? !!session.tryGetIndex(Dat2IndexId.sprites) : false;
         assert.equal(
             spritesPresent,
             c.expectedTs.indexes.sprites.present,

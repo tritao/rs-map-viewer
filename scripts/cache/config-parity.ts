@@ -1,15 +1,19 @@
 import { spawnSync } from "child_process";
 
-import { loadCacheFiles, loadCacheInfos } from "./load-util";
-
 import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/CacheInfo";
-import { Dat2ConfigArchiveId, OsrsConfigArchiveId, Rs2ConfigArchiveId } from "../../src/rs/cache/ConfigArchiveId";
-import { detectCacheType, CacheType } from "../../src/rs/cache/CacheType";
+import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
+import {
+    Dat2ConfigArchiveId,
+    OsrsConfigArchiveId,
+    Rs2ConfigArchiveId,
+} from "../../src/rs/cache/ConfigArchiveId";
 import { Dat2IndexId, Rs2IndexId } from "../../src/rs/cache/IndexId";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { decodeTypeFromBytes } from "../../src/rs/config/decode/decodeType";
+import { ParamsMap } from "../../src/rs/config/Type";
 import { BasType } from "../../src/rs/config/bastype/BasType";
+import { decodeTypeFromBytes } from "../../src/rs/config/decode/decodeType";
+import { GraphicsDefaults } from "../../src/rs/config/defaults/GraphicsDefaults";
 import { EnumType } from "../../src/rs/config/enumtype/EnumType";
 import { OverlayFloorType } from "../../src/rs/config/floortype/OverlayFloorType";
 import { UnderlayFloorType } from "../../src/rs/config/floortype/UnderlayFloorType";
@@ -30,8 +34,7 @@ import { VarClientIntType } from "../../src/rs/config/vartype/client/VarClientIn
 import { VarClientStrType } from "../../src/rs/config/vartype/client/VarClientStrType";
 import { VarPlayerType } from "../../src/rs/config/vartype/player/VarPlayerType";
 import { CacheRules, computeCacheRules } from "../../src/rs/loaders/CacheRules";
-import { GraphicsDefaults } from "../../src/rs/config/defaults/GraphicsDefaults";
-import { ParamsMap } from "../../src/rs/config/Type";
+import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
 type Args = { cacheName?: string; limit: number; kinds?: string[] };
 
@@ -41,7 +44,11 @@ function parseArgs(argv: string[]): Args {
         const a = argv[i];
         if (a === "--cache") args.cacheName = argv[++i];
         else if (a === "--limit") args.limit = Number(argv[++i]);
-        else if (a === "--kinds") args.kinds = argv[++i].split(",").map((s) => s.trim()).filter(Boolean);
+        else if (a === "--kinds")
+            args.kinds = argv[++i]
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
     }
     if (!Number.isFinite(args.limit) || args.limit <= 0) throw new Error("Invalid --limit");
     return args;
@@ -606,7 +613,9 @@ function hashSeq(t: SeqType): number {
     h = fnv1a32UpdateInt(h, t.tweened ? 1 : 0);
     h = fnv1a32UpdateInt(h, t.vorbisSound ? 1 : 0);
 
-    const vol = t.soundVolumesByIndex ? Array.from(t.soundVolumesByIndex.entries()).sort((a, b) => a[0] - b[0]) : [];
+    const vol = t.soundVolumesByIndex
+        ? Array.from(t.soundVolumesByIndex.entries()).sort((a, b) => a[0] - b[0])
+        : [];
     h = fnv1a32UpdateInt(h, vol.length);
     for (const [idx, v] of vol) {
         h = fnv1a32UpdateInt(h, idx | 0);
@@ -859,7 +868,12 @@ function hashQuest(t: QuestType): number {
     return h | 0;
 }
 
-function decodeAndHash(kind: Kind, cacheInfo: CacheInfo, bytes: Uint8Array, id: number): number | null {
+function decodeAndHash(
+    kind: Kind,
+    cacheInfo: CacheInfo,
+    bytes: Uint8Array,
+    id: number,
+): number | null {
     switch (kind) {
         case "underlay": {
             const r = decodeTypeFromBytes(UnderlayFloorType, cacheInfo, id, bytes);
@@ -1035,7 +1049,8 @@ async function main(): Promise<void> {
     const caches = loadCacheInfos();
     const cacheInfo = pickCache(caches, args.cacheName);
     const cacheType = detectCacheType(cacheInfo);
-    if (cacheType !== CacheType.Dat2) throw new Error(`Only dat2 caches are supported (got ${cacheType})`);
+    if (cacheType !== CacheType.Dat2)
+        throw new Error(`Only dat2 caches are supported (got ${cacheType})`);
 
     const bundle = loadCacheFiles(cacheInfo);
     const cacheSystem = createCacheSystemFromFiles(cacheType, bundle, new JSCompressionHandler());
@@ -1050,7 +1065,8 @@ async function main(): Promise<void> {
         const ids: number[] = [];
         const tsHashesById = new Map<number, number>();
 
-        const wantIndexConfigs = rules.isIndexConfigs && ["loc", "npc", "obj", "seq", "varbit"].includes(kind);
+        const wantIndexConfigs =
+            rules.isIndexConfigs && ["loc", "npc", "obj", "seq", "varbit"].includes(kind);
         if (kind === "graphics_defaults") {
             const r = GraphicsDefaults.tryCreate(cacheInfo, cacheSystem);
             if (!r.ok) {
@@ -1143,7 +1159,9 @@ async function main(): Promise<void> {
             { encoding: "utf8" },
         );
         if (cpp.status !== 0) {
-            throw new Error(`rs_cli failed kind=${kind} (code=${cpp.status}): ${cpp.stderr || cpp.stdout}`);
+            throw new Error(
+                `rs_cli failed kind=${kind} (code=${cpp.status}): ${cpp.stderr || cpp.stdout}`,
+            );
         }
 
         const parsed = JSON.parse(cpp.stdout) as {

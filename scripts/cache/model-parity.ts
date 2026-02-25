@@ -4,10 +4,10 @@ import { CacheInfo, getGameTypeName, getLatestCache } from "../../src/rs/cache/C
 import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { ModelData } from "../../src/rs/model/ModelData";
-import { initErrorToString } from "../../src/rs/loaders/InitError";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
+import { initErrorToString } from "../../src/rs/loaders/InitError";
+import { ModelData } from "../../src/rs/model/ModelData";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -73,10 +73,7 @@ function fnv1a32UpdateIntArray(h: number, values: ArrayLike<number>): number {
     return h >>> 0;
 }
 
-function fnv1a32UpdateOptionalIntArray(
-    h: number,
-    values: ArrayLike<number> | undefined,
-): number {
+function fnv1a32UpdateOptionalIntArray(h: number, values: ArrayLike<number> | undefined): number {
     h = fnv1a32UpdateInt(h, values ? 1 : 0);
     if (values) {
         h = fnv1a32UpdateIntArray(h, values);
@@ -178,7 +175,9 @@ async function main(): Promise<void> {
         const loaded = modelLoader.tryLoad(id);
         if (!loaded.ok) {
             if (hasRequestedIds) {
-                throw new Error(`TS failed to decode requested model id=${id}: ${loaded.error.message}`);
+                throw new Error(
+                    `TS failed to decode requested model id=${id}: ${loaded.error.message}`,
+                );
             }
             continue;
         }
@@ -224,9 +223,7 @@ async function main(): Promise<void> {
         }
         if (!c.ok) {
             mismatches++;
-            console.error(
-                `C++ failed id=${ts.id}: status=${c.status} (${c.statusCode})`,
-            );
+            console.error(`C++ failed id=${ts.id}: status=${c.status} (${c.statusCode})`);
             continue;
         }
         if (c.hash !== ts.hash) {

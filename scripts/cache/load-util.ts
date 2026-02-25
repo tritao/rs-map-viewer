@@ -28,7 +28,8 @@ export type CacheList = {
     latest: CacheInfo;
 };
 
-export type XteaMap = Map<number, number[]>;
+export type XteaKey = readonly [number, number, number, number];
+export type XteaMap = Map<number, XteaKey>;
 
 export type LoadedCache = {
     info: CacheInfo;
@@ -194,5 +195,16 @@ export function loadXteas(cache: CacheInfo): XteaMap {
     const cachePath = "./caches/" + cache.name + "/";
     const json = fs.readFileSync(cachePath + "keys.json", "utf8");
     const data: Record<string, number[]> = JSON.parse(json);
-    return new Map(Object.keys(data).map((key) => [parseInt(key), data[key]]));
+    return new Map(
+        Object.keys(data).map((key) => {
+            const raw = data[key] ?? [];
+            const xtea: XteaKey = [
+                raw[0] ?? 0,
+                raw[1] ?? 0,
+                raw[2] ?? 0,
+                raw[3] ?? 0,
+            ];
+            return [parseInt(key), xtea];
+        }),
+    );
 }

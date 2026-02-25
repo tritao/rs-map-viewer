@@ -1,7 +1,8 @@
 import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
-import { decodeTypeFromBytes } from "../../src/rs/config/decode/decodeType";
 import { BasType } from "../../src/rs/config/bastype/BasType";
+import { decodeTypeFromBytes } from "../../src/rs/config/decode/decodeType";
 import { GraphicsDefaults } from "../../src/rs/config/defaults/GraphicsDefaults";
+import { EnumType } from "../../src/rs/config/enumtype/EnumType";
 import { IdkType } from "../../src/rs/config/idktype/IdkType";
 import { InvType } from "../../src/rs/config/invtype/InvType";
 import { LocType } from "../../src/rs/config/loctype/LocType";
@@ -12,11 +13,10 @@ import { ObjStackability } from "../../src/rs/config/objtype/ObjStackability";
 import { ObjType } from "../../src/rs/config/objtype/ObjType";
 import { QuestType } from "../../src/rs/config/questtype/QuestType";
 import { StructType } from "../../src/rs/config/structtype/StructType";
-import { EnumType } from "../../src/rs/config/enumtype/EnumType";
+import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
 import { VarClientIntType } from "../../src/rs/config/vartype/client/VarClientIntType";
 import { VarClientStrType } from "../../src/rs/config/vartype/client/VarClientStrType";
 import { VarPlayerType } from "../../src/rs/config/vartype/player/VarPlayerType";
-import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
 
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
@@ -222,11 +222,17 @@ const cacheInfo = new CacheInfo("test", GameType.Runescape, "test", 500, "1970-0
     }
     assert(decoded.value.idleSeqId === 16, "BasType idleSeqId mismatch");
     assert(decoded.value.walkSeqId === -1, "BasType walkSeqId mismatch");
-    assert(decoded.value.modelRotateTranslate !== undefined, "BasType modelRotateTranslate missing");
+    assert(
+        decoded.value.modelRotateTranslate !== undefined,
+        "BasType modelRotateTranslate missing",
+    );
     const v = decoded.value.modelRotateTranslate?.[2];
     assert(v !== undefined, "BasType modelRotateTranslate[2] missing");
     assert(v.length === 6, "BasType modelRotateTranslate[2] length mismatch");
-    assert(v[0] === 1 && v[1] === 2 && v[2] === -1 && v[3] === 4 && v[4] === -2 && v[5] === 6, "BasType modelRotateTranslate[2] values mismatch");
+    assert(
+        v[0] === 1 && v[1] === 2 && v[2] === -1 && v[3] === 4 && v[4] === -2 && v[5] === 6,
+        "BasType modelRotateTranslate[2] values mismatch",
+    );
 }
 
 // MapSceneType: [1][sprite=u16][2][rgb=medium][3][4][0] (4 resets spriteId)

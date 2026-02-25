@@ -15,8 +15,18 @@ import { SceneBuilder } from "../../src/rs/scene/SceneBuilder";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../src/rs/scene/model/ObjModelLoader";
-import type { MapRenderDataPayload } from "../../src/worker/MapRenderDataContract";
-import { createSceneBuildBackend } from "../../src/worker/SceneBuildBackend";
+import type {
+    MapRenderRuntimeBridgeV2,
+    MapRenderRuntimeBuildRequest,
+    MapRenderRuntimeCreateConfig,
+} from "../../src/wasm/MapRenderRuntimeBridgeAbi";
+import {
+    createByteDrivenSceneBuildInput,
+    createMapRenderRuntimeUploadScratchState,
+    uploadRuntimeCacheForBuildRequestWithBridge,
+} from "../../src/worker/MapRenderDataBackend";
+import type { MapRenderRuntimePacket } from "../../src/worker/MapRenderDataContract";
+import { runtimePacketToPayloadOverlay } from "../../src/worker/MapRenderDataContract";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
@@ -32,21 +42,64 @@ type Square = Readonly<{
     mapY: number;
 }>;
 
+type RuntimeBridge = MapRenderRuntimeBridgeV2 &
+    Readonly<{
+        createRuntime?(): Promise<number | undefined>;
+    }>;
+
 type WasmBridge = Readonly<{
-    buildMapData(
-        input: SdMapLoaderInput,
-        tsPayloadResult: { data: MapRenderDataPayload | undefined },
-    ): Promise<{ data: MapRenderDataPayload | undefined } | undefined>;
-    decodeNpcSpawnsFromBytes(
-        tileRenderFlagsLevel1: Uint8Array[],
-        borderSize: number,
-        mapX: number,
-        mapY: number,
-        data: Uint8Array,
-        npcLoginScreenPropsById?: Uint8Array,
-        requiredLoginScreenPropsMask?: number,
-    ): Promise<NpcSpawn[] | undefined>;
-}>;
+    runtimeHandle: number;
+}> &
+    Pick<
+        RuntimeBridge,
+        | "cacheSetBuildConfig"
+        | "cacheClearMapSquares"
+        | "cachePutMapSquaresPacked"
+        | "cacheClearTypeKind"
+        | "cachePutTypeEntry"
+        | "collectRequiredExpandedTypeIds"
+        | "cacheSetVarps"
+        | "buildMapPacketFromCache"
+        | "releasePacket"
+    >;
+
+function buildRuntimeRequest(
+    sceneBuildInput: Record<string, unknown>,
+): MapRenderRuntimeBuildRequest | undefined {
+    const sizeX = (sceneBuildInput.sizeX as number) | 0;
+    const sizeY = (sceneBuildInput.sizeY as number) | 0;
+    const baseX = (sceneBuildInput.baseX as number) | 0;
+    const baseY = (sceneBuildInput.baseY as number) | 0;
+    const mapSquareSize = 64;
+    if (sizeX <= 0 || sizeY <= 0) return undefined;
+    const borderX = ((sizeX - mapSquareSize) / 2) | 0;
+    const borderY = ((sizeY - mapSquareSize) / 2) | 0;
+    if (
+        borderX < 0 ||
+        borderY < 0 ||
+        borderX !== borderY ||
+        sizeX !== mapSquareSize + borderX * 2 ||
+        sizeY !== mapSquareSize + borderY * 2
+    ) {
+        return undefined;
+    }
+    const borderSize = borderX;
+    return {
+        mapX: Math.floor((baseX + borderSize) / mapSquareSize) | 0,
+        mapY: Math.floor((baseY + borderSize) / mapSquareSize) | 0,
+        borderSize,
+        sizeX,
+        sizeY,
+        cacheGame: (sceneBuildInput.cacheGame as number) | 0,
+        cacheRevision: (sceneBuildInput.cacheRevision as number) | 0,
+        unitsTileHeightBasis: (sceneBuildInput.unitsTileHeightBasis as number) | 0,
+        smoothTerrain: !!sceneBuildInput.smoothTerrain,
+        locLoadType: (sceneBuildInput.locLoadType as number) | 0,
+        loadLocs: sceneBuildInput.loadLocs !== false,
+        loadObjs: sceneBuildInput.loadObjs !== false,
+        loadNpcs: sceneBuildInput.loadNpcs !== false,
+    };
+}
 
 function parseArgs(argv: string[]): Args {
     let cacheName: string | undefined;
@@ -106,7 +159,10 @@ function pickCache(caches: CacheInfo[], cacheName?: string): CacheInfo {
 }
 
 function pickSquares(
-    mapFileIndex: { tryGetTerrainArchiveId(x: number, y: number): number | undefined; tryGetLocArchiveId(x: number, y: number): number | undefined },
+    mapFileIndex: {
+        tryGetTerrainArchiveId(x: number, y: number): number | undefined;
+        tryGetLocArchiveId(x: number, y: number): number | undefined;
+    },
     limit: number,
 ): Square[] {
     const squares: Square[] = [];
@@ -129,14 +185,56 @@ function pickSquares(
 
 async function loadWasmBridge(): Promise<WasmBridge> {
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "public/wasm/rs_map_render_backend_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_bridge.mjs"),
     ).href;
     const mod = (await import(bridgeUrl)) as Record<string, unknown>;
-    const candidate = (mod.cppWasmMapRenderDataBridge ?? mod.default) as WasmBridge | undefined;
-    if (!candidate || typeof candidate.buildMapData !== "function") {
-        throw new Error("Failed to load wasm map-render bridge");
+    const runtimeCandidate = mod.mapRenderRuntimeBridge as Partial<RuntimeBridge> | undefined;
+    if (
+        !runtimeCandidate ||
+        (typeof runtimeCandidate.createRuntime !== "function" &&
+            typeof runtimeCandidate.createRuntimeWithConfig !== "function") ||
+        typeof runtimeCandidate.cacheSetBuildConfig !== "function" ||
+        typeof runtimeCandidate.cacheClearMapSquares !== "function" ||
+        typeof runtimeCandidate.cachePutMapSquaresPacked !== "function" ||
+        typeof runtimeCandidate.cacheClearTypeKind !== "function" ||
+        typeof runtimeCandidate.cachePutTypeEntry !== "function" ||
+        typeof runtimeCandidate.collectRequiredExpandedTypeIds !== "function" ||
+        typeof runtimeCandidate.cacheSetVarps !== "function" ||
+        typeof runtimeCandidate.buildMapPacketFromCache !== "function"
+    ) {
+        throw new Error("Failed to load wasm map-render runtime bridge");
     }
-    return candidate;
+    const ready =
+        typeof runtimeCandidate.initRuntime === "function"
+            ? await runtimeCandidate.initRuntime()
+            : true;
+    if (!ready) {
+        throw new Error("Failed to init wasm map-render runtime bridge");
+    }
+    const runtimeHandle =
+        typeof runtimeCandidate.createRuntimeWithConfig === "function"
+            ? await runtimeCandidate.createRuntimeWithConfig({
+                  cacheGame: 0,
+                  cacheRevision: 0,
+                  sceneLevels: 4,
+                  unitsTileHeightBasis: 8,
+              })
+            : await runtimeCandidate.createRuntime!();
+    if (runtimeHandle === undefined) {
+        throw new Error("Failed to create wasm map-render runtime");
+    }
+    return {
+        runtimeHandle,
+        cacheSetBuildConfig: runtimeCandidate.cacheSetBuildConfig,
+        cacheClearMapSquares: runtimeCandidate.cacheClearMapSquares,
+        cachePutMapSquaresPacked: runtimeCandidate.cachePutMapSquaresPacked,
+        cacheClearTypeKind: runtimeCandidate.cacheClearTypeKind,
+        cachePutTypeEntry: runtimeCandidate.cachePutTypeEntry,
+        collectRequiredExpandedTypeIds: runtimeCandidate.collectRequiredExpandedTypeIds,
+        cacheSetVarps: runtimeCandidate.cacheSetVarps,
+        buildMapPacketFromCache: runtimeCandidate.buildMapPacketFromCache,
+        releasePacket: runtimeCandidate.releasePacket,
+    };
 }
 
 async function main(): Promise<void> {
@@ -153,7 +251,10 @@ async function main(): Promise<void> {
     const loaders = session.loaders;
 
     const varProvider = new VarManagerProvider(session.varManager);
-    const mapBytesProvider = new MapFileBytesProvider(loaders.mapFileLoader, loadedCache.xteas as any);
+    const mapBytesProvider = new MapFileBytesProvider(
+        loaders.mapFileLoader,
+        loadedCache.xteas as any,
+    );
     const locModelLoader = new LocModelLoader(
         loaders.locTypeLoader,
         loaders.modelLoader,
@@ -184,10 +285,6 @@ async function main(): Promise<void> {
         locModelLoader,
         varProvider,
     });
-    const sceneBuildBackend = createSceneBuildBackend("ts", {
-        sceneBuilder,
-        mapBytesProvider,
-    });
     const mapImageRenderer = new MapImageRenderer(
         loaders.textureLoader,
         loaders.locTypeLoader,
@@ -201,50 +298,15 @@ async function main(): Promise<void> {
 
     const tsBackend = new SdMapRenderDataTsBackend({
         session,
+        sceneBuilder,
         mapBytesProvider,
         locModelLoader,
         objModelLoader,
         npcModelLoader,
-        sceneBuildBackend,
         mapImageRenderer,
         varProvider,
         objSpawns,
         npcSpawns,
-    });
-
-    const tsWithWasmNpcBackend = new SdMapRenderDataTsBackend({
-        session,
-        mapBytesProvider,
-        locModelLoader,
-        objModelLoader,
-        npcModelLoader,
-        sceneBuildBackend,
-        mapImageRenderer,
-        varProvider,
-        objSpawns,
-        npcSpawns,
-        npcSpawnDecodeBackend: {
-            name: "cpp-wasm",
-            filtersLoginScreenProps: true,
-            decodeNpcSpawnsFromBytes: (
-                tileRenderFlagsLevel1,
-                borderSize,
-                mapX,
-                mapY,
-                data,
-                npcLoginScreenPropsById,
-                requiredLoginScreenPropsMask,
-            ) =>
-                wasmBridge.decodeNpcSpawnsFromBytes(
-                    tileRenderFlagsLevel1,
-                    borderSize,
-                    mapX,
-                    mapY,
-                    data,
-                    npcLoginScreenPropsById,
-                    requiredLoginScreenPropsMask,
-                ),
-        },
     });
 
     const squares = pickSquares(loaders.mapFileLoader.mapFileIndex, args.limit);
@@ -276,20 +338,40 @@ async function main(): Promise<void> {
     }
 
     async function runCppWasm(): Promise<void> {
+        const uploadScratchState = createMapRenderRuntimeUploadScratchState();
         for (const input of inputs) {
-            const tsResult = await tsWithWasmNpcBackend.buildMapDataPayload(input, {
-                includeScenePackInput: true,
-                preferWasmPacking: true,
-                includeMinimapBlob: false,
+            const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
+                mapBytesProvider,
+                locTypeLoader: loaders.locTypeLoader,
+                locModelLoader,
+                underlayTypeLoader: loaders.underlayTypeLoader,
+                overlayTypeLoader: loaders.overlayTypeLoader,
+                varProvider,
+                cacheGame: cacheInfo.game,
+                cacheRevision: cacheInfo.revision,
             });
-            if (!tsResult.data) {
-                throw new Error(
-                    `TS wasm-staged backend returned no payload at ${input.mapX},${input.mapY}`,
-                );
+            const request = buildRuntimeRequest(sceneBuildInput);
+            const uploaded =
+                !!request &&
+                (await uploadRuntimeCacheForBuildRequestWithBridge(
+                    wasmBridge as unknown as MapRenderRuntimeBridgeV2,
+                    wasmBridge.runtimeHandle,
+                    request,
+                    sceneBuildInput,
+                    uploadScratchState,
+                ));
+            const packet =
+                uploaded && request
+                    ? await wasmBridge.buildMapPacketFromCache(wasmBridge.runtimeHandle, request)
+                    : undefined;
+            const overlay = runtimePacketToPayloadOverlay(packet);
+            if (typeof wasmBridge.releasePacket === "function") {
+                wasmBridge.releasePacket(packet);
             }
-            const result = await wasmBridge.buildMapData(input, tsResult);
-            if (!result?.data) {
-                throw new Error(`WASM bridge returned no payload at ${input.mapX},${input.mapY}`);
+            if (!overlay) {
+                throw new Error(
+                    `WASM bridge returned no runtime packet/overlay at ${input.mapX},${input.mapY}`,
+                );
             }
         }
     }
@@ -308,7 +390,9 @@ async function main(): Promise<void> {
         const mean = total / samples.length;
         const perSquare = mean / inputs.length;
         console.log(
-            `map-render-backend-bench ${name}: cache=${cacheInfo.name} squares=${inputs.length} iterations=${samples.length} meanMs=${mean.toFixed(
+            `map-render-backend-bench ${name}: cache=${cacheInfo.name} squares=${
+                inputs.length
+            } iterations=${samples.length} meanMs=${mean.toFixed(
                 1,
             )} meanPerSquareMs=${perSquare.toFixed(1)}`,
         );

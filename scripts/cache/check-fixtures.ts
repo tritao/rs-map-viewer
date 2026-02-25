@@ -13,7 +13,12 @@ import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { SeqBase } from "../../src/rs/model/seq/SeqBase";
-import { Dat2SeqFrame, DatSeqFrame, LegacySeqFrame, SeqFrame } from "../../src/rs/model/seq/SeqFrame";
+import {
+    Dat2SeqFrame,
+    DatSeqFrame,
+    LegacySeqFrame,
+    SeqFrame,
+} from "../../src/rs/model/seq/SeqFrame";
 import { SeqTransformType } from "../../src/rs/model/seq/SeqTransformType";
 import { SpriteLoader } from "../../src/rs/sprite/SpriteLoader";
 import { err, ok } from "../../src/util/Result";
@@ -293,7 +298,9 @@ function checkModelV2Triangle(): void {
 function checkDat2SeqFrameMinimal(): void {
     const dir = path.join(FIXTURES_DIR, "dat2-seqframe-min");
     const bytes = readFileBytes(path.join(dir, "input.bin"));
-    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as SeqFrameExpected;
+    const expected = JSON.parse(
+        fs.readFileSync(path.join(dir, "expected.json"), "utf-8"),
+    ) as SeqFrameExpected;
 
     const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
     const base = new SeqBase(
@@ -330,7 +337,9 @@ function checkDat2SeqFrameMinimal(): void {
 function checkDat2SeqFrameNonTrivial(): void {
     const dir = path.join(FIXTURES_DIR, "dat2-seqframe-nontrivial");
     const bytes = readFileBytes(path.join(dir, "input.bin"));
-    const expected = JSON.parse(fs.readFileSync(path.join(dir, "expected.json"), "utf-8")) as SeqFrameExpected;
+    const expected = JSON.parse(
+        fs.readFileSync(path.join(dir, "expected.json"), "utf-8"),
+    ) as SeqFrameExpected;
 
     const cacheInfo = new CacheInfo("fixtures", GameType.Runescape, "live", 1, "n/a", 0);
     const base = new SeqBase(

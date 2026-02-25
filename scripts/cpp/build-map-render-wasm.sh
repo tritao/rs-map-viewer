@@ -6,7 +6,7 @@ CPP_DIR="$ROOT_DIR/cpp"
 BUILD_DIR="${BUILD_DIR:-"$CPP_DIR/build-wasm-map-render"}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 OUT_DIR="${OUT_DIR:-"$ROOT_DIR/src/wasm"}"
-LEGACY_PUBLIC_OUT_DIR="${LEGACY_PUBLIC_OUT_DIR:-}"
+LEGACY_PUBLIC_OUT_DIR="${LEGACY_PUBLIC_OUT_DIR:-"$ROOT_DIR/public/wasm"}"
 EXPORT_PROFILE="${EXPORT_PROFILE:-prod}"
 OUT_BASENAME="${OUT_BASENAME:-rs_map_render_backend}"
 
@@ -42,6 +42,9 @@ cp "$BUILD_DIR/rs_map_render_backend.wasm" "$OUT_DIR/${OUT_BASENAME}.wasm"
 if [[ -n "$LEGACY_PUBLIC_OUT_DIR" ]]; then
     cp "$BUILD_DIR/rs_map_render_backend.js" "$LEGACY_PUBLIC_OUT_DIR/${OUT_BASENAME}.js"
     cp "$BUILD_DIR/rs_map_render_backend.wasm" "$LEGACY_PUBLIC_OUT_DIR/${OUT_BASENAME}.wasm"
+    if [[ -f "$OUT_DIR/rs_map_render_backend_bridge.mjs" ]]; then
+        cp "$OUT_DIR/rs_map_render_backend_bridge.mjs" "$LEGACY_PUBLIC_OUT_DIR/rs_map_render_backend_bridge.mjs"
+    fi
 fi
 
 echo "Built map-render wasm backend (profile=$EXPORT_PROFILE):"

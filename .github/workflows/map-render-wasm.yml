@@ -32,3 +32,5 @@ jobs:
       - name: Run wasm parity
         run: npm run -s rs:map-render-wasm-parity -- --iterations 12
 
+      - name: Run map render parity full
+        run: npm run -s rs:map-render-parity-full
