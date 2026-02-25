@@ -146,7 +146,7 @@ async function initWorker(
         varProvider,
     });
     const mapRenderBackendKind = options?.mapRenderBackend ?? "cpp-wasm";
-    const sceneBuildBackend = createSceneBuildBackend("ts", {
+    const sceneBuildBackend = createSceneBuildBackend({
         sceneBuilder,
         mapBytesProvider,
     });

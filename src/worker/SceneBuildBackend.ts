@@ -3,8 +3,6 @@ import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 
-export type SceneBuildBackendKind = "ts" | "cpp-wasm";
-
 export type SceneBuildInput = Readonly<{
     baseX: number;
     baseY: number;
@@ -15,7 +13,6 @@ export type SceneBuildInput = Readonly<{
 }>;
 
 export interface SceneBuildBackend {
-    readonly kind: SceneBuildBackendKind;
     buildScene(input: SceneBuildInput): Promise<Scene>;
     reset(): void;
 }
@@ -25,24 +22,8 @@ export type SceneBuildDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;
 }>;
 
-export type SceneBuildBackendOptions = Readonly<{
-    cppWasmModuleUrl?: string;
-    strictCppWasm?: boolean;
-}>;
-
-export function getCppWasmSceneMetadata(_scene: Scene): undefined {
-    return undefined;
-}
-
 class TsSceneBuildBackend implements SceneBuildBackend {
-    readonly kind: SceneBuildBackendKind;
-
-    constructor(
-        private readonly deps: SceneBuildDeps,
-        kind: SceneBuildBackendKind = "ts",
-    ) {
-        this.kind = kind;
-    }
+    constructor(private readonly deps: SceneBuildDeps) {}
 
     async buildScene(input: SceneBuildInput): Promise<Scene> {
         return buildSceneFromMapBytesProvider(
@@ -60,21 +41,8 @@ class TsSceneBuildBackend implements SceneBuildBackend {
     reset(): void {}
 }
 
-let warnedCppWasmSceneBackendFallback = false;
-
 export function createSceneBuildBackend(
-    kind: SceneBuildBackendKind,
     deps: SceneBuildDeps,
-    _options?: SceneBuildBackendOptions,
 ): SceneBuildBackend {
-    if (kind === "cpp-wasm") {
-        if (!warnedCppWasmSceneBackendFallback) {
-            warnedCppWasmSceneBackendFallback = true;
-            console.warn(
-                "[scene-backend] cpp-wasm scene build path is removed; using ts scene backend",
-            );
-        }
-        return new TsSceneBuildBackend(deps, "cpp-wasm");
-    }
-    return new TsSceneBuildBackend(deps, "ts");
+    return new TsSceneBuildBackend(deps);
 }
