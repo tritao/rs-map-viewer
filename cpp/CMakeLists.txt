@@ -30,9 +30,7 @@ if (EMSCRIPTEN)
 endif()
 
 set(RS_SOURCES
-    rs/io/ByteSourceSlice.cpp
     rs/io/Uint8ArrayByteSource.cpp
-    rs/io/ByteSourceReader.cpp
     rs/io/Uint8ArrayReader.cpp
     rs/crypto/Xtea.cpp
     rs/compression/NativeCompressionHandler.cpp
