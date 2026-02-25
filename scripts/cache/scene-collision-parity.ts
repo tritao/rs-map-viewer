@@ -15,7 +15,7 @@ import type {
     MapRenderRuntimeCreateConfig,
     MapRenderRuntimeDebugBridgeV2,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
-import { importMapRenderDebugBridgeModule } from "../../src/wasm/loadMapRenderBridgeModule";
+import { importMapRenderBridgeModule } from "../../src/wasm/loadMapRenderBridgeModule";
 import {
     createMapRenderRuntimeUploadScratchState,
     uploadRuntimeCacheForBuildRequestWithBridge,
@@ -116,7 +116,7 @@ function getSceneBridgeUrl(): string {
 }
 
 async function ensureSceneBridgeAvailable(bridgeUrl: string): Promise<void> {
-    const mod = (await import(bridgeUrl)) as Record<string, unknown>;
+    const mod = (await importMapRenderBridgeModule(bridgeUrl)) as Record<string, unknown>;
     const bridge = mod.mapRenderRuntimeDebugBridge as Partial<MapRenderRuntimeDebugBridgeV2> | undefined;
     if (
         !bridge ||
@@ -202,7 +202,7 @@ async function main(): Promise<void> {
         mapBytesProvider,
     } as const;
 
-    const wasmBridgeMod = await importMapRenderDebugBridgeModule(bridgeUrl);
+    const wasmBridgeMod = await importMapRenderBridgeModule(bridgeUrl);
     const wasmBridge = wasmBridgeMod.mapRenderRuntimeDebugBridge as MapRenderRuntimeDebugBridgeV2;
     const ok = await wasmBridge.initRuntime();
     if (!ok) {

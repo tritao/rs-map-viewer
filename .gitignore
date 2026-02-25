@@ -45,3 +45,7 @@ dockview/
 # local scratch
 SCB_TMP.cpp
 scripts/dev/
+
+# wasm debug artifacts (generated locally)
+src/wasm/rs_map_render_backend_debug.js
+src/wasm/rs_map_render_backend_debug.wasm
