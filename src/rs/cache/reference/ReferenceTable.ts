@@ -1,4 +1,5 @@
 import { ByteReader } from "../../io/ByteReader";
+import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { StringUtil } from "../../util/StringUtil";
 import { ArchiveReference } from "./ArchiveReference";
 
@@ -21,6 +22,10 @@ export class ReferenceTable {
         [],
         [],
     );
+
+    static decodeFromBytes(bytes: Uint8Array): ReferenceTable {
+        return ReferenceTable.decodeFromReader(new Uint8ArrayReader(bytes));
+    }
 
     static decodeFromReader(reader: ByteReader): ReferenceTable {
         const protocol = reader.readUnsignedByte();

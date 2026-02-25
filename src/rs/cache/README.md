@@ -44,7 +44,7 @@ The key goal is: decoders should not care _where_ bytes come from (memory, file,
 
 ### Format decoding (pure “bytes → structures”)
 
--   `format/Container.ts`: decodes a cache container from a seekable `ByteSource`.
+-   `format/Container.ts`: decodes a cache container from a `ByteReader` (with a `ByteSource` wrapper entrypoint).
     -   reads container header (compression + compressed size)
     -   optionally XTEA-decrypts the container’s encrypted region
     -   decompresses via `CompressionHandler`
@@ -57,8 +57,8 @@ The key goal is: decoders should not care _where_ bytes come from (memory, file,
 ## Dat2 archive decode path (typical)
 
 1. `Dat2CacheIndex.getArchiveKey(archiveId, key)` calls `CacheStore.openArchiveReader(indexId, archiveId)` to obtain a seekable `ByteSource` for the archive.
-2. `format/Container.decodeFromSource(source, key, compressionHandler)` reads only what it needs and returns the decompressed payload.
-3. `format/Archive.decodeFromSource(archiveRef, payloadSource)` splits the payload into `ArchiveFile`s.
+2. `format/Container.decodeFromSource(source, key, compressionHandler)` returns the decompressed payload bytes.
+3. `format/Archive.decodeFromReader(archiveRef, new Uint8ArrayReader(payloadBytes))` splits the payload into `ArchiveFile`s.
 4. Higher-level loaders (models/config/etc) parse `ArchiveFile.data` with `ByteBuffer`.
 
 ## Extending for native / file-backed caches

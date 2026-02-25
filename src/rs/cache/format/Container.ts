@@ -2,18 +2,26 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
 import { CompressionType } from "../../compression/CompressionType";
 import { Xtea, XteaKey } from "../../crypto/Xtea";
+import { ByteReader } from "../../io/ByteReader";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { getOrCopyBytes } from "../../io/ByteSourceUtil";
+import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { readU32BE } from "../../io/Endian";
 
 export class Container {
-    static decodeFromSource(
-        source: ByteSource,
+    static decodeFromBytes(
+        bytes: Uint8Array,
         key: XteaKey | null,
         compressionHandler: CompressionHandler,
     ): Container {
-        const reader = new ByteSourceReader(source);
+        return Container.decodeFromReader(new Uint8ArrayReader(bytes), key, compressionHandler);
+    }
+
+    static decodeFromReader(
+        reader: ByteReader,
+        key: XteaKey | null,
+        compressionHandler: CompressionHandler,
+    ): Container {
         const compression: CompressionType = reader.readUnsignedByte() as CompressionType;
         const size = reader.readInt();
 
@@ -26,27 +34,21 @@ export class Container {
         if (compression === CompressionType.None) {
             if (hasKey) {
                 const encryptedSize = 4 + size;
-                const end = 5 + encryptedSize;
-                if (end > source.size) {
-                    throw new Error(
-                        `Truncated container. expected>=${end}, available=${source.size}`,
-                    );
-                }
 
                 const encrypted = new Uint8Array(encryptedSize);
-                source.readInto(5, encrypted);
+                reader.readBytesInto(encrypted);
                 Xtea.decryptInPlace(encrypted, 0, encryptedSize, key);
 
                 return new Container(compression, encrypted.subarray(0, size));
             }
 
-            const end = 5 + size;
-            if (end > source.size) {
-                throw new Error(`Truncated container. expected>=${end}, available=${source.size}`);
+            if (reader.remaining < size) {
+                throw new Error(
+                    `Truncated container. expected>=${size}, available=${reader.remaining}`,
+                );
             }
 
-            const payload = source.slice(5, size);
-            return new Container(compression, getOrCopyBytes(payload));
+            return new Container(compression, reader.readBytes(size));
         }
 
         if (compression !== CompressionType.Bzip2 && compression !== CompressionType.Gzip) {
@@ -54,10 +56,10 @@ export class Container {
         }
 
         const compressedSize = size;
-        const expectedMinSize = 5 + 4 + compressedSize;
-        if (expectedMinSize > source.size) {
+        const expectedMinPayload = 4 + compressedSize;
+        if (expectedMinPayload > reader.remaining) {
             throw new Error(
-                `Truncated container. expected>=${expectedMinSize}, available=${source.size}`,
+                `Truncated container. expected>=${expectedMinPayload}, available=${reader.remaining}`,
             );
         }
 
@@ -67,18 +69,16 @@ export class Container {
         if (hasKey) {
             const encryptedSize = 4 + compressedSize;
             const encrypted = new Uint8Array(encryptedSize);
-            source.readInto(5, encrypted);
+            reader.readBytesInto(encrypted);
             Xtea.decryptInPlace(encrypted, 0, encryptedSize, key);
 
             actualSize = readU32BE(encrypted, 0);
             compressed = encrypted.subarray(4, 4 + compressedSize);
         } else {
-            reader.seek(5);
             actualSize = reader.readUnsignedInt();
 
             // compressed payload starts at 9
-            const payload = source.slice(9, compressedSize);
-            compressed = getOrCopyBytes(payload);
+            compressed = reader.readBytes(compressedSize);
         }
 
         let decompressed: Uint8Array;
@@ -100,6 +100,18 @@ export class Container {
         }
 
         return new Container(compression, decompressed);
+    }
+
+    static decodeFromSource(
+        source: ByteSource,
+        key: XteaKey | null,
+        compressionHandler: CompressionHandler,
+    ): Container {
+        const view = source.tryGetUint8ArrayView();
+        if (view) {
+            return Container.decodeFromBytes(view, key, compressionHandler);
+        }
+        return Container.decodeFromReader(new ByteSourceReader(source), key, compressionHandler);
     }
 
     constructor(

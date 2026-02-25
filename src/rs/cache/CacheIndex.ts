@@ -1,9 +1,7 @@
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { XteaKey } from "../crypto/Xtea";
 import { ByteSource } from "../io/ByteSource";
-import { ByteSourceReader } from "../io/ByteSourceReader";
 import { getOrCopyBytes, readAllBytes } from "../io/ByteSourceUtil";
-import { Uint8ArrayByteSource } from "../io/Uint8ArrayByteSource";
 import { StringUtil } from "../util/StringUtil";
 import { DatIndexId } from "./IndexId";
 import { Archive } from "./format/Archive";
@@ -145,10 +143,6 @@ export abstract class CacheIndex {
     }
 }
 
-function byteSourceFromBytes(data: Uint8Array): ByteSource {
-    return new Uint8ArrayByteSource(data);
-}
-
 function decodeTableFromSource(
     source: ByteSource,
     compressionHandler: CompressionHandler,
@@ -157,9 +151,7 @@ function decodeTableFromSource(
         return ReferenceTable.INVALID_TABLE;
     }
     const container = Container.decodeFromSource(source, null, compressionHandler);
-    return ReferenceTable.decodeFromReader(
-        new ByteSourceReader(byteSourceFromBytes(container.data)),
-    );
+    return ReferenceTable.decodeFromBytes(container.data);
 }
 
 function decodeArchiveDataFromSource(
@@ -174,7 +166,7 @@ function decodeArchiveDataFromSource(
         throw new Error("Archive reference not found for: " + archiveId);
     }
     const container = Container.decodeFromSource(source, key, compressionHandler);
-    return Archive.decodeFromSource(archiveRef, byteSourceFromBytes(container.data));
+    return Archive.decodeFromBytes(archiveRef, container.data);
 }
 
 export class DatCacheIndex extends CacheIndex {
@@ -324,11 +316,7 @@ export class Dat2CacheIndex extends CacheIndex {
         if (raw.byteLength === 0) {
             return new Uint8Array(0);
         }
-        const container = Container.decodeFromSource(
-            new Uint8ArrayByteSource(raw),
-            key,
-            this.compressionHandler,
-        );
+        const container = Container.decodeFromBytes(raw, key, this.compressionHandler);
         return container.data;
     }
 }

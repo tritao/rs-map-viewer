@@ -1,7 +1,7 @@
 import { CompressionHandler } from "../../compression/CompressionHandler";
+import { ByteReader } from "../../io/ByteReader";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { getOrCopyBytes } from "../../io/ByteSourceUtil";
 import { readU32LE } from "../../io/Endian";
 import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { StringUtil } from "../../util/StringUtil";
@@ -176,7 +176,22 @@ export class Archive {
     }
 
     static decodeFromSource(meta: ArchiveMeta, source: ByteSource): Archive {
+        const view = source.tryGetUint8ArrayView();
+        if (view) {
+            return Archive.decodeFromBytes(meta, view);
+        }
+        return Archive.decodeFromReader(meta, new ByteSourceReader(source));
+    }
+
+    static decodeFromBytes(meta: ArchiveMeta, bytes: Uint8Array): Archive {
+        return Archive.decodeFromReader(meta, new Uint8ArrayReader(bytes));
+    }
+
+    static decodeFromReader(meta: ArchiveMeta, reader: ByteReader): Archive {
         const { id: archiveId, lastFileId, fileCount, fileIds, fileNameHashes } = meta;
+
+        const base = reader.tell();
+        const end = base + reader.remaining;
 
         const filesById: Array<ArchiveFile | undefined> = Array.from(
             { length: lastFileId + 1 },
@@ -185,34 +200,35 @@ export class Archive {
         const files: ArchiveFile[] = [];
 
         if (fileCount === 1) {
-            const data = getOrCopyBytes(source);
+            reader.seek(base);
+            const data = reader.readBytes(end - base);
 
             const fileId = lastFileId;
             const file = new ArchiveFile(fileId, archiveId, data);
             files[0] = file;
             filesById[fileId] = file;
         } else {
-            if (source.size < 1) {
+            if (end - base < 1) {
                 throw new Error("Empty archive");
             }
 
-            const reader = new ByteSourceReader(source);
-            reader.seek(source.size - 1);
+            reader.seek(end - 1);
             const chunks = reader.readUnsignedByte();
 
             const tableBytes = chunks * (fileCount * 4);
-            const tableOffset = source.size - 1 - tableBytes;
-            if (tableOffset < 0) {
+            const tableOffset = end - 1 - tableBytes;
+            if (tableOffset < base) {
                 throw new Error("Invalid archive chunk table");
             }
 
-            const tableReader = new ByteSourceReader(source.slice(tableOffset, tableBytes));
             const chunkSizes = new Int32Array(chunks * fileCount);
             const fileSizes = new Int32Array(fileCount);
+
+            reader.seek(tableOffset);
             for (let chunk = 0; chunk < chunks; chunk++) {
                 let lastChunkFileSize = 0;
                 for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
-                    const delta = tableReader.readInt();
+                    const delta = reader.readInt();
                     lastChunkFileSize += delta;
                     chunkSizes[chunk * fileCount + fileIdx] = lastChunkFileSize;
                     fileSizes[fileIdx] += lastChunkFileSize;
@@ -225,16 +241,18 @@ export class Archive {
                 (_, fileIdx) => new Uint8Array(fileSizes[fileIdx]),
             );
 
-            const payload = source.slice(0, tableOffset);
-            let inputOffset = 0;
+            reader.seek(base);
+            const payloadEnd = tableOffset;
             for (let chunk = 0; chunk < chunks; chunk++) {
                 for (let fileIdx = 0; fileIdx < fileCount; fileIdx++) {
                     const chunkSize = chunkSizes[chunk * fileCount + fileIdx];
                     const dst = fileData[fileIdx];
                     const dstOff = fileOffsets[fileIdx];
-                    payload.readInto(inputOffset, dst, dstOff, chunkSize);
+                    if (reader.tell() + chunkSize > payloadEnd) {
+                        throw new Error("Invalid archive payload");
+                    }
+                    reader.readBytesInto(dst, dstOff, chunkSize);
                     fileOffsets[fileIdx] = dstOff + chunkSize;
-                    inputOffset += chunkSize;
                 }
             }
 
