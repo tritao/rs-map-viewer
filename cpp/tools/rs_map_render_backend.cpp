@@ -581,8 +581,6 @@ struct MapRenderRuntimeState {
     rs::tooling::MapRenderLoadedPayloadState mapPayload;
     MapRenderRuntimeCacheState cache;
     MapRenderCachedCommandStream lastBuiltCommandStream;
-    std::vector<rs::u8> geometrySeedVertices;
-    std::vector<rs::i32> geometrySeedIndices;
     std::vector<rs::i32> debugLastCollisionFlags;
     rs::i32 debugLastCollisionLevels = 0;
     rs::i32 debugLastCollisionSizeX = 0;

@@ -23,8 +23,6 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_set_build_config(
     const bool cacheChanged = applied.cacheIdentityChanged;
     if (cacheChanged) {
         runtime->cache.clear();
-        runtime->geometrySeedVertices.clear();
-        runtime->geometrySeedIndices.clear();
     }
     runtime->cache.cacheGame = applied.cacheGame;
     runtime->cache.cacheRevision = applied.cacheRevision;
@@ -205,48 +203,6 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_set_varps(
         RS_MAP_RENDER_STATUS_OK);
 }
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_set_geometry_seed(
-    const rs::i32 runtimeHandle,
-    const rs::u8* vertices,
-    const rs::i32 verticesLength,
-    const rs::i32* indices,
-    const rs::i32 indicesLength) {
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime || verticesLength < 0 || indicesLength < 0) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    if ((verticesLength > 0 && !vertices) || (indicesLength > 0 && !indices)) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-
-    runtime->geometrySeedVertices.clear();
-    if (verticesLength > 0) {
-        runtime->geometrySeedVertices.assign(
-            vertices,
-            vertices + static_cast<std::size_t>(verticesLength));
-    }
-
-    runtime->geometrySeedIndices.clear();
-    if (indicesLength > 0) {
-        runtime->geometrySeedIndices.assign(
-            indices,
-            indices + static_cast<std::size_t>(indicesLength));
-    }
-
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_clear_geometry_seed(
-    const rs::i32 runtimeHandle) {
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    runtime->geometrySeedVertices.clear();
-    runtime->geometrySeedIndices.clear();
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_texture_argb(
     const rs::i32 runtimeHandle,
     const rs::i32 textureId,
@@ -321,4 +277,3 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_get_resource_counts(
     outCounts[1] = static_cast<rs::i32>(runtime->cache.materialParamsById.size());
     return RS_MAP_RENDER_STATUS_OK;
 }
-

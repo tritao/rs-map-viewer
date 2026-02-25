@@ -200,14 +200,6 @@ function getRuntimeCacheSetVarpsExport(backendModule) {
     return backendModule._rs_map_render_runtime_cache_set_varps;
 }
 
-function getRuntimeSetGeometrySeedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_set_geometry_seed;
-}
-
-function getRuntimeClearGeometrySeedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_clear_geometry_seed;
-}
-
 function getRuntimeCachePutTextureArgbExport(backendModule) {
     return backendModule._rs_map_render_runtime_cache_put_texture_argb;
 }
@@ -3648,41 +3640,6 @@ function runtimeCacheSetVarpsWithWasm(backendModule, runtimeHandle, varps) {
     }
 }
 
-function runtimeSetGeometrySeedWithWasm(backendModule, runtimeHandle, vertices, indices) {
-    const setGeometrySeed = getRuntimeSetGeometrySeedExport(backendModule);
-    if (typeof setGeometrySeed !== "function") {
-        return -1;
-    }
-    const safeVertices = vertices instanceof Uint8Array ? vertices : new Uint8Array(0);
-    const safeIndices = indices instanceof Int32Array ? indices : new Int32Array(0);
-    const verticesPtr = mallocU8AndCopy(backendModule, safeVertices);
-    const indicesPtr = mallocI32AndCopy(backendModule, safeIndices);
-    try {
-        return setGeometrySeed(
-            runtimeHandle | 0,
-            verticesPtr,
-            safeVertices.length | 0,
-            indicesPtr,
-            safeIndices.length | 0,
-        ) | 0;
-    } finally {
-        if (verticesPtr) {
-            backendModule._free(verticesPtr);
-        }
-        if (indicesPtr) {
-            backendModule._free(indicesPtr);
-        }
-    }
-}
-
-function runtimeClearGeometrySeedWithWasm(backendModule, runtimeHandle) {
-    const clearGeometrySeed = getRuntimeClearGeometrySeedExport(backendModule);
-    if (typeof clearGeometrySeed !== "function") {
-        return -1;
-    }
-    return clearGeometrySeed(runtimeHandle | 0) | 0;
-}
-
 function runtimeCachePutTextureArgbWithWasm(backendModule, runtimeHandle, textureId, argb) {
     const putTextureArgb = getRuntimeCachePutTextureArgbExport(backendModule);
     if (typeof putTextureArgb !== "function") {
@@ -5497,20 +5454,6 @@ export const mapRenderRuntimeBridge = {
             return -1;
         }
         return runtimeCacheSetVarpsWithWasm(backendModule, runtimeHandle, varps);
-    },
-    async setGeometrySeed(runtimeHandle, vertices, indices) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return -1;
-        }
-        return runtimeSetGeometrySeedWithWasm(backendModule, runtimeHandle, vertices, indices);
-    },
-    async clearGeometrySeed(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return -1;
-        }
-        return runtimeClearGeometrySeedWithWasm(backendModule, runtimeHandle);
     },
 
     async cachePutTextureArgb(runtimeHandle, textureId, argb) {

@@ -136,12 +136,6 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         runtimeHandle: MapRenderRuntimeHandle,
     ): Promise<Readonly<{ textureCount: number; materialCount: number }> | undefined>;
     cacheSetVarps(runtimeHandle: MapRenderRuntimeHandle, varps: Int32Array): Promise<number>;
-    setGeometrySeed(
-        runtimeHandle: MapRenderRuntimeHandle,
-        vertices: Uint8Array,
-        indices: Int32Array,
-    ): Promise<number>;
-    clearGeometrySeed(runtimeHandle: MapRenderRuntimeHandle): Promise<number>;
     cacheSetBuildConfig(
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,

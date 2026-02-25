@@ -201,22 +201,15 @@ if (buildStatus != RS_MAP_RENDER_STATUS_OK) {
     clearPacketHandlesForRuntime(runtimeHandle);
     return buildStatus;
 }
+// Geometry is expected to come from the cached command stream.
 const rs::u8* runtimeGeometryVertices =
-    !commandStream.vertices.empty()
-        ? commandStream.vertices.data()
-        : (runtime->geometrySeedVertices.empty() ? nullptr : runtime->geometrySeedVertices.data());
+    commandStream.vertices.empty() ? nullptr : commandStream.vertices.data();
 const rs::i32 runtimeGeometryVerticesLength =
-    !commandStream.vertices.empty()
-        ? static_cast<rs::i32>(commandStream.vertices.size())
-        : static_cast<rs::i32>(runtime->geometrySeedVertices.size());
+    static_cast<rs::i32>(commandStream.vertices.size());
 const rs::i32* runtimeGeometryIndices =
-    !commandStream.indices.empty()
-        ? commandStream.indices.data()
-        : (runtime->geometrySeedIndices.empty() ? nullptr : runtime->geometrySeedIndices.data());
+    commandStream.indices.empty() ? nullptr : commandStream.indices.data();
 const rs::i32 runtimeGeometryIndicesLength =
-    !commandStream.indices.empty()
-        ? static_cast<rs::i32>(commandStream.indices.size())
-        : static_cast<rs::i32>(runtime->geometrySeedIndices.size());
+    static_cast<rs::i32>(commandStream.indices.size());
 
 const rs::i32 storeStatus = rs::tooling::storeLoadedPayload(
     &runtime->mapPayload,
