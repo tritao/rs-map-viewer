@@ -1,6 +1,7 @@
 #include "Container.hpp"
 
 #include <cstddef>
+#include <cstring>
 
 #include "../../compression/CompressionHandler.hpp"
 #include "../../compression/CompressionType.hpp"
@@ -12,28 +13,23 @@
 #include "../../core/Vec.hpp"
 #include "../../crypto/Xtea.hpp"
 #include "../../io/ByteSource.hpp"
+#include "../../io/ByteSourceUtil.hpp"
 #include "../../io/Endian.hpp"
 #include "../../types.hpp"
 
 namespace rs {
 
-Result<Container> Container::decodeFromSource(
-    const ByteSource& source,
+Result<Container> Container::decodeFromBytes(
+    Span<const u8> bytes,
     const XteaKey* key,
     const CompressionHandler& compressionHandler,
     Allocator& alloc) noexcept {
-    if (source.size() < 5) {
+    if (bytes.size() < 5) {
         return Result<Container>::err(Status::Truncated);
     }
 
-    u8 head[5];
-    Status s = source.readInto(0, Span<u8>(head, sizeof(head)));
-    if (!ok(s)) {
-        return Result<Container>::err(s);
-    }
-
-    const CompressionType compression = static_cast<CompressionType>(head[0]);
-    const i32 sizeSigned = readI32BE(head + 1);
+    const CompressionType compression = static_cast<CompressionType>(bytes[0]);
+    const i32 sizeSigned = readI32BE(bytes.data() + 1);
     if (sizeSigned < 0) {
         return Result<Container>::err(Status::BadFormat);
     }
@@ -45,7 +41,7 @@ Result<Container> Container::decodeFromSource(
         if (hasKey) {
             const std::size_t encryptedSize = 4 + size;
             const std::size_t end = 5 + encryptedSize;
-            if (end > source.size()) {
+            if (end > bytes.size()) {
                 return Result<Container>::err(Status::Truncated);
             }
 
@@ -54,11 +50,11 @@ Result<Container> Container::decodeFromSource(
             if (!rr.isOk()) {
                 return Result<Container>::err(rr.status());
             }
-            s = source.readInto(5, Span<u8>(encrypted.data(), encrypted.size()));
-            if (!ok(s)) {
-                return Result<Container>::err(s);
+            if (encryptedSize) {
+                std::memcpy(encrypted.data(), bytes.data() + 5, encryptedSize);
             }
-            s = Xtea::decryptInPlace(Span<u8>(encrypted.data(), encrypted.size()), 0, encryptedSize, *key);
+
+            Status s = Xtea::decryptInPlace(Span<u8>(encrypted.data(), encrypted.size()), 0, encryptedSize, *key);
             if (!ok(s)) {
                 return Result<Container>::err(s);
             }
@@ -71,7 +67,7 @@ Result<Container> Container::decodeFromSource(
         }
 
         const std::size_t end = 5 + size;
-        if (end > source.size()) {
+        if (end > bytes.size()) {
             return Result<Container>::err(Status::Truncated);
         }
 
@@ -81,10 +77,7 @@ Result<Container> Container::decodeFromSource(
             return Result<Container>::err(rr.status());
         }
         if (size) {
-            s = source.readInto(5, Span<u8>(out.data(), out.size()));
-            if (!ok(s)) {
-                return Result<Container>::err(s);
-            }
+            std::memcpy(out.data(), bytes.data() + 5, size);
         }
         return Result<Container>::ok(Container(compression, rs::move(out)));
     }
@@ -95,80 +88,77 @@ Result<Container> Container::decodeFromSource(
 
     const std::size_t compressedSize = size;
     const std::size_t expectedMinSize = 5 + 4 + compressedSize;
-    if (expectedMinSize > source.size()) {
+    if (expectedMinSize > bytes.size()) {
         return Result<Container>::err(Status::Truncated);
     }
 
     u32 actualSize = 0;
-    Vec<u8> compressed(alloc);
     Span<const u8> compressedView;
+    Vec<u8> encryptedOrEmpty(alloc);
 
     if (hasKey) {
         const std::size_t encryptedSize = 4 + compressedSize;
-        Vec<u8> encrypted(alloc);
-        auto rr = encrypted.resize(encryptedSize);
+        const std::size_t end = 5 + encryptedSize;
+        if (end > bytes.size()) {
+            return Result<Container>::err(Status::Truncated);
+        }
+
+        auto rr = encryptedOrEmpty.resize(encryptedSize);
         if (!rr.isOk()) {
             return Result<Container>::err(rr.status());
         }
-        s = source.readInto(5, Span<u8>(encrypted.data(), encrypted.size()));
+        if (encryptedSize) {
+            std::memcpy(encryptedOrEmpty.data(), bytes.data() + 5, encryptedSize);
+        }
+
+        Status s = Xtea::decryptInPlace(
+            Span<u8>(encryptedOrEmpty.data(), encryptedOrEmpty.size()),
+            0,
+            encryptedSize,
+            *key);
         if (!ok(s)) {
             return Result<Container>::err(s);
         }
-        s = Xtea::decryptInPlace(Span<u8>(encrypted.data(), encrypted.size()), 0, encryptedSize, *key);
-        if (!ok(s)) {
-            return Result<Container>::err(s);
-        }
 
-        actualSize = readU32BE(encrypted.data());
-        compressedView = Span<const u8>(encrypted.data() + 4, compressedSize);
-
-        Result<Vec<u8>> decRes = (compression == CompressionType::Bzip2)
-            ? compressionHandler.decompressBzip2(compressedView, static_cast<std::size_t>(actualSize), alloc)
-            : compressionHandler.decompressGzip(compressedView, alloc);
-
-        if (!decRes.isOk()) {
-            return Result<Container>::err(decRes.status());
-        }
-        Vec<u8> decompressed = rs::move(decRes.value());
-        if (decompressed.size() != static_cast<std::size_t>(actualSize)) {
-            return Result<Container>::err(Status::SizeMismatch);
-        }
-        return Result<Container>::ok(Container(compression, rs::move(decompressed)));
-    }
-
-    u8 actualBuf[4];
-    s = source.readInto(5, Span<u8>(actualBuf, sizeof(actualBuf)));
-    if (!ok(s)) {
-        return Result<Container>::err(s);
-    }
-    actualSize = readU32BE(actualBuf);
-
-    {
-        auto rr = compressed.resize(compressedSize);
-        if (!rr.isOk()) {
-            return Result<Container>::err(rr.status());
-        }
-        if (compressedSize) {
-            s = source.readInto(9, Span<u8>(compressed.data(), compressed.size()));
-            if (!ok(s)) {
-                return Result<Container>::err(s);
-            }
-        }
-        compressedView = Span<const u8>(compressed.data(), compressed.size());
+        actualSize = readU32BE(encryptedOrEmpty.data());
+        compressedView = Span<const u8>(encryptedOrEmpty.data() + 4, compressedSize);
+    } else {
+        actualSize = readU32BE(bytes.data() + 5);
+        compressedView = bytes.subspan(9, compressedSize);
     }
 
     Result<Vec<u8>> decRes = (compression == CompressionType::Bzip2)
         ? compressionHandler.decompressBzip2(compressedView, static_cast<std::size_t>(actualSize), alloc)
         : compressionHandler.decompressGzip(compressedView, alloc);
-
     if (!decRes.isOk()) {
         return Result<Container>::err(decRes.status());
     }
+
     Vec<u8> decompressed = rs::move(decRes.value());
     if (decompressed.size() != static_cast<std::size_t>(actualSize)) {
         return Result<Container>::err(Status::SizeMismatch);
     }
     return Result<Container>::ok(Container(compression, rs::move(decompressed)));
+}
+
+Result<Container> Container::decodeFromSource(
+    const ByteSource& source,
+    const XteaKey* key,
+    const CompressionHandler& compressionHandler,
+    Allocator& alloc) noexcept {
+    // Prefer a contiguous view when available, otherwise copy to a temporary buffer once.
+    // Keeping the core container decode bytes-based avoids coupling decoding logic to ByteSource.
+    Span<const u8> view;
+    if (source.tryGetView(&view)) {
+        return decodeFromBytes(view, key, compressionHandler, alloc);
+    }
+
+    auto bytesRes = readAllBytes(source, alloc);
+    if (!bytesRes.isOk()) {
+        return Result<Container>::err(bytesRes.status());
+    }
+    Vec<u8> bytes = rs::move(bytesRes.value());
+    return decodeFromBytes(Span<const u8>(bytes.data(), bytes.size()), key, compressionHandler, alloc);
 }
 
 } // namespace rs

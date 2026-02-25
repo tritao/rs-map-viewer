@@ -102,6 +102,11 @@ i32 Archive::getFileIdByNameHash(i32 nameHash) const noexcept {
 }
 
 Result<Archive> Archive::decodeFromSource(const ArchiveMeta& meta, const ByteSource& source, Allocator& alloc) noexcept {
+    Span<const u8> view;
+    if (source.tryGetView(&view)) {
+        return decodeFromBytes(meta, view, alloc);
+    }
+
     auto bytesRes = readAllBytes(source, alloc);
     if (!bytesRes.isOk()) {
         return Result<Archive>::err(bytesRes.status());

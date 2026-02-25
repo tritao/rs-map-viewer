@@ -18,8 +18,7 @@
 #include "reference/ReferenceTable.hpp"
 #include "store/CacheStore.hpp"
 #include "../cache/store/DatLayout.hpp"
-#include "../io/ByteSourceReader.hpp"
-#include "../io/Uint8ArrayByteSource.hpp"
+#include "../io/Uint8ArrayReader.hpp"
 #include "../util/StringHash.hpp"
 
 namespace rs {
@@ -163,16 +162,19 @@ Result<CacheIndex> CacheIndex::fromStore(
         return Result<CacheIndex>::ok(CacheIndex(cacheType, id, store, compressionHandler, 0, rs::move(emptyTable), rs::move(ids)));
     }
 
-    Uint8ArrayByteSource metaSource(metaBytes.data(), metaBytes.size());
-    auto containerRes = Container::decodeFromSource(metaSource, nullptr, compressionHandler, alloc);
+    auto containerRes = Container::decodeFromBytes(
+        Span<const u8>(metaBytes.data(), metaBytes.size()),
+        nullptr,
+        compressionHandler,
+        alloc);
     if (!containerRes.isOk()) {
         return Result<CacheIndex>::err(containerRes.status());
     }
     Container container = rs::move(containerRes.value());
 
-    Uint8ArrayByteSource tableSource(container.data.data(), container.data.size());
-    ByteSourceReader reader(&tableSource);
-    auto tableRes = ReferenceTable::decodeFromReader(reader, alloc);
+    auto tableRes = ReferenceTable::decodeFromBytes(
+        Span<const u8>(container.data.data(), container.data.size()),
+        alloc);
     if (!tableRes.isOk()) {
         return Result<CacheIndex>::err(tableRes.status());
     }
@@ -274,8 +276,11 @@ Status CacheIndex::readContainerPayload(i32 archiveId, const XteaKey* key, Vec<u
         return s;
     }
 
-    Uint8ArrayByteSource source(raw.data(), raw.size());
-    auto containerRes = Container::decodeFromSource(source, key, *compressionHandler_, alloc);
+    auto containerRes = Container::decodeFromBytes(
+        Span<const u8>(raw.data(), raw.size()),
+        key,
+        *compressionHandler_,
+        alloc);
     if (!containerRes.isOk()) {
         return containerRes.status();
     }

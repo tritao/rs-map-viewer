@@ -8,14 +8,15 @@
 #include "../../core/Span.hpp"
 #include "../../core/Status.hpp"
 #include "../../core/Vec.hpp"
-#include "../../io/ByteSourceReader.hpp"
+#include "../../io/Uint8ArrayReader.hpp"
 #include "../../types.hpp"
 
 namespace rs {
 
 class ReferenceTable {
 public:
-    static Result<ReferenceTable> decodeFromReader(ByteSourceReader& reader, Allocator& alloc) noexcept;
+    static Result<ReferenceTable> decodeFromBytes(Span<const u8> bytes, Allocator& alloc) noexcept;
+    static Result<ReferenceTable> decodeFromReader(Uint8ArrayReader& reader, Allocator& alloc) noexcept;
 
     [[nodiscard]] bool archiveExists(i32 id) const noexcept;
     [[nodiscard]] i32 getArchiveIdByNameHash(i32 nameHash) const noexcept;

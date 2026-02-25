@@ -9,7 +9,7 @@
 #include "../../core/Span.hpp"
 #include "../../core/Status.hpp"
 #include "../../core/Vec.hpp"
-#include "../../io/ByteSourceReader.hpp"
+#include "../../io/Uint8ArrayReader.hpp"
 #include "../../types.hpp"
 
 namespace rs {
@@ -28,7 +28,12 @@ static std::size_t lowerBoundIndex(Span<const i32> ids, i32 needle) noexcept {
     return lo;
 }
 
-Result<ReferenceTable> ReferenceTable::decodeFromReader(ByteSourceReader& reader, Allocator& alloc) noexcept {
+Result<ReferenceTable> ReferenceTable::decodeFromBytes(Span<const u8> bytes, Allocator& alloc) noexcept {
+    Uint8ArrayReader reader(bytes, 0);
+    return decodeFromReader(reader, alloc);
+}
+
+Result<ReferenceTable> ReferenceTable::decodeFromReader(Uint8ArrayReader& reader, Allocator& alloc) noexcept {
     ReferenceTable t;
     t.archiveIds_ = Vec<i32>(alloc);
     t.archiveNameHashes_ = Vec<i32>(alloc);

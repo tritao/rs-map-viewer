@@ -5,6 +5,7 @@
 #include "../../crypto/Xtea.hpp"
 #include "../../core/Allocator.hpp"
 #include "../../core/Result.hpp"
+#include "../../core/Span.hpp"
 #include "../../core/Vec.hpp"
 #include "../../io/ByteSource.hpp"
 
@@ -12,6 +13,12 @@ namespace rs {
 
 class Container {
 public:
+    static Result<Container> decodeFromBytes(
+        Span<const u8> bytes,
+        const XteaKey* key,
+        const CompressionHandler& compressionHandler,
+        Allocator& alloc) noexcept;
+
     static Result<Container> decodeFromSource(
         const ByteSource& source,
         const XteaKey* key,
