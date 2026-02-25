@@ -7219,7 +7219,7 @@ async function main(): Promise<void> {
     const tsBackend = new SdMapRenderDataTsBackend(deps);
 
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_debug_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
     ).href;
     const bridgeModule = (await import(bridgeUrl)) as Record<string, unknown>;
     const bridge = bridgeModule.mapRenderRuntimeDebugBridge as RuntimeBridge;

@@ -14,10 +14,7 @@ export async function importMapRenderBridgeModule(
     baseUrl?: string,
 ): Promise<Record<string, unknown>> {
     if (!moduleUrl) {
-        return (await import("./rs_map_render_backend_runtime_bridge.mjs")) as Record<
-            string,
-            unknown
-        >;
+        return (await import("./rs_map_render_backend_runtime.mjs")) as Record<string, unknown>;
     }
     const resolvedUrl = resolveMapRenderBridgeModuleUrl(moduleUrl, baseUrl);
     return (await import(/* @vite-ignore */ resolvedUrl)) as Record<string, unknown>;
@@ -28,10 +25,7 @@ export async function importMapRenderDebugBridgeModule(
     baseUrl?: string,
 ): Promise<Record<string, unknown>> {
     if (!moduleUrl) {
-        return (await import("./rs_map_render_backend_runtime_debug_bridge.mjs")) as Record<
-            string,
-            unknown
-        >;
+        return (await import("./rs_map_render_backend_runtime.mjs")) as Record<string, unknown>;
     }
     const resolvedUrl = resolveMapRenderBridgeModuleUrl(moduleUrl, baseUrl);
     return (await import(/* @vite-ignore */ resolvedUrl)) as Record<string, unknown>;

@@ -6,7 +6,6 @@ CPP_DIR="$ROOT_DIR/cpp"
 BUILD_DIR="${BUILD_DIR:-"$CPP_DIR/build-wasm-map-render"}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 OUT_DIR="${OUT_DIR:-"$ROOT_DIR/src/wasm"}"
-LEGACY_PUBLIC_OUT_DIR="${LEGACY_PUBLIC_OUT_DIR:-"$ROOT_DIR/public/wasm"}"
 EXPORT_PROFILE="${EXPORT_PROFILE:-prod}"
 OUT_BASENAME="${OUT_BASENAME:-rs_map_render_backend}"
 
@@ -21,9 +20,6 @@ fi
 
 mkdir -p "$BUILD_DIR"
 mkdir -p "$OUT_DIR"
-if [[ -n "$LEGACY_PUBLIC_OUT_DIR" ]]; then
-    mkdir -p "$LEGACY_PUBLIC_OUT_DIR"
-fi
 
 # Keep the emscripten cache under the build dir so sandboxed environments don't try to
 # write into a global emsdk cache location.
@@ -39,18 +35,7 @@ cmake --build "$BUILD_DIR" --target rs_map_render_backend -j
 
 cp "$BUILD_DIR/rs_map_render_backend.js" "$OUT_DIR/${OUT_BASENAME}.js"
 cp "$BUILD_DIR/rs_map_render_backend.wasm" "$OUT_DIR/${OUT_BASENAME}.wasm"
-if [[ -n "$LEGACY_PUBLIC_OUT_DIR" ]]; then
-    cp "$BUILD_DIR/rs_map_render_backend.js" "$LEGACY_PUBLIC_OUT_DIR/${OUT_BASENAME}.js"
-    cp "$BUILD_DIR/rs_map_render_backend.wasm" "$LEGACY_PUBLIC_OUT_DIR/${OUT_BASENAME}.wasm"
-    if [[ -f "$OUT_DIR/rs_map_render_backend_bridge.mjs" ]]; then
-        cp "$OUT_DIR/rs_map_render_backend_bridge.mjs" "$LEGACY_PUBLIC_OUT_DIR/rs_map_render_backend_bridge.mjs"
-    fi
-fi
 
 echo "Built map-render wasm backend (profile=$EXPORT_PROFILE):"
 echo "  $OUT_DIR/${OUT_BASENAME}.js"
 echo "  $OUT_DIR/${OUT_BASENAME}.wasm"
-if [[ -n "$LEGACY_PUBLIC_OUT_DIR" ]]; then
-    echo "  $LEGACY_PUBLIC_OUT_DIR/${OUT_BASENAME}.js"
-    echo "  $LEGACY_PUBLIC_OUT_DIR/${OUT_BASENAME}.wasm"
-fi

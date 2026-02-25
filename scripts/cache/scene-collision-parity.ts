@@ -111,7 +111,7 @@ function firstFlagMismatch(a: Int32Array, b: Int32Array): number {
 
 function getSceneBridgeUrl(): string {
     return pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_debug_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
     ).href;
 }
 

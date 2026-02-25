@@ -167,10 +167,10 @@ function assertFn(target: Record<string, unknown>, key: string): void {
 
 async function main(): Promise<void> {
     const runtimeBridgeModuleUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
     ).href;
     const runtimeDebugBridgeModuleUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_debug_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
     ).href;
     const runtimeMod = (await import(runtimeBridgeModuleUrl)) as Record<string, unknown>;
     const runtimeDebugMod = (await import(runtimeDebugBridgeModuleUrl)) as Record<string, unknown>;

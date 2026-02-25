@@ -1,3 +1,10 @@
+// Single entrypoint for production runtime + debug helpers.
+//
+// Production code should use `mapRenderRuntimeBridge` only.
+// Parity/debug tooling can use `mapRenderRuntimeDebugBridge`.
+
+export { mapRenderRuntimeBridge } from "./rs_map_render_backend_bridge.mjs";
+
 import {
     mapRenderRuntimeBridge,
     runtimeDebugCollectMapInputDigestWithWasm,
@@ -265,7 +272,10 @@ export const mapRenderRuntimeDebugBridge = {
         if (!backendModule) {
             return undefined;
         }
-        return runtimeDebugGetLastLocRenderPlacementEntriesPackedWithWasm(backendModule, runtimeHandle);
+        return runtimeDebugGetLastLocRenderPlacementEntriesPackedWithWasm(
+            backendModule,
+            runtimeHandle,
+        );
     },
     async debugGetRuntimeModelFacesDigest(runtimeHandle, modelId) {
         const backendModule = await tryLoadBackendModule();
@@ -374,3 +384,4 @@ export const mapRenderRuntimeDebugBridge = {
         return runtimeDebugDecodeLocTypeWithWasm(backendModule, runtimeHandle, locTypeId);
     },
 };
+

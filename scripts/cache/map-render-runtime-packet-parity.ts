@@ -286,7 +286,7 @@ function computeMapBounds(baseX: number, baseY: number, sizeX: number, sizeY: nu
 
 async function loadWasmBridge(): Promise<WasmBridge> {
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
     ).href;
     const mod = (await import(bridgeUrl)) as Record<string, unknown>;
     const runtimeCandidate = mod.mapRenderRuntimeBridge as Partial<RuntimeBridge> | undefined;

@@ -705,7 +705,7 @@ async function loadRuntimeDebugBridge(
     cacheRevision: number,
 ): Promise<RuntimeHandleBridge> {
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime_debug_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
     ).href;
     const mod = (await import(bridgeUrl)) as Record<string, unknown>;
     const runtimeCandidate = mod.mapRenderRuntimeDebugBridge as RuntimeDebugBridge | undefined;

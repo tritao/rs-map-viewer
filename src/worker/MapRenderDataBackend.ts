@@ -771,7 +771,7 @@ function resolveCppWasmBridgeExport(
 async function tryLoadCppWasmBridge(
     moduleUrl?: string,
 ): Promise<CppWasmMapRenderDataBridge | undefined> {
-    const defaultUrl = "../wasm/rs_map_render_backend_runtime_bridge.mjs";
+    const defaultUrl = "../wasm/rs_map_render_backend_runtime.mjs";
     const url = moduleUrl
         ? resolveMapRenderBridgeModuleUrl(moduleUrl, import.meta.url)
         : defaultUrl;
