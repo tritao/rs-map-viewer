@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -534,11 +535,11 @@ static void writeJsonEscaped(std::ostream& os, const std::string& s) {
     os << '"';
     for (char c : s) {
         switch (c) {
-            case '\\': os << "\\\\"; break;
-            case '"': os << "\\\""; break;
-            case '\n': os << "\\n"; break;
-            case '\r': os << "\\r"; break;
-            case '\t': os << "\\t"; break;
+            case '\\': os << R"(\\)"; break;
+            case '"': os << R"(\")"; break;
+            case '\n': os << R"(\n)"; break;
+            case '\r': os << R"(\r)"; break;
+            case '\t': os << R"(\t)"; break;
             default: os << c; break;
         }
     }
@@ -2730,7 +2731,148 @@ public:
         return rs::Status::Ok;
     }
 
+    rs::Status tryGetStaticModelXZRadius(
+        const rs::LocType& locType,
+        rs::i32 placementType,
+        rs::i32 rotation,
+        rs::i32* outRadius) const noexcept override {
+        if (!session_ || !alloc_ || !outRadius) {
+            if (outRadius) {
+                *outRadius = -1;
+            }
+            return rs::Status::InvalidArgument;
+        }
+
+        *outRadius = -1;
+
+        if (locType.mergeNormals) {
+            return rs::Status::Ok;
+        }
+
+        const rs::i32 normalizedType = normalizeModelType(placementType);
+        const rs::Vec<rs::i32>* ids = nullptr;
+        if (locType.types.empty()) {
+            if (normalizedType != 10 || locType.models.empty()) {
+                return rs::Status::NotFound;
+            }
+            ids = &locType.models[0];
+        } else {
+            rs::i32 idx = -1;
+            for (std::size_t i = 0; i < locType.types.size(); i++) {
+                if (locType.types[i] == normalizedType) {
+                    idx = static_cast<rs::i32>(i);
+                    break;
+                }
+            }
+            if (idx < 0 || static_cast<std::size_t>(idx) >= locType.models.size()) {
+                return rs::Status::NotFound;
+            }
+            ids = &locType.models[static_cast<std::size_t>(idx)];
+        }
+
+        if (!ids || ids->empty()) {
+            return rs::Status::NotFound;
+        }
+
+        rs::i32 maxRadius = -1;
+        for (std::size_t i = 0; i < ids->size(); i++) {
+            const rs::i32 modelId = (*ids)[i];
+            rs::ModelData model(*alloc_);
+            const rs::Status s = session_->tryLoadModel(modelId, &model);
+            if (!rs::ok(s)) {
+                return s;
+            }
+            applyLocModelMutationsForPlacement(&model, locType, placementType, rotation);
+            const rs::i32 radius = computeModelXzRadius(model);
+            if (radius > maxRadius) {
+                maxRadius = radius;
+            }
+        }
+
+        *outRadius = maxRadius;
+        return rs::Status::Ok;
+    }
+
 private:
+    static void applyLocModelMutationsForPlacement(
+        rs::ModelData* model,
+        const rs::LocType& locType,
+        rs::i32 placementType,
+        rs::i32 rotation) noexcept {
+        if (!model) {
+            return;
+        }
+
+        const bool mirrored =
+            locType.isRotated ||
+            (placementType == 2 && rotation > 3);
+        if (mirrored) {
+            model->mirror();
+        }
+
+        if (placementType == 4 && rotation > 3) {
+            model->rotate(256);
+            model->translate(45, 0, -45);
+        }
+
+        const rs::i32 sceneRot = rotation & 3;
+        if (sceneRot == 1) {
+            model->rotate90();
+        } else if (sceneRot == 2) {
+            model->rotate180();
+        } else if (sceneRot == 3) {
+            model->rotate270();
+        }
+
+        if (!locType.recolorFrom.empty()) {
+            const bool recolorAsRetexture =
+                locType.cacheInfo.game == rs::GameType::Runescape &&
+                locType.cacheInfo.revision <= 377;
+            for (std::size_t i = 0; i < locType.recolorFrom.size(); i++) {
+                const rs::i32 from = locType.recolorFrom[i];
+                const rs::i32 to = i < locType.recolorTo.size() ? locType.recolorTo[i] : from;
+                model->recolor(from, to);
+                if (recolorAsRetexture) {
+                    model->retexture(from, to);
+                }
+            }
+        }
+
+        for (std::size_t i = 0; i < locType.retextureFrom.size(); i++) {
+            const rs::i32 from = locType.retextureFrom[i];
+            const rs::i32 to = i < locType.retextureTo.size() ? locType.retextureTo[i] : from;
+            model->retexture(from, to);
+        }
+
+        if (locType.modelSizeX != 128 ||
+            locType.modelSizeHeight != 128 ||
+            locType.modelSizeY != 128) {
+            model->resize(locType.modelSizeX, locType.modelSizeHeight, locType.modelSizeY);
+        }
+
+        if (locType.offsetX != 0 || locType.offsetHeight != 0 || locType.offsetY != 0) {
+            model->translate(locType.offsetX, locType.offsetHeight, locType.offsetY);
+        }
+
+        if (placementType == 10 && rotation > 3) {
+            model->rotate(256);
+        }
+    }
+
+    static rs::i32 computeModelXzRadius(const rs::ModelData& model) noexcept {
+        rs::i64 maxRadiusSq = 0;
+        const std::size_t count = model.verticesX.size();
+        for (std::size_t i = 0; i < count && i < model.verticesZ.size(); i++) {
+            const rs::i64 x = static_cast<rs::i64>(model.verticesX[i]);
+            const rs::i64 z = static_cast<rs::i64>(model.verticesZ[i]);
+            const rs::i64 radiusSq = x * x + z * z;
+            if (radiusSq > maxRadiusSq) {
+                maxRadiusSq = radiusSq;
+            }
+        }
+        const double radius = std::sqrt(static_cast<double>(maxRadiusSq));
+        return static_cast<rs::i32>(std::floor(radius + 0.99));
+    }
     static rs::i32 normalizeModelType(rs::i32 placementType) noexcept {
         switch (placementType) {
             case 11: // NORMAL_DIAGONAL
@@ -3788,6 +3930,100 @@ static rs::u32 fnv1a32UpdateNestedVec(rs::u32 h, bool present, const rs::Vec<rs:
     return h;
 }
 
+template <typename T>
+static rs::u32 hashVecComponent(const rs::Vec<T>& v) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateVec(h, v);
+    return h;
+}
+
+template <typename T>
+static rs::u32 hashOptionalVecComponent(bool present, const rs::Vec<T>& v) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateOptionalVec(h, present, v);
+    return h;
+}
+
+static rs::u32 hashNestedVecComponent(bool present, const rs::Vec<rs::Vec<rs::i32>>& v) noexcept {
+    rs::u32 h = 2166136261u;
+    h = fnv1a32UpdateNestedVec(h, present, v);
+    return h;
+}
+
+struct ModelHashParts final {
+    rs::u32 core = 0;
+    rs::u32 verticesX = 0;
+    rs::u32 verticesY = 0;
+    rs::u32 verticesZ = 0;
+    rs::u32 indices1 = 0;
+    rs::u32 indices2 = 0;
+    rs::u32 indices3 = 0;
+    rs::u32 faceColors = 0;
+    rs::u32 faceRenderTypes = 0;
+    rs::u32 faceRenderPriorities = 0;
+    rs::u32 faceAlphas = 0;
+    rs::u32 textureCoords = 0;
+    rs::u32 faceTextures = 0;
+    rs::u32 textureRenderTypes = 0;
+    rs::u32 textureMappingP = 0;
+    rs::u32 textureMappingM = 0;
+    rs::u32 textureMappingN = 0;
+    rs::u32 textureScaleX = 0;
+    rs::u32 textureScaleY = 0;
+    rs::u32 textureScaleZ = 0;
+    rs::u32 textureRotation = 0;
+    rs::u32 textureDirection = 0;
+    rs::u32 textureSpeed = 0;
+    rs::u32 textureTransU = 0;
+    rs::u32 textureTransV = 0;
+    rs::u32 vertexSkins = 0;
+    rs::u32 faceSkins = 0;
+    rs::u32 animMayaGroups = 0;
+    rs::u32 animMayaScales = 0;
+};
+
+static ModelHashParts hashModelDataParts(const rs::ModelData& m) noexcept {
+    ModelHashParts parts{};
+    rs::u32 core = 2166136261u;
+    core = fnv1a32UpdateInt(core, 0x4d444154); // 'MDAT'
+    core = fnv1a32UpdateInt(core, m.version);
+    core = fnv1a32UpdateInt(core, m.verticesCount);
+    core = fnv1a32UpdateInt(core, m.usedVertexCount);
+    core = fnv1a32UpdateInt(core, m.faceCount);
+    core = fnv1a32UpdateInt(core, m.textureFaceCount);
+    core = fnv1a32UpdateInt(core, m.priority);
+    parts.core = core;
+    parts.verticesX = hashVecComponent(m.verticesX);
+    parts.verticesY = hashVecComponent(m.verticesY);
+    parts.verticesZ = hashVecComponent(m.verticesZ);
+    parts.indices1 = hashVecComponent(m.indices1);
+    parts.indices2 = hashVecComponent(m.indices2);
+    parts.indices3 = hashVecComponent(m.indices3);
+    parts.faceColors = hashVecComponent(m.faceColors);
+    parts.faceRenderTypes = hashOptionalVecComponent(m.hasFaceRenderTypes, m.faceRenderTypes);
+    parts.faceRenderPriorities = hashOptionalVecComponent(m.hasFaceRenderPriorities, m.faceRenderPriorities);
+    parts.faceAlphas = hashOptionalVecComponent(m.hasFaceAlphas, m.faceAlphas);
+    parts.textureCoords = hashOptionalVecComponent(m.hasTextureCoords, m.textureCoords);
+    parts.faceTextures = hashOptionalVecComponent(m.hasFaceTextures, m.faceTextures);
+    parts.textureRenderTypes = hashVecComponent(m.textureRenderTypes);
+    parts.textureMappingP = hashVecComponent(m.textureMappingP);
+    parts.textureMappingM = hashVecComponent(m.textureMappingM);
+    parts.textureMappingN = hashVecComponent(m.textureMappingN);
+    parts.textureScaleX = hashVecComponent(m.textureScaleX);
+    parts.textureScaleY = hashVecComponent(m.textureScaleY);
+    parts.textureScaleZ = hashVecComponent(m.textureScaleZ);
+    parts.textureRotation = hashVecComponent(m.textureRotation);
+    parts.textureDirection = hashVecComponent(m.textureDirection);
+    parts.textureSpeed = hashVecComponent(m.textureSpeed);
+    parts.textureTransU = hashVecComponent(m.textureTransU);
+    parts.textureTransV = hashVecComponent(m.textureTransV);
+    parts.vertexSkins = hashOptionalVecComponent(m.hasVertexSkins, m.vertexSkins);
+    parts.faceSkins = hashOptionalVecComponent(m.hasFaceSkins, m.faceSkins);
+    parts.animMayaGroups = hashNestedVecComponent(m.hasMayaGroups, m.animMayaGroups);
+    parts.animMayaScales = hashNestedVecComponent(m.hasMayaGroups, m.animMayaScales);
+    return parts;
+}
+
 static rs::u32 hashModelData(const rs::ModelData& m) noexcept {
     rs::u32 h = 2166136261u;
     h = fnv1a32UpdateInt(h, 0x4d444154); // 'MDAT'
@@ -3988,8 +4224,45 @@ static int cmdModelHashes(int argc, char** argv) {
             writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
             std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
         } else {
+            const ModelHashParts parts = hashModelDataParts(model);
             const rs::u32 hash = hashModelData(model);
-            std::cout << ", \"ok\": true, \"hash\": " << static_cast<rs::i32>(hash) << " }";
+            std::cout << R"(, "ok": true, "hash": )" << static_cast<rs::i32>(hash)
+                      << R"(, "version": )" << model.version
+                      << R"(, "verticesCount": )" << model.verticesCount
+                      << R"(, "usedVertexCount": )" << model.usedVertexCount
+                      << R"(, "faceCount": )" << model.faceCount
+                      << R"(, "textureFaceCount": )" << model.textureFaceCount
+                      << R"(, "priority": )" << model.priority
+                      << R"(, "parts": {"core": )" << static_cast<rs::i32>(parts.core)
+                      << R"(, "verticesX": )" << static_cast<rs::i32>(parts.verticesX)
+                      << R"(, "verticesY": )" << static_cast<rs::i32>(parts.verticesY)
+                      << R"(, "verticesZ": )" << static_cast<rs::i32>(parts.verticesZ)
+                      << R"(, "indices1": )" << static_cast<rs::i32>(parts.indices1)
+                      << R"(, "indices2": )" << static_cast<rs::i32>(parts.indices2)
+                      << R"(, "indices3": )" << static_cast<rs::i32>(parts.indices3)
+                      << R"(, "faceColors": )" << static_cast<rs::i32>(parts.faceColors)
+                      << R"(, "faceRenderTypes": )" << static_cast<rs::i32>(parts.faceRenderTypes)
+                      << R"(, "faceRenderPriorities": )" << static_cast<rs::i32>(parts.faceRenderPriorities)
+                      << R"(, "faceAlphas": )" << static_cast<rs::i32>(parts.faceAlphas)
+                      << R"(, "textureCoords": )" << static_cast<rs::i32>(parts.textureCoords)
+                      << R"(, "faceTextures": )" << static_cast<rs::i32>(parts.faceTextures)
+                      << R"(, "textureRenderTypes": )" << static_cast<rs::i32>(parts.textureRenderTypes)
+                      << R"(, "textureMappingP": )" << static_cast<rs::i32>(parts.textureMappingP)
+                      << R"(, "textureMappingM": )" << static_cast<rs::i32>(parts.textureMappingM)
+                      << R"(, "textureMappingN": )" << static_cast<rs::i32>(parts.textureMappingN)
+                      << R"(, "textureScaleX": )" << static_cast<rs::i32>(parts.textureScaleX)
+                      << R"(, "textureScaleY": )" << static_cast<rs::i32>(parts.textureScaleY)
+                      << R"(, "textureScaleZ": )" << static_cast<rs::i32>(parts.textureScaleZ)
+                      << R"(, "textureRotation": )" << static_cast<rs::i32>(parts.textureRotation)
+                      << R"(, "textureDirection": )" << static_cast<rs::i32>(parts.textureDirection)
+                      << R"(, "textureSpeed": )" << static_cast<rs::i32>(parts.textureSpeed)
+                      << R"(, "textureTransU": )" << static_cast<rs::i32>(parts.textureTransU)
+                      << R"(, "textureTransV": )" << static_cast<rs::i32>(parts.textureTransV)
+                      << R"(, "vertexSkins": )" << static_cast<rs::i32>(parts.vertexSkins)
+                      << R"(, "faceSkins": )" << static_cast<rs::i32>(parts.faceSkins)
+                      << R"(, "animMayaGroups": )" << static_cast<rs::i32>(parts.animMayaGroups)
+                      << R"(, "animMayaScales": )" << static_cast<rs::i32>(parts.animMayaScales)
+                      << R"(} })";
         }
 
         if (i + 1 < args.ids.size()) std::cout << ",";

@@ -1,4 +1,4 @@
-#include "ScenePack.hpp"
+#include "RuntimeCommandStreamPlan.hpp"
 
 #include <cstddef>
 
@@ -11,29 +11,29 @@ static i32 roundHeightOffsetDiv8Js(i32 heightOffset) noexcept {
     return -(((-heightOffset) + 3) / 8);
 }
 
-i32 scenePackModelInfoTextureLengthFromCounts(i32 cmdCount, i32 instanceCount) noexcept {
+i32 runtimeCommandModelInfoTextureLengthFromCounts(i32 cmdCount, i32 instanceCount) noexcept {
     const i32 dataLengthRounded = ((cmdCount * 4 + instanceCount + 15) / 16) * 16;
     return (dataLengthRounded > 16 ? dataLengthRounded : 16) * 4;
 }
 
-Status buildScenePackPlan(
+Status buildRuntimeCommandStreamPlan(
     Span<const i32> bucketCmdCounts,
     Span<const i32> cmdInstanceCounts,
-    ScenePackPlan* outPlan) noexcept {
+    RuntimeCommandStreamPlan* outPlan) noexcept {
     if (!outPlan) {
         return Status::InvalidArgument;
     }
-    if (bucketCmdCounts.size() != static_cast<std::size_t>(kScenePackBucketCount)) {
+    if (bucketCmdCounts.size() != static_cast<std::size_t>(kSceneCommandBucketCount)) {
         return Status::SizeMismatch;
     }
 
-    ScenePackPlan plan{};
-    for (i32 bucket = 0; bucket < kScenePackBucketCount; bucket++) {
+    RuntimeCommandStreamPlan plan{};
+    for (i32 bucket = 0; bucket < kSceneCommandBucketCount; bucket++) {
         const i32 cmdCount = bucketCmdCounts[static_cast<std::size_t>(bucket)];
         if (cmdCount < 0) {
             return Status::InvalidArgument;
         }
-        ScenePackBucketPlan& bp = plan.buckets[static_cast<std::size_t>(bucket)];
+        RuntimeCommandBucketPlan& bp = plan.buckets[static_cast<std::size_t>(bucket)];
         bp.cmdStart = plan.totalCmdCount;
         bp.cmdCount = cmdCount;
         plan.totalCmdCount += cmdCount;
@@ -43,8 +43,8 @@ Status buildScenePackPlan(
         return Status::SizeMismatch;
     }
 
-    for (i32 bucket = 0; bucket < kScenePackBucketCount; bucket++) {
-        ScenePackBucketPlan& bp = plan.buckets[static_cast<std::size_t>(bucket)];
+    for (i32 bucket = 0; bucket < kSceneCommandBucketCount; bucket++) {
+        RuntimeCommandBucketPlan& bp = plan.buckets[static_cast<std::size_t>(bucket)];
         i32 bucketInstanceCount = 0;
         for (i32 i = 0; i < bp.cmdCount; i++) {
             const i32 instanceCount =
@@ -57,7 +57,7 @@ Status buildScenePackPlan(
         bp.instanceStart = plan.totalInstanceCount;
         bp.instanceCount = bucketInstanceCount;
         bp.modelInfoOffset = plan.totalModelInfoLength;
-        bp.modelInfoLength = scenePackModelInfoTextureLengthFromCounts(bp.cmdCount, bucketInstanceCount);
+        bp.modelInfoLength = runtimeCommandModelInfoTextureLengthFromCounts(bp.cmdCount, bucketInstanceCount);
         plan.totalInstanceCount += bucketInstanceCount;
         plan.totalModelInfoLength += bp.modelInfoLength;
     }
@@ -66,8 +66,8 @@ Status buildScenePackPlan(
     return Status::Ok;
 }
 
-Status packSceneDrawRangesAndModelInfo(
-    const ScenePackPlan& plan,
+Status packRuntimeCommandRangesAndModelInfo(
+    const RuntimeCommandStreamPlan& plan,
     Span<const i32> cmdOffsets,
     Span<const i32> cmdElements,
     Span<const i32> cmdInstanceCounts,
@@ -80,7 +80,7 @@ Status packSceneDrawRangesAndModelInfo(
         return Status::SizeMismatch;
     }
     if (packedInstances.size() !=
-        static_cast<std::size_t>(plan.totalInstanceCount * kScenePackInstanceStrideInts)) {
+        static_cast<std::size_t>(plan.totalInstanceCount * kSceneCommandInstanceStrideInts)) {
         return Status::SizeMismatch;
     }
     if (outDrawRanges.size() != static_cast<std::size_t>(plan.totalCmdCount * 3)) {
@@ -90,8 +90,8 @@ Status packSceneDrawRangesAndModelInfo(
         return Status::SizeMismatch;
     }
 
-    for (i32 bucket = 0; bucket < kScenePackBucketCount; bucket++) {
-        const ScenePackBucketPlan& bp = plan.buckets[static_cast<std::size_t>(bucket)];
+    for (i32 bucket = 0; bucket < kSceneCommandBucketCount; bucket++) {
+        const RuntimeCommandBucketPlan& bp = plan.buckets[static_cast<std::size_t>(bucket)];
 
         for (i32 i = 0; i < bp.modelInfoLength; i++) {
             outModelInfoTextureConcat[static_cast<std::size_t>(bp.modelInfoOffset + i)] = 0;
@@ -114,7 +114,7 @@ Status packSceneDrawRangesAndModelInfo(
         }
 
         for (i32 i = 0; i < bp.instanceCount; i++) {
-            const i32 inOff = (bp.instanceStart + i) * kScenePackInstanceStrideInts;
+            const i32 inOff = (bp.instanceStart + i) * kSceneCommandInstanceStrideInts;
             const i32 sceneX = packedInstances[static_cast<std::size_t>(inOff + 0)];
             const i32 sceneZ = packedInstances[static_cast<std::size_t>(inOff + 1)];
             const i32 heightOffset = packedInstances[static_cast<std::size_t>(inOff + 2)];

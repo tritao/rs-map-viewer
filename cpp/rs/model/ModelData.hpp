@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cmath>
 
 #include "../core/Allocator.hpp"
 #include "../core/Move.hpp"
@@ -8,6 +9,7 @@
 #include "../core/Vec.hpp"
 #include "../io/Uint8ArrayReader.hpp"
 #include "../types.hpp"
+#include "../util/HeightCalc.hpp"
 
 namespace rs {
 
@@ -25,6 +27,9 @@ struct ModelData final {
     Vec<i32> verticesX{};
     Vec<i32> verticesY{};
     Vec<i32> verticesZ{};
+    // TS parity: ModelData.contourGround keeps base verticesY and stores warped heights in contourVerticesY.
+    // When present, mergeNormals/bounds/normals should use contourVerticesY, but model hashing uses verticesY.
+    Vec<i32> contourVerticesY{};
 
     Vec<i32> indices1{};
     Vec<i32> indices2{};
@@ -70,6 +75,7 @@ struct ModelData final {
           verticesX(alloc_),
           verticesY(alloc_),
           verticesZ(alloc_),
+          contourVerticesY(alloc_),
           indices1(alloc_),
           indices2(alloc_),
           indices3(alloc_),
@@ -95,6 +101,112 @@ struct ModelData final {
           faceSkins(alloc_),
           animMayaGroups(alloc_),
           animMayaScales(alloc_) {}
+
+    void rotate90() noexcept {
+        for (std::size_t i = 0; i < verticesX.size(); i++) {
+            const i32 x = verticesX[i];
+            verticesX[i] = verticesZ[i];
+            verticesZ[i] = -x;
+        }
+    }
+
+    void rotate180() noexcept {
+        for (std::size_t i = 0; i < verticesX.size(); i++) {
+            verticesX[i] = -verticesX[i];
+            verticesZ[i] = -verticesZ[i];
+        }
+    }
+
+    void rotate270() noexcept {
+        for (std::size_t i = 0; i < verticesX.size(); i++) {
+            const i32 z = verticesZ[i];
+            verticesZ[i] = verticesX[i];
+            verticesX[i] = -z;
+        }
+    }
+
+    void rotate(i32 angle) noexcept {
+        if (verticesX.empty()) {
+            return;
+        }
+        // TS parity: ModelData.rotate uses fixed Q16 trig tables (SINE/COSINE) with 32-bit wrapping
+        // numerators before shifting. Using floating trig introduces +/-1 drift that affects contour sampling.
+        const i32 normalized = angle & 2047;
+        const Span<const i32> cosine = HeightCalc::cosine65536();
+        const i64 sinQ16 = static_cast<i64>(cosine[static_cast<std::size_t>((normalized - 512) & 2047)]);
+        const i64 cosQ16 = static_cast<i64>(cosine[static_cast<std::size_t>(normalized)]);
+
+        std::size_t count = static_cast<std::size_t>(verticesCount < 0 ? 0 : verticesCount);
+        if (verticesX.size() < count) count = verticesX.size();
+        if (verticesZ.size() < count) count = verticesZ.size();
+
+        auto wrapI32 = [](i64 v) noexcept -> i32 {
+            const u32 uv = static_cast<u32>(v);
+            return static_cast<i32>(uv);
+        };
+
+        for (std::size_t i = 0; i < count; i++) {
+            const i64 x = static_cast<i64>(verticesX[i]);
+            const i64 z = static_cast<i64>(verticesZ[i]);
+            const i32 tempNumerator = wrapI32(sinQ16 * z + cosQ16 * x);
+            const i32 zNumerator = wrapI32(cosQ16 * z - sinQ16 * x);
+            verticesZ[i] = zNumerator >> 16;
+            verticesX[i] = tempNumerator >> 16;
+        }
+    }
+
+    void translate(i32 x, i32 y, i32 z) noexcept {
+        for (std::size_t i = 0; i < verticesX.size(); i++) {
+            verticesX[i] += x;
+            verticesY[i] += y;
+            verticesZ[i] += z;
+        }
+    }
+
+    void recolor(i32 from, i32 to) noexcept {
+        const u16 fromColor = static_cast<u16>(from & 0xffff);
+        const u16 toColor = static_cast<u16>(to & 0xffff);
+        for (std::size_t i = 0; i < faceColors.size(); i++) {
+            if (faceColors[i] == fromColor) {
+                faceColors[i] = toColor;
+            }
+        }
+    }
+
+    void retexture(i32 from, i32 to) noexcept {
+        if (!hasFaceTextures) {
+            return;
+        }
+        const i16 fromTex = static_cast<i16>(from);
+        const i16 toTex = static_cast<i16>(to);
+        for (std::size_t i = 0; i < faceTextures.size(); i++) {
+            if (faceTextures[i] == fromTex) {
+                faceTextures[i] = toTex;
+            }
+        }
+    }
+
+    void mirror() noexcept {
+        for (std::size_t i = 0; i < verticesZ.size(); i++) {
+            verticesZ[i] = -verticesZ[i];
+        }
+        for (std::size_t i = 0; i < indices1.size() && i < indices3.size(); i++) {
+            const i32 t = indices1[i];
+            indices1[i] = indices3[i];
+            indices3[i] = t;
+        }
+    }
+
+    void resize(i32 resizeX, i32 resizeY, i32 resizeZ) noexcept {
+        for (std::size_t i = 0; i < verticesX.size(); i++) {
+            verticesX[i] =
+                static_cast<i32>((static_cast<i64>(verticesX[i]) * resizeX) / 128);
+            verticesY[i] =
+                static_cast<i32>((static_cast<i64>(verticesY[i]) * resizeY) / 128);
+            verticesZ[i] =
+                static_cast<i32>((static_cast<i64>(verticesZ[i]) * resizeZ) / 128);
+        }
+    }
 };
 
 inline Allocator& modelAllocator(ModelData* out) noexcept {
@@ -678,6 +790,462 @@ inline Status decodeModelData(Span<const u8> data, ModelData* out, Allocator& al
     }
 
     *out = rs::move(decoded);
+    return Status::Ok;
+}
+
+// TS parity: `ModelData.merge(models, count)` used for multi-part locs/NPCs.
+// This performs vertex dedupe by exact XYZ match and copies optional face attributes.
+// Important: TS merges on base verticesY (not contourVerticesY).
+inline Status mergeModelDataTS(
+    Span<const ModelData> models,
+    i32 count,
+    ModelData* out,
+    Allocator& alloc) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    if (count < 0) {
+        return Status::BadFormat;
+    }
+    if (static_cast<std::size_t>(count) > models.size()) {
+        return Status::SizeMismatch;
+    }
+
+    out->version = 12;
+    out->verticesCount = 0;
+    out->usedVertexCount = 0;
+    out->faceCount = 0;
+    out->textureFaceCount = 0;
+    out->priority = -1;
+
+    bool hasRenderTypes = false;
+    bool hasRenderPriorities = false;
+    bool hasAlphas = false;
+    bool hasFaceSkins = false;
+    bool hasTextures = false;
+    bool hasTextureCoords = false;
+    bool hasMayaGroups = false;
+    bool hasVertexSkins = false;
+
+    i32 totalVertices = 0;
+    i32 totalFaces = 0;
+    i32 totalTextureFaces = 0;
+
+    for (i32 i = 0; i < count; i++) {
+        const ModelData& m = models[static_cast<std::size_t>(i)];
+        totalVertices += m.verticesCount;
+        totalFaces += m.faceCount;
+        totalTextureFaces += m.textureFaceCount;
+
+        if (m.hasFaceRenderPriorities) {
+            hasRenderPriorities = true;
+        } else {
+            if (out->priority == -1) {
+                out->priority = m.priority;
+            }
+            if (out->priority != m.priority) {
+                hasRenderPriorities = true;
+            }
+        }
+
+        hasRenderTypes = hasRenderTypes || m.hasFaceRenderTypes;
+        hasAlphas = hasAlphas || m.hasFaceAlphas;
+        hasFaceSkins = hasFaceSkins || m.hasFaceSkins;
+        hasTextures = hasTextures || m.hasFaceTextures;
+        hasTextureCoords = hasTextureCoords || m.hasTextureCoords;
+        hasMayaGroups = hasMayaGroups || m.hasMayaGroups;
+        hasVertexSkins = hasVertexSkins || m.hasVertexSkins;
+    }
+
+    // Reset output buffers.
+    out->verticesX.clear();
+    out->verticesY.clear();
+    out->verticesZ.clear();
+    out->contourVerticesY.clear();
+    out->vertexSkins.clear();
+    out->indices1.clear();
+    out->indices2.clear();
+    out->indices3.clear();
+    out->faceColors.clear();
+    out->faceRenderTypes.clear();
+    out->faceRenderPriorities.clear();
+    out->faceAlphas.clear();
+    out->faceSkins.clear();
+    out->faceTextures.clear();
+    out->textureCoords.clear();
+    out->textureRenderTypes.clear();
+    out->textureMappingP.clear();
+    out->textureMappingM.clear();
+    out->textureMappingN.clear();
+    out->textureScaleX.clear();
+    out->textureScaleY.clear();
+    out->textureScaleZ.clear();
+    out->textureRotation.clear();
+    out->textureDirection.clear();
+    out->textureSpeed.clear();
+    out->textureTransU.clear();
+    out->textureTransV.clear();
+    out->animMayaGroups.clear();
+    out->animMayaScales.clear();
+
+    // Reserve (size stays 0; we track used counts like TS does via verticesCount/faceCount).
+    if (totalVertices < 0) totalVertices = 0;
+    if (totalFaces < 0) totalFaces = 0;
+    if (totalTextureFaces < 0) totalTextureFaces = 0;
+
+    auto rr = out->verticesX.reserve(static_cast<std::size_t>(totalVertices));
+    if (!rr.isOk()) return rr.status();
+    rr = out->verticesY.reserve(static_cast<std::size_t>(totalVertices));
+    if (!rr.isOk()) return rr.status();
+    rr = out->verticesZ.reserve(static_cast<std::size_t>(totalVertices));
+    if (!rr.isOk()) return rr.status();
+
+    // TS always allocates vertexSkins; use the same behavior and fill -1 when absent.
+    out->hasVertexSkins = true;
+    rr = out->vertexSkins.reserve(static_cast<std::size_t>(totalVertices));
+    if (!rr.isOk()) return rr.status();
+
+    rr = out->indices1.reserve(static_cast<std::size_t>(totalFaces));
+    if (!rr.isOk()) return rr.status();
+    rr = out->indices2.reserve(static_cast<std::size_t>(totalFaces));
+    if (!rr.isOk()) return rr.status();
+    rr = out->indices3.reserve(static_cast<std::size_t>(totalFaces));
+    if (!rr.isOk()) return rr.status();
+    rr = out->faceColors.reserve(static_cast<std::size_t>(totalFaces));
+    if (!rr.isOk()) return rr.status();
+
+    out->hasFaceRenderTypes = hasRenderTypes;
+    if (hasRenderTypes) {
+        rr = out->faceRenderTypes.reserve(static_cast<std::size_t>(totalFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    out->hasFaceRenderPriorities = hasRenderPriorities;
+    if (hasRenderPriorities) {
+        rr = out->faceRenderPriorities.reserve(static_cast<std::size_t>(totalFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    out->hasFaceAlphas = hasAlphas;
+    if (hasAlphas) {
+        rr = out->faceAlphas.reserve(static_cast<std::size_t>(totalFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    out->hasFaceSkins = hasFaceSkins;
+    if (hasFaceSkins) {
+        rr = out->faceSkins.reserve(static_cast<std::size_t>(totalFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    out->hasFaceTextures = hasTextures;
+    if (hasTextures) {
+        rr = out->faceTextures.reserve(static_cast<std::size_t>(totalFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    out->hasTextureCoords = hasTextureCoords;
+    if (hasTextureCoords) {
+        rr = out->textureCoords.reserve(static_cast<std::size_t>(totalFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    out->hasMayaGroups = hasMayaGroups;
+    if (hasMayaGroups) {
+        // We'll append groups per newly-created vertex in copyVertex.
+        rr = out->animMayaGroups.reserve(static_cast<std::size_t>(totalVertices));
+        if (!rr.isOk()) return rr.status();
+        rr = out->animMayaScales.reserve(static_cast<std::size_t>(totalVertices));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    if (totalTextureFaces > 0) {
+        rr = out->textureRenderTypes.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureMappingP.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureMappingM.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureMappingN.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureScaleX.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureScaleY.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureScaleZ.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureRotation.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureDirection.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureSpeed.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureTransU.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+        rr = out->textureTransV.reserve(static_cast<std::size_t>(totalTextureFaces));
+        if (!rr.isOk()) return rr.status();
+    }
+
+    auto copyVertex = [&](const ModelData& model, i32 index, i32* outIndex) noexcept -> Status {
+        if (!outIndex) return Status::InvalidArgument;
+        *outIndex = -1;
+        if (index < 0) return Status::BadFormat;
+        const std::size_t si = static_cast<std::size_t>(index);
+        if (si >= model.verticesX.size() || si >= model.verticesY.size() || si >= model.verticesZ.size()) {
+            return Status::OutOfRange;
+        }
+        const i32 x = model.verticesX[si];
+        const i32 y = model.verticesY[si];
+        const i32 z = model.verticesZ[si];
+
+        for (i32 vi = 0; vi < out->verticesCount; vi++) {
+            const std::size_t svi = static_cast<std::size_t>(vi);
+            if (svi < out->verticesX.size() &&
+                svi < out->verticesY.size() &&
+                svi < out->verticesZ.size() &&
+                out->verticesX[svi] == x &&
+                out->verticesY[svi] == y &&
+                out->verticesZ[svi] == z) {
+                *outIndex = vi;
+                return Status::Ok;
+            }
+        }
+
+        // New vertex.
+        auto r0 = out->verticesX.pushBack(x);
+        if (!r0.isOk()) return r0.status();
+        r0 = out->verticesY.pushBack(y);
+        if (!r0.isOk()) return r0.status();
+        r0 = out->verticesZ.pushBack(z);
+        if (!r0.isOk()) return r0.status();
+
+        i32 skin = -1;
+        if (hasVertexSkins && model.hasVertexSkins && si < model.vertexSkins.size()) {
+            skin = model.vertexSkins[si];
+        }
+        r0 = out->vertexSkins.pushBack(skin);
+        if (!r0.isOk()) return r0.status();
+
+        if (out->hasMayaGroups) {
+            Vec<i32> g(alloc);
+            Vec<i32> s(alloc);
+            if (model.hasMayaGroups &&
+                si < model.animMayaGroups.size() &&
+                si < model.animMayaScales.size()) {
+                // Deep-copy group arrays.
+                const Vec<i32>& mg = model.animMayaGroups[si];
+                const Vec<i32>& ms = model.animMayaScales[si];
+                auto rg = g.resize(mg.size());
+                if (!rg.isOk()) return rg.status();
+                auto rs_ = s.resize(ms.size());
+                if (!rs_.isOk()) return rs_.status();
+                for (std::size_t gi = 0; gi < mg.size(); gi++) g[gi] = mg[gi];
+                for (std::size_t gi = 0; gi < ms.size(); gi++) s[gi] = ms[gi];
+            }
+            auto rg2 = out->animMayaGroups.pushBack(rs::move(g));
+            if (!rg2.isOk()) return rg2.status();
+            auto rs2 = out->animMayaScales.pushBack(rs::move(s));
+            if (!rs2.isOk()) return rs2.status();
+        }
+
+        *outIndex = out->verticesCount;
+        out->verticesCount++;
+        return Status::Ok;
+    };
+
+    // Merge faces and texture faces.
+    for (i32 mi = 0; mi < count; mi++) {
+        const ModelData& model = models[static_cast<std::size_t>(mi)];
+
+        for (i32 f = 0; f < model.faceCount; f++) {
+            const std::size_t sf = static_cast<std::size_t>(f);
+
+            if (hasRenderTypes) {
+                i8 v = 0;
+                if (model.hasFaceRenderTypes && sf < model.faceRenderTypes.size()) {
+                    v = model.faceRenderTypes[sf];
+                }
+                auto r = out->faceRenderTypes.pushBack(v);
+                if (!r.isOk()) return r.status();
+            }
+
+            if (hasRenderPriorities) {
+                i8 v = static_cast<i8>(model.priority);
+                if (model.hasFaceRenderPriorities && sf < model.faceRenderPriorities.size()) {
+                    v = model.faceRenderPriorities[sf];
+                }
+                auto r = out->faceRenderPriorities.pushBack(v);
+                if (!r.isOk()) return r.status();
+            }
+
+            if (hasAlphas) {
+                i8 v = 0;
+                if (model.hasFaceAlphas && sf < model.faceAlphas.size()) {
+                    v = model.faceAlphas[sf];
+                }
+                auto r = out->faceAlphas.pushBack(v);
+                if (!r.isOk()) return r.status();
+            }
+
+            if (hasFaceSkins) {
+                i32 v = -1;
+                if (model.hasFaceSkins && sf < model.faceSkins.size()) {
+                    v = model.faceSkins[sf];
+                }
+                auto r = out->faceSkins.pushBack(v);
+                if (!r.isOk()) return r.status();
+            }
+
+            if (hasTextures) {
+                i16 v = static_cast<i16>(-1);
+                if (model.hasFaceTextures && sf < model.faceTextures.size()) {
+                    v = model.faceTextures[sf];
+                }
+                auto r = out->faceTextures.pushBack(v);
+                if (!r.isOk()) return r.status();
+            }
+
+            if (hasTextureCoords) {
+                i8 v = static_cast<i8>(-1);
+                if (model.hasTextureCoords && sf < model.textureCoords.size()) {
+                    const i8 raw = model.textureCoords[sf];
+                    if (raw != static_cast<i8>(-1)) {
+                        const i32 mapped = out->textureFaceCount + static_cast<i32>(raw);
+                        v = static_cast<i8>(mapped);
+                    }
+                }
+                auto r = out->textureCoords.pushBack(v);
+                if (!r.isOk()) return r.status();
+            }
+
+            u16 color = 0;
+            if (sf < model.faceColors.size()) {
+                color = model.faceColors[sf];
+            }
+            auto rc = out->faceColors.pushBack(color);
+            if (!rc.isOk()) return rc.status();
+
+            if (sf >= model.indices1.size() || sf >= model.indices2.size() || sf >= model.indices3.size()) {
+                return Status::OutOfRange;
+            }
+            i32 ia = -1;
+            i32 ib = -1;
+            i32 ic = -1;
+            Status cs = copyVertex(model, model.indices1[sf], &ia);
+            if (!ok(cs)) return cs;
+            cs = copyVertex(model, model.indices2[sf], &ib);
+            if (!ok(cs)) return cs;
+            cs = copyVertex(model, model.indices3[sf], &ic);
+            if (!ok(cs)) return cs;
+
+            auto r1 = out->indices1.pushBack(ia);
+            if (!r1.isOk()) return r1.status();
+            r1 = out->indices2.pushBack(ib);
+            if (!r1.isOk()) return r1.status();
+            r1 = out->indices3.pushBack(ic);
+            if (!r1.isOk()) return r1.status();
+
+            out->faceCount++;
+        }
+
+        for (i32 f = 0; f < model.textureFaceCount; f++) {
+            const std::size_t sf = static_cast<std::size_t>(f);
+            if (sf >= model.textureRenderTypes.size() ||
+                sf >= model.textureMappingP.size() ||
+                sf >= model.textureMappingM.size() ||
+                sf >= model.textureMappingN.size()) {
+                return Status::OutOfRange;
+            }
+            const i8 type = model.textureRenderTypes[sf];
+
+            auto r = out->textureRenderTypes.pushBack(type);
+            if (!r.isOk()) return r.status();
+
+            i16 p = 0;
+            i16 m = 0;
+            i16 n = 0;
+            if (type == 0) {
+                i32 op = -1;
+                i32 om = -1;
+                i32 on = -1;
+                Status cs = copyVertex(model, static_cast<i32>(model.textureMappingP[sf]), &op);
+                if (!ok(cs)) return cs;
+                cs = copyVertex(model, static_cast<i32>(model.textureMappingM[sf]), &om);
+                if (!ok(cs)) return cs;
+                cs = copyVertex(model, static_cast<i32>(model.textureMappingN[sf]), &on);
+                if (!ok(cs)) return cs;
+                p = static_cast<i16>(op);
+                m = static_cast<i16>(om);
+                n = static_cast<i16>(on);
+            } else if (type >= 1 && type <= 3) {
+                p = model.textureMappingP[sf];
+                m = model.textureMappingM[sf];
+                n = model.textureMappingN[sf];
+            }
+
+            r = out->textureMappingP.pushBack(p);
+            if (!r.isOk()) return r.status();
+            r = out->textureMappingM.pushBack(m);
+            if (!r.isOk()) return r.status();
+            r = out->textureMappingN.pushBack(n);
+            if (!r.isOk()) return r.status();
+
+            i32 scaleX = 0;
+            i32 scaleY = 0;
+            i32 scaleZ = 0;
+            i8 rot = 0;
+            i8 dir = 0;
+            i32 speed = 0;
+            i32 transU = 0;
+            i32 transV = 0;
+            if (type >= 1 && type <= 3) {
+                if (sf >= model.textureScaleX.size() ||
+                    sf >= model.textureScaleY.size() ||
+                    sf >= model.textureScaleZ.size() ||
+                    sf >= model.textureRotation.size() ||
+                    sf >= model.textureDirection.size() ||
+                    sf >= model.textureSpeed.size()) {
+                    return Status::OutOfRange;
+                }
+                scaleX = model.textureScaleX[sf];
+                scaleY = model.textureScaleY[sf];
+                scaleZ = model.textureScaleZ[sf];
+                rot = model.textureRotation[sf];
+                dir = model.textureDirection[sf];
+                speed = model.textureSpeed[sf];
+            }
+            if (type == 2) {
+                if (sf >= model.textureTransU.size() || sf >= model.textureTransV.size()) {
+                    return Status::OutOfRange;
+                }
+                transU = model.textureTransU[sf];
+                transV = model.textureTransV[sf];
+            }
+
+            r = out->textureScaleX.pushBack(scaleX);
+            if (!r.isOk()) return r.status();
+            r = out->textureScaleY.pushBack(scaleY);
+            if (!r.isOk()) return r.status();
+            r = out->textureScaleZ.pushBack(scaleZ);
+            if (!r.isOk()) return r.status();
+            r = out->textureRotation.pushBack(rot);
+            if (!r.isOk()) return r.status();
+            r = out->textureDirection.pushBack(dir);
+            if (!r.isOk()) return r.status();
+            r = out->textureSpeed.pushBack(speed);
+            if (!r.isOk()) return r.status();
+            r = out->textureTransU.pushBack(transU);
+            if (!r.isOk()) return r.status();
+            r = out->textureTransV.pushBack(transV);
+            if (!r.isOk()) return r.status();
+
+            out->textureFaceCount++;
+        }
+    }
+
+    // TS: usedVertexCount follows the final deduped vertex count.
+    out->usedVertexCount = out->verticesCount;
+    (void)alloc;
     return Status::Ok;
 }
 

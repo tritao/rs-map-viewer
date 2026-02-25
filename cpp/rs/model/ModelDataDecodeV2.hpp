@@ -273,6 +273,9 @@ inline Status decodeModelDataV2(Span<const u8> data, ModelData* out) noexcept {
         }
     }
 
+    // TS ModelData.decode() normalizes V2 usedVertexCount to verticesCount after decodeV2.
+    out->usedVertexCount = out->verticesCount;
+
     cleanupLegacyTextureFlags(out, isTextured, hasRenderType);
     return Status::Ok;
 }

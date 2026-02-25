@@ -30,6 +30,12 @@ struct LocModelService {
         const LocType& locType,
         i32 placementType,
         i32 rotation) const noexcept = 0;
+    // Returns merged static placement XZ-radius equivalent used by TS light-occlusion logic.
+    virtual Status tryGetStaticModelXZRadius(
+        const LocType& locType,
+        i32 placementType,
+        i32 rotation,
+        i32* outRadius) const noexcept = 0;
 };
 
 // Mirrors `src/rs/scene/SceneRuntimeServices.ts` and keeps scene dependencies explicit.

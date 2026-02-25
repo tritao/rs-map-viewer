@@ -6,7 +6,7 @@
 #include "../core/Status.hpp"
 #include "../core/Vec.hpp"
 #include "../types.hpp"
-#include "SceneCommandPlan.hpp"
+#include "RuntimeCommandStreamPlan.hpp"
 
 namespace rs {
 
@@ -25,6 +25,20 @@ struct SceneCommandBuildInput final {
     i32 cacheGame = 0;
     i32 cacheRevision = 0;
     i32 unitsTileHeightBasis = 0;
+    // Debug only: when collecting terrain digest samples, skip this many vertices
+    // (hash still includes skipped vertices; this only affects which 512 vertices are captured).
+    i32 debugTerrainDigestSampleStartVertex = 0;
+    // Debug only: capture computed terrain inputs for a single tile (level,x,y) during build.
+    // Use -1 to disable.
+    i32 debugTerrainProbeLevel = -1;
+    i32 debugTerrainProbeTileX = -1;
+    i32 debugTerrainProbeTileY = -1;
+    // Debug only: capture a single world-height bilinear sample (used by contouring and other
+    // height lookups). When worldX/worldZ are -1, the first sample on the requested level is captured.
+    // Use level=-1 to disable.
+    i32 debugWorldHeightProbeLevel = -1;
+    i32 debugWorldHeightProbeWorldX = -1;
+    i32 debugWorldHeightProbeWorldZ = -1;
 
     Span<const i32> mapSquareIds{};
     Span<const i32> terrainOffsets{};
@@ -77,6 +91,18 @@ struct SceneCommandBuildInput final {
     Span<const i32> seqAlphaHintLengths{};
     Span<const u8> seqAlphaHintBytes{};
 
+    // Dat2 skeletal animation support (OSRS "anim maya"): raw seq base + skeletal seq bytes.
+    // These are only required when building animated-loc frame geometry in C++.
+    Span<const i32> seqBaseIds{};
+    Span<const i32> seqBaseOffsets{};
+    Span<const i32> seqBaseLengths{};
+    Span<const u8> seqBaseBytes{};
+
+    Span<const i32> skeletalSeqIds{};
+    Span<const i32> skeletalSeqOffsets{};
+    Span<const i32> skeletalSeqLengths{};
+    Span<const u8> skeletalSeqBytes{};
+
 };
 
 // Runtime command stream shape consumed by command-stream packing.
@@ -88,6 +114,19 @@ struct SceneCommandStream final {
     Vec<i32> cmdPackedInstances{};
     Vec<u8> vertices{};
     Vec<i32> indices{};
+
+    // Terrain digest sample records (parity/debug): first N vertex records used for the digest.
+    // Stride=10 i32:
+    //   [0]=x [1]=y [2]=z [3]=hsl [4]=quantU4096 [5]=quantV4096
+    //   [6]=tex0Packed [7]=tex1Packed [8]=texBlendInt [9]=hashAfterVertex
+    static constexpr i32 kDebugTerrainDigestSampleVertexLimit = 512;
+    static constexpr i32 kDebugTerrainDigestSampleStrideInts = 10;
+    i32 debugTerrainDigestSampleCount = 0;
+    i32 debugTerrainDigestSampleStrideInts = kDebugTerrainDigestSampleStrideInts;
+    i32 debugTerrainDigestSampleStartVertex = 0;
+    i32 debugTerrainDigestVertexCursor = 0;
+    i32 debugTerrainDigestSamplesPacked
+        [kDebugTerrainDigestSampleVertexLimit * kDebugTerrainDigestSampleStrideInts]{};
 
     i32 debugTerrainTilesConsidered = 0;
     i32 debugTerrainTilesEmitted = 0;
@@ -115,6 +154,30 @@ struct SceneCommandStream final {
     i32 debugTerrainDigestLevelVertices2 = 0;
     i32 debugTerrainDigestLevelVertices3 = 0;
 
+    // Debug-only: a single terrain tile probe captured during terrain emission.
+    // Packed i32 payload (length=32) is interpreted by parity/debug scripts.
+    i32 debugTerrainProbeHit = 0;
+    i32 debugTerrainProbeLevel = -1;
+    i32 debugTerrainProbeTileX = -1;
+    i32 debugTerrainProbeTileY = -1;
+    // Debug-only probe payload. Size is intentionally generous so we can evolve
+    // diagnostics without touching the runtime vertex/index contracts.
+    i32 debugTerrainProbePacked[64]{};
+
+    // Debug-only: a single bilinear height sample probe captured from world sampling.
+    // Set via SceneCommandBuildInput debugWorldHeightProbe*.
+    // Packed payload (length=16):
+    //   [0]=ok(0/1)
+    //   [1]=tx [2]=tz [3]=rx [4]=rz
+    //   [5]=h00 [6]=h10 [7]=h01 [8]=h11
+    //   [9]=h0Numerator [10]=h0 [11]=h1Numerator [12]=h1
+    //   [13]=hNumerator [14]=height [15]=baseY (vertex Y before contour)
+    i32 debugWorldHeightProbeHit = 0;
+    i32 debugWorldHeightProbeLevel = -1;
+    i32 debugWorldHeightProbeWorldX = -1;
+    i32 debugWorldHeightProbeWorldZ = -1;
+    i32 debugWorldHeightProbePacked[16]{};
+
     // Scene command plan digest (TS parity helper): matches src/renderer/buffer/SceneCommandPlan.ts.
     i32 debugSceneCommandPlanOpCount = 0;
     i32 debugSceneCommandPlanMergedGroupOpCount = 0;
@@ -132,6 +195,17 @@ struct SceneCommandStream final {
     //   instanced: [2]=modelHash [3]=faceCount [4]=instanceCount [5]=lodInstanceCount
     //   mergedGroup: [2]=lowDetail (0/1) [3]=level [4]=priority [5]=modelCount
     Vec<i32> debugSceneCommandPlanOpsPacked{};
+    // Packed plan op provenance (debug only): one entry per plan op in the same order.
+    // Stride=8 i32:
+    //   [0]=sourceKind (0 unknown, 1 loc, 2 obj)
+    //   [1]=typeId (locTypeId/objTypeId or -1)
+    //   [2]=placementTypeHint
+    //   [3]=placementRotationHint
+    //   [4]=modelIdHint
+    //   [5]=modelIdsHashHint
+    //   [6]=levelHint
+    //   [7]=priorityHint
+    Vec<i32> debugSceneCommandPlanOpProvenancePacked{};
 
     // SceneBuffer command-bucket digest (TS parity helper): pre-pack bucket content.
     // Hash is FNV-1a 32-bit updated per-int with multiplication (matches TS fnv1a32UpdateInt).
@@ -207,8 +281,22 @@ struct SceneCommandStream final {
 
     Vec<u8> debugTerrainTileFaceCounts{};
     Vec<i32> debugLocPreMergeGroupKeySignatures{};
+    Vec<i32> debugLocRenderPlacementEntriesPacked{};
     Vec<i32> debugLocPreMergeGroupKeyEntriesPacked{};
     Vec<i32> debugLocMergeDecisionEntriesPacked{};
+    // Loc merged-command emission records (debug): stride=13 i32.
+    // [0]=offsetElements [1]=elements [2]=locTypeId [3]=placementType [4]=placementRotation
+    // [5]=level [6]=priority [7]=transparent(0/1) [8]=includeLod(0/1)
+    // [9]=groupIndex [10]=instanceIndex
+    // [11]=hasFaceRenderPriorities(0/1/-1 unknown)
+    // [12]=faceRenderPrioritiesLength(-1 unknown)
+    Vec<i32> debugLocMergeEmitEntriesPacked{};
+    // Loc mergeNormals trace entries (debug): stride=22 i32.
+    // [0..7]  A{locTypeId,placementType,rotation,level,tileX,tileY,sizeX,sizeY}
+    // [8..15] B{locTypeId,placementType,rotation,level,tileX,tileY,sizeX,sizeY}
+    // [16..20] offX,offY,offZ,hideOccluded(0/1),mergedCount
+    // [21] callKind: 1=mergeLargeLocNormals, 2=wallPair, 3=mergeFloorNormals
+    Vec<i32> debugLocMergeNormalsTraceEntriesPacked{};
     Vec<i32> debugCommandProvenancePacked{};
     i32 debugTerrainTileFaceCountsLevels = 0;
     i32 debugTerrainTileFaceCountsWidth = 0;
@@ -225,10 +313,14 @@ struct SceneCommandStream final {
         indices = Vec<i32>(alloc);
         debugTerrainTileFaceCounts = Vec<u8>(alloc);
         debugLocPreMergeGroupKeySignatures = Vec<i32>(alloc);
+        debugLocRenderPlacementEntriesPacked = Vec<i32>(alloc);
         debugLocPreMergeGroupKeyEntriesPacked = Vec<i32>(alloc);
         debugLocMergeDecisionEntriesPacked = Vec<i32>(alloc);
+        debugLocMergeEmitEntriesPacked = Vec<i32>(alloc);
+        debugLocMergeNormalsTraceEntriesPacked = Vec<i32>(alloc);
         debugCommandProvenancePacked = Vec<i32>(alloc);
         debugSceneCommandPlanOpsPacked = Vec<i32>(alloc);
+        debugSceneCommandPlanOpProvenancePacked = Vec<i32>(alloc);
         return Result<void>::ok();
     }
 
@@ -242,10 +334,14 @@ struct SceneCommandStream final {
         indices.clear();
         debugTerrainTileFaceCounts.clear();
         debugLocPreMergeGroupKeySignatures.clear();
+        debugLocRenderPlacementEntriesPacked.clear();
         debugLocPreMergeGroupKeyEntriesPacked.clear();
         debugLocMergeDecisionEntriesPacked.clear();
+        debugLocMergeEmitEntriesPacked.clear();
+        debugLocMergeNormalsTraceEntriesPacked.clear();
         debugCommandProvenancePacked.clear();
         debugSceneCommandPlanOpsPacked.clear();
+        debugSceneCommandPlanOpProvenancePacked.clear();
         debugTerrainTileFaceCountsLevels = 0;
         debugTerrainTileFaceCountsWidth = 0;
         debugTerrainTileFaceCountsHeight = 0;
@@ -263,6 +359,11 @@ struct SceneCommandStream final {
         debugTerrainFacesOverlayLevel2 = 0;
         debugTerrainFacesOverlayLevel3 = 0;
 
+        debugTerrainDigestSampleCount = 0;
+        debugTerrainDigestSampleStrideInts = kDebugTerrainDigestSampleStrideInts;
+        debugTerrainDigestSampleStartVertex = 0;
+        debugTerrainDigestVertexCursor = 0;
+
         // FNV-1a 32-bit offset basis.
         debugTerrainDigestHash = static_cast<i32>(2166136261u);
         debugTerrainDigestFacesTotal = 0;
@@ -275,6 +376,22 @@ struct SceneCommandStream final {
         debugTerrainDigestLevelVertices1 = 0;
         debugTerrainDigestLevelVertices2 = 0;
         debugTerrainDigestLevelVertices3 = 0;
+
+        debugTerrainProbeHit = 0;
+        debugTerrainProbeLevel = -1;
+        debugTerrainProbeTileX = -1;
+        debugTerrainProbeTileY = -1;
+        for (std::size_t i = 0; i < (sizeof(debugTerrainProbePacked) / sizeof(debugTerrainProbePacked[0])); i++) {
+            debugTerrainProbePacked[i] = 0;
+        }
+
+        debugWorldHeightProbeHit = 0;
+        debugWorldHeightProbeLevel = -1;
+        debugWorldHeightProbeWorldX = -1;
+        debugWorldHeightProbeWorldZ = -1;
+        for (std::size_t i = 0; i < (sizeof(debugWorldHeightProbePacked) / sizeof(debugWorldHeightProbePacked[0])); i++) {
+            debugWorldHeightProbePacked[i] = 0;
+        }
         debugSceneCommandPlanOpCount = 0;
         debugSceneCommandPlanMergedGroupOpCount = 0;
         debugSceneCommandPlanInstancedOpCount = 0;
@@ -360,6 +477,8 @@ struct SceneLocRenderPlacementStageInput final {
     const LocType* resolvedLocType = nullptr;
     i32 placementId = -1;
     i32 placementType = 0;
+    // Mirrors TS SceneBuilder LocLoadType (0=MODELS, 1=NO_MODELS).
+    i32 locLoadType = 0;
     bool baseHadTransforms = false;
     bool lowDetailPlacement = false;
 };
@@ -410,6 +529,12 @@ bool sceneLocCommandGroupKeysEqual(
 
 // Builds runtime command stream from byte-driven scene inputs.
 Status buildSceneCommandStream(
+    const SceneCommandBuildInput& input,
+    SceneCommandStream* out,
+    Allocator& alloc = defaultAllocator()) noexcept;
+
+// Builds only scene plan/debug outputs (no vertex/index or command bucket emission).
+Status buildSceneCommandPlanOnly(
     const SceneCommandBuildInput& input,
     SceneCommandStream* out,
     Allocator& alloc = defaultAllocator()) noexcept;

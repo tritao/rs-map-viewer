@@ -15,13 +15,15 @@ static constexpr i32 kTerrainQuarterTileSize = kTerrainTileSize / 4;
 static constexpr i32 kTerrainThreeQuarterTileSize = (kTerrainTileSize * 3) / 4;
 
 static inline u32 fnv1a32UpdateI32(u32 hash, i32 value) noexcept {
-    const u32 h = (hash ^ static_cast<u32>(value)) * 16777619u;
-    return h;
+    // Match TS `fnv1a32UpdateInt`:
+    //   h = (hash ^ (value>>>0))>>>0; h = imul(h, 16777619)>>>0
+    const u32 v = static_cast<u32>(value);
+    return (hash ^ v) * 16777619u;
 }
 
-static inline i32 quantizeUv4096(float v) noexcept {
-    // Match TS `quantizeUv(v) = (v * 4096) | 0` (truncate toward zero).
-    return static_cast<i32>(v * 4096.0f);
+static inline i32 quantizeUv4096(double v) noexcept {
+    // Match TS `quantizeUv(v) = (v * 4096) | 0` (Number/double math, truncate toward zero).
+    return static_cast<i32>(v * 4096.0);
 }
 
 static inline void terrainDigestUpdateVertex(
@@ -30,25 +32,61 @@ static inline void terrainDigestUpdateVertex(
     i32 py,
     i32 pz,
     i32 phsl,
-    float pu,
-    float pv,
+    double pu,
+    double pv,
     i32 ptexturePacked,
     i32 ptexturePacked1,
     float ptexBlend) noexcept {
     if (!debugOut) {
         return;
     }
+    const i32 qU = quantizeUv4096(pu);
+    const i32 qV = quantizeUv4096(pv);
+    const i32 texBlendI = static_cast<i32>(ptexBlend);
+
     u32 h = static_cast<u32>(debugOut->debugTerrainDigestHash);
     h = fnv1a32UpdateI32(h, px);
     h = fnv1a32UpdateI32(h, py);
     h = fnv1a32UpdateI32(h, pz);
     h = fnv1a32UpdateI32(h, phsl);
-    h = fnv1a32UpdateI32(h, quantizeUv4096(pu));
-    h = fnv1a32UpdateI32(h, quantizeUv4096(pv));
+    h = fnv1a32UpdateI32(h, qU);
+    h = fnv1a32UpdateI32(h, qV);
     h = fnv1a32UpdateI32(h, ptexturePacked);
     h = fnv1a32UpdateI32(h, ptexturePacked1);
-    h = fnv1a32UpdateI32(h, static_cast<i32>(ptexBlend));
+    h = fnv1a32UpdateI32(h, texBlendI);
     debugOut->debugTerrainDigestHash = static_cast<i32>(h);
+
+    const i32 cursor = debugOut->debugTerrainDigestVertexCursor;
+    debugOut->debugTerrainDigestVertexCursor = cursor + 1;
+    if (cursor < debugOut->debugTerrainDigestSampleStartVertex) {
+        return;
+    }
+
+    const i32 sampleCount = debugOut->debugTerrainDigestSampleCount;
+    if (sampleCount >= 0 &&
+        sampleCount < SceneCommandStream::kDebugTerrainDigestSampleVertexLimit) {
+        const i32 stride = debugOut->debugTerrainDigestSampleStrideInts;
+        const std::size_t base =
+            static_cast<std::size_t>(sampleCount) * static_cast<std::size_t>(stride);
+        // Stride is fixed; guard anyway in case of accidental mismatch.
+        const std::size_t cap =
+            static_cast<std::size_t>(SceneCommandStream::kDebugTerrainDigestSampleVertexLimit) *
+            static_cast<std::size_t>(SceneCommandStream::kDebugTerrainDigestSampleStrideInts);
+        if (stride == SceneCommandStream::kDebugTerrainDigestSampleStrideInts &&
+            base + static_cast<std::size_t>(stride) <= cap) {
+            debugOut->debugTerrainDigestSamplesPacked[base + 0] = px;
+            debugOut->debugTerrainDigestSamplesPacked[base + 1] = py;
+            debugOut->debugTerrainDigestSamplesPacked[base + 2] = pz;
+            debugOut->debugTerrainDigestSamplesPacked[base + 3] = phsl;
+            debugOut->debugTerrainDigestSamplesPacked[base + 4] = qU;
+            debugOut->debugTerrainDigestSamplesPacked[base + 5] = qV;
+            debugOut->debugTerrainDigestSamplesPacked[base + 6] = ptexturePacked;
+            debugOut->debugTerrainDigestSamplesPacked[base + 7] = ptexturePacked1;
+            debugOut->debugTerrainDigestSamplesPacked[base + 8] = texBlendI;
+            debugOut->debugTerrainDigestSamplesPacked[base + 9] = static_cast<i32>(h);
+            debugOut->debugTerrainDigestSampleCount = sampleCount + 1;
+        }
+    }
 }
 
 static inline void terrainDigestAccumulateFace(
@@ -284,6 +322,11 @@ Status appendTerrainTileGeometry(
     }
     if (outFaceColorsAAllValid) {
         *outFaceColorsAAllValid = true;
+    }
+    // Match TS: `computeSceneTileModelForTile` returns null when there is neither underlay nor overlay.
+    // In that case, the tile contributes no geometry and should not affect terrain digests.
+    if (!hasOverlay && !hasUnderlay) {
+        return Status::Ok;
     }
 
     TerrainShapeDef shape = terrainShapeDef(shapeId);
@@ -527,8 +570,12 @@ Status appendTerrainTileGeometry(
             *outFaceColorsAAllValid = false;
         }
 
+        // Match TS `SceneTileModel`: default UV denom is TILE_SIZE unless the face has a texture.
         i32 texturePacked = underlayTexturePacked;
-        i32 textureSizeRaw = underlayTextureSize;
+        i32 textureSizeRaw = kTerrainTileSize;
+        if (texturePacked != -1) {
+            textureSizeRaw = underlayTextureSize;
+        }
         i32 texturePacked1 = -1;
         float texBlendA = 0.0f;
         float texBlendB = 0.0f;
@@ -552,10 +599,19 @@ Status appendTerrainTileGeometry(
                 }
             }
 
-            texturePacked = overlayCornerTexturePacked ? overlayCornerTexturePacked[static_cast<std::size_t>(bestCorner)] : -1;
-            textureSizeRaw = overlayCornerTextureSize ? overlayCornerTextureSize[static_cast<std::size_t>(bestCorner)] : kTerrainTileSize;
+            texturePacked =
+                overlayCornerTexturePacked
+                    ? overlayCornerTexturePacked[static_cast<std::size_t>(bestCorner)]
+                    : -1;
+            textureSizeRaw = kTerrainTileSize;
+            if (texturePacked != -1) {
+                textureSizeRaw =
+                    overlayCornerTextureSize
+                        ? overlayCornerTextureSize[static_cast<std::size_t>(bestCorner)]
+                        : kTerrainTileSize;
+            }
 
-            const i32 faceTextureSize = (textureSizeRaw > 0) ? textureSizeRaw : kTerrainTileSize;
+            const i32 faceTextureSize = (textureSizeRaw > 0) ? textureSizeRaw : 1;
             if (texturePacked != -1 && overlayCornerTexturePacked && overlayCornerTextureSize && overlayEdgeTexturePacked && overlayEdgeTextureSize) {
                 auto prefForVertex = [&](i32 v, i32* outTex, i32* outSize) {
                     const i32 corner = chosenCornerIndex[static_cast<std::size_t>(v)];
@@ -569,8 +625,8 @@ Status appendTerrainTileGeometry(
                             size = overlayEdgeTextureSize[static_cast<std::size_t>(edge)];
                         }
                     }
-                    if (size <= 0) {
-                        size = kTerrainTileSize;
+                    if (size < 1) {
+                        size = 1;
                     }
                     *outTex = tex;
                     *outSize = size;
@@ -621,24 +677,34 @@ Status appendTerrainTileGeometry(
             }
         }
 
-        const i32 textureSize = textureSizeRaw > 0 ? textureSizeRaw : kTerrainTileSize;
+        i32 textureSize = kTerrainTileSize;
+        if (texturePacked != -1) {
+            textureSize = (textureSizeRaw > 0) ? textureSizeRaw : 1;
+        }
 
         if (hslA == kTerrainInvalidHslColor && texturePacked == -1) {
             continue;
         }
 
-        const float u0 = static_cast<float>(vertexX[static_cast<std::size_t>(a)] - tileBaseX) /
-            static_cast<float>(textureSize);
-        const float v0 = static_cast<float>(vertexZ[static_cast<std::size_t>(a)] - tileBaseZ) /
-            static_cast<float>(textureSize);
-        const float u1 = static_cast<float>(vertexX[static_cast<std::size_t>(b)] - tileBaseX) /
-            static_cast<float>(textureSize);
-        const float v1 = static_cast<float>(vertexZ[static_cast<std::size_t>(b)] - tileBaseZ) /
-            static_cast<float>(textureSize);
-        const float u2 = static_cast<float>(vertexX[static_cast<std::size_t>(c)] - tileBaseX) /
-            static_cast<float>(textureSize);
-        const float v2 = static_cast<float>(vertexZ[static_cast<std::size_t>(c)] - tileBaseZ) /
-            static_cast<float>(textureSize);
+        const double u0d = static_cast<double>(vertexX[static_cast<std::size_t>(a)] - tileBaseX) /
+            static_cast<double>(textureSize);
+        const double v0d = static_cast<double>(vertexZ[static_cast<std::size_t>(a)] - tileBaseZ) /
+            static_cast<double>(textureSize);
+        const double u1d = static_cast<double>(vertexX[static_cast<std::size_t>(b)] - tileBaseX) /
+            static_cast<double>(textureSize);
+        const double v1d = static_cast<double>(vertexZ[static_cast<std::size_t>(b)] - tileBaseZ) /
+            static_cast<double>(textureSize);
+        const double u2d = static_cast<double>(vertexX[static_cast<std::size_t>(c)] - tileBaseX) /
+            static_cast<double>(textureSize);
+        const double v2d = static_cast<double>(vertexZ[static_cast<std::size_t>(c)] - tileBaseZ) /
+            static_cast<double>(textureSize);
+
+        const float u0 = static_cast<float>(u0d);
+        const float v0 = static_cast<float>(v0d);
+        const float u1 = static_cast<float>(u1d);
+        const float v1 = static_cast<float>(v1d);
+        const float u2 = static_cast<float>(u2d);
+        const float v2 = static_cast<float>(v2d);
 
         i32 idxA = 0;
         i32 idxB = 0;
@@ -716,8 +782,8 @@ Status appendTerrainTileGeometry(
                 vertexY[static_cast<std::size_t>(a)],
                 vertexZ[static_cast<std::size_t>(a)],
                 hslA,
-                u0,
-                v0,
+                u0d,
+                v0d,
                 texturePacked,
                 texturePacked1,
                 texBlendA);
@@ -727,8 +793,8 @@ Status appendTerrainTileGeometry(
                 vertexY[static_cast<std::size_t>(b)],
                 vertexZ[static_cast<std::size_t>(b)],
                 hslB,
-                u1,
-                v1,
+                u1d,
+                v1d,
                 texturePacked,
                 texturePacked1,
                 texBlendB);
@@ -738,8 +804,8 @@ Status appendTerrainTileGeometry(
                 vertexY[static_cast<std::size_t>(c)],
                 vertexZ[static_cast<std::size_t>(c)],
                 hslC,
-                u2,
-                v2,
+                u2d,
+                v2d,
                 texturePacked,
                 texturePacked1,
                 texBlendC);

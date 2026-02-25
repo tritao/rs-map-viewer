@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(RS_BUILD_TOOLS "Build command-line tools (native only by default)" ON)
 option(RS_BUILD_TESTS "Build tests (native only by default)" ON)
+option(RS_BUILD_NATIVE_VIEWER "Build native OpenGL map viewer shell (GLFW)" ON)
 option(RS_BUILD_WASM_SMOKE "Build a minimal wasm smoke target" OFF)
 option(RS_BUILD_WASM_MAP_RENDER_BACKEND "Build wasm map-render backend module" OFF)
 option(RS_ENABLE_SANITIZERS "Enable ASan+UBSan for native builds" OFF)
@@ -53,9 +54,20 @@ set(RS_SOURCES
 	    rs/map/TerrainSquareDecode.cpp
 	    rs/map/LocPlacementsDecode.cpp
 	    rs/map/NpcSpawnsDecode.cpp
-	    rs/render/ScenePack.cpp
+	    rs/render/SceneBuffer.cpp
+    rs/render/PackedVertex.cpp
+    rs/render/PackedVertexDedupe.cpp
+    rs/render/TerrainTileBuilder.cpp
+    rs/render/TerrainTileSampler.cpp
+	    rs/render/SceneCommandPack.cpp
+	    rs/render/TerrainEmit.cpp
+	    rs/render/LocEmit.cpp
+	    rs/render/ObjEmit.cpp
+	    rs/render/SceneCommandBuilder.cpp
+	    rs/render/RuntimeCommandStreamPlan.cpp
 	    rs/scene/SceneBuildStages.cpp
 	    rs/scene/BuildSceneFromMapBytesProvider.cpp
+	    tools/rs_scene_bridge.cpp
 	    rs/loaders/ConfigLoaders.cpp
 	    rs/loaders/CacheSession.cpp
 	    rs/loaders/Dat2Loaders.cpp
@@ -218,6 +230,30 @@ if (RS_BUILD_TOOLS)
     )
 endif()
 
+if (RS_BUILD_NATIVE_VIEWER AND NOT EMSCRIPTEN)
+    find_package(glfw3 QUIET)
+    find_package(OpenGL QUIET)
+
+    if ((TARGET glfw OR TARGET glfw3::glfw) AND OpenGL_FOUND)
+        add_executable(rs_native_viewer
+            tools/rs_native_viewer.cpp
+        )
+
+        target_link_libraries(rs_native_viewer PRIVATE rs OpenGL::GL)
+        if (TARGET glfw3::glfw)
+            target_link_libraries(rs_native_viewer PRIVATE glfw3::glfw)
+        else()
+            target_link_libraries(rs_native_viewer PRIVATE glfw)
+        endif()
+
+        target_link_options(rs_native_viewer PRIVATE
+            -Wl,--gc-sections
+        )
+    else()
+        message(STATUS "Skipping rs_native_viewer (requires glfw3 + OpenGL)")
+    endif()
+endif()
+
 if (RS_BUILD_TESTS)
     enable_testing()
 
@@ -272,8 +308,27 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
 
     target_link_libraries(rs_map_render_backend PRIVATE rs)
 
-    set(RS_MAP_RENDER_EXPORTED_FUNCTIONS
-        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_pack_scene_pack_input']"
+    option(RS_MAP_RENDER_WASM_DEBUG_EXPORTS "Export debug-only runtime APIs in map-render wasm backend" OFF)
+
+    set(RS_MAP_RENDER_EXPORTED_FUNCTIONS_CORE
+        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_map_render_runtime_create','_rs_map_render_runtime_create_with_config','_rs_map_render_runtime_cache_set_build_config','_rs_map_render_runtime_destroy','_rs_map_render_runtime_reset','_rs_map_render_runtime_is_valid','_rs_map_render_runtime_cache_put_map_squares_packed','_rs_map_render_runtime_cache_put_type_blob','_rs_map_render_runtime_cache_put_type_entry','_rs_map_render_runtime_cache_clear_type_kind','_rs_map_render_runtime_collect_required_primary_type_ids','_rs_map_render_runtime_collect_required_expanded_type_ids','_rs_map_render_runtime_cache_set_varps','_rs_map_render_runtime_set_geometry_seed','_rs_map_render_runtime_clear_geometry_seed','_rs_map_render_runtime_cache_needs_type_upload','_rs_map_render_runtime_cache_clear_map_squares','_rs_map_render_runtime_cache_put_texture_argb','_rs_map_render_runtime_cache_clear_texture_argb','_rs_map_render_runtime_cache_put_material_params','_rs_map_render_runtime_cache_clear_material_params','_rs_map_render_runtime_cache_get_resource_counts','_rs_map_render_runtime_build_map_packet_handle_from_cache','_rs_map_render_runtime_build_npc_packet_handle_from_cache','_rs_map_render_runtime_get_packet_meta','_rs_map_render_runtime_release_packet','_rs_map_render_runtime_clear_tick_state','_rs_map_render_runtime_set_tick_state_packed','_rs_map_render_runtime_tick_advance_and_emit_base_patches_for_state_packed','_rs_map_render_runtime_debug_get_last_collision_flags_meta','_rs_map_render_runtime_debug_copy_last_collision_flags']"
+    )
+
+    set(RS_MAP_RENDER_EXPORTED_FUNCTIONS_DEBUG
+        "'_rs_map_render_runtime_debug_collect_map_input_digest','_rs_map_render_runtime_debug_get_cache_config','_rs_map_render_runtime_debug_get_loaded_height_hash','_rs_map_render_runtime_debug_get_map_input_hashes','_rs_map_render_runtime_debug_get_cached_command_stream_digest','_rs_map_render_runtime_debug_get_cached_command_stream_lengths','_rs_map_render_runtime_debug_copy_cached_command_stream','_rs_map_render_runtime_debug_get_last_terrain_tile_face_counts_meta','_rs_map_render_runtime_debug_copy_last_terrain_tile_face_counts','_rs_map_render_runtime_debug_get_last_build_stats','_rs_map_render_runtime_debug_decode_overlay_type','_rs_map_render_runtime_debug_decode_loc_type'"
+    )
+
+    if (RS_MAP_RENDER_WASM_DEBUG_EXPORTS)
+        string(REPLACE "']" "',${RS_MAP_RENDER_EXPORTED_FUNCTIONS_DEBUG}]" RS_MAP_RENDER_EXPORTED_FUNCTIONS "${RS_MAP_RENDER_EXPORTED_FUNCTIONS_CORE}")
+    else()
+        set(RS_MAP_RENDER_EXPORTED_FUNCTIONS "${RS_MAP_RENDER_EXPORTED_FUNCTIONS_CORE}")
+    endif()
+
+    target_compile_definitions(rs PRIVATE
+        RS_SCENE_BRIDGE_NO_WASM_KEEPALIVE=1
+    )
+    target_compile_definitions(rs_map_render_backend PRIVATE
+        RS_SCENE_BRIDGE_NO_WASM_KEEPALIVE=1
     )
 
     target_link_options(rs_map_render_backend PRIVATE
@@ -283,6 +338,9 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
         -sFILESYSTEM=0
         -sMODULARIZE=1
         -sEXPORT_ES6=1
+        -sALLOW_MEMORY_GROWTH=1
+        -sINITIAL_MEMORY=268435456
+        -sMAXIMUM_MEMORY=1073741824
         --no-entry
         "-sEXPORTED_FUNCTIONS=${RS_MAP_RENDER_EXPORTED_FUNCTIONS}"
     )

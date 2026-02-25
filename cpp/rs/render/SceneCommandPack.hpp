@@ -4,7 +4,7 @@
 #include "../core/Span.hpp"
 #include "../core/Status.hpp"
 #include "../types.hpp"
-#include "SceneCommandPlan.hpp"
+#include "RuntimeCommandStreamPlan.hpp"
 
 namespace rs {
 

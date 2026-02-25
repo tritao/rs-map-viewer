@@ -50,6 +50,28 @@ End-to-end C++ pre-merge parity sweep:
 
 -   `npm run -s rs:cpp-premerge`
 
+## Native viewer shell
+
+The repository now includes a native OpenGL shell target:
+
+-   executable: `./cpp/build/rs_native_viewer`
+-   CMake option: `-DRS_BUILD_NATIVE_VIEWER=ON` (default ON)
+-   dependencies: `glfw3` + `OpenGL`
+
+Run:
+
+-   `cmake -S cpp -B cpp/build -DRS_BUILD_NATIVE_VIEWER=ON`
+-   `cmake --build cpp/build -j`
+-   `./cpp/build/rs_native_viewer`
+
+Current controls:
+
+-   move: `W/A/S/D`
+-   vertical: `Q/E`
+-   fast move: `Left Shift`
+-   look: hold right mouse button
+-   quit: `Esc`
+
 ## Session/loader parity checklist
 
 -   Use `CacheSession` facade accessors at call sites (`tryGet*`, `textureMode`, `tryGetTexturePixelsArgb`) instead of reaching into tagged loader storage directly.
@@ -85,8 +107,8 @@ Map-render backend wasm module (for TS worker bridge):
 
 -   `npm run -s rs:cpp-map-render-wasm`
 -   outputs copied to:
-    -   `public/wasm/rs_map_render_backend.js`
-    -   `public/wasm/rs_map_render_backend.wasm`
+    -   `src/wasm/rs_map_render_backend.js`
+    -   `src/wasm/rs_map_render_backend.wasm`
 -   parity smoke:
     -   `npm run -s rs:map-render-wasm-parity -- --iterations 20`
 -   real square payload parity (TS vs wasm decode+heightmap path):

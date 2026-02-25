@@ -579,6 +579,80 @@ static Status tryDecodeSkeletalSeqFromBlob(
     return decodeDat2SkeletalSeqWithBase(*outBase, skeletalSeqId, data, outSeq);
 }
 
+// TS parity for `SceneBuffer.addModelAnimFrame` alpha decision:
+// model face is transparent iff `alpha < 0xff || (textureId != -1 && textureLoader.isTransparent(textureId))`.
+// We intentionally avoid loc-geometry render-type filters here because TS animated placeholder alpha buckets
+// are driven by `framesAlpha` (from face split), not by emitted loc-geometry element counts.
+static bool modelHasTransparentFacesForAnimatedFrameTs(
+    const SceneCommandBuildInput& input,
+    const ModelData& model) noexcept {
+    for (i32 fi = 0; fi < model.faceCount; fi++) {
+        if (fi < 0 || fi >= static_cast<i32>(model.faceColors.size())) {
+            continue;
+        }
+
+        // TS `getModelFaces` skips faces where lit faceColors3 == -2.
+        // In the source ModelData this corresponds to raw alpha sentinel -1 (renderType=2).
+        i32 rawAlphaSigned = 0;
+        if (model.hasFaceAlphas && fi >= 0 && fi < static_cast<i32>(model.faceAlphas.size())) {
+            rawAlphaSigned = static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]);
+        }
+        if (rawAlphaSigned == -1) {
+            continue;
+        }
+
+        i32 textureId = -1;
+        if (model.hasFaceTextures && fi >= 0 && fi < static_cast<i32>(model.faceTextures.size())) {
+            textureId = static_cast<i32>(model.faceTextures[static_cast<std::size_t>(fi)]);
+        }
+
+        i32 alpha = 0xff;
+        if (model.hasFaceAlphas &&
+            textureId == -1 &&
+            fi >= 0 &&
+            fi < static_cast<i32>(model.faceAlphas.size())) {
+            alpha = 0xff - (static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]) & 0xff);
+        }
+        if (alpha == 0 || alpha == 1) {
+            continue;
+        }
+
+        if (alpha < 0xff) {
+            return true;
+        }
+        if (textureId != -1 && findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// TS Model.copyAnimated(..., shallowTransparencies=false) behavior:
+// allocate faceAlphas to faceCount even when source model has no alpha array.
+static Status ensureAnimatedModelHasFaceAlphas(ModelData* model) noexcept {
+    if (!model) {
+        return Status::InvalidArgument;
+    }
+    const i32 rawFaceCount = model->faceCount;
+    if (rawFaceCount <= 0) {
+        model->hasFaceAlphas = true;
+        return Status::Ok;
+    }
+    const std::size_t faceCount = static_cast<std::size_t>(rawFaceCount);
+    const std::size_t oldSize = model->faceAlphas.size();
+    if (oldSize < faceCount) {
+        auto rr = model->faceAlphas.resize(faceCount);
+        if (!rr.isOk()) {
+            return rr.status();
+        }
+        for (std::size_t i = oldSize; i < faceCount; i++) {
+            model->faceAlphas[i] = 0;
+        }
+    }
+    model->hasFaceAlphas = true;
+    return Status::Ok;
+}
+
 template <typename T, typename Less>
 static void sortInPlace(T* data, std::size_t n, Less less) noexcept {
     if (!data || n < 2) {
@@ -952,6 +1026,7 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
     i32* indexCount,
     DecodedLocTypeCache* locTypeCache,
     DecodedSeqTypeCache* seqTypeCache,
+    Vec<u8>* outGroupHasAlpha,
     Allocator& alloc) noexcept;
 
 static Status buildLocRenderCommandPlan(
@@ -3879,12 +3954,35 @@ static Status planLocCommandsFromMapLocBytes(
                     }
 
                     bool seqHintHasAlpha = false;
-                    if (tryGetSeqAlphaHintFromBlob(input, resolvedPlacement.seqId, &seqHintHasAlpha)) {
+                    const bool hasSeqHint =
+                        tryGetSeqAlphaHintFromBlob(input, resolvedPlacement.seqId, &seqHintHasAlpha);
+                    if (hasSeqHint) {
                         if (seqHintHasAlpha) {
                             hasAlpha = true;
                         }
                     } else if (seq->animMayaId >= 0) {
                         hasAlpha = true;
+                    } else {
+                        // Fallback when seq alpha hints are not available in the runtime cache:
+                        // derive "has alpha transform" directly from uploaded classic seq-frame blobs.
+                        for (std::size_t fi = 0; fi < seq->frameIds.size(); fi++) {
+                            const i32 frameId = seq->frameIds[fi];
+                            SeqBase frameBase(-1, alloc);
+                            SeqFrame frame(alloc);
+                            const Status fs = tryDecodeBridgeSeqFrameFromBlob(
+                                input,
+                                frameId,
+                                &frameBase,
+                                &frame,
+                                alloc);
+                            if (!ok(fs)) {
+                                continue;
+                            }
+                            if (frame.hasAlphaTransform) {
+                                hasAlpha = true;
+                                break;
+                            }
+                        }
                     }
                     if (hasModelsForPlacement) {
                         std::size_t variantBegin = 0;
@@ -4938,6 +5036,7 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
     i32* indexCount,
     DecodedLocTypeCache* locTypeCache,
     DecodedSeqTypeCache* seqTypeCache,
+    Vec<u8>* outGroupHasAlpha,
     Allocator& alloc) noexcept {
     if (!buffer || !indexCount || !locTypeCache || !seqTypeCache) {
         return Status::InvalidArgument;
@@ -4946,10 +5045,21 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
         return Status::Ok;
     }
 
+    if (outGroupHasAlpha) {
+        auto rr = outGroupHasAlpha->resize(groups.size());
+        if (!rr.isOk()) {
+            return rr.status();
+        }
+        for (std::size_t i = 0; i < outGroupHasAlpha->size(); i++) {
+            (*outGroupHasAlpha)[i] = 0;
+        }
+    }
+
     Vec<i32> modelIds(alloc);
 
     for (std::size_t gi = 0; gi < groups.size(); gi++) {
         const LocAnimatedGroupPlan& g = groups[gi];
+        bool groupHasAlpha = false;
         if (g.seqId < 0 || g.locTypeId < 0) {
             continue;
         }
@@ -5062,6 +5172,13 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     continue;
                 }
 
+                if (skeletalSeq.hasAlphaTransform) {
+                    const Status as = ensureAnimatedModelHasFaceAlphas(&model);
+                    if (!ok(as)) {
+                        return as;
+                    }
+                }
+
                 // TS transformModel (skeletal): unrotate -> animateSkeletal -> rotate back.
                 if (rot == 1) model.rotate270();
                 else if (rot == 2) model.rotate180();
@@ -5079,6 +5196,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                 // TS getModelAnimated: apply diagonal rotation after animation transforms.
                 if (g.placementType == 10 && g.rotation > 3) {
                     model.rotate(256);
+                }
+
+                if (modelHasTransparentFacesForAnimatedFrameTs(input, model)) {
+                    groupHasAlpha = true;
                 }
 
                 // Opaque then alpha, matching TS addModelAnimFrame(false/true).
@@ -5109,6 +5230,9 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     }
                     *indexCount += generatedElements;
                 }
+            }
+            if (outGroupHasAlpha && groupHasAlpha) {
+                (*outGroupHasAlpha)[gi] = 1;
             }
             continue;
         }
@@ -5181,11 +5305,19 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                 }
             }
 
-            // Classic animation requires vertex label tables; match TS behavior (no labels => no-op).
+            // Classic animation uses vertex labels for transform ops and face labels for alpha ops.
+            // TS still applies alpha transforms even when vertex labels are absent.
             AnimLabelTables labelTables(alloc);
             const Status lts2 = buildAnimLabelTables(model, &labelTables, alloc);
-            if (!ok(lts2) || labelTables.vertexLabels.empty()) {
-                // If a model has no vertex skins, TS effectively performs a no-op animation transform.
+            if (!ok(lts2)) {
+                continue;
+            }
+
+            if (frame.hasAlphaTransform) {
+                const Status as = ensureAnimatedModelHasFaceAlphas(&model);
+                if (!ok(as)) {
+                    return as;
+                }
             }
 
             ModelFaceLightingState lighting(alloc);
@@ -5199,9 +5331,7 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
             else if (rot == 2) model.rotate180();
             else if (rot == 3) model.rotate90();
 
-            if (!labelTables.vertexLabels.empty()) {
-                applyBridgeSeqFrameToModelClassic(&model, labelTables, frameBase, frame);
-            }
+            applyBridgeSeqFrameToModelClassic(&model, labelTables, frameBase, frame);
 
             if (rot == 1) model.rotate90();
             else if (rot == 2) model.rotate180();
@@ -5210,6 +5340,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
             // TS getModelAnimated: apply diagonal rotation after animation transforms.
             if (g.placementType == 10 && g.rotation > 3) {
                 model.rotate(256);
+            }
+
+            if (modelHasTransparentFacesForAnimatedFrameTs(input, model)) {
+                groupHasAlpha = true;
             }
 
             // Opaque then alpha, matching TS addModelAnimFrame(false/true).
@@ -5240,6 +5374,15 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                 }
                 *indexCount += generatedElements;
             }
+        }
+        if (!groupHasAlpha) {
+            bool seqHintHasAlpha = false;
+            if (tryGetSeqAlphaHintFromBlob(input, g.seqId, &seqHintHasAlpha) && seqHintHasAlpha) {
+                groupHasAlpha = true;
+            }
+        }
+        if (outGroupHasAlpha && groupHasAlpha) {
+            (*outGroupHasAlpha)[gi] = 1;
         }
     }
     return Status::Ok;
@@ -5322,6 +5465,7 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
         return Status::Ok;
     }
 
+    Vec<u8> groupHasAlpha(alloc);
     const Status animGeoStatus = appendAnimatedLocFrameGeometryFromPlan(
         input,
         scene,
@@ -5330,12 +5474,41 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
         indexCount,
         locTypeCache,
         seqTypeCache,
+        &groupHasAlpha,
         alloc);
     if (!ok(animGeoStatus)) {
         return animGeoStatus;
     }
 
-    return emitLocAnimatedPlaceholders(entries, buffer);
+    if (entries.empty()) {
+        return Status::Ok;
+    }
+
+    // TS parity: placeholder alpha buckets are controlled by whether animation frames produce
+    // any transparent geometry for that animated group (`framesAlpha`), not by static model hints.
+    Vec<LocAnimatedPlaceholder> normalizedEntries(alloc);
+    auto rr = normalizedEntries.resize(entries.size());
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    for (std::size_t i = 0; i < entries.size(); i++) {
+        LocAnimatedPlaceholder entry = entries[i];
+        for (std::size_t gi = 0; gi < groups.size(); gi++) {
+            if (groups[gi].groupKey != entry.groupKey) {
+                continue;
+            }
+            if (gi < groupHasAlpha.size()) {
+                // TS parity: animated placeholder alpha is driven by emitted frame-alpha geometry.
+                entry.hasAlpha = groupHasAlpha[gi] != 0;
+            }
+            break;
+        }
+        normalizedEntries[i] = entry;
+    }
+
+    return emitLocAnimatedPlaceholders(
+        Span<const LocAnimatedPlaceholder>(normalizedEntries.data(), normalizedEntries.size()),
+        buffer);
 }
 
 Status appendLocPlanOpsFromMapLocBytes(

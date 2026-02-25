@@ -1,6 +1,6 @@
 #include "SceneBuffer.hpp"
 
-#include "SceneCommandPlan.hpp"
+#include "RuntimeCommandStreamPlan.hpp"
 #include "PackedVertex.hpp"
 #include "PackedVertexDedupe.hpp"
 
@@ -502,7 +502,7 @@ Status createModelInfoTextureData(
         return Status::OutOfRange;
     }
     const i32 cmdCount = static_cast<i32>(commands.size());
-    const i32 textureLength = sceneCommandModelInfoTextureLengthFromCounts(cmdCount, instanceCount);
+    const i32 textureLength = runtimeCommandModelInfoTextureLengthFromCounts(cmdCount, instanceCount);
     if (textureLength < 0) {
         return Status::OutOfRange;
     }

@@ -13,6 +13,7 @@
 #include "../core/StrUtil.hpp"
 #include "../map/LocPlacementsDecode.hpp"
 #include "../map/TerrainConstants.hpp"
+#include "../map/TerrainSquareDecode.hpp"
 #include "../model/ModelData.hpp"
 #include "../util/ColorUtil.hpp"
 #include "../util/HeightCalc.hpp"
@@ -1584,12 +1585,11 @@ static i32 hashLocTextureRemap(const LocType& locType) noexcept {
     return out;
 }
 
-static void applyLocModelMutationsForPlacement(
+static void applyLocModelMirrorForPlacement(
     ModelData* model,
     const LocType& locType,
     i32 placementType,
-    i32 rotation,
-    bool applyDiagonalNormalVariantRotation) noexcept {
+    i32 rotation) noexcept {
     if (!model) {
         return;
     }
@@ -1599,6 +1599,17 @@ static void applyLocModelMutationsForPlacement(
         (placementType == 2 && rotation > 3); // WALL_CORNER
     if (mirrored) {
         model->mirror();
+    }
+}
+
+static void applyLocModelPostMergeMutationsForPlacement(
+    ModelData* model,
+    const LocType& locType,
+    i32 placementType,
+    i32 rotation,
+    bool applyDiagonalNormalVariantRotation) noexcept {
+    if (!model) {
+        return;
     }
 
     if (placementType == 4 && rotation > 3) { // WALL_DECORATION_INSIDE
@@ -1648,6 +1659,21 @@ static void applyLocModelMutationsForPlacement(
     if (applyDiagonalNormalVariantRotation && placementType == 10 && rotation > 3) { // NORMAL diagonal variant
         model->rotate(256);
     }
+}
+
+static void applyLocModelMutationsForPlacement(
+    ModelData* model,
+    const LocType& locType,
+    i32 placementType,
+    i32 rotation,
+    bool applyDiagonalNormalVariantRotation) noexcept {
+    applyLocModelMirrorForPlacement(model, locType, placementType, rotation);
+    applyLocModelPostMergeMutationsForPlacement(
+        model,
+        locType,
+        placementType,
+        rotation,
+        applyDiagonalNormalVariantRotation);
 }
 
 Status tryDecodeLocTypeFromBlob(
@@ -3151,40 +3177,78 @@ Status appendLocPlacementGeometry(
     const i32 contourX = contourPxX;
     const i32 contourZ = contourPxZ;
 
+    const auto decodeModelRawById = [&](i32 modelId, ModelData* outModel) noexcept -> Status {
+        if (!outModel) {
+            return Status::InvalidArgument;
+        }
+        const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
+        if (blobIdx < 0) {
+            return Status::NotFound;
+        }
+        if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
+            blobIdx >= static_cast<i32>(input.modelLengths.size())) {
+            return Status::SizeMismatch;
+        }
+        const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
+        const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
+        if (off < 0 || len <= 0) {
+            return Status::NotFound;
+        }
+        if (off > static_cast<i32>(input.modelBytes.size()) ||
+            len > static_cast<i32>(input.modelBytes.size()) - off) {
+            return Status::OutOfRange;
+        }
+        return decodeModelData(
+            Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
+            outModel,
+            alloc);
+    };
+
     Vec<ModelData> decodedModels(alloc);
     auto rrDecodedReserve = decodedModels.reserve(modelIds.size());
     if (!rrDecodedReserve.isOk()) {
         return rrDecodedReserve.status();
     }
-    bool mergedHasFaceRenderPriorities = false;
-    i32 mergedPriority = -1;
     for (std::size_t mi = 0; mi < modelIds.size(); mi++) {
         ModelData model(alloc);
-        const Status ms = tryDecodeLocModelFromBlob(
-            input,
-            resolved,
-            placement.type,
-            placement.rotation,
-            modelIds[mi],
-            &model,
-            /*applyDiagonalNormalVariantRotation=*/true,
-            alloc);
+        const Status ms = decodeModelRawById(modelIds[mi], &model);
         if (!ok(ms)) {
             continue;
         }
-        if (model.hasFaceRenderPriorities) {
-            mergedHasFaceRenderPriorities = true;
-        } else {
-            if (mergedPriority == -1) {
-                mergedPriority = model.priority;
-            } else if (mergedPriority != model.priority) {
-                mergedHasFaceRenderPriorities = true;
-            }
-        }
+        // TS LocModelLoader.getLocModelData: mirror per source model before merge.
+        applyLocModelMirrorForPlacement(&model, resolved, placement.type, placement.rotation);
         auto rrDecoded = decodedModels.pushBack(rs::move(model));
         if (!rrDecoded.isOk()) {
             return rrDecoded.status();
         }
+    }
+
+    // TS parity: LocModelLoader merges all model IDs for a loc variant before contour/light emit.
+    if (decodedModels.size() > 1) {
+        ModelData mergedModel(alloc);
+        const Status mergeStatus = mergeModelDataTS(
+            Span<const ModelData>(decodedModels.data(), decodedModels.size()),
+            static_cast<i32>(decodedModels.size()),
+            &mergedModel,
+            alloc);
+        if (!ok(mergeStatus)) {
+            return mergeStatus;
+        }
+        decodedModels.clear();
+        auto rrMerged = decodedModels.pushBack(rs::move(mergedModel));
+        if (!rrMerged.isOk()) {
+            return rrMerged.status();
+        }
+    }
+
+    // TS LocModelLoader.getLocModelData: apply placement-level mutations after merge.
+    for (std::size_t mi = 0; mi < decodedModels.size(); mi++) {
+        applyLocModelPostMergeMutationsForPlacement(
+            &decodedModels[mi],
+            resolved,
+            placement.type,
+            placement.rotation,
+            /*applyDiagonalNormalVariantRotation=*/true);
     }
 
     for (std::size_t mi = 0; mi < decodedModels.size(); mi++) {
@@ -3481,7 +3545,7 @@ Status appendLocPlacementGeometry(
             i32 priority = 0;
             if (fi < static_cast<i32>(model.faceRenderPriorities.size())) {
                 priority = static_cast<i32>(model.faceRenderPriorities[static_cast<std::size_t>(fi)]);
-            } else if (mergedHasFaceRenderPriorities) {
+            } else if (model.hasFaceRenderPriorities) {
                 priority = model.priority;
             }
 
@@ -5018,6 +5082,85 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         alloc);
     if (!ok(sceneStatus)) {
         return sceneStatus;
+    }
+
+    // Deep terrain-probe diagnostics: verify whether runtime cache map-square bytes are reachable
+    // for the probed tile and what raw underlay/overlay decode from those bytes produces.
+    if (out->debugTerrainProbeLevel >= 0 &&
+        out->debugTerrainProbeTileX >= 0 &&
+        out->debugTerrainProbeTileY >= 0 &&
+        out->debugTerrainProbeTileX < input.sizeX &&
+        out->debugTerrainProbeTileY < input.sizeY) {
+        const i32 probeLevel = out->debugTerrainProbeLevel;
+        const i32 probeTileX = out->debugTerrainProbeTileX;
+        const i32 probeTileY = out->debugTerrainProbeTileY;
+        const i32 worldTileX = input.baseX + probeTileX;
+        const i32 worldTileY = input.baseY + probeTileY;
+        const i32 probeMapX = floorDiv(worldTileX, TerrainConstants::MAP_SQUARE_SIZE);
+        const i32 probeMapY = floorDiv(worldTileY, TerrainConstants::MAP_SQUARE_SIZE);
+        const i32 localTileX = worldTileX - probeMapX * TerrainConstants::MAP_SQUARE_SIZE;
+        const i32 localTileY = worldTileY - probeMapY * TerrainConstants::MAP_SQUARE_SIZE;
+        const i32 probeMapIdx = bytesProvider.findMapIndex(probeMapX, probeMapY);
+        const i32 probeTerrainOffset =
+            (probeMapIdx >= 0 && static_cast<std::size_t>(probeMapIdx) < bytesProvider.terrainOffsets.size())
+                ? bytesProvider.terrainOffsets[static_cast<std::size_t>(probeMapIdx)]
+                : -1;
+        const i32 probeTerrainLength =
+            (probeMapIdx >= 0 && static_cast<std::size_t>(probeMapIdx) < bytesProvider.terrainLengths.size())
+                ? bytesProvider.terrainLengths[static_cast<std::size_t>(probeMapIdx)]
+                : -1;
+
+        Vec<u8> probeTerrainBytes(alloc);
+        const Status probeLoadStatus =
+            bytesProvider.tryLoadTerrainBytes(probeMapX, probeMapY, &probeTerrainBytes);
+
+        i32 decodedProbeOverlay = -1;
+        i32 decodedProbeUnderlay = -1;
+        i32 decodedProbeShape = -1;
+        i32 decodeStatusI32 = static_cast<i32>(Status::NotFound);
+        if (ok(probeLoadStatus) && !probeTerrainBytes.empty() &&
+            probeLevel >= 0 && probeLevel < TerrainConstants::MAX_LEVELS &&
+            localTileX >= 0 && localTileX < TerrainConstants::MAP_SQUARE_SIZE &&
+            localTileY >= 0 && localTileY < TerrainConstants::MAP_SQUARE_SIZE) {
+            TerrainSquare probeDecoded{};
+            auto rr = probeDecoded.init(alloc);
+            if (rr.isOk()) {
+                const bool newTerrainFormat =
+                    cacheInfo.game == GameType::Oldschool && cacheInfo.revision >= 209;
+                const Status ds = decodeTerrainSquareFromBytesInto(
+                    probeDecoded,
+                    Span<const u8>(probeTerrainBytes.data(), probeTerrainBytes.size()),
+                    newTerrainFormat,
+                    probeMapX * TerrainConstants::MAP_SQUARE_SIZE,
+                    probeMapY * TerrainConstants::MAP_SQUARE_SIZE);
+                decodeStatusI32 = static_cast<i32>(ds);
+                if (ok(ds)) {
+                    decodedProbeOverlay =
+                        static_cast<i32>(probeDecoded.overlay(probeLevel, localTileX, localTileY));
+                    decodedProbeUnderlay =
+                        static_cast<i32>(probeDecoded.underlay(probeLevel, localTileX, localTileY));
+                    decodedProbeShape =
+                        static_cast<i32>(probeDecoded.shape(probeLevel, localTileX, localTileY));
+                }
+            }
+        }
+
+        // [45..63] reserved for SceneCommandBuilder pre-emit terrain probe diagnostics.
+        out->debugTerrainProbePacked[45] = worldTileX;
+        out->debugTerrainProbePacked[46] = worldTileY;
+        out->debugTerrainProbePacked[47] = probeMapX;
+        out->debugTerrainProbePacked[48] = probeMapY;
+        out->debugTerrainProbePacked[49] = localTileX;
+        out->debugTerrainProbePacked[50] = localTileY;
+        out->debugTerrainProbePacked[51] = probeMapIdx;
+        out->debugTerrainProbePacked[52] = probeTerrainOffset;
+        out->debugTerrainProbePacked[53] = probeTerrainLength;
+        out->debugTerrainProbePacked[54] = static_cast<i32>(probeLoadStatus);
+        out->debugTerrainProbePacked[55] = static_cast<i32>(probeTerrainBytes.size());
+        out->debugTerrainProbePacked[56] = decodeStatusI32;
+        out->debugTerrainProbePacked[57] = decodedProbeUnderlay;
+        out->debugTerrainProbePacked[58] = decodedProbeOverlay;
+        out->debugTerrainProbePacked[59] = decodedProbeShape;
     }
 
     // Debug: allow probing the scene heightmap directly, without relying on contouring codepaths.

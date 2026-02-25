@@ -67,6 +67,8 @@
 #include "../rs/loaders/CacheSession.hpp"
 #include "../rs/map/TerrainSquare.hpp"
 #include "../rs/map/TerrainSquareDecode.hpp"
+#include "../rs/render/SceneBuffer.hpp"
+#include "../rs/render/SceneCommandBuilder.hpp"
 #include "../rs/scene/BuildSceneFromMapBytesProvider.hpp"
 
 namespace {
@@ -2585,6 +2587,646 @@ static int test_skeletal_alpha_curve_selection_and_truncation(rs::Allocator& all
     return 0;
 }
 
+static int test_scene_buffer_command_emitter_and_pack(rs::Allocator& alloc) {
+    rs::SceneBuffer buffer{};
+    auto rr = buffer.init(alloc);
+    if (!rr.isOk()) {
+        return fail("SceneBuffer.init failed");
+    }
+
+    rs::ModelInfo opaqueInst{};
+    opaqueInst.sceneX = 3200;
+    opaqueInst.sceneZ = 3201;
+    opaqueInst.heightOffset = -16;
+    opaqueInst.level = 0;
+    opaqueInst.contourGround = static_cast<rs::i32>(rs::ContourGroundType::None);
+    opaqueInst.priority = 0;
+    opaqueInst.interactType = static_cast<rs::i32>(rs::InteractType::None);
+    opaqueInst.interactId = 0xffff;
+    const rs::Status sOpaqueMerged = buffer.emitMergedCommand(
+        12,
+        6,
+        rs::Span<const rs::ModelInfo>(&opaqueInst, 1),
+        /*transparent=*/false,
+        /*includeLod=*/true);
+    if (!rs::ok(sOpaqueMerged)) {
+        return fail("SceneBuffer.emitMergedCommand opaque failed");
+    }
+    const rs::Status sOpaqueInteract = buffer.emitInteractCommand(
+        12,
+        6,
+        rs::Span<const rs::ModelInfo>(&opaqueInst, 1),
+        /*transparent=*/false,
+        /*includeLod=*/true);
+    if (!rs::ok(sOpaqueInteract)) {
+        return fail("SceneBuffer.emitInteractCommand opaque failed");
+    }
+
+    rs::ModelInfo alphaInst{};
+    alphaInst.sceneX = 3210;
+    alphaInst.sceneZ = 3211;
+    alphaInst.heightOffset = 0;
+    alphaInst.level = 2;
+    alphaInst.contourGround = static_cast<rs::i32>(rs::ContourGroundType::None);
+    alphaInst.priority = 4;
+    alphaInst.interactType = static_cast<rs::i32>(rs::InteractType::Loc);
+    alphaInst.interactId = 102;
+    const rs::Status sAlphaMerged = buffer.emitMergedCommand(
+        24,
+        3,
+        rs::Span<const rs::ModelInfo>(&alphaInst, 1),
+        /*transparent=*/true,
+        /*includeLod=*/false);
+    if (!rs::ok(sAlphaMerged)) {
+        return fail("SceneBuffer.emitMergedCommand alpha failed");
+    }
+    const rs::Status sAlphaInteract = buffer.emitInteractCommand(
+        24,
+        3,
+        rs::Span<const rs::ModelInfo>(&alphaInst, 1),
+        /*transparent=*/true,
+        /*includeLod=*/false);
+    if (!rs::ok(sAlphaInteract)) {
+        return fail("SceneBuffer.emitInteractCommand alpha failed");
+    }
+
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::Base) != 1) return fail("SceneBuffer base count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::Alpha) != 1) return fail("SceneBuffer alpha count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::Lod) != 1) return fail("SceneBuffer lod count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::LodAlpha) != 0) return fail("SceneBuffer lodAlpha count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::Interact) != 1) return fail("SceneBuffer interact count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::InteractAlpha) != 1) return fail("SceneBuffer interactAlpha count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::InteractLod) != 1) return fail("SceneBuffer interactLod count mismatch");
+    if (buffer.bucketCommandCount(rs::DrawBucketKey::InteractLodAlpha) != 0) return fail("SceneBuffer interactLodAlpha count mismatch");
+
+    rs::SceneCommandStream stream{};
+    auto rrStream = stream.init(alloc);
+    if (!rrStream.isOk()) {
+        return fail("SceneBuffer stream init failed");
+    }
+    stream.clear();
+    const rs::Status sStream = buffer.appendCommandStream(&stream, alloc);
+    if (!rs::ok(sStream)) {
+        return fail("SceneBuffer.appendCommandStream failed");
+    }
+    if (stream.cmdBucketIndices.size() != 6) return fail("SceneBuffer stream command count mismatch");
+    const rs::i32 expectedBuckets[] = {0, 1, 2, 4, 5, 6};
+    const rs::i32 expectedOffsets[] = {12, 24, 12, 12, 24, 12};
+    const rs::i32 expectedElements[] = {6, 3, 6, 6, 3, 6};
+    const rs::i32 expectedInstanceCounts[] = {1, 1, 1, 1, 1, 1};
+    for (std::size_t i = 0; i < 6; i++) {
+        if (stream.cmdBucketIndices[i] != expectedBuckets[i]) return fail("SceneBuffer stream bucket mismatch");
+        if (stream.cmdOffsets[i] != expectedOffsets[i]) return fail("SceneBuffer stream offset mismatch");
+        if (stream.cmdElements[i] != expectedElements[i]) return fail("SceneBuffer stream elements mismatch");
+        if (stream.cmdInstanceCounts[i] != expectedInstanceCounts[i]) return fail("SceneBuffer stream instanceCount mismatch");
+    }
+    if (stream.cmdPackedInstances.size() != static_cast<std::size_t>(6 * rs::kSceneCommandInstanceStrideInts)) {
+        return fail("SceneBuffer packed instance length mismatch");
+    }
+
+    rs::Vec<rs::i32> baseDrawRanges(alloc);
+    const rs::Status sRanges = rs::packDrawRangesForBucket(
+        buffer,
+        rs::DrawBucketKey::Base,
+        &baseDrawRanges,
+        alloc);
+    if (!rs::ok(sRanges)) {
+        return fail("packDrawRangesForBucket(base) failed");
+    }
+    if (baseDrawRanges.size() != 3 || baseDrawRanges[0] != 12 || baseDrawRanges[1] != 6 || baseDrawRanges[2] != 1) {
+        return fail("packDrawRangesForBucket(base) output mismatch");
+    }
+
+    rs::Vec<rs::u16> baseModelInfo(alloc);
+    const rs::Status sModelInfo = rs::createModelInfoTextureData(
+        buffer,
+        rs::DrawBucketKey::Base,
+        &baseModelInfo,
+        alloc);
+    if (!rs::ok(sModelInfo)) {
+        return fail("createModelInfoTextureData(base) failed");
+    }
+    if (baseModelInfo.size() < 8) {
+        return fail("createModelInfoTextureData(base) length mismatch");
+    }
+    if (baseModelInfo[0] != 1) return fail("createModelInfoTextureData(base) header mismatch");
+    if (baseModelInfo[4] != 3200u) return fail("createModelInfoTextureData(base) sceneX packed mismatch");
+    if (baseModelInfo[5] != static_cast<rs::u16>(3201u | (2u << 14))) return fail("createModelInfoTextureData(base) sceneZ packed mismatch");
+    if (baseModelInfo[6] != static_cast<rs::u16>(65408u)) return fail("createModelInfoTextureData(base) packed meta mismatch");
+    if (baseModelInfo[7] != static_cast<rs::u16>(0xffffu)) return fail("createModelInfoTextureData(base) interactId mismatch");
+
+    return 0;
+}
+
+static int test_scene_command_builder_loc_stage_placement_meta(rs::Allocator& alloc) {
+    rs::LocType loc{};
+    loc.id = 123;
+    loc.seqId = -1;
+    loc.contourGroundType = 2;
+    loc.randomSeqIds = rs::Vec<rs::i32>(alloc);
+    auto rr = loc.randomSeqIds.pushBack(77);
+    if (!rr.isOk()) {
+        return fail("scene-command loc stage: randomSeqIds push failed");
+    }
+
+    rs::SceneLocRenderPlacementStageOutput out{};
+    rs::SceneLocRenderPlacementStageInput input{};
+    input.resolvedLocType = &loc;
+    input.placementId = 42;
+    input.placementType = 22;
+    input.baseHadTransforms = false;
+    input.lowDetailPlacement = false;
+
+    rs::Status s = rs::deriveSceneLocRenderPlacementStage(input, &out);
+    if (!rs::ok(s)) {
+        return fail("scene-command loc stage: derive failed");
+    }
+    if (out.seqId != 77) return fail("scene-command loc stage: expected random seq fallback");
+    if (out.priority != 3) return fail("scene-command loc stage: expected floor priority=3");
+    if (out.interactId != loc.id) return fail("scene-command loc stage: interact id mismatch");
+    if (!out.includeLod) return fail("scene-command loc stage: includeLod mismatch");
+    if (!out.forceMerge) return fail("scene-command loc stage: forceMerge mismatch");
+    if (!out.sourceIsEntity) return fail("scene-command loc stage: sourceIsEntity mismatch");
+
+    rs::LocType transformed{};
+    transformed.id = 456;
+    transformed.seqId = -1;
+    transformed.contourGroundType = 1;
+    transformed.randomSeqIds = rs::Vec<rs::i32>(alloc);
+    transformed.transforms = rs::Vec<rs::i32>(alloc);
+    rr = transformed.transforms.pushBack(5);
+    if (!rr.isOk()) {
+        return fail("scene-command loc stage: transforms push failed");
+    }
+
+    input.resolvedLocType = &transformed;
+    input.placementId = 99;
+    input.placementType = 5;
+    input.baseHadTransforms = false;
+    input.lowDetailPlacement = true;
+
+    s = rs::deriveSceneLocRenderPlacementStage(input, &out);
+    if (!rs::ok(s)) {
+        return fail("scene-command loc stage: derive transformed failed");
+    }
+    if (out.seqId != -1) return fail("scene-command loc stage: seq should stay -1");
+    if (out.priority != 10) return fail("scene-command loc stage: expected wall-decor priority=10");
+    if (out.interactId != transformed.id) return fail("scene-command loc stage: transformed interact id mismatch");
+    if (out.includeLod) return fail("scene-command loc stage: low-detail includeLod mismatch");
+    if (out.forceMerge) return fail("scene-command loc stage: transformed forceMerge mismatch");
+    if (!out.sourceIsEntity) return fail("scene-command loc stage: transformed should be entity");
+
+    input.resolvedLocType = &transformed;
+    input.baseHadTransforms = true;
+    transformed.transforms.clear();
+    s = rs::deriveSceneLocRenderPlacementStage(input, &out);
+    if (!rs::ok(s) || !out.sourceIsEntity) {
+        return fail("scene-command loc stage: base transforms should force entity source");
+    }
+
+    s = rs::deriveSceneLocRenderPlacementStage(input, nullptr);
+    if (s != rs::Status::InvalidArgument) {
+        return fail("scene-command loc stage: expected invalid arg for null out");
+    }
+
+    rs::SceneLocRenderPlacementStageInput invalid{};
+    s = rs::deriveSceneLocRenderPlacementStage(invalid, &out);
+    if (s != rs::Status::InvalidArgument) {
+        return fail("scene-command loc stage: expected invalid arg for null loc type");
+    }
+
+    return 0;
+}
+
+static int test_scene_command_builder_loc_variant_expansion() {
+    rs::SceneLocPlacementModelVariant out[2]{};
+
+    auto expectOne = [&](rs::i32 placementType, rs::i32 rotation, rs::i32 expectedType, rs::i32 expectedRotation, const char* label) -> int {
+        const rs::i32 count = rs::expandSceneLocPlacementModelVariants(placementType, rotation, out, 2);
+        if (count != 1) return fail(std::string("scene-command variant expand(") + label + "): expected count=1");
+        if (out[0].placementType != expectedType || out[0].rotation != expectedRotation) {
+            return fail(std::string("scene-command variant expand(") + label + "): variant mismatch");
+        }
+        return 0;
+    };
+
+    if (int r = expectOne(10, 2, 10, 2, "normal")) return r;
+    if (int r = expectOne(11, 2, 10, 6, "normal-diagonal")) return r;
+    if (int r = expectOne(5, 3, 4, 3, "wall-decor-outside")) return r;
+    if (int r = expectOne(6, 1, 4, 5, "wall-decor-diagonal-outside")) return r;
+    if (int r = expectOne(7, 3, 4, 5, "wall-decor-diagonal-inside")) return r;
+    if (int r = expectOne(9, 1, 9, 1, "wall-diagonal")) return r;
+
+    rs::i32 count = rs::expandSceneLocPlacementModelVariants(2, 1, out, 2);
+    if (count != 2) return fail("scene-command variant expand(wall-corner): expected count=2");
+    if (out[0].placementType != 2 || out[0].rotation != 5 || out[1].placementType != 2 || out[1].rotation != 2) {
+        return fail("scene-command variant expand(wall-corner): variants mismatch");
+    }
+
+    count = rs::expandSceneLocPlacementModelVariants(8, 3, out, 2);
+    if (count != 2) return fail("scene-command variant expand(wall-decor-diagonal-double): expected count=2");
+    if (out[0].placementType != 4 || out[0].rotation != 7 || out[1].placementType != 4 || out[1].rotation != 5) {
+        return fail("scene-command variant expand(wall-decor-diagonal-double): variants mismatch");
+    }
+
+    count = rs::expandSceneLocPlacementModelVariants(2, 1, out, 1);
+    if (count != 1 || out[0].placementType != 2 || out[0].rotation != 5) {
+        return fail("scene-command variant expand(capacity=1): truncation mismatch");
+    }
+
+    count = rs::expandSceneLocPlacementModelVariants(10, 0, nullptr, 2);
+    if (count != 0) {
+        return fail("scene-command variant expand(null): expected count=0");
+    }
+
+    count = rs::expandSceneLocPlacementModelVariants(10, 0, out, 0);
+    if (count != 0) {
+        return fail("scene-command variant expand(capacity=0): expected count=0");
+    }
+
+    return 0;
+}
+
+static int test_scene_command_builder_loc_group_key_equality() {
+    rs::SceneLocCommandGroupKey a{};
+    a.modelSignature = 123;
+    a.placementType = 10;
+    a.rotation = 2;
+    a.forceMerge = false;
+    a.contourSensitive = false;
+    a.contourSceneHeight = 111;
+    a.contourSceneX = 222;
+    a.contourSceneZ = 333;
+    a.contourGround = 1;
+
+    rs::SceneLocCommandGroupKey b = a;
+    b.contourSceneHeight = 999;
+    b.contourSceneX = 998;
+    b.contourSceneZ = 997;
+    b.contourGround = 2;
+    if (!rs::sceneLocCommandGroupKeysEqual(a, b)) {
+        return fail("scene-command group key: contour fields should be ignored when non-sensitive");
+    }
+
+    a.contourSensitive = true;
+    b.contourSensitive = true;
+    b.contourSceneHeight = a.contourSceneHeight;
+    b.contourSceneX = a.contourSceneX;
+    b.contourSceneZ = a.contourSceneZ;
+    b.contourGround = a.contourGround;
+    if (!rs::sceneLocCommandGroupKeysEqual(a, b)) {
+        return fail("scene-command group key: expected equal contour-sensitive keys");
+    }
+
+    b.contourSceneX = a.contourSceneX + 77;
+    b.contourSceneZ = a.contourSceneZ + 88;
+    if (!rs::sceneLocCommandGroupKeysEqual(a, b)) {
+        return fail("scene-command group key: contour-sensitive position should be ignored");
+    }
+
+    b.contourGround = a.contourGround + 1;
+    if (rs::sceneLocCommandGroupKeysEqual(a, b)) {
+        return fail("scene-command group key: contour-sensitive mismatch should differ");
+    }
+
+    b = a;
+    b.forceMerge = !a.forceMerge;
+    if (rs::sceneLocCommandGroupKeysEqual(a, b)) {
+        return fail("scene-command group key: forceMerge mismatch should differ");
+    }
+
+    return 0;
+}
+
+static int test_scene_command_builder_native_terrain_no_seed(rs::Allocator& alloc) {
+    const std::size_t tileCountAllLevels =
+        static_cast<std::size_t>(rs::TerrainConstants::MAX_LEVELS) *
+        static_cast<std::size_t>(rs::TerrainConstants::MAP_SQUARE_SIZE) *
+        static_cast<std::size_t>(rs::TerrainConstants::MAP_SQUARE_SIZE);
+    const std::size_t terrainBytesLen = tileCountAllLevels * 2;
+    rs::Vec<rs::u8> terrainBytes(alloc);
+    auto rr = terrainBytes.resize(terrainBytesLen);
+    if (!rr.isOk()) {
+        return fail("native terrain no-seed: terrain bytes alloc failed");
+    }
+    for (std::size_t i = 0; i < tileCountAllLevels; i++) {
+        // old terrain format: [82, 0] => underlay=1 then terminate tile data
+        terrainBytes[i * 2 + 0] = 82;
+        terrainBytes[i * 2 + 1] = 0;
+    }
+
+    const rs::i32 mapSquareIds[] = {0};
+    const rs::i32 terrainOffsets[] = {0};
+    const rs::i32 terrainLengths[] = {static_cast<rs::i32>(terrainBytesLen)};
+    const rs::i32 locOffsets[] = {-1};
+    const rs::i32 locLengths[] = {-1};
+    // Provide a minimal underlay type so the scene build can compute blended-underlay colors
+    // and the terrain builder can emit geometry even in this synthetic test.
+    const rs::i32 underlayTypeIds[] = {0};
+    const rs::i32 underlayTypeOffsets[] = {0};
+    const rs::i32 underlayTypeLengths[] = {1};
+    const rs::u8 underlayTypeBytes[] = {0}; // opcode 0 terminator
+
+    rs::SceneCommandBuildInput input{};
+    input.baseX = 0;
+    input.baseY = 0;
+    input.sizeX = 64;
+    input.sizeY = 64;
+    input.locLoadType = 1; // NoModels
+    input.cacheGame = static_cast<rs::i32>(rs::GameType::Runescape);
+    input.cacheRevision = 200;
+    input.unitsTileHeightBasis = 8;
+    input.mapSquareIds = rs::Span<const rs::i32>(mapSquareIds, 1);
+    input.terrainOffsets = rs::Span<const rs::i32>(terrainOffsets, 1);
+    input.terrainLengths = rs::Span<const rs::i32>(terrainLengths, 1);
+    input.terrainBytes = rs::Span<const rs::u8>(terrainBytes.data(), terrainBytes.size());
+    input.locOffsets = rs::Span<const rs::i32>(locOffsets, 1);
+    input.locLengths = rs::Span<const rs::i32>(locLengths, 1);
+    input.locBytes = rs::Span<const rs::u8>(nullptr, 0);
+    input.underlayTypeIds = rs::Span<const rs::i32>(underlayTypeIds, 1);
+    input.underlayTypeOffsets = rs::Span<const rs::i32>(underlayTypeOffsets, 1);
+    input.underlayTypeLengths = rs::Span<const rs::i32>(underlayTypeLengths, 1);
+    input.underlayTypeBytes = rs::Span<const rs::u8>(underlayTypeBytes, 1);
+
+    rs::SceneCommandStream out{};
+    const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
+    if (!rs::ok(s)) {
+        return fail("native terrain no-seed: buildSceneCommandStream failed");
+    }
+    if (out.cmdBucketIndices.size() < 4) {
+        return fail("native terrain no-seed: expected terrain commands");
+    }
+    if (out.cmdBucketIndices[0] != 0) return fail("native terrain no-seed: expected base first bucket");
+    if (out.cmdOffsets[0] != 0) return fail("native terrain no-seed: expected first offset 0");
+    if (out.cmdElements[0] <= 0) return fail("native terrain no-seed: expected positive elements");
+    if (out.cmdInstanceCounts[0] != 1) return fail("native terrain no-seed: expected single instance");
+
+    rs::SceneCommandBuildInput modelsNoLocInput = input;
+    modelsNoLocInput.locLoadType = 0; // Models
+    rs::SceneCommandStream outModelsNoLoc{};
+    const rs::Status sModelsNoLoc =
+        rs::buildSceneCommandStream(modelsNoLocInput, &outModelsNoLoc, alloc);
+    if (!rs::ok(sModelsNoLoc)) {
+        return fail("native terrain no-seed(models-no-loc): buildSceneCommandStream failed");
+    }
+    if (outModelsNoLoc.cmdOffsets.size() != out.cmdOffsets.size()) {
+        return fail("native terrain no-seed(models-no-loc): command count mismatch");
+    }
+
+    return 0;
+}
+
+static int test_scene_command_builder_validation_edges(rs::Allocator& alloc) {
+    const std::size_t tileCountAllLevels =
+        static_cast<std::size_t>(rs::TerrainConstants::MAX_LEVELS) *
+        static_cast<std::size_t>(rs::TerrainConstants::MAP_SQUARE_SIZE) *
+        static_cast<std::size_t>(rs::TerrainConstants::MAP_SQUARE_SIZE);
+    const std::size_t terrainBytesLen = tileCountAllLevels * 2;
+    rs::Vec<rs::u8> terrainBytes(alloc);
+    auto rr = terrainBytes.resize(terrainBytesLen);
+    if (!rr.isOk()) {
+        return fail("scene-command validation: terrain alloc failed");
+    }
+    for (std::size_t i = 0; i < tileCountAllLevels; i++) {
+        terrainBytes[i * 2 + 0] = 82;
+        terrainBytes[i * 2 + 1] = 0;
+    }
+
+    const rs::i32 mapSquareIds[] = {0};
+    const rs::i32 terrainOffsets[] = {0};
+    const rs::i32 terrainLengths[] = {static_cast<rs::i32>(terrainBytesLen)};
+    const rs::i32 locOffsetsEmpty[] = {-1};
+    const rs::i32 locLengthsEmpty[] = {-1};
+    const rs::u8 locBytesWithPlacement[] = {
+        1, // first idDelta => id=0
+        0x82, 0x8B, // first posDelta => local(10,10), level 0
+        0, // attrs => type 0, rot 0
+        0, // end positions for id
+        0, // end ids
+    };
+    const rs::i32 locOffsetsOne[] = {0};
+    const rs::i32 locLengthsOne[] = {static_cast<rs::i32>(sizeof(locBytesWithPlacement))};
+
+    rs::SceneCommandBuildInput base{};
+    base.baseX = 0;
+    base.baseY = 0;
+    base.sizeX = 64;
+    base.sizeY = 64;
+    base.cacheGame = static_cast<rs::i32>(rs::GameType::Runescape);
+    base.cacheRevision = 200;
+    base.unitsTileHeightBasis = 8;
+    base.mapSquareIds = rs::Span<const rs::i32>(mapSquareIds, 1);
+    base.terrainOffsets = rs::Span<const rs::i32>(terrainOffsets, 1);
+    base.terrainLengths = rs::Span<const rs::i32>(terrainLengths, 1);
+    base.terrainBytes = rs::Span<const rs::u8>(terrainBytes.data(), terrainBytes.size());
+    base.locOffsets = rs::Span<const rs::i32>(locOffsetsEmpty, 1);
+    base.locLengths = rs::Span<const rs::i32>(locLengthsEmpty, 1);
+    base.locBytes = rs::Span<const rs::u8>(nullptr, 0);
+
+    {
+        rs::SceneCommandBuildInput input = base;
+        input.locLoadType = 2;
+        rs::SceneCommandStream out{};
+        const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
+        if (s != rs::Status::InvalidArgument) {
+            return fail("scene-command validation: expected InvalidArgument for locLoadType");
+        }
+    }
+
+    {
+        rs::SceneCommandBuildInput input = base;
+        input.locLoadType = 0;
+        input.locOffsets = rs::Span<const rs::i32>(locOffsetsOne, 1);
+        input.locLengths = rs::Span<const rs::i32>(locLengthsOne, 1);
+        input.locBytes = rs::Span<const rs::u8>(locBytesWithPlacement, sizeof(locBytesWithPlacement));
+        const rs::i32 locTypeIds[] = {0};
+        input.locTypeIds = rs::Span<const rs::i32>(locTypeIds, 1);
+        // Mismatched locType arrays should be rejected before decode/build.
+        rs::SceneCommandStream out{};
+        const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
+        if (s != rs::Status::SizeMismatch) {
+            return fail("scene-command validation: expected SizeMismatch for loc type array mismatch");
+        }
+    }
+
+    {
+        rs::SceneCommandBuildInput input = base;
+        input.locLoadType = 1;
+        const rs::i32 seqTypeIds[] = {0};
+        const rs::i32 seqTypeOffsets[] = {0};
+        const rs::i32 seqTypeLengths[] = {1};
+        input.seqTypeIds = rs::Span<const rs::i32>(seqTypeIds, 1);
+        input.seqTypeOffsets = rs::Span<const rs::i32>(seqTypeOffsets, 1);
+        input.seqTypeLengths = rs::Span<const rs::i32>(seqTypeLengths, 1);
+        input.seqTypeBytes = rs::Span<const rs::u8>(nullptr, 0);
+        rs::SceneCommandStream out{};
+        const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
+        if (s != rs::Status::OutOfRange) {
+            return fail("scene-command validation: expected OutOfRange for seq type payload");
+        }
+    }
+
+    return 0;
+}
+
+static int test_scene_command_builder_plan_only_no_geometry(rs::Allocator& alloc) {
+    const std::size_t tileCountAllLevels =
+        static_cast<std::size_t>(rs::TerrainConstants::MAX_LEVELS) *
+        static_cast<std::size_t>(rs::TerrainConstants::MAP_SQUARE_SIZE) *
+        static_cast<std::size_t>(rs::TerrainConstants::MAP_SQUARE_SIZE);
+    const std::size_t terrainBytesLen = tileCountAllLevels * 2;
+    rs::Vec<rs::u8> terrainBytes(alloc);
+    auto rr = terrainBytes.resize(terrainBytesLen);
+    if (!rr.isOk()) {
+        return fail("scene-command plan-only: terrain bytes alloc failed");
+    }
+    for (std::size_t i = 0; i < tileCountAllLevels; i++) {
+        terrainBytes[i * 2 + 0] = 82;
+        terrainBytes[i * 2 + 1] = 0;
+    }
+
+    const rs::i32 mapSquareIds[] = {0};
+    const rs::i32 terrainOffsets[] = {0};
+    const rs::i32 terrainLengths[] = {static_cast<rs::i32>(terrainBytesLen)};
+    const rs::i32 locOffsets[] = {-1};
+    const rs::i32 locLengths[] = {-1};
+    const rs::i32 underlayTypeIds[] = {0};
+    const rs::i32 underlayTypeOffsets[] = {0};
+    const rs::i32 underlayTypeLengths[] = {1};
+    const rs::u8 underlayTypeBytes[] = {0};
+
+    rs::SceneCommandBuildInput input{};
+    input.baseX = 0;
+    input.baseY = 0;
+    input.sizeX = 64;
+    input.sizeY = 64;
+    input.locLoadType = 1; // NoModels
+    input.cacheGame = static_cast<rs::i32>(rs::GameType::Runescape);
+    input.cacheRevision = 200;
+    input.unitsTileHeightBasis = 8;
+    input.mapSquareIds = rs::Span<const rs::i32>(mapSquareIds, 1);
+    input.terrainOffsets = rs::Span<const rs::i32>(terrainOffsets, 1);
+    input.terrainLengths = rs::Span<const rs::i32>(terrainLengths, 1);
+    input.terrainBytes = rs::Span<const rs::u8>(terrainBytes.data(), terrainBytes.size());
+    input.locOffsets = rs::Span<const rs::i32>(locOffsets, 1);
+    input.locLengths = rs::Span<const rs::i32>(locLengths, 1);
+    input.locBytes = rs::Span<const rs::u8>(nullptr, 0);
+    input.underlayTypeIds = rs::Span<const rs::i32>(underlayTypeIds, 1);
+    input.underlayTypeOffsets = rs::Span<const rs::i32>(underlayTypeOffsets, 1);
+    input.underlayTypeLengths = rs::Span<const rs::i32>(underlayTypeLengths, 1);
+    input.underlayTypeBytes = rs::Span<const rs::u8>(underlayTypeBytes, 1);
+
+    rs::SceneCommandStream full{};
+    rs::SceneCommandStream planOnly{};
+    const rs::Status fs = rs::buildSceneCommandStream(input, &full, alloc);
+    if (!rs::ok(fs)) {
+        return fail("scene-command plan-only: buildSceneCommandStream failed");
+    }
+    const rs::Status ps = rs::buildSceneCommandPlanOnly(input, &planOnly, alloc);
+    if (!rs::ok(ps)) {
+        return fail("scene-command plan-only: buildSceneCommandPlanOnly failed");
+    }
+
+    if (!planOnly.vertices.empty() || !planOnly.indices.empty() ||
+        !planOnly.cmdBucketIndices.empty() || !planOnly.cmdOffsets.empty() ||
+        !planOnly.cmdElements.empty() || !planOnly.cmdInstanceCounts.empty() ||
+        !planOnly.cmdPackedInstances.empty()) {
+        return fail("scene-command plan-only: expected no geometry/commands");
+    }
+
+    // Plan-only should match full build plan digest even when geometry is emitted in full mode.
+    if (planOnly.debugSceneCommandPlanSeqHash != full.debugSceneCommandPlanSeqHash) {
+        return fail("scene-command plan-only: plan seq hash mismatch");
+    }
+    if (planOnly.debugSceneCommandPlanMultisetHashXor != full.debugSceneCommandPlanMultisetHashXor) {
+        return fail("scene-command plan-only: plan multiset xor mismatch");
+    }
+    if (planOnly.debugSceneCommandPlanMultisetHashSum != full.debugSceneCommandPlanMultisetHashSum) {
+        return fail("scene-command plan-only: plan multiset sum mismatch");
+    }
+    if (planOnly.debugSceneCommandPlanOpsPacked.size() != full.debugSceneCommandPlanOpsPacked.size()) {
+        return fail("scene-command plan-only: plan op packed length mismatch");
+    }
+    for (std::size_t i = 0; i < planOnly.debugSceneCommandPlanOpsPacked.size(); i++) {
+        if (planOnly.debugSceneCommandPlanOpsPacked[i] != full.debugSceneCommandPlanOpsPacked[i]) {
+            return fail("scene-command plan-only: plan op packed mismatch");
+        }
+    }
+
+    return 0;
+}
+
+static int test_model_data_loc_mutation_ops(rs::Allocator& alloc) {
+    auto makeModel = [&](rs::ModelData* out) -> bool {
+        if (!out) return false;
+        *out = rs::ModelData(alloc);
+        rs::Status s = rs::initModelCoreArrays(out, 3, 1);
+        if (!rs::ok(s)) return false;
+        out->verticesX[0] = 1; out->verticesY[0] = 2; out->verticesZ[0] = 3;
+        out->verticesX[1] = 4; out->verticesY[1] = 5; out->verticesZ[1] = 6;
+        out->verticesX[2] = 7; out->verticesY[2] = 8; out->verticesZ[2] = 9;
+        out->indices1[0] = 0;
+        out->indices2[0] = 1;
+        out->indices3[0] = 2;
+        out->faceColors[0] = static_cast<rs::u16>(10);
+        out->hasFaceTextures = true;
+        auto rr = out->faceTextures.resize(1);
+        if (!rr.isOk()) return false;
+        out->faceTextures[0] = static_cast<rs::i16>(100);
+        return true;
+    };
+
+    {
+        rs::ModelData m(alloc);
+        if (!makeModel(&m)) return fail("ModelData mutate: setup failed");
+        m.mirror();
+        if (m.verticesZ[0] != -3 || m.verticesZ[1] != -6 || m.verticesZ[2] != -9) {
+            return fail("ModelData mutate: mirror z mismatch");
+        }
+        if (m.indices1[0] != 2 || m.indices3[0] != 0) {
+            return fail("ModelData mutate: mirror index swap mismatch");
+        }
+    }
+    {
+        rs::ModelData m(alloc);
+        if (!makeModel(&m)) return fail("ModelData mutate: setup failed");
+        m.rotate90();
+        if (m.verticesX[0] != 3 || m.verticesZ[0] != -1) {
+            return fail("ModelData mutate: rotate90 mismatch");
+        }
+        m.rotate180();
+        if (m.verticesX[0] != -3 || m.verticesZ[0] != 1) {
+            return fail("ModelData mutate: rotate180 mismatch");
+        }
+        m.rotate270();
+        if (m.verticesX[0] != -1 || m.verticesZ[0] != -3) {
+            return fail("ModelData mutate: rotate270 mismatch");
+        }
+    }
+    {
+        rs::ModelData m(alloc);
+        if (!makeModel(&m)) return fail("ModelData mutate: setup failed");
+        m.recolor(10, 22);
+        m.retexture(100, 250);
+        if (m.faceColors[0] != static_cast<rs::u16>(22)) {
+            return fail("ModelData mutate: recolor mismatch");
+        }
+        if (m.faceTextures[0] != static_cast<rs::i16>(250)) {
+            return fail("ModelData mutate: retexture mismatch");
+        }
+    }
+    {
+        rs::ModelData m(alloc);
+        if (!makeModel(&m)) return fail("ModelData mutate: setup failed");
+        m.resize(256, 64, 128);
+        m.translate(5, -3, 2);
+        if (m.verticesX[0] != 7 || m.verticesY[0] != -2 || m.verticesZ[0] != 5) {
+            return fail("ModelData mutate: resize/translate mismatch");
+        }
+    }
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -2611,13 +3253,21 @@ int main() {
         if (int r = test_skeletal_eval_curve_supported(alloc)) return r;
         if (int r = test_seqtype_frame_length_edge_cases(alloc)) return r;
         if (int r = test_skeletal_alpha_curve_selection_and_truncation(alloc)) return r;
-	        if (int r = test_sprite_texture_loader_pixels(alloc, compression)) return r;
+        if (int r = test_scene_buffer_command_emitter_and_pack(alloc)) return r;
+        if (int r = test_scene_command_builder_loc_stage_placement_meta(alloc)) return r;
+        if (int r = test_scene_command_builder_loc_variant_expansion()) return r;
+        if (int r = test_scene_command_builder_loc_group_key_equality()) return r;
+        if (int r = test_scene_command_builder_native_terrain_no_seed(alloc)) return r;
+        if (int r = test_scene_command_builder_validation_edges(alloc)) return r;
+        if (int r = test_scene_command_builder_plan_only_no_geometry(alloc)) return r;
+        if (int r = test_model_data_loc_mutation_ops(alloc)) return r;
+        if (int r = test_sprite_texture_loader_pixels(alloc, compression)) return r;
 
-	        if (int r = test_config_floor_types(alloc)) return r;
-	        if (int r = test_config_misc_goldens(alloc)) return r;
+        if (int r = test_config_floor_types(alloc)) return r;
+        if (int r = test_config_misc_goldens(alloc)) return r;
 
-	        if (int r = [&]() -> int {
-	        {
+        if (int r = [&]() -> int {
+        {
 	            // Config decode: IdkType (Identity Kit) with arrays.
 	            const rs::CacheInfo cacheInfo{
 	                .name = "test",

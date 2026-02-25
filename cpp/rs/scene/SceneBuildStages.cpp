@@ -320,8 +320,13 @@ static void calculateTileLightsForLevel(SceneData& scene, i32 level) noexcept {
             const i32 heightDeltaX = scene.height(level, x + 1, y) - scene.height(level, x - 1, y);
             const i32 heightDeltaY = scene.height(level, x, y + 1) - scene.height(level, x, y - 1);
 
+            // TS uses Number (double) math here; keep the intermediate in i64 to avoid i32 overflow.
+            const i64 sumSquares =
+                static_cast<i64>(heightDeltaY) * static_cast<i64>(heightDeltaY) +
+                static_cast<i64>(heightDeltaX) * static_cast<i64>(heightDeltaX) +
+                static_cast<i64>(kHeightScale);
             const i32 tileNormalLength = static_cast<i32>(
-                std::sqrt(static_cast<double>(heightDeltaY * heightDeltaY + heightDeltaX * heightDeltaX + kHeightScale)));
+                std::sqrt(static_cast<double>(sumSquares)));
             if (tileNormalLength <= 0) {
                 continue;
             }
@@ -334,7 +339,16 @@ static void calculateTileLightsForLevel(SceneData& scene, i32 level) noexcept {
             const double lit = static_cast<double>(dot) / static_cast<double>(lightIntensity) +
                 static_cast<double>(kLightIntensityBase);
             const i32 sunLight = static_cast<i32>(std::trunc(lit));
-            const u16 wrapped = static_cast<u16>(static_cast<u32>(sunLight) & 0xFFFFu);
+
+            const i32 lightOcclusion =
+                (static_cast<i32>(scene.lightOcclusion(level, x - 1, y)) >> 2) +
+                (static_cast<i32>(scene.lightOcclusion(level, x, y - 1)) >> 2) +
+                (static_cast<i32>(scene.lightOcclusion(level, x + 1, y)) >> 3) +
+                (static_cast<i32>(scene.lightOcclusion(level, x, y + 1)) >> 3) +
+                (static_cast<i32>(scene.lightOcclusion(level, x, y)) >> 1);
+
+            const i32 shadedLight = sunLight - lightOcclusion;
+            const u16 wrapped = static_cast<u16>(static_cast<u32>(shadedLight) & 0xFFFFu);
             scene.lightValue(level, x, y) = static_cast<i16>(wrapped);
         }
     }
@@ -492,6 +506,135 @@ Status decodeLocsStage(
         return services.locTypes->tryLoad(id, out);
     };
 
+    const std::size_t tileCount =
+        static_cast<std::size_t>(scene->levels) *
+        static_cast<std::size_t>(scene->sizeX) *
+        static_cast<std::size_t>(scene->sizeY);
+
+    Vec<u8> locCounts(scene->allocator());
+    Vec<i32> floorSlots(scene->allocator());
+    Vec<i32> wallSlots0(scene->allocator());
+    Vec<i32> wallSlots1(scene->allocator());
+    Vec<i32> wallDecorationSlots0(scene->allocator());
+    Vec<i32> wallDecorationSlots1(scene->allocator());
+    Vec<i32> wallDecorDispByTile(scene->allocator());
+
+    auto rr = locCounts.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = floorSlots.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = wallSlots0.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = wallSlots1.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = wallDecorationSlots0.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = wallDecorationSlots1.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = wallDecorDispByTile.resize(tileCount);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+
+    for (std::size_t i = 0; i < tileCount; i++) {
+        locCounts[i] = 0;
+        floorSlots[i] = -1;
+        wallSlots0[i] = -1;
+        wallSlots1[i] = -1;
+        wallDecorationSlots0[i] = -1;
+        wallDecorationSlots1[i] = -1;
+        wallDecorDispByTile[i] = LocType::DEFAULT_DECOR_DISPLACEMENT;
+    }
+
+    static constexpr i32 kDispX[4] = {1, 0, -1, 0};
+    static constexpr i32 kDispY[4] = {0, -1, 0, 1};
+    static constexpr i32 kDiagDispX[4] = {1, -1, -1, 1};
+    static constexpr i32 kDiagDispY[4] = {-1, -1, 1, 1};
+
+    const auto samePlacement = [](const SceneLocPlacement& a, const SceneLocPlacement& b) noexcept -> bool {
+        return
+            a.originalId == b.originalId &&
+            a.resolvedId == b.resolvedId &&
+            a.level == b.level &&
+            a.tileX == b.tileX &&
+            a.tileY == b.tileY &&
+            a.type == b.type &&
+            a.rotation == b.rotation;
+    };
+
+    const auto appendOrReplaceSingleSlot =
+        [scene](Vec<i32>* slots, std::size_t tileIdx, const SceneLocPlacement& placed) noexcept -> Status {
+            if (!slots || tileIdx >= slots->size()) {
+                return Status::OutOfRange;
+            }
+            const i32 existing = (*slots)[tileIdx];
+            if (existing >= 0 &&
+                static_cast<std::size_t>(existing) < scene->locPlacements.size()) {
+                scene->locPlacements[static_cast<std::size_t>(existing)] = placed;
+                return Status::Ok;
+            }
+            auto rrPush = scene->locPlacements.pushBack(placed);
+            if (!rrPush.isOk()) {
+                return rrPush.status();
+            }
+            (*slots)[tileIdx] = static_cast<i32>(scene->locPlacements.size() - 1);
+            return Status::Ok;
+        };
+
+    const auto appendOrReplacePairSlots =
+        [scene, &samePlacement](
+            Vec<i32>* slot0,
+            Vec<i32>* slot1,
+            std::size_t tileIdx,
+            const SceneLocPlacement& placed) noexcept -> Status {
+            if (!slot0 || !slot1 || tileIdx >= slot0->size() || tileIdx >= slot1->size()) {
+                return Status::OutOfRange;
+            }
+
+            auto appendToSlot = [&](Vec<i32>* slotVec) noexcept -> Status {
+                auto rrPush = scene->locPlacements.pushBack(placed);
+                if (!rrPush.isOk()) {
+                    return rrPush.status();
+                }
+                (*slotVec)[tileIdx] = static_cast<i32>(scene->locPlacements.size() - 1);
+                return Status::Ok;
+            };
+
+            const i32 idx0 = (*slot0)[tileIdx];
+            if (idx0 >= 0 && static_cast<std::size_t>(idx0) < scene->locPlacements.size()) {
+                if (samePlacement(scene->locPlacements[static_cast<std::size_t>(idx0)], placed)) {
+                    scene->locPlacements[static_cast<std::size_t>(idx0)] = placed;
+                    return Status::Ok;
+                }
+            } else if (idx0 < 0) {
+                return appendToSlot(slot0);
+            }
+
+            const i32 idx1 = (*slot1)[tileIdx];
+            if (idx1 >= 0 && static_cast<std::size_t>(idx1) < scene->locPlacements.size()) {
+                if (samePlacement(scene->locPlacements[static_cast<std::size_t>(idx1)], placed)) {
+                    scene->locPlacements[static_cast<std::size_t>(idx1)] = placed;
+                    return Status::Ok;
+                }
+                scene->locPlacements[static_cast<std::size_t>(idx1)] = placed;
+                return Status::Ok;
+            }
+
+            return appendToSlot(slot1);
+        };
+
     for (i32 mx = context.bounds.mapStartX; mx < context.bounds.mapEndX; mx++) {
         for (i32 my = context.bounds.mapStartY; my < context.bounds.mapEndY; my++) {
             const Status s = mapBytesProvider.tryLoadLocBytes(mx, my, &scratch->bytes);
@@ -520,6 +663,9 @@ Status decodeLocsStage(
                 if (!(sceneX > 0 && sceneY > 0 && sceneX < scene->sizeX - 1 && sceneY < scene->sizeY - 1)) {
                     continue;
                 }
+                if (!scene->isWithinBounds(p.level, sceneX, sceneY)) {
+                    continue;
+                }
 
                 const LocType* locType = nullptr;
                 if (!ok(services.locTypes->tryLoad(p.id, &locType)) || !locType) {
@@ -528,29 +674,64 @@ Status decodeLocsStage(
                 const LocType* resolved = locType;
                 if (services.varProvider && !locType->transforms.empty()) {
                     const LocType* transformed = locType->transform(*services.varProvider, tryLoadLoc);
-                    if (transformed) {
-                        resolved = transformed;
+                    // Match TS `resolveLocTypeForPlacement`: if a transform resolves to -1/unloadable,
+                    // treat it as "no loc present" instead of falling back to the base type.
+                    if (!transformed) {
+                        continue;
                     }
+                    resolved = transformed;
                 }
 
                 i32 seqId = resolved ? resolved->seqId : -1;
                 if (resolved && seqId == -1 && !resolved->randomSeqIds.empty()) {
                     seqId = resolved->randomSeqIds[0];
                 }
-                const bool isEntity = (seqId != -1) ||
-                    (resolved && !resolved->transforms.empty()) ||
+                // Match TS SceneBuilder:
+                // isEntity = seqId != -1 || resolvedTypeHasTransforms || locLoadType==NO_MODELS
+                // Note: TS uses the *resolved* locType's `transforms` here (post varProvider resolution).
+                const bool baseHadTransforms = locType && !locType->transforms.empty();
+                const bool resolvedHasTransforms = resolved && !resolved->transforms.empty();
+                (void)baseHadTransforms;
+                const bool isEntity =
+                    (seqId != -1) ||
+                    resolvedHasTransforms ||
                     context.locLoadType == SceneLocLoadType::NoModels;
 
+                i32 staticModelXzRadius = -1;
                 if (!isEntity && context.locLoadType == SceneLocLoadType::Models) {
                     if (!services.locModels || !resolved) {
                         return Status::InvalidArgument;
                     }
-                    const Status ms = services.locModels->tryValidateStaticModelPlacement(
+
+                    // TS SceneBuilder uses LocModelLoader.getModel(...) for non-entity placements; if the model
+                    // can't be resolved, it effectively skips adding the loc. Mirror that by validating here.
+                    const Status msValidate = services.locModels->tryValidateStaticModelPlacement(
                         *resolved,
                         p.type,
                         p.rotation);
-                    if (!ok(ms)) {
+                    if (!ok(msValidate)) {
                         continue;
+                    }
+
+                    if ((p.type == 10 || p.type == 11) && resolved->clipped) {
+                        // TS `expandLocPlacementModelVariants`:
+                        // NORMAL_DIAGONAL (11) uses NORMAL (10) with rotation+4 for model lookup.
+                        i32 modelType = p.type;
+                        i32 modelRotation = p.rotation;
+                        if (p.type == 11) {
+                            modelType = 10;
+                            modelRotation = p.rotation + 4;
+                        }
+
+                        const Status msRadius = services.locModels->tryGetStaticModelXZRadius(
+                            *resolved,
+                            modelType,
+                            modelRotation,
+                            &staticModelXzRadius);
+                        if (!ok(msRadius)) {
+                            // If we can't resolve a radius, fall back to the default occlusion (15) like TS.
+                            staticModelXzRadius = -1;
+                        }
                     }
                 }
 
@@ -562,9 +743,215 @@ Status decodeLocsStage(
                 placed.tileY = sceneY;
                 placed.type = p.type;
                 placed.rotation = p.rotation;
-                auto rr = scene->locPlacements.pushBack(placed);
-                if (!rr.isOk()) {
-                    return rr.status();
+                placed.sizeX = 1;
+                placed.sizeY = 1;
+                placed.clipped = (resolved && resolved->clipped) ? 1 : 0;
+                placed.isEntity = isEntity ? 1 : 0;
+                placed.staticModelXzRadius = staticModelXzRadius;
+
+                const bool isFloorDecoration = p.type == 22;
+                const bool isWall = p.type >= 0 && p.type <= 3;
+                const bool isWallDecoration = p.type >= 4 && p.type <= 8;
+                const bool isLoc = p.type == 9 || p.type == 10 || p.type == 11 || (p.type >= 12 && p.type <= 21);
+
+                if (isFloorDecoration || isWall || isWallDecoration) {
+                    const std::size_t tIdx = scene->tileIdx(p.level, sceneX, sceneY);
+                    if (isFloorDecoration) {
+                        const Status ps = appendOrReplaceSingleSlot(&floorSlots, tIdx, placed);
+                        if (!ok(ps)) {
+                            return ps;
+                        }
+                    } else if (isWall) {
+                        const Status ps = appendOrReplacePairSlots(&wallSlots0, &wallSlots1, tIdx, placed);
+                        if (!ok(ps)) {
+                            return ps;
+                        }
+                        // Mirrors TS wall tag displacement source: use the base locType id from the tag.
+                        wallDecorDispByTile[tIdx] = locType->decorDisplacement;
+
+                        // TS SceneBuilder: certain wall types call Scene.updateWallDecorationDisplacement
+                        // after placement, which scales any already-present wallDecoration offsets.
+                        // This is important when a wallDecoration is decoded before its wall.
+                        if ((p.type == 0 || p.type == 2) &&
+                            locType->decorDisplacement != LocType::DEFAULT_DECOR_DISPLACEMENT &&
+                            scene->wallDecorPresent(p.level, sceneX, sceneY) != 0) {
+                            scene->wallDecorOffsetX(p.level, sceneX, sceneY) =
+                                (locType->decorDisplacement * scene->wallDecorOffsetX(p.level, sceneX, sceneY)) / 16;
+                            scene->wallDecorOffsetZ(p.level, sceneX, sceneY) =
+                                (locType->decorDisplacement * scene->wallDecorOffsetZ(p.level, sceneX, sceneY)) / 16;
+                        }
+                    } else {
+                        const Status ps = appendOrReplacePairSlots(
+                            &wallDecorationSlots0,
+                            &wallDecorationSlots1,
+                            tIdx,
+                            placed);
+                        if (!ok(ps)) {
+                            return ps;
+                        }
+
+                        // Mirror TS `Scene.newWallDecoration` + `Scene.updateWallDecorationDisplacement` behavior:
+                        // store the current tile WallDecoration offsets for renderer usage.
+                        i32 offX = 0;
+                        i32 offZ = 0;
+                        const i32 rot = p.rotation & 3;
+                        const i32 baseDisp = wallDecorDispByTile[tIdx];
+                        if (p.type == 5) { // WALL_DECORATION_OUTSIDE
+                            offX = baseDisp * kDispX[rot];
+                            offZ = baseDisp * kDispY[rot];
+                        } else if (p.type == 6 || p.type == 8) { // diagonal outside / diagonal double
+                            const i32 d = baseDisp / 2;
+                            offX = d * kDiagDispX[rot];
+                            offZ = d * kDiagDispY[rot];
+                        }
+                        scene->wallDecorOffsetX(p.level, sceneX, sceneY) = offX;
+                        scene->wallDecorOffsetZ(p.level, sceneX, sceneY) = offZ;
+                        scene->wallDecorPresent(p.level, sceneX, sceneY) = 1;
+
+                        // TS: WALL_DECORATION_INSIDE calls updateWallDecorationDisplacement after placement.
+                        if (p.type == 4 &&
+                            resolved && resolved->decorDisplacement != LocType::DEFAULT_DECOR_DISPLACEMENT) {
+                            // offset = trunc((disp*offset)/16)
+                            scene->wallDecorOffsetX(p.level, sceneX, sceneY) =
+                                (resolved->decorDisplacement * scene->wallDecorOffsetX(p.level, sceneX, sceneY)) / 16;
+                            scene->wallDecorOffsetZ(p.level, sceneX, sceneY) =
+                                (resolved->decorDisplacement * scene->wallDecorOffsetZ(p.level, sceneX, sceneY)) / 16;
+                        }
+                    }
+
+
+                    if (isWall && resolved && resolved->clipped) {
+                        const i32 lvl = p.level;
+                        const i32 tx = sceneX;
+                        const i32 ty = sceneY;
+                        const i32 rot = p.rotation & 3;
+
+                        auto bumpOcclusion = [&](i32 ox, i32 oy, u8 value) noexcept {
+                            if (ox < 0 || oy < 0 || ox > scene->sizeX || oy > scene->sizeY) {
+                                return;
+                            }
+                            const u8 current = scene->lightOcclusion(lvl, ox, oy);
+                            if (value > current) {
+                                scene->lightOcclusion(lvl, ox, oy) = value;
+                            }
+                        };
+
+                        if (p.type == 0) { // WALL
+                            if (rot == 0) {
+                                bumpOcclusion(tx, ty, 50);
+                                bumpOcclusion(tx, ty + 1, 50);
+                            } else if (rot == 1) {
+                                bumpOcclusion(tx, ty + 1, 50);
+                                bumpOcclusion(tx + 1, ty + 1, 50);
+                            } else if (rot == 2) {
+                                bumpOcclusion(tx + 1, ty, 50);
+                                bumpOcclusion(tx + 1, ty + 1, 50);
+                            } else {
+                                bumpOcclusion(tx, ty, 50);
+                                bumpOcclusion(tx + 1, ty, 50);
+                            }
+                        } else if (p.type == 1 || p.type == 3) { // WALL_TRI_CORNER / WALL_RECT_CORNER
+                            if (rot == 0) {
+                                bumpOcclusion(tx, ty + 1, 50);
+                            } else if (rot == 1) {
+                                bumpOcclusion(tx + 1, ty + 1, 50);
+                            } else if (rot == 2) {
+                                bumpOcclusion(tx + 1, ty, 50);
+                            } else {
+                                bumpOcclusion(tx, ty, 50);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                if (!isLoc) {
+                    continue;
+                }
+
+                // WALL_DIAGONAL can post-scale wallDecoration offsets (TS `SceneBuilder`).
+                if (p.type == 9 && resolved &&
+                    resolved->decorDisplacement != LocType::DEFAULT_DECOR_DISPLACEMENT &&
+                    scene->wallDecorPresent(p.level, sceneX, sceneY) != 0) {
+                    scene->wallDecorOffsetX(p.level, sceneX, sceneY) =
+                        (resolved->decorDisplacement * scene->wallDecorOffsetX(p.level, sceneX, sceneY)) / 16;
+                    scene->wallDecorOffsetZ(p.level, sceneX, sceneY) =
+                        (resolved->decorDisplacement * scene->wallDecorOffsetZ(p.level, sceneX, sceneY)) / 16;
+                }
+
+                i32 sizeX = 1;
+                i32 sizeY = 1;
+                if (resolved && (p.type == 10 || p.type == 11)) {
+                    sizeX = resolved->sizeX;
+                    sizeY = resolved->sizeY;
+                    if ((p.rotation & 1) != 0) {
+                        const i32 swap = sizeX;
+                        sizeX = sizeY;
+                        sizeY = swap;
+                    }
+                }
+                placed.sizeX = sizeX;
+                placed.sizeY = sizeY;
+
+                const i32 startX = sceneX;
+                const i32 startY = sceneY;
+                const i32 endX = sceneX + sizeX - 1;
+                const i32 endY = sceneY + sizeY - 1;
+
+                bool canPlace = true;
+                for (i32 sx = startX; sx <= endX && canPlace; sx++) {
+                    for (i32 sy = startY; sy <= endY; sy++) {
+                        if (!scene->isWithinBounds(p.level, sx, sy)) {
+                            canPlace = false;
+                            break;
+                        }
+                        const std::size_t tIdx = scene->tileIdx(p.level, sx, sy);
+                        if (tIdx >= locCounts.size() || locCounts[tIdx] >= 5) {
+                            canPlace = false;
+                            break;
+                        }
+                    }
+                }
+                if (!canPlace) {
+                    continue;
+                }
+
+                if ((p.type == 10 || p.type == 11) && resolved && resolved->clipped) {
+                    i32 lightOcclusion = 15;
+                    // TS uses `entity.tryGetXZRadius() !== null` and then `Math.trunc(xzRadius / 4)`,
+                    // so a resolved radius of 0 must produce occlusion 0 (not fallback 15).
+                    if (!isEntity && staticModelXzRadius >= 0) {
+                        lightOcclusion = static_cast<i32>(staticModelXzRadius / 4);
+                    }
+                    if (lightOcclusion > 30) {
+                        lightOcclusion = 30;
+                    }
+                    const i32 lvl = p.level;
+                    const i32 endOccX = startX + sizeX;
+                    const i32 endOccY = startY + sizeY;
+                    for (i32 sx = startX; sx <= endOccX; sx++) {
+                        for (i32 sy = startY; sy <= endOccY; sy++) {
+                            if (sx < 0 || sy < 0 || sx > scene->sizeX || sy > scene->sizeY) {
+                                continue;
+                            }
+                            const u8 current = scene->lightOcclusion(lvl, sx, sy);
+                            if (static_cast<u8>(lightOcclusion) > current) {
+                                scene->lightOcclusion(lvl, sx, sy) = static_cast<u8>(lightOcclusion);
+                            }
+                        }
+                    }
+                }
+
+                for (i32 sx = startX; sx <= endX; sx++) {
+                    for (i32 sy = startY; sy <= endY; sy++) {
+                        const std::size_t tIdx = scene->tileIdx(p.level, sx, sy);
+                        locCounts[tIdx] = static_cast<u8>(locCounts[tIdx] + 1);
+                    }
+                }
+
+                auto rrLoc = scene->locPlacements.pushBack(placed);
+                if (!rrLoc.isOk()) {
+                    return rrLoc.status();
                 }
             }
         }

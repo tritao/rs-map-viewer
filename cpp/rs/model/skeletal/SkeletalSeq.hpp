@@ -190,4 +190,123 @@ inline Status decodeDat2SkeletalSeq(
     return Status::Ok;
 }
 
+// Decode a skeletal seq using a pre-decoded SeqBase (avoids requiring a loader when bytes are provided via bridges).
+inline Status decodeDat2SkeletalSeqWithBase(
+    const SeqBase& base,
+    i32 id,
+    Span<const u8> data,
+    SkeletalSeq* out) noexcept {
+    (void)getSkeletalCurveCount; // helper kept for parity with TS transform table.
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    if (!base.hasSkeletalBase || !base.skeletalBase.hasData()) {
+        return Status::BadFormat;
+    }
+
+    Uint8ArrayReader reader(data, 0);
+
+    u8 version = 0;
+    Status s = reader.readUnsignedByte(&version);
+    if (!ok(s)) {
+        return s;
+    }
+
+    u16 baseIdU16 = 0;
+    s = reader.readUnsignedShort(&baseIdU16);
+    if (!ok(s)) {
+        return s;
+    }
+    const i32 baseId = static_cast<i32>(baseIdU16);
+    // Strict check: skeletal seq must reference the provided base.
+    if (base.id >= 0 && baseId != base.id) {
+        return Status::BadFormat;
+    }
+
+    u16 ignoredU16 = 0;
+    s = reader.readUnsignedShort(&ignoredU16);
+    if (!ok(s)) return s;
+    s = reader.readUnsignedShort(&ignoredU16);
+    if (!ok(s)) return s;
+
+    u8 poseId = 0;
+    s = reader.readUnsignedByte(&poseId);
+    if (!ok(s)) {
+        return s;
+    }
+
+    u16 curveCountU16 = 0;
+    s = reader.readUnsignedShort(&curveCountU16);
+    if (!ok(s)) {
+        return s;
+    }
+
+    const i32 boneCount = base.skeletalBase.boneCount();
+    auto rr = out->boneCurves.resize(static_cast<std::size_t>(boneCount >= 0 ? boneCount : 0));
+    if (!rr.isOk()) return rr.status();
+    rr = out->curves.resize(static_cast<std::size_t>(base.count >= 0 ? base.count : 0));
+    if (!rr.isOk()) return rr.status();
+    for (std::size_t i = 0; i < out->boneCurves.size(); i++) out->boneCurves[i].clear();
+    for (std::size_t i = 0; i < out->curves.size(); i++) out->curves[i].clear();
+    out->hasAlphaTransform = false;
+
+    bool hasAlphaTransform = false;
+    for (u16 i = 0; i < curveCountU16; i++) {
+        u8 transformTypeId = 0;
+        s = reader.readUnsignedByte(&transformTypeId);
+        if (!ok(s)) return s;
+        const SkeletalTransformType transformType =
+            getSkeletalTransformTypeForId(static_cast<i32>(transformTypeId));
+
+        i32 boneIndex = 0;
+        s = reader.readSmart2(&boneIndex);
+        if (!ok(s)) return s;
+
+        u8 curveTypeId = 0;
+        s = reader.readUnsignedByte(&curveTypeId);
+        if (!ok(s)) return s;
+        const i32 curveIndex = getSkeletalCurveIndex(static_cast<i32>(curveTypeId));
+
+        SkeletalCurve curve(static_cast<i32>(i));
+        s = decodeSkeletalCurve(reader, static_cast<i32>(version), &curve);
+        if (!ok(s)) return s;
+        s = loadSkeletalCurve(&curve);
+        if (!ok(s)) return s;
+
+        if (curveIndex >= 0) {
+            Vec<Vec<SkeletalCurveSlot>>* target = nullptr;
+            if (transformType == SkeletalTransformType::BONE) {
+                target = &out->boneCurves;
+            } else {
+                target = &out->curves;
+            }
+            const i32 channelCount = getSkeletalCurveCount(transformType);
+            s = ensureSkeletalCurveChannels(target, boneIndex, channelCount);
+            if (!ok(s)) return s;
+            if (boneIndex >= 0 &&
+                static_cast<std::size_t>(boneIndex) < target->size() &&
+                channelCount > 0 &&
+                curveIndex < channelCount) {
+                SkeletalCurveSlot& slot =
+                    (*target)[static_cast<std::size_t>(boneIndex)][static_cast<std::size_t>(curveIndex)];
+                slot.hasCurve = true;
+                slot.curve = rs::move(curve);
+            }
+        }
+
+        if (transformType == SkeletalTransformType::ALPHA) {
+            hasAlphaTransform = true;
+        }
+    }
+
+    out->id = id;
+    out->version = static_cast<i32>(version);
+    out->baseId = baseId;
+    out->poseId = static_cast<i32>(poseId);
+    out->curveCount = static_cast<i32>(curveCountU16);
+    out->hasAlphaTransform = hasAlphaTransform;
+
+    return Status::Ok;
+}
+
 } // namespace rs

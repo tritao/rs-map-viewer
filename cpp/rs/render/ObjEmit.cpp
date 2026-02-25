@@ -1,3 +1,13 @@
+#include "SceneCommandBuilderInternal.hpp"
+
+#include "../config/objtype/ObjType.hpp"
+#include "../core/StrUtil.hpp"
+#include "../map/TerrainConstants.hpp"
+#include "../scene/SceneData.hpp"
+
+namespace rs {
+namespace scb {
+
 struct ObjSpawnRecord final {
     i32 id = -1;
     i32 count = 1;
@@ -92,223 +102,6 @@ static Status decodeObjSpawnsForMap(
     return Status::Ok;
 }
 
-static Status appendObjPlacementGeometry(
-    const SceneCommandBuildInput& input,
-    const ObjType& resolved,
-    i32 modelId,
-    i32 sceneX,
-    i32 sceneZ,
-    i32 sceneHeight,
-    bool transparentOnly,
-    Vec<u8>* outVertices,
-    Vec<i32>* outIndices,
-    i32* outElements,
-    Allocator& alloc) noexcept {
-    if (!outVertices || !outIndices || !outElements) {
-        return Status::InvalidArgument;
-    }
-    *outElements = 0;
-
-    ModelData model(alloc);
-    const Status ms = tryDecodeObjModelFromBlob(input, resolved, modelId, &model, alloc);
-    if (!ok(ms)) {
-        return ms;
-    }
-
-    const i32 ambient = resolved.ambient + 64;
-    const i32 contrast = resolved.contrast + 768;
-    const i32 lightIntensity = modelLightIntensity(contrast);
-
-    ModelFaceLightingState lighting(alloc);
-    const Status ls = initModelFaceLightingState(model, &lighting, alloc);
-    if (!ok(ls)) {
-        return ls;
-    }
-
-    for (i32 fi = 0; fi < model.faceCount; fi++) {
-        i32 renderType = modelFaceRenderType(model, fi);
-        const i32 textureId = modelFaceRawTextureId(model, fi);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-        if (rawAlphaSigned == -2) {
-            renderType = 3;
-        } else if (rawAlphaSigned == -1) {
-            renderType = 2;
-        }
-
-        const i32 packedTextureId = mapTextureIdToPackedIndex(input.textureIds, textureId);
-        const i32 effectiveTextureId = packedTextureId != -1 ? textureId : -1;
-
-        i32 alpha = 0xff;
-        if (model.hasFaceAlphas &&
-            effectiveTextureId == -1 &&
-            fi < static_cast<i32>(model.faceAlphas.size())) {
-            alpha = 0xff - (static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]) & 0xff);
-        }
-        if (alpha == 0 || alpha == 1) {
-            continue;
-        }
-
-        if (effectiveTextureId == -1) {
-            if (renderType != 0 && renderType != 1 && renderType != 3) {
-                continue;
-            }
-        } else {
-            if (renderType != 0 && renderType != 1) {
-                continue;
-            }
-        }
-
-        const bool textureAlpha =
-            effectiveTextureId != -1 &&
-            isTextureTransparent(input.textureTransparentIds, effectiveTextureId);
-        const bool transparent =
-            alpha < 0xff ||
-            textureAlpha;
-        if (transparent != transparentOnly) {
-            continue;
-        }
-
-        if (fi >= static_cast<i32>(model.indices1.size()) ||
-            fi >= static_cast<i32>(model.indices2.size()) ||
-            fi >= static_cast<i32>(model.indices3.size()) ||
-            fi >= static_cast<i32>(model.faceColors.size())) {
-            continue;
-        }
-        const i32 ia = model.indices1[static_cast<std::size_t>(fi)];
-        const i32 ib = model.indices2[static_cast<std::size_t>(fi)];
-        const i32 ic = model.indices3[static_cast<std::size_t>(fi)];
-        if (ia < 0 || ib < 0 || ic < 0 ||
-            ia >= static_cast<i32>(model.verticesX.size()) ||
-            ib >= static_cast<i32>(model.verticesX.size()) ||
-            ic >= static_cast<i32>(model.verticesX.size()) ||
-            ia >= static_cast<i32>(model.verticesY.size()) ||
-            ib >= static_cast<i32>(model.verticesY.size()) ||
-            ic >= static_cast<i32>(model.verticesY.size()) ||
-            ia >= static_cast<i32>(model.verticesZ.size()) ||
-            ib >= static_cast<i32>(model.verticesZ.size()) ||
-            ic >= static_cast<i32>(model.verticesZ.size())) {
-            continue;
-        }
-
-        i32 priority = 0;
-            if (fi < static_cast<i32>(model.faceRenderPriorities.size())) {
-                priority = static_cast<i32>(model.faceRenderPriorities[static_cast<std::size_t>(fi)]);
-            }
-
-            const i32 baseColor = static_cast<i32>(model.faceColors[static_cast<std::size_t>(fi)] & 0xffffu);
-        i32 hslA = baseColor;
-        i32 hslB = baseColor;
-        i32 hslC = baseColor;
-        if (renderType == 0) {
-            const i32 shadeA = modelVertexShade(lighting, ia, ambient, lightIntensity);
-            const i32 shadeB = modelVertexShade(lighting, ib, ambient, lightIntensity);
-            const i32 shadeC = modelVertexShade(lighting, ic, ambient, lightIntensity);
-            if (effectiveTextureId == -1) {
-                hslA = modelAdjustLightness(baseColor, shadeA);
-                hslB = modelAdjustLightness(baseColor, shadeB);
-                hslC = modelAdjustLightness(baseColor, shadeC);
-            } else {
-                hslA = modelClampLightness(shadeA);
-                hslB = modelClampLightness(shadeB);
-                hslC = modelClampLightness(shadeC);
-            }
-        } else if (renderType == 1) {
-            const i32 shade = modelFaceShade(lighting, fi, ambient, lightIntensity);
-            if (effectiveTextureId == -1) {
-                hslA = modelAdjustLightness(baseColor, shade);
-            } else {
-                hslA = modelClampLightness(shade);
-            }
-            hslB = hslA;
-            hslC = hslA;
-        } else if (renderType == 3) {
-            hslA = 128;
-            hslB = 128;
-            hslC = 128;
-        }
-
-        float u0 = 0.0f;
-            float v0 = 0.0f;
-            float u1 = 0.0f;
-            float v1 = 0.0f;
-            float u2 = 0.0f;
-            float v2 = 0.0f;
-        if (effectiveTextureId != -1) {
-            i32 texCoord = -1;
-            if (model.hasTextureCoords && fi < static_cast<i32>(model.textureCoords.size())) {
-                texCoord = static_cast<i32>(model.textureCoords[static_cast<std::size_t>(fi)]);
-            }
-            i32 textureRenderType = 0;
-            if (texCoord != -1) {
-                const i32 tc = texCoord & 0xff;
-                if (tc >= 0 && tc < static_cast<i32>(model.textureRenderTypes.size())) {
-                    textureRenderType =
-                        static_cast<i32>(model.textureRenderTypes[static_cast<std::size_t>(tc)]) & 0xff;
-                }
-            }
-            if (textureRenderType == 0) {
-                computeModelFaceUvType0(
-                    model,
-                    fi,
-                    texCoord,
-                    &u0,
-                    &v0,
-                    &u1,
-                    &v1,
-                    &u2,
-                    &v2);
-            }
-        }
-
-        const i32 baseVertex = static_cast<i32>(outVertices->size() / 16);
-        Status vs = appendPackedVertex(
-            outVertices,
-            sceneX + model.verticesX[static_cast<std::size_t>(ia)],
-            sceneHeight + model.verticesY[static_cast<std::size_t>(ia)],
-            sceneZ + model.verticesZ[static_cast<std::size_t>(ia)],
-            hslA,
-            alpha,
-            u0,
-            v0,
-            priority + 1,
-            packedTextureId);
-        if (!ok(vs)) return vs;
-        vs = appendPackedVertex(
-            outVertices,
-            sceneX + model.verticesX[static_cast<std::size_t>(ib)],
-            sceneHeight + model.verticesY[static_cast<std::size_t>(ib)],
-            sceneZ + model.verticesZ[static_cast<std::size_t>(ib)],
-            hslB,
-            alpha,
-            u1,
-            v1,
-            priority + 1,
-            packedTextureId);
-        if (!ok(vs)) return vs;
-        vs = appendPackedVertex(
-            outVertices,
-            sceneX + model.verticesX[static_cast<std::size_t>(ic)],
-            sceneHeight + model.verticesY[static_cast<std::size_t>(ic)],
-            sceneZ + model.verticesZ[static_cast<std::size_t>(ic)],
-            hslC,
-            alpha,
-            u2,
-            v2,
-            priority + 1,
-            packedTextureId);
-        if (!ok(vs)) return vs;
-
-        auto rr = outIndices->pushBack(baseVertex);
-        if (!rr.isOk()) return rr.status();
-        rr = outIndices->pushBack(baseVertex + 1);
-        if (!rr.isOk()) return rr.status();
-        rr = outIndices->pushBack(baseVertex + 2);
-        if (!rr.isOk()) return rr.status();
-        *outElements += 3;
-    }
-
-    return Status::Ok;
-}
 struct ObjCommandGroup final {
     i32 objTypeId = -1;
     i32 interactId = -1;
@@ -338,6 +131,34 @@ struct ObjRenderOp final {
     bool transparent = false;
     i32 elementsPerInstance = 0;
 };
+
+struct ObjCommandPlan final {
+    Vec<ObjCommandGroup> groups;
+    Vec<ObjRenderOp> ops;
+
+    explicit ObjCommandPlan(Allocator& alloc) noexcept
+        : groups(alloc),
+          ops(alloc) {}
+};
+
+static Status planObjCommandsFromPackedSpawns(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    DecodedObjTypeCache* objTypeCache,
+    DecodedModelFaceStatsCache* objModelCache,
+    SceneCommandStream* debugOut,
+    ObjCommandPlan* outPlan,
+    Allocator& alloc) noexcept;
+
+static Status executeObjCommandsFromPlan(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    SceneCommandStream* debugOut,
+    ObjCommandPlan* plan,
+    Allocator& alloc) noexcept;
 
 static i32 findObjCommandGroupIndex(
     Span<const ObjCommandGroup> groups,
@@ -432,6 +253,12 @@ static Status buildObjRenderCommandPlan(
                 if (faceCount > 0) {
                     SceneCommandPlanDebugOp op{};
                     op.transparent = transparent;
+                    op.sourceKind = 2; // obj
+                    op.typeId = group.objTypeId;
+                    op.placementTypeHint = -1;
+                    op.placementRotationHint = 0;
+                    op.modelIdHint = group.modelId;
+                    op.modelIdsHashHint = 0;
                     if (mergeByPlacement) {
                         op.kind = SceneCommandPlanDebugOpKind::MergedGroup;
                         op.lowDetail = !group.includeLod;
@@ -440,6 +267,8 @@ static Status buildObjRenderCommandPlan(
                         op.modelCount = static_cast<i32>(group.mergedInstances.size());
                     } else {
                         op.kind = SceneCommandPlanDebugOpKind::Instanced;
+                        op.level = group.level;
+                        op.priority = group.priority;
                         op.modelHash = group.modelHash;
                         op.faceCount = faceCount;
                         op.instanceCount = static_cast<i32>(group.interactInstances.size());
@@ -640,19 +469,20 @@ static Status executeObjRenderOpInstanced(
     return Status::Ok;
 }
 
-static Status emitObjCommandsFromPackedSpawns(
+static Status planObjCommandsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
     Vec<SceneCommandPlanDebugOp>* planOps,
-    SceneBuffer* buffer,
-    i32* indexCount,
     DecodedObjTypeCache* objTypeCache,
     DecodedModelFaceStatsCache* objModelCache,
     SceneCommandStream* debugOut,
+    ObjCommandPlan* outPlan,
     Allocator& alloc) noexcept {
-    if (!buffer || !indexCount || !objTypeCache || !objModelCache) {
+    if (!objTypeCache || !objModelCache || !outPlan) {
         return Status::InvalidArgument;
     }
+    outPlan->groups.clear();
+    outPlan->ops.clear();
 
     const i32 mapStartX = floorDiv(input.baseX, TerrainConstants::MAP_SQUARE_SIZE);
     const i32 mapStartY = floorDiv(input.baseY, TerrainConstants::MAP_SQUARE_SIZE);
@@ -844,8 +674,25 @@ static Status emitObjCommandsFromPackedSpawns(
         return ps;
     }
 
+    outPlan->groups = rs::move(groups);
+    outPlan->ops = rs::move(ops);
+    return Status::Ok;
+}
+
+static Status executeObjCommandsFromPlan(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    SceneCommandStream* debugOut,
+    ObjCommandPlan* plan,
+    Allocator& alloc) noexcept {
+    if (!buffer || !indexCount || !objTypeCache || !plan) {
+        return Status::InvalidArgument;
+    }
+
     Vec<const ObjType*> resolvedTypes(alloc);
-    auto rrResolved = resolvedTypes.resize(groups.size());
+    auto rrResolved = resolvedTypes.resize(plan->groups.size());
     if (!rrResolved.isOk()) {
         return rrResolved.status();
     }
@@ -853,12 +700,12 @@ static Status emitObjCommandsFromPackedSpawns(
         resolvedTypes[i] = nullptr;
     }
 
-    for (std::size_t oi = 0; oi < ops.size(); oi++) {
-        const ObjRenderOp& op = ops[oi];
-        if (op.groupIndex < 0 || op.groupIndex >= static_cast<i32>(groups.size())) {
+    for (std::size_t oi = 0; oi < plan->ops.size(); oi++) {
+        const ObjRenderOp& op = plan->ops[oi];
+        if (op.groupIndex < 0 || op.groupIndex >= static_cast<i32>(plan->groups.size())) {
             return Status::OutOfRange;
         }
-        const ObjCommandGroup& group = groups[static_cast<std::size_t>(op.groupIndex)];
+        const ObjCommandGroup& group = plan->groups[static_cast<std::size_t>(op.groupIndex)];
         if (group.mergedInstances.empty()) {
             continue;
         }
@@ -910,3 +757,66 @@ static Status emitObjCommandsFromPackedSpawns(
     return Status::Ok;
 }
 
+Status emitObjCommandsFromPackedSpawns(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    DecodedModelFaceStatsCache* objModelCache,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept {
+    if (!buffer || !indexCount || !objTypeCache || !objModelCache) {
+        return Status::InvalidArgument;
+    }
+
+    ObjCommandPlan plan(alloc);
+    const Status ps = planObjCommandsFromPackedSpawns(
+        input,
+        scene,
+        planOps,
+        objTypeCache,
+        objModelCache,
+        debugOut,
+        &plan,
+        alloc);
+    if (!ok(ps)) {
+        return ps;
+    }
+
+    return executeObjCommandsFromPlan(
+        input,
+        buffer,
+        indexCount,
+        objTypeCache,
+        debugOut,
+        &plan,
+        alloc);
+}
+
+Status appendObjPlanOpsFromPackedSpawns(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    DecodedObjTypeCache* objTypeCache,
+    DecodedModelFaceStatsCache* objModelCache,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept {
+    if (!objTypeCache || !objModelCache) {
+        return Status::InvalidArgument;
+    }
+    ObjCommandPlan plan(alloc);
+    return planObjCommandsFromPackedSpawns(
+        input,
+        scene,
+        planOps,
+        objTypeCache,
+        objModelCache,
+        debugOut,
+        &plan,
+        alloc);
+}
+
+} // namespace scb
+} // namespace rs

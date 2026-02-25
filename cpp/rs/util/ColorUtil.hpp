@@ -36,42 +36,42 @@ inline i32 packHsl(i32 hue, i32 saturation, i32 lightness) noexcept {
 }
 
 inline i32 rgbToHsl(i32 rgb) noexcept {
-    const float r = static_cast<float>((rgb >> 16) & 255) / 256.0f;
-    const float g = static_cast<float>((rgb >> 8) & 255) / 256.0f;
-    const float b = static_cast<float>(rgb & 255) / 256.0f;
+    const double r = static_cast<double>((rgb >> 16) & 255) / 256.0;
+    const double g = static_cast<double>((rgb >> 8) & 255) / 256.0;
+    const double b = static_cast<double>(rgb & 255) / 256.0;
 
-    float minRgb = r;
+    double minRgb = r;
     if (g < minRgb) minRgb = g;
     if (b < minRgb) minRgb = b;
 
-    float maxRgb = r;
+    double maxRgb = r;
     if (g > maxRgb) maxRgb = g;
     if (b > maxRgb) maxRgb = b;
 
-    float hueTemp = 0.0f;
-    float sat = 0.0f;
-    const float light = (minRgb + maxRgb) / 2.0f;
+    double hueTemp = 0.0;
+    double sat = 0.0;
+    const double light = (minRgb + maxRgb) / 2.0;
     if (minRgb != maxRgb) {
-        if (light < 0.5f) {
+        if (light < 0.5) {
             sat = (maxRgb - minRgb) / (minRgb + maxRgb);
         } else {
-            sat = (maxRgb - minRgb) / (2.0f - maxRgb - minRgb);
+            sat = (maxRgb - minRgb) / (2.0 - maxRgb - minRgb);
         }
 
         if (maxRgb == r) {
             hueTemp = (g - b) / (maxRgb - minRgb);
         } else if (maxRgb == g) {
-            hueTemp = 2.0f + (b - r) / (maxRgb - minRgb);
+            hueTemp = 2.0 + (b - r) / (maxRgb - minRgb);
         } else {
-            hueTemp = 4.0f + (r - g) / (maxRgb - minRgb);
+            hueTemp = 4.0 + (r - g) / (maxRgb - minRgb);
         }
     }
 
-    hueTemp /= 6.0f;
+    hueTemp /= 6.0;
 
-    const i32 hue = static_cast<i32>(hueTemp * 256.0f);
-    i32 saturation = static_cast<i32>(sat * 256.0f);
-    i32 lightness = static_cast<i32>(light * 256.0f);
+    const i32 hue = static_cast<i32>(hueTemp * 256.0);
+    i32 saturation = static_cast<i32>(sat * 256.0);
+    i32 lightness = static_cast<i32>(light * 256.0);
 
     if (saturation < 0) saturation = 0;
     else if (saturation > 255) saturation = 255;
@@ -81,5 +81,6 @@ inline i32 rgbToHsl(i32 rgb) noexcept {
 
     return packHsl(hue, saturation, lightness);
 }
+
 
 } // namespace rs
