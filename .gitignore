@@ -41,3 +41,7 @@ cpp/.cache/
 
 # vendored / nested repos (local dev)
 dockview/
+
+# local scratch
+SCB_TMP.cpp
+scripts/dev/
