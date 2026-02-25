@@ -1,3 +1,4 @@
+import { CacheType } from "../cache/CacheType";
 import { BasTypeLoader } from "../config/bastype/BasTypeLoader";
 import { FloorTypeLoader, OverlayFloorTypeLoader } from "../config/floortype/FloorTypeLoader";
 import { LocTypeLoader } from "../config/loctype/LocTypeLoader";
@@ -12,7 +13,6 @@ import { SeqFrameLoader } from "../model/seq/SeqFrameLoader";
 import { SkeletalSeqLoader } from "../model/skeletal/SkeletalSeqLoader";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { TextureLoader } from "../texture/TextureLoader";
-import { CacheType } from "../cache/CacheType";
 
 export type OptionalIndexedSprite = IndexedSprite | undefined;
 export type CacheClearable = { clearCache(): void };

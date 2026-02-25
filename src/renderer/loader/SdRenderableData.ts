@@ -1,8 +1,15 @@
 import { CollisionData } from "../../rs/scene/CollisionMap";
-import { DrawRange } from "../DrawRange";
 import { RenderableType } from "../Renderer";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
+
+export type SdRenderableNpcPacketGeometry = Readonly<{
+    drawRangesBase: Int32Array;
+    drawRangesAlpha?: Int32Array;
+    vertices: Uint8Array;
+    indices: Int32Array;
+    orderKeys?: Int32Array;
+}>;
 
 export type SdRenderableModelInfoTextures = {
     readonly base: Uint16Array;
@@ -19,17 +26,17 @@ export type SdRenderableModelInfoTextures = {
 };
 
 export type SdRenderableDrawRanges = {
-    readonly base: DrawRange[];
-    readonly alpha: DrawRange[];
+    readonly base: Int32Array;
+    readonly alpha: Int32Array;
 
-    readonly lod: DrawRange[];
-    readonly lodAlpha: DrawRange[];
+    readonly lod: Int32Array;
+    readonly lodAlpha: Int32Array;
 
-    readonly interact: DrawRange[];
-    readonly interactAlpha: DrawRange[];
+    readonly interact: Int32Array;
+    readonly interactAlpha: Int32Array;
 
-    readonly interactLod: DrawRange[];
-    readonly interactLodAlpha: DrawRange[];
+    readonly interactLod: Int32Array;
+    readonly interactLodAlpha: Int32Array;
 };
 
 export class SdRenderableData {
@@ -53,5 +60,6 @@ export class SdRenderableData {
         readonly npcs: NpcData[],
 
         readonly loadedTextures: Map<number, Int32Array>,
+        readonly npcGeometry?: SdRenderableNpcPacketGeometry,
     ) {}
 }

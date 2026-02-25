@@ -8,6 +8,7 @@ import {
     SdRenderableData,
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
+    SdRenderableNpcPacketGeometry,
 } from "./SdRenderableData";
 
 export class SdMapData extends SdRenderableData implements MapData {
@@ -45,6 +46,7 @@ export class SdMapData extends SdRenderableData implements MapData {
 
         readonly usedTextureIds: Int32Array,
         readonly loadedTextures: Map<number, Int32Array>,
+        readonly npcGeometry?: SdRenderableNpcPacketGeometry,
     ) {
         super(
             RenderableType.Map,
@@ -60,6 +62,7 @@ export class SdMapData extends SdRenderableData implements MapData {
             locsAnimated,
             npcs,
             loadedTextures,
+            npcGeometry,
         );
     }
 }

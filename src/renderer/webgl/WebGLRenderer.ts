@@ -73,6 +73,7 @@ export class WebGLRenderer extends WebGLMapRenderer {
             id,
             WebGLRenderable.load(
                 this.session.getSeqTypeLoader(),
+                this.session.getSeqFrameLoader(),
                 this.session.getNpcTypeLoader(),
                 this.session.getBasTypeLoader(),
                 this.app,
@@ -133,25 +134,20 @@ export class WebGLRenderer extends WebGLMapRenderer {
 
             const isInteract = false;
             const isLod = false;
-            const { drawCall, drawRanges } = renderable.getDrawCall(false, isInteract, isLod);
+            const { drawCall, drawRangesPacked } = renderable.getDrawCall(false, isInteract, isLod);
             if (!drawCall) {
                 continue;
             }
+            this.applyLocAnimationPatchesForPass(
+                renderable,
+                false,
+                isInteract,
+                isLod,
+                drawCall,
+                drawRangesPacked,
+            );
 
-            for (const loc of renderable.locsAnimated) {
-                const frameId = loc.frame;
-                const frame = loc.anim.frames[frameId | 0];
-
-                const index = loc.getDrawRangeIndex(false, isInteract, isLod);
-                if (index !== -1) {
-                    drawCall.offsets[index] = frame[0];
-                    (drawCall as any).numElements[index] = frame[1];
-
-                    drawRanges[index] = frame;
-                }
-            }
-
-            this.draw(drawCall, drawRanges);
+            this.draw(drawCall, drawRangesPacked);
         }
     }
 
@@ -181,27 +177,13 @@ export class WebGLRenderer extends WebGLMapRenderer {
                 continue;
             }
 
-            const { drawCall, drawRanges } = renderable.drawCallNpc;
+            const { drawCall, drawRangesPacked } = renderable.drawCallNpc;
 
             drawCall.uniform("u_npcDataOffset", dataOffset);
             drawCall.texture("u_npcDataTexture", npcDataTexture);
+            this.applyNpcAnimationPatchesForPass(renderable, false, drawCall, drawRangesPacked);
 
-            for (let i = 0; i < npcs.length; i++) {
-                const npc = npcs[i];
-                const anim = npc.getAnimationFrames();
-
-                if (anim) {
-                    const frameId = npc.movementFrame;
-                    const frame = anim.frames[frameId];
-
-                    (drawCall as any).offsets[i] = frame[0];
-                    (drawCall as any).numElements[i] = frame[1];
-
-                    drawRanges[i] = frame;
-                }
-            }
-
-            this.draw(drawCall, drawRanges);
+            this.draw(drawCall, drawRangesPacked);
         }
     }
 

@@ -1,6 +1,5 @@
 import { MapBytesProvider } from "../map/MapBytesProvider";
 import { Scene } from "./Scene";
-import { LocLoadType, SceneBuilder } from "./SceneBuilder";
 import {
     createSceneBuildContext,
     decodeLocsStage,
@@ -8,6 +7,7 @@ import {
     fillEmptyTerrainStage,
     finalizeSceneStage,
 } from "./SceneBuildStages";
+import { LocLoadType, SceneBuilder } from "./SceneBuilder";
 
 export function buildSceneFromMapBytesProvider(
     sceneBuilder: SceneBuilder,

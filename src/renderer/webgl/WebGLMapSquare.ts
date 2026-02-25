@@ -5,10 +5,10 @@ import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { Scene } from "../../rs/scene/Scene";
-import { DrawRange } from "../DrawRange";
 import { MapSquareRenderable } from "../MapRenderer";
 import { RenderableType } from "../Renderer";
 import { SdMapData } from "../loader/SdMapData";
@@ -17,6 +17,7 @@ import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLR
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
     static load(
         seqTypeLoader: SeqTypeLoader,
+        seqFrameLoader: SeqFrameLoader,
         npcTypeLoader: NpcTypeLoader,
         basTypeLoader: BasTypeLoader,
         app: PicoApp,
@@ -39,10 +40,26 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         const createDrawCall: CreateDrawCallFunction = (
             program: Program,
             modelInfoTexture: Texture | undefined,
-            drawRanges: DrawRange[],
+            drawRangesPacked: Int32Array,
+            useNpcGeometry?: boolean,
         ): DrawCallRange => {
+            const drawRangeCount = (drawRangesPacked.length / 3) | 0;
+            const drawRangeArgs = new Array<[number, number, number]>(drawRangeCount);
+            for (let i = 0; i < drawRangeCount; i++) {
+                const off = i * 3;
+                drawRangeArgs[i] = [
+                    drawRangesPacked[off + 0] | 0,
+                    drawRangesPacked[off + 1] | 0,
+                    drawRangesPacked[off + 2] | 0,
+                ];
+            }
             const drawCall = app
-                .createDrawCall(program, renderable.vertexArray)
+                .createDrawCall(
+                    program,
+                    useNpcGeometry && renderable.npcVertexArray
+                        ? renderable.npcVertexArray
+                        : renderable.vertexArray,
+                )
                 .uniformBlock("SceneUniforms", sceneUniformBuffer)
                 .uniform("u_timeLoaded", time)
                 .uniform("u_mapPos", mapPos)
@@ -51,7 +68,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
                 .texture("u_textureMaterials", textureMaterials)
                 .texture("u_textureSlotLut", textureSlotLut)
                 .texture("u_heightMap", renderable.heightMapTexture)
-                .drawRanges(...drawRanges);
+                .drawRanges(...drawRangeArgs);
 
             if (modelInfoTexture) {
                 drawCall.texture("u_modelInfoTexture", modelInfoTexture);
@@ -59,7 +76,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
             return {
                 drawCall,
-                drawRanges,
+                drawRangesPacked,
             };
         };
 
@@ -75,11 +92,20 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             frame,
         );
         renderable.createBuffers(app, data);
+        renderable.createNpcGeometryBuffers(app, data);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
-        renderable.createAnimatedLocs(time, data, seqTypeLoader);
-        renderable.createNpcs(data, npcTypeLoader, basTypeLoader, createDrawCall, npcProgram);
+        renderable.createAnimatedLocs(time, data, seqTypeLoader, seqFrameLoader);
+        renderable.createNpcs(
+            data,
+            npcTypeLoader,
+            basTypeLoader,
+            seqTypeLoader,
+            seqFrameLoader,
+            createDrawCall,
+            npcProgram,
+        );
         renderable.processNpcsCollisions();
         renderable.usedTextureIds = data.usedTextureIds;
 

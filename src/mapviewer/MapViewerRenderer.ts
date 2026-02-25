@@ -8,7 +8,13 @@ import { INTERACTION_RADIUS } from "../renderer/Interactions";
 import { MapManager, MapSquareInfo } from "../renderer/MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
+import {
+    registerDrawRangeTickState,
+    tickAdvanceAndEmitBasePatchesForState,
+    unregisterDrawRangeTickState,
+} from "../renderer/webgl/DrawRangePatchBackend";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
+import { LOC_CYCLE_SCALE, WebGLRenderable } from "../renderer/webgl/WebGLRenderable";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { CacheSession } from "../rs/runtime/createCacheSession";
@@ -37,6 +43,10 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private isInitialized: boolean = false;
 
+    private strictFailure(reason: string): never {
+        throw new Error(`[map-render-backend][strict-cpp-wasm] ${reason}`);
+    }
+
     constructor(public mapViewer: MapViewer) {
         super();
         this.inputManager = mapViewer.inputManager;
@@ -52,6 +62,14 @@ export class MapViewerRenderer extends RendererMainLoop {
             mapViewer.lodDistance,
             this.camera,
         );
+        if (this.renderer instanceof WebGLMapRenderer) {
+            const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+            const tickBackend =
+                runtimeOptions.mapRenderTickBackend ?? runtimeOptions.mapRenderBackend;
+            this.renderer.setDrawRangePatchStrictCppWasm(
+                !!runtimeOptions.mapRenderStrictCppWasm && tickBackend === "cpp-wasm",
+            );
+        }
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
             this.queueLoadMap.bind(this),
@@ -66,13 +84,37 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.mapManager.addMap(mapX, mapY);
                 this.renderer.addMap(mapData);
 
-                this.mapViewer.setMapImageUrl(
-                    mapData.mapX,
-                    mapData.mapY,
-                    URL.createObjectURL(mapData.minimapBlob),
-                    true,
-                    false,
-                );
+                if (mapData.minimapBlob.size > 0) {
+                    this.mapViewer.setMapImageUrl(
+                        mapData.mapX,
+                        mapData.mapY,
+                        URL.createObjectURL(mapData.minimapBlob),
+                        true,
+                        false,
+                    );
+                } else {
+                    // Active cpp-wasm map payload can omit minimap blob; load it on demand.
+                    void this.workerPool
+                        .queueMapImage(mapData.mapX, mapData.mapY, 0, false)
+                        .then((minimapData) => {
+                            if (!minimapData) {
+                                return;
+                            }
+                            if (minimapData.minimapBlob.size <= 0) {
+                                return;
+                            }
+                            this.mapViewer.setMapImageUrl(
+                                mapData.mapX,
+                                mapData.mapY,
+                                URL.createObjectURL(minimapData.minimapBlob),
+                                true,
+                                false,
+                            );
+                        })
+                        .catch(() => {
+                            // Ignore minimap warmup failures; map render path is still valid.
+                        });
+                }
             }
         } else {
             this.mapManager.addInvalidMap(mapX, mapY);
@@ -137,6 +179,14 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.mapViewer.lodDistance,
                 this.camera,
             );
+            if (this.renderer instanceof WebGLMapRenderer) {
+                const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+                const tickBackend =
+                    runtimeOptions.mapRenderTickBackend ?? runtimeOptions.mapRenderBackend;
+                this.renderer.setDrawRangePatchStrictCppWasm(
+                    !!runtimeOptions.mapRenderStrictCppWasm && tickBackend === "cpp-wasm",
+                );
+            }
             this.mapManager = new MapManager(
                 this.workerPool.size * 2,
                 this.queueLoadMap.bind(this),
@@ -202,9 +252,43 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
+        const cycleNowFixed = Math.round(cycle * LOC_CYCLE_SCALE) | 0;
 
         const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
         const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
+        const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+        const tickBackend = runtimeOptions.mapRenderTickBackend ?? runtimeOptions.mapRenderBackend;
+        const drawRangePatchReady =
+            this.renderer instanceof WebGLMapRenderer && this.renderer.isDrawRangePatchWasmReady();
+        const drawRangePatchInitComplete =
+            this.renderer instanceof WebGLMapRenderer &&
+            this.renderer.isDrawRangePatchWasmInitComplete();
+        const requireCppWasmTickPath =
+            tickBackend === "cpp-wasm" &&
+            this.renderer instanceof WebGLMapRenderer &&
+            drawRangePatchReady;
+        if (
+            tickBackend === "cpp-wasm" &&
+            this.renderer instanceof WebGLMapRenderer &&
+            drawRangePatchInitComplete &&
+            !drawRangePatchReady
+        ) {
+            if (runtimeOptions.mapRenderStrictCppWasm) {
+                this.strictFailure("drawRangePatchBackendNotReady");
+            }
+        }
+        const useMapRenderWasm = requireCppWasmTickPath;
+        const strictCppWasm = !!runtimeOptions.mapRenderStrictCppWasm && tickBackend === "cpp-wasm";
+
+        const debugTickSquare = runtimeOptions.mapRenderDebugTickSquare;
+        const debugTickSquareX =
+            typeof debugTickSquare === "string" && debugTickSquare.includes(":")
+                ? parseInt(debugTickSquare.split(":")[0] ?? "", 10) | 0
+                : -1;
+        const debugTickSquareY =
+            typeof debugTickSquare === "string" && debugTickSquare.includes(":")
+                ? parseInt(debugTickSquare.split(":")[1] ?? "", 10) | 0
+                : -1;
 
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
@@ -212,10 +296,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             if (!map || !map.canRender(this.renderer.stats.frameCount)) {
                 continue;
             }
-
-            for (const loc of map.locsAnimated) {
-                loc.update(seqFrameLoader, cycle);
-            }
+            const renderable = map instanceof WebGLRenderable ? map : undefined;
 
             for (let t = 0; t < ticksElapsed; t++) {
                 for (const npc of map.npcs) {
@@ -223,6 +304,245 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
             }
 
+            let tickedWithWasm = false;
+            if (useMapRenderWasm && renderable) {
+                const wantDebugTick =
+                    debugTickSquareX >= 0 &&
+                    debugTickSquareY >= 0 &&
+                    mapInfo.mapX === debugTickSquareX &&
+                    mapInfo.mapY === debugTickSquareY;
+                const preLocFrameIds =
+                    wantDebugTick && renderable.locFrameIds instanceof Int32Array
+                        ? new Int32Array(renderable.locFrameIds)
+                        : undefined;
+                const stateWasInitialized = renderable.ensureCppTickStateInitializedFromObjects();
+                renderable.syncNpcMovementStateFromObjects();
+                renderable.syncNpcPathStateFromObjects();
+                if (stateWasInitialized) {
+                    const registered = registerDrawRangeTickState(renderable.id, {
+                        locFrameIds: renderable.locFrameIds,
+                        locCycleStartsFixed: renderable.locCycleStartsFixed,
+                        locFrameSteps: renderable.locSeqFrameSteps,
+                        locHasAnimMaya: renderable.locSeqHasAnimMaya,
+                        locAnimMayaDurations: renderable.locSeqAnimMayaDurations,
+                        locFrameLengthOffsets: renderable.locSeqFrameLengthOffsets,
+                        locFrameLengthCounts: renderable.locSeqFrameLengthCounts,
+                        locFrameLengthsPacked: renderable.locSeqFrameLengthsPacked,
+                        locSeqIds: renderable.locSeqIds,
+                        locOutActiveFlags: renderable.locSeqActiveFlags,
+                        locDrawRangeIndicesBase: renderable.locDrawRangeIndicesBase,
+                        locAnimFrameOffsetsBase: renderable.locAnimFrameOffsetsBase,
+                        locAnimFrameCountsBase: renderable.locAnimFrameCountsBase,
+                        locAnimFramesBasePacked: renderable.locAnimFramesBasePacked,
+                        outLocPatchesPacked: renderable.locTickBasePatches,
+                        locDrawRangeIndicesAlpha: renderable.locDrawRangeIndicesAlpha,
+                        locDrawRangeIndicesLod: renderable.locDrawRangeIndicesLod,
+                        locDrawRangeIndicesLodAlpha: renderable.locDrawRangeIndicesLodAlpha,
+                        locDrawRangeIndicesInteract: renderable.locDrawRangeIndicesInteract,
+                        locDrawRangeIndicesInteractAlpha:
+                            renderable.locDrawRangeIndicesInteractAlpha,
+                        locDrawRangeIndicesInteractLod: renderable.locDrawRangeIndicesInteractLod,
+                        locDrawRangeIndicesInteractLodAlpha:
+                            renderable.locDrawRangeIndicesInteractLodAlpha,
+                        locAnimFrameOffsetsAlpha: renderable.locAnimFrameOffsetsAlpha,
+                        locAnimFrameCountsAlpha: renderable.locAnimFrameCountsAlpha,
+                        locAnimFramesAlphaPacked: renderable.locAnimFramesAlphaPacked,
+                        outLocAlphaPatchesPacked: renderable.locTickAlphaPatches,
+                        outLocLodPatchesPacked: renderable.locTickLodPatches,
+                        outLocLodAlphaPatchesPacked: renderable.locTickLodAlphaPatches,
+                        outLocInteractPatchesPacked: renderable.locTickInteractPatches,
+                        outLocInteractAlphaPatchesPacked: renderable.locTickInteractAlphaPatches,
+                        outLocInteractLodPatchesPacked: renderable.locTickInteractLodPatches,
+                        outLocInteractLodAlphaPatchesPacked:
+                            renderable.locTickInteractLodAlphaPatches,
+
+                        npcX: renderable.npcX,
+                        npcY: renderable.npcY,
+                        npcOrientation: renderable.npcOrientation,
+                        npcRotation: renderable.npcRotation,
+                        npcPathLength: renderable.npcPathLength,
+                        npcMovementSeqId: renderable.npcMovementSeqId,
+                        npcPathXPacked: renderable.npcPathXPacked,
+                        npcPathYPacked: renderable.npcPathYPacked,
+                        npcPathMovementTypePacked: renderable.npcPathMovementTypePacked,
+                        npcSize: renderable.npcSize,
+                        npcIsClickable: renderable.npcIsClickable,
+                        npcRotationSpeed: renderable.npcRotationSpeed,
+                        npcIdleSeqId: renderable.npcIdleSeqId,
+                        npcWalkSeqId: renderable.npcWalkSeqId,
+                        npcHasWalkAnim: renderable.npcHasWalkAnim,
+                        npcFrameIds: renderable.npcFrameIds,
+                        npcFrameTicks: renderable.npcFrameTicks,
+                        npcMovementLoops: renderable.npcMovementLoops,
+                        npcIdleSeqValid: renderable.npcIdleSeqValid,
+                        npcIdleSeqHasAnimMaya: renderable.npcIdleSeqHasAnimMaya,
+                        npcIdleSeqAnimMayaDurations: renderable.npcIdleSeqAnimMayaDurations,
+                        npcIdleSeqFrameSteps: renderable.npcIdleSeqFrameSteps,
+                        npcIdleSeqLooping: renderable.npcIdleSeqLooping,
+                        npcIdleSeqMaxLoops: renderable.npcIdleSeqMaxLoops,
+                        npcIdleSeqFrameIdCounts: renderable.npcIdleSeqFrameIdCounts,
+                        npcIdleSeqFrameLengthOffsets: renderable.npcIdleSeqFrameLengthOffsets,
+                        npcIdleSeqFrameLengthCounts: renderable.npcIdleSeqFrameLengthCounts,
+                        npcWalkSeqValid: renderable.npcWalkSeqValid,
+                        npcWalkSeqHasAnimMaya: renderable.npcWalkSeqHasAnimMaya,
+                        npcWalkSeqAnimMayaDurations: renderable.npcWalkSeqAnimMayaDurations,
+                        npcWalkSeqFrameSteps: renderable.npcWalkSeqFrameSteps,
+                        npcWalkSeqLooping: renderable.npcWalkSeqLooping,
+                        npcWalkSeqMaxLoops: renderable.npcWalkSeqMaxLoops,
+                        npcWalkSeqFrameIdCounts: renderable.npcWalkSeqFrameIdCounts,
+                        npcWalkSeqFrameLengthOffsets: renderable.npcWalkSeqFrameLengthOffsets,
+                        npcWalkSeqFrameLengthCounts: renderable.npcWalkSeqFrameLengthCounts,
+                        npcSeqFrameLengthsPacked: renderable.npcSeqFrameLengthsPacked,
+                        npcDrawRangeIndices: renderable.npcDrawRangeIndices,
+                        npcIdleAnimFrameOffsetsBase: renderable.npcIdleFrameOffsetsBase,
+                        npcIdleAnimFrameCountsBase: renderable.npcIdleFrameCountsBase,
+                        npcWalkAnimFrameOffsetsBase: renderable.npcWalkFrameOffsetsBase,
+                        npcWalkAnimFrameCountsBase: renderable.npcWalkFrameCountsBase,
+                        npcAnimFramesBasePacked: renderable.npcAnimFramesBasePacked,
+                        outNpcPatchesPacked: renderable.npcTickBasePatches,
+                        npcIdleAnimFrameOffsetsAlpha: renderable.npcIdleFrameOffsetsAlpha,
+                        npcIdleAnimFrameCountsAlpha: renderable.npcIdleFrameCountsAlpha,
+                        npcWalkAnimFrameOffsetsAlpha: renderable.npcWalkFrameOffsetsAlpha,
+                        npcWalkAnimFrameCountsAlpha: renderable.npcWalkFrameCountsAlpha,
+                        npcAnimFramesAlphaPacked: renderable.npcAnimFramesAlphaPacked,
+                        npcNullAlphaFrameOffset: renderable.npcNullAlphaFrameOffset,
+                        outNpcAlphaPatchesPacked: renderable.npcTickAlphaPatches,
+                    });
+                    if (!registered) {
+                        if (strictCppWasm) {
+                            this.strictFailure("registerDrawRangeTickStateFailed");
+                        }
+                        renderable.resetCppTickStateLifecycle();
+                    }
+                }
+                const tickResult = tickAdvanceAndEmitBasePatchesForState(
+                    renderable.id,
+                    cycleNowFixed,
+                    clientTicksElapsed,
+                );
+                if (tickResult) {
+                    renderable.applyLocAnimationStateToObjects();
+                    renderable.applyNpcFrameStateToObjects();
+                    renderable.locTickBasePatchCount = tickResult.locBasePatchCount | 0;
+                    renderable.locTickAlphaPatchCount = tickResult.locAlphaPatchCount | 0;
+                    renderable.locTickLodPatchCount = tickResult.locLodPatchCount | 0;
+                    renderable.locTickLodAlphaPatchCount = tickResult.locLodAlphaPatchCount | 0;
+                    renderable.locTickInteractPatchCount = tickResult.locInteractPatchCount | 0;
+                    renderable.locTickInteractAlphaPatchCount =
+                        tickResult.locInteractAlphaPatchCount | 0;
+                    renderable.locTickInteractLodPatchCount =
+                        tickResult.locInteractLodPatchCount | 0;
+                    renderable.locTickInteractLodAlphaPatchCount =
+                        tickResult.locInteractLodAlphaPatchCount | 0;
+                    renderable.npcTickBasePatchCount = tickResult.npcBasePatchCount | 0;
+                    renderable.npcTickAlphaPatchCount = tickResult.npcAlphaPatchCount | 0;
+                    tickedWithWasm = true;
+
+                    if (wantDebugTick && preLocFrameIds) {
+                        // Validate that the wasm-emitted patch stream matches the frame selection
+                        // that is now applied to the LocAnimated objects.
+                        const patches = renderable.locTickBasePatches;
+                        const patchCount = renderable.locTickBasePatchCount | 0;
+                        const patchMap = new Map<number, [number, number, number]>();
+                        const safePatchCount = Math.min(patchCount, Math.floor(patches.length / 4));
+                        for (let p = 0; p < safePatchCount; p++) {
+                            const off = p * 4;
+                            const drawRangeIndex = patches[off + 0] | 0;
+                            patchMap.set(drawRangeIndex, [
+                                patches[off + 1] | 0,
+                                patches[off + 2] | 0,
+                                patches[off + 3] | 0,
+                            ]);
+                        }
+                        const locs = renderable.locsAnimated;
+                        for (let li = 0; li < locs.length; li++) {
+                            const oldFrame = preLocFrameIds[li] | 0;
+                            const newFrame = renderable.locFrameIds[li] | 0;
+                            if (oldFrame === newFrame) {
+                                continue;
+                            }
+                            const loc = locs[li];
+                            const drawRangeIndex = loc.drawRangeIndex | 0;
+                            const expected = loc.anim.frames?.[newFrame];
+                            const actual = patchMap.get(drawRangeIndex);
+                            if (!expected) {
+                                console.warn(
+                                    "[map-render-backend][tick-debug] missing expected frame",
+                                    {
+                                        square: `${(mapInfo as any).mapX}:${(mapInfo as any).mapY}`,
+                                        locIndex: li,
+                                        drawRangeIndex,
+                                        oldFrame,
+                                        newFrame,
+                                        seqId: renderable.locSeqIds?.[li] ?? -1,
+                                    },
+                                );
+                                continue;
+                            }
+                            const expOff = expected[0] | 0;
+                            const expEl = expected[1] | 0;
+                            const expInst = expected[2] | 0;
+                            if (!actual) {
+                                console.warn(
+                                    "[map-render-backend][tick-debug] frame changed but no patch emitted",
+                                    {
+                                        square: `${(mapInfo as any).mapX}:${(mapInfo as any).mapY}`,
+                                        locIndex: li,
+                                        drawRangeIndex,
+                                        oldFrame,
+                                        newFrame,
+                                        expected: [expOff, expEl, expInst],
+                                        patchCount,
+                                        seqId: renderable.locSeqIds?.[li] ?? -1,
+                                        hasAnimMaya: renderable.locSeqHasAnimMaya?.[li] ?? -1,
+                                    },
+                                );
+                                break;
+                            }
+                            if (
+                                actual[0] !== expOff ||
+                                actual[1] !== expEl ||
+                                actual[2] !== expInst
+                            ) {
+                                console.warn(
+                                    "[map-render-backend][tick-debug] patch mismatch for changed frame",
+                                    {
+                                        square: `${(mapInfo as any).mapX}:${(mapInfo as any).mapY}`,
+                                        locIndex: li,
+                                        drawRangeIndex,
+                                        oldFrame,
+                                        newFrame,
+                                        expected: [expOff, expEl, expInst],
+                                        actual,
+                                        patchCount,
+                                        seqId: renderable.locSeqIds?.[li] ?? -1,
+                                        frameStep: renderable.locSeqFrameSteps?.[li] ?? -1,
+                                        hasAnimMaya: renderable.locSeqHasAnimMaya?.[li] ?? -1,
+                                        animMayaDur: renderable.locSeqAnimMayaDurations?.[li] ?? -1,
+                                    },
+                                );
+                                break;
+                            }
+                        }
+                    }
+                } else if (strictCppWasm) {
+                    this.strictFailure("tickAdvanceAndEmitBasePatchesFailed");
+                }
+            }
+
+            if (tickedWithWasm) {
+                continue;
+            }
+
+            if (renderable) {
+                unregisterDrawRangeTickState(renderable.id);
+                renderable.resetCppTickStateLifecycle();
+                renderable.clearTickPatchStreams();
+            }
+
+            for (const loc of map.locsAnimated) {
+                loc.update(seqFrameLoader, cycle);
+            }
             for (let t = 0; t < clientTicksElapsed; t++) {
                 for (const npc of map.npcs) {
                     npc.updateMovement(seqTypeLoader, seqFrameLoader);
@@ -552,11 +872,11 @@ export class MapViewerRenderer extends RendererMainLoop {
                         continue;
                     }
                     let npcType = npcResult.value;
-                        if (npcType.transforms) {
-                            const transformed = npcType.transform(
-                                this.mapViewer.session.varManager,
-                                this.mapViewer.session.getNpcTypeLoader(),
-                            );
+                    if (npcType.transforms) {
+                        const transformed = npcType.transform(
+                            this.mapViewer.session.varManager,
+                            this.mapViewer.session.getNpcTypeLoader(),
+                        );
                         if (!transformed) {
                             continue;
                         }

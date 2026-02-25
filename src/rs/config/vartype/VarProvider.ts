@@ -1,6 +1,6 @@
 import { BIT_MASKS } from "../../MathConstants";
-import { VarBitTypeLoader } from "./bit/VarBitTypeLoader";
 import { VarManager } from "./VarManager";
+import { VarBitTypeLoader } from "./bit/VarBitTypeLoader";
 
 export interface VarProvider {
     getVarp(id: number): number;

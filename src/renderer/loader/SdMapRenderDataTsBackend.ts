@@ -1,6 +1,7 @@
 import { NpcSpawn, getMapNpcSpawns } from "../../data/npc/NpcSpawn";
 import { ObjSpawn, getMapObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
+import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
 import { NpcType } from "../../rs/config/npctype/NpcType";
@@ -8,58 +9,66 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
+import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Model } from "../../rs/model/Model";
+import type { MapImageRenderer } from "../../rs/render/minimap/MapImageRenderer";
+import type { CacheSession } from "../../rs/runtime/createCacheSession";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
-import { LocLoadType } from "../../rs/scene/SceneBuilder";
+import { LocLoadType, SceneBuilder } from "../../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
-import { ContourGroundInfo, LocModelLoader } from "../../rs/scene/model/LocModelLoader";
+import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
-import type { CacheSession } from "../../rs/runtime/createCacheSession";
-import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
-import type { MapImageRenderer } from "../../rs/render/minimap/MapImageRenderer";
-import { loadMinimapBlob } from "../../worker/MinimapData";
 import {
+    MapRenderCommandBucketsRuntimeInput,
+    MapRenderCommandStreamRuntimeInput,
     MapRenderDataPayloadResult,
-    MapRenderScenePackInput,
     sdMapDataToPayload,
 } from "../../worker/MapRenderDataContract";
-import type { SceneBuildBackend } from "../../worker/SceneBuildBackend";
+import { loadMinimapBlob } from "../../worker/MinimapData";
 import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
-import { ModelHashBuffer, getModelHash } from "../buffer/ModelHashBuffer";
+import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
+import { ContourGroundType, SceneBuffer, SceneModel } from "../buffer/SceneBuffer";
 import {
-    ContourGroundType,
-    DrawCommand,
-    ModelFace,
-    ModelMergeGroup,
-    SceneBuffer,
-    SceneModel,
-    createModelInfoTextureData,
-    getModelFaces,
-    isModelFaceTransparent,
-} from "../buffer/SceneBuffer";
+    buildDrawRangesFromBuckets,
+    buildModelInfoTexturesFromBuckets,
+    buildRuntimeCommandStreamInputFromBuckets,
+    collectRuntimeDrawCommandBuckets,
+} from "../buffer/SceneCommandBuilder";
+import { emitSceneModelsToSceneBuffer } from "../buffer/SceneCommandPlan";
+import {
+    type SceneCommandPlan,
+    type SceneCommandPlanDigest,
+    summarizeSceneCommandPlan,
+} from "../buffer/SceneCommandPlan";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
+import {
+    createLocAnimatedGroupKey,
+    resolveLocRenderPlacement,
+} from "../loc/LocRenderPlacementResolver";
 import { SceneLocEntity } from "../loc/SceneLocEntity";
-import { getSceneLocs, isLowDetail } from "../loc/SceneLocs";
-import { createNpcDatas } from "../npc/NpcData";
+import { getSceneLocs } from "../loc/SceneLocs";
+import { createNpcDatas, createNpcDatasFromSpawns } from "../npc/NpcData";
 import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
-import { SdRenderableDataLoader, addNpcAnimationFrames } from "./SdRenderableDataLoader";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
+import { addNpcAnimationFrames } from "./SdRenderableDataLoader";
+import { createSdTexturePacking } from "./SdTexturePacking";
 
 export type SdMapRenderDataTsBackendDeps = Readonly<{
     session: CacheSession;
+    sceneBuilder: SceneBuilder;
     mapBytesProvider: MapBytesProvider;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;
     npcModelLoader: NpcModelLoader;
-    sceneBuildBackend: SceneBuildBackend;
     mapImageRenderer: MapImageRenderer;
     varProvider: VarProvider;
     objSpawns: ObjSpawn[];
@@ -83,10 +92,49 @@ export type NpcSpawnDecodeBackend = Readonly<{
 }>;
 
 export type BuildMapDataPayloadOptions = Readonly<{
-    includeScenePackInput?: boolean;
+    includeRuntimeCommandStreamInput?: boolean;
+    includeRuntimeCommandBucketsInput?: boolean;
+    includeRuntimeSceneTileHeights?: boolean;
     preferWasmPacking?: boolean;
     includeMinimapBlob?: boolean;
+    includeLoadedTextures?: boolean;
+    includeNpcAnimationFrames?: boolean;
+    debugIncludeSceneCommandPlanDigest?: boolean;
+    debugIncludeSceneCommandPlanOpsPacked?: boolean;
 }>;
+
+export type BuildMapDataBridgeInputResult = Readonly<{
+    payloadResult: MapRenderDataPayloadResult;
+    runtimeCommandStreamInput: MapRenderCommandStreamRuntimeInput | undefined;
+    runtimeCommandBucketsInput: MapRenderCommandBucketsRuntimeInput | undefined;
+    debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
+    debugSceneCommandPlanOpsPacked?: Int32Array;
+}>;
+
+function packSceneCommandPlanOps(plan: SceneCommandPlan): Int32Array {
+    const stride = 6;
+    const out = new Int32Array((plan.ops.length | 0) * stride);
+    let o = 0;
+    for (let i = 0; i < plan.ops.length; i++) {
+        const op = plan.ops[i];
+        if (op.kind === "mergedGroup") {
+            out[o++] = 2;
+            out[o++] = op.group.transparent ? 1 : 0;
+            out[o++] = op.group.lowDetail ? 1 : 0;
+            out[o++] = op.group.level | 0;
+            out[o++] = op.group.priority | 0;
+            out[o++] = op.group.models.length | 0;
+        } else {
+            out[o++] = 1;
+            out[o++] = op.transparent ? 1 : 0;
+            out[o++] = op.modelHash | 0;
+            out[o++] = op.faces.length | 0;
+            out[o++] = op.instances.length | 0;
+            out[o++] = op.lodInstances.length | 0;
+        }
+    }
+    return out;
+}
 
 function loadHeightMapTextureData(scene: Scene): Int16Array {
     const heightMapTextureData = new Int16Array(Scene.MAX_LEVELS * scene.sizeX * scene.sizeY);
@@ -106,14 +154,14 @@ function loadHeightMapTextureData(scene: Scene): Int16Array {
 
 function createEmptyDrawRanges(): SdRenderableDrawRanges {
     return {
-        base: [],
-        alpha: [],
-        lod: [],
-        lodAlpha: [],
-        interact: [],
-        interactAlpha: [],
-        interactLod: [],
-        interactLodAlpha: [],
+        base: new Int32Array(0),
+        alpha: new Int32Array(0),
+        lod: new Int32Array(0),
+        lodAlpha: new Int32Array(0),
+        interact: new Int32Array(0),
+        interactAlpha: new Int32Array(0),
+        interactLod: new Int32Array(0),
+        interactLodAlpha: new Int32Array(0),
     };
 }
 
@@ -130,45 +178,6 @@ function createEmptyModelInfoTextures(): SdRenderableModelInfoTextures {
     };
 }
 
-type ScenePackDrawCommandBuckets = Readonly<{
-    base: ReadonlyArray<DrawCommand>;
-    alpha: ReadonlyArray<DrawCommand>;
-    lod: ReadonlyArray<DrawCommand>;
-    lodAlpha: ReadonlyArray<DrawCommand>;
-    interact: ReadonlyArray<DrawCommand>;
-    interactAlpha: ReadonlyArray<DrawCommand>;
-    interactLod: ReadonlyArray<DrawCommand>;
-    interactLodAlpha: ReadonlyArray<DrawCommand>;
-}>;
-
-function getScenePackDrawCommandBuckets(
-    sceneBuf: SceneBuffer,
-): ScenePackDrawCommandBuckets {
-    return {
-        base: sceneBuf.drawCommands,
-        alpha: sceneBuf.drawCommandsAlpha,
-        lod: sceneBuf.drawCommandsLod,
-        lodAlpha: sceneBuf.drawCommandsLodAlpha,
-        interact: sceneBuf.drawCommandsInteract,
-        interactAlpha: sceneBuf.drawCommandsInteractAlpha,
-        interactLod: sceneBuf.drawCommandsInteractLod,
-        interactLodAlpha: sceneBuf.drawCommandsInteractLodAlpha,
-    };
-}
-
-type DrawCommandBucketKey = keyof ScenePackDrawCommandBuckets;
-
-const DRAW_BUCKET_KEYS: readonly DrawCommandBucketKey[] = [
-    "base",
-    "alpha",
-    "lod",
-    "lodAlpha",
-    "interact",
-    "interactAlpha",
-    "interactLod",
-    "interactLodAlpha",
-];
-
 function flattenSceneTileHeights(scene: Scene): Int32Array {
     const levels = scene.levels;
     const sizeX = scene.sizeX;
@@ -183,88 +192,6 @@ function flattenSceneTileHeights(scene: Scene): Int32Array {
         }
     }
     return sceneTileHeights;
-}
-
-type ScenePackDrawCommandLike = Readonly<{
-    instances: ReadonlyArray<unknown>;
-}>;
-
-function modelInfoLengthFromDrawCommands(
-    commands: ReadonlyArray<ScenePackDrawCommandLike>,
-): number {
-    let totalInstances = 0;
-    for (let i = 0; i < commands.length; i++) {
-        totalInstances += commands[i].instances.length | 0;
-    }
-    const dataLength = Math.ceil((commands.length * 4 + totalInstances) / 16) * 16;
-    return Math.max(dataLength, 16) * 4;
-}
-
-function createScenePackInput(
-    scene: Scene,
-    drawCommands: ScenePackDrawCommandBuckets,
-): MapRenderScenePackInput {
-    const bucketCmdCounts = new Int32Array(DRAW_BUCKET_KEYS.length);
-    const bucketModelInfoLengths = new Int32Array(DRAW_BUCKET_KEYS.length);
-
-    let totalCmdCount = 0;
-    let totalInstances = 0;
-    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
-        const key = DRAW_BUCKET_KEYS[bucket];
-        const commands = drawCommands[key];
-        const cmdCount = commands.length | 0;
-        bucketCmdCounts[bucket] = cmdCount;
-        totalCmdCount += cmdCount;
-        bucketModelInfoLengths[bucket] = modelInfoLengthFromDrawCommands(commands);
-        for (let i = 0; i < cmdCount; i++) {
-            totalInstances += commands[i].instances.length | 0;
-        }
-    }
-
-    const cmdOffsets = new Int32Array(totalCmdCount);
-    const cmdElements = new Int32Array(totalCmdCount);
-    const cmdInstanceCounts = new Int32Array(totalCmdCount);
-    const packedInstances = new Int32Array(totalInstances * 8);
-
-    let cmdCursor = 0;
-    let instanceCursor = 0;
-    for (let bucket = 0; bucket < DRAW_BUCKET_KEYS.length; bucket++) {
-        const key = DRAW_BUCKET_KEYS[bucket];
-        const commands = drawCommands[key];
-        for (let i = 0; i < commands.length; i++) {
-            const command = commands[i];
-            cmdOffsets[cmdCursor] = command.offset | 0;
-            cmdElements[cmdCursor] = command.elements | 0;
-            const instanceCount = command.instances.length | 0;
-            cmdInstanceCounts[cmdCursor] = instanceCount;
-            cmdCursor++;
-            for (let j = 0; j < instanceCount; j++) {
-                const instance = command.instances[j];
-                packedInstances[instanceCursor++] = instance.sceneX | 0;
-                packedInstances[instanceCursor++] = instance.sceneZ | 0;
-                packedInstances[instanceCursor++] = instance.heightOffset | 0;
-                packedInstances[instanceCursor++] = instance.level | 0;
-                packedInstances[instanceCursor++] = instance.contourGround | 0;
-                packedInstances[instanceCursor++] = instance.priority | 0;
-                packedInstances[instanceCursor++] = instance.interactType | 0;
-                packedInstances[instanceCursor++] = instance.interactId | 0;
-            }
-        }
-    }
-
-    return {
-        sceneTileHeights: flattenSceneTileHeights(scene),
-        levels: scene.levels,
-        sizeX: scene.sizeX,
-        sizeY: scene.sizeY,
-        unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
-        bucketCmdCounts,
-        bucketModelInfoLengths,
-        cmdOffsets,
-        cmdElements,
-        cmdInstanceCounts,
-        packedInstances,
-    };
 }
 
 function createObjSceneModels(
@@ -355,163 +282,16 @@ function createObjSceneModel(
     });
 }
 
-function createModelGroups(
-    modelGroupMap: Map<number, ModelMergeGroup>,
-    sceneModels: SceneModel[],
-    transparent: boolean,
-): void {
-    for (const sceneModel of sceneModels) {
-        const key =
-            Number(transparent) |
-            ((sceneModel.lowDetail ? 1 : 0) << 1) |
-            (sceneModel.level << 2) |
-            (sceneModel.priority << 4);
-
-        const group = modelGroupMap.get(key);
-        if (group) {
-            group.models.push(sceneModel);
-        } else {
-            modelGroupMap.set(key, {
-                transparent,
-                lowDetail: sceneModel.lowDetail,
-                level: sceneModel.level,
-                priority: sceneModel.priority,
-                models: [sceneModel],
-            });
-        }
-    }
-}
-
-function addSceneModels(
-    modelHashBuf: ModelHashBuffer,
-    textureLoader: TextureLoader,
-    sceneBuf: SceneBuffer,
-    sceneModels: SceneModel[],
-    minimizeDrawCalls: boolean,
-): void {
-    const groupedModels = new Map<number, SceneModel[]>();
-    for (const sceneModel of sceneModels) {
-        const model = sceneModel.model;
-        const hash = getModelHash(modelHashBuf, model);
-        const locs = groupedModels.get(hash);
-        if (locs) {
-            locs.push(sceneModel);
-        } else {
-            groupedModels.set(hash, [sceneModel]);
-        }
-    }
-
-    const modelGroupMap: Map<number, ModelMergeGroup> = new Map();
-    for (const sceneModels of groupedModels.values()) {
-        const model = sceneModels[0].model;
-        const faces = getModelFaces(model);
-
-        const opaqueFaces: ModelFace[] = [];
-        const transparentFaces: ModelFace[] = [];
-        for (const face of faces) {
-            if (isModelFaceTransparent(textureLoader, face)) {
-                transparentFaces.push(face);
-            } else {
-                opaqueFaces.push(face);
-            }
-        }
-
-        const mergeModels: SceneModel[] = [];
-        const instancedModels: SceneModel[] = [];
-        const lodModels: SceneModel[] = [];
-        for (const sceneModel of sceneModels) {
-            if (sceneModel.forceMerge) {
-                mergeModels.push(sceneModel);
-            } else {
-                instancedModels.push(sceneModel);
-                if (!sceneModel.lowDetail) {
-                    lodModels.push(sceneModel);
-                }
-            }
-        }
-
-        createModelGroups(modelGroupMap, mergeModels, false);
-        if (transparentFaces.length > 0) {
-            createModelGroups(modelGroupMap, mergeModels, true);
-        }
-
-        const instanceCount = instancedModels.length;
-        const mergeOpaque =
-            instanceCount === 1 || instanceCount * opaqueFaces.length < 100 || minimizeDrawCalls;
-        const mergeTransparent =
-            instanceCount === 1 ||
-            instanceCount * transparentFaces.length < 100 ||
-            minimizeDrawCalls;
-
-        // mergeOpaque = false;
-        // mergeTransparent = false;
-
-        if (mergeOpaque) {
-            createModelGroups(modelGroupMap, instancedModels, false);
-        } else if (opaqueFaces.length > 0) {
-            const indexOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, opaqueFaces);
-            const elementCount = (sceneBuf.indexByteOffset() - indexOffset) / 4;
-
-            const drawCommand: DrawCommand = {
-                offset: indexOffset,
-                elements: elementCount,
-                instances: sceneModels,
-            };
-
-            sceneBuf.drawCommands.push(drawCommand);
-            sceneBuf.drawCommandsInteract.push(drawCommand);
-            if (lodModels.length > 0) {
-                const drawCommandLod: DrawCommand = {
-                    offset: indexOffset,
-                    elements: elementCount,
-                    instances: lodModels,
-                };
-                sceneBuf.drawCommandsLod.push(drawCommandLod);
-                sceneBuf.drawCommandsInteractLod.push(drawCommandLod);
-            }
-        }
-
-        if (mergeTransparent && transparentFaces.length > 0) {
-            createModelGroups(modelGroupMap, instancedModels, true);
-        } else if (transparentFaces.length > 0) {
-            const indexOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, transparentFaces);
-            const elementCount = (sceneBuf.indexByteOffset() - indexOffset) / 4;
-
-            const drawCommand: DrawCommand = {
-                offset: indexOffset,
-                elements: elementCount,
-                instances: sceneModels,
-            };
-
-            sceneBuf.drawCommandsAlpha.push(drawCommand);
-            sceneBuf.drawCommandsInteractAlpha.push(drawCommand);
-            if (lodModels.length > 0) {
-                const drawCommandLod: DrawCommand = {
-                    offset: indexOffset,
-                    elements: elementCount,
-                    instances: lodModels,
-                };
-                sceneBuf.drawCommandsLodAlpha.push(drawCommandLod);
-                sceneBuf.drawCommandsInteractLodAlpha.push(drawCommandLod);
-            }
-        }
-    }
-
-    for (const group of modelGroupMap.values()) {
-        sceneBuf.addModelGroup(group);
-    }
-}
-
 function addLocAnimationFrames(
     locModelLoader: LocModelLoader,
     seqTypeLoader: SeqTypeLoader,
     sceneBuf: SceneBuffer,
-    entity: LocEntity,
     locType: LocType,
+    type: number,
+    rotation: number,
+    seqId: number,
 ): AnimationFrames | undefined {
-    const seqResult = seqTypeLoader.tryLoad(entity.seqId);
+    const seqResult = seqTypeLoader.tryLoad(seqId);
     if (!seqResult.ok) {
         return undefined;
     }
@@ -532,13 +312,7 @@ function addLocAnimationFrames(
     const framesAlpha = new Array<DrawRange>(frameCount);
     let alphaFrameCount = 0;
     for (let i = 0; i < frameCount; i++) {
-        const model = locModelLoader.getModelAnimated(
-            locType,
-            entity.type,
-            entity.rotation,
-            entity.seqId,
-            i,
-        );
+        const model = locModelLoader.getModelAnimated(locType, type, rotation, seqId, i);
         if (model) {
             frames[i] = sceneBuf.addModelAnimFrame(model, false);
             framesAlpha[i] = sceneBuf.addModelAnimFrame(model, true);
@@ -557,127 +331,106 @@ function addLocAnimationFrames(
     };
 }
 
-function addLocEntities(
+type LocAnimatedGroupBuild = {
+    seqId: number;
+    type: number;
+    rotation: number;
+    locType: LocType;
+    locs: SceneLocEntity[];
+};
+
+function pushLocEntityRenderData(
+    locAnimatedGroupMap: Map<number, LocAnimatedGroupBuild>,
     locModelLoader: LocModelLoader,
     locTypeLoader: LocTypeLoader,
-    seqTypeLoader: SeqTypeLoader,
     varManager: VarProvider,
     scene: Scene,
     sceneModels: SceneModel[],
-    sceneBuf: SceneBuffer,
-    locEntities: SceneLocEntity[],
-): Iterable<LocAnimatedGroup> {
-    const locAnimatedGroupMap = new Map<number, LocAnimatedGroup>();
+    sceneLocEntity: SceneLocEntity,
+    idIsResolved: boolean,
+): void {
+    const entity = sceneLocEntity.entity;
+    const resolved = resolveLocRenderPlacement(
+        scene,
+        sceneLocEntity,
+        locTypeLoader,
+        varManager,
+        idIsResolved,
+    );
+    if (!resolved) {
+        return;
+    }
 
-    for (const sceneLocEntity of locEntities) {
-        const entity = sceneLocEntity.entity;
-        const id = entity.id;
-        const type = entity.type;
-        const rotation = entity.rotation;
-        const tileX = entity.tileX;
-        const tileY = entity.tileY;
-        const level = entity.level;
-
-        const locResult = locTypeLoader.tryLoad(id);
-        if (!locResult.ok) {
-            continue;
-        }
-        let locType = locResult.value;
-        let sizeX = locType.sizeX;
-        let sizeY = locType.sizeY;
-        if (rotation === 1 || rotation === 3) {
-            sizeX = locType.sizeY;
-            sizeY = locType.sizeX;
-        }
-
-        if (locType.transforms) {
-            const transformed = locType.transform(varManager, locTypeLoader);
-            if (!transformed) {
-                continue;
-            }
-            locType = transformed;
-        }
-
-        const startX = (sizeX >> 1) + tileX;
-        const endX = ((sizeX + 1) >> 1) + tileX;
-        const startY = (sizeY >> 1) + tileY;
-        const endY = ((sizeY + 1) >> 1) + tileY;
-
-        const heightMap = scene.tileHeights[level];
-        let heightMapAbove: Int32Array[] | undefined;
-        if (entity.level < scene.levels - 1) {
-            heightMapAbove = scene.tileHeights[level + 1];
-        }
-
-        const centerHeight =
-            (heightMap[endX][endY] +
-                heightMap[startX][endY] +
-                heightMap[startX][startY] +
-                heightMap[endX][startY]) >>
-            2;
-        const entityX = (tileX << 7) + (sizeX << 6);
-        const entityZ = (tileY << 7) + (sizeY << 6);
-
-        const contourGroundInfo: ContourGroundInfo = {
-            type: locType.contourGroundType,
-            param: locType.contourGroundParam,
-            heightMap,
-            heightMapAbove,
-            entityX: entityX,
-            entityY: centerHeight,
-            entityZ: entityZ,
+    if (entity.seqId !== -1) {
+        const loc = {
+            ...sceneLocEntity,
+            lowDetail: resolved.lowDetail,
+            interactId: resolved.locType.id,
         };
-        const lowDetail = isLowDetail(scene, level, tileX, tileY, locType, type);
-        if (entity.seqId !== -1) {
-            const loc = {
-                ...sceneLocEntity,
-                lowDetail,
-                interactId: locType.id,
-            };
 
-            const key = rotation + (type << 3) + (locType.id << 10);
-            const group = locAnimatedGroupMap.get(key);
-            if (group) {
-                group.locs.push(loc);
-            } else {
-                const anim = addLocAnimationFrames(
-                    locModelLoader,
-                    seqTypeLoader,
-                    sceneBuf,
-                    entity,
-                    locType,
-                );
-                if (!anim) {
-                    continue;
-                }
-
-                locAnimatedGroupMap.set(key, {
-                    anim,
-                    locs: [loc],
-                });
-            }
+        const key = createLocAnimatedGroupKey(
+            resolved.rotation,
+            resolved.type,
+            resolved.locType.id,
+        );
+        const group = locAnimatedGroupMap.get(key);
+        if (group) {
+            group.locs.push(loc);
         } else {
-            const model = locModelLoader.getModelAnimated(
-                locType,
-                type,
-                rotation,
-                -1,
-                -1,
-                contourGroundInfo,
-            );
-            if (!model) {
-                continue;
-            }
-            sceneModels.push({
-                ...sceneLocEntity,
-
-                model,
-                sceneHeight: centerHeight,
-                lowDetail,
-                forceMerge: locType.contourGroundType > 1,
-                interactId: locType.id,
+            locAnimatedGroupMap.set(key, {
+                seqId: entity.seqId,
+                type: resolved.type,
+                rotation: resolved.rotation,
+                locType: resolved.locType,
+                locs: [loc],
             });
         }
+        return;
+    }
+
+    const model = locModelLoader.getModelAnimated(
+        resolved.locType,
+        resolved.type,
+        resolved.rotation,
+        -1,
+        -1,
+        resolved.contourGroundInfo,
+    );
+    if (!model) {
+        return;
+    }
+
+    sceneModels.push({
+        ...sceneLocEntity,
+        model,
+        sceneHeight: resolved.centerHeight,
+        lowDetail: resolved.lowDetail,
+        // Any terrain-contoured model differs per placement; force per-placement merge.
+        forceMerge: resolved.locType.contourGroundType > 0,
+        interactId: resolved.locType.id,
+    });
+}
+function addLocEntities(
+    locModelLoader: LocModelLoader,
+    locTypeLoader: LocTypeLoader,
+    varManager: VarProvider,
+    scene: Scene,
+    sceneModels: SceneModel[],
+    locEntities: SceneLocEntity[],
+): Iterable<LocAnimatedGroupBuild> {
+    const locAnimatedGroupMap = new Map<number, LocAnimatedGroupBuild>();
+
+    for (const sceneLocEntity of locEntities) {
+        pushLocEntityRenderData(
+            locAnimatedGroupMap,
+            locModelLoader,
+            locTypeLoader,
+            varManager,
+            scene,
+            sceneModels,
+            sceneLocEntity,
+            false,
+        );
     }
 
     return locAnimatedGroupMap.values();
@@ -772,17 +525,13 @@ export class SdMapRenderDataTsBackend {
             return this.cachedTextureIdIndexMap;
         }
 
-        let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
-        textureIds = textureIds.slice(0, 2047);
+        const { textureIdIndexMap } = createSdTexturePacking(textureLoader);
+        // Cache a mutable Map instance for downstream code that expects Map methods.
+        const out = new Map<number, number>(textureIdIndexMap);
 
-        const textureIdIndexMap = new Map<number, number>();
-        for (let i = 0; i < textureIds.length; i++) {
-            textureIdIndexMap.set(textureIds[i], i);
-        }
-
-        this.cachedTextureIdIndexMap = textureIdIndexMap;
+        this.cachedTextureIdIndexMap = out;
         this.cachedTextureCacheName = cacheName;
-        return textureIdIndexMap;
+        return out;
     }
 
     private getNpcLoginScreenPropsById(
@@ -810,7 +559,7 @@ export class SdMapRenderDataTsBackend {
         return props;
     }
 
-    async buildMapDataPayload(
+    async buildMapDataBridgeInput(
         {
             mapX,
             mapY,
@@ -823,7 +572,7 @@ export class SdMapRenderDataTsBackend {
             loadedTextureIds,
         }: SdMapLoaderInput,
         options?: BuildMapDataPayloadOptions,
-    ): Promise<MapRenderDataPayloadResult> {
+    ): Promise<BuildMapDataBridgeInputResult> {
         console.time(`load map ${mapX},${mapY}`);
         this.init();
 
@@ -868,37 +617,41 @@ export class SdMapRenderDataTsBackend {
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
         console.time(`build scene ${mapX},${mapY}`);
-        const scene = await this.deps.sceneBuildBackend.buildScene({
+        const scene = buildSceneFromMapBytesProvider(
+            this.deps.sceneBuilder,
+            this.deps.mapBytesProvider,
             baseX,
             baseY,
-            sizeX: mapSize,
-            sizeY: mapSize,
+            mapSize,
+            mapSize,
             smoothTerrain,
-            locLoadType: LocLoadType.MODELS,
-        });
+            // If we aren't rendering locs, still decode loc placements but avoid model loads/lighting.
+            loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+        );
         console.timeEnd(`build scene ${mapX},${mapY}`);
 
         const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
         timeStep("addTerrain", () => sceneBuf.addTerrain(scene, borderSize, maxLevel));
 
-        const sceneLocs = timeStep("getSceneLocs", () =>
-            getSceneLocs(locTypeLoader, scene, borderSize, maxLevel),
-        );
-        const sceneModels = sceneLocs.locs;
-
-        // Create loc animated groups and add transformed locs
-        const locAnimatedGroups = timeStep("addLocEntities", () =>
-            addLocEntities(
-                locModelLoader,
-                locTypeLoader,
-                seqTypeLoader,
-                varManager,
-                scene,
-                sceneModels,
-                sceneBuf,
-                sceneLocs.locEntities,
-            ),
-        );
+        const sceneModels: SceneModel[] = [];
+        let locAnimatedGroupsBuild: Iterable<LocAnimatedGroupBuild> = [];
+        if (loadLocs) {
+            const sceneLocs = timeStep("getSceneLocs", () =>
+                getSceneLocs(locTypeLoader, scene, borderSize, maxLevel),
+            );
+            sceneModels.push(...sceneLocs.locs);
+            // Create loc animated groups and add transformed locs.
+            locAnimatedGroupsBuild = timeStep("addLocEntities", () =>
+                addLocEntities(
+                    locModelLoader,
+                    locTypeLoader,
+                    varManager,
+                    scene,
+                    sceneModels,
+                    sceneLocs.locEntities,
+                ),
+            );
+        }
 
         if (loadObjs) {
             const objSpawns = timeStep("getMapObjSpawns", () =>
@@ -917,18 +670,45 @@ export class SdMapRenderDataTsBackend {
         }
 
         let locsAnimated: LocAnimatedData[] = [];
-        if (loadLocs) {
-            addSceneModels(
+        let debugSceneCommandPlanDigest: SceneCommandPlanDigest | undefined;
+        let debugSceneCommandPlanOpsPacked: Int32Array | undefined;
+        if (sceneModels.length > 0) {
+            const plan = emitSceneModelsToSceneBuffer(
                 this.modelHashBuf!,
                 textureLoader,
                 sceneBuf,
                 sceneModels,
                 minimizeDrawCalls,
             );
+            if (options?.debugIncludeSceneCommandPlanDigest) {
+                debugSceneCommandPlanDigest = summarizeSceneCommandPlan(plan);
+            }
+            if (options?.debugIncludeSceneCommandPlanOpsPacked) {
+                debugSceneCommandPlanOpsPacked = packSceneCommandPlanOps(plan);
+            }
 
             // Animated locs
-            locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
-            console.log(`animated locs: ${locsAnimated.length}`);
+            if (loadLocs) {
+                const locAnimatedGroups: LocAnimatedGroup[] = [];
+                for (const group of locAnimatedGroupsBuild) {
+                    const anim = addLocAnimationFrames(
+                        locModelLoader,
+                        seqTypeLoader,
+                        sceneBuf,
+                        group.locType,
+                        group.type,
+                        group.rotation,
+                        group.seqId,
+                    );
+                    if (!anim) {
+                        continue;
+                    }
+                    locAnimatedGroups.push({ anim, locs: group.locs });
+                }
+
+                locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
+                console.log(`animated locs: ${locsAnimated.length}`);
+            }
         }
 
         // Npcs
@@ -994,47 +774,85 @@ export class SdMapRenderDataTsBackend {
                 });
             }
         }
-        const npcSpawnGroups = timeStep("createNpcSpawnGroups", () =>
-            createNpcSpawnGroups(
-                npcModelLoader,
-                npcTypeLoader,
-                seqTypeLoader,
-                basTypeLoader,
-                sceneBuf,
-                npcSpawns,
-            ),
-        );
-        const npcs = timeStep("createNpcDatas", () => createNpcDatas(npcSpawnGroups));
+        const includeNpcAnimationFrames = options?.includeNpcAnimationFrames !== false;
+        const npcs = includeNpcAnimationFrames
+            ? timeStep("createNpcDatas", () => {
+                  const npcSpawnGroups = createNpcSpawnGroups(
+                      npcModelLoader,
+                      npcTypeLoader,
+                      seqTypeLoader,
+                      basTypeLoader,
+                      sceneBuf,
+                      npcSpawns,
+                  );
+                  return createNpcDatas(npcSpawnGroups);
+              })
+            : timeStep("createNpcDatasFromSpawns", () => createNpcDatasFromSpawns(npcSpawns));
 
         const preferWasmPacking = options?.preferWasmPacking === true;
-        const includeScenePackInput = options?.includeScenePackInput === true;
-        const useWasmDrawPacking = preferWasmPacking && includeScenePackInput;
-        const useWasmHeightMapPacking = preferWasmPacking && includeScenePackInput;
+        const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
+        const includeRuntimeCommandBucketsInput =
+            options?.includeRuntimeCommandBucketsInput === true;
+        const includeRuntimeSceneTileHeights = options?.includeRuntimeSceneTileHeights !== false;
+        const includeAnyRuntimeInput =
+            includeRuntimeCommandStreamInput || includeRuntimeCommandBucketsInput;
+        const useWasmDrawPacking = preferWasmPacking;
+        const useWasmHeightMapPacking = preferWasmPacking;
+
+        const runtimeDrawCommandBuckets =
+            includeRuntimeCommandStreamInput ||
+            includeRuntimeCommandBucketsInput ||
+            !useWasmDrawPacking
+                ? timeStep("collectRuntimeDrawCommandBuckets", () =>
+                      collectRuntimeDrawCommandBuckets(sceneBuf),
+                  )
+                : undefined;
 
         const drawRanges = useWasmDrawPacking
             ? createEmptyDrawRanges()
-            : timeStep("getDrawRanges", () => SdRenderableDataLoader.getDrawRanges(sceneBuf, mapX, mapY));
+            : timeStep("getDrawRanges", () =>
+                  buildDrawRangesFromBuckets(runtimeDrawCommandBuckets!),
+              );
 
         const modelInfoTextures = useWasmDrawPacking
             ? createEmptyModelInfoTextures()
-            : timeStep("getModelInfoTextures", () => SdRenderableDataLoader.getModelInfoTextures(sceneBuf));
+            : timeStep("getModelInfoTextures", () =>
+                  buildModelInfoTexturesFromBuckets(runtimeDrawCommandBuckets!),
+              );
 
         const heightMapTextureData = useWasmHeightMapPacking
             ? new Int16Array(0)
             : timeStep("loadHeightMapTextureData", () => loadHeightMapTextureData(scene));
 
-        const drawCommandsForPacking =
-            includeScenePackInput
-                ? timeStep("collectDrawCommandsForPacking", () =>
-                      getScenePackDrawCommandBuckets(sceneBuf),
-                  )
+        const runtimeSceneTileHeights =
+            includeRuntimeCommandStreamInput && includeRuntimeSceneTileHeights
+                ? timeStep("flattenSceneTileHeights", () => flattenSceneTileHeights(scene))
                 : undefined;
 
-        const scenePackInput =
-            includeScenePackInput && drawCommandsForPacking
-                ? timeStep("createScenePackInput", () =>
-                      createScenePackInput(scene, drawCommandsForPacking),
-                  )
+        const runtimeCommandStreamInput = includeRuntimeCommandStreamInput
+            ? timeStep("createRuntimeCommandStreamInputFromBuckets", () =>
+                  buildRuntimeCommandStreamInputFromBuckets(
+                      runtimeSceneTileHeights ?? new Int32Array(0),
+                      {
+                          levels: scene.levels,
+                          sizeX: scene.sizeX,
+                          sizeY: scene.sizeY,
+                          unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
+                      },
+                      runtimeDrawCommandBuckets!,
+                  ),
+              )
+            : undefined;
+
+        const runtimeCommandBucketsInput =
+            includeRuntimeCommandBucketsInput && runtimeDrawCommandBuckets
+                ? {
+                      levels: scene.levels,
+                      sizeX: scene.sizeX,
+                      sizeY: scene.sizeY,
+                      unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
+                      buckets: runtimeDrawCommandBuckets,
+                  }
                 : undefined;
 
         const vertices = sceneBuf.vertexBuf.byteArray();
@@ -1049,27 +867,30 @@ export class SdMapRenderDataTsBackend {
 
         const usedTextureIds = Int32Array.from(sceneBuf.usedTextureIds);
 
+        const includeLoadedTextures = options?.includeLoadedTextures !== false;
         const loadedTextures = new Map<number, Int32Array>();
-        const loadTexturesStart = performance.now();
-        let missingTextureCount = 0;
-        for (const textureId of sceneBuf.usedTextureIds) {
-            if (!loadedTextureIds.has(textureId)) {
-                const pixels = textureLoader.tryGetPixelsArgb(textureId, 128, true, 1.0);
-                if (pixels) {
-                    loadedTextures.set(textureId, pixels);
+        if (includeLoadedTextures) {
+            const loadTexturesStart = performance.now();
+            let missingTextureCount = 0;
+            for (const textureId of sceneBuf.usedTextureIds) {
+                if (!loadedTextureIds.has(textureId)) {
+                    const pixels = textureLoader.tryGetPixelsArgb(textureId, 128, true, 1.0);
+                    if (pixels) {
+                        loadedTextures.set(textureId, pixels);
+                    }
+                    missingTextureCount++;
                 }
-                missingTextureCount++;
             }
-        }
-        const loadTexturesMs = performance.now() - loadTexturesStart;
-        if (loadTexturesMs > 250) {
-            console.log(
-                `load map ${mapX},${mapY}: textures used=${
-                    sceneBuf.usedTextureIds.size
-                } missing=${missingTextureCount} decoded=${
-                    loadedTextures.size
-                } ms=${loadTexturesMs.toFixed(1)}`,
-            );
+            const loadTexturesMs = performance.now() - loadTexturesStart;
+            if (loadTexturesMs > 250) {
+                console.log(
+                    `load map ${mapX},${mapY}: textures used=${
+                        sceneBuf.usedTextureIds.size
+                    } missing=${missingTextureCount} decoded=${
+                        loadedTextures.size
+                    } ms=${loadTexturesMs.toFixed(1)}`,
+                );
+            }
         }
 
         console.timeEnd(`load map ${mapX},${mapY}`);
@@ -1126,9 +947,22 @@ export class SdMapRenderDataTsBackend {
         );
 
         return {
-            data: sdMapDataToPayload(data),
-            scenePackInput,
+            payloadResult: {
+                data: sdMapDataToPayload(data),
+            },
+            runtimeCommandStreamInput,
+            runtimeCommandBucketsInput,
+            debugSceneCommandPlanDigest,
+            debugSceneCommandPlanOpsPacked,
         };
+    }
+
+    async buildMapDataPayload(
+        input: SdMapLoaderInput,
+        options?: BuildMapDataPayloadOptions,
+    ): Promise<MapRenderDataPayloadResult> {
+        const bridgeInput = await this.buildMapDataBridgeInput(input, options);
+        return bridgeInput.payloadResult;
     }
 
     reset(): void {

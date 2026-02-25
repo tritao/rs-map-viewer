@@ -14,7 +14,6 @@ import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvid
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
-import { tryGetDat2SpriteSource, tryGetDatMediaArchive } from "../rs/runtime/sessionSources";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
@@ -25,12 +24,12 @@ import { SpriteLoader } from "../rs/sprite/SpriteLoader";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
-import { MinimapData, loadMinimapBlob } from "./MinimapData";
-import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
+import { MinimapData, loadMinimapBlob } from "./MinimapData";
+import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { createSceneBuildBackend } from "./SceneBuildBackend";
-import type { SceneBuildBackend, SceneBuildBackendKind } from "./SceneBuildBackend";
+import type { SceneBuildBackend } from "./SceneBuildBackend";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -59,13 +58,16 @@ export type WorkerState = {
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 
 export type WorkerRuntimeOptions = Readonly<{
-    sceneBackend?: SceneBuildBackendKind;
-    sceneBackendModuleUrl?: string;
     mapRenderBackend?: MapRenderDataBackendKind;
+    // Allows isolating tick/patch issues from map-build issues.
+    // If unset, tick behavior follows mapRenderBackend.
+    mapRenderTickBackend?: "ts" | "cpp-wasm";
     mapRenderBackendModuleUrl?: string;
+    mapRenderStrictCppWasm?: boolean;
+    mapRenderStrictCppWasmPacketGeometry?: boolean;
     mapRenderTelemetry?: boolean;
-    mapRenderRolloutMode?: "active" | "shadow";
-    mapRenderShadowSampleRate?: number;
+    // Debug-only: "mapX:mapY" to enable verbose tick/patch logging/validation for a single square.
+    mapRenderDebugTickSquare?: string;
 }>;
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
@@ -143,15 +145,10 @@ async function initWorker(
         locModelLoader,
         varProvider,
     });
-    const mapRenderBackendKind = options?.mapRenderBackend ?? "ts";
-    // For cpp-wasm map-render, use the cpp-wasm scene seam by default as well.
-    const sceneBackendKind =
-        options?.sceneBackend ?? (mapRenderBackendKind === "cpp-wasm" ? "cpp-wasm" : "ts");
-    const sceneBuildBackend = createSceneBuildBackend(sceneBackendKind, {
+    const mapRenderBackendKind = options?.mapRenderBackend ?? "cpp-wasm";
+    const sceneBuildBackend = createSceneBuildBackend("ts", {
         sceneBuilder,
         mapBytesProvider,
-    }, {
-        cppWasmModuleUrl: options?.sceneBackendModuleUrl,
     });
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
@@ -163,11 +160,11 @@ async function initWorker(
         mapRenderBackendKind,
         {
             session,
+            sceneBuilder,
             mapBytesProvider,
             locModelLoader,
             objModelLoader,
             npcModelLoader,
-            sceneBuildBackend,
             mapImageRenderer,
             varProvider,
             objSpawns,
@@ -175,9 +172,9 @@ async function initWorker(
         },
         {
             cppWasmModuleUrl: options?.mapRenderBackendModuleUrl,
+            strictCppWasm: options?.mapRenderStrictCppWasm,
+            strictCppWasmPacketGeometry: options?.mapRenderStrictCppWasmPacketGeometry,
             telemetry: options?.mapRenderTelemetry,
-            cppWasmRolloutMode: options?.mapRenderRolloutMode,
-            cppWasmShadowSampleRate: options?.mapRenderShadowSampleRate,
         },
     );
 
@@ -221,6 +218,7 @@ const worker = {
     async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
         const workerState = await requireWorkerState();
+        workerState.sceneBuildBackend.reset();
         workerState.mapRenderDataBackend.reset();
     },
     async load<I, D>(
@@ -245,12 +243,8 @@ const worker = {
         const workerState = await requireWorkerState();
 
         const pixels =
-            workerState.session.getTextureLoader().tryGetPixelsArgb(
-                id,
-                size,
-                flipH,
-                brightness,
-            ) ?? new Int32Array(size * size);
+            workerState.session.getTextureLoader().tryGetPixelsArgb(id, size, flipH, brightness) ??
+            new Int32Array(size * size);
 
         return Transfer(pixels, [pixels.buffer]);
     },
@@ -431,7 +425,7 @@ async function addSpritesToZip(zip: JSZip, id: number, sprites: IndexedSprite[])
 }
 
 async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
-    const spriteSource = tryGetDat2SpriteSource(session);
+    const spriteSource = session.tryGetDat2SpriteSource();
     if (!spriteSource) {
         return;
     }
@@ -450,7 +444,7 @@ async function exportSpritesToZip(session: CacheSession, zip: JSZip): Promise<vo
 }
 
 async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise<void> {
-    const mediaArchive = tryGetDatMediaArchive(session);
+    const mediaArchive = session.tryGetDatMediaArchive();
     if (!mediaArchive) {
         return;
     }

@@ -136,7 +136,7 @@ export class Npc {
         this.pathMovementType[0] = movementType;
     }
 
-    updateMovement(seqTypeLoader: SeqTypeLoader, seqFrameLoader: SeqFrameLoader) {
+    private updateMovementTransformState() {
         this.movementSeqId = this.idleSeqId;
         if (this.pathLength > 0) {
             const currX = this.x;
@@ -251,6 +251,14 @@ export class Npc {
 
             this.rotation &= 2047;
         }
+    }
+
+    updateMovementTransformOnly() {
+        this.updateMovementTransformState();
+    }
+
+    updateMovement(seqTypeLoader: SeqTypeLoader, seqFrameLoader: SeqFrameLoader) {
+        this.updateMovementTransformState();
 
         this.updateMovementSeq(seqTypeLoader, seqFrameLoader);
     }

@@ -23,11 +23,17 @@ import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { Camera } from "../Camera";
 import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
 import { INTERACTION_RADIUS, INTERACT_BUFFER_COUNT, Interactions } from "../Interactions";
+import { MapSquareInfo } from "../MapManager";
 import { MapRenderer, TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
 import { FrameStats } from "../Renderer";
 import { SdMapData } from "../loader/SdMapData";
 import { SdMapDataLoader } from "../loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
+import {
+    initDrawRangePatchBackend,
+    resetDrawRangePatchBackend,
+    unregisterDrawRangeTickState,
+} from "./DrawRangePatchBackend";
 import { createTextureArray } from "./PicoTexture";
 import { RendererStats } from "./RendererStats";
 import { WebGLMapSquare } from "./WebGLMapSquare";
@@ -44,6 +50,15 @@ const TEXTURE_SIZE = 128;
 const MAX_TEXTURE_SLOTS = 256;
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
 const MAX_TEXTURE_PIXEL_CACHE = 512;
+const DRAW_RANGE_STRIDE = 3;
+const DRAW_RANGE_OFFSET_INDEX = 0;
+const DRAW_RANGE_ELEMENTS_INDEX = 1;
+const DRAW_RANGE_INSTANCES_INDEX = 2;
+const DRAW_RANGE_PATCH_STRIDE = 4;
+const DRAW_RANGE_PATCH_INDEX_INDEX = 0;
+const DRAW_RANGE_PATCH_OFFSET_INDEX = 1;
+const DRAW_RANGE_PATCH_ELEMENTS_INDEX = 2;
+const DRAW_RANGE_PATCH_INSTANCES_INDEX = 3;
 
 const enum EnsureTextureStatus {
     Ok = 0,
@@ -121,6 +136,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     debugTextureMode: number = 0;
 
     private debugLastResidencyLogFrame: number = 0;
+    private drawRangePatchWasmReady = false;
+    private drawRangePatchWasmInitComplete = false;
+    private drawRangePatchStrictCppWasm = false;
+    private drawRangePatchWasmInitPromise: Promise<void> | undefined;
 
     private logTextureDebugStats(): void {
         const cacheInfo = this.session.cache.info;
@@ -253,6 +272,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.initFramebuffers();
 
         this.initTextures();
+        this.initDrawRangePatchRuntime();
 
         console.log("Renderer init");
     }
@@ -638,12 +658,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
 
         if (!pixels) {
-            const texturePixels = this.session.getTextureLoader().tryGetPixelsArgb(
-                textureId,
-                TEXTURE_SIZE,
-                true,
-                1.0,
-            );
+            const texturePixels = this.session
+                .getTextureLoader()
+                .tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0);
             if (!texturePixels) {
                 console.error("Failed loading texture", textureId);
                 this.freeTextureSlots.push(slot);
@@ -903,6 +920,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             getMapSquareId(mapX, mapY),
             WebGLMapSquare.load(
                 this.session.getSeqTypeLoader(),
+                this.session.getSeqFrameLoader(),
                 this.session.getNpcTypeLoader(),
                 this.session.getBasTypeLoader(),
                 this.app,
@@ -1163,13 +1181,260 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         return npcDataTextureIndex;
     }
 
-    draw(drawCall: DrawCall, drawRanges: number[][]) {
+    private initDrawRangePatchRuntime(): void {
+        if (this.drawRangePatchWasmInitPromise) {
+            return;
+        }
+        this.drawRangePatchWasmInitPromise = (async () => {
+            this.drawRangePatchWasmReady = await initDrawRangePatchBackend();
+            this.drawRangePatchWasmInitComplete = true;
+        })();
+    }
+
+    setDrawRangePatchStrictCppWasm(strict: boolean): void {
+        this.drawRangePatchStrictCppWasm = strict;
+    }
+
+    isDrawRangePatchWasmReady(): boolean {
+        return this.drawRangePatchWasmReady;
+    }
+
+    isDrawRangePatchWasmInitComplete(): boolean {
+        return this.drawRangePatchWasmInitComplete;
+    }
+
+    override removeMap(mapInfo: MapSquareInfo) {
+        unregisterDrawRangeTickState(mapInfo.mapId);
+        super.removeMap(mapInfo);
+    }
+
+    protected applyDrawRangePatchStream(
+        drawCall: DrawCall,
+        drawRangesPacked: Int32Array,
+        patchStreamPacked: Int32Array,
+        patchCount: number,
+    ): void {
+        if (this.drawRangePatchStrictCppWasm) {
+            const maxPatchCountByStream = (patchStreamPacked.length / DRAW_RANGE_PATCH_STRIDE) | 0;
+            const safePatchCount = Math.min(patchCount | 0, maxPatchCountByStream);
+            const drawRangeCapacity = (drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0;
+            if (drawRangeCapacity < drawCall.offsets.length) {
+                return;
+            }
+            for (let i = 0; i < safePatchCount; i++) {
+                const patchOffset = i * DRAW_RANGE_PATCH_STRIDE;
+                const drawRangeIndex =
+                    patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INDEX_INDEX] | 0;
+                if (drawRangeIndex < 0 || drawRangeIndex >= drawCall.offsets.length) {
+                    continue;
+                }
+                const offset = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_OFFSET_INDEX] | 0;
+                const elements =
+                    patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_ELEMENTS_INDEX] | 0;
+                const instances =
+                    patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INSTANCES_INDEX] | 0;
+                drawCall.offsets[drawRangeIndex] = offset;
+                (drawCall as any).numElements[drawRangeIndex] = elements;
+                (drawCall as any).numInstances[drawRangeIndex] = instances;
+                const drawRangeOffset = drawRangeIndex * DRAW_RANGE_STRIDE;
+                drawRangesPacked[drawRangeOffset + DRAW_RANGE_OFFSET_INDEX] = offset;
+                drawRangesPacked[drawRangeOffset + DRAW_RANGE_ELEMENTS_INDEX] = elements;
+                drawRangesPacked[drawRangeOffset + DRAW_RANGE_INSTANCES_INDEX] = instances;
+            }
+            return;
+        }
+        for (let i = 0; i < patchCount; i++) {
+            const patchOffset = i * DRAW_RANGE_PATCH_STRIDE;
+            const drawRangeIndex =
+                patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INDEX_INDEX] | 0;
+            if (drawRangeIndex < 0 || drawRangeIndex >= drawCall.offsets.length) {
+                continue;
+            }
+            const drawRangeOffset = drawRangeIndex * DRAW_RANGE_STRIDE;
+            if (drawRangeOffset < 0 || drawRangeOffset + 2 >= drawRangesPacked.length) {
+                continue;
+            }
+            const offset = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_OFFSET_INDEX] | 0;
+            const elements = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_ELEMENTS_INDEX] | 0;
+            const instances = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INSTANCES_INDEX] | 0;
+
+            drawCall.offsets[drawRangeIndex] = offset;
+            (drawCall as any).numElements[drawRangeIndex] = elements;
+            (drawCall as any).numInstances[drawRangeIndex] = instances;
+
+            drawRangesPacked[drawRangeOffset + DRAW_RANGE_OFFSET_INDEX] = offset;
+            drawRangesPacked[drawRangeOffset + DRAW_RANGE_ELEMENTS_INDEX] = elements;
+            drawRangesPacked[drawRangeOffset + DRAW_RANGE_INSTANCES_INDEX] = instances;
+        }
+    }
+
+    protected applyLocAnimationPatchesForPass(
+        renderable: WebGLRenderable,
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+        drawCall: DrawCall,
+        drawRangesPacked: Int32Array,
+    ): void {
+        let cachedPatches: Int32Array | undefined;
+        let cachedPatchCount = -1;
+        if (isInteract) {
+            if (isLod) {
+                if (isAlpha) {
+                    cachedPatches = renderable.locTickInteractLodAlphaPatches;
+                    cachedPatchCount = renderable.locTickInteractLodAlphaPatchCount;
+                } else {
+                    cachedPatches = renderable.locTickInteractLodPatches;
+                    cachedPatchCount = renderable.locTickInteractLodPatchCount;
+                }
+            } else if (isAlpha) {
+                cachedPatches = renderable.locTickInteractAlphaPatches;
+                cachedPatchCount = renderable.locTickInteractAlphaPatchCount;
+            } else {
+                cachedPatches = renderable.locTickInteractPatches;
+                cachedPatchCount = renderable.locTickInteractPatchCount;
+            }
+        } else if (isLod) {
+            if (isAlpha) {
+                cachedPatches = renderable.locTickLodAlphaPatches;
+                cachedPatchCount = renderable.locTickLodAlphaPatchCount;
+            } else {
+                cachedPatches = renderable.locTickLodPatches;
+                cachedPatchCount = renderable.locTickLodPatchCount;
+            }
+        } else if (isAlpha) {
+            cachedPatches = renderable.locTickAlphaPatches;
+            cachedPatchCount = renderable.locTickAlphaPatchCount;
+        } else {
+            cachedPatches = renderable.locTickBasePatches;
+            cachedPatchCount = renderable.locTickBasePatchCount;
+        }
+
+        if (cachedPatches && cachedPatchCount >= 0) {
+            this.applyDrawRangePatchStream(
+                drawCall,
+                drawRangesPacked,
+                cachedPatches,
+                cachedPatchCount,
+            );
+            return;
+        }
+        if (this.drawRangePatchStrictCppWasm && this.drawRangePatchWasmInitComplete) {
+            throw new Error("[map-render-backend][strict-cpp-wasm] locCachedTickPatchesMissing");
+        }
+
+        const locCount = renderable.locsAnimated.length | 0;
+        if (locCount === 0) {
+            return;
+        }
+
+        renderable.syncLocAnimationFrameIds();
+
+        for (const loc of renderable.locsAnimated) {
+            const frameId = loc.frame;
+            const frame = isAlpha
+                ? loc.anim.framesAlpha?.[frameId | 0] ?? undefined
+                : loc.anim.frames[frameId | 0];
+            if (!frame) {
+                continue;
+            }
+
+            const drawRangeIndex = loc.getDrawRangeIndex(isAlpha, isInteract, isLod);
+            if (drawRangeIndex === -1) {
+                continue;
+            }
+            drawCall.offsets[drawRangeIndex] = frame[0];
+            (drawCall as any).numElements[drawRangeIndex] = frame[1];
+            (drawCall as any).numInstances[drawRangeIndex] = frame[2];
+            const drawRangeOffset = drawRangeIndex * DRAW_RANGE_STRIDE;
+            drawRangesPacked[drawRangeOffset + DRAW_RANGE_OFFSET_INDEX] = frame[0];
+            drawRangesPacked[drawRangeOffset + DRAW_RANGE_ELEMENTS_INDEX] = frame[1];
+            drawRangesPacked[drawRangeOffset + DRAW_RANGE_INSTANCES_INDEX] = frame[2];
+        }
+    }
+
+    protected applyNpcAnimationPatchesForPass(
+        renderable: WebGLRenderable,
+        isAlpha: boolean,
+        drawCall: DrawCall,
+        drawRangesPacked: Int32Array,
+    ): void {
+        if (
+            isAlpha ? renderable.npcTickAlphaPatchCount >= 0 : renderable.npcTickBasePatchCount >= 0
+        ) {
+            this.applyDrawRangePatchStream(
+                drawCall,
+                drawRangesPacked,
+                isAlpha ? renderable.npcTickAlphaPatches : renderable.npcTickBasePatches,
+                isAlpha ? renderable.npcTickAlphaPatchCount : renderable.npcTickBasePatchCount,
+            );
+            return;
+        }
+        if (this.drawRangePatchStrictCppWasm && this.drawRangePatchWasmInitComplete) {
+            throw new Error("[map-render-backend][strict-cpp-wasm] npcCachedTickPatchesMissing");
+        }
+
+        const npcCount = renderable.npcs.length | 0;
+        if (npcCount === 0) {
+            return;
+        }
+
+        renderable.syncNpcAnimationSelection(isAlpha);
+
+        if (!isAlpha) {
+            const npcs = renderable.npcs;
+            for (let i = 0; i < npcs.length; i++) {
+                const npc = npcs[i];
+                const anim = npc.getAnimationFrames();
+                if (!anim) {
+                    continue;
+                }
+                const frame = anim.frames[npc.movementFrame];
+                if (!frame) {
+                    continue;
+                }
+                drawCall.offsets[i] = frame[0];
+                (drawCall as any).numElements[i] = frame[1];
+                (drawCall as any).numInstances[i] = frame[2];
+                const off = i * DRAW_RANGE_STRIDE;
+                drawRangesPacked[off + DRAW_RANGE_OFFSET_INDEX] = frame[0];
+                drawRangesPacked[off + DRAW_RANGE_ELEMENTS_INDEX] = frame[1];
+                drawRangesPacked[off + DRAW_RANGE_INSTANCES_INDEX] = frame[2];
+            }
+            return;
+        }
+
+        const npcs = renderable.npcs;
+        for (let i = 0; i < npcs.length; i++) {
+            const npc = npcs[i];
+            const anim = npc.getAnimationFrames();
+            const frame = anim?.framesAlpha ? anim.framesAlpha[npc.movementFrame] : NULL_DRAW_RANGE;
+            drawCall.offsets[i] = frame[0];
+            (drawCall as any).numElements[i] = frame[1];
+            (drawCall as any).numInstances[i] = frame[2];
+            const off = i * DRAW_RANGE_STRIDE;
+            drawRangesPacked[off + DRAW_RANGE_OFFSET_INDEX] = frame[0];
+            drawRangesPacked[off + DRAW_RANGE_ELEMENTS_INDEX] = frame[1];
+            drawRangesPacked[off + DRAW_RANGE_INSTANCES_INDEX] = frame[2];
+        }
+    }
+
+    draw(drawCall: DrawCall, drawRangesPacked: Int32Array) {
         if (this.hasMultiDraw) {
             drawCall.draw();
         } else {
-            for (let i = 0; i < drawRanges.length; i++) {
+            const drawCount = (drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0;
+            const drawRange: DrawRange = [0, 0, 1];
+            for (let i = 0; i < drawCount; i++) {
+                const off = i * DRAW_RANGE_STRIDE;
                 drawCall.uniform("u_drawId", i);
-                drawCall.drawRanges(drawRanges[i]);
+                drawRange[DRAW_RANGE_OFFSET_INDEX] =
+                    drawRangesPacked[off + DRAW_RANGE_OFFSET_INDEX] | 0;
+                drawRange[DRAW_RANGE_ELEMENTS_INDEX] =
+                    drawRangesPacked[off + DRAW_RANGE_ELEMENTS_INDEX] | 0;
+                drawRange[DRAW_RANGE_INSTANCES_INDEX] =
+                    drawRangesPacked[off + DRAW_RANGE_INSTANCES_INDEX] | 0;
+                drawCall.drawRanges(drawRange);
                 drawCall.draw();
             }
         }
@@ -1191,22 +1456,17 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const isInteract = this.hoveredMapIds.has(map.id);
             const isLod = dist >= this.lodDistance;
 
-            const { drawCall, drawRanges } = map.getDrawCall(false, isInteract, isLod);
+            const { drawCall, drawRangesPacked } = map.getDrawCall(false, isInteract, isLod);
+            this.applyLocAnimationPatchesForPass(
+                map,
+                false,
+                isInteract,
+                isLod,
+                drawCall,
+                drawRangesPacked,
+            );
 
-            for (const loc of map.locsAnimated) {
-                const frameId = loc.frame;
-                const frame = loc.anim.frames[frameId | 0];
-
-                const index = loc.getDrawRangeIndex(false, isInteract, isLod);
-                if (index !== -1) {
-                    drawCall.offsets[index] = frame[0];
-                    (drawCall as any).numElements[index] = frame[1];
-
-                    drawRanges[index] = frame;
-                }
-            }
-
-            this.draw(drawCall, drawRanges);
+            this.draw(drawCall, drawRangesPacked);
         }
     }
 
@@ -1233,27 +1493,13 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 continue;
             }
 
-            const { drawCall, drawRanges } = map.drawCallNpc;
+            const { drawCall, drawRangesPacked } = map.drawCallNpc;
 
             drawCall.uniform("u_npcDataOffset", dataOffset);
             drawCall.texture("u_npcDataTexture", npcDataTexture);
+            this.applyNpcAnimationPatchesForPass(map, false, drawCall, drawRangesPacked);
 
-            for (let i = 0; i < npcs.length; i++) {
-                const npc = npcs[i];
-                const anim = npc.getAnimationFrames();
-
-                if (anim) {
-                    const frameId = npc.movementFrame;
-                    const frame = anim.frames[frameId];
-
-                    (drawCall as any).offsets[i] = frame[0];
-                    (drawCall as any).numElements[i] = frame[1];
-
-                    drawRanges[i] = frame;
-                }
-            }
-
-            this.draw(drawCall, drawRanges);
+            this.draw(drawCall, drawRangesPacked);
         }
     }
 
@@ -1273,24 +1519,17 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const isInteract = this.hoveredMapIds.has(map.id);
             const isLod = dist >= this.lodDistance;
 
-            const { drawCall, drawRanges } = map.getDrawCall(true, isInteract, isLod);
+            const { drawCall, drawRangesPacked } = map.getDrawCall(true, isInteract, isLod);
+            this.applyLocAnimationPatchesForPass(
+                map,
+                true,
+                isInteract,
+                isLod,
+                drawCall,
+                drawRangesPacked,
+            );
 
-            for (const loc of map.locsAnimated) {
-                if (loc.anim.framesAlpha) {
-                    const frameId = loc.frame;
-                    const frame = loc.anim.framesAlpha[frameId | 0];
-
-                    const index = loc.getDrawRangeIndex(true, isInteract, isLod);
-                    if (index !== -1) {
-                        drawCall.offsets[index] = frame[0];
-                        (drawCall as any).numElements[index] = frame[1];
-
-                        drawRanges[index] = frame;
-                    }
-                }
-            }
-
-            this.draw(drawCall, drawRanges);
+            this.draw(drawCall, drawRangesPacked);
         }
     }
 
@@ -1320,28 +1559,13 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 continue;
             }
 
-            const { drawCall, drawRanges } = map.drawCallNpc;
+            const { drawCall, drawRangesPacked } = map.drawCallNpc;
 
             drawCall.uniform("u_npcDataOffset", dataOffset);
             drawCall.texture("u_npcDataTexture", npcDataTexture);
+            this.applyNpcAnimationPatchesForPass(map, true, drawCall, drawRangesPacked);
 
-            for (let i = 0; i < npcs.length; i++) {
-                const npc = npcs[i];
-                const anim = npc.getAnimationFrames();
-
-                const frameId = npc.movementFrame;
-                let frame: DrawRange = NULL_DRAW_RANGE;
-                if (anim && anim.framesAlpha) {
-                    frame = anim.framesAlpha[frameId];
-                }
-
-                (drawCall as any).offsets[i] = frame[0];
-                (drawCall as any).numElements[i] = frame[1];
-
-                drawRanges[i] = frame;
-            }
-
-            this.draw(drawCall, drawRanges);
+            this.draw(drawCall, drawRangesPacked);
         }
     }
 
@@ -1369,6 +1593,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     async cleanUp(): Promise<void> {
+        resetDrawRangePatchBackend();
+        this.drawRangePatchWasmReady = false;
+        this.drawRangePatchWasmInitComplete = false;
+        this.drawRangePatchWasmInitPromise = undefined;
+
         this.quadArray?.delete();
         this.quadArray = undefined;
 

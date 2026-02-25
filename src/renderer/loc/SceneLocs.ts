@@ -84,7 +84,8 @@ export function createSceneModel(
         model,
         sceneHeight,
         lowDetail: locType ? isLowDetail(scene, level, tileX, tileY, locType, type) : false,
-        forceMerge: (locType?.contourGroundType ?? 0) > 1,
+        // Any terrain-contoured model differs per placement; force per-placement merge.
+        forceMerge: (locType?.contourGroundType ?? 0) > 0,
 
         sceneX,
         sceneZ,

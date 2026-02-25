@@ -35,6 +35,136 @@ export type DrawCommand = {
     instances: ModelInfo[];
 };
 
+export type TerrainTileVertexRecord = Readonly<{
+    x: number;
+    y: number;
+    z: number;
+    hsl: number;
+    u: number;
+    v: number;
+    textureId: number;
+    textureId1: number;
+    texBlend: number;
+}>;
+
+export type TerrainDigest = Readonly<{
+    levels: number;
+    facesTotal: number;
+    verticesTotal: number;
+    levelFaces: number[];
+    levelVertices: number[];
+    hash: number;
+}>;
+
+function fnv1a32UpdateInt(hash: number, value: number): number {
+    const h = ((hash >>> 0) ^ (value >>> 0)) >>> 0;
+    return Math.imul(h, 16777619) >>> 0;
+}
+
+function quantizeUv(v: number): number {
+    // Keep stable across runtimes: fixed-point quantization (1/4096).
+    return (v * 4096) | 0;
+}
+
+export function collectTerrainTileVertexRecords(
+    tile: SceneTile,
+    offsetX: number,
+    offsetY: number,
+): TerrainTileVertexRecord[] {
+    const tileModel = tile.tileModel;
+    if (!tileModel) {
+        return [];
+    }
+
+    const out: TerrainTileVertexRecord[] = [];
+    for (let faceIndex = 0; faceIndex < tileModel.faces.length; faceIndex++) {
+        const face = tileModel.faces[faceIndex];
+        for (let vertexIndex = 0; vertexIndex < face.vertices.length; vertexIndex++) {
+            const vertex = face.vertices[vertexIndex];
+            out.push({
+                x: vertex.x + offsetX,
+                y: vertex.y,
+                z: vertex.z + offsetY,
+                hsl: vertex.hsl,
+                u: vertex.u,
+                v: vertex.v,
+                textureId: vertex.textureId,
+                textureId1: vertex.textureId1,
+                texBlend: vertex.texBlend,
+            });
+        }
+    }
+
+    return out;
+}
+
+export function summarizeTerrainGeometry(
+    scene: Scene,
+    borderSize: number,
+    maxLevel: number,
+    textureIdIndexMap?: ReadonlyMap<number, number>,
+): TerrainDigest {
+    const startX = borderSize;
+    const startY = borderSize;
+    const endX = borderSize + Scene.MAP_SQUARE_SIZE;
+    const endY = borderSize + Scene.MAP_SQUARE_SIZE;
+    const vertexOffset = borderSize * -128;
+
+    let hash = 2166136261 >>> 0;
+    let facesTotal = 0;
+    let verticesTotal = 0;
+    const levelFaces = new Array<number>(scene.levels).fill(0);
+    const levelVertices = new Array<number>(scene.levels).fill(0);
+
+    for (let level = 0; level < scene.levels; level++) {
+        for (let x = startX; x < endX; x++) {
+            for (let y = startY; y < endY; y++) {
+                const tile = scene.tiles[level][x][y];
+                if (!tile || tile.minLevel > maxLevel) {
+                    continue;
+                }
+                const tileModel = tile.tileModel;
+                const faceCount = tileModel?.faces.length ?? 0;
+                if (faceCount === 0) {
+                    continue;
+                }
+                facesTotal += faceCount;
+                levelFaces[level] += faceCount;
+                const vertices = collectTerrainTileVertexRecords(tile, vertexOffset, vertexOffset);
+                verticesTotal += vertices.length;
+                levelVertices[level] += vertices.length;
+                for (let i = 0; i < vertices.length; i++) {
+                    const v = vertices[i];
+                    const tex0 =
+                        textureIdIndexMap?.get(v.textureId) ??
+                        (textureIdIndexMap ? -1 : v.textureId | 0);
+                    const tex1 =
+                        textureIdIndexMap?.get(v.textureId1) ??
+                        (textureIdIndexMap ? -1 : v.textureId1 | 0);
+                    hash = fnv1a32UpdateInt(hash, v.x | 0);
+                    hash = fnv1a32UpdateInt(hash, v.y | 0);
+                    hash = fnv1a32UpdateInt(hash, v.z | 0);
+                    hash = fnv1a32UpdateInt(hash, v.hsl | 0);
+                    hash = fnv1a32UpdateInt(hash, quantizeUv(v.u));
+                    hash = fnv1a32UpdateInt(hash, quantizeUv(v.v));
+                    hash = fnv1a32UpdateInt(hash, tex0 | 0);
+                    hash = fnv1a32UpdateInt(hash, tex1 | 0);
+                    hash = fnv1a32UpdateInt(hash, v.texBlend | 0);
+                }
+            }
+        }
+    }
+
+    return {
+        levels: scene.levels | 0,
+        facesTotal: facesTotal | 0,
+        verticesTotal: verticesTotal | 0,
+        levelFaces,
+        levelVertices,
+        hash: hash >>> 0,
+    };
+}
+
 export type SceneModel = {
     model: Model;
     sceneHeight: number;
@@ -50,21 +180,154 @@ export type ModelMergeGroup = {
     models: SceneModel[];
 };
 
+export type DrawBucketKey =
+    | "base"
+    | "alpha"
+    | "lod"
+    | "lodAlpha"
+    | "interact"
+    | "interactAlpha"
+    | "interactLod"
+    | "interactLodAlpha";
+
+export const DRAW_BUCKET_KEYS: readonly DrawBucketKey[] = [
+    "base",
+    "alpha",
+    "lod",
+    "lodAlpha",
+    "interact",
+    "interactAlpha",
+    "interactLod",
+    "interactLodAlpha",
+];
+
+export type SceneCommandStreamEntry = Readonly<{
+    bucketIndex: number;
+    offset: number;
+    elements: number;
+    instances: ReadonlyArray<ModelInfo>;
+}>;
+
+export function buildSceneCommandStreamFromBuckets(
+    drawCommands: Readonly<Record<DrawBucketKey, ReadonlyArray<DrawCommand>>>,
+): SceneCommandStreamEntry[] {
+    const out: SceneCommandStreamEntry[] = [];
+    for (let bucketIndex = 0; bucketIndex < DRAW_BUCKET_KEYS.length; bucketIndex++) {
+        const key = DRAW_BUCKET_KEYS[bucketIndex];
+        const commands = drawCommands[key];
+        for (let i = 0; i < commands.length; i++) {
+            const command = commands[i];
+            out.push({
+                bucketIndex,
+                offset: command.offset | 0,
+                elements: command.elements | 0,
+                instances: command.instances,
+            });
+        }
+    }
+    return out;
+}
+
+export function getMergedCommandBucketKeys(
+    transparent: boolean,
+    includeLod: boolean,
+): readonly DrawBucketKey[] {
+    if (transparent) {
+        return includeLod ? ["alpha", "lodAlpha"] : ["alpha"];
+    }
+    return includeLod ? ["base", "lod"] : ["base"];
+}
+
+export function getInteractCommandBucketKeys(
+    transparent: boolean,
+    includeLod: boolean,
+): readonly DrawBucketKey[] {
+    if (transparent) {
+        return includeLod ? ["interactAlpha", "interactLodAlpha"] : ["interactAlpha"];
+    }
+    return includeLod ? ["interact", "interactLod"] : ["interact"];
+}
+
+export type SceneModelMergeDecision = Readonly<{
+    mergeOpaque: boolean;
+    mergeTransparent: boolean;
+}>;
+
+export function decideSceneModelMergeStrategy(
+    instanceCount: number,
+    opaqueFaceCount: number,
+    transparentFaceCount: number,
+    minimizeDrawCalls: boolean,
+): SceneModelMergeDecision {
+    const forceMerge = minimizeDrawCalls || instanceCount === 1;
+    return {
+        mergeOpaque: forceMerge || instanceCount * opaqueFaceCount < 100,
+        mergeTransparent: forceMerge || instanceCount * transparentFaceCount < 100,
+    };
+}
+
+type DrawCommandBuckets = {
+    base: DrawCommand[];
+    alpha: DrawCommand[];
+    lod: DrawCommand[];
+    lodAlpha: DrawCommand[];
+    interact: DrawCommand[];
+    interactAlpha: DrawCommand[];
+    interactLod: DrawCommand[];
+    interactLodAlpha: DrawCommand[];
+};
+
+function createDrawCommandBuckets(): DrawCommandBuckets {
+    return {
+        base: [],
+        alpha: [],
+        lod: [],
+        lodAlpha: [],
+        interact: [],
+        interactAlpha: [],
+        interactLod: [],
+        interactLodAlpha: [],
+    };
+}
+
+class SceneCommandEmitter {
+    private readonly buckets: DrawCommandBuckets = createDrawCommandBuckets();
+
+    getBucket(key: DrawBucketKey): readonly DrawCommand[] {
+        return this.buckets[key];
+    }
+
+    getBucketLength(key: DrawBucketKey): number {
+        return this.buckets[key].length;
+    }
+
+    emitToBucket(key: DrawBucketKey, command: DrawCommand): void {
+        this.buckets[key].push(command);
+    }
+
+    emitToBuckets(keys: readonly DrawBucketKey[], command: DrawCommand): void {
+        for (let i = 0; i < keys.length; i++) {
+            this.buckets[keys[i]].push(command);
+        }
+    }
+
+    emitMergedCommand(command: DrawCommand, transparent: boolean, includeLod: boolean): void {
+        this.emitToBuckets(getMergedCommandBucketKeys(transparent, includeLod), command);
+    }
+
+    emitInteractCommand(command: DrawCommand, transparent: boolean, includeLod: boolean): void {
+        this.emitToBuckets(getInteractCommandBucketKeys(transparent, includeLod), command);
+    }
+
+    toCommandStream(): SceneCommandStreamEntry[] {
+        return buildSceneCommandStreamFromBuckets(this.buckets);
+    }
+}
+
 export class SceneBuffer {
     vertexBuf: VertexBuffer;
     indices: number[] = [];
-
-    drawCommands: DrawCommand[] = [];
-    drawCommandsAlpha: DrawCommand[] = [];
-
-    drawCommandsLod: DrawCommand[] = [];
-    drawCommandsLodAlpha: DrawCommand[] = [];
-
-    drawCommandsInteract: DrawCommand[] = [];
-    drawCommandsInteractAlpha: DrawCommand[] = [];
-
-    drawCommandsInteractLod: DrawCommand[] = [];
-    drawCommandsInteractLodAlpha: DrawCommand[] = [];
+    private readonly commandEmitter: SceneCommandEmitter = new SceneCommandEmitter();
 
     usedTextureIds = new Set<number>();
 
@@ -84,40 +347,102 @@ export class SceneBuffer {
         return this.indices.length * 4;
     }
 
+    writeModelGeometry(
+        model: Model,
+        faces: readonly ModelFace[],
+        offset?: vec3,
+        reuseVertices: boolean = true,
+    ): Readonly<{ offset: number; elements: number }> {
+        const indexOffset = this.indexByteOffset();
+        this.addModel(model, faces, offset, reuseVertices);
+        const elements = (this.indexByteOffset() - indexOffset) / 4;
+        return { offset: indexOffset, elements };
+    }
+
+    writeTerrainTileGeometry(tile: SceneTile, offsetX: number, offsetY: number): number {
+        const indexOffset = this.indexByteOffset();
+        this.addTerrainTile(tile, offsetX, offsetY);
+        return (this.indexByteOffset() - indexOffset) / 4;
+    }
+
+    get drawCommands(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("base");
+    }
+
+    get drawCommandsAlpha(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("alpha");
+    }
+
+    get drawCommandsLod(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("lod");
+    }
+
+    get drawCommandsLodAlpha(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("lodAlpha");
+    }
+
+    get drawCommandsInteract(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("interact");
+    }
+
+    get drawCommandsInteractAlpha(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("interactAlpha");
+    }
+
+    get drawCommandsInteractLod(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("interactLod");
+    }
+
+    get drawCommandsInteractLodAlpha(): readonly DrawCommand[] {
+        return this.commandEmitter.getBucket("interactLodAlpha");
+    }
+
+    emitMergedCommand(command: DrawCommand, transparent: boolean, includeLod: boolean): void {
+        this.commandEmitter.emitMergedCommand(command, transparent, includeLod);
+    }
+
+    emitInteractCommand(command: DrawCommand, transparent: boolean, includeLod: boolean): void {
+        this.commandEmitter.emitInteractCommand(command, transparent, includeLod);
+    }
+
+    emitCommandToBucket(bucket: DrawBucketKey, command: DrawCommand): void {
+        this.commandEmitter.emitToBucket(bucket, command);
+    }
+
+    getCommandStream(): SceneCommandStreamEntry[] {
+        return this.commandEmitter.toCommandStream();
+    }
+
     addTerrainTile(tile: SceneTile, offsetX: number, offsetY: number): void {
-        const tileModel = tile.tileModel;
-        if (!tileModel) {
-            return;
-        }
-        for (const face of tileModel.faces) {
-            for (const vertex of face.vertices) {
-                const textureIndex0 = this.textureIdIndexMap.get(vertex.textureId) ?? -1;
-                const textureIndex1 = this.textureIdIndexMap.get(vertex.textureId1) ?? -1;
+        const vertices = collectTerrainTileVertexRecords(tile, offsetX, offsetY);
+        for (let i = 0; i < vertices.length; i++) {
+            const vertex = vertices[i];
+            const textureIndex0 = this.textureIdIndexMap.get(vertex.textureId) ?? -1;
+            const textureIndex1 = this.textureIdIndexMap.get(vertex.textureId1) ?? -1;
 
-                if (textureIndex0 !== -1) {
-                    this.usedTextureIds.add(vertex.textureId);
-                }
-                if (textureIndex1 !== -1) {
-                    this.usedTextureIds.add(vertex.textureId1);
-                }
-
-                const index = this.vertexBuf.addVertex(
-                    vertex.x + offsetX,
-                    vertex.y,
-                    vertex.z + offsetY,
-                    vertex.hsl,
-                    0xff,
-                    vertex.u,
-                    vertex.v,
-                    textureIndex0,
-                    0,
-                    true,
-                    textureIndex1,
-                    vertex.texBlend,
-                );
-
-                this.indices.push(index);
+            if (textureIndex0 !== -1) {
+                this.usedTextureIds.add(vertex.textureId);
             }
+            if (textureIndex1 !== -1) {
+                this.usedTextureIds.add(vertex.textureId1);
+            }
+
+            const index = this.vertexBuf.addVertex(
+                vertex.x,
+                vertex.y,
+                vertex.z,
+                vertex.hsl,
+                0xff,
+                vertex.u,
+                vertex.v,
+                textureIndex0,
+                0,
+                true,
+                textureIndex1,
+                vertex.texBlend,
+            );
+
+            this.indices.push(index);
         }
     }
 
@@ -138,7 +463,7 @@ export class SceneBuffer {
                     if (!tile || tile.minLevel > maxLevel) {
                         continue;
                     }
-                    this.addTerrainTile(tile, vertexOffset, vertexOffset);
+                    this.writeTerrainTileGeometry(tile, vertexOffset, vertexOffset);
                 }
             }
 
@@ -161,11 +486,8 @@ export class SceneBuffer {
                         },
                     ],
                 };
-
-                this.drawCommands.push(command);
-                this.drawCommandsLod.push(command);
-                this.drawCommandsInteract.push(command);
-                this.drawCommandsInteractLod.push(command);
+                this.commandEmitter.emitMergedCommand(command, false, true);
+                this.commandEmitter.emitInteractCommand(command, false, true);
             }
         }
 
@@ -173,13 +495,10 @@ export class SceneBuffer {
     }
 
     addModelAnimFrame(model: Model, transparent: boolean): DrawRange {
-        const faces = getModelFaces(model).filter(
-            (face) => isModelFaceTransparent(this.textureLoader, face) === transparent,
-        );
+        const split = splitModelFacesByTransparency(this.textureLoader, model);
+        const faces = transparent ? split.transparentFaces : split.opaqueFaces;
 
-        const offset = this.indexByteOffset();
-        this.addModel(model, faces);
-        const elements = (this.indexByteOffset() - offset) / 4;
+        const { offset, elements } = this.writeModelGeometry(model, faces);
 
         return newDrawRange(offset, elements, 1);
     }
@@ -200,15 +519,15 @@ export class SceneBuffer {
         const anim = group.anim;
 
         // Normal (merged)
-        const drawRangeIndex = this.drawCommands.length;
-        this.drawCommands.push({
+        const drawRangeIndex = this.commandEmitter.getBucketLength("base");
+        this.commandEmitter.emitToBucket("base", {
             offset: 0,
             elements: 0,
             instances: [loc],
         });
-        const drawRangeAlphaIndex = this.drawCommandsAlpha.length;
+        const drawRangeAlphaIndex = this.commandEmitter.getBucketLength("alpha");
         if (anim.framesAlpha) {
-            this.drawCommandsAlpha.push({
+            this.commandEmitter.emitToBucket("alpha", {
                 offset: 0,
                 elements: 0,
                 instances: [loc],
@@ -218,15 +537,15 @@ export class SceneBuffer {
         let drawRangeLodIndex = -1;
         let drawRangeLodAlphaIndex = -1;
         if (!loc.lowDetail) {
-            drawRangeLodIndex = this.drawCommandsLod.length;
-            this.drawCommandsLod.push({
+            drawRangeLodIndex = this.commandEmitter.getBucketLength("lod");
+            this.commandEmitter.emitToBucket("lod", {
                 offset: 0,
                 elements: 0,
                 instances: [loc],
             });
             if (anim.framesAlpha) {
-                drawRangeLodAlphaIndex = this.drawCommandsLodAlpha.length;
-                this.drawCommandsLodAlpha.push({
+                drawRangeLodAlphaIndex = this.commandEmitter.getBucketLength("lodAlpha");
+                this.commandEmitter.emitToBucket("lodAlpha", {
                     offset: 0,
                     elements: 0,
                     instances: [loc],
@@ -235,15 +554,15 @@ export class SceneBuffer {
         }
 
         // Interact (non merged)
-        const drawRangeInteractIndex = this.drawCommandsInteract.length;
-        this.drawCommandsInteract.push({
+        const drawRangeInteractIndex = this.commandEmitter.getBucketLength("interact");
+        this.commandEmitter.emitToBucket("interact", {
             offset: 0,
             elements: 0,
             instances: [loc],
         });
-        const drawRangeInteractAlphaIndex = this.drawCommandsInteractAlpha.length;
+        const drawRangeInteractAlphaIndex = this.commandEmitter.getBucketLength("interactAlpha");
         if (anim.framesAlpha) {
-            this.drawCommandsInteractAlpha.push({
+            this.commandEmitter.emitToBucket("interactAlpha", {
                 offset: 0,
                 elements: 0,
                 instances: [loc],
@@ -254,15 +573,16 @@ export class SceneBuffer {
         let drawRangeInteractLodIndex = -1;
         let drawRangeInteractLodAlphaIndex = -1;
         if (!loc.lowDetail) {
-            drawRangeInteractLodIndex = this.drawCommandsInteractLod.length;
-            this.drawCommandsInteractLod.push({
+            drawRangeInteractLodIndex = this.commandEmitter.getBucketLength("interactLod");
+            this.commandEmitter.emitToBucket("interactLod", {
                 offset: 0,
                 elements: 0,
                 instances: [loc],
             });
             if (anim.framesAlpha) {
-                drawRangeInteractLodAlphaIndex = this.drawCommandsInteractLodAlpha.length;
-                this.drawCommandsInteractLodAlpha.push({
+                drawRangeInteractLodAlphaIndex =
+                    this.commandEmitter.getBucketLength("interactLodAlpha");
+                this.commandEmitter.emitToBucket("interactLodAlpha", {
                     offset: 0,
                     elements: 0,
                     instances: [loc],
@@ -306,9 +626,7 @@ export class SceneBuffer {
             if (sceneModel.heightOffset !== 0) {
                 vertexOffset[1] = -sceneModel.heightOffset;
             }
-            const offset = this.indexByteOffset();
-            this.addModel(model, faces, vertexOffset);
-            const elements = (this.indexByteOffset() - offset) / 4;
+            const { offset, elements } = this.writeModelGeometry(model, faces, vertexOffset);
 
             const drawCommand: DrawCommand = {
                 offset: offset,
@@ -326,17 +644,11 @@ export class SceneBuffer {
                     },
                 ],
             };
-            if (group.transparent) {
-                this.drawCommandsInteractAlpha.push(drawCommand);
-                if (!group.lowDetail) {
-                    this.drawCommandsInteractLodAlpha.push(drawCommand);
-                }
-            } else {
-                this.drawCommandsInteract.push(drawCommand);
-                if (!group.lowDetail) {
-                    this.drawCommandsInteractLod.push(drawCommand);
-                }
-            }
+            this.commandEmitter.emitInteractCommand(
+                drawCommand,
+                group.transparent,
+                !group.lowDetail,
+            );
         }
 
         const groupElements = (this.indexByteOffset() - groupOffset) / 4;
@@ -358,22 +670,16 @@ export class SceneBuffer {
                     },
                 ],
             };
-
-            if (group.transparent) {
-                this.drawCommandsAlpha.push(drawCommand);
-                if (!group.lowDetail) {
-                    this.drawCommandsLodAlpha.push(drawCommand);
-                }
-            } else {
-                this.drawCommands.push(drawCommand);
-                if (!group.lowDetail) {
-                    this.drawCommandsLod.push(drawCommand);
-                }
-            }
+            this.commandEmitter.emitMergedCommand(drawCommand, group.transparent, !group.lowDetail);
         }
     }
 
-    addModel(model: Model, faces: ModelFace[], offset?: vec3, reuseVertices: boolean = true): void {
+    addModel(
+        model: Model,
+        faces: readonly ModelFace[],
+        offset?: vec3,
+        reuseVertices: boolean = true,
+    ): void {
         if (faces.length === 0) {
             return;
         }
@@ -511,10 +817,17 @@ export type ModelFace = {
     textureId: number;
 };
 
+export type IsTextureTransparentFn = (textureId: number) => boolean;
+
+export function isModelFaceTransparentById(
+    isTextureTransparent: IsTextureTransparentFn,
+    face: ModelFace,
+): boolean {
+    return face.alpha < 0xff || (face.textureId !== -1 && isTextureTransparent(face.textureId));
+}
+
 export function isModelFaceTransparent(textureLoader: TextureLoader, face: ModelFace): boolean {
-    return (
-        face.alpha < 0xff || (face.textureId !== -1 && textureLoader.isTransparent(face.textureId))
-    );
+    return isModelFaceTransparentById((id) => textureLoader.isTransparent(id), face);
 }
 
 export function getModelFaces(model: Model): ModelFace[] {
@@ -564,7 +877,77 @@ export function getModelFaces(model: Model): ModelFace[] {
     return faces;
 }
 
-export function createModelInfoTextureData(drawCommands: DrawCommand[]): Uint16Array {
+export type SplitModelFaces = Readonly<{
+    opaqueFaces: readonly ModelFace[];
+    transparentFaces: readonly ModelFace[];
+}>;
+
+export type ModelFacesDigest = Readonly<{
+    faceCount: number;
+    opaqueCount: number;
+    transparentCount: number;
+    hash: number;
+}>;
+
+export function splitModelFacesByTransparencyById(
+    isTextureTransparent: IsTextureTransparentFn,
+    faces: readonly ModelFace[],
+): SplitModelFaces {
+    const opaqueFaces: ModelFace[] = [];
+    const transparentFaces: ModelFace[] = [];
+    for (let i = 0; i < faces.length; i++) {
+        const face = faces[i];
+        if (isModelFaceTransparentById(isTextureTransparent, face)) {
+            transparentFaces.push(face);
+        } else {
+            opaqueFaces.push(face);
+        }
+    }
+    return { opaqueFaces, transparentFaces };
+}
+
+export function splitModelFacesByTransparency(
+    textureLoader: TextureLoader,
+    model: Model,
+): SplitModelFaces {
+    return splitModelFacesByTransparencyById(
+        (id) => textureLoader.isTransparent(id),
+        getModelFaces(model),
+    );
+}
+
+export function summarizeModelFacesById(
+    isTextureTransparent: IsTextureTransparentFn,
+    model: Model,
+): ModelFacesDigest {
+    const faces = getModelFaces(model);
+    let hash = 2166136261 >>> 0;
+    let opaqueCount = 0;
+    let transparentCount = 0;
+    for (let i = 0; i < faces.length; i++) {
+        const f = faces[i];
+        const isTrans = isModelFaceTransparentById(isTextureTransparent, f);
+        if (isTrans) transparentCount++;
+        else opaqueCount++;
+        hash = fnv1a32UpdateInt(hash, f.index | 0);
+        hash = fnv1a32UpdateInt(hash, f.alpha | 0);
+        hash = fnv1a32UpdateInt(hash, f.priority | 0);
+        hash = fnv1a32UpdateInt(hash, f.textureId | 0);
+        hash = fnv1a32UpdateInt(hash, isTrans ? 1 : 0);
+    }
+    return {
+        faceCount: faces.length | 0,
+        opaqueCount: opaqueCount | 0,
+        transparentCount: transparentCount | 0,
+        hash: hash >>> 0,
+    };
+}
+
+export function summarizeModelFaces(textureLoader: TextureLoader, model: Model): ModelFacesDigest {
+    return summarizeModelFacesById((id) => textureLoader.isTransparent(id), model);
+}
+
+export function createModelInfoTextureData(drawCommands: readonly DrawCommand[]): Uint16Array {
     const instances: ModelInfo[] = [];
     for (const cmd of drawCommands) {
         instances.push(...cmd.instances);

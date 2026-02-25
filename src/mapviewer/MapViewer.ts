@@ -20,8 +20,8 @@ import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
-import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
+import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -35,36 +35,47 @@ type CacheContext = {
 };
 
 export type MapViewerRuntimeOptions = Readonly<{
-    sceneBackend: "ts" | "cpp-wasm";
     mapRenderBackend: "ts" | "cpp-wasm";
+    mapRenderTickBackend?: "ts" | "cpp-wasm";
+    mapRenderStrictCppWasm: boolean;
+    mapRenderStrictCppWasmPacketGeometry: boolean;
     mapRenderTelemetry: boolean;
-    sceneBackendModuleUrl?: string;
     mapRenderBackendModuleUrl?: string;
+    mapRenderDebugTickSquare?: string;
 }>;
 
 const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
-    sceneBackend: "ts",
     mapRenderBackend: "ts",
+    mapRenderStrictCppWasm: false,
+    mapRenderStrictCppWasmPacketGeometry: false,
     mapRenderTelemetry: false,
 };
 
 function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
     return {
-        sceneBackend: options?.sceneBackend ?? DEFAULT_RUNTIME_OPTIONS.sceneBackend,
         mapRenderBackend: options?.mapRenderBackend ?? DEFAULT_RUNTIME_OPTIONS.mapRenderBackend,
-        mapRenderTelemetry: options?.mapRenderTelemetry ?? DEFAULT_RUNTIME_OPTIONS.mapRenderTelemetry,
-        sceneBackendModuleUrl: options?.sceneBackendModuleUrl,
+        mapRenderTickBackend: options?.mapRenderTickBackend,
+        mapRenderStrictCppWasm:
+            options?.mapRenderStrictCppWasm ?? DEFAULT_RUNTIME_OPTIONS.mapRenderStrictCppWasm,
+        mapRenderStrictCppWasmPacketGeometry:
+            options?.mapRenderStrictCppWasmPacketGeometry ??
+            DEFAULT_RUNTIME_OPTIONS.mapRenderStrictCppWasmPacketGeometry,
+        mapRenderTelemetry:
+            options?.mapRenderTelemetry ?? DEFAULT_RUNTIME_OPTIONS.mapRenderTelemetry,
         mapRenderBackendModuleUrl: options?.mapRenderBackendModuleUrl,
+        mapRenderDebugTickSquare: options?.mapRenderDebugTickSquare,
     };
 }
 
 function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOptions): boolean {
     return (
-        a.sceneBackend === b.sceneBackend &&
         a.mapRenderBackend === b.mapRenderBackend &&
+        a.mapRenderTickBackend === b.mapRenderTickBackend &&
+        a.mapRenderStrictCppWasm === b.mapRenderStrictCppWasm &&
+        a.mapRenderStrictCppWasmPacketGeometry === b.mapRenderStrictCppWasmPacketGeometry &&
         a.mapRenderTelemetry === b.mapRenderTelemetry &&
-        a.sceneBackendModuleUrl === b.sceneBackendModuleUrl &&
-        a.mapRenderBackendModuleUrl === b.mapRenderBackendModuleUrl
+        a.mapRenderBackendModuleUrl === b.mapRenderBackendModuleUrl &&
+        a.mapRenderDebugTickSquare === b.mapRenderDebugTickSquare
     );
 }
 
@@ -217,20 +228,27 @@ export class MapViewer {
             params["cache"] = this.loadedCache.info.name;
         }
 
-        if (this.runtimeOptions.sceneBackend !== DEFAULT_RUNTIME_OPTIONS.sceneBackend) {
-            params["sb"] = this.runtimeOptions.sceneBackend === "cpp-wasm" ? "cpp" : "ts";
-        }
         if (this.runtimeOptions.mapRenderBackend !== DEFAULT_RUNTIME_OPTIONS.mapRenderBackend) {
             params["mrb"] = this.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
+        }
+        if (this.runtimeOptions.mapRenderTickBackend) {
+            params["mrbtick"] =
+                this.runtimeOptions.mapRenderTickBackend === "cpp-wasm" ? "cpp" : "ts";
+        }
+        if (this.runtimeOptions.mapRenderStrictCppWasm) {
+            params["mrbs"] = "1";
+        }
+        if (this.runtimeOptions.mapRenderStrictCppWasmPacketGeometry) {
+            params["mrbg"] = "1";
         }
         if (this.runtimeOptions.mapRenderTelemetry) {
             params["mrt"] = "1";
         }
-        if (this.runtimeOptions.sceneBackendModuleUrl) {
-            params["sbm"] = this.runtimeOptions.sceneBackendModuleUrl;
-        }
         if (this.runtimeOptions.mapRenderBackendModuleUrl) {
             params["mrbm"] = this.runtimeOptions.mapRenderBackendModuleUrl;
+        }
+        if (this.runtimeOptions.mapRenderDebugTickSquare) {
+            params["mrdtick"] = this.runtimeOptions.mapRenderDebugTickSquare;
         }
 
         params["v"] = 1;

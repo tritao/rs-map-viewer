@@ -11,6 +11,7 @@ import { decodeTypeFromBytes } from "./decode/decodeType";
 
 export interface TypeLoader<T> {
     tryLoad(id: number): Result<T, DecodeError>;
+    tryLoadBytes?(id: number): Uint8Array | undefined;
 
     getCount(): number;
 
@@ -47,6 +48,10 @@ export class DummyTypeLoader<T extends Type> implements TypeLoader<T> {
 
     tryLoad(id: number): Result<T, DecodeError> {
         return ok(new this.typeConstructor(id, this.cacheInfo));
+    }
+
+    tryLoadBytes(_id: number): Uint8Array | undefined {
+        return undefined;
     }
 
     getCount(): number {
@@ -109,6 +114,10 @@ export abstract class BaseTypeLoader<T extends Type> implements TypeLoader<T> {
         this.cache.set(id, decoded.value);
         this.errors.delete(id);
         return decoded;
+    }
+
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        return this.getData(id);
     }
 
     abstract getCount(): number;
@@ -178,19 +187,35 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
             throw new Error(name + ".dat not found");
         }
         const buffer = new ByteBuffer(file.data);
+        const rawData = new Uint8Array(
+            file.data.buffer,
+            file.data.byteOffset,
+            file.data.byteLength,
+        );
 
         const count = buffer.readUnsignedShort();
+        const dataOffsets = new Int32Array(count);
+        const dataLengths = new Int32Array(count);
         const types = Array.from({ length: count }, (_, i) => {
+            const start = buffer.offset;
             const type = new typeConstructor(i, cacheInfo);
             type.decode(buffer);
             type.post();
+            const end = buffer.offset;
+            dataOffsets[i] = start;
+            dataLengths[i] = end - start;
             return type;
         });
 
-        return new DatTypeLoader(types);
+        return new DatTypeLoader(types, rawData, dataOffsets, dataLengths);
     }
 
-    constructor(readonly types: T[]) {}
+    constructor(
+        readonly types: T[],
+        readonly data?: Uint8Array,
+        readonly dataOffsets?: Int32Array,
+        readonly dataLengths?: Int32Array,
+    ) {}
 
     tryLoad(id: number): Result<T, DecodeError> {
         const type = this.types[id];
@@ -202,6 +227,24 @@ export class DatTypeLoader<T extends Type> implements TypeLoader<T> {
 
     getCount(): number {
         return this.types.length;
+    }
+
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        if (
+            !this.data ||
+            !this.dataOffsets ||
+            !this.dataLengths ||
+            id < 0 ||
+            id >= this.types.length
+        ) {
+            return undefined;
+        }
+        const start = this.dataOffsets[id];
+        const length = this.dataLengths[id];
+        if (start < 0 || length < 0 || start + length > this.data.length) {
+            return undefined;
+        }
+        return this.data.subarray(start, start + length);
     }
 
     clearCache(): void {}

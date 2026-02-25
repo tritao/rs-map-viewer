@@ -36,17 +36,25 @@ function parseBackendKind(value: string | null): "ts" | "cpp-wasm" {
 }
 
 function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntimeOptions {
-    const sceneBackend = parseBackendKind(searchParams.get("sb"));
     const mapRenderBackend = parseBackendKind(searchParams.get("mrb"));
+    const mapRenderTickBackendParam = searchParams.get("mrbtick");
+    const mapRenderTickBackend =
+        mapRenderTickBackendParam !== null
+            ? parseBackendKind(mapRenderTickBackendParam)
+            : undefined;
+    const mapRenderStrictCppWasm = searchParams.get("mrbs") === "1";
+    const mapRenderStrictCppWasmPacketGeometry = searchParams.get("mrbg") === "1";
     const mapRenderTelemetry = searchParams.get("mrt") === "1";
-    const sceneBackendModuleUrl = searchParams.get("sbm") ?? undefined;
     const mapRenderBackendModuleUrl = searchParams.get("mrbm") ?? undefined;
+    const mapRenderDebugTickSquare = searchParams.get("mrdtick") ?? undefined;
     return {
-        sceneBackend,
         mapRenderBackend,
+        mapRenderTickBackend,
+        mapRenderStrictCppWasm,
+        mapRenderStrictCppWasmPacketGeometry,
         mapRenderTelemetry,
-        sceneBackendModuleUrl,
         mapRenderBackendModuleUrl,
+        mapRenderDebugTickSquare,
     };
 }
 

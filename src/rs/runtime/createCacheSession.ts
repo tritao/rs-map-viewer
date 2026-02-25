@@ -1,16 +1,20 @@
 import { LoadedCache } from "../../util/Caches";
 import { Result, err, ok } from "../../util/Result";
+import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { CacheIndex } from "../cache/CacheIndex";
+import { Dat2IndexId, DatIndexId } from "../cache/IndexId";
 import { CacheSystem } from "../cache/CacheSystem";
+import { Archive } from "../cache/format/Archive";
 import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { VarManager } from "../config/vartype/VarManager";
+import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { InitError, createFailed, initErrorToString } from "../loaders/InitError";
 import {
+    Loaders,
     clearLoaderCaches,
     getQuestTypeLoader,
     getSkeletalSeqLoader,
-    Loaders,
 } from "../loaders/Loaders";
 import { tryCreateLoaders } from "../loaders/createLoaders";
 import { MapFileIndex } from "../map/MapFileIndex";
@@ -22,6 +26,8 @@ export type CacheSession = {
     varManager: VarManager;
     mapFileIndex: MapFileIndex;
     tryGetIndex(indexId: number): CacheIndex | undefined;
+    tryGetDat2SpriteSource(): EnumeratingBytesProvider | undefined;
+    tryGetDatMediaArchive(): Archive | undefined;
     hasQuestTypeLoader(): boolean;
     hasSkeletalSeqLoader(): boolean;
     hasDistinctUnderlayTypeLoader(): boolean;
@@ -103,10 +109,23 @@ export function tryCreateCacheSessionFromSystem(
         varManager,
         mapFileIndex: loaders.mapFileLoader.mapFileIndex,
         tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
+        tryGetDat2SpriteSource: () => {
+            const index = cacheSystem.tryGetIndex(Dat2IndexId.sprites);
+            if (!index) {
+                return undefined;
+            }
+            return new IndexFileBytesProvider(index, 0);
+        },
+        tryGetDatMediaArchive: () => {
+            const configIndex = cacheSystem.tryGetIndex(DatIndexId.configs);
+            if (!configIndex) {
+                return undefined;
+            }
+            return configIndex.tryGetArchive(DatConfigArchiveId.media);
+        },
         hasQuestTypeLoader: () => loaders.capabilities.hasQuestTypeLoader,
         hasSkeletalSeqLoader: () => loaders.capabilities.hasSkeletalSeqLoader,
-        hasDistinctUnderlayTypeLoader: () =>
-            loaders.capabilities.hasDistinctUnderlayTypeLoader,
+        hasDistinctUnderlayTypeLoader: () => loaders.capabilities.hasDistinctUnderlayTypeLoader,
         getQuestTypeLoader: () => getQuestTypeLoader(loaders),
         getSkeletalSeqLoader: () => getSkeletalSeqLoader(loaders),
         getTextureLoader: () => loaders.textureLoader,

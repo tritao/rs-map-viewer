@@ -14,18 +14,14 @@ import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
 import { RenderableType } from "../Renderer";
-import { ModelHashBuffer, getModelHash } from "../buffer/ModelHashBuffer";
+import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
+import { ContourGroundType, SceneBuffer, SceneModel } from "../buffer/SceneBuffer";
 import {
-    ContourGroundType,
-    DrawCommand,
-    ModelFace,
-    ModelMergeGroup,
-    SceneBuffer,
-    SceneModel,
-    createModelInfoTextureData,
-    getModelFaces,
-    isModelFaceTransparent,
-} from "../buffer/SceneBuffer";
+    buildDrawRangesFromBuckets,
+    buildModelInfoTexturesFromBuckets,
+    collectRuntimeDrawCommandBuckets,
+} from "../buffer/SceneCommandBuilder";
+import { emitSceneModelsToSceneBuffer } from "../buffer/SceneCommandPlan";
 import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
 import { NpcData } from "../npc/NpcData";
 import {
@@ -34,155 +30,7 @@ import {
     SdRenderableModelInfoTextures,
 } from "./SdRenderableData";
 import { SdRenderableLoaderInput } from "./SdRenderableLoaderInput";
-
-function createModelGroups(
-    modelGroupMap: Map<number, ModelMergeGroup>,
-    sceneModels: SceneModel[],
-    transparent: boolean,
-): void {
-    for (const sceneModel of sceneModels) {
-        const key =
-            Number(transparent) |
-            ((sceneModel.lowDetail ? 1 : 0) << 1) |
-            (sceneModel.level << 2) |
-            (sceneModel.priority << 4);
-
-        const group = modelGroupMap.get(key);
-        if (group) {
-            group.models.push(sceneModel);
-        } else {
-            modelGroupMap.set(key, {
-                transparent,
-                lowDetail: sceneModel.lowDetail,
-                level: sceneModel.level,
-                priority: sceneModel.priority,
-                models: [sceneModel],
-            });
-        }
-    }
-}
-
-function addSceneModels(
-    modelHashBuf: ModelHashBuffer,
-    textureLoader: TextureLoader,
-    sceneBuf: SceneBuffer,
-    sceneModels: SceneModel[],
-    minimizeDrawCalls: boolean,
-): void {
-    const groupedModels = new Map<number, SceneModel[]>();
-    for (const sceneModel of sceneModels) {
-        const model = sceneModel.model;
-        const hash = getModelHash(modelHashBuf, model);
-        const locs = groupedModels.get(hash);
-        if (locs) {
-            locs.push(sceneModel);
-        } else {
-            groupedModels.set(hash, [sceneModel]);
-        }
-    }
-
-    const modelGroupMap: Map<number, ModelMergeGroup> = new Map();
-    for (const sceneModels of groupedModels.values()) {
-        const model = sceneModels[0].model;
-        const faces = getModelFaces(model);
-
-        const opaqueFaces: ModelFace[] = [];
-        const transparentFaces: ModelFace[] = [];
-        for (const face of faces) {
-            if (isModelFaceTransparent(textureLoader, face)) {
-                transparentFaces.push(face);
-            } else {
-                opaqueFaces.push(face);
-            }
-        }
-
-        const mergeModels: SceneModel[] = [];
-        const instancedModels: SceneModel[] = [];
-        const lodModels: SceneModel[] = [];
-        for (const sceneModel of sceneModels) {
-            if (sceneModel.forceMerge) {
-                mergeModels.push(sceneModel);
-            } else {
-                instancedModels.push(sceneModel);
-                if (!sceneModel.lowDetail) {
-                    lodModels.push(sceneModel);
-                }
-            }
-        }
-
-        createModelGroups(modelGroupMap, mergeModels, false);
-        if (transparentFaces.length > 0) {
-            createModelGroups(modelGroupMap, mergeModels, true);
-        }
-
-        const instanceCount = instancedModels.length;
-        const mergeOpaque =
-            instanceCount === 1 || instanceCount * opaqueFaces.length < 100 || minimizeDrawCalls;
-        const mergeTransparent =
-            instanceCount === 1 ||
-            instanceCount * transparentFaces.length < 100 ||
-            minimizeDrawCalls;
-
-        // mergeOpaque = false;
-        // mergeTransparent = false;
-
-        if (mergeOpaque) {
-            createModelGroups(modelGroupMap, instancedModels, false);
-        } else if (opaqueFaces.length > 0) {
-            const indexOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, opaqueFaces);
-            const elementCount = (sceneBuf.indexByteOffset() - indexOffset) / 4;
-
-            const drawCommand: DrawCommand = {
-                offset: indexOffset,
-                elements: elementCount,
-                instances: sceneModels,
-            };
-
-            sceneBuf.drawCommands.push(drawCommand);
-            sceneBuf.drawCommandsInteract.push(drawCommand);
-            if (lodModels.length > 0) {
-                const drawCommandLod: DrawCommand = {
-                    offset: indexOffset,
-                    elements: elementCount,
-                    instances: lodModels,
-                };
-                sceneBuf.drawCommandsLod.push(drawCommandLod);
-                sceneBuf.drawCommandsInteractLod.push(drawCommandLod);
-            }
-        }
-
-        if (mergeTransparent && transparentFaces.length > 0) {
-            createModelGroups(modelGroupMap, instancedModels, true);
-        } else if (transparentFaces.length > 0) {
-            const indexOffset = sceneBuf.indexByteOffset();
-            sceneBuf.addModel(model, transparentFaces);
-            const elementCount = (sceneBuf.indexByteOffset() - indexOffset) / 4;
-
-            const drawCommand: DrawCommand = {
-                offset: indexOffset,
-                elements: elementCount,
-                instances: sceneModels,
-            };
-
-            sceneBuf.drawCommandsAlpha.push(drawCommand);
-            sceneBuf.drawCommandsInteractAlpha.push(drawCommand);
-            if (lodModels.length > 0) {
-                const drawCommandLod: DrawCommand = {
-                    offset: indexOffset,
-                    elements: elementCount,
-                    instances: lodModels,
-                };
-                sceneBuf.drawCommandsLodAlpha.push(drawCommandLod);
-                sceneBuf.drawCommandsInteractLodAlpha.push(drawCommandLod);
-            }
-        }
-    }
-
-    for (const group of modelGroupMap.values()) {
-        sceneBuf.addModelGroup(group);
-    }
-}
+import { createSdTexturePacking } from "./SdTexturePacking";
 
 function addLocAnimationFrames(
     locModelLoader: LocModelLoader,
@@ -316,16 +164,11 @@ export class SdRenderableDataLoader
 
         const id = ids[0];
 
-        let textureIds = textureLoader.getTextureIds().filter((id) => textureLoader.isSd(id));
-        textureIds = textureIds.slice(0, 2047);
-        const textureIdIndexMap = new Map<number, number>();
-        for (let i = 0; i < textureIds.length; i++) {
-            textureIdIndexMap.set(textureIds[i], i);
-        }
+        const { textureIdIndexMap } = createSdTexturePacking(textureLoader);
 
         const scene = new Scene(1, 0, 0);
 
-        const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
+        const sceneBuf = new SceneBuffer(textureLoader, new Map(textureIdIndexMap), 100000);
 
         const npcs: NpcData[] = [];
         if (type == RenderableType.NPC) {
@@ -398,7 +241,7 @@ export class SdRenderableDataLoader
             ];
 
             let minimizeDrawCalls = false;
-            addSceneModels(
+            emitSceneModelsToSceneBuffer(
                 this.modelHashBuf!,
                 textureLoader,
                 sceneBuf,
@@ -485,79 +328,17 @@ export class SdRenderableDataLoader
     }
 
     static getModelInfoTextures(sceneBuf: SceneBuffer): SdRenderableModelInfoTextures {
-        const base = createModelInfoTextureData(sceneBuf.drawCommands);
-        const alpha = createModelInfoTextureData(sceneBuf.drawCommandsAlpha);
-
-        const lod = createModelInfoTextureData(sceneBuf.drawCommandsLod);
-        const lodAlpha = createModelInfoTextureData(sceneBuf.drawCommandsLodAlpha);
-
-        const interact = createModelInfoTextureData(sceneBuf.drawCommandsInteract);
-        const interactAlpha = createModelInfoTextureData(sceneBuf.drawCommandsInteractAlpha);
-
-        const interactLod = createModelInfoTextureData(sceneBuf.drawCommandsInteractLod);
-        const interactLodAlpha = createModelInfoTextureData(sceneBuf.drawCommandsInteractLodAlpha);
-
-        return {
-            base,
-            alpha,
-            lod,
-            lodAlpha,
-            interact,
-            interactAlpha,
-            interactLod,
-            interactLodAlpha,
-        };
+        return buildModelInfoTexturesFromBuckets(collectRuntimeDrawCommandBuckets(sceneBuf));
     }
 
     static getDrawRanges(sceneBuf: SceneBuffer, ...args: any[]): SdRenderableDrawRanges {
-        // Normal (merged)
-        const base = sceneBuf.drawCommands.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const alpha = sceneBuf.drawCommandsAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
+        const drawRanges = buildDrawRangesFromBuckets(collectRuntimeDrawCommandBuckets(sceneBuf));
+        const { base, alpha, lod, lodAlpha, interact } = drawRanges;
 
-        console.log(`draw ranges: ${base.length}, alpha: ${alpha.length}`, args);
-
-        // Lod (merged)
-        const lod = sceneBuf.drawCommandsLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const lodAlpha = sceneBuf.drawCommandsLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        console.log(`draw ranges lod: ${lod.length}, alpha: ${lodAlpha.length}`, args);
-
-        // Interact (non merged)
-        const interact = sceneBuf.drawCommandsInteract.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const interactAlpha = sceneBuf.drawCommandsInteractAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        console.log(`draw ranges interact: ${interact.length}`, args);
-
-        // Interact Lod (non merged)
-        const interactLod = sceneBuf.drawCommandsInteractLod.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-        const interactLodAlpha = sceneBuf.drawCommandsInteractLodAlpha.map((cmd) =>
-            newDrawRange(cmd.offset, cmd.elements, cmd.instances.length),
-        );
-
-        return {
-            base,
-            alpha,
-            lod,
-            lodAlpha,
-            interact,
-            interactAlpha,
-            interactLod,
-            interactLodAlpha,
-        };
+        console.log(`draw ranges: ${base.length / 3}, alpha: ${alpha.length / 3}`, args);
+        console.log(`draw ranges lod: ${lod.length / 3}, alpha: ${lodAlpha.length / 3}`, args);
+        console.log(`draw ranges interact: ${interact.length / 3}`, args);
+        return drawRanges;
     }
 
     reset(): void {

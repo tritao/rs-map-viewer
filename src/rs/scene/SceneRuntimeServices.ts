@@ -12,4 +12,3 @@ export type SceneRuntimeServices = Readonly<{
     locModelLoader: LocModelLoader;
     varProvider: VarProvider;
 }>;
-

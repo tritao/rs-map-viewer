@@ -28,6 +28,22 @@ export type ComputeSceneTileModelParams = {
     overlayPrimaryEdges?: OverlayEdgeSet;
 };
 
+export type TerrainTileMaterialDecisionParams = {
+    underlayId: number;
+    overlayId: number;
+    underlayTypeLoader: FloorTypeLoader;
+    overlayTypeLoader: OverlayFloorTypeLoader;
+    textureLoader: TextureLoader;
+    overlayPrimaryCorners?: OverlayCornerSet;
+};
+
+export type TerrainTileMaterialDecision = {
+    underlayTextureId: number;
+    underlayTextureSize: number;
+    overlayRgb: number;
+    hasOverlay: boolean;
+};
+
 type UnderlayOnlyTileModelParams = {
     x: number;
     y: number;
@@ -88,6 +104,122 @@ function tryGetFloorTextureInfo(
     return { textureId: maybe.textureId, textureSize: maybe.textureSize };
 }
 
+function resolveUnderlayTextureDecision(
+    underlayId: number,
+    underlayTypeLoader: FloorTypeLoader,
+    textureLoader: TextureLoader,
+): { underlayTextureId: number; underlayTextureSize: number } {
+    let underlayTextureId = -1;
+    let underlayTextureSize = 128;
+    if (underlayId !== -1) {
+        const underlayResult = underlayTypeLoader.tryLoad(underlayId);
+        if (underlayResult.ok) {
+            const info = tryGetFloorTextureInfo(underlayResult.value);
+            if (info && info.textureId !== -1 && textureLoader.isSd(info.textureId)) {
+                underlayTextureId = info.textureId;
+                underlayTextureSize = info.textureSize || 128;
+            }
+        }
+    }
+    return {
+        underlayTextureId,
+        underlayTextureSize,
+    };
+}
+
+function computeOverlayRgb(
+    overlay: {
+        textureId: number;
+        primaryRgb: number;
+        hue: number;
+        saturation: number;
+        lightness: number;
+        secondaryRgb: number;
+        secondaryHue: number;
+        secondarySaturation: number;
+        secondaryLightness: number;
+    },
+    textureLoader: TextureLoader,
+    overlayPrimaryCorners?: OverlayCornerSet,
+): number {
+    if (overlayPrimaryCorners) {
+        const hsls = overlayPrimaryCorners.minimapHsl;
+        let sum = 0;
+        let count = 0;
+        for (let i = 0; i < 4; i++) {
+            const hsl = hsls[i];
+            if (hsl !== -2) {
+                sum += hsl;
+                count++;
+            }
+        }
+        if (count > 0) {
+            return HSL_RGB_MAP[adjustOverlayLight(Math.trunc(sum / count), 96)];
+        }
+        return 0;
+    }
+
+    let overlayMinimapHsl: number;
+    if (overlay.textureId !== -1 && textureLoader.isSd(overlay.textureId)) {
+        overlayMinimapHsl = textureLoader.getAverageHsl(overlay.textureId);
+    } else if (overlay.primaryRgb === 0xff00ff) {
+        overlayMinimapHsl = -2;
+    } else {
+        overlayMinimapHsl = packHsl(overlay.hue, overlay.saturation, overlay.lightness);
+    }
+    if (overlay.secondaryRgb !== -1) {
+        overlayMinimapHsl = packHsl(
+            overlay.secondaryHue,
+            overlay.secondarySaturation,
+            overlay.secondaryLightness,
+        );
+    }
+    if (overlayMinimapHsl !== -2) {
+        return HSL_RGB_MAP[adjustOverlayLight(overlayMinimapHsl, 96)];
+    }
+    return 0;
+}
+
+export function computeTerrainTileMaterialDecision(
+    params: TerrainTileMaterialDecisionParams,
+): TerrainTileMaterialDecision {
+    const underlayTexture = resolveUnderlayTextureDecision(
+        params.underlayId,
+        params.underlayTypeLoader,
+        params.textureLoader,
+    );
+
+    if (params.overlayId === -1) {
+        return {
+            underlayTextureId: underlayTexture.underlayTextureId,
+            underlayTextureSize: underlayTexture.underlayTextureSize,
+            overlayRgb: 0,
+            hasOverlay: false,
+        };
+    }
+
+    const overlayResult = params.overlayTypeLoader.tryLoad(params.overlayId);
+    if (!overlayResult.ok) {
+        return {
+            underlayTextureId: underlayTexture.underlayTextureId,
+            underlayTextureSize: underlayTexture.underlayTextureSize,
+            overlayRgb: 0,
+            hasOverlay: false,
+        };
+    }
+
+    return {
+        underlayTextureId: underlayTexture.underlayTextureId,
+        underlayTextureSize: underlayTexture.underlayTextureSize,
+        overlayRgb: computeOverlayRgb(
+            overlayResult.value,
+            params.textureLoader,
+            params.overlayPrimaryCorners,
+        ),
+        hasOverlay: true,
+    };
+}
+
 export function computeSceneTileModelForTile(
     params: ComputeSceneTileModelParams,
 ): SceneTileModel | undefined {
@@ -121,20 +253,16 @@ export function computeSceneTileModelForTile(
         underlayRgb = HSL_RGB_MAP[adjustUnderlayLight(underlayHslSw, 96)];
     }
 
-    let underlayTextureId = -1;
-    let underlayTextureSize = 128;
-    if (params.underlayId !== -1) {
-        const underlayResult = params.underlayTypeLoader.tryLoad(params.underlayId);
-        if (underlayResult.ok) {
-            const info = tryGetFloorTextureInfo(underlayResult.value);
-            if (info && info.textureId !== -1 && params.textureLoader.isSd(info.textureId)) {
-                underlayTextureId = info.textureId;
-                underlayTextureSize = info.textureSize || 128;
-            }
-        }
-    }
+    const materialDecision = computeTerrainTileMaterialDecision({
+        underlayId: params.underlayId,
+        overlayId: params.overlayId,
+        underlayTypeLoader: params.underlayTypeLoader,
+        overlayTypeLoader: params.overlayTypeLoader,
+        textureLoader: params.textureLoader,
+        overlayPrimaryCorners: params.overlayPrimaryCorners,
+    });
 
-    if (params.overlayId === -1) {
+    if (!materialDecision.hasOverlay) {
         return createUnderlayOnlyTileModel({
             x: params.x,
             y: params.y,
@@ -151,79 +279,19 @@ export function computeSceneTileModelForTile(
             underlayHslNe,
             underlayHslNw,
             underlayRgb,
-            underlayTextureId,
-            underlayTextureSize,
+            underlayTextureId: materialDecision.underlayTextureId,
+            underlayTextureSize: materialDecision.underlayTextureSize,
         });
     }
 
-    const overlayResult = params.overlayTypeLoader.tryLoad(params.overlayId);
-    if (!overlayResult.ok) {
-        return createUnderlayOnlyTileModel({
-            x: params.x,
-            y: params.y,
-            heightSw: params.heightSw,
-            heightSe: params.heightSe,
-            heightNe: params.heightNe,
-            heightNw: params.heightNw,
-            lightSw: params.lightSw,
-            lightSe: params.lightSe,
-            lightNe: params.lightNe,
-            lightNw: params.lightNw,
-            underlayHslSw,
-            underlayHslSe,
-            underlayHslNe,
-            underlayHslNw,
-            underlayRgb,
-            underlayTextureId,
-            underlayTextureSize,
-        });
-    }
-
-    const overlay = overlayResult.value;
     const shape = (params.tileShape + 1) as TileShapeId;
     const rotation = params.tileRotation as TileRotation;
-
-    let overlayRgb = 0;
-    if (params.overlayPrimaryCorners) {
-        const hsls = params.overlayPrimaryCorners.minimapHsl;
-        let sum = 0;
-        let count = 0;
-        for (let i = 0; i < 4; i++) {
-            const hsl = hsls[i];
-            if (hsl !== -2) {
-                sum += hsl;
-                count++;
-            }
-        }
-        if (count > 0) {
-            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(Math.trunc(sum / count), 96)];
-        }
-    } else {
-        let overlayMinimapHsl: number;
-        if (overlay.textureId !== -1 && params.textureLoader.isSd(overlay.textureId)) {
-            overlayMinimapHsl = params.textureLoader.getAverageHsl(overlay.textureId);
-        } else if (overlay.primaryRgb === 0xff00ff) {
-            overlayMinimapHsl = -2;
-        } else {
-            overlayMinimapHsl = packHsl(overlay.hue, overlay.saturation, overlay.lightness);
-        }
-        if (overlay.secondaryRgb !== -1) {
-            overlayMinimapHsl = packHsl(
-                overlay.secondaryHue,
-                overlay.secondarySaturation,
-                overlay.secondaryLightness,
-            );
-        }
-        if (overlayMinimapHsl !== -2) {
-            overlayRgb = HSL_RGB_MAP[adjustOverlayLight(overlayMinimapHsl, 96)];
-        }
-    }
 
     return new SceneTileModel(
         shape,
         rotation,
-        underlayTextureId,
-        underlayTextureSize,
+        materialDecision.underlayTextureId,
+        materialDecision.underlayTextureSize,
         params.overlayPrimaryCorners,
         params.overlayPrimaryEdges,
         params.x,
@@ -241,6 +309,6 @@ export function computeSceneTileModelForTile(
         underlayHslNe,
         underlayHslNw,
         underlayRgb,
-        overlayRgb,
+        materialDecision.overlayRgb,
     );
 }
