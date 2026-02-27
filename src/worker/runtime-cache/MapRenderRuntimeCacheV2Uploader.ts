@@ -768,13 +768,105 @@ function createObjSpawnTypeEntryBytesForBuild(
 export class MapRenderRuntimeCacheV2Uploader {
     // Avoid re-uploading large dat seq-frame map blobs across retry passes.
     private readonly uploadedDatSeqFrameMapIds: Set<number> = new Set();
+    // Upload the texture packing presence-lists once per runtime handle.
+    private readonly uploadedTextureListsForRuntime: Set<number> = new Set();
     private legacyModelFilesUploaded = false;
     private legacySeqFilesUploaded = false;
 
     reset(): void {
         this.uploadedDatSeqFrameMapIds.clear();
+        this.uploadedTextureListsForRuntime.clear();
         this.legacyModelFilesUploaded = false;
         this.legacySeqFilesUploaded = false;
+    }
+
+    private async uploadPresenceList(
+        feeder: RuntimeCacheFeeder,
+        domain: number,
+        ids: ReadonlyArray<number>,
+    ): Promise<boolean> {
+        const seen = new Set<number>();
+        const kept: number[] = [];
+        for (let i = 0; i < ids.length; i++) {
+            const id = ids[i] | 0;
+            if (id < 0) continue;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            kept.push(id);
+        }
+        if (kept.length <= 0) {
+            return true;
+        }
+        const n = kept.length | 0;
+        const groups = new Int32Array(n);
+        const files = new Int32Array(n);
+        const offsets = new Int32Array(n);
+        const lengths = new Int32Array(n);
+        for (let i = 0; i < n; i++) {
+            groups[i] = 0;
+            files[i] = kept[i] | 0;
+            offsets[i] = 0;
+            lengths[i] = 0;
+        }
+        // Empty payload: presence is encoded by the blob key itself (domain/group/file).
+        return await feeder.putBlobBatch(
+            domain,
+            groups,
+            files,
+            offsets,
+            lengths,
+            new Uint8Array(0),
+        );
+    }
+
+    private async ensureTextureListsUploaded(
+        feeder: RuntimeCacheFeeder,
+        runtimeHandle: MapRenderRuntimeHandle,
+        sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
+    ): Promise<boolean> {
+        const key = runtimeHandle | 0;
+        if (this.uploadedTextureListsForRuntime.has(key)) {
+            return true;
+        }
+        const provider = createSceneBuildCacheByteProvider(sceneBuildInput);
+        const allTextureIds = provider.collectTextureIds();
+        const transparentTextureIds: number[] = [];
+        const sdTextureIds: number[] = [];
+        for (let i = 0; i < allTextureIds.length; i++) {
+            const textureId = allTextureIds[i] | 0;
+            if (textureId < 0) continue;
+            if (provider.isTextureTransparent(textureId)) {
+                transparentTextureIds.push(textureId);
+            }
+            // Match TS packing order: filter in loader order and slice to limit (no sorting).
+            if (provider.isTextureSd(textureId) && sdTextureIds.length < SD_TEXTURE_PACK_LIMIT) {
+                sdTextureIds.push(textureId);
+            }
+        }
+
+        // Re-seed the domains so C++ sees an exact TS-consistent presence list.
+        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS))) return false;
+        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT))) return false;
+        if (
+            !(await this.uploadPresenceList(
+                feeder,
+                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
+                sdTextureIds,
+            ))
+        ) {
+            return false;
+        }
+        if (
+            !(await this.uploadPresenceList(
+                feeder,
+                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+                transparentTextureIds,
+            ))
+        ) {
+            return false;
+        }
+        this.uploadedTextureListsForRuntime.add(key);
+        return true;
     }
 
     private async uploadLegacyModelFilesIfNeeded(
@@ -1320,6 +1412,7 @@ export class MapRenderRuntimeCacheV2Uploader {
         const feeder = createRuntimeCacheFeeder(bridge, runtimeHandle);
         if (!(await feeder.setBuildConfig(request))) return false;
         if (!(await feeder.setVarps(sceneBuildInput.varpValues))) return false;
+        if (!(await this.ensureTextureListsUploaded(feeder, runtimeHandle, sceneBuildInput))) return false;
         const mapEntries = collectRuntimeCacheMapSquareEntries(sceneBuildInput);
         if (!mapEntries) {
             return false;

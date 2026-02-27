@@ -105,7 +105,7 @@
     "rs:map-render-parity-full": "node scripts/cache/map-render-parity-full.mjs",
     "rs:map-render-parity-by-type": "node scripts/cache/map-render-parity-by-type.mjs",
     "rs:map-render-runtime-cache-v2-parity-staged": "npm run -s rs:map-render-runtime-cache-v2-parity -- --stages",
-    "rs:map-render-runtime-cache-v2-parity-matrix": "npm run -s rs:map-render-runtime-cache-v2-parity -- --matrix --stages"
+    "rs:map-render-runtime-cache-v2-parity-matrix": "node scripts/cache/map-render-runtime-cache-v2-parity-matrix.mjs"
   },
   "eslintConfig": {
     "extends": [

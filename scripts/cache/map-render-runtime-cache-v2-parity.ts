@@ -90,7 +90,7 @@ import {
 } from "../../src/wasm/rs_map_render_backend_debug.mjs";
 import {
     createByteDrivenSceneBuildInput,
-    uploadRuntimeCacheForBuildRequest,
+    MapRenderRuntimeCacheV2Uploader,
 } from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import { runtimePacketToPayloadOverlay } from "../../src/worker/MapRenderDataContract";
 import type { SdMapData } from "../../src/renderer/loader/SdMapData";
@@ -7425,6 +7425,7 @@ async function main(): Promise<void> {
             ? await bridge.createRuntime()
             : undefined) ?? 0;
     if (runtimeHandle <= 0) throw new Error("failed to create runtime");
+    const cacheUploader = new MapRenderRuntimeCacheV2Uploader();
     const transparentTextureIds = collectTransparentTextureIdSet(
         sceneBuilder.services.textureLoader,
     );
@@ -7496,6 +7497,7 @@ async function main(): Promise<void> {
             }
 
             bridge.resetRuntime(runtimeHandle);
+            cacheUploader.reset();
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
                 mapBytesProvider,
                 locTypeLoader: loaders.locTypeLoader,
@@ -7546,7 +7548,7 @@ async function main(): Promise<void> {
             const request = buildRuntimeRequest(sceneBuildInput);
             const uploaded =
                 !!request &&
-                (await uploadRuntimeCacheForBuildRequest(
+                (await cacheUploader.uploadRuntimeCacheForBuildRequest(
                     bridge,
                     runtimeHandle,
                     request,
@@ -7557,12 +7559,53 @@ async function main(): Promise<void> {
                 uploaded && typeof bridge.debugCollectCachedMapInputDigest === "function"
                     ? await bridge.debugCollectCachedMapInputDigest(runtimeHandle, sceneBuildInput)
                     : undefined;
-            const packetRaw =
-                uploaded && request
-                    ? await bridge.buildMapPacketFromCache(runtimeHandle, request)
-                    : undefined;
-            const packet = packetRaw ? cloneRuntimePacketGeometry(packetRaw) : undefined;
-            const cache = packetRaw ? runtimePacketToPayloadOverlay(packetRaw) : undefined;
+            let packetRaw: MapRenderRuntimePacket | undefined;
+            let packet: MapRenderRuntimePacket | undefined;
+            let cache: RuntimeOverlay | undefined;
+            if (uploaded && request) {
+                // Mirror the worker behavior: build once, and if C++ reports missing blobs (or
+                // returned an incomplete packet), upload the missing blobs and retry.
+                for (let pass = 0; pass < 12; pass++) {
+                    const raw = (await bridge.buildMapPacketFromCache(
+                        runtimeHandle,
+                        request,
+                    )) as MapRenderRuntimePacket | undefined;
+                    const overlay = raw ? runtimePacketToPayloadOverlay(raw) : undefined;
+                    const hasGeometry =
+                        overlay &&
+                        raw?.vertices instanceof Uint8Array &&
+                        raw.vertices.length > 0 &&
+                        raw?.indices instanceof Int32Array &&
+                        raw.indices.length > 0 &&
+                        raw?.usedTextureIds instanceof Int32Array;
+                    if (hasGeometry) {
+                        packetRaw = raw;
+                        packet = cloneRuntimePacketGeometry(raw);
+                        cache = overlay;
+                        break;
+                    }
+
+                    const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                    if (!missing || (missing.domains.length | 0) <= 0) {
+                        packetRaw = raw;
+                        packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
+                        cache = overlay;
+                        break;
+                    }
+                    const okMissing = await cacheUploader.uploadMissingBlobEntriesForBuildRequest(
+                        bridge,
+                        runtimeHandle,
+                        missing,
+                        sceneBuildInput,
+                    );
+                    if (!okMissing) {
+                        packetRaw = raw;
+                        packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
+                        cache = overlay;
+                        break;
+                    }
+                }
+            }
             const cacheLoadedHeightHashAfter =
                 typeof bridge.debugGetRuntimeLoadedHeightHash === "function"
                     ? await bridge.debugGetRuntimeLoadedHeightHash(runtimeHandle)
