@@ -1,5 +1,5 @@
 import { Result, err, ok } from "../../../util/Result";
-import { DecodeError, notFoundError } from "../../errors/DecodeError";
+import { DecodeError, notFoundError } from "../../core/DecodeError";
 import { BytesProvider } from "../../io/BytesProvider";
 import { GroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";
@@ -22,6 +22,32 @@ export class ProviderSkeletalSeqLoader implements SkeletalSeqLoader {
         readonly animGroupProviderFactory: GroupBytesProviderFactory,
         readonly baseLoader: SeqBaseLoader,
     ) {}
+
+    // Raw bytes access is used by the wasm runtime-cache upload path.
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        if (id < 0) {
+            return undefined;
+        }
+        const archiveId = id >> 16;
+        const fileId = id & 0xffff;
+        let group = this.groupCache.get(archiveId);
+        if (!group) {
+            try {
+                group = this.animGroupProviderFactory.getGroup(archiveId);
+            } catch {
+                group = undefined;
+            }
+            if (!group) {
+                return undefined;
+            }
+            this.groupCache.set(archiveId, group);
+        }
+        try {
+            return group.getBytes(fileId);
+        } catch {
+            return undefined;
+        }
+    }
 
     tryLoad(id: number): Result<SkeletalSeq, DecodeError> {
         const cachedError = this.errors.get(id);

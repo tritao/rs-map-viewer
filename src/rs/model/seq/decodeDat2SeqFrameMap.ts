@@ -1,6 +1,6 @@
 import { CacheInfo } from "../../cache/CacheInfo";
 import { Archive } from "../../cache/format/Archive";
-import { DecodeError } from "../../errors/DecodeError";
+import { DecodeError, withDecodeErrorContext } from "../../core/DecodeError";
 import { EnumeratingArchiveBytesProvider, EnumeratingBytesProvider } from "../../io/BytesProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
 import { Dat2SeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
@@ -31,7 +31,7 @@ export function decodeDat2SeqFrameMapFromSource(
             frames[id] = result.value;
             errors.delete(id);
         } else {
-            errors.set(id, result.error.id === undefined ? { ...result.error, id } : result.error);
+            errors.set(id, withDecodeErrorContext(result.error, { id }));
         }
     }
     return new SeqFrameMap(frames, errors);

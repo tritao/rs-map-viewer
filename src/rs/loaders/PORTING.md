@@ -5,7 +5,7 @@ This document exists to keep the TypeScript implementation "C++-shaped" while we
 ## Architecture / object graph
 
 -   `CacheSystem`: owns cache indices and (for Dat/Dat2) the underlying store/index tables.
--   `CacheSession` (`src/rs/runtime/createCacheSession.ts`): per-thread/per-worker runtime context.
+-   `CacheSession` (`src/rs/loaders/CacheSession.ts`): per-thread/per-worker runtime context.
     -   Shares `cacheSystem` with other sessions.
     -   Owns `loaders` (decoded type caches, error caches, etc).
     -   `tryFork()` mirrors "thread-local services" in C++ (new loader caches, same underlying store).

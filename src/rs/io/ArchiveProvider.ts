@@ -5,23 +5,10 @@ export interface ArchiveProvider {
     getArchive(id: number): Archive | undefined;
 }
 
-export interface EnumeratingArchiveProvider extends ArchiveProvider {
-    getArchiveIds(): Int32Array;
-    getArchiveCount(): number;
-}
-
-export class IndexArchiveProvider implements EnumeratingArchiveProvider {
+export class IndexArchiveProvider implements ArchiveProvider {
     constructor(readonly index: CacheIndex) {}
 
     getArchive(id: number): Archive | undefined {
         return this.index.tryGetArchive(id);
-    }
-
-    getArchiveIds(): Int32Array {
-        return this.index.getArchiveIds();
-    }
-
-    getArchiveCount(): number {
-        return this.index.getArchiveCount();
     }
 }

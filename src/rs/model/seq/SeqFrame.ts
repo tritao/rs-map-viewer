@@ -1,7 +1,7 @@
 import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { Archive } from "../../cache/format/Archive";
-import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
+import { DecodeError, decodeFailedError } from "../../core/DecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
 import { DatSeqBase, LegacySeqBase, SeqBase } from "./SeqBase";
@@ -208,9 +208,10 @@ export class DatSeqFrame {
         data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
         frameMapId: number = -1,
+        frameMapIdByFrameId?: Map<number, number>,
     ): Result<void, DecodeError> {
         try {
-            DatSeqFrame.load(frames, data, scratch);
+            DatSeqFrame.load(frames, data, scratch, frameMapId, frameMapIdByFrameId);
             return ok(undefined);
         } catch (cause) {
             return err(
@@ -236,6 +237,8 @@ export class DatSeqFrame {
         frames: Map<number, SeqFrame>,
         data: Uint8Array,
         scratch: SeqFrameDecodeScratch = new SeqFrameDecodeScratch(),
+        frameMapId: number = -1,
+        frameMapIdByFrameId?: Map<number, number>,
     ): void {
         const footerBuffer = new ByteBuffer(data);
 
@@ -270,6 +273,9 @@ export class DatSeqFrame {
         const frameCount = frameMapBuffer.readUnsignedShort();
         for (let f = 0; f < frameCount; f++) {
             const frameId = frameMapBuffer.readUnsignedShort();
+            if (frameMapId >= 0 && frameMapIdByFrameId) {
+                frameMapIdByFrameId.set(frameId, frameMapId);
+            }
             const frameLength = frameLengthBuffer.readUnsignedByte();
             const count = frameMapBuffer.readUnsignedByte();
 
@@ -482,7 +488,7 @@ export class Dat2SeqFrame {
                 return err(
                     decodeFailedError({
                         typeName: "Dat2SeqFrame",
-                        id: -1,
+                        resourceName: "dat2-seq-frame",
                         message: "Dat2SeqFrame: trailing bytes after decode",
                     }),
                 );
@@ -519,7 +525,7 @@ export class Dat2SeqFrame {
             return err(
                 decodeFailedError({
                     typeName: "Dat2SeqFrame",
-                    id: -1,
+                    resourceName: "dat2-seq-frame",
                     message: "Dat2SeqFrame: failed decoding frame",
                     cause,
                 }),

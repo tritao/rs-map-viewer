@@ -1,7 +1,7 @@
 import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { Archive } from "../../cache/format/Archive";
-import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
+import { DecodeError, decodeFailedError } from "../../core/DecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../../io/NamedBytesProvider";
 import { SkeletalBase } from "../skeletal/SkeletalBase";

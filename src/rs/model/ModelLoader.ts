@@ -1,7 +1,7 @@
 import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { Archive } from "../cache/format/Archive";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { DecodeError, decodeFailedError, notFoundError } from "../core/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { CountedBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
@@ -25,6 +25,11 @@ export class IndexModelLoader implements ModelLoader {
 
     getCount(): number {
         return this.modelSource.getCount();
+    }
+
+    // Raw bytes access is used by the wasm runtime-cache upload path.
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        return this.modelSource.getBytes(id);
     }
 
     tryLoad(id: number): Result<ModelData, DecodeError> {
@@ -99,6 +104,42 @@ export class LegacyModelLoader implements ModelLoader {
     private readonly vertex2Bytes: Uint8Array;
     private readonly axisBytes: Uint8Array;
 
+    private readonly headBytes: Uint8Array;
+
+    tryGetLegacyModelFileBytes(): Readonly<{
+        headBytes: Uint8Array;
+        face1Bytes: Uint8Array;
+        face2Bytes: Uint8Array;
+        face3Bytes: Uint8Array;
+        face4Bytes: Uint8Array;
+        face5Bytes: Uint8Array;
+        point1Bytes: Uint8Array;
+        point2Bytes: Uint8Array;
+        point3Bytes: Uint8Array;
+        point4Bytes: Uint8Array;
+        point5Bytes: Uint8Array;
+        vertex1Bytes: Uint8Array;
+        vertex2Bytes: Uint8Array;
+        axisBytes: Uint8Array;
+    }> {
+        return {
+            headBytes: this.headBytes,
+            face1Bytes: this.face1Bytes,
+            face2Bytes: this.face2Bytes,
+            face3Bytes: this.face3Bytes,
+            face4Bytes: this.face4Bytes,
+            face5Bytes: this.face5Bytes,
+            point1Bytes: this.point1Bytes,
+            point2Bytes: this.point2Bytes,
+            point3Bytes: this.point3Bytes,
+            point4Bytes: this.point4Bytes,
+            point5Bytes: this.point5Bytes,
+            vertex1Bytes: this.vertex1Bytes,
+            vertex2Bytes: this.vertex2Bytes,
+            axisBytes: this.axisBytes,
+        };
+    }
+
     static create(modelArchive: Archive): LegacyModelLoader {
         return LegacyModelLoader.createFromSource(new ArchiveNamedBytesProvider(modelArchive));
     }
@@ -117,6 +158,7 @@ export class LegacyModelLoader implements ModelLoader {
         };
 
         const headBytes = requireBytes("ob_head.dat");
+        this.headBytes = headBytes;
         this.face1Bytes = requireBytes("ob_face1.dat");
         this.face2Bytes = requireBytes("ob_face2.dat");
         this.face3Bytes = requireBytes("ob_face3.dat");

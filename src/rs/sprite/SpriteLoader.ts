@@ -1,7 +1,7 @@
 import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { Archive } from "../cache/format/Archive";
-import { DecodeError, decodeFailedError } from "../errors/DecodeError";
+import { DecodeError, decodeFailedError } from "../core/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
@@ -123,7 +123,8 @@ export class SpriteLoader {
             return err(
                 decodeFailedError({
                     typeName: "IndexedSpriteDat",
-                    id: -1,
+                    resourceName: name,
+                    resourceIndex: offset,
                     message: `SpriteLoader: missing sprite DAT files (name=${name})`,
                 }),
             );
@@ -133,7 +134,8 @@ export class SpriteLoader {
             return err(
                 decodeFailedError({
                     typeName: "IndexedSpriteDat",
-                    id: -1,
+                    resourceName: name,
+                    resourceIndex: offset,
                     message: `SpriteLoader: failed decoding indexed sprite (name=${name}, offset=${offset})`,
                 }),
             );

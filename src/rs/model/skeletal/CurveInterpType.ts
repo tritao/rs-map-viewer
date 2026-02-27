@@ -1,14 +1,15 @@
 export enum CurveInterpType {
-    TYPE_0 = 0,
-    TYPE_1 = 1,
-    TYPE_2 = 2,
-    TYPE_3 = 3,
-    TYPE_4 = 4,
+    // Extrapolation mode used when sampling outside the curve range.
+    CONSTANT = 0,
+    LINEAR = 1,
+    CYCLE = 2,
+    CYCLE_OFFSET = 3,
+    PING_PONG = 4,
 }
 
 export function getInterpTypeForId(id: number): CurveInterpType {
-    if (id < 0 || id > CurveInterpType.TYPE_4) {
-        return CurveInterpType.TYPE_0;
+    if (id < 0 || id > CurveInterpType.PING_PONG) {
+        return CurveInterpType.CONSTANT;
     }
     return id;
 }

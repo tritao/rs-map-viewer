@@ -1,7 +1,7 @@
 import { mat4, quat, vec3 } from "gl-matrix";
 
 import { Result, err, ok } from "../../../util/Result";
-import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
+import { DecodeError, decodeFailedError } from "../../core/DecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { SeqBase } from "../seq/SeqBase";
 import { SeqBaseLoader } from "../seq/SeqBaseLoader";

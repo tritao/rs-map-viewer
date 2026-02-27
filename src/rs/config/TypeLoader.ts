@@ -2,7 +2,13 @@ import { Result, err, ok } from "../../util/Result";
 import { CacheIndex } from "../cache/CacheIndex";
 import { CacheInfo } from "../cache/CacheInfo";
 import { Archive } from "../cache/format/Archive";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import {
+    DecodeError,
+    decodeErrorToString,
+    decodeFailedError,
+    isDecodeNotFound,
+    notFoundError,
+} from "../core/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { CountedBytesProvider, IndexArchiveFileBytesProvider } from "../io/BytesProvider";
 import { NamedBytesProvider } from "../io/NamedBytesProvider";
@@ -29,13 +35,8 @@ export function loadOrThrow<T>(loader: TypeLoader<T>, id: number): T {
         return result.value;
     }
     const e = result.error;
-    const opcode = e.kind === "decode_failed" ? e.opcode : undefined;
-    const offset = e.kind === "decode_failed" ? e.offset : undefined;
-    throw new Error(
-        `${e.typeName}: failed to load id=${e.id} (${e.kind})` +
-            (opcode !== undefined ? ` opcode=${opcode}` : "") +
-            (offset !== undefined ? ` offset=${offset}` : ""),
-    );
+    const kind = isDecodeNotFound(e) ? "not_found" : "decode_failed";
+    throw new Error(`TypeLoader: load failed (${kind}) ${decodeErrorToString(e)}`);
 }
 
 export type TypeConstructor<T extends Type> = new (id: number, cacheInfo: CacheInfo) => T;

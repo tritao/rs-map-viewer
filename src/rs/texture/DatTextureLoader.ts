@@ -1,6 +1,6 @@
 import { Result, err, ok } from "../../util/Result";
 import { Archive } from "../cache/format/Archive";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { DecodeError, decodeFailedError, notFoundError } from "../core/DecodeError";
 import { ArchiveNamedBytesProvider, NamedBytesProvider } from "../io/NamedBytesProvider";
 import { IndexedSprite } from "../sprite/IndexedSprite";
 import { SpriteLoader } from "../sprite/SpriteLoader";

@@ -1,11 +1,32 @@
 import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { DecodeError, decodeFailedError } from "../../errors/DecodeError";
-import { TypeDecodeError } from "../../errors/TypeDecodeError";
+import { DecodeError, decodeFailedError } from "../../core/DecodeError";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { Type } from "../Type";
 
 export type TypeConstructor<T extends Type> = new (id: number, cacheInfo: CacheInfo) => T;
+
+type TypeDecodeMetadata = Readonly<{
+    opcode: number;
+    offset: number;
+}>;
+
+function tryReadTypeDecodeMetadata(cause: unknown): TypeDecodeMetadata | undefined {
+    if (
+        typeof cause !== "object" ||
+        cause === null ||
+        !("opcode" in cause) ||
+        !("offset" in cause)
+    ) {
+        return undefined;
+    }
+    const opcode = (cause as { opcode?: unknown }).opcode;
+    const offset = (cause as { offset?: unknown }).offset;
+    if (typeof opcode !== "number" || typeof offset !== "number") {
+        return undefined;
+    }
+    return { opcode, offset };
+}
 
 export function decodeTypeFromBuffer<T extends Type>(
     typeConstructor: TypeConstructor<T>,
@@ -21,18 +42,7 @@ export function decodeTypeFromBuffer<T extends Type>(
         type.post();
         return ok(type);
     } catch (cause) {
-        const typeDecodeMeta =
-            typeof cause === "object" &&
-            cause !== null &&
-            "opcode" in cause &&
-            "offset" in cause &&
-            typeof (cause as { opcode?: unknown }).opcode === "number" &&
-            typeof (cause as { offset?: unknown }).offset === "number"
-                ? {
-                      opcode: (cause as { opcode: number }).opcode,
-                      offset: (cause as { offset: number }).offset,
-                  }
-                : undefined;
+        const typeDecodeMeta = tryReadTypeDecodeMetadata(cause);
         const opcode = typeDecodeMeta?.opcode;
         const offset = typeDecodeMeta?.offset ?? buffer.offset;
         return err(

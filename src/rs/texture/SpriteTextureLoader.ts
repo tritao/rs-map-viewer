@@ -1,5 +1,5 @@
 import { Result, err, ok } from "../../util/Result";
-import { DecodeError, decodeFailedError, notFoundError } from "../errors/DecodeError";
+import { DecodeError, decodeFailedError, notFoundError } from "../core/DecodeError";
 import { ByteBuffer } from "../io/ByteBuffer";
 import { BytesProvider, EnumeratingBytesProvider } from "../io/BytesProvider";
 import { IndexedSprite } from "../sprite/IndexedSprite";

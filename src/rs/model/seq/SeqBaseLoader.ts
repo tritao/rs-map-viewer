@@ -1,7 +1,7 @@
 import { Result, err, ok } from "../../../util/Result";
 import { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo } from "../../cache/CacheInfo";
-import { DecodeError, decodeFailedError, notFoundError } from "../../errors/DecodeError";
+import { DecodeError, decodeFailedError, notFoundError } from "../../core/DecodeError";
 import { BytesProvider, IndexFileBytesProvider } from "../../io/BytesProvider";
 import { Dat2SeqBase, SeqBase } from "./SeqBase";
 
@@ -24,6 +24,11 @@ export class Dat2SeqBaseLoader implements SeqBaseLoader {
         readonly cacheInfo: CacheInfo,
         readonly baseSource: BytesProvider,
     ) {}
+
+    // Raw bytes access is used by the wasm runtime-cache upload path.
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        return this.baseSource.getBytes(id);
+    }
 
     tryLoad(id: number): Result<SeqBase, DecodeError> {
         const cached = this.bases.get(id);

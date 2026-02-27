@@ -25,7 +25,10 @@ export type LoaderCapabilities = Readonly<{
 }>;
 
 export type ModelService = Pick<ModelLoader, "tryLoad" | "tryGet" | "getCount" | "clearCache">;
-export type SeqFrameService = Pick<SeqFrameLoader, "tryLoad" | "tryGet" | "clearCache">;
+export type SeqFrameService = Pick<
+    SeqFrameLoader,
+    "tryLoad" | "tryGet" | "tryLoadBytes" | "clearCache"
+>;
 export type SkeletalSeqService = Pick<SkeletalSeqLoader, "tryLoad" | "tryGet" | "clearCache">;
 export type TextureService = Pick<
     TextureLoader,

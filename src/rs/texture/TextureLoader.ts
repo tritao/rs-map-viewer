@@ -1,5 +1,5 @@
 import { Result } from "../../util/Result";
-import { DecodeError } from "../errors/DecodeError";
+import { DecodeError } from "../core/DecodeError";
 import { TextureMaterial } from "./TextureMaterial";
 
 export interface TextureLoader {

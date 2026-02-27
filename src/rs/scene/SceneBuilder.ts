@@ -1389,6 +1389,4 @@ export class SceneBuilder {
             }
         }
     }
-
-    // Npc spawn decoding moved to `decodeNpcSpawnsFromBytes` helper.
 }

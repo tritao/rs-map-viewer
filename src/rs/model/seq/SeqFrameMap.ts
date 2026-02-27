@@ -1,4 +1,4 @@
-import { DecodeError } from "../../errors/DecodeError";
+import { DecodeError } from "../../core/DecodeError";
 import { SeqFrame } from "./SeqFrame";
 
 export class SeqFrameMap {

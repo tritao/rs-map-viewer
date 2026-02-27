@@ -12,13 +12,13 @@ export function interpolateCurve(curve: Curve, t: number): number {
         return 0;
     }
     if (t < curve.startTick) {
-        if (curve.startInterpType === CurveInterpType.TYPE_0) {
+        if (curve.startInterpType === CurveInterpType.CONSTANT) {
             return curve.points[0].y;
         } else {
             return extrapolateCurve(curve, t, true);
         }
     } else if (t > curve.endTick) {
-        if (curve.endInterpType === CurveInterpType.TYPE_0) {
+        if (curve.endInterpType === CurveInterpType.CONSTANT) {
             return curve.points[curve.points.length - 1].y;
         } else {
             return extrapolateCurve(curve, t, false);
@@ -180,18 +180,18 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
     const halfCyclesInt = Math.trunc(halfCycles);
     const pingPongPhase = halfCycles - halfCyclesInt;
     if (isStart) {
-        if (curve.startInterpType === CurveInterpType.TYPE_4) {
+        if (curve.startInterpType === CurveInterpType.PING_PONG) {
             if (pingPongPhase !== 0.0) {
                 mappedT += startX;
             } else {
                 mappedT = endX - mappedT;
             }
         } else if (
-            curve.startInterpType === CurveInterpType.TYPE_2 ||
-            curve.startInterpType === CurveInterpType.TYPE_3
+            curve.startInterpType === CurveInterpType.CYCLE ||
+            curve.startInterpType === CurveInterpType.CYCLE_OFFSET
         ) {
             mappedT = endX - mappedT;
-        } else if (curve.startInterpType === CurveInterpType.TYPE_1) {
+        } else if (curve.startInterpType === CurveInterpType.LINEAR) {
             mappedT = startX - t;
             const tangentDx = curve.points[0].inTangentDx;
             const tangentDy = curve.points[0].inTangentDy;
@@ -202,18 +202,18 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
             return output;
         }
     } else {
-        if (curve.endInterpType === CurveInterpType.TYPE_4) {
+        if (curve.endInterpType === CurveInterpType.PING_PONG) {
             if (pingPongPhase !== 0.0) {
                 mappedT = endX - mappedT;
             } else {
                 mappedT += startX;
             }
         } else if (
-            curve.endInterpType === CurveInterpType.TYPE_2 ||
-            curve.endInterpType === CurveInterpType.TYPE_3
+            curve.endInterpType === CurveInterpType.CYCLE ||
+            curve.endInterpType === CurveInterpType.CYCLE_OFFSET
         ) {
             mappedT += startX;
-        } else if (curve.endInterpType === CurveInterpType.TYPE_1) {
+        } else if (curve.endInterpType === CurveInterpType.LINEAR) {
             mappedT = t - endX;
             const tangentDx = curve.points[curve.getPointCount() - 1].outTangentDx;
             const tangentDy = curve.points[curve.getPointCount() - 1].outTangentDy;
@@ -225,10 +225,10 @@ export function extrapolateCurve(curve: Curve, t: number, isStart: boolean): num
         }
     }
     let output = interpolateCurve(curve, mappedT);
-    if (isStart && curve.startInterpType === CurveInterpType.TYPE_3) {
+    if (isStart && curve.startInterpType === CurveInterpType.CYCLE_OFFSET) {
         const cycleDeltaY = curve.points[curve.points.length - 1].y - curve.points[0].y;
         output = output - cycleDeltaY * cycleCount;
-    } else if (!isStart && curve.endInterpType === CurveInterpType.TYPE_3) {
+    } else if (!isStart && curve.endInterpType === CurveInterpType.CYCLE_OFFSET) {
         const cycleDeltaY = curve.points[curve.points.length - 1].y - curve.points[0].y;
         output = output + cycleDeltaY * cycleCount;
     }
