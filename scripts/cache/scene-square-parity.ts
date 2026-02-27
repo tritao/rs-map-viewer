@@ -12,8 +12,8 @@ import { VarManager } from "../../src/rs/config/vartype/VarManager";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { asXteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
+import { tryCreateDat2Loaders } from "../../src/rs/loaders/Dat2Loaders";
 import { getQuestTypeLoader } from "../../src/rs/loaders/Loaders";
-import { tryCreateLoaders } from "../../src/rs/loaders/createLoaders";
 import { MapBytesProvider, MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { decodeLocPlacementsFromBytes } from "../../src/rs/scene/decodeLocPlacements";
 import {
@@ -821,7 +821,7 @@ async function main(): Promise<void> {
         cache.bundle,
         new JSCompressionHandler(),
     );
-    const loadersResult = tryCreateLoaders(cache.info, cacheSystem);
+    const loadersResult = tryCreateDat2Loaders(cache.info, CacheType.Dat2, cacheSystem);
     if (!loadersResult.ok) {
         throw new Error(`Failed to create loaders: ${initErrorToString(loadersResult.error)}`);
     }

@@ -1,23 +1,49 @@
 import { LoadedCache } from "../../util/Caches";
 import { Result, err, ok } from "../../util/Result";
+import { CacheInfo } from "../cache/CacheInfo";
 import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { CacheIndex } from "../cache/CacheIndex";
 import { Dat2IndexId, DatIndexId } from "../cache/IndexId";
 import { CacheSystem } from "../cache/CacheSystem";
+import { CacheType, detectCacheType } from "../cache/CacheType";
 import { Archive } from "../cache/format/Archive";
 import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { VarManager } from "../config/vartype/VarManager";
 import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
-import { InitError, createFailed, initErrorToString } from "../loaders/InitError";
+import {
+    InitError,
+    createFailed,
+    initErrorToString,
+    unexpected,
+} from "../loaders/InitError";
 import {
     Loaders,
     clearLoaderCaches,
     getQuestTypeLoader,
     getSkeletalSeqLoader,
 } from "../loaders/Loaders";
-import { tryCreateLoaders } from "../loaders/createLoaders";
+import { tryCreateDat2Loaders } from "./Dat2Loaders";
+import { tryCreateDatLoaders } from "./DatLoaders";
+import { tryCreateLegacyLoaders } from "./LegacyLoaders";
 import { MapFileIndex } from "../map/MapFileIndex";
+
+function tryCreateLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, InitError> {
+    try {
+        const cacheType = detectCacheType(cacheInfo);
+        switch (cacheType) {
+            case CacheType.Legacy:
+                return tryCreateLegacyLoaders(cacheInfo, cacheSystem);
+            case CacheType.Dat:
+                return tryCreateDatLoaders(cacheInfo, cacheType, cacheSystem);
+            case CacheType.Dat2:
+                return tryCreateDat2Loaders(cacheInfo, cacheType, cacheSystem);
+        }
+        return err(unexpected("Not implemented"));
+    } catch (e) {
+        return err(unexpected(e));
+    }
+}
 
 export type CacheSession = {
     cache: LoadedCache;
