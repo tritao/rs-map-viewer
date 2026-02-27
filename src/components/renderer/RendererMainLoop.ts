@@ -30,11 +30,11 @@ export class RendererMainLoop {
     }
 
     async init(): Promise<void> {
-        this.renderer!.init(this.canvas);
+        await this.renderer!.init(this.canvas);
     }
 
-    cleanUp(): void {
-        this.renderer!.cleanUp();
+    async cleanUp(): Promise<void> {
+        await this.renderer!.cleanUp();
     }
 
     start() {
@@ -42,13 +42,17 @@ export class RendererMainLoop {
         this.animationId = requestAnimationFrame(this.frameCallback);
     }
 
-    stop() {
+    async stopAsync(): Promise<void> {
         this.running = false;
         if (this.animationId !== undefined) {
             cancelAnimationFrame(this.animationId);
             this.animationId = undefined;
         }
-        this.cleanUp();
+        await this.cleanUp();
+    }
+
+    stop() {
+        void this.stopAsync();
     }
 
     onResize(width: number, height: number) {

@@ -1,4 +1,3 @@
-import { CollisionData } from "../../rs/scene/CollisionMap";
 import { RenderableType } from "../Renderer";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
@@ -40,7 +39,6 @@ export class SdRenderableData {
 
         readonly borderSize: number,
         readonly tileRenderFlags: Uint8Array[][],
-        readonly collisionDatas: CollisionData[],
 
         readonly vertices: Uint8Array,
         readonly indices: Int32Array,

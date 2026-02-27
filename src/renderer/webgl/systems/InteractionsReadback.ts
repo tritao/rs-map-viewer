@@ -1,15 +1,10 @@
-import PicoGL from "picogl";
+import type { InteractionState } from "../../interaction/InteractionState";
 
-export const INTERACT_BUFFER_COUNT = 2;
-export const INTERACTION_RADIUS = 5;
-
-export class Interactions {
+export class InteractionsReadback {
     interactSize: number;
-
     interactBuffer: Float32Array;
 
     pixelBuf: WebGLBuffer | null = null;
-
     sync: WebGLSync | null = null;
 
     offsetX = 0;
@@ -46,17 +41,13 @@ export class Interactions {
         this.pixelBuf = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.pixelBuf);
         gl.bufferData(gl.PIXEL_PACK_BUFFER, this.interactBuffer.byteLength, gl.STREAM_READ);
-        gl.readPixels(readX, readY, this.readWidth, this.readHeight, PicoGL.RGBA, PicoGL.FLOAT, 0);
+        gl.readPixels(readX, readY, this.readWidth, this.readHeight, gl.RGBA, gl.FLOAT, 0);
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
 
         this.sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     }
 
-    check(
-        gl: WebGL2RenderingContext,
-        hoveredMapIds: Set<number>,
-        closestInteractIndices: Map<number, number[]>,
-    ): boolean {
+    check(gl: WebGL2RenderingContext, state: InteractionState): boolean {
         if (!this.sync) {
             return false;
         }
@@ -75,8 +66,8 @@ export class Interactions {
 
         gl.deleteBuffer(this.pixelBuf);
 
-        hoveredMapIds.clear();
-        closestInteractIndices.clear();
+        state.hoveredMapIds.clear();
+        state.closestInteractIndices.clear();
 
         for (let y = 0; y < this.readHeight; y++) {
             for (let x = 0; x < this.readWidth; x++) {
@@ -84,7 +75,7 @@ export class Interactions {
 
                 const mapId = this.interactBuffer[index + 1];
                 if (mapId !== 0) {
-                    hoveredMapIds.add(mapId);
+                    state.hoveredMapIds.add(mapId);
                 }
 
                 const interactType = this.interactBuffer[index + 2];
@@ -94,11 +85,11 @@ export class Interactions {
                         Math.abs(y + this.offsetY - this.interactRadius),
                     );
 
-                    const indices = closestInteractIndices.get(dist);
+                    const indices = state.closestInteractIndices.get(dist);
                     if (indices) {
                         indices.push(index);
                     } else {
-                        closestInteractIndices.set(dist, [index]);
+                        state.closestInteractIndices.set(dist, [index]);
                     }
                 }
             }
@@ -107,3 +98,4 @@ export class Interactions {
         return true;
     }
 }
+

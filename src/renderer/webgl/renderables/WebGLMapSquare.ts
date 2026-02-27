@@ -1,17 +1,15 @@
 import { vec2 } from "gl-matrix";
 import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 
-import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
-import { CollisionMap } from "../../rs/scene/CollisionMap";
-import { Scene } from "../../rs/scene/Scene";
-import { MapSquareRenderable } from "../MapRenderer";
-import { RenderableType } from "../Renderer";
-import { SdMapData } from "../loader/SdMapData";
+import { BasTypeLoader } from "../../../rs/config/bastype/BasTypeLoader";
+import { NpcTypeLoader } from "../../../rs/config/npctype/NpcTypeLoader";
+import { SeqTypeLoader } from "../../../rs/config/seqtype/SeqTypeLoader";
+import { getMapSquareId } from "../../../rs/map/MapFileIndex";
+import { SeqFrameLoader } from "../../../rs/model/seq/SeqFrameLoader";
+import { Scene } from "../../../rs/scene/Scene";
+import { MapSquareRenderable } from "../../MapRenderer";
+import { RenderableType } from "../../Renderer";
+import { SdMapData } from "../../loader/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
@@ -80,14 +78,11 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             };
         };
 
-        const collisionMaps = data.collisionDatas.map(CollisionMap.fromData);
-
         const renderable = new WebGLMapSquare(
             mapX,
             mapY,
             borderSize,
             data.tileRenderFlags,
-            collisionMaps,
             time,
             frame,
         );
@@ -106,7 +101,6 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             createDrawCall,
             npcProgram,
         );
-        renderable.processNpcsCollisions();
         renderable.usedTextureIds = data.usedTextureIds;
 
         return renderable;
@@ -118,7 +112,6 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
         readonly borderSize: number,
         readonly tileRenderFlags: Uint8Array[][],
-        readonly collisionMaps: CollisionMap[],
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
@@ -128,31 +121,9 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             getMapSquareId(mapX, mapY),
             borderSize,
             tileRenderFlags,
-            collisionMaps,
             timeLoaded,
             frameLoaded,
         );
-    }
-
-    processNpcsCollisions() {
-        for (const npc of this.npcs) {
-            const collisionMap = this.collisionMaps[npc.level];
-
-            const currentX = npc.pathX[0];
-            const currentY = npc.pathY[0];
-
-            const size = npc.getSize();
-
-            for (let flagX = currentX; flagX < currentX + size; flagX++) {
-                for (let flagY = currentY; flagY < currentY + size; flagY++) {
-                    collisionMap.flag(
-                        flagX + this.borderSize,
-                        flagY + this.borderSize,
-                        CollisionFlag.BLOCK_NPCS,
-                    );
-                }
-            }
-        }
     }
 
     getMapDistance(mapX: number, mapY: number): number {

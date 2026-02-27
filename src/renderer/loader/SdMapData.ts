@@ -57,7 +57,6 @@ export class SdMapData extends SdRenderableData implements MapData {
             cacheName,
             borderSize,
             tileRenderFlags,
-            collisionDatas,
             vertices,
             indices,
             modelInfoTextures,

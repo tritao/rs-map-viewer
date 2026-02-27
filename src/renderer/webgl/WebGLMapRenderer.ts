@@ -1,12 +1,8 @@
 import { vec2 } from "gl-matrix";
-import { button, folder } from "leva";
 import {
     DrawCall,
-    Framebuffer,
     App as PicoApp,
     PicoGL,
-    Program,
-    Renderbuffer,
     Texture,
     UniformBuffer,
     VertexArray,
@@ -16,58 +12,48 @@ import {
 import { GameType } from "../../rs/cache/CacheInfo";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CacheSession } from "../../rs/loaders/CacheSession";
-import { TileRenderFlag } from "../../rs/scene/Scene";
-import { isWebGL2Supported, pixelRatio } from "../../util/DeviceUtil";
-import { InputManager } from "../../util/InputManager";
-import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
+import { isWebGL2Supported } from "../../util/DeviceUtil";
 import { Camera } from "../Camera";
 import { DrawRange } from "../DrawRange";
-import { INTERACTION_RADIUS, INTERACT_BUFFER_COUNT, Interactions } from "../Interactions";
 import { MapSquareInfo } from "../MapManager";
-import { MapRenderer, TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
-import { FrameStats } from "../Renderer";
+import { MapRenderer, TextureFilterMode } from "../MapRenderer";
+import { FrameStats, RendererStats } from "../Renderer";
 import { SdMapData } from "../loader/SdMapData";
-import { SdMapDataLoader } from "../loader/SdMapDataLoader";
-import { SdMapLoaderInput } from "../loader/SdMapLoaderInput";
+import { PostProcessPass } from "./core/PostProcessPass";
+import { RenderTargets } from "./core/RenderTargets";
+import { WebGLGeometrySystem } from "./systems/WebGLGeometrySystem";
+import { WebGLInteractionSystem, type InteractionsCallback } from "./systems/WebGLInteractionSystem";
+import { WebGLTextureSystem } from "./systems/WebGLTextureSystem";
+import { createWebGLDevice } from "./core/WebGLDevice";
+import { WebGLPrograms } from "./core/WebGLPrograms";
+import { WebGLMapSquare } from "./renderables/WebGLMapSquare";
+import { DrawCallKey, WebGLRenderable } from "./renderables/WebGLRenderable";
 import {
-    initDrawRangePatchBackend,
-    resetDrawRangePatchBackend,
-} from "./DrawRangePatchBackend";
-import { createTextureArray } from "./PicoTexture";
-import { RendererStats } from "./RendererStats";
-import { WebGLMapSquare } from "./WebGLMapSquare";
-import { WebGLRenderable } from "./WebGLRenderable";
-import {
-    FRAME_FXAA_PROGRAM,
-    FRAME_PROGRAM,
-    createMainProgram,
-    createNpcProgram,
-} from "./shaders/Shaders";
+    MapRenderScheduler,
+    type MapRenderScheduleInput,
+} from "../schedule/MapRenderScheduler";
+import type { InteractionControllerRenderer, InteractionInput } from "../interaction/InteractionState";
+import type { TickControllerRenderer } from "../patch/TickCapability";
+import { NpcGpuDataBuilder } from "../npc/NpcGpuDataBuilder";
+import { NpcDataTextureRing } from "./texture/NpcDataTextureRing";
 
-const MAX_TEXTURES = 2048;
-const TEXTURE_SIZE = 128;
-const MAX_TEXTURE_SLOTS = 256;
-const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
-const MAX_TEXTURE_PIXEL_CACHE = 512;
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
-const DRAW_RANGE_PATCH_STRIDE = 4;
-const DRAW_RANGE_PATCH_INDEX_INDEX = 0;
-const DRAW_RANGE_PATCH_OFFSET_INDEX = 1;
-const DRAW_RANGE_PATCH_ELEMENTS_INDEX = 2;
-const DRAW_RANGE_PATCH_INSTANCES_INDEX = 3;
 
-const enum EnsureTextureStatus {
-    Ok = 0,
-    UnknownTexture = 1,
-    Oversubscribed = 2,
-    DecodeFailed = 3,
-}
+const NPC_DATA_TEXTURE_RING_SIZE = 5;
 
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
-    dataLoader: SdMapDataLoader;
+    protected readonly textures: WebGLTextureSystem;
+    private readonly interactions: WebGLInteractionSystem;
+    protected readonly geometry = new WebGLGeometrySystem();
+    private readonly scheduler = new MapRenderScheduler();
+    protected readonly programs = new WebGLPrograms();
+    private readonly renderTargets = new RenderTargets();
+    private readonly postProcessPass = new PostProcessPass();
+    private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
+    private readonly npcDataTextureRing = new NpcDataTextureRing(NPC_DATA_TEXTURE_RING_SIZE);
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -75,70 +61,17 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     quadPositions?: VertexBuffer;
     quadArray?: VertexArray;
 
-    // Shaders
-    shadersPromise?: Promise<Program[]>;
-    mainProgram?: Program;
-    mainAlphaProgram?: Program;
-    npcProgram?: Program;
-    frameProgram?: Program;
-    frameFxaaProgram?: Program;
-
     // Uniforms
     sceneUniformBuffer?: UniformBuffer;
 
     cameraPosUni: vec2 = vec2.fromValues(0, 0);
     resolutionUni: vec2 = vec2.fromValues(0, 0);
 
-    colorTarget?: Renderbuffer;
-    interactTarget?: Renderbuffer;
-    depthTarget?: Renderbuffer;
-    framebuffer?: Framebuffer;
-
-    textureColorTarget?: Texture;
-    textureFramebuffer?: Framebuffer;
-
-    interactColorTarget?: Texture;
-    interactFramebuffer?: Framebuffer;
-
-    // Textures
-    textureArray?: Texture;
-    textureMaterials?: Texture;
-    textureSlotLut?: Texture;
-
-    textureIds: number[] = [];
-    textureIdToIndex: Map<number, number> = new Map();
-
-    private textureIdToSlot: Map<number, number> = new Map();
-    private freeTextureSlots: number[] = [];
-    private textureLastUsedFrame: Map<number, number> = new Map();
-    private textureSlotLutData?: Uint16Array;
-    private textureSlotCount: number = 0;
-
-    private visibleTextureIds: Set<number> = new Set();
-    private texturePixelCache: Map<number, Int32Array> = new Map();
-
-    frameDrawCall?: DrawCall;
-    frameFxaaDrawCall?: DrawCall;
-
-    interactions: Interactions[];
-    hoveredMapIds: Set<number> = new Set();
-    closestInteractIndices: Map<number, number[]> = new Map();
-    interactBuffer?: Float32Array;
-
-    npcRenderCount: number = 0;
-    npcRenderData: Uint16Array = new Uint16Array(16 * 4);
-
-    npcDataTextureBuffer: (Texture | undefined)[] = new Array(5);
-
     isNewTextureAnim: boolean = false;
 
     debugTextureMode: number = 0;
 
-    private debugLastResidencyLogFrame: number = 0;
-    private drawRangePatchWasmReady = false;
-    private drawRangePatchWasmInitPromise: Promise<void> | undefined;
-
-    private logTextureDebugStats(): void {
+    logTextureDebugStats(): void {
         const cacheInfo = this.session.cache.info;
         const textureLoader = this.session.getTextureLoader() as unknown as {
             constructor?: { name?: string };
@@ -146,75 +79,40 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         console.log(
             `texture debug: cache=${cacheInfo.name} game=${cacheInfo.game} rev=${
                 cacheInfo.revision
-            } loader=${textureLoader?.constructor?.name ?? "unknown"} slots=${
-                this.textureSlotCount - 1
-            } visible=${this.visibleTextureIds.size} resident=${this.textureIdToSlot.size} free=${
-                this.freeTextureSlots.length
-            }`,
+            } loader=${textureLoader?.constructor?.name ?? "unknown"}`,
         );
-
-        const sampleIds: number[] = [];
-        for (const id of this.visibleTextureIds) {
-            sampleIds.push(id);
-            if (sampleIds.length >= 10) break;
-        }
-
-        const samplePixelStride = 97;
-        const samplePixelCount = 512;
-        for (const textureId of sampleIds) {
-            const index = this.textureIdToIndex.get(textureId) ?? -1;
-            const slot = this.textureIdToSlot.get(textureId) ?? 0;
-            const pixels = this.texturePixelCache.get(textureId);
-            if (!pixels) {
-                console.log(
-                    `texture debug: id=${textureId} index=${index} slot=${slot} pixels=missing`,
-                );
-                continue;
-            }
-
-            let chroma = 0;
-            const n = Math.min(samplePixelCount, pixels.length);
-            for (let i = 0; i < n; i++) {
-                const p = pixels[(i * samplePixelStride) % pixels.length] | 0;
-                const r = (p >> 16) & 0xff;
-                const g = (p >> 8) & 0xff;
-                const b = p & 0xff;
-                if (r !== g || g !== b) {
-                    chroma++;
-                }
-            }
-            const p0 = pixels[0] | 0;
-            console.log(
-                `texture debug: id=${textureId} index=${index} slot=${slot} chroma=${chroma}/${n} p0=0x${(
-                    p0 >>> 0
-                )
-                    .toString(16)
-                    .padStart(8, "0")}`,
-            );
-        }
+        this.textures.logDebugStats();
     }
 
     constructor(
         readonly session: CacheSession,
-        readonly workerPool: RenderDataWorkerPool,
-        readonly inputManager: InputManager,
         renderDistance: number,
         unloadDistance: number,
         lodDistance: number,
         readonly camera: Camera,
+        onInteractions?: InteractionsCallback,
     ) {
         super(session.cache, renderDistance, unloadDistance, lodDistance);
-        this.dataLoader = new SdMapDataLoader();
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
-        this.interactions = new Array(INTERACT_BUFFER_COUNT);
-        for (let i = 0; i < INTERACT_BUFFER_COUNT; i++) {
-            this.interactions[i] = new Interactions(INTERACTION_RADIUS);
-        }
+        this.textures = new WebGLTextureSystem(this.loadedTextureIds);
+        this.interactions = new WebGLInteractionSystem(onInteractions);
     }
 
     static isSupported(): boolean {
         return isWebGL2Supported;
+    }
+
+    override getTickControllerRenderer(): TickControllerRenderer | undefined {
+        return this;
+    }
+
+    override getInteractionControllerRenderer(): InteractionControllerRenderer | undefined {
+        return this;
+    }
+
+    setInteractionInput(input: InteractionInput): void {
+        this.interactions.setInput(input);
     }
 
     getViewportDimensions(): { width: number; height: number } {
@@ -222,25 +120,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     async init(canvas: HTMLCanvasElement): Promise<void> {
-        this.app = PicoGL.createApp(canvas);
-        this.gl = this.app.gl as WebGL2RenderingContext;
-
-        // hack to get the right multi draw extension for picogl
-        const state: any = this.app.state;
-        const ext = this.gl.getExtension("WEBGL_multi_draw");
-        PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED = ext;
-        state.extensions.multiDrawInstanced = ext;
-
-        this.hasMultiDraw = !!PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED;
-
-        this.gl.getExtension("EXT_float_blend");
-
-        this.app.enable(PicoGL.CULL_FACE);
-        this.app.enable(PicoGL.DEPTH_TEST);
-        this.app.depthFunc(PicoGL.LEQUAL);
-        this.app.enable(PicoGL.BLEND);
-        this.app.blendFunc(PicoGL.SRC_ALPHA, PicoGL.ONE_MINUS_SRC_ALPHA);
-        this.app.clearColor(0.0, 0.0, 0.0, 1.0);
+        const device = createWebGLDevice(canvas);
+        this.app = device.app;
+        this.gl = device.gl;
+        this.hasMultiDraw = device.hasMultiDraw;
 
         this.quadPositions = this.app.createVertexBuffer(
             PicoGL.FLOAT,
@@ -248,8 +131,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             new Float32Array([-1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, 1]),
         );
         this.quadArray = this.app.createVertexArray().vertexAttributeBuffer(0, this.quadPositions);
-
-        this.shadersPromise = this.initShaders();
+        await this.programs.init(this.app, this.quadArray, this.hasMultiDraw);
 
         this.sceneUniformBuffer = this.app.createUniformBuffer([
             PicoGL.FLOAT_MAT4, // mat4 u_viewProjMatrix;
@@ -266,98 +148,13 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             PicoGL.FLOAT, // float u_debugTextureMode;
         ]);
 
-        this.initFramebuffers();
+        this.renderTargets.init(this.app, this.gl, this.msaaEnabled);
+        this.needsFramebufferUpdate = false;
 
         this.initTextures();
-        this.initDrawRangePatchRuntime();
+        this.geometry.ensureTickBackendInit();
 
         console.log("Renderer init");
-    }
-
-    async initShaders(): Promise<Program[]> {
-        const hasMultiDraw = this.hasMultiDraw;
-
-        const programs = await this.app.createPrograms(
-            createMainProgram(hasMultiDraw, false),
-            createMainProgram(hasMultiDraw, true),
-            createNpcProgram(hasMultiDraw, true),
-            FRAME_PROGRAM,
-            FRAME_FXAA_PROGRAM,
-        );
-
-        const [mainProgram, mainAlphaProgram, npcProgram, frameProgram, frameFxaaProgram] =
-            programs;
-        this.mainProgram = mainProgram;
-        this.mainAlphaProgram = mainAlphaProgram;
-        this.npcProgram = npcProgram;
-        this.frameProgram = frameProgram;
-        this.frameFxaaProgram = frameFxaaProgram;
-
-        this.frameDrawCall = this.app.createDrawCall(frameProgram, this.quadArray);
-        this.frameFxaaDrawCall = this.app.createDrawCall(frameFxaaProgram, this.quadArray);
-
-        return programs;
-    }
-
-    initFramebuffers(): void {
-        this.initFramebuffer();
-
-        this.textureColorTarget = this.app.createTexture2D(this.app.width, this.app.height, {
-            minFilter: PicoGL.LINEAR,
-            magFilter: PicoGL.LINEAR,
-        });
-        this.textureFramebuffer = this.app
-            .createFramebuffer()
-            .colorTarget(0, this.textureColorTarget);
-
-        // Interact
-        this.interactColorTarget = this.app.createTexture2D(this.app.width, this.app.height, {
-            internalFormat: PicoGL.RGBA32F,
-            type: PicoGL.FLOAT,
-            minFilter: PicoGL.NEAREST,
-            magFilter: PicoGL.NEAREST,
-        });
-        this.interactFramebuffer = this.app
-            .createFramebuffer()
-            .colorTarget(0, this.interactColorTarget);
-    }
-
-    initFramebuffer(): void {
-        this.framebuffer?.delete();
-        this.colorTarget?.delete();
-        this.interactTarget?.delete();
-        this.depthTarget?.delete();
-
-        let samples = 0;
-        if (this.msaaEnabled) {
-            samples = this.gl.getParameter(PicoGL.MAX_SAMPLES);
-        }
-
-        this.colorTarget = this.app.createRenderbuffer(
-            this.app.width,
-            this.app.height,
-            PicoGL.RGBA8,
-            samples,
-        );
-        this.interactTarget = this.app.createRenderbuffer(
-            this.app.width,
-            this.app.height,
-            PicoGL.RGBA32F,
-            samples,
-        );
-        this.depthTarget = this.app.createRenderbuffer(
-            this.app.width,
-            this.app.height,
-            PicoGL.DEPTH_COMPONENT24,
-            samples,
-        );
-        this.framebuffer = this.app
-            .createFramebuffer()
-            .colorTarget(0, this.colorTarget)
-            .colorTarget(1, this.interactTarget)
-            .depthTarget(this.depthTarget);
-
-        this.needsFramebufferUpdate = false;
     }
 
     initCache(): void {
@@ -374,567 +171,48 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         );
     }
 
-    override getControls() {
-        return {
-            ...super.getControls(),
-            Debug: folder(
-                {
-                    "Texture Debug": {
-                        value: this.debugTextureMode,
-                        options: {
-                            Off: 0,
-                            "Missing Magenta": 1,
-                            "Raw Texture": 2,
-                        },
-                        onChange: (v: number) => {
-                            this.debugTextureMode = v;
-                        },
-                    },
-                    "Log Texture Stats": button(() => this.logTextureDebugStats()),
-                },
-                { collapsed: true },
-            ),
-        };
-    }
-
     initTextures(): void {
-        const textureLoader = this.session.getTextureLoader();
-
-        const allTextureIds = textureLoader.getTextureIds();
-
-        this.textureIds = allTextureIds
-            .filter((id) => textureLoader.isSd(id))
-            .slice(0, MAX_TEXTURES - 1);
-
-        this.textureIdToIndex.clear();
-        for (let i = 0; i < this.textureIds.length; i++) {
-            this.textureIdToIndex.set(this.textureIds[i], i + 1);
-        }
-
-        this.initTextureSlotLut();
-        this.initTextureArray();
-        this.initMaterialsTexture();
-
-        console.log("init textures", this.textureIds, allTextureIds.length);
-    }
-
-    initTextureSlotLut(): void {
-        if (this.textureSlotLut) {
-            this.textureSlotLut.delete();
-            this.textureSlotLut = undefined;
-        }
-
-        const textureCount = this.textureIds.length + 1;
-        this.textureSlotLutData = new Uint16Array(textureCount);
-
-        this.textureSlotLut = this.app.createTexture2D(this.textureSlotLutData, textureCount, 1, {
-            internalFormat: PicoGL.R16UI,
-            minFilter: PicoGL.NEAREST,
-            magFilter: PicoGL.NEAREST,
-        });
-    }
-
-    initTextureArray() {
-        const textureLoader = this.session.getTextureLoader();
-
-        if (this.textureArray) {
-            this.textureArray.delete();
-            this.textureArray = undefined;
-        }
-        this.loadedTextureIds.clear();
-        this.textureIdToSlot.clear();
-        this.freeTextureSlots.length = 0;
-        this.textureLastUsedFrame.clear();
-        this.texturePixelCache.clear();
-
-        console.time("load textures");
-
-        const pixelCount = TEXTURE_SIZE * TEXTURE_SIZE;
-
-        const maxArrayLayers = this.gl.getParameter(this.gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
-        this.textureSlotCount = Math.max(2, Math.min(maxArrayLayers, MAX_TEXTURE_SLOTS));
-        const pixels = new Int32Array(this.textureSlotCount * pixelCount);
-
-        // White texture
-        pixels.fill(0xffffffff, 0, pixelCount);
-
-        const cacheInfo = this.session.cache.info;
-        console.log(
-            `init texture slots: slots=${this.textureSlotCount} maxLayers=${maxArrayLayers} textureIds=${this.textureIds.length}`,
-        );
-
-        if (this.textureIds.length + 1 > this.textureSlotCount) {
-            console.warn(
-                `Texture array slots capped: textures=${this.textureIds.length} slots=${
-                    this.textureSlotCount - 1
-                } maxLayers=${maxArrayLayers}. Some textures may appear missing.`,
-            );
-        }
-
-        let maxPreloadTextures = Math.min(this.textureIds.length, this.textureSlotCount - 1);
-        // we should check if the texture loader is procedural instead
-        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 508) {
-            maxPreloadTextures = 64;
-        }
-
-        maxPreloadTextures = Math.min(maxPreloadTextures, this.textureSlotCount - 1);
-
-        for (let i = 0; i < maxPreloadTextures; i++) {
-            const slot = i + 1;
-            const textureId = this.textureIds[i];
-            const texturePixels = textureLoader.tryGetPixelsArgb(
-                textureId,
-                TEXTURE_SIZE,
-                true,
-                1.0,
-            );
-            if (texturePixels) {
-                pixels.set(texturePixels, slot * pixelCount);
-            } else {
-                console.error("Failed loading texture", textureId);
-            }
-            this.textureIdToSlot.set(textureId, slot);
-            if (texturePixels) {
-                this.cacheTexturePixels(textureId, texturePixels);
-            }
-            this.touchTexture(textureId);
-
-            const textureIndex = this.textureIdToIndex.get(textureId);
-            if (textureIndex !== undefined && this.textureSlotLutData) {
-                this.textureSlotLutData[textureIndex] = slot;
-            }
-        }
-
-        for (let slot = maxPreloadTextures + 1; slot < this.textureSlotCount; slot++) {
-            this.freeTextureSlots.push(slot);
-        }
-
-        this.textureArray = createTextureArray(
+        this.textures.init(
             this.app,
-            new Uint8Array(pixels.buffer),
-            TEXTURE_SIZE,
-            TEXTURE_SIZE,
-            this.textureSlotCount,
-            {
-                wrapS: PicoGL.REPEAT,
-                wrapT: PicoGL.REPEAT,
-            },
+            this.gl,
+            this.session.getTextureLoader(),
+            this.session.cache.info,
+            this.textureFilterMode,
+            this.stats.frameCount,
         );
-
-        this.updateTextureFiltering();
-
-        if (this.textureSlotLut && this.textureSlotLutData) {
-            this.textureSlotLut.data(this.textureSlotLutData);
-        }
-        const texErr = this.gl.getError();
-        if (texErr !== this.gl.NO_ERROR) {
-            console.error("Texture array init GL error", texErr);
-        }
-        console.timeEnd("load textures");
-    }
-
-    private cacheTexturePixels(textureId: number, pixels: Int32Array): void {
-        // LRU update
-        if (this.texturePixelCache.has(textureId)) {
-            this.texturePixelCache.delete(textureId);
-        }
-        this.texturePixelCache.set(textureId, pixels);
-        this.loadedTextureIds.add(textureId);
-
-        while (this.texturePixelCache.size > MAX_TEXTURE_PIXEL_CACHE) {
-            const oldest = this.texturePixelCache.keys().next().value as number | undefined;
-            if (oldest === undefined) {
-                break;
-            }
-            if (this.textureIdToSlot.has(oldest)) {
-                const p = this.texturePixelCache.get(oldest);
-                this.texturePixelCache.delete(oldest);
-                if (p) {
-                    this.texturePixelCache.set(oldest, p);
-                }
-                continue;
-            }
-            this.texturePixelCache.delete(oldest);
-            this.loadedTextureIds.delete(oldest);
-        }
-    }
-
-    private touchTexture(textureId: number): void {
-        if (textureId === -1) {
-            return;
-        }
-        this.textureLastUsedFrame.set(textureId, this.stats.frameCount);
-    }
-
-    private evictTextureSlot(protectedTextureIds?: Set<number>): number | undefined {
-        let candidateTextureId: number | undefined;
-        let candidateLastUsed = Number.POSITIVE_INFINITY;
-
-        for (const [textureId, slot] of this.textureIdToSlot) {
-            if (slot === 0) {
-                continue;
-            }
-            if (protectedTextureIds?.has(textureId)) {
-                continue;
-            }
-            const lastUsed = this.textureLastUsedFrame.get(textureId) ?? -1;
-            if (lastUsed < candidateLastUsed) {
-                candidateLastUsed = lastUsed;
-                candidateTextureId = textureId;
-            }
-        }
-
-        if (candidateTextureId === undefined) {
-            // All resident textures are protected (e.g. everything visible). Do not evict, otherwise we'd
-            // thrash textures even with a static camera due to oversubscription.
-            return undefined;
-        }
-
-        const slot = this.textureIdToSlot.get(candidateTextureId);
-        if (slot === undefined) {
-            throw new Error("Texture slot bookkeeping corrupted");
-        }
-
-        this.textureIdToSlot.delete(candidateTextureId);
-        this.textureLastUsedFrame.delete(candidateTextureId);
-
-        const textureIndex = this.textureIdToIndex.get(candidateTextureId);
-        if (textureIndex !== undefined && this.textureSlotLutData) {
-            this.textureSlotLutData[textureIndex] = 0;
-        }
-
-        return slot;
-    }
-
-    private ensureTextureInSlot(
-        textureId: number,
-        pixels: Int32Array | undefined,
-        protectedTextureIds?: Set<number>,
-    ): { slot: number; lutDirty: boolean; updated: boolean; status: EnsureTextureStatus } {
-        const existingSlot = this.textureIdToSlot.get(textureId);
-        if (existingSlot !== undefined) {
-            this.touchTexture(textureId);
-            return {
-                slot: existingSlot,
-                lutDirty: false,
-                updated: false,
-                status: EnsureTextureStatus.Ok,
-            };
-        }
-
-        if (!this.textureArray) {
-            throw new Error("Texture array is not initialized");
-        }
-
-        const textureIndex = this.textureIdToIndex.get(textureId);
-        if (textureIndex === undefined) {
-            return {
-                slot: 0,
-                lutDirty: false,
-                updated: false,
-                status: EnsureTextureStatus.UnknownTexture,
-            };
-        }
-
-        let slot = this.freeTextureSlots.pop();
-        if (slot === undefined) {
-            slot = this.evictTextureSlot(protectedTextureIds);
-            if (slot === undefined) {
-                // Oversubscribed: keep output stable (missing texture) instead of cycling.
-                return {
-                    slot: 0,
-                    lutDirty: false,
-                    updated: false,
-                    status: EnsureTextureStatus.Oversubscribed,
-                };
-            }
-        }
-
-        if (!pixels) {
-            pixels = this.texturePixelCache.get(textureId);
-        }
-
-        if (!pixels) {
-            const texturePixels = this.session
-                .getTextureLoader()
-                .tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0);
-            if (!texturePixels) {
-                console.error("Failed loading texture", textureId);
-                this.freeTextureSlots.push(slot);
-                return {
-                    slot: 0,
-                    lutDirty: false,
-                    updated: false,
-                    status: EnsureTextureStatus.DecodeFailed,
-                };
-            }
-            pixels = texturePixels;
-        }
-
-        this.textureArray.bind(0);
-        this.gl.texSubImage3D(
-            PicoGL.TEXTURE_2D_ARRAY,
-            0,
-            0,
-            0,
-            slot,
-            TEXTURE_SIZE,
-            TEXTURE_SIZE,
-            1,
-            PicoGL.RGBA,
-            PicoGL.UNSIGNED_BYTE,
-            new Uint8Array(pixels.buffer),
-        );
-
-        this.textureIdToSlot.set(textureId, slot);
-        this.cacheTexturePixels(textureId, pixels);
-        this.touchTexture(textureId);
-
-        let lutDirty = false;
-        if (this.textureSlotLutData) {
-            this.textureSlotLutData[textureIndex] = slot;
-            lutDirty = true;
-        }
-
-        return { slot, lutDirty, updated: true, status: EnsureTextureStatus.Ok };
-    }
-
-    private updateVisibleTextureResidency(): void {
-        this.visibleTextureIds.clear();
-
-        for (let i = 0; i < this.visibleMapCount; i++) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId);
-            if (!map || !map.canRender(this.stats.frameCount)) {
-                continue;
-            }
-
-            const used = map.usedTextureIds;
-            if (!used) {
-                continue;
-            }
-
-            for (let j = 0; j < used.length; j++) {
-                const textureId = used[j];
-                this.visibleTextureIds.add(textureId);
-                this.touchTexture(textureId);
-            }
-        }
-
-        if (!this.textureArray || !this.textureSlotLut || !this.textureSlotLutData) {
-            return;
-        }
-
-        let updatedCount = 0;
-        let lutDirty = false;
-        let missingOversubscribed = 0;
-        let missingUnknown = 0;
-        let missingDecode = 0;
-
-        for (const textureId of this.visibleTextureIds) {
-            if (updatedCount >= MAX_TEXTURE_UPLOADS_PER_FRAME) {
-                break;
-            }
-            if (this.textureIdToSlot.has(textureId)) {
-                continue;
-            }
-            const result = this.ensureTextureInSlot(textureId, undefined, this.visibleTextureIds);
-            lutDirty ||= result.lutDirty;
-            updatedCount += result.updated ? 1 : 0;
-            if (result.status === EnsureTextureStatus.Oversubscribed) {
-                missingOversubscribed++;
-            } else if (result.status === EnsureTextureStatus.UnknownTexture) {
-                missingUnknown++;
-            } else if (result.status === EnsureTextureStatus.DecodeFailed) {
-                missingDecode++;
-            }
-        }
-
-        if (lutDirty) {
-            this.textureSlotLut.data(this.textureSlotLutData);
-        }
-        if (updatedCount > 0) {
-            // `generateMipmap` operates on the texture bound to the currently active texture unit.
-            // Ensure our texture array is bound before generating mipmaps.
-            this.textureArray.bind(0);
-            this.gl.generateMipmap(PicoGL.TEXTURE_2D_ARRAY);
-        }
-
-        if (this.debugTextureMode !== 0) {
-            const frame = this.stats.frameCount;
-            if (frame - this.debugLastResidencyLogFrame >= 60) {
-                this.debugLastResidencyLogFrame = frame;
-                console.log(
-                    `texture residency: visible=${this.visibleTextureIds.size} slots=${
-                        this.textureSlotCount - 1
-                    } resident=${this.textureIdToSlot.size} free=${
-                        this.freeTextureSlots.length
-                    } updated=${updatedCount} missing(oversub~)=${missingOversubscribed} missing(unknown~)=${missingUnknown} missing(decode~)=${missingDecode}`,
-                );
-            }
-        }
+        console.log("init textures", this.textures.getTextureIds().length);
     }
 
     updateTextureFiltering(): void {
-        if (!this.textureArray) {
-            throw new Error("Texture array is not initialized");
-        }
-
-        this.textureArray.bind(0);
-
-        if (this.textureFilterMode === TextureFilterMode.DISABLED) {
-            this.gl.texParameteri(
-                PicoGL.TEXTURE_2D_ARRAY,
-                PicoGL.TEXTURE_MIN_FILTER,
-                PicoGL.NEAREST,
-            );
-            this.gl.texParameteri(
-                PicoGL.TEXTURE_2D_ARRAY,
-                PicoGL.TEXTURE_MAG_FILTER,
-                PicoGL.NEAREST,
-            );
-        } else if (this.textureFilterMode === TextureFilterMode.BILINEAR) {
-            this.gl.texParameteri(
-                PicoGL.TEXTURE_2D_ARRAY,
-                PicoGL.TEXTURE_MIN_FILTER,
-                PicoGL.LINEAR_MIPMAP_NEAREST,
-            );
-            this.gl.texParameteri(
-                PicoGL.TEXTURE_2D_ARRAY,
-                PicoGL.TEXTURE_MAG_FILTER,
-                PicoGL.LINEAR,
-            );
-        } else {
-            this.gl.texParameteri(
-                PicoGL.TEXTURE_2D_ARRAY,
-                PicoGL.TEXTURE_MIN_FILTER,
-                PicoGL.LINEAR_MIPMAP_LINEAR,
-            );
-            this.gl.texParameteri(
-                PicoGL.TEXTURE_2D_ARRAY,
-                PicoGL.TEXTURE_MAG_FILTER,
-                PicoGL.LINEAR,
-            );
-        }
-
-        const maxAnisotropy = Math.min(
-            getMaxAnisotropy(this.textureFilterMode),
-            PicoGL.WEBGL_INFO.MAX_TEXTURE_ANISOTROPY,
-        );
-
-        this.gl.texParameteri(
-            PicoGL.TEXTURE_2D_ARRAY,
-            PicoGL.TEXTURE_MAX_ANISOTROPY_EXT,
-            maxAnisotropy,
-        );
-    }
-
-    updateTextureArray(textures: Map<number, Int32Array>): void {
-        if (!this.textureArray) {
-            throw new Error("Texture array is not initialized");
-        }
-        if (!this.textureSlotLut || !this.textureSlotLutData) {
-            throw new Error("Texture slot LUT is not initialized");
-        }
-
-        let updatedCount = 0;
-        let lutDirty = false;
-        for (const [id, pixels] of textures) {
-            this.cacheTexturePixels(id, pixels);
-            if (this.textureIdToSlot.has(id)) {
-                continue;
-            }
-            const result = this.ensureTextureInSlot(id, pixels, this.visibleTextureIds);
-            lutDirty ||= result.lutDirty;
-            updatedCount += result.updated ? 1 : 0;
-        }
-        if (lutDirty) {
-            this.textureSlotLut.data(this.textureSlotLutData);
-        }
-        if (updatedCount > 0) {
-            // `generateMipmap` operates on the texture bound to the currently active texture unit.
-            // Ensure our texture array is bound before generating mipmaps.
-            this.textureArray.bind(0);
-            this.gl.generateMipmap(PicoGL.TEXTURE_2D_ARRAY);
-        }
-    }
-
-    initMaterialsTexture(): void {
-        const textureLoader = this.session.getTextureLoader();
-
-        if (this.textureMaterials) {
-            this.textureMaterials.delete();
-            this.textureMaterials = undefined;
-        }
-
-        const textureCount = this.textureIds.length + 1;
-
-        const data = new Int8Array(textureCount * 4);
-        for (let i = 0; i < this.textureIds.length; i++) {
-            const id = this.textureIds[i];
-            const material = textureLoader.tryGetMaterial(id);
-            if (!material) {
-                console.error("Failed loading texture material", id);
-                continue;
-            }
-
-            const index = (i + 1) * 4;
-            data[index] = material.animU;
-            data[index + 1] = material.animV;
-            data[index + 2] = material.alphaCutOff * 255;
-        }
-
-        this.textureMaterials = this.app.createTexture2D(data, textureCount, 1, {
-            minFilter: PicoGL.NEAREST,
-            magFilter: PicoGL.NEAREST,
-            internalFormat: PicoGL.RGBA8I,
-        });
-    }
-
-    override async loadMapData(mapX: number, mapY: number): Promise<SdMapData | undefined> {
-        const mapData = await this.workerPool.queueLoad<
-            SdMapLoaderInput,
-            SdMapData | undefined,
-            SdMapDataLoader
-        >(this.dataLoader, {
-            mapX,
-            mapY,
-            maxLevel: this.maxLevel,
-            loadObjs: this.loadObjs,
-            loadNpcs: this.loadNpcs,
-            loadLocs: this.loadLocs,
-            smoothTerrain: this.smoothTerrain,
-            minimizeDrawCalls: !this.hasMultiDraw,
-            loadedTextureIds: this.loadedTextureIds,
-        });
-
-        return mapData;
+        this.textures.updateFiltering(this.textureFilterMode);
     }
 
     loadMap(mapData: SdMapData, time: number): void {
         const { mapX, mapY } = mapData;
+        const textureArray = this.textures.getTextureArray();
+        const textureSlotLut = this.textures.getTextureSlotLut();
+        const textureMaterials = this.textures.getMaterialsTexture();
+        if (!textureArray || !textureSlotLut || !textureMaterials || !this.sceneUniformBuffer) {
+            return;
+        }
+
         this.loadedMaps.set(
             getMapSquareId(mapX, mapY),
-            WebGLMapSquare.load(
-                this.session.getSeqTypeLoader(),
-                this.session.getSeqFrameLoader(),
-                this.session.getNpcTypeLoader(),
-                this.session.getBasTypeLoader(),
+            this.geometry.loadMapSquare(
+                this.session,
                 this.app,
-                this.mainProgram!,
-                this.mainAlphaProgram!,
-                this.npcProgram!,
-                this.textureArray!,
-                this.textureMaterials!,
-                this.textureSlotLut!,
-                this.sceneUniformBuffer!,
+                this.programs,
+                textureArray,
+                textureMaterials,
+                textureSlotLut,
+                this.sceneUniformBuffer,
                 mapData,
                 time,
                 this.stats.frameCount,
             ),
         );
 
-        this.updateTextureArray(mapData.loadedTextures);
+        this.textures.onLoadedTextures(mapData.loadedTextures, this.stats.frameCount);
     }
 
     onResize(width: number, height: number): void {
@@ -944,42 +222,99 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     update(time: number, deltaTime: number) {}
 
     render(time: number, deltaTime: number, resized: boolean): void {
-        this.npcRenderCount = 0;
         this.rendererStats.frameStart = performance.now();
         const timeSec = time / 1000;
 
         if (this.needsFramebufferUpdate) {
-            this.initFramebuffer();
+            this.renderTargets.initMain(this.app, this.gl, this.msaaEnabled);
+            this.needsFramebufferUpdate = false;
         }
 
         if (
-            !this.mainProgram ||
-            !this.mainAlphaProgram ||
-            !this.npcProgram ||
+            !this.programs.mainProgram ||
+            !this.programs.mainAlphaProgram ||
+            !this.programs.npcProgram ||
             !this.sceneUniformBuffer ||
-            !this.framebuffer ||
-            !this.textureFramebuffer ||
-            !this.frameDrawCall ||
-            !this.interactFramebuffer ||
-            !this.textureArray ||
-            !this.textureMaterials
+            !this.renderTargets.framebuffer ||
+            !this.renderTargets.textureFramebuffer ||
+            !this.programs.frameDrawCall ||
+            !this.renderTargets.interactFramebuffer ||
+            !this.textures.getTextureArray() ||
+            !this.textures.getTextureSlotLut() ||
+            !this.textures.getMaterialsTexture()
         ) {
             return;
         }
 
         if (resized) {
-            this.framebuffer.resize();
-            this.textureFramebuffer.resize();
-            this.interactFramebuffer.resize();
-
-            this.resolutionUni[0] = this.app.width;
-            this.resolutionUni[1] = this.app.height;
+            this.resizeFramebuffers();
         }
 
+        this.updateSceneUniforms(timeSec);
+        const currInteractions = this.interactions.prepare(
+            this.gl,
+            this.stats.frameCount,
+            this.rendererStats,
+        );
+        const scheduleInput: MapRenderScheduleInput<DrawCallKey, WebGLMapSquare> = {
+            camera: this.camera,
+            visibleMapCount: this.visibleMapCount,
+            visibleMaps: this.visibleMaps,
+            loadedMaps: this.loadedMaps,
+            frameCount: this.stats.frameCount,
+            lodDistance: this.lodDistance,
+            loadNpcs: this.loadNpcs,
+            hoveredMapIds: this.interactions.getHoveredMapIds(),
+        };
+        const gatheredMaps = this.scheduler.gatherRenderableMaps<DrawCallKey, WebGLMapSquare>(
+            scheduleInput,
+        );
+        this.textures.updateVisibleResidency(
+            this.collectVisibleUsedTextureIds(),
+            this.stats.frameCount,
+            this.debugTextureMode !== 0,
+        );
+
+        this.gatherNpcRenderData(gatheredMaps);
+        this.renderSceneToFramebuffer();
+        const packedNpcData = this.npcGpuDataBuilder.flushPacked();
+        const { npcDataTextureIndex, npcDataTexture } = this.npcDataTextureRing.flush(
+            this.app,
+            this.stats.frameCount,
+            packedNpcData,
+        );
+        this.renderPasses(scheduleInput, gatheredMaps, npcDataTextureIndex, npcDataTexture);
+        this.postProcessPass.blitSceneToTexture(this.app, this.gl, this.renderTargets);
+        this.interactions.readAtMouse(
+            this.gl,
+            this.app,
+            this.msaaEnabled,
+            this.renderTargets.interactFramebuffer!,
+            currInteractions,
+        );
+        this.postProcessPass.present(
+            this.app,
+            this.renderTargets,
+            this.resolutionUni as unknown as Float32Array,
+            this.programs.frameDrawCall!,
+            this.programs.frameFxaaDrawCall,
+            this.fxaaEnabled,
+        );
+        this.loadPending(timeSec);
+    }
+
+    private resizeFramebuffers(): void {
+        this.renderTargets.resize();
+
+        this.resolutionUni[0] = this.app.width;
+        this.resolutionUni[1] = this.app.height;
+    }
+
+    private updateSceneUniforms(timeSec: number): void {
         this.cameraPosUni[0] = this.camera.getPosX();
         this.cameraPosUni[1] = this.camera.getPosZ();
 
-        this.sceneUniformBuffer
+        this.sceneUniformBuffer!
             .set(0, this.camera.viewProjMatrix as Float32Array)
             .set(1, this.camera.viewMatrix as Float32Array)
             .set(2, this.camera.projectionMatrix as Float32Array)
@@ -993,20 +328,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             .set(10, this.isNewTextureAnim as any)
             .set(11, this.debugTextureMode as any)
             .update();
+    }
 
-        const currInteractions =
-            this.interactions[this.stats.frameCount % this.interactions.length];
-
-        const interactionsStart = performance.now();
-        if (!this.inputManager.isPointerLock()) {
-            this.prepareInteractions(currInteractions);
-        } else if (this.hoveredMapIds.size > 0) {
-            this.hoveredMapIds.clear();
-        }
-        this.rendererStats.interactionsTime = performance.now() - interactionsStart;
-
-        this.updateVisibleTextureResidency();
-
+    private renderSceneToFramebuffer(): void {
         if (this.cullBackFace) {
             this.app.enable(PicoGL.CULL_FACE);
         } else {
@@ -1016,91 +340,60 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.app.enable(PicoGL.DEPTH_TEST);
         this.app.depthMask(true);
 
-        this.app.drawFramebuffer(this.framebuffer);
+        this.app.drawFramebuffer(this.renderTargets.framebuffer!);
 
         this.app.clearColor(0.0, 0.0, 0.0, 1.0);
         this.app.clear();
         this.gl.clearBufferfv(PicoGL.COLOR, 0, this.skyColor);
+    }
 
-        for (let i = 0; i < this.visibleMapCount; i++) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.stats.frameCount)) {
-                continue;
-            }
-
-            this.addNpcRenderData(map);
-        }
-
-        const npcDataTextureIndex = this.updateNpcDataTexture();
-        const npcDataTexture = this.npcDataTextureBuffer[npcDataTextureIndex];
-
+    protected renderPasses(
+        scheduleInput: MapRenderScheduleInput<DrawCallKey, WebGLMapSquare>,
+        gatheredMaps: ReadonlyArray<WebGLMapSquare>,
+        npcDataTextureIndex: number,
+        npcDataTexture: Texture | undefined,
+    ): void {
         this.app.disable(PicoGL.BLEND);
         const opaquePassStart = performance.now();
-        this.renderOpaquePass();
+        const locOpaque = this.scheduler.buildLocWork<DrawCallKey, WebGLMapSquare>(
+            scheduleInput,
+            false,
+            false,
+            gatheredMaps,
+        );
+        this.geometry.mapDrawPasses.renderLoc(this, locOpaque);
         this.rendererStats.opaquePassTime = performance.now() - opaquePassStart;
         const opaqueNpcPassStart = performance.now();
-        this.renderOpaqueNpcPass(npcDataTextureIndex, npcDataTexture);
+        const npcOpaque = this.scheduler.buildNpcWork<DrawCallKey, WebGLMapSquare>(
+            scheduleInput,
+            npcDataTextureIndex,
+            false,
+            false,
+            gatheredMaps,
+        );
+        this.geometry.mapDrawPasses.renderNpc(this, npcOpaque, npcDataTexture);
         this.rendererStats.opaqueNpcPassTime = performance.now() - opaqueNpcPassStart;
 
         this.app.enable(PicoGL.BLEND);
         const transparentPassStart = performance.now();
-        this.renderTransparentPass();
+        const locTrans = this.scheduler.buildLocWork<DrawCallKey, WebGLMapSquare>(
+            scheduleInput,
+            true,
+            true,
+            gatheredMaps,
+        );
+        this.geometry.mapDrawPasses.renderLoc(this, locTrans);
         this.rendererStats.transparentPassTime = performance.now() - transparentPassStart;
         const transparentNpcPassStart = performance.now();
-        this.renderTransparentNpcPass(npcDataTextureIndex, npcDataTexture);
+        const npcTrans = this.scheduler.buildNpcWork<DrawCallKey, WebGLMapSquare>(
+            scheduleInput,
+            npcDataTextureIndex,
+            true,
+            true,
+            gatheredMaps,
+        );
+        this.geometry.mapDrawPasses.renderNpc(this, npcTrans, npcDataTexture);
         this.rendererStats.transparentNpcPassTime = performance.now() - transparentNpcPassStart;
-
-        // Can't sample from renderbuffer so blit to a texture for sampling.
-        this.app.readFramebuffer(this.framebuffer);
-
-        this.app.drawFramebuffer(this.textureFramebuffer);
-        this.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
-        this.app.blitFramebuffer(PicoGL.COLOR_BUFFER_BIT);
-
-        if (!this.inputManager.isPointerLock()) {
-            const mouseX = this.inputManager.mouseX;
-            const mouseY = this.inputManager.mouseY;
-            if (mouseX !== -1 && mouseY !== -1) {
-                if (this.msaaEnabled) {
-                    // TODO: reading from the multisampled framebuffer is not accurate
-                    this.app.drawFramebuffer(this.interactFramebuffer);
-                    this.gl.readBuffer(PicoGL.COLOR_ATTACHMENT1);
-                    this.app.blitFramebuffer(PicoGL.COLOR_BUFFER_BIT);
-
-                    this.app.readFramebuffer(this.interactFramebuffer);
-                    this.gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
-                } else {
-                    this.gl.readBuffer(PicoGL.COLOR_ATTACHMENT1);
-                }
-
-                currInteractions.read(
-                    this.gl,
-                    (mouseX * pixelRatio) | 0,
-                    (mouseY * pixelRatio) | 0,
-                );
-            }
-        }
-
-        this.app.disable(PicoGL.DEPTH_TEST);
-        this.app.depthMask(false);
-
-        this.app.disable(PicoGL.BLEND);
-
-        this.app.clearMask(PicoGL.COLOR_BUFFER_BIT | PicoGL.DEPTH_BUFFER_BIT);
-        this.app.clearColor(0.0, 0.0, 0.0, 1.0);
-        this.app.defaultDrawFramebuffer().clear();
-
-        if (this.frameFxaaDrawCall && this.fxaaEnabled) {
-            this.frameFxaaDrawCall.uniform("u_resolution", this.resolutionUni);
-            this.frameFxaaDrawCall.texture("u_frame", this.textureFramebuffer.colorAttachments[0]);
-            this.frameFxaaDrawCall.draw();
-        } else {
-            this.frameDrawCall.texture("u_frame", this.textureFramebuffer.colorAttachments[0]);
-            this.frameDrawCall.draw();
-        }
-
-        this.loadPending(timeSec);
     }
 
     loadPending(timeSec: number) {
@@ -1115,121 +408,20 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.stats.onFrameEnd();
     }
 
-    addNpcRenderData(renderable: WebGLRenderable) {
-        const npcs = renderable.npcs;
+    protected gatherNpcRenderData(gatheredMaps: ReadonlyArray<WebGLMapSquare>): void {
+        this.npcGpuDataBuilder.beginFrame();
 
-        if (npcs.length === 0) {
-            return;
+        for (let i = 0; i < gatheredMaps.length; i++) {
+            const map = gatheredMaps[i];
+            this.npcGpuDataBuilder.addRenderable(map, this.stats.frameCount);
         }
-
-        const frameCount = this.stats.frameCount;
-
-        renderable.npcDataTextureOffsets[frameCount % renderable.npcDataTextureOffsets.length] =
-            this.npcRenderCount;
-
-        const newCount = this.npcRenderCount + npcs.length;
-
-        if (this.npcRenderData.length / 4 < newCount) {
-            const newData = new Uint16Array(Math.ceil((newCount * 2) / 16) * 16 * 4);
-            newData.set(this.npcRenderData);
-            this.npcRenderData = newData;
-        }
-
-        for (const npc of npcs) {
-            let offset = this.npcRenderCount * 4;
-
-            const tileX = npc.x >> 7;
-            const tileY = npc.y >> 7;
-
-            let renderPlane = npc.level;
-            if (
-                renderPlane < 3 &&
-                (renderable.getTileRenderFlag(1, tileX, tileY) & TileRenderFlag.Bridge) !== 0
-            ) {
-                renderPlane++;
-            }
-
-            this.npcRenderData[offset++] = npc.x;
-            this.npcRenderData[offset++] = npc.y;
-            this.npcRenderData[offset++] = (npc.rotation << 2) | renderPlane;
-            this.npcRenderData[offset++] = npc.npcType.id;
-
-            this.npcRenderCount++;
-        }
-    }
-
-    updateNpcDataTexture() {
-        const frameCount = this.stats.frameCount;
-
-        const newNpcDataTextureIndex = frameCount % this.npcDataTextureBuffer.length;
-        const npcDataTextureIndex = (frameCount + 1) % this.npcDataTextureBuffer.length;
-        this.npcDataTextureBuffer[newNpcDataTextureIndex]?.delete();
-        this.npcDataTextureBuffer[newNpcDataTextureIndex] = this.app.createTexture2D(
-            this.npcRenderData,
-            16,
-            Math.max(Math.ceil(this.npcRenderCount / 16), 1),
-            {
-                internalFormat: PicoGL.RGBA16UI,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-            },
-        );
-
-        return npcDataTextureIndex;
-    }
-
-    private initDrawRangePatchRuntime(): void {
-        if (this.drawRangePatchWasmInitPromise) {
-            return;
-        }
-        this.drawRangePatchWasmInitPromise = (async () => {
-            this.drawRangePatchWasmReady = await initDrawRangePatchBackend();
-        })();
     }
 
     isDrawRangePatchWasmReady(): boolean {
-        return this.drawRangePatchWasmReady;
+        return this.geometry.isTickBackendReady();
     }
 
-    protected applyDrawRangePatchStream(
-        drawCall: DrawCall,
-        drawRangesPacked: Int32Array,
-        patchStreamPacked: Int32Array,
-        patchCount: number,
-    ): void {
-        const maxPatchCountByStream = (patchStreamPacked.length / DRAW_RANGE_PATCH_STRIDE) | 0;
-        const requestedPatchCount = patchCount | 0;
-        const safePatchCount = Math.max(0, Math.min(requestedPatchCount, maxPatchCountByStream));
-        const maxDrawRanges = Math.min(
-            (drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0,
-            drawCall.offsets.length | 0,
-        );
-        if (maxDrawRanges <= 0) {
-            return;
-        }
-        for (let i = 0; i < safePatchCount; i++) {
-            const patchOffset = i * DRAW_RANGE_PATCH_STRIDE;
-            const drawRangeIndex =
-                patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INDEX_INDEX] | 0;
-            if (drawRangeIndex < 0 || drawRangeIndex >= maxDrawRanges) {
-                continue;
-            }
-            const drawRangeOffset = drawRangeIndex * DRAW_RANGE_STRIDE;
-            const offset = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_OFFSET_INDEX] | 0;
-            const elements = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_ELEMENTS_INDEX] | 0;
-            const instances = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INSTANCES_INDEX] | 0;
-
-            drawCall.offsets[drawRangeIndex] = offset;
-            (drawCall as any).numElements[drawRangeIndex] = elements;
-            (drawCall as any).numInstances[drawRangeIndex] = instances;
-
-            drawRangesPacked[drawRangeOffset + DRAW_RANGE_OFFSET_INDEX] = offset;
-            drawRangesPacked[drawRangeOffset + DRAW_RANGE_ELEMENTS_INDEX] = elements;
-            drawRangesPacked[drawRangeOffset + DRAW_RANGE_INSTANCES_INDEX] = instances;
-        }
-    }
-
-    protected applyLocAnimationPatchesForPass(
+    applyLocAnimationPatchesForPass(
         renderable: WebGLRenderable,
         isAlpha: boolean,
         isInteract: boolean,
@@ -1237,24 +429,28 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         drawCall: DrawCall,
         drawRangesPacked: Int32Array,
     ): void {
-        const stream = renderable.getLocTickPatchStream(isAlpha, isInteract, isLod);
-        if (!stream) {
-            return;
-        }
-        this.applyDrawRangePatchStream(drawCall, drawRangesPacked, stream.patches, stream.count);
+        this.geometry.applyLocAnimationPatchesForPass(
+            renderable,
+            isAlpha,
+            isInteract,
+            isLod,
+            drawCall,
+            drawRangesPacked,
+        );
     }
 
-    protected applyNpcAnimationPatchesForPass(
+    applyNpcAnimationPatchesForPass(
         renderable: WebGLRenderable,
         isAlpha: boolean,
         drawCall: DrawCall,
         drawRangesPacked: Int32Array,
     ): void {
-        const stream = renderable.getNpcTickPatchStream(isAlpha);
-        if (!stream) {
-            return;
-        }
-        this.applyDrawRangePatchStream(drawCall, drawRangesPacked, stream.patches, stream.count);
+        this.geometry.applyNpcAnimationPatchesForPass(
+            renderable,
+            isAlpha,
+            drawCall,
+            drawRangesPacked,
+        );
     }
 
     draw(drawCall: DrawCall, drawRangesPacked: Int32Array) {
@@ -1278,162 +474,27 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
     }
 
-    renderOpaquePass(): void {
-        const cameraMapX = this.camera.getMapX();
-        const cameraMapY = this.camera.getMapY();
-
+    private collectVisibleUsedTextureIds(): Int32Array[] {
+        const out: Int32Array[] = [];
         for (let i = 0; i < this.visibleMapCount; i++) {
             const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
+            const map = this.loadedMaps.get(mapInfo.mapId);
             if (!map || !map.canRender(this.stats.frameCount)) {
                 continue;
             }
-
-            const dist = map.getMapDistance(cameraMapX, cameraMapY);
-
-            const isInteract = this.hoveredMapIds.has(map.id);
-            const isLod = dist >= this.lodDistance;
-
-            const { drawCall, drawRangesPacked } = map.getDrawCall(false, isInteract, isLod);
-            this.applyLocAnimationPatchesForPass(
-                map,
-                false,
-                isInteract,
-                isLod,
-                drawCall,
-                drawRangesPacked,
-            );
-
-            this.draw(drawCall, drawRangesPacked);
-        }
-    }
-
-    renderOpaqueNpcPass(npcDataTextureIndex: number, npcDataTexture: Texture | undefined): void {
-        if (!npcDataTexture || !this.loadNpcs) {
-            return;
-        }
-
-        for (let i = 0; i < this.visibleMapCount; i++) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.stats.frameCount)) {
-                continue;
+            const used = map.usedTextureIds;
+            if (used instanceof Int32Array && used.length > 0) {
+                out.push(used);
             }
-
-            const npcs = map.npcs;
-
-            if (npcs.length === 0) {
-                continue;
-            }
-
-            const dataOffset = map.npcDataTextureOffsets[npcDataTextureIndex];
-            if (dataOffset === -1) {
-                continue;
-            }
-
-            const { drawCall, drawRangesPacked } = map.drawCallNpc;
-
-            drawCall.uniform("u_npcDataOffset", dataOffset);
-            drawCall.texture("u_npcDataTexture", npcDataTexture);
-            this.applyNpcAnimationPatchesForPass(map, false, drawCall, drawRangesPacked);
-
-            this.draw(drawCall, drawRangesPacked);
         }
-    }
-
-    renderTransparentPass(): void {
-        const cameraMapX = this.camera.getMapX();
-        const cameraMapY = this.camera.getMapY();
-
-        for (let i = this.visibleMapCount - 1; i >= 0; i--) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.stats.frameCount)) {
-                continue;
-            }
-
-            const dist = map.getMapDistance(cameraMapX, cameraMapY);
-
-            const isInteract = this.hoveredMapIds.has(map.id);
-            const isLod = dist >= this.lodDistance;
-
-            const { drawCall, drawRangesPacked } = map.getDrawCall(true, isInteract, isLod);
-            this.applyLocAnimationPatchesForPass(
-                map,
-                true,
-                isInteract,
-                isLod,
-                drawCall,
-                drawRangesPacked,
-            );
-
-            this.draw(drawCall, drawRangesPacked);
-        }
-    }
-
-    renderTransparentNpcPass(
-        npcDataTextureIndex: number,
-        npcDataTexture: Texture | undefined,
-    ): void {
-        if (!npcDataTexture || !this.loadNpcs) {
-            return;
-        }
-
-        for (let i = this.visibleMapCount - 1; i >= 0; i--) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.stats.frameCount)) {
-                continue;
-            }
-
-            const npcs = map.npcs;
-
-            if (npcs.length === 0) {
-                continue;
-            }
-
-            const dataOffset = map.npcDataTextureOffsets[npcDataTextureIndex];
-            if (dataOffset === -1) {
-                continue;
-            }
-
-            const { drawCall, drawRangesPacked } = map.drawCallNpc;
-
-            drawCall.uniform("u_npcDataOffset", dataOffset);
-            drawCall.texture("u_npcDataTexture", npcDataTexture);
-            this.applyNpcAnimationPatchesForPass(map, true, drawCall, drawRangesPacked);
-
-            this.draw(drawCall, drawRangesPacked);
-        }
-    }
-
-    checkInteractions(
-        interactReady: boolean,
-        interactBuffer: Float32Array,
-        closestInteractIndices: Map<number, number[]>,
-    ): void {}
-
-    prepareInteractions(interactions: Interactions): void {
-        const interactReady = interactions.check(
-            this.gl,
-            this.hoveredMapIds,
-            this.closestInteractIndices,
-        );
-        if (interactReady) {
-            this.interactBuffer = interactions.interactBuffer;
-        }
-
-        if (!this.interactBuffer) {
-            return;
-        }
-
-        this.checkInteractions(interactReady, this.interactBuffer, this.closestInteractIndices);
+        return out;
     }
 
     async cleanUp(): Promise<void> {
-        resetDrawRangePatchBackend();
-        this.drawRangePatchWasmReady = false;
-        this.drawRangePatchWasmInitPromise = undefined;
+        this.geometry.dispose();
+        this.npcDataTextureRing.dispose();
+        this.interactions.reset();
+        await this.programs.dispose();
 
         this.quadArray?.delete();
         this.quadArray = undefined;
@@ -1445,53 +506,11 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.sceneUniformBuffer?.delete();
         this.sceneUniformBuffer = undefined;
 
-        // Framebuffers
-        this.framebuffer?.delete();
-        this.framebuffer = undefined;
+        this.renderTargets.dispose();
 
-        this.colorTarget?.delete();
-        this.colorTarget = undefined;
-
-        this.interactTarget?.delete();
-        this.interactTarget = undefined;
-
-        this.depthTarget?.delete();
-        this.depthTarget = undefined;
-
-        this.textureFramebuffer?.delete();
-        this.textureFramebuffer = undefined;
-
-        this.textureColorTarget?.delete();
-        this.textureColorTarget = undefined;
-
-        this.interactFramebuffer?.delete();
-        this.interactFramebuffer = undefined;
-
-        this.interactColorTarget?.delete();
-        this.interactColorTarget = undefined;
-
-        // Textures
-        this.textureArray?.delete();
-        this.textureArray = undefined;
-
-        this.textureMaterials?.delete();
-        this.textureMaterials = undefined;
-
-        this.textureSlotLut?.delete();
-        this.textureSlotLut = undefined;
-
-        for (const texture of this.npcDataTextureBuffer) {
-            texture?.delete();
-        }
+        this.textures.dispose();
 
         this.clearMaps();
-
-        if (this.shadersPromise) {
-            for (const shader of await this.shadersPromise) {
-                shader.delete();
-            }
-            this.shadersPromise = undefined;
-        }
         console.log("Renderer cleaned up");
     }
 }

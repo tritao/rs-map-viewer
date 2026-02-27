@@ -1,4 +1,3 @@
-import { ProgramSource, prependDefines } from "./ShaderUtil";
 import frameFxaaFragShader from "./frame-fxaa.frag.glsl";
 import frameFxaaVertShader from "./frame-fxaa.vert.glsl";
 import frameFragShader from "./frame.frag.glsl";
@@ -6,6 +5,18 @@ import frameVertShader from "./frame.vert.glsl";
 import mainFragShader from "./main.frag.glsl";
 import mainVertShader from "./main.vert.glsl";
 import npcVertShader from "./npc.vert.glsl";
+
+export type ProgramSource = [string, string];
+
+function prependDefines(source: string, defines: string[]): string {
+    const header = "#version 300 es";
+
+    const newHeader = defines.reduce((acc, define) => {
+        return acc + "#define " + define + " 1\n";
+    }, header + "\n");
+
+    return source.replace(header, newHeader);
+}
 
 export function createProgram(
     vertShader: string,

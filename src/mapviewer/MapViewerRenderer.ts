@@ -1,17 +1,18 @@
-import { Schema } from "leva/dist/declarations/src/types";
-
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import { Camera } from "../renderer/Camera";
 import { InteractType } from "../renderer/InteractType";
-import { INTERACTION_RADIUS } from "../renderer/Interactions";
+import { INTERACTION_RADIUS } from "../renderer/interaction/InteractionState";
 import { MapManager, MapSquareInfo } from "../renderer/MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
-import { TickController } from "../renderer/TickController";
+import { SdMapData } from "../renderer/loader/SdMapData";
+import { TickController } from "../sim/tick/TickController";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
-import { LOC_CYCLE_SCALE, WebGLRenderable } from "../renderer/webgl/WebGLRenderable";
+import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
+import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
 import { MenuTargetType } from "../rs/MenuEntry";
+import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { isTouchDevice } from "../util/DeviceUtil";
@@ -20,6 +21,7 @@ import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewer } from "./MapViewer";
 import type { MapViewerRuntimeOptions } from "./MapViewer";
+import { SimWorld } from "./SimWorld";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -34,6 +36,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     tickController: TickController;
     private lastRuntimeOptions: MapViewerRuntimeOptions | undefined;
+    private readonly simWorld = new SimWorld();
+    private readonly sdMapDataLoader = new SdMapDataLoader();
 
     // State
     lastClientTick: number = 0;
@@ -49,15 +53,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.pathfinder = mapViewer.pathfinder;
         this.renderer = new WebGLMapRenderer(
             mapViewer.session,
-            this.workerPool,
-            this.inputManager,
             mapViewer.renderDistance,
             mapViewer.unloadDistance,
             mapViewer.lodDistance,
             this.camera,
+            this.checkInteractions.bind(this),
         );
         this.tickController = new TickController(
-            this.renderer instanceof WebGLMapRenderer ? this.renderer : undefined,
+            this.renderer.getTickControllerRenderer(),
         );
         this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
@@ -68,10 +71,35 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
     }
 
+    private async loadSdMapData(mapX: number, mapY: number): Promise<SdMapData | undefined> {
+        const r = this.renderer;
+        const input: SdMapLoaderInput = {
+            mapX,
+            mapY,
+            maxLevel: r.maxLevel,
+            loadObjs: r.loadObjs,
+            loadNpcs: r.loadNpcs,
+            loadLocs: r.loadLocs,
+            smoothTerrain: r.smoothTerrain,
+            minimizeDrawCalls: !r.hasMultiDraw,
+            loadedTextureIds: r.loadedTextureIds,
+        };
+        return await this.workerPool.queueLoad<
+            SdMapLoaderInput,
+            SdMapData | undefined,
+            SdMapDataLoader
+        >(this.sdMapDataLoader, input);
+    }
+
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
-        const mapData = await this.renderer.loadMapData(mapX, mapY);
+        const mapData = await this.loadSdMapData(mapX, mapY);
         if (mapData) {
             if (this.renderer.isValidMapData(mapData)) {
+                const sdMapData = mapData as unknown as SdMapData;
+                const mapId = getMapSquareId(sdMapData.mapX, sdMapData.mapY);
+                // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
+                this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
+
                 this.mapManager.addMap(mapX, mapY);
                 this.renderer.addMap(mapData);
 
@@ -115,6 +143,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.tickController.onRenderableRemoved(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
+        this.simWorld.onMapUnloaded(mapInfo.mapId);
     }
 
     override async init() {
@@ -159,21 +188,20 @@ export class MapViewerRenderer extends RendererMainLoop {
         const wasRunning = this.pauseLoop();
 
         try {
-            await Promise.resolve(this.renderer.cleanUp());
+            await this.renderer.cleanUp();
             this.mapManager.cleanUp();
             this.tickController.reset();
 
             this.renderer = new WebGLMapRenderer(
                 this.mapViewer.session,
-                this.workerPool,
-                this.inputManager,
                 this.mapViewer.renderDistance,
                 this.mapViewer.unloadDistance,
                 this.mapViewer.lodDistance,
                 this.camera,
+                this.checkInteractions.bind(this),
             );
             this.tickController = new TickController(
-                this.renderer instanceof WebGLMapRenderer ? this.renderer : undefined,
+                this.renderer.getTickControllerRenderer(),
             );
             this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
             this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
@@ -195,7 +223,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     override async cleanUp(): Promise<void> {
-        super.cleanUp();
+        await super.cleanUp();
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
         this.tickController.reset();
@@ -222,6 +250,12 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderer.visibleMapCount = this.mapManager.visibleMapCount;
         this.renderer.visibleMaps = this.mapManager.visibleMaps;
 
+        this.renderer.getInteractionControllerRenderer()?.setInteractionInput({
+                pointerLocked: this.inputManager.isPointerLock(),
+                mouseX: this.inputManager.mouseX,
+                mouseY: this.inputManager.mouseY,
+            });
+
         const timeSec = time / 1000;
 
         const tick = Math.floor(timeSec / 0.6);
@@ -243,7 +277,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
-        const cycleNowFixed = Math.round(cycle * LOC_CYCLE_SCALE) | 0;
 
         const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
         const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
@@ -259,19 +292,19 @@ export class MapViewerRenderer extends RendererMainLoop {
             if (!map || !map.canRender(this.renderer.stats.frameCount)) {
                 continue;
             }
-            const renderable = map instanceof WebGLRenderable ? map : undefined;
-
-            for (let t = 0; t < ticksElapsed; t++) {
-                for (const npc of map.npcs) {
-                    npc.updateServerMovement(this.pathfinder, map.borderSize, map.collisionMaps);
-                }
-            }
-            if (renderable) {
+            this.simWorld.tickNpcMovement(
+                mapInfo.mapId,
+                this.pathfinder,
+                map.borderSize,
+                map.npcs,
+                ticksElapsed,
+            );
+            const tickCap = map.getTickCapability?.();
+            if (tickCap) {
                 this.tickController.tickRenderable(
-                    renderable,
+                    tickCap,
                     mapInfo,
                     cycle,
-                    cycleNowFixed,
                     clientTicksElapsed,
                     seqTypeLoader,
                     seqFrameLoader,

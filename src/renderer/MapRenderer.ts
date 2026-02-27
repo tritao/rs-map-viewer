@@ -1,24 +1,15 @@
 import Denque from "denque";
 import { vec4 } from "gl-matrix";
-import { folder } from "leva";
-import { Schema } from "leva/dist/declarations/src/types";
 
-import { CollisionMap } from "../rs/scene/CollisionMap";
 import { Scene } from "../rs/scene/Scene";
 import { LoadedCache } from "../util/Caches";
 import { MapSquareInfo } from "./MapManager";
-import { FrameStats, Renderer } from "./Renderer";
+import { FrameStats, Renderer, RendererStats } from "./Renderer";
 import { MapData } from "./loader/MapData";
 import { LocAnimated } from "./loc/LocAnimated";
 import { Npc } from "./npc/Npc";
-import { RendererStats } from "./webgl/RendererStats";
-import { WebGLRenderable } from "./webgl/WebGLRenderable";
-
-interface ColorRgb {
-    r: number;
-    g: number;
-    b: number;
-}
+import type { InteractionControllerRenderer } from "./interaction/InteractionState";
+import type { TickCapability, TickControllerRenderer } from "./patch/TickCapability";
 
 export enum TextureFilterMode {
     DISABLED,
@@ -52,13 +43,14 @@ export interface MapSquareRenderable {
     readonly mapY: number;
     readonly borderSize: number;
 
-    readonly collisionMaps: CollisionMap[];
-
     // Animated locs
     readonly locsAnimated: LocAnimated[];
 
     // Npcs
     readonly npcs: Npc[];
+
+    // Optional capability: tick backend can drive animation patches for this renderable.
+    getTickCapability?(): TickCapability | undefined;
 
     canRender(frameCount: number): boolean;
     delete(): void;
@@ -127,7 +119,7 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     abstract initCache(): void;
 
-    abstract cleanUp(): void;
+    abstract cleanUp(): Promise<void>;
 
     abstract render(time: number, deltaTime: number, resized: boolean): void;
 
@@ -138,6 +130,16 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     // Maps
     getMap(mapId: number): MapSquareRenderable | undefined {
         return this.loadedMaps.get(mapId);
+    }
+
+    // Optional capability: renderer instance can be used as the tick backend readiness source.
+    getTickControllerRenderer(): TickControllerRenderer | undefined {
+        return undefined;
+    }
+
+    // Optional capability: renderer instance can accept interaction input events.
+    getInteractionControllerRenderer(): InteractionControllerRenderer | undefined {
+        return undefined;
     }
 
     addMap(mapData: U): void {
@@ -156,9 +158,6 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
         this.mapsToLoad.clear();
     }
 
-    // Maps data
-    abstract loadMapData(mapX: number, mapY: number): Promise<U | undefined>;
-
     isValidMapData(mapData: U): boolean {
         return (
             mapData.cacheName === this.cache.info.name &&
@@ -169,130 +168,8 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
         );
     }
 
-    abstract addNpcRenderData(map: WebGLRenderable): void;
-
     // Textures
     abstract updateTextureFiltering(): void;
-
-    getControls(): Schema {
-        return {
-            "Max Level": {
-                value: this.maxLevel,
-                min: 0,
-                max: 3,
-                step: 1,
-                onChange: (v: number) => {
-                    this.setMaxLevel(v);
-                },
-            },
-            Sky: {
-                r: this.skyColor[0] * 255,
-                g: this.skyColor[1] * 255,
-                b: this.skyColor[2] * 255,
-                onChange: (v: ColorRgb) => {
-                    this.setSkyColor(v.r, v.g, v.b);
-                },
-            },
-            "Fog Depth": {
-                value: this.fogDepth,
-                min: 0,
-                max: 256,
-                step: 8,
-                onChange: (v: number) => {
-                    this.fogDepth = v;
-                },
-            },
-            Brightness: {
-                value: 1,
-                min: 0,
-                max: 4,
-                step: 1,
-                onChange: (v: number) => {
-                    this.brightness = 1.0 - v * 0.1;
-                },
-            },
-            "Color Banding": {
-                value: 50,
-                min: 0,
-                max: 100,
-                step: 1,
-                onChange: (v: number) => {
-                    this.colorBanding = 255 - v * 2;
-                },
-            },
-            "Texture Filtering": {
-                value: this.textureFilterMode,
-                options: {
-                    Disabled: TextureFilterMode.DISABLED,
-                    Bilinear: TextureFilterMode.BILINEAR,
-                    Trilinear: TextureFilterMode.TRILINEAR,
-                    "Anisotropic 2x": TextureFilterMode.ANISOTROPIC_2X,
-                    "Anisotropic 4x": TextureFilterMode.ANISOTROPIC_4X,
-                    "Anisotropic 8x": TextureFilterMode.ANISOTROPIC_8X,
-                    "Anisotropic 16x": TextureFilterMode.ANISOTROPIC_16X,
-                },
-                onChange: (v: TextureFilterMode) => {
-                    if (v === this.textureFilterMode) {
-                        return;
-                    }
-                    this.textureFilterMode = v;
-                    this.updateTextureFiltering();
-                },
-            },
-            "Smooth Terrain": {
-                value: this.smoothTerrain,
-                onChange: (v: boolean) => {
-                    this.setSmoothTerrain(v);
-                },
-            },
-            "Cull Back-faces": {
-                value: this.cullBackFace,
-                onChange: (v: boolean) => {
-                    this.cullBackFace = v;
-                },
-            },
-            "Anti-Aliasing": folder(
-                {
-                    MSAA: {
-                        value: this.msaaEnabled,
-                        onChange: (v: boolean) => {
-                            this.setMsaa(v);
-                        },
-                    },
-                    FXAA: {
-                        value: this.fxaaEnabled,
-                        onChange: (v: boolean) => {
-                            this.setFxaa(v);
-                        },
-                    },
-                },
-                { collapsed: true },
-            ),
-            Entity: folder(
-                {
-                    Items: {
-                        value: this.loadObjs,
-                        onChange: (v: boolean) => {
-                            this.setLoadObjs(v);
-                        },
-                    },
-                    Npcs: {
-                        value: this.loadNpcs,
-                        onChange: (v: boolean) => {
-                            this.setLoadNpcs(v);
-                        },
-                    },
-                    Locs: {
-                        value: this.loadLocs,
-                        onChange: (v: boolean) => {
-                            this.setLoadLocs(v);
-                        },
-                    },
-                },
-                { collapsed: true },
-            ),
-        };
-    }
 
     setMaxLevel(maxLevel: number): void {
         const updated = this.maxLevel !== maxLevel;

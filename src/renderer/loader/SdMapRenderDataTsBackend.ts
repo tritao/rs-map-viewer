@@ -54,9 +54,55 @@ import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
-import { addNpcAnimationFrames } from "./SdRenderableDataLoader";
 import { createSdTexturePacking } from "./SdTexturePacking";
 import type { BackendKind } from "../../util/BackendKind";
+
+function addNpcAnimationFrames(
+    npcModelLoader: NpcModelLoader,
+    seqTypeLoader: SeqTypeLoader,
+    sceneBuf: SceneBuffer,
+    npcType: NpcType,
+    seqId: number,
+): AnimationFrames | undefined {
+    const seqResult = seqTypeLoader.tryLoad(seqId);
+    if (!seqResult.ok) {
+        return undefined;
+    }
+    const seqType = seqResult.value;
+    let frameCount: number;
+    if (seqType.hasAnimMayaSeq()) {
+        frameCount = seqType.getAnimMayaDuration();
+    } else {
+        if (!seqType.frameIds) {
+            return undefined;
+        }
+        frameCount = seqType.frameIds.length;
+    }
+    if (frameCount === 0) {
+        return undefined;
+    }
+    const frames = new Array<DrawRange>(frameCount);
+    const framesAlpha = new Array<DrawRange>(frameCount);
+    let alphaFrameCount = 0;
+    for (let i = 0; i < frameCount; i++) {
+        const model = npcModelLoader.getModel(npcType, seqId, i);
+        if (model) {
+            frames[i] = sceneBuf.addModelAnimFrame(model, false);
+            framesAlpha[i] = sceneBuf.addModelAnimFrame(model, true);
+            if (framesAlpha[i][1] > 0) {
+                alphaFrameCount++;
+            }
+        } else {
+            frames[i] = NULL_DRAW_RANGE;
+            framesAlpha[i] = NULL_DRAW_RANGE;
+        }
+    }
+
+    return {
+        frames,
+        framesAlpha: alphaFrameCount > 0 ? framesAlpha : undefined,
+    };
+}
 
 export type SdMapRenderDataTsBackendDeps = Readonly<{
     session: CacheSession;

@@ -5,6 +5,7 @@ import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useState } from "react";
 
 import { CameraView, ProjectionType } from "../renderer/Camera";
+import { MapRenderer, TextureFilterMode } from "../renderer/MapRenderer";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
 import type { BackendKind } from "../util/BackendKind";
@@ -15,6 +16,154 @@ interface MapViewerControlsProps {
     renderer: MapViewerRenderer;
     hideUi: boolean;
     setHideUi: (hideUi: boolean | ((hideUi: boolean) => boolean)) => void;
+}
+
+type ColorRgb = { r: number; g: number; b: number };
+
+function createRendererControls(renderer: MapRenderer<any, any>): Schema {
+    const base: Schema = {
+        "Max Level": {
+            value: renderer.maxLevel,
+            min: 0,
+            max: 3,
+            step: 1,
+            onChange: (v: number) => {
+                renderer.setMaxLevel(v);
+            },
+        },
+        Sky: {
+            r: renderer.skyColor[0] * 255,
+            g: renderer.skyColor[1] * 255,
+            b: renderer.skyColor[2] * 255,
+            onChange: (v: ColorRgb) => {
+                renderer.setSkyColor(v.r, v.g, v.b);
+            },
+        },
+        "Fog Depth": {
+            value: renderer.fogDepth,
+            min: 0,
+            max: 256,
+            step: 8,
+            onChange: (v: number) => {
+                renderer.fogDepth = v;
+            },
+        },
+        Brightness: {
+            value: 1,
+            min: 0,
+            max: 4,
+            step: 1,
+            onChange: (v: number) => {
+                renderer.brightness = 1.0 - v * 0.1;
+            },
+        },
+        "Color Banding": {
+            value: 50,
+            min: 0,
+            max: 100,
+            step: 1,
+            onChange: (v: number) => {
+                renderer.colorBanding = 255 - v * 2;
+            },
+        },
+        "Texture Filtering": {
+            value: renderer.textureFilterMode,
+            options: {
+                Disabled: TextureFilterMode.DISABLED,
+                Bilinear: TextureFilterMode.BILINEAR,
+                Trilinear: TextureFilterMode.TRILINEAR,
+                "Anisotropic 2x": TextureFilterMode.ANISOTROPIC_2X,
+                "Anisotropic 4x": TextureFilterMode.ANISOTROPIC_4X,
+                "Anisotropic 8x": TextureFilterMode.ANISOTROPIC_8X,
+                "Anisotropic 16x": TextureFilterMode.ANISOTROPIC_16X,
+            },
+            onChange: (v: TextureFilterMode) => {
+                if (v === renderer.textureFilterMode) {
+                    return;
+                }
+                renderer.textureFilterMode = v;
+                renderer.updateTextureFiltering();
+            },
+        },
+        "Smooth Terrain": {
+            value: renderer.smoothTerrain,
+            onChange: (v: boolean) => {
+                renderer.setSmoothTerrain(v);
+            },
+        },
+        "Cull Back-faces": {
+            value: renderer.cullBackFace,
+            onChange: (v: boolean) => {
+                renderer.cullBackFace = v;
+            },
+        },
+        "Anti-Aliasing": folder(
+            {
+                MSAA: {
+                    value: renderer.msaaEnabled,
+                    onChange: (v: boolean) => {
+                        renderer.setMsaa(v);
+                    },
+                },
+                FXAA: {
+                    value: renderer.fxaaEnabled,
+                    onChange: (v: boolean) => {
+                        renderer.setFxaa(v);
+                    },
+                },
+            },
+            { collapsed: true },
+        ),
+        Entity: folder(
+            {
+                Items: {
+                    value: renderer.loadObjs,
+                    onChange: (v: boolean) => {
+                        renderer.setLoadObjs(v);
+                    },
+                },
+                Npcs: {
+                    value: renderer.loadNpcs,
+                    onChange: (v: boolean) => {
+                        renderer.setLoadNpcs(v);
+                    },
+                },
+                Locs: {
+                    value: renderer.loadLocs,
+                    onChange: (v: boolean) => {
+                        renderer.setLoadLocs(v);
+                    },
+                },
+            },
+            { collapsed: true },
+        ),
+    };
+
+    // Optional debug controls for WebGL renderer without importing WebGL classes here.
+    const rAny = renderer as any;
+    if (typeof rAny.logTextureDebugStats === "function" || "debugTextureMode" in rAny) {
+        base.Debug = folder(
+            {
+                "Texture Debug": {
+                    value: typeof rAny.debugTextureMode === "number" ? rAny.debugTextureMode : 0,
+                    options: {
+                        Off: 0,
+                        "Missing Magenta": 1,
+                        "Raw Texture": 2,
+                    },
+                    onChange: (v: number) => {
+                        rAny.debugTextureMode = v;
+                    },
+                },
+                ...(typeof rAny.logTextureDebugStats === "function"
+                    ? { "Log Texture Stats": button(() => rAny.logTextureDebugStats()) }
+                    : {}),
+            },
+            { collapsed: true },
+        );
+    }
+
+    return base;
 }
 
 enum VarType {
@@ -338,7 +487,7 @@ export const MapViewerControls = memo(
                                 rendererMainLoop.fpsLimit = v;
                             },
                         },
-                        ...rendererMainLoop.renderer.getControls(),
+                        ...createRendererControls(rendererMainLoop.renderer),
                     },
                     { collapsed: true },
                 ),

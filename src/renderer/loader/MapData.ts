@@ -1,5 +1,3 @@
-import { CollisionData } from "../../rs/scene/CollisionMap";
-
 export interface MapData {
     mapX: number;
     mapY: number;
