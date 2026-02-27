@@ -16,9 +16,17 @@
 namespace rs {
 namespace scb {
 
-// Bridge-encoded classic SeqFrame bytes (see src/wasm/rs_map_render_backend_bridge.mjs:encodeSeqFrameBytes).
-// This is used to drive precomputed animated-loc frame geometry in C++ without requiring raw cache bytes.
-static Status decodeBridgeSeqFrameBytes(
+static Status tryDecodeSeqBaseFromBlob(
+    const SceneCommandBuildInput& input,
+    i32 baseId,
+    SeqBase* outBase,
+    Allocator& alloc) noexcept;
+
+// SeqFrame bytes decode used by the runtime map-render path.
+// Accepted formats:
+// - Dat2 raw SeqFrame bytes (decoded using SeqBase bytes from input.seqBase*)
+static Status decodeRuntimeSeqFrameBytes(
+    const SceneCommandBuildInput& input,
     Span<const u8> data,
     SeqBase* outBase,
     SeqFrame* outFrame,
@@ -28,111 +36,33 @@ static Status decodeBridgeSeqFrameBytes(
     }
     *outBase = SeqBase(-1, alloc);
     *outFrame = SeqFrame(alloc);
-    if (data.size() < 4 + 1 + 1 + 2 + 2) {
-        return Status::BadFormat;
-    }
-    const u8* p = data.data();
-    const u8* end = data.data() + data.size();
-    auto need = [&](std::size_t n) noexcept -> bool { return static_cast<std::size_t>(end - p) >= n; };
-    auto readU8 = [&]() noexcept -> u8 { return *p++; };
-    auto readU16LE = [&]() noexcept -> u16 {
-        const u16 lo = static_cast<u16>(p[0]);
-        const u16 hi = static_cast<u16>(p[1]) << 8;
-        p += 2;
-        return static_cast<u16>(lo | hi);
-    };
-    auto readI16LE = [&]() noexcept -> i16 { return static_cast<i16>(readU16LE()); };
+    CacheInfo cacheInfo{};
+    cacheInfo.game = static_cast<GameType>(input.cacheGame);
+    cacheInfo.revision = input.cacheRevision;
 
-    if (!need(4)) return Status::Truncated;
-    const u8 m0 = readU8();
-    const u8 m1 = readU8();
-    const u8 m2 = readU8();
-    const u8 m3 = readU8();
-    if (!(m0 == 0x52 && m1 == 0x53 && m2 == 0x51 && m3 == 0x46)) { // "RSQF"
-        return Status::BadFormat;
+    Uint8ArrayReader reader(data, 0);
+    if (cacheInfo.game == GameType::Runescape && cacheInfo.revision >= 610) {
+        u8 ignored = 0;
+        Status s = reader.readUnsignedByte(&ignored);
+        if (!ok(s)) return s;
     }
-    if (!need(2)) return Status::Truncated;
-    const u8 version = readU8();
-    if (version != 1) {
-        return Status::BadFormat;
-    }
-    const u8 flags = readU8();
+    u16 baseIdU16 = 0;
+    Status s = reader.readUnsignedShort(&baseIdU16);
+    if (!ok(s)) return s;
+    const i32 baseId = static_cast<i32>(baseIdU16);
+    if (baseId < 0) return Status::BadFormat;
 
-    if (!need(2)) return Status::Truncated;
-    const u16 baseCountU16 = readU16LE();
-    const i32 baseCount = static_cast<i32>(baseCountU16);
-    if (baseCount <= 0) {
-        return Status::BadFormat;
-    }
-    if (!need(static_cast<std::size_t>(baseCount))) return Status::Truncated;
+    s = tryDecodeSeqBaseFromBlob(input, baseId, outBase, alloc);
+    if (!ok(s)) return s;
 
-    SeqBase base(-1, alloc);
-    base.count = baseCount;
-    auto rr = base.types.resize(static_cast<std::size_t>(baseCount));
-    if (!rr.isOk()) return rr.status();
-    rr = base.transformActor.resize(static_cast<std::size_t>(baseCount));
-    if (!rr.isOk()) return rr.status();
-    rr = base.masks.resize(static_cast<std::size_t>(baseCount));
-    if (!rr.isOk()) return rr.status();
-    rr = base.labels.resize(static_cast<std::size_t>(baseCount));
-    if (!rr.isOk()) return rr.status();
-    for (i32 i = 0; i < baseCount; i++) {
-        base.types[static_cast<std::size_t>(i)] = static_cast<SeqTransformType>(static_cast<i32>(readU8()));
-        base.transformActor[static_cast<std::size_t>(i)] = 1;
-        base.masks[static_cast<std::size_t>(i)] = -1;
-    }
-    for (i32 i = 0; i < baseCount; i++) {
-        if (!need(1)) return Status::Truncated;
-        const u8 labelCountU8 = readU8();
-        Vec<i32> labels(alloc);
-        rr = labels.resize(static_cast<std::size_t>(labelCountU8));
-        if (!rr.isOk()) return rr.status();
-        if (!need(static_cast<std::size_t>(labelCountU8))) return Status::Truncated;
-        for (std::size_t j = 0; j < labels.size(); j++) {
-            labels[j] = static_cast<i32>(readU8());
-        }
-        base.labels[static_cast<std::size_t>(i)] = rs::move(labels);
-    }
-
-    if (!need(2)) return Status::Truncated;
-    const u16 transformCountU16 = readU16LE();
-    const i32 transformCount = static_cast<i32>(transformCountU16);
-    if (transformCount < 0) return Status::BadFormat;
-    const std::size_t expectedBytesPerTransform = 2 + 2 + 2 + 2 + 2;
-    if (!need(static_cast<std::size_t>(transformCount) * expectedBytesPerTransform)) {
-        return Status::Truncated;
-    }
-
-    SeqFrame frame(alloc);
-    frame.baseId = -1;
-    frame.frameLength = 0;
-    frame.transformCount = transformCount;
-    frame.hasAlphaTransform = (flags & 1u) != 0;
-    frame.hasColorTransform = (flags & 2u) != 0;
-
-    rr = frame.transformGroups.resize(static_cast<std::size_t>(transformCount));
-    if (!rr.isOk()) return rr.status();
-    rr = frame.transformX.resize(static_cast<std::size_t>(transformCount));
-    if (!rr.isOk()) return rr.status();
-    rr = frame.transformY.resize(static_cast<std::size_t>(transformCount));
-    if (!rr.isOk()) return rr.status();
-    rr = frame.transformZ.resize(static_cast<std::size_t>(transformCount));
-    if (!rr.isOk()) return rr.status();
-    rr = frame.resetOriginGroups.resize(static_cast<std::size_t>(transformCount));
-    if (!rr.isOk()) return rr.status();
-
-    for (i32 i = 0; i < transformCount; i++) {
-        const std::size_t ii = static_cast<std::size_t>(i);
-        frame.transformGroups[ii] = static_cast<i32>(readU16LE());
-        frame.transformX[ii] = static_cast<i32>(readI16LE());
-        frame.transformY[ii] = static_cast<i32>(readI16LE());
-        frame.transformZ[ii] = static_cast<i32>(readI16LE());
-        frame.resetOriginGroups[ii] = static_cast<i32>(readI16LE());
-    }
-
-    *outBase = rs::move(base);
-    *outFrame = rs::move(frame);
-    return Status::Ok;
+    static SeqFrameDecodeScratch scratch(defaultAllocator());
+    return decodeDat2SeqFrameWithBase(
+        cacheInfo,
+        *outBase,
+        data,
+        &scratch,
+        alloc,
+        outFrame);
 }
 
 static inline i32 animCosQ16(i32 angle) noexcept {
@@ -471,57 +401,62 @@ static Status tryDecodeBridgeSeqFrameFromBlob(
     if (frameId < 0) {
         return Status::NotFound;
     }
-    const i32 blobIdx = findTypeBlobIndex(input.seqFrameIds, frameId);
-    if (blobIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 6, frameId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.tryLoadDatSeqFrame) {
+            return input.tryLoadDatSeqFrame(
+                input.datSeqFrameCtx,
+                frameId,
+                outBase,
+                outFrame,
+                alloc);
+        }
+        if (input.tryLoadLegacySeqFrame) {
+            return input.tryLoadLegacySeqFrame(
+                input.legacySeqFrameCtx,
+                frameId,
+                outBase,
+                outFrame,
+                alloc);
+        }
         return Status::NotFound;
     }
-    if (blobIdx >= static_cast<i32>(input.seqFrameOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.seqFrameLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.seqFrameOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.seqFrameLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.seqFrameBytes.size()) ||
-        len > static_cast<i32>(input.seqFrameBytes.size()) - off) {
-        return Status::OutOfRange;
-    }
-    return decodeBridgeSeqFrameBytes(
-        input.seqFrameBytes.subspan(static_cast<std::size_t>(off), static_cast<std::size_t>(len)),
+    Status decodeStatus = decodeRuntimeSeqFrameBytes(
+        input,
+        bytes,
         outBase,
         outFrame,
         alloc);
-}
-
-static Status tryGetTypeBlobBytesSpan(
-    Span<const i32> ids,
-    Span<const i32> offsets,
-    Span<const i32> lengths,
-    Span<const u8> bytes,
-    i32 id,
-    Span<const u8>* out) noexcept {
-    if (!out) return Status::InvalidArgument;
-    *out = Span<const u8>();
-    if (id < 0) return Status::NotFound;
-    const i32 blobIdx = findTypeBlobIndex(ids, id);
-    if (blobIdx < 0) return Status::NotFound;
-    if (blobIdx >= static_cast<i32>(offsets.size()) ||
-        blobIdx >= static_cast<i32>(lengths.size())) {
-        return Status::SizeMismatch;
+    if (ok(decodeStatus)) {
+        return decodeStatus;
     }
-    const i32 off = offsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
+    // Keep runtime behavior aligned with TS loader semantics: when a frame id is
+    // present in uploaded per-frame blobs but bytes are not decodable in this
+    // path (legacy/dat differences), try runtime callbacks before hard-failing.
+    if (input.tryLoadDatSeqFrame) {
+        const Status fallback = input.tryLoadDatSeqFrame(
+            input.datSeqFrameCtx,
+            frameId,
+            outBase,
+            outFrame,
+            alloc);
+        if (ok(fallback)) {
+            return fallback;
+        }
     }
-    if (off > static_cast<i32>(bytes.size()) ||
-        len > static_cast<i32>(bytes.size()) - off) {
-        return Status::OutOfRange;
+    if (input.tryLoadLegacySeqFrame) {
+        const Status fallback = input.tryLoadLegacySeqFrame(
+            input.legacySeqFrameCtx,
+            frameId,
+            outBase,
+            outFrame,
+            alloc);
+        if (ok(fallback)) {
+            return fallback;
+        }
     }
-    *out = bytes.subspan(static_cast<std::size_t>(off), static_cast<std::size_t>(len));
-    return Status::Ok;
+    return decodeStatus;
 }
 
 static Status tryDecodeSeqBaseFromBlob(
@@ -531,15 +466,9 @@ static Status tryDecodeSeqBaseFromBlob(
     Allocator& alloc) noexcept {
     if (!outBase) return Status::InvalidArgument;
     *outBase = SeqBase(-1, alloc);
-    Span<const u8> data;
-    Status s = tryGetTypeBlobBytesSpan(
-        input.seqBaseIds,
-        input.seqBaseOffsets,
-        input.seqBaseLengths,
-        input.seqBaseBytes,
-        baseId,
-        &data);
-    if (!ok(s)) return s;
+    Span<const u8> data{};
+    Status s = tryGetTypeEntryBytesSpan(input, 15, baseId, &data);
+    if (!ok(s) || data.size() <= 0) return ok(s) ? Status::NotFound : s;
     CacheInfo cacheInfo{};
     cacheInfo.game = static_cast<GameType>(input.cacheGame);
     cacheInfo.revision = input.cacheRevision;
@@ -556,15 +485,9 @@ static Status tryDecodeSkeletalSeqFromBlob(
     *outSeq = SkeletalSeq(alloc);
     *outBase = SeqBase(-1, alloc);
 
-    Span<const u8> data;
-    Status s = tryGetTypeBlobBytesSpan(
-        input.skeletalSeqIds,
-        input.skeletalSeqOffsets,
-        input.skeletalSeqLengths,
-        input.skeletalSeqBytes,
-        skeletalSeqId,
-        &data);
-    if (!ok(s)) return s;
+    Span<const u8> data{};
+    Status s = tryGetTypeEntryBytesSpan(input, 16, skeletalSeqId, &data);
+    if (!ok(s) || data.size() <= 0) return ok(s) ? Status::NotFound : s;
     if (data.size() < 3) return Status::BadFormat;
 
     // Dat2 skeletal seq header: u8 version, u16 baseId (big-endian).
@@ -5060,23 +4983,39 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
     for (std::size_t gi = 0; gi < groups.size(); gi++) {
         const LocAnimatedGroupPlan& g = groups[gi];
         bool groupHasAlpha = false;
+        bool seqHintHasAlpha = false;
+        if (g.seqId >= 0 && tryGetSeqAlphaHintFromBlob(input, g.seqId, &seqHintHasAlpha) && seqHintHasAlpha) {
+            groupHasAlpha = true;
+        }
         if (g.seqId < 0 || g.locTypeId < 0) {
+            if (outGroupHasAlpha && groupHasAlpha) {
+                (*outGroupHasAlpha)[gi] = 1;
+            }
             continue;
         }
 
         const SeqType* seq = nullptr;
         const Status sqs = tryDecodeSeqTypeFromBlob(input, seqTypeCache, g.seqId, &seq, alloc);
         if (!ok(sqs) || !seq) {
+            if (outGroupHasAlpha && groupHasAlpha) {
+                (*outGroupHasAlpha)[gi] = 1;
+            }
             continue;
         }
 
         const LocType* locType = nullptr;
         const Status lts = tryDecodeLocTypeFromBlob(input, locTypeCache, g.locTypeId, &locType, alloc);
         if (!ok(lts) || !locType) {
+            if (outGroupHasAlpha && groupHasAlpha) {
+                (*outGroupHasAlpha)[gi] = 1;
+            }
             continue;
         }
 
         if (!collectLocTypeModelIdsForVariant(*locType, g.placementType, &modelIds) || modelIds.empty()) {
+            if (outGroupHasAlpha && groupHasAlpha) {
+                (*outGroupHasAlpha)[gi] = 1;
+            }
             continue;
         }
 
@@ -5229,6 +5168,11 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                         return gs;
                     }
                     *indexCount += generatedElements;
+                    if (transparentOnly && generatedElements > 0) {
+                        // TS `addModelAnimFrame(..., true)` treats any non-zero transparent frame
+                        // geometry as an alpha animation stream for placeholder buckets.
+                        groupHasAlpha = true;
+                    }
                 }
             }
             if (outGroupHasAlpha && groupHasAlpha) {
@@ -5373,12 +5317,28 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     return gs;
                 }
                 *indexCount += generatedElements;
+                if (transparentOnly && generatedElements > 0) {
+                    // TS `addModelAnimFrame(..., true)` treats any non-zero transparent frame
+                    // geometry as an alpha animation stream for placeholder buckets.
+                    groupHasAlpha = true;
+                }
             }
         }
         if (!groupHasAlpha) {
-            bool seqHintHasAlpha = false;
-            if (tryGetSeqAlphaHintFromBlob(input, g.seqId, &seqHintHasAlpha) && seqHintHasAlpha) {
-                groupHasAlpha = true;
+            // If emitted transparent geometry is absent, still mirror TS `framesAlpha` behavior by
+            // checking per-frame alpha transforms directly.
+            for (std::size_t fi = 0; fi < seq->frameIds.size(); fi++) {
+                const i32 frameId = seq->frameIds[fi];
+                SeqBase frameBase(-1, alloc);
+                SeqFrame frame(alloc);
+                const Status fs = tryDecodeBridgeSeqFrameFromBlob(input, frameId, &frameBase, &frame, alloc);
+                if (!ok(fs)) {
+                    continue;
+                }
+                if (frame.hasAlphaTransform) {
+                    groupHasAlpha = true;
+                    break;
+                }
             }
         }
         if (outGroupHasAlpha && groupHasAlpha) {
@@ -5498,8 +5458,9 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
                 continue;
             }
             if (gi < groupHasAlpha.size()) {
-                // TS parity: animated placeholder alpha is driven by emitted frame-alpha geometry.
-                entry.hasAlpha = groupHasAlpha[gi] != 0;
+                // Keep emitted-frame alpha as the primary signal, but preserve planned alpha hints
+                // as fallback when frame decoding/texture metadata is incomplete.
+                entry.hasAlpha = entry.hasAlpha || (groupHasAlpha[gi] != 0);
             }
             break;
         }

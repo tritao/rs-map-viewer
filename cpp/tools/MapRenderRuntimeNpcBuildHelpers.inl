@@ -15,7 +15,7 @@ struct DecodedVarBitTypeCacheEntry final {
 };
 
 static rs::Status tryDecodeNpcTypeFromBlobCached(
-    const MapRenderCachedTypeBlob& blob,
+    const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
     rs::StringArena* strings,
     rs::Allocator& alloc,
@@ -32,33 +32,21 @@ static rs::Status tryDecodeNpcTypeFromBlobCached(
             return rs::Status::Ok;
         }
     }
-    if (!blob.loaded) {
-        return rs::Status::NotFound;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, npcId);
-    if (blobIdx < 0) {
-        return rs::Status::NotFound;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return rs::Status::SizeMismatch;
-    }
-
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return rs::Status::NotFound;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return rs::Status::OutOfRange;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_NPC,
+        npcId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss;
     }
 
     DecodedNpcTypeCacheEntry entry{};
     entry.id = npcId;
     entry.type = rs::NpcType(npcId, cacheInfo);
     rs::Uint8ArrayReader reader(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     rs::TypeDecodeError err{};
     rs::TypeDecodeContext ctx{cacheInfo, strings, &alloc};
@@ -73,7 +61,7 @@ static rs::Status tryDecodeNpcTypeFromBlobCached(
 }
 
 static rs::Status tryDecodeVarBitTypeFromBlobCached(
-    const MapRenderCachedTypeBlob& blob,
+    const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
     const rs::i32 varbitId,
     std::vector<DecodedVarBitTypeCacheEntry>* cache,
@@ -88,33 +76,21 @@ static rs::Status tryDecodeVarBitTypeFromBlobCached(
             return rs::Status::Ok;
         }
     }
-    if (!blob.loaded) {
-        return rs::Status::NotFound;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, varbitId);
-    if (blobIdx < 0) {
-        return rs::Status::NotFound;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return rs::Status::SizeMismatch;
-    }
-
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return rs::Status::NotFound;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return rs::Status::OutOfRange;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT,
+        varbitId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss;
     }
 
     DecodedVarBitTypeCacheEntry entry{};
     entry.id = varbitId;
     entry.type = rs::VarBitType(varbitId, cacheInfo);
     rs::Uint8ArrayReader reader(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     rs::TypeDecodeError err{};
     const rs::Status ds = rs::decodeType(entry.type, reader, &err, nullptr);
@@ -128,7 +104,7 @@ static rs::Status tryDecodeVarBitTypeFromBlobCached(
 }
 
 static rs::Status tryDecodeBasTypeFromBlobCached(
-    const MapRenderCachedTypeBlob& blob,
+    const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
     const rs::i32 basId,
     std::vector<DecodedBasTypeCacheEntry>* cache,
@@ -143,33 +119,21 @@ static rs::Status tryDecodeBasTypeFromBlobCached(
             return rs::Status::Ok;
         }
     }
-    if (!blob.loaded) {
-        return rs::Status::NotFound;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, basId);
-    if (blobIdx < 0) {
-        return rs::Status::NotFound;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return rs::Status::SizeMismatch;
-    }
-
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return rs::Status::NotFound;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return rs::Status::OutOfRange;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_BAS,
+        basId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss;
     }
 
     DecodedBasTypeCacheEntry entry{};
     entry.id = basId;
     entry.type = rs::BasType(basId, cacheInfo);
     rs::Uint8ArrayReader reader(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     rs::TypeDecodeError err{};
     const rs::Status ds = rs::decodeType(entry.type, reader, &err, nullptr);
@@ -201,7 +165,7 @@ static rs::i32 getRuntimeVarbitValue(
     }
     const rs::VarBitType* varbit = nullptr;
     const rs::Status status = tryDecodeVarBitTypeFromBlobCached(
-        runtime->cache.varbits,
+        runtime,
         cacheInfo,
         varbitId,
         varbitCache,
@@ -232,7 +196,7 @@ static const rs::NpcType* resolveNpcTypeForSpawn(
 
     const rs::NpcType* base = nullptr;
     const rs::Status bs = tryDecodeNpcTypeFromBlobCached(
-        runtime->cache.npcTypes,
+        runtime,
         cacheInfo,
         strings,
         alloc,
@@ -266,7 +230,7 @@ static const rs::NpcType* resolveNpcTypeForSpawn(
 
     const rs::NpcType* transformed = nullptr;
     const rs::Status ts = tryDecodeNpcTypeFromBlobCached(
-        runtime->cache.npcTypes,
+        runtime,
         cacheInfo,
         strings,
         alloc,
@@ -311,39 +275,36 @@ static void applyNpcModelMutations(
     }
 }
 
-static rs::Status tryDecodeModelDataFromBlob(
-    const MapRenderCachedTypeBlob& blob,
+static rs::Status tryDecodeModelDataFromRuntime(
+    const MapRenderRuntimeState* runtime,
     const rs::i32 modelId,
     rs::Allocator& alloc,
     rs::ModelData* outModel) {
     if (!outModel) {
         return rs::Status::InvalidArgument;
     }
-    if (!blob.loaded) {
-        return rs::Status::NotFound;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, modelId);
-    if (blobIdx < 0) {
-        return rs::Status::NotFound;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return rs::Status::SizeMismatch;
-    }
-
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return rs::Status::NotFound;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return rs::Status::OutOfRange;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+        modelId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        // Legacy caches do not provide per-model raw bytes; use the legacy global file loader.
+        if (ss == rs::Status::NotFound && runtime) {
+            rs::ModelData legacy(alloc);
+            const rs::Status ls = runtimeTryLoadLegacyModelFromRuntimeCtx(runtime, modelId, &legacy, alloc);
+            if (rs::ok(ls)) {
+                *outModel = rs::move(legacy);
+                return rs::Status::Ok;
+            }
+        }
+        return ss;
     }
 
     rs::ModelData decoded(alloc);
     const rs::Status ds = rs::decodeModelData(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         &decoded,
         alloc);
     if (!rs::ok(ds)) {
@@ -476,4 +437,154 @@ static rs::i32 makeNpcOrderKey(const rs::NpcSpawn& spawn, const rs::i32 occurren
     hash = fnv1a32UpdateI32(hash, spawn.level);
     hash = fnv1a32UpdateI32(hash, occurrence);
     return static_cast<rs::i32>(hash);
+}
+
+// Best-effort: NPC geometry must not make map packet build fail. If NPC decode/model
+// loads fail, we return a failure status and callers should clear the NPC fields and
+// continue with the base map payload.
+static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
+    MapRenderRuntimeState* runtime,
+    const rs::CacheInfo& cacheInfo,
+    const rs::i32 mapX,
+    const rs::i32 mapY,
+    const rs::i32 borderSize,
+    const rs::i32 sizeX,
+    const rs::i32 sizeY,
+    rs::tooling::MapRenderLoadedPayloadState* payload) {
+    if (!runtime || !payload) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    payload->npcDrawRangesBase.clear();
+    payload->npcDrawRangesAlpha.clear();
+    payload->npcVertices.clear();
+    payload->npcIndices.clear();
+    payload->npcOrderKeys.clear();
+
+    const std::vector<rs::u8>* npcBytes = tryGetRuntimeCachedMapSquareNpcBytes(*runtime, mapX, mapY);
+    if (!npcBytes || npcBytes->empty()) {
+        return RS_MAP_RENDER_STATUS_OK;
+    }
+
+    std::vector<rs::u8> tileFlags;
+    tileFlags.resize(static_cast<std::size_t>(sizeX * sizeY), 0);
+
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::Vec<rs::NpcSpawn> spawns(alloc);
+    const rs::Status ds = rs::decodeNpcSpawnsFromBytes(
+        rs::Span<const rs::u8>(tileFlags.data(), tileFlags.size()),
+        sizeY,
+        borderSize,
+        mapX,
+        mapY,
+        rs::Span<const rs::u8>(npcBytes->data(), npcBytes->size()),
+        &spawns,
+        alloc);
+    if (!rs::ok(ds)) {
+        return mapRenderStatusFromCoreStatus(ds);
+    }
+
+    rs::StringArena strings(alloc);
+    std::vector<DecodedNpcTypeCacheEntry> npcCache{};
+    npcCache.reserve(128);
+    std::vector<DecodedBasTypeCacheEntry> basCache{};
+    basCache.reserve(64);
+    std::vector<DecodedVarBitTypeCacheEntry> varbitCache{};
+    varbitCache.reserve(64);
+    std::unordered_map<std::uint64_t, rs::i32> npcTupleOccurrences{};
+    std::vector<rs::i32> packedTextureIds{};
+    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &packedTextureIds);
+
+    const rs::i32 mapBaseX = mapX * kMapSquareSize;
+    const rs::i32 mapBaseY = mapY * kMapSquareSize;
+    for (std::size_t i = 0; i < spawns.size(); i++) {
+        const rs::NpcSpawn& spawn = spawns[i];
+        const rs::i32 sceneTileX = (spawn.x - mapBaseX) + borderSize;
+        const rs::i32 sceneTileY = (spawn.y - mapBaseY) + borderSize;
+        if (sceneTileX < 0 || sceneTileY < 0 || sceneTileX >= sizeX || sceneTileY >= sizeY) {
+            continue;
+        }
+
+        const rs::NpcType* npcType = resolveNpcTypeForSpawn(
+            runtime,
+            cacheInfo,
+            &strings,
+            alloc,
+            spawn.id,
+            &npcCache,
+            &varbitCache);
+        if (!npcType) {
+            continue;
+        }
+        if ((npcType->loginScreenProps & 0x1) == 0) {
+            continue;
+        }
+
+        const rs::BasType* basType = nullptr;
+        if (npcType->basTypeId >= 0) {
+            const rs::Status basStatus = tryDecodeBasTypeFromBlobCached(
+                runtime,
+                cacheInfo,
+                npcType->basTypeId,
+                &basCache,
+                &basType);
+            (void)basStatus;
+        }
+        (void)basType;
+
+        if (npcType->modelIds.empty()) {
+            continue;
+        }
+
+        const rs::i32 indexStart = static_cast<rs::i32>(payload->npcIndices.size());
+        for (std::size_t mi = 0; mi < npcType->modelIds.size(); mi++) {
+            const rs::i32 modelId = npcType->modelIds[mi];
+            if (modelId < 0) {
+                continue;
+            }
+
+            rs::ModelData model(alloc);
+            const rs::Status ms = tryDecodeModelDataFromRuntime(
+                runtime,
+                modelId,
+                alloc,
+                &model);
+            if (!rs::ok(ms)) {
+                continue;
+            }
+
+            applyNpcModelMutations(&model, *npcType);
+
+            rs::i32 modelIndexCount = 0;
+            const rs::Status gs = appendNpcModelGeometry(
+                model,
+                packedTextureIds,
+                sceneTileX,
+                sceneTileY,
+                &payload->npcVertices,
+                &payload->npcIndices,
+                &modelIndexCount);
+            if (!rs::ok(gs)) {
+                return mapRenderStatusFromCoreStatus(gs);
+            }
+
+            const rs::i32 indexCount =
+                static_cast<rs::i32>(payload->npcIndices.size()) - indexStart;
+            if (indexCount <= 0) {
+                continue;
+            }
+
+            const std::uint64_t tupleKey =
+                (static_cast<std::uint64_t>(static_cast<rs::u16>(spawn.level & 0xffff)) << 48) |
+                (static_cast<std::uint64_t>(static_cast<rs::u16>(spawn.id & 0xffff)) << 32) |
+                (static_cast<std::uint64_t>(static_cast<rs::u16>(spawn.x & 0xffff)) << 16) |
+                static_cast<std::uint64_t>(static_cast<rs::u16>(spawn.y & 0xffff));
+            const rs::i32 occurrence = npcTupleOccurrences[tupleKey]++;
+            payload->npcOrderKeys.push_back(makeNpcOrderKey(spawn, occurrence));
+            payload->npcDrawRangesBase.push_back(indexStart * 4);
+            payload->npcDrawRangesBase.push_back(indexCount);
+            payload->npcDrawRangesBase.push_back(1);
+        }
+    }
+
+    return RS_MAP_RENDER_STATUS_OK;
 }

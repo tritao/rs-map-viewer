@@ -1,33 +1,3 @@
-// Extracted from `cpp/tools/rs_map_render_backend.cpp` (no behavior changes).
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_build_npc_packet_handle_from_cache(
-    const rs::i32 runtimeHandle,
-    const rs::i32 mapX,
-    const rs::i32 mapY,
-    const rs::i32 borderSize,
-    const rs::i32 sizeX,
-    const rs::i32 sizeY,
-    rs::i32* outPacketHandle) {
-    return rs::tooling::runtimeBuildPacketHandle(
-        runtimeHandle,
-        outPacketHandle,
-        [=]() {
-            return runtimeBuildNpcPacketFromCacheInternal(
-                runtimeHandle,
-                mapX,
-                mapY,
-                borderSize,
-                sizeX,
-                sizeY);
-        },
-        getMapRenderRuntimeConst,
-        allocateMapRenderPacketHandle,
-        RS_MAP_RENDER_STATUS_OK,
-        RS_MAP_RENDER_STATUS_INVALID_ARG,
-        RS_MAP_RENDER_STATUS_STATE,
-        RS_MAP_RENDER_STATUS_CAPACITY);
-}
-
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_build_map_packet_handle_from_cache(
     const rs::i32 runtimeHandle,
     const rs::i32 mapX,
@@ -130,4 +100,3 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_release_packet(const rs::i32 pac
     }
     return gMapRenderPacketHandles.destroy(packetHandle) ? 1 : 0;
 }
-

@@ -411,10 +411,13 @@ Status appendTerrainFallbackGeometryForLevel(
                 debugOut->debugTerrainProbePacked[30] = overlayEdgeBaseHsl[2];
 	                debugOut->debugTerrainProbePacked[31] = overlayEdgeBaseHsl[3];
 
-	                // Best-effort occlusion-writer debugging for the NE center occlusion cell (cellX,cellY).
+	                // Best-effort occlusion-writer debugging for the NE east occlusion cell (cellX+1,cellY),
+	                // which directly feeds `occlE` in the probe output.
 	                // This helps chase down terrain HSL mismatches caused by tileLightOcclusions divergence.
 	                i32 bestValue = -1;
 	                const SceneLocPlacement* best = nullptr;
+                    const i32 probeOccX = cellX + 1;
+                    const i32 probeOccY = cellY;
 	                for (std::size_t i = 0; i < scene.locPlacements.size(); i++) {
 	                    const SceneLocPlacement& p = scene.locPlacements[i];
 	                    if (p.level != level) {
@@ -430,7 +433,7 @@ Status appendTerrainFallbackGeometryForLevel(
 	                    const i32 startY = p.tileY;
 	                    const i32 endOccX = p.tileX + p.sizeX;
 	                    const i32 endOccY = p.tileY + p.sizeY;
-	                    if (cellX < startX || cellY < startY || cellX > endOccX || cellY > endOccY) {
+	                    if (probeOccX < startX || probeOccY < startY || probeOccX > endOccX || probeOccY > endOccY) {
 	                        continue;
 	                    }
 	                    i32 value = 15;
@@ -445,7 +448,7 @@ Status appendTerrainFallbackGeometryForLevel(
 	                        best = &p;
 	                    }
 	                }
-	                // [32..] writer info for the center occlusion cell.
+	                // [32..] writer info for the east occlusion cell (occlE).
 	                debugOut->debugTerrainProbePacked[32] = best ? 1 : 0;
 	                debugOut->debugTerrainProbePacked[33] = best ? best->originalId : -1;
 	                debugOut->debugTerrainProbePacked[34] = best ? best->resolvedId : -1;

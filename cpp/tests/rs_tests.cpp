@@ -109,6 +109,48 @@ static bool tryReadFileBytes(const std::string& path, std::vector<rs::u8>* out) 
     return static_cast<std::streamsize>(f.gcount()) == size;
 }
 
+struct TestTypeEntry final {
+    rs::i32 kind = 0;
+    rs::i32 id = -1;
+    const rs::u8* bytes = nullptr;
+    rs::i32 length = 0;
+};
+
+struct TestTypeEntryStore final {
+    const TestTypeEntry* entries = nullptr;
+    rs::i32 count = 0;
+};
+
+static rs::Status tryGetTestTypeEntryBytes(
+    const void* ctx,
+    rs::i32 kind,
+    rs::i32 id,
+    rs::Span<const rs::u8>* outBytes) noexcept {
+    if (!outBytes) {
+        return rs::Status::InvalidArgument;
+    }
+    *outBytes = rs::Span<const rs::u8>();
+    if (kind <= 0 || id < 0) {
+        return rs::Status::NotFound;
+    }
+    const auto* store = reinterpret_cast<const TestTypeEntryStore*>(ctx);
+    if (!store || store->count <= 0 || !store->entries) {
+        return rs::Status::NotFound;
+    }
+    for (rs::i32 i = 0; i < store->count; i++) {
+        const TestTypeEntry& e = store->entries[static_cast<std::size_t>(i)];
+        if (e.kind != kind || e.id != id) {
+            continue;
+        }
+        if (e.length <= 0 || !e.bytes) {
+            return rs::Status::NotFound;
+        }
+        *outBytes = rs::Span<const rs::u8>(e.bytes, static_cast<std::size_t>(e.length));
+        return rs::Status::Ok;
+    }
+    return rs::Status::NotFound;
+}
+
 static bool tryReadCacheFixtureBytes(const char* relativePath, std::vector<rs::u8>* out) {
     if (!relativePath || !out) return false;
     const char* prefixes[] = {
@@ -2773,7 +2815,7 @@ static int test_scene_command_builder_loc_stage_placement_meta(rs::Allocator& al
     if (out.priority != 10) return fail("scene-command loc stage: expected wall-decor priority=10");
     if (out.interactId != transformed.id) return fail("scene-command loc stage: transformed interact id mismatch");
     if (out.includeLod) return fail("scene-command loc stage: low-detail includeLod mismatch");
-    if (out.forceMerge) return fail("scene-command loc stage: transformed forceMerge mismatch");
+    if (!out.forceMerge) return fail("scene-command loc stage: transformed forceMerge mismatch");
     if (!out.sourceIsEntity) return fail("scene-command loc stage: transformed should be entity");
 
     input.resolvedLocType = &transformed;
@@ -2922,10 +2964,12 @@ static int test_scene_command_builder_native_terrain_no_seed(rs::Allocator& allo
     const rs::i32 locLengths[] = {-1};
     // Provide a minimal underlay type so the scene build can compute blended-underlay colors
     // and the terrain builder can emit geometry even in this synthetic test.
-    const rs::i32 underlayTypeIds[] = {0};
-    const rs::i32 underlayTypeOffsets[] = {0};
-    const rs::i32 underlayTypeLengths[] = {1};
     const rs::u8 underlayTypeBytes[] = {0}; // opcode 0 terminator
+    const TestTypeEntry typeEntries[] = {
+        // kind=10 (underlay), id=0
+        TestTypeEntry{10, 0, underlayTypeBytes, 1},
+    };
+    const TestTypeEntryStore typeStore{typeEntries, 1};
 
     rs::SceneCommandBuildInput input{};
     input.baseX = 0;
@@ -2943,10 +2987,8 @@ static int test_scene_command_builder_native_terrain_no_seed(rs::Allocator& allo
     input.locOffsets = rs::Span<const rs::i32>(locOffsets, 1);
     input.locLengths = rs::Span<const rs::i32>(locLengths, 1);
     input.locBytes = rs::Span<const rs::u8>(nullptr, 0);
-    input.underlayTypeIds = rs::Span<const rs::i32>(underlayTypeIds, 1);
-    input.underlayTypeOffsets = rs::Span<const rs::i32>(underlayTypeOffsets, 1);
-    input.underlayTypeLengths = rs::Span<const rs::i32>(underlayTypeLengths, 1);
-    input.underlayTypeBytes = rs::Span<const rs::u8>(underlayTypeBytes, 1);
+    input.typeEntryBytesCtx = &typeStore;
+    input.tryGetTypeEntryBytes = tryGetTestTypeEntryBytes;
 
     rs::SceneCommandStream out{};
     const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
@@ -3039,30 +3081,11 @@ static int test_scene_command_builder_validation_edges(rs::Allocator& alloc) {
         input.locOffsets = rs::Span<const rs::i32>(locOffsetsOne, 1);
         input.locLengths = rs::Span<const rs::i32>(locLengthsOne, 1);
         input.locBytes = rs::Span<const rs::u8>(locBytesWithPlacement, sizeof(locBytesWithPlacement));
-        const rs::i32 locTypeIds[] = {0};
-        input.locTypeIds = rs::Span<const rs::i32>(locTypeIds, 1);
-        // Mismatched locType arrays should be rejected before decode/build.
+        // Loc placement references locTypeId=0; without a type-entry provider the build should fail.
         rs::SceneCommandStream out{};
         const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
-        if (s != rs::Status::SizeMismatch) {
-            return fail("scene-command validation: expected SizeMismatch for loc type array mismatch");
-        }
-    }
-
-    {
-        rs::SceneCommandBuildInput input = base;
-        input.locLoadType = 1;
-        const rs::i32 seqTypeIds[] = {0};
-        const rs::i32 seqTypeOffsets[] = {0};
-        const rs::i32 seqTypeLengths[] = {1};
-        input.seqTypeIds = rs::Span<const rs::i32>(seqTypeIds, 1);
-        input.seqTypeOffsets = rs::Span<const rs::i32>(seqTypeOffsets, 1);
-        input.seqTypeLengths = rs::Span<const rs::i32>(seqTypeLengths, 1);
-        input.seqTypeBytes = rs::Span<const rs::u8>(nullptr, 0);
-        rs::SceneCommandStream out{};
-        const rs::Status s = rs::buildSceneCommandStream(input, &out, alloc);
-        if (s != rs::Status::OutOfRange) {
-            return fail("scene-command validation: expected OutOfRange for seq type payload");
+        if (s != rs::Status::NotFound) {
+            return fail("scene-command validation: expected NotFound for missing loc type provider");
         }
     }
 
@@ -3090,10 +3113,11 @@ static int test_scene_command_builder_plan_only_no_geometry(rs::Allocator& alloc
     const rs::i32 terrainLengths[] = {static_cast<rs::i32>(terrainBytesLen)};
     const rs::i32 locOffsets[] = {-1};
     const rs::i32 locLengths[] = {-1};
-    const rs::i32 underlayTypeIds[] = {0};
-    const rs::i32 underlayTypeOffsets[] = {0};
-    const rs::i32 underlayTypeLengths[] = {1};
     const rs::u8 underlayTypeBytes[] = {0};
+    const TestTypeEntry typeEntries[] = {
+        TestTypeEntry{10, 0, underlayTypeBytes, 1},
+    };
+    const TestTypeEntryStore typeStore{typeEntries, 1};
 
     rs::SceneCommandBuildInput input{};
     input.baseX = 0;
@@ -3111,10 +3135,8 @@ static int test_scene_command_builder_plan_only_no_geometry(rs::Allocator& alloc
     input.locOffsets = rs::Span<const rs::i32>(locOffsets, 1);
     input.locLengths = rs::Span<const rs::i32>(locLengths, 1);
     input.locBytes = rs::Span<const rs::u8>(nullptr, 0);
-    input.underlayTypeIds = rs::Span<const rs::i32>(underlayTypeIds, 1);
-    input.underlayTypeOffsets = rs::Span<const rs::i32>(underlayTypeOffsets, 1);
-    input.underlayTypeLengths = rs::Span<const rs::i32>(underlayTypeLengths, 1);
-    input.underlayTypeBytes = rs::Span<const rs::u8>(underlayTypeBytes, 1);
+    input.typeEntryBytesCtx = &typeStore;
+    input.tryGetTypeEntryBytes = tryGetTestTypeEntryBytes;
 
     rs::SceneCommandStream full{};
     rs::SceneCommandStream planOnly{};

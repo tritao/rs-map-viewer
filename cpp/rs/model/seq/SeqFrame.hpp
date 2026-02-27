@@ -125,6 +125,48 @@ inline Status decodeDatSeqBase(
     return Status::Ok;
 }
 
+// Decode the classic (dat) seq base embedded at the end of a frame-map file.
+inline Status decodeDatSeqBaseFromFrameMapBytes(
+    Span<const u8> data,
+    Allocator& alloc,
+    SeqBase* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    *out = SeqBase(-1, alloc);
+    if (data.size() < 8) {
+        return Status::BadFormat;
+    }
+
+    Uint8ArrayReader footer(data, data.size() - 8);
+    u16 frameMapOffset = 0;
+    u16 flagOffset = 0;
+    u16 transformOffset = 0;
+    u16 frameLengthOffset = 0;
+    Status s = footer.readUnsignedShort(&frameMapOffset);
+    if (!ok(s)) return s;
+    s = footer.readUnsignedShort(&flagOffset);
+    if (!ok(s)) return s;
+    s = footer.readUnsignedShort(&transformOffset);
+    if (!ok(s)) return s;
+    s = footer.readUnsignedShort(&frameLengthOffset);
+    if (!ok(s)) return s;
+
+    std::size_t totalOffset = 0;
+    totalOffset += static_cast<std::size_t>(frameMapOffset) + 2;
+    totalOffset += static_cast<std::size_t>(flagOffset);
+    totalOffset += static_cast<std::size_t>(transformOffset);
+    totalOffset += static_cast<std::size_t>(frameLengthOffset);
+    const std::size_t baseStart = totalOffset;
+    if (baseStart > data.size() - 8) {
+        return Status::BadFormat;
+    }
+    return decodeDatSeqBase(
+        data.subspan(baseStart, (data.size() - 8) - baseStart),
+        alloc,
+        out);
+}
+
 inline Status decodeDatSeqFrameMap(
     Span<const u8> data,
     SeqFrameDecodeScratch* scratch,
@@ -486,6 +528,173 @@ inline Status decodeDat2SeqFrame(
     }
 
     *out = rs::move(frame);
+    return Status::Ok;
+}
+
+inline Status decodeDat2SeqFrameWithBase(
+    const CacheInfo& cacheInfo,
+    const SeqBase& base,
+    Span<const u8> data,
+    SeqFrameDecodeScratch* scratch,
+    Allocator& alloc,
+    SeqFrame* out) noexcept {
+    if (!scratch || !out) {
+        return Status::InvalidArgument;
+    }
+    *out = SeqFrame(alloc);
+
+    Uint8ArrayReader flagsReader(data, 0);
+    Uint8ArrayReader valuesReader(data, 0);
+
+    if (cacheInfo.game == GameType::Runescape && cacheInfo.revision >= 610) {
+        u8 ignored = 0;
+        Status s = flagsReader.readUnsignedByte(&ignored);
+        if (!ok(s)) return s;
+    }
+
+    // baseId is encoded in the frame bytes; the caller supplies the resolved base instance.
+    u16 baseIdU16 = 0;
+    Status s = flagsReader.readUnsignedShort(&baseIdU16);
+    if (!ok(s)) {
+        return s;
+    }
+
+    u8 countU8 = 0;
+    s = flagsReader.readUnsignedByte(&countU8);
+    if (!ok(s)) {
+        return s;
+    }
+    const i32 count = static_cast<i32>(countU8);
+
+    s = scratch->ensureCapacity(static_cast<std::size_t>(count));
+    if (!ok(s)) {
+        return s;
+    }
+
+    const std::size_t valuesOffset = flagsReader.tell() + static_cast<std::size_t>(count);
+    s = valuesReader.seek(valuesOffset);
+    if (!ok(s)) {
+        return s;
+    }
+
+    i32 transformCount = 0;
+    i32 resetOriginGroup = -1;
+    i32 lastResetOriginGroup = -1;
+
+    bool hasAlphaTransform = false;
+    bool hasColorTransform = false;
+
+    for (i32 i = 0; i < count; i++) {
+        if (static_cast<std::size_t>(i) >= base.types.size()) {
+            return Status::BadFormat;
+        }
+        const SeqTransformType type = base.types[static_cast<std::size_t>(i)];
+
+        if (type == SeqTransformType::ORIGIN) {
+            resetOriginGroup = i;
+        }
+
+        u8 flag = 0;
+        s = flagsReader.readUnsignedByte(&flag);
+        if (!ok(s)) {
+            return s;
+        }
+        if (flag == 0) {
+            continue;
+        }
+
+        if (type == SeqTransformType::ORIGIN) {
+            lastResetOriginGroup = i;
+        }
+
+        const std::size_t ti = static_cast<std::size_t>(transformCount);
+        scratch->transformGroupCache[ti] = i;
+
+        i32 defaultValue = 0;
+        if (type == SeqTransformType::SCALE || type == SeqTransformType::TYPE_10) {
+            defaultValue = 128;
+        }
+
+        if ((flag & 0x1) != 0) {
+            s = valuesReader.readSmart2(&scratch->transformXCache[ti]);
+            if (!ok(s)) return s;
+        } else {
+            scratch->transformXCache[ti] = defaultValue;
+        }
+
+        if ((flag & 0x2) != 0) {
+            s = valuesReader.readSmart2(&scratch->transformYCache[ti]);
+            if (!ok(s)) return s;
+        } else {
+            scratch->transformYCache[ti] = defaultValue;
+        }
+
+        if ((flag & 0x4) != 0) {
+            s = valuesReader.readSmart2(&scratch->transformZCache[ti]);
+            if (!ok(s)) return s;
+        } else {
+            scratch->transformZCache[ti] = defaultValue;
+        }
+
+        if (cacheInfo.game == GameType::Runescape && cacheInfo.revision >= 610) {
+            if (type == SeqTransformType::ORIGIN || type == SeqTransformType::TRANSLATE) {
+                scratch->transformXCache[ti] >>= 2;
+                scratch->transformYCache[ti] >>= 2;
+                scratch->transformZCache[ti] >>= 2;
+            } else if (type == SeqTransformType::ROTATE) {
+                scratch->transformXCache[ti] >>= 4;
+                scratch->transformYCache[ti] >>= 4;
+                scratch->transformZCache[ti] >>= 4;
+            }
+        }
+
+        scratch->resetOriginGroupsCache[ti] = -1;
+        if (type == SeqTransformType::TRANSLATE ||
+            type == SeqTransformType::ROTATE ||
+            type == SeqTransformType::SCALE) {
+            if (resetOriginGroup > lastResetOriginGroup) {
+                scratch->resetOriginGroupsCache[ti] = resetOriginGroup;
+                lastResetOriginGroup = resetOriginGroup;
+            }
+        } else if (type == SeqTransformType::ALPHA) {
+            hasAlphaTransform = true;
+        } else if (type == SeqTransformType::LIGHT) {
+            hasColorTransform = true;
+        }
+
+        transformCount++;
+    }
+
+    if (count != 0 && valuesReader.tell() != data.size()) {
+        return Status::BadFormat;
+    }
+
+    out->frameLength = static_cast<i32>(0);
+    out->baseId = static_cast<i32>(baseIdU16);
+    out->transformCount = transformCount;
+    out->hasAlphaTransform = hasAlphaTransform;
+    out->hasColorTransform = hasColorTransform;
+
+    auto rr = out->transformGroups.resize(static_cast<std::size_t>(transformCount));
+    if (!rr.isOk()) return rr.status();
+    rr = out->transformX.resize(static_cast<std::size_t>(transformCount));
+    if (!rr.isOk()) return rr.status();
+    rr = out->transformY.resize(static_cast<std::size_t>(transformCount));
+    if (!rr.isOk()) return rr.status();
+    rr = out->transformZ.resize(static_cast<std::size_t>(transformCount));
+    if (!rr.isOk()) return rr.status();
+    rr = out->resetOriginGroups.resize(static_cast<std::size_t>(transformCount));
+    if (!rr.isOk()) return rr.status();
+
+    for (i32 i = 0; i < transformCount; i++) {
+        const std::size_t ii = static_cast<std::size_t>(i);
+        out->transformGroups[ii] = scratch->transformGroupCache[ii];
+        out->transformX[ii] = scratch->transformXCache[ii];
+        out->transformY[ii] = scratch->transformYCache[ii];
+        out->transformZ[ii] = scratch->transformZCache[ii];
+        out->resetOriginGroups[ii] = scratch->resetOriginGroupsCache[ii];
+    }
+
     return Status::Ok;
 }
 

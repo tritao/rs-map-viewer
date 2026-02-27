@@ -48,10 +48,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_reset(const rs::i32 runtimeHandl
     runtime->mapPayload.clear();
     runtime->cache.clear();
     runtime->lastBuiltCommandStream.clear();
-    runtime->debugLastCollisionFlags.clear();
-    runtime->debugLastCollisionLevels = 0;
-    runtime->debugLastCollisionSizeX = 0;
-    runtime->debugLastCollisionSizeY = 0;
+    runtime->lastMissingBlobTriples.clear();
     runtime->payloadGeneration++;
     clearPacketHandlesForRuntime(runtimeHandle);
     runtime->debugLastMapInputHashDirect = 0;

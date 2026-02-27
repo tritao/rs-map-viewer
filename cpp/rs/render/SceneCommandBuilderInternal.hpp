@@ -37,6 +37,24 @@ i32 fnv1aMixI32(i32 hash, i32 value) noexcept;
 u32 fnv1a32UpdateI32ForDebug(u32 hash, i32 value) noexcept;
 bool isWithinHeightBounds(const SceneData& scene, i32 level, i32 tileX, i32 tileY) noexcept;
 
+static inline Status tryGetTypeEntryBytesSpan(
+    const SceneCommandBuildInput& input,
+    i32 kind,
+    i32 id,
+    Span<const u8>* out) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    *out = Span<const u8>();
+    if (id < 0) {
+        return Status::NotFound;
+    }
+    if (!input.tryGetTypeEntryBytes) {
+        return Status::NotFound;
+    }
+    return input.tryGetTypeEntryBytes(input.typeEntryBytesCtx, kind, id, out);
+}
+
 // TS animated-loc grouping. These are planned during loc planning, but their frame geometry is appended
 // after all static scene geometry (locs + objs) so animated frame ranges match TS buffer layout.
 struct LocAnimatedPlaceholder final {

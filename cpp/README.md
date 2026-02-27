@@ -111,7 +111,7 @@ Map-render backend wasm module (for TS worker bridge):
     -   `src/wasm/rs_map_render_backend.wasm`
 -   parity smoke:
     -   `npm run -s rs:map-render-wasm-parity -- --iterations 20`
--   real square payload parity (TS vs wasm decode+heightmap path):
-    -   `npm run -s rs:map-render-backend-parity -- --cache osrs-221_2024-04-17 --limit 4`
+-   runtime parity (TS vs wasm runtime cache-v2 build):
+    -   `npm run -s rs:map-render-parity-full -- --cache osrs-221_2024-04-17 --squares 17:51,17:52,18:52,18:53`
 -   backend benchmark (no minimap blob encoding):
     -   `npm run -s rs:map-render-backend-bench -- --cache osrs-221_2024-04-17 --limit 4 --warmup 1 --iterations 3 --backend both`

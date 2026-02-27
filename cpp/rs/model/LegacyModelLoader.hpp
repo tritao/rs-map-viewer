@@ -289,6 +289,243 @@ public:
         return Result<LegacyModelLoader>::ok(rs::move(out));
     }
 
+    static Result<LegacyModelLoader> createFromBytes(
+        Span<const u8> headBytes,
+        Span<const u8> face1Bytes,
+        Span<const u8> face2Bytes,
+        Span<const u8> face3Bytes,
+        Span<const u8> face4Bytes,
+        Span<const u8> face5Bytes,
+        Span<const u8> point1Bytes,
+        Span<const u8> point2Bytes,
+        Span<const u8> point3Bytes,
+        Span<const u8> point4Bytes,
+        Span<const u8> point5Bytes,
+        Span<const u8> vertex1Bytes,
+        Span<const u8> vertex2Bytes,
+        Span<const u8> axisBytes,
+        Allocator& alloc = defaultAllocator()) noexcept {
+        LegacyModelLoader out;
+        out.alloc_ = &alloc;
+        out.metadatas_ = Vec<LegacyModelMetadata>(alloc);
+        out.hasMetadata_ = Vec<u8>(alloc);
+        out.face1Bytes_ = Vec<u8>(alloc);
+        out.face2Bytes_ = Vec<u8>(alloc);
+        out.face3Bytes_ = Vec<u8>(alloc);
+        out.face4Bytes_ = Vec<u8>(alloc);
+        out.face5Bytes_ = Vec<u8>(alloc);
+        out.point1Bytes_ = Vec<u8>(alloc);
+        out.point2Bytes_ = Vec<u8>(alloc);
+        out.point3Bytes_ = Vec<u8>(alloc);
+        out.point4Bytes_ = Vec<u8>(alloc);
+        out.point5Bytes_ = Vec<u8>(alloc);
+        out.vertex1Bytes_ = Vec<u8>(alloc);
+        out.vertex2Bytes_ = Vec<u8>(alloc);
+        out.axisBytes_ = Vec<u8>(alloc);
+        out.errorStatusById_ = Vec<Status>(alloc);
+        out.hasErrorById_ = Vec<u8>(alloc);
+
+        auto copy = [&](Span<const u8> src, Vec<u8>* dst) noexcept -> Status {
+            if (!dst) return Status::InvalidArgument;
+            auto rr = dst->resize(src.size());
+            if (!rr.isOk()) return rr.status();
+            if (!src.empty()) {
+                std::memcpy(dst->data(), src.data(), src.size());
+            }
+            return Status::Ok;
+        };
+
+        Status s = copy(face1Bytes, &out.face1Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(face2Bytes, &out.face2Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(face3Bytes, &out.face3Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(face4Bytes, &out.face4Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(face5Bytes, &out.face5Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(point1Bytes, &out.point1Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(point2Bytes, &out.point2Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(point3Bytes, &out.point3Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(point4Bytes, &out.point4Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(point5Bytes, &out.point5Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(vertex1Bytes, &out.vertex1Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(vertex2Bytes, &out.vertex2Bytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        s = copy(axisBytes, &out.axisBytes_);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+
+        Uint8ArrayReader head(headBytes, 0);
+        u16 countU16 = 0;
+        s = head.readUnsignedShort(&countU16);
+        if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+        out.count_ = static_cast<i32>(countU16);
+
+        const std::size_t metadataCap = static_cast<std::size_t>(out.count_ + 100);
+        auto rr = out.metadatas_.resize(metadataCap);
+        if (!rr.isOk()) return Result<LegacyModelLoader>::err(rr.status());
+        rr = out.hasMetadata_.resize(metadataCap);
+        if (!rr.isOk()) return Result<LegacyModelLoader>::err(rr.status());
+        rr = out.errorStatusById_.resize(metadataCap);
+        if (!rr.isOk()) return Result<LegacyModelLoader>::err(rr.status());
+        rr = out.hasErrorById_.resize(metadataCap);
+        if (!rr.isOk()) return Result<LegacyModelLoader>::err(rr.status());
+        for (std::size_t i = 0; i < metadataCap; i++) {
+            out.hasMetadata_[i] = 0;
+            out.hasErrorById_[i] = 0;
+            out.errorStatusById_[i] = Status::NotFound;
+        }
+
+        // Decode metadata using local cursors (mirrors TS LegacyModelLoader metadata scan).
+        Uint8ArrayReader point1(Span<const u8>(out.point1Bytes_.data(), out.point1Bytes_.size()), 0);
+        Uint8ArrayReader point2(Span<const u8>(out.point2Bytes_.data(), out.point2Bytes_.size()), 0);
+        Uint8ArrayReader point3(Span<const u8>(out.point3Bytes_.data(), out.point3Bytes_.size()), 0);
+        Uint8ArrayReader point4(Span<const u8>(out.point4Bytes_.data(), out.point4Bytes_.size()), 0);
+        Uint8ArrayReader vertex1(Span<const u8>(out.vertex1Bytes_.data(), out.vertex1Bytes_.size()), 0);
+        Uint8ArrayReader vertex2(Span<const u8>(out.vertex2Bytes_.data(), out.vertex2Bytes_.size()), 0);
+
+        i32 vertexTextureDataOffset = 0;
+        i32 labelDataOffset = 0;
+        i32 triangleColorDataOffset = 0;
+        i32 triangleInfoDataOffset = 0;
+        i32 trianglePriorityDataOffset = 0;
+        i32 triangleAlphaDataOffset = 0;
+        i32 triangleSkinDataOffset = 0;
+
+        for (i32 i = 0; i < out.count_; i++) {
+            u16 indexU16 = 0;
+            u16 vertexCountU16 = 0;
+            u16 triangleCountU16 = 0;
+            u8 texturedTriangleCountU8 = 0;
+            u8 hasInfo = 0;
+            u8 hasPriorities = 0;
+            u8 hasAlpha = 0;
+            u8 hasSkins = 0;
+            u8 hasLabels = 0;
+
+            s = head.readUnsignedShort(&indexU16);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedShort(&vertexCountU16);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedShort(&triangleCountU16);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedByte(&texturedTriangleCountU8);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+
+            const std::size_t index = static_cast<std::size_t>(indexU16);
+            if (index >= out.metadatas_.size()) {
+                return Result<LegacyModelLoader>::err(Status::BadFormat);
+            }
+            LegacyModelMetadata meta{};
+            meta.vertexCount = static_cast<i32>(vertexCountU16);
+            meta.triangleCount = static_cast<i32>(triangleCountU16);
+            meta.texturedTriangleCount = static_cast<i32>(texturedTriangleCountU8);
+            meta.vertexFlagsOffset = static_cast<i32>(point1.tell());
+            meta.vertexXOffset = static_cast<i32>(point2.tell());
+            meta.vertexYOffset = static_cast<i32>(point3.tell());
+            meta.vertexZOffset = static_cast<i32>(point4.tell());
+            meta.faceVerticesOffset = static_cast<i32>(vertex1.tell());
+            meta.faceOrientationsOffset = static_cast<i32>(vertex2.tell());
+
+            s = head.readUnsignedByte(&hasInfo);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedByte(&hasPriorities);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedByte(&hasAlpha);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedByte(&hasSkins);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            s = head.readUnsignedByte(&hasLabels);
+            if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+
+            // Skip vertex coordinate streams by flags (smart2).
+            for (i32 v = 0; v < meta.vertexCount; v++) {
+                u8 flags = 0;
+                s = point1.readUnsignedByte(&flags);
+                if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                if ((flags & 0x1) != 0) {
+                    i32 ignored = 0;
+                    s = point2.readSmart2(&ignored);
+                    if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                }
+                if ((flags & 0x2) != 0) {
+                    i32 ignored = 0;
+                    s = point3.readSmart2(&ignored);
+                    if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                }
+                if ((flags & 0x4) != 0) {
+                    i32 ignored = 0;
+                    s = point4.readSmart2(&ignored);
+                    if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                }
+            }
+
+            // Skip face vertex indices streams.
+            for (i32 t = 0; t < meta.triangleCount; t++) {
+                u8 type = 0;
+                s = vertex2.readUnsignedByte(&type);
+                if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                if (type == 1) {
+                    i32 ignored = 0;
+                    s = vertex1.readSmart2(&ignored);
+                    if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                    s = vertex1.readSmart2(&ignored);
+                    if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+                }
+                i32 ignored = 0;
+                s = vertex1.readSmart2(&ignored);
+                if (!ok(s)) return Result<LegacyModelLoader>::err(s);
+            }
+
+            meta.faceColorsOffset = triangleColorDataOffset;
+            triangleColorDataOffset += meta.triangleCount * 2;
+            if (hasInfo == 1) {
+                meta.faceInfosOffset = triangleInfoDataOffset;
+                triangleInfoDataOffset += meta.triangleCount;
+            } else {
+                meta.faceInfosOffset = -1;
+            }
+            if (hasPriorities == 255) {
+                meta.facePrioritiesOffset = trianglePriorityDataOffset;
+                trianglePriorityDataOffset += meta.triangleCount;
+            } else {
+                meta.facePrioritiesOffset = -static_cast<i32>(hasPriorities) - 1;
+            }
+            if (hasAlpha == 1) {
+                meta.faceAlphasOffset = triangleAlphaDataOffset;
+                triangleAlphaDataOffset += meta.triangleCount;
+            } else {
+                meta.faceAlphasOffset = -1;
+            }
+            if (hasSkins == 1) {
+                meta.faceLabelsOffset = triangleSkinDataOffset;
+                triangleSkinDataOffset += meta.triangleCount;
+            } else {
+                meta.faceLabelsOffset = -1;
+            }
+            if (hasLabels == 1) {
+                meta.vertexLabelsOffset = labelDataOffset;
+                labelDataOffset += meta.vertexCount;
+            } else {
+                meta.vertexLabelsOffset = -1;
+            }
+            meta.faceTextureAxisOffset = vertexTextureDataOffset;
+            vertexTextureDataOffset += meta.texturedTriangleCount;
+
+            out.metadatas_[index] = meta;
+            out.hasMetadata_[index] = 1;
+        }
+
+        return Result<LegacyModelLoader>::ok(rs::move(out));
+    }
+
     Status tryLoad(i32 id, ModelData* out) const noexcept {
         if (!out) return Status::InvalidArgument;
         if (id < 0) return Status::OutOfRange;

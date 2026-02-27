@@ -67,7 +67,6 @@ set(RS_SOURCES
 	    rs/render/RuntimeCommandStreamPlan.cpp
 	    rs/scene/SceneBuildStages.cpp
 	    rs/scene/BuildSceneFromMapBytesProvider.cpp
-	    tools/rs_scene_bridge.cpp
 	    rs/loaders/ConfigLoaders.cpp
 	    rs/loaders/CacheSession.cpp
 	    rs/loaders/Dat2Loaders.cpp
@@ -310,9 +309,9 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
 
     option(RS_MAP_RENDER_WASM_DEBUG_EXPORTS "Export debug-only runtime APIs in map-render wasm backend" OFF)
 
-    set(RS_MAP_RENDER_EXPORTED_FUNCTIONS_CORE
-        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_map_render_bridge_capabilities','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_map_render_runtime_create','_rs_map_render_runtime_create_with_config','_rs_map_render_runtime_cache_set_build_config','_rs_map_render_runtime_destroy','_rs_map_render_runtime_reset','_rs_map_render_runtime_is_valid','_rs_map_render_runtime_cache_put_map_squares_packed','_rs_map_render_runtime_cache_put_type_blob','_rs_map_render_runtime_cache_put_type_entry','_rs_map_render_runtime_cache_clear_type_kind','_rs_map_render_runtime_collect_required_primary_type_ids','_rs_map_render_runtime_collect_required_expanded_type_ids','_rs_map_render_runtime_cache_set_varps','_rs_map_render_runtime_set_geometry_seed','_rs_map_render_runtime_clear_geometry_seed','_rs_map_render_runtime_cache_needs_type_upload','_rs_map_render_runtime_cache_clear_map_squares','_rs_map_render_runtime_cache_put_texture_argb','_rs_map_render_runtime_cache_clear_texture_argb','_rs_map_render_runtime_cache_put_material_params','_rs_map_render_runtime_cache_clear_material_params','_rs_map_render_runtime_cache_get_resource_counts','_rs_map_render_runtime_build_map_packet_handle_from_cache','_rs_map_render_runtime_build_npc_packet_handle_from_cache','_rs_map_render_runtime_get_packet_meta','_rs_map_render_runtime_release_packet','_rs_map_render_runtime_clear_tick_state','_rs_map_render_runtime_set_tick_state_packed','_rs_map_render_runtime_tick_advance_and_emit_base_patches_for_state_packed','_rs_map_render_runtime_debug_get_last_collision_flags_meta','_rs_map_render_runtime_debug_copy_last_collision_flags']"
-    )
+	    set(RS_MAP_RENDER_EXPORTED_FUNCTIONS_CORE
+	        "['_malloc','_free','_rs_map_render_bridge_abi_version','_rs_heightmap_from_scene_tile_heights','_rs_decode_npc_spawns_from_bytes','_rs_map_render_runtime_create','_rs_map_render_runtime_create_with_config','_rs_map_render_runtime_cache_set_build_config','_rs_map_render_runtime_destroy','_rs_map_render_runtime_reset','_rs_map_render_runtime_is_valid','_rs_map_render_runtime_get_last_missing_blob_entries_packed','_rs_map_render_runtime_cache_set_varps','_rs_map_render_runtime_cache_put_blob_batch','_rs_map_render_runtime_cache_clear_all_blobs','_rs_map_render_runtime_cache_clear_blob_domain','_rs_map_render_runtime_build_map_packet_handle_from_cache','_rs_map_render_runtime_get_packet_meta','_rs_map_render_runtime_release_packet','_rs_map_render_runtime_clear_tick_state','_rs_map_render_runtime_set_tick_state_packed','_rs_map_render_runtime_tick_advance_and_emit_base_patches_for_state_packed']"
+	    )
 
     set(RS_MAP_RENDER_EXPORTED_FUNCTIONS_DEBUG
         "'_rs_map_render_runtime_debug_collect_map_input_digest','_rs_map_render_runtime_debug_get_cache_config','_rs_map_render_runtime_debug_get_loaded_height_hash','_rs_map_render_runtime_debug_get_map_input_hashes','_rs_map_render_runtime_debug_get_cached_command_stream_digest','_rs_map_render_runtime_debug_get_cached_command_stream_lengths','_rs_map_render_runtime_debug_copy_cached_command_stream','_rs_map_render_runtime_debug_get_last_terrain_tile_face_counts_meta','_rs_map_render_runtime_debug_copy_last_terrain_tile_face_counts','_rs_map_render_runtime_debug_get_last_build_stats','_rs_map_render_runtime_debug_decode_overlay_type','_rs_map_render_runtime_debug_decode_loc_type'"

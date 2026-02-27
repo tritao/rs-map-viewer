@@ -31,6 +31,30 @@ namespace rs {
 
 namespace scb {
 
+static Status tryDecodeModelDataById(
+    const SceneCommandBuildInput& input,
+    i32 modelId,
+    ModelData* outModel,
+    Allocator& alloc) noexcept {
+    if (!outModel) {
+        return Status::InvalidArgument;
+    }
+    if (modelId < 0) {
+        return Status::NotFound;
+    }
+
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 3, modelId, &bytes);
+    if (ok(bs) && bytes.size() > 0) {
+        return decodeModelData(bytes, outModel, alloc);
+    }
+
+    if (input.tryLoadModelData) {
+        return input.tryLoadModelData(input.modelDataCtx, modelId, outModel, alloc);
+    }
+    return Status::NotFound;
+}
+
 static bool locPlacementIndexLess(const Vec<SceneLocPlacement>& placements, i32 a, i32 b) noexcept {
     if (a == b) {
         return false;
@@ -1237,22 +1261,13 @@ Status tryDecodeUnderlayTypeFromBlob(
             return Status::Ok;
         }
     }
-    const i32 idx = findTypeBlobIndex(input.underlayTypeIds, underlayId);
-    if (idx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 10, underlayId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.debugRecordMissingType) {
+            input.debugRecordMissingType(input.debugMissingTypeCtx, 10, underlayId);
+        }
         return Status::NotFound;
-    }
-    if (idx >= static_cast<i32>(input.underlayTypeOffsets.size()) ||
-        idx >= static_cast<i32>(input.underlayTypeLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.underlayTypeOffsets[static_cast<std::size_t>(idx)];
-    const i32 len = input.underlayTypeLengths[static_cast<std::size_t>(idx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.underlayTypeBytes.size()) ||
-        len > static_cast<i32>(input.underlayTypeBytes.size()) - off) {
-        return Status::OutOfRange;
     }
     DecodedUnderlayTypeCache::Entry entry{};
     entry.id = underlayId;
@@ -1260,16 +1275,55 @@ Status tryDecodeUnderlayTypeFromBlob(
     cacheInfo.game = static_cast<GameType>(input.cacheGame);
     cacheInfo.revision = input.cacheRevision;
     entry.value = UnderlayFloorType(underlayId, cacheInfo);
-    Uint8ArrayReader reader(
-        Span<const u8>(input.underlayTypeBytes.data() + off, static_cast<std::size_t>(len)),
-        0);
-    TypeDecodeError err{};
-    TypeDecodeContext ctx{entry.value.cacheInfo, nullptr, &alloc};
-    const Status ds = decodeType(entry.value, reader, &err, &ctx);
-    if (!ok(ds)) {
-        return ds;
+    const auto decodeFloLikeIntoUnderlay = [&]() -> Status {
+        OverlayFloorType floLike(underlayId, cacheInfo);
+        Uint8ArrayReader floReader(
+            bytes,
+            0);
+        TypeDecodeError floErr{};
+        TypeDecodeContext floCtx{cacheInfo, nullptr, &alloc};
+        const Status floStatus = decodeType(floLike, floReader, &floErr, &floCtx);
+        if (!ok(floStatus)) {
+            return floStatus;
+        }
+        floLike.post();
+        entry.value.rgbColor = floLike.primaryRgb;
+        // TS blend path calls `getHueBlend()` on the shared flo loader, which maps to
+        // OverlayFloorType.hueBlend (not hue).
+        entry.value.hue = floLike.hueBlend;
+        entry.value.saturation = floLike.saturation;
+        entry.value.lightness = floLike.lightness;
+        entry.value.hueMultiplier = floLike.hueMultiplier;
+        entry.value.textureId = floLike.textureId;
+        entry.value.textureSize = floLike.textureSize;
+        entry.value.blockShadow = floLike.blockShadow;
+        return Status::Ok;
+    };
+
+    const CacheType cacheType = detectCacheType(cacheInfo);
+    if (cacheType == CacheType::Dat2) {
+        Uint8ArrayReader reader(
+            bytes,
+            0);
+        TypeDecodeError err{};
+        TypeDecodeContext ctx{entry.value.cacheInfo, nullptr, &alloc};
+        const Status ds = decodeType(entry.value, reader, &err, &ctx);
+        if (!ok(ds)) {
+            // Keep fallback for mixed/invalid inputs.
+            const Status floStatus = decodeFloLikeIntoUnderlay();
+            if (!ok(floStatus)) {
+                return ds;
+            }
+        } else {
+            entry.value.post();
+        }
+    } else {
+        // TS dat/legacy loader behavior: underlay uses the shared flo decoder.
+        const Status floStatus = decodeFloLikeIntoUnderlay();
+        if (!ok(floStatus)) {
+            return floStatus;
+        }
     }
-    entry.value.post();
     auto rr = cache->entries.pushBack(entry);
     if (!rr.isOk()) {
         return rr.status();
@@ -1294,22 +1348,13 @@ Status tryDecodeOverlayTypeFromBlob(
             return Status::Ok;
         }
     }
-    const i32 idx = findTypeBlobIndex(input.overlayTypeIds, overlayId);
-    if (idx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 11, overlayId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.debugRecordMissingType) {
+            input.debugRecordMissingType(input.debugMissingTypeCtx, 11, overlayId);
+        }
         return Status::NotFound;
-    }
-    if (idx >= static_cast<i32>(input.overlayTypeOffsets.size()) ||
-        idx >= static_cast<i32>(input.overlayTypeLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.overlayTypeOffsets[static_cast<std::size_t>(idx)];
-    const i32 len = input.overlayTypeLengths[static_cast<std::size_t>(idx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.overlayTypeBytes.size()) ||
-        len > static_cast<i32>(input.overlayTypeBytes.size()) - off) {
-        return Status::OutOfRange;
     }
     DecodedOverlayTypeCache::Entry entry{};
     entry.id = overlayId;
@@ -1318,7 +1363,7 @@ Status tryDecodeOverlayTypeFromBlob(
     cacheInfo.revision = input.cacheRevision;
     entry.value = OverlayFloorType(overlayId, cacheInfo);
     Uint8ArrayReader reader(
-        Span<const u8>(input.overlayTypeBytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     TypeDecodeError err{};
     TypeDecodeContext ctx{entry.value.cacheInfo, nullptr, &alloc};
@@ -1438,27 +1483,18 @@ Status tryDecodeObjTypeFromBlob(
         }
     }
 
-    const i32 blobIdx = findTypeBlobIndex(input.objTypeIds, objTypeId);
-    if (blobIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 12, objTypeId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.debugRecordMissingType) {
+            input.debugRecordMissingType(input.debugMissingTypeCtx, 12, objTypeId);
+        }
         return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.objTypeOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.objTypeLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.objTypeOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.objTypeLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.objTypeBytes.size()) ||
-        len > static_cast<i32>(input.objTypeBytes.size()) - off) {
-        return Status::OutOfRange;
     }
 
     ObjType decoded(objTypeId, cache->cacheInfo);
     Uint8ArrayReader reader(
-        Span<const u8>(input.objTypeBytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     TypeDecodeError err{};
     TypeDecodeContext ctx{cache->cacheInfo, &cache->strings, &alloc};
@@ -1693,27 +1729,18 @@ Status tryDecodeLocTypeFromBlob(
         }
     }
 
-    const i32 blobIdx = findTypeBlobIndex(input.locTypeIds, locTypeId);
-    if (blobIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 1, locTypeId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.debugRecordMissingType) {
+            input.debugRecordMissingType(input.debugMissingTypeCtx, 1, locTypeId);
+        }
         return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.locTypeOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.locTypeLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.locTypeOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.locTypeLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.locTypeBytes.size()) ||
-        len > static_cast<i32>(input.locTypeBytes.size()) - off) {
-        return Status::OutOfRange;
     }
 
     LocType decoded(locTypeId, cache->cacheInfo);
     Uint8ArrayReader reader(
-        Span<const u8>(input.locTypeBytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     TypeDecodeError err{};
     TypeDecodeContext ctx{cache->cacheInfo, &cache->strings, &alloc};
@@ -1749,27 +1776,18 @@ Status tryDecodeVarBitTypeFromBlob(
         }
     }
 
-    const i32 blobIdx = findTypeBlobIndex(input.varbitIds, varbitId);
-    if (blobIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 2, varbitId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.debugRecordMissingType) {
+            input.debugRecordMissingType(input.debugMissingTypeCtx, 2, varbitId);
+        }
         return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.varbitOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.varbitLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.varbitOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.varbitLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.varbitBytes.size()) ||
-        len > static_cast<i32>(input.varbitBytes.size()) - off) {
-        return Status::OutOfRange;
     }
 
     VarBitType decoded(varbitId, cache->cacheInfo);
     Uint8ArrayReader reader(
-        Span<const u8>(input.varbitBytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     TypeDecodeError err{};
     const Status ds = decodeType(decoded, reader, &err, nullptr);
@@ -1805,27 +1823,18 @@ Status tryDecodeSeqTypeFromBlob(
         }
     }
 
-    const i32 blobIdx = findTypeBlobIndex(input.seqTypeIds, seqTypeId);
-    if (blobIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 5, seqTypeId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
+        if (input.debugRecordMissingType) {
+            input.debugRecordMissingType(input.debugMissingTypeCtx, 5, seqTypeId);
+        }
         return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.seqTypeOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.seqTypeLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.seqTypeOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.seqTypeLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.seqTypeBytes.size()) ||
-        len > static_cast<i32>(input.seqTypeBytes.size()) - off) {
-        return Status::OutOfRange;
     }
 
     SeqType decoded(seqTypeId, cache->cacheInfo);
     Uint8ArrayReader reader(
-        Span<const u8>(input.seqTypeBytes.data() + off, static_cast<std::size_t>(len)),
+        bytes,
         0);
     TypeDecodeError err{};
     TypeDecodeContext ctx{cache->cacheInfo, &cache->strings, &alloc};
@@ -1852,24 +1861,12 @@ bool tryGetSeqAlphaHintFromBlob(
         return false;
     }
     *outHasAlpha = false;
-    const i32 blobIdx = findTypeBlobIndex(input.seqAlphaHintIds, seqTypeId);
-    if (blobIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 14, seqTypeId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
         return false;
     }
-    if (blobIdx >= static_cast<i32>(input.seqAlphaHintOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.seqAlphaHintLengths.size())) {
-        return false;
-    }
-    const i32 off = input.seqAlphaHintOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.seqAlphaHintLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return false;
-    }
-    if (off > static_cast<i32>(input.seqAlphaHintBytes.size()) ||
-        len > static_cast<i32>(input.seqAlphaHintBytes.size()) - off) {
-        return false;
-    }
-    *outHasAlpha = input.seqAlphaHintBytes[static_cast<std::size_t>(off)] != 0;
+    *outHasAlpha = bytes[0] != 0;
     return true;
 }
 
@@ -2505,30 +2502,8 @@ Status computeLocVariantModelHashForGroupingFromBlob(
 
     for (std::size_t mi = 0; mi < modelIds.size(); mi++) {
         const i32 modelId = modelIds[mi];
-
-        const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
-        if (blobIdx < 0) {
-            return Status::NotFound;
-        }
-        if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
-            blobIdx >= static_cast<i32>(input.modelLengths.size())) {
-            return Status::SizeMismatch;
-        }
-        const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
-        const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
-        if (off < 0 || len <= 0) {
-            return Status::NotFound;
-        }
-        if (off > static_cast<i32>(input.modelBytes.size()) ||
-            len > static_cast<i32>(input.modelBytes.size()) - off) {
-            return Status::OutOfRange;
-        }
-
         ModelData model(alloc);
-        const Status ds = decodeModelData(
-            Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
-            &model,
-            alloc);
+        const Status ds = tryDecodeModelDataById(input, modelId, &model, alloc);
         if (!ok(ds)) {
             return ds;
         }
@@ -2721,29 +2696,8 @@ Status tryDecodeModelFaceStatsFromBlob(
         }
     }
 
-    const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
-    if (blobIdx < 0) {
-        return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.modelLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.modelBytes.size()) ||
-        len > static_cast<i32>(input.modelBytes.size()) - off) {
-        return Status::OutOfRange;
-    }
-
     ModelData model(alloc);
-    const Status ds = decodeModelData(
-        Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
-        &model,
-        alloc);
+    const Status ds = tryDecodeModelDataById(input, modelId, &model, alloc);
     if (!ok(ds)) {
         return ds;
     }
@@ -2879,29 +2833,8 @@ Status tryDecodeObjModelFaceStatsFromBlob(
         }
     }
 
-    const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
-    if (blobIdx < 0) {
-        return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.modelLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.modelBytes.size()) ||
-        len > static_cast<i32>(input.modelBytes.size()) - off) {
-        return Status::OutOfRange;
-    }
-
     ModelData model(alloc);
-    const Status ds = decodeModelData(
-        Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
-        &model,
-        alloc);
+    const Status ds = tryDecodeModelDataById(input, modelId, &model, alloc);
     if (!ok(ds)) {
         return ds;
     }
@@ -2992,29 +2925,8 @@ static Status tryDecodeObjModelFromBlob(
     if (!outModel) {
         return Status::InvalidArgument;
     }
-    const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
-    if (blobIdx < 0) {
-        return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.modelLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.modelBytes.size()) ||
-        len > static_cast<i32>(input.modelBytes.size()) - off) {
-        return Status::OutOfRange;
-    }
-
     ModelData model(alloc);
-    const Status ds = decodeModelData(
-        Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
-        &model,
-        alloc);
+    const Status ds = tryDecodeModelDataById(input, modelId, &model, alloc);
     if (!ok(ds)) {
         return ds;
     }
@@ -3035,29 +2947,8 @@ static Status tryDecodeLocModelFromBlob(
     if (!outModel) {
         return Status::InvalidArgument;
     }
-    const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
-    if (blobIdx < 0) {
-        return Status::NotFound;
-    }
-    if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
-        blobIdx >= static_cast<i32>(input.modelLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
-    const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.modelBytes.size()) ||
-        len > static_cast<i32>(input.modelBytes.size()) - off) {
-        return Status::OutOfRange;
-    }
-
     ModelData model(alloc);
-    const Status ds = decodeModelData(
-        Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
-        &model,
-        alloc);
+    const Status ds = tryDecodeModelDataById(input, modelId, &model, alloc);
     if (!ok(ds)) {
         return ds;
     }
@@ -3178,30 +3069,7 @@ Status appendLocPlacementGeometry(
     const i32 contourZ = contourPxZ;
 
     const auto decodeModelRawById = [&](i32 modelId, ModelData* outModel) noexcept -> Status {
-        if (!outModel) {
-            return Status::InvalidArgument;
-        }
-        const i32 blobIdx = findTypeBlobIndex(input.modelIds, modelId);
-        if (blobIdx < 0) {
-            return Status::NotFound;
-        }
-        if (blobIdx >= static_cast<i32>(input.modelOffsets.size()) ||
-            blobIdx >= static_cast<i32>(input.modelLengths.size())) {
-            return Status::SizeMismatch;
-        }
-        const i32 off = input.modelOffsets[static_cast<std::size_t>(blobIdx)];
-        const i32 len = input.modelLengths[static_cast<std::size_t>(blobIdx)];
-        if (off < 0 || len <= 0) {
-            return Status::NotFound;
-        }
-        if (off > static_cast<i32>(input.modelBytes.size()) ||
-            len > static_cast<i32>(input.modelBytes.size()) - off) {
-            return Status::OutOfRange;
-        }
-        return decodeModelData(
-            Span<const u8>(input.modelBytes.data() + off, static_cast<std::size_t>(len)),
-            outModel,
-            alloc);
+        return tryDecodeModelDataById(input, modelId, outModel, alloc);
     };
 
     Vec<ModelData> decodedModels(alloc);
@@ -4855,14 +4723,8 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             return hs;
         }
         if (hasLocPlacements &&
-            (input.locTypeIds.size() == 0 ||
-             input.locTypeOffsets.size() == 0 ||
-             input.locTypeLengths.size() == 0 ||
-             input.locTypeBytes.size() == 0 ||
-             input.modelIds.size() == 0 ||
-             input.modelOffsets.size() == 0 ||
-             input.modelLengths.size() == 0 ||
-             input.modelBytes.size() == 0)) {
+            (input.tryGetTypeEntryBytes == nullptr ||
+             (input.tryLoadModelData == nullptr))) {
             return Status::NotFound;
         }
     } else if (input.locLoadType != 1) {
@@ -4915,8 +4777,19 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
 
         static i32 computeModelXzRadius(const ModelData& model) noexcept {
             i64 maxRadiusSq = 0;
-            const std::size_t count = model.verticesX.size();
-            for (std::size_t i = 0; i < count && i < model.verticesZ.size(); i++) {
+            const i32 vertexCount =
+                model.usedVertexCount > 0 ? model.usedVertexCount : model.verticesCount;
+            std::size_t count = 0;
+            if (vertexCount > 0) {
+                count = static_cast<std::size_t>(vertexCount);
+            }
+            if (count > model.verticesX.size()) {
+                count = model.verticesX.size();
+            }
+            if (count > model.verticesZ.size()) {
+                count = model.verticesZ.size();
+            }
+            for (std::size_t i = 0; i < count; i++) {
                 const i64 x = static_cast<i64>(model.verticesX[i]);
                 const i64 z = static_cast<i64>(model.verticesZ[i]);
                 const i64 radiusSq = x * x + z * z;
@@ -5397,7 +5270,8 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         }
     }
 
-    if (input.objTypeIds.size() > 0 && input.objSpawnMapIds.size() > 0) {
+    // Obj-spawn bytes are optional (runtime kind=13). If absent, obj commands are skipped.
+    {
         DecodedObjTypeCache objTypeCache(cacheInfo, alloc);
         DecodedModelFaceStatsCache objModelCache(alloc);
         Status os = Status::Ok;
@@ -5518,9 +5392,8 @@ Status deriveSceneLocRenderPlacementStage(
     out->seqId = seqId;
     out->priority = scb::locPlacementPriority(input.placementType);
     out->includeLod = !input.lowDetailPlacement;
-    // Any contoured-ground model differs per placement; force per-placement merge.
-    // Low-detail placements skip contouring, so they can merge normally.
-    out->forceMerge = resolved.contourGroundType > 0 && !input.lowDetailPlacement;
+    // Match TS render-data backend: force-merge all contoured-ground placements.
+    out->forceMerge = resolved.contourGroundType > 0;
     // Match TS render-data backend: treat a placement as "entity-driven" when it has an active seq,
     // or when either the base or resolved type participates in transforms, or when we explicitly
     // requested a no-model build.
@@ -5655,27 +5528,7 @@ static Status validateSceneCommandBuildInput(const SceneCommandBuildInput& input
     if (input.mapSquareIds.size() != input.terrainOffsets.size() ||
         input.mapSquareIds.size() != input.terrainLengths.size() ||
         input.mapSquareIds.size() != input.locOffsets.size() ||
-        input.mapSquareIds.size() != input.locLengths.size() ||
-        input.locTypeIds.size() != input.locTypeOffsets.size() ||
-        input.locTypeIds.size() != input.locTypeLengths.size() ||
-        input.varbitIds.size() != input.varbitOffsets.size() ||
-        input.varbitIds.size() != input.varbitLengths.size() ||
-        input.seqTypeIds.size() != input.seqTypeOffsets.size() ||
-        input.seqTypeIds.size() != input.seqTypeLengths.size() ||
-        input.seqFrameIds.size() != input.seqFrameOffsets.size() ||
-        input.seqFrameIds.size() != input.seqFrameLengths.size() ||
-        input.seqAlphaHintIds.size() != input.seqAlphaHintOffsets.size() ||
-        input.seqAlphaHintIds.size() != input.seqAlphaHintLengths.size() ||
-        input.seqBaseIds.size() != input.seqBaseOffsets.size() ||
-        input.seqBaseIds.size() != input.seqBaseLengths.size() ||
-        input.skeletalSeqIds.size() != input.skeletalSeqOffsets.size() ||
-        input.skeletalSeqIds.size() != input.skeletalSeqLengths.size() ||
-        input.modelIds.size() != input.modelOffsets.size() ||
-        input.modelIds.size() != input.modelLengths.size() ||
-        input.objTypeIds.size() != input.objTypeOffsets.size() ||
-        input.objTypeIds.size() != input.objTypeLengths.size() ||
-        input.objSpawnMapIds.size() != input.objSpawnOffsets.size() ||
-        input.objSpawnMapIds.size() != input.objSpawnLengths.size()) {
+        input.mapSquareIds.size() != input.locLengths.size()) {
         return Status::SizeMismatch;
     }
 
@@ -5685,32 +5538,6 @@ static Status validateSceneCommandBuildInput(const SceneCommandBuildInput& input
         input.terrainBytes.size());
     if (!ok(s)) return s;
     s = validateOffsetLengthPairs(input.locOffsets, input.locLengths, input.locBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.locTypeOffsets, input.locTypeLengths, input.locTypeBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.objTypeOffsets, input.objTypeLengths, input.objTypeBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.objSpawnOffsets, input.objSpawnLengths, input.objSpawnBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.varbitOffsets, input.varbitLengths, input.varbitBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.seqTypeOffsets, input.seqTypeLengths, input.seqTypeBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.seqFrameOffsets, input.seqFrameLengths, input.seqFrameBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(
-        input.seqAlphaHintOffsets,
-        input.seqAlphaHintLengths,
-        input.seqAlphaHintBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.seqBaseOffsets, input.seqBaseLengths, input.seqBaseBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(
-        input.skeletalSeqOffsets,
-        input.skeletalSeqLengths,
-        input.skeletalSeqBytes.size());
-    if (!ok(s)) return s;
-    s = validateOffsetLengthPairs(input.modelOffsets, input.modelLengths, input.modelBytes.size());
     if (!ok(s)) return s;
     return Status::Ok;
 }

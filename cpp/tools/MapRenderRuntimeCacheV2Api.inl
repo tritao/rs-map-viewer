@@ -1,5 +1,36 @@
 // Extracted from `cpp/tools/rs_map_render_backend.cpp` (no behavior changes).
 
+static bool isTypeEntryBlobDomain(const rs::i32 domain) noexcept {
+    // Type-entry blobs live in "kind domains": (domain in [101..116], group=0, file=id).
+    return domain >= RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MIN &&
+        domain <= RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MAX;
+}
+
+static void invalidateDerivedCachesForBlobDomain(
+    MapRenderRuntimeState* runtime,
+    const rs::i32 domain,
+    const bool mutated) noexcept {
+    if (!runtime || !mutated) {
+        return;
+    }
+    if (isTypeEntryBlobDomain(domain)) {
+        runtime->cache.typeGeneration++;
+        runtime->cache.appliedTypeGeneration = -1;
+    }
+    if (domain == RS_MAP_RENDER_BLOB_DOMAIN_DAT_SEQ_FRAME_MAP) {
+        runtime->cache.datSeqFrameMapGeneration++;
+        runtime->cache.appliedDatSeqFrameMapGeneration = -1;
+    }
+    if (domain == RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES) {
+        runtime->cache.legacySeqFilesGeneration++;
+        runtime->cache.appliedLegacySeqFilesGeneration = -1;
+    }
+    if (domain == RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_MODEL_FILES) {
+        runtime->cache.legacyModelFilesGeneration++;
+        runtime->cache.appliedLegacyModelFilesGeneration = -1;
+    }
+}
+
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_set_build_config(
     const rs::i32 runtimeHandle,
     const rs::i32 cacheGame,
@@ -31,166 +62,6 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_set_build_config(
     return RS_MAP_RENDER_STATUS_OK;
 }
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_needs_type_upload(
-    const rs::i32 runtimeHandle) {
-    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
-    if (!runtime) {
-        return 0;
-    }
-    return (!runtime->cache.locTypes.loaded || !runtime->cache.varbits.loaded || !runtime->cache.npcTypes.loaded || !runtime->cache.basTypes.loaded || !runtime->cache.objTypes.loaded) ? 1 : 0;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_map_square(
-    const rs::i32 runtimeHandle,
-    const rs::i32 mapX,
-    const rs::i32 mapY,
-    const rs::u8* terrainBytes,
-    const rs::i32 terrainBytesLength,
-    const rs::u8* locBytes,
-    const rs::i32 locBytesLength,
-    const rs::u8* npcBytes,
-    const rs::i32 npcBytesLength) {
-    return rs::tooling::runtimeCachePutMapSquare(
-        getMapRenderRuntime(runtimeHandle),
-        mapX,
-        mapY,
-        terrainBytes,
-        terrainBytesLength,
-        locBytes,
-        locBytesLength,
-        npcBytes,
-        npcBytesLength,
-        mapSquareId,
-        assignBytes,
-        RS_MAP_RENDER_STATUS_INVALID_ARG,
-        RS_MAP_RENDER_STATUS_OK);
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_map_squares_packed(
-    const rs::i32 runtimeHandle,
-    const rs::i32 count,
-    const rs::i32* mapXs,
-    const rs::i32* mapYs,
-    const rs::i32* terrainOffsets,
-    const rs::i32* terrainLengths,
-    const rs::u8* terrainBytes,
-    const rs::i32 terrainBytesLength,
-    const rs::i32* locOffsets,
-    const rs::i32* locLengths,
-    const rs::u8* locBytes,
-    const rs::i32 locBytesLength,
-    const rs::i32* npcOffsets,
-    const rs::i32* npcLengths,
-    const rs::u8* npcBytes,
-    const rs::i32 npcBytesLength) {
-    return rs::tooling::runtimeCachePutMapSquaresPacked(
-        getMapRenderRuntime(runtimeHandle),
-        count,
-        mapXs,
-        mapYs,
-        terrainOffsets,
-        terrainLengths,
-        terrainBytes,
-        terrainBytesLength,
-        locOffsets,
-        locLengths,
-        locBytes,
-        locBytesLength,
-        npcOffsets,
-        npcLengths,
-        npcBytes,
-        npcBytesLength,
-        mapSquareId,
-        assignBytes,
-        RS_MAP_RENDER_STATUS_INVALID_ARG,
-        RS_MAP_RENDER_STATUS_OK);
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_clear_map_squares(
-    const rs::i32 runtimeHandle) {
-    return rs::tooling::runtimeCacheClearMapSquares(
-        getMapRenderRuntime(runtimeHandle),
-        RS_MAP_RENDER_STATUS_INVALID_ARG,
-        RS_MAP_RENDER_STATUS_OK);
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_type_blob(
-    const rs::i32 runtimeHandle,
-    const rs::i32 kind,
-    const rs::i32* ids,
-    const rs::i32* offsets,
-    const rs::i32* lengths,
-    const rs::i32 count,
-    const rs::u8* bytes,
-    const rs::i32 bytesLength) {
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    const rs::i32 status = rs::tooling::runtimeCachePutTypeBlob(
-        runtime,
-        kind,
-        ids,
-        offsets,
-        lengths,
-        count,
-        bytes,
-        bytesLength,
-        resolveRuntimeTypeBlob,
-        RS_MAP_RENDER_STATUS_INVALID_ARG,
-        RS_MAP_RENDER_STATUS_OK);
-    if (status == RS_MAP_RENDER_STATUS_OK && runtime) {
-        runtime->cache.typeEntriesByKind.erase(kind);
-    }
-    return status;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_clear_type_kind(
-    const rs::i32 runtimeHandle,
-    const rs::i32 kind) {
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    MapRenderCachedTypeBlob* blob = resolveRuntimeTypeBlob(runtime, kind);
-    if (!blob) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    blob->clear();
-    runtime->cache.typeEntriesByKind.erase(kind);
-    runtime->cache.typeGeneration++;
-    runtime->cache.appliedTypeGeneration = -1;
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_type_entry(
-    const rs::i32 runtimeHandle,
-    const rs::i32 kind,
-    const rs::i32 id,
-    const rs::u8* bytes,
-    const rs::i32 bytesLength) {
-    if (id < 0 || bytesLength < 0 || (bytesLength > 0 && !bytes)) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    MapRenderCachedTypeBlob* blob = resolveRuntimeTypeBlob(runtime, kind);
-    if (!blob) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    auto& entryStore = runtime->cache.typeEntriesByKind[kind];
-    entryStore.loaded = true;
-    std::vector<rs::u8> entryBytes{};
-    if (bytesLength > 0) {
-        entryBytes.assign(bytes, bytes + static_cast<std::size_t>(bytesLength));
-    }
-    entryStore.entriesById[id] = std::move(entryBytes);
-    runtime->cache.typeEntriesDirty = true;
-    blob->loaded = false;
-    runtime->cache.typeGeneration++;
-    runtime->cache.appliedTypeGeneration = -1;
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_set_varps(
     const rs::i32 runtimeHandle,
     const rs::i32* varps,
@@ -203,77 +74,114 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_set_varps(
         RS_MAP_RENDER_STATUS_OK);
 }
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_texture_argb(
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_blob_batch(
     const rs::i32 runtimeHandle,
-    const rs::i32 textureId,
-    const rs::i32* argb,
-    const rs::i32 argbLength) {
+    const rs::i32 domain,
+    const rs::i32* groups,
+    const rs::i32* files,
+    const rs::i32* offsets,
+    const rs::i32* lengths,
+    const rs::i32 count,
+    const rs::u8* bytes,
+    const rs::i32 bytesLength) {
+    if (domain < 0 || count < 0 || bytesLength < 0) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    if (count > 0 && (!groups || !files || !offsets || !lengths)) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    if (bytesLength > 0 && !bytes) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
     MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime || textureId < 0 || argbLength < 0) {
+    if (!runtime) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    if (argbLength > 0 && !argb) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+
+    auto& store = runtime->cache.blobEntries;
+    const bool typeDomain = isTypeEntryBlobDomain(domain);
+    const rs::i32 n = count | 0;
+    for (rs::i32 i = 0; i < n; i++) {
+        const rs::i32 group = groups[i] | 0;
+        const rs::i32 file = files[i] | 0;
+        const rs::i32 off = offsets[i] | 0;
+        const rs::i32 len = lengths[i] | 0;
+        if (group < 0 || file < 0 || off < 0 || len < 0) {
+            return RS_MAP_RENDER_STATUS_INVALID_ARG;
+        }
+        if (typeDomain && group != 0) {
+            return RS_MAP_RENDER_STATUS_INVALID_ARG;
+        }
+        if (off > bytesLength || len > bytesLength - off) {
+            return RS_MAP_RENDER_STATUS_INVALID_ARG;
+        }
+
+        const MapRenderRuntimeCacheState::BlobKey key{domain, group, file};
+        auto it = store.find(key);
+        std::vector<rs::u8> payload{};
+        if (len > 0) {
+            payload.assign(bytes + static_cast<std::size_t>(off), bytes + static_cast<std::size_t>(off + len));
+        }
+        if (it == store.end()) {
+            runtime->cache.blobEntriesBytes += payload.size();
+            store.emplace(key, std::move(payload));
+        } else {
+            runtime->cache.blobEntriesBytes -= it->second.size();
+            it->second = std::move(payload);
+            runtime->cache.blobEntriesBytes += it->second.size();
+        }
     }
-    if (argbLength == 0) {
-        runtime->cache.textureArgbById.erase(textureId);
-        return RS_MAP_RENDER_STATUS_OK;
-    }
-    std::vector<rs::i32>& out = runtime->cache.textureArgbById[textureId];
-    out.assign(argb, argb + static_cast<std::size_t>(argbLength));
+
+    invalidateDerivedCachesForBlobDomain(runtime, domain, n > 0);
     return RS_MAP_RENDER_STATUS_OK;
 }
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_clear_texture_argb(
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_clear_blob_domain(
+    const rs::i32 runtimeHandle,
+    const rs::i32 domain) {
+    if (domain < 0) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    auto& store = runtime->cache.blobEntries;
+    bool removed = false;
+    for (auto it = store.begin(); it != store.end();) {
+        if (it->first.domain == domain) {
+            runtime->cache.blobEntriesBytes -= it->second.size();
+            it = store.erase(it);
+            removed = true;
+        } else {
+            ++it;
+        }
+    }
+    invalidateDerivedCachesForBlobDomain(runtime, domain, removed);
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_clear_all_blobs(
     const rs::i32 runtimeHandle) {
     MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
     if (!runtime) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    runtime->cache.textureArgbById.clear();
-    return RS_MAP_RENDER_STATUS_OK;
-}
+    runtime->cache.blobEntries.clear();
+    runtime->cache.blobEntriesBytes = 0;
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_put_material_params(
-    const rs::i32 runtimeHandle,
-    const rs::i32 materialId,
-    const rs::i32* params,
-    const rs::i32 paramsLength) {
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime || materialId < 0 || paramsLength < 0) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    if (paramsLength > 0 && !params) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    if (paramsLength == 0) {
-        runtime->cache.materialParamsById.erase(materialId);
-        return RS_MAP_RENDER_STATUS_OK;
-    }
-    std::vector<rs::i32>& out = runtime->cache.materialParamsById[materialId];
-    out.assign(params, params + static_cast<std::size_t>(paramsLength));
-    return RS_MAP_RENDER_STATUS_OK;
-}
+    // Invalidate derived caches.
+    runtime->cache.typeGeneration++;
+    runtime->cache.appliedTypeGeneration = -1;
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_clear_material_params(
-    const rs::i32 runtimeHandle) {
-    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
-    if (!runtime) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    runtime->cache.materialParamsById.clear();
-    return RS_MAP_RENDER_STATUS_OK;
-}
+    runtime->cache.datSeqFrameMapGeneration++;
+    runtime->cache.appliedDatSeqFrameMapGeneration = -1;
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_cache_get_resource_counts(
-    const rs::i32 runtimeHandle,
-    rs::i32* outCounts,
-    const rs::i32 outCountsLength) {
-    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
-    if (!runtime || !outCounts || outCountsLength < 2) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    outCounts[0] = static_cast<rs::i32>(runtime->cache.textureArgbById.size());
-    outCounts[1] = static_cast<rs::i32>(runtime->cache.materialParamsById.size());
+    runtime->cache.legacySeqFilesGeneration++;
+    runtime->cache.appliedLegacySeqFilesGeneration = -1;
+
+    runtime->cache.legacyModelFilesGeneration++;
+    runtime->cache.appliedLegacyModelFilesGeneration = -1;
+
     return RS_MAP_RENDER_STATUS_OK;
 }

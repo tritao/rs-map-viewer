@@ -17,6 +17,10 @@
 #include "../rs/config/vartype/VarBitType.hpp"
 #include "../rs/core/StringArena.hpp"
 #include "../rs/model/ModelData.hpp"
+#include "../rs/model/LegacyModelLoader.hpp"
+#include "../rs/model/seq/LegacySeqFrameLoader.hpp"
+#include "../rs/model/seq/SeqFrame.hpp"
+#include "../rs/model/seq/SeqFrameLoaderCommon.hpp"
 #include "../rs/render/MapRenderRuntimeApi.hpp"
 #include "../rs/render/SceneCommandBuilder.hpp"
 #include "../rs/render/SceneCommandPack.hpp"
@@ -28,62 +32,11 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-extern "C" rs::i32 rs_build_scene_render_seed_from_map_squares(
-    rs::i32 baseX,
-    rs::i32 baseY,
-    rs::i32 sizeX,
-    rs::i32 sizeY,
-    rs::i32 locLoadType,
-    rs::i32 cacheGame,
-    rs::i32 cacheRevision,
-    rs::i32 mapCount,
-    const rs::i32* mapSquareIds,
-    const rs::i32* terrainOffsets,
-    const rs::i32* terrainLengths,
-    const rs::u8* terrainBytes,
-    rs::i32 terrainBytesLength,
-    const rs::i32* locOffsets,
-    const rs::i32* locLengths,
-    const rs::u8* locBytes,
-    rs::i32 locBytesLength,
-    rs::i32* outTileHeights,
-    rs::i32 outTileHeightsLength,
-    rs::u8* outTileRenderFlags,
-    rs::i32 outTileRenderFlagsLength,
-    rs::u16* outTileUnderlays,
-    rs::i32 outTileUnderlaysLength,
-    rs::i16* outTileOverlays,
-    rs::i32 outTileOverlaysLength,
-    rs::u8* outTileShapes,
-    rs::i32 outTileShapesLength,
-    rs::u8* outTileRotations,
-    rs::i32 outTileRotationsLength,
-    rs::u8* outBlockedByFloor,
-    rs::i32 outBlockedByFloorLength,
-    rs::u8* outTileMinLevels,
-    rs::i32 outTileMinLevelsLength,
-    rs::i32* outLocPlacements,
-    rs::i32 outLocPlacementIntsCapacity);
-
-extern "C" rs::i32 rs_resolve_loc_placements_and_collision_from_initialized_types(
-    rs::i32 levels,
-    rs::i32 sizeX,
-    rs::i32 sizeY,
-    const rs::u8* tileRenderFlags,
-    rs::i32 tileRenderFlagsLength,
-    const rs::u8* blockedByFloor,
-    rs::i32 blockedByFloorLength,
-    rs::i32* locPlacements,
-    rs::i32 locPlacementIntsLength,
-    const rs::i32* varpValues,
-    rs::i32 varpValuesLength,
-    rs::i32* outCollisionFlags,
-    rs::i32 outCollisionFlagsLength);
 
 namespace {
 
@@ -175,41 +128,6 @@ struct MapRenderTickState {
     rs::i32 locCount = 0;
     rs::i32 npcCount = 0;
     rs::i32 npcNullAlphaFrameOffset = 0;
-};
-
-struct MapRenderCachedMapSquare final {
-    std::vector<rs::u8> terrainBytes;
-    std::vector<rs::u8> locBytes;
-    std::vector<rs::u8> npcBytes;
-    bool hasTerrain = false;
-    bool hasLoc = false;
-    bool hasNpc = false;
-};
-
-struct MapRenderCachedTypeBlob final {
-    std::vector<rs::i32> ids;
-    std::vector<rs::i32> offsets;
-    std::vector<rs::i32> lengths;
-    std::vector<rs::u8> bytes;
-    bool loaded = false;
-
-    void clear() {
-        ids.clear();
-        offsets.clear();
-        lengths.clear();
-        bytes.clear();
-        loaded = false;
-    }
-};
-
-struct MapRenderCachedTypeEntryStore final {
-    std::unordered_map<rs::i32, std::vector<rs::u8>> entriesById;
-    bool loaded = false;
-
-    void clear() {
-        entriesById.clear();
-        loaded = false;
-    }
 };
 
 struct MapRenderCachedCommandStream final {
@@ -519,60 +437,75 @@ struct MapRenderCachedCommandStream final {
 };
 
 struct MapRenderRuntimeCacheState final {
-    std::unordered_map<rs::i32, MapRenderCachedMapSquare> mapSquares;
-    MapRenderCachedTypeBlob locTypes;
-    MapRenderCachedTypeBlob varbits;
-    MapRenderCachedTypeBlob models;
-    MapRenderCachedTypeBlob textureTransparentIds;
-    MapRenderCachedTypeBlob textureIds;
-    MapRenderCachedTypeBlob underlays;
-    MapRenderCachedTypeBlob overlays;
-    MapRenderCachedTypeBlob seqTypes;
-    MapRenderCachedTypeBlob seqFrames;
-    MapRenderCachedTypeBlob seqAlphaHints;
-    MapRenderCachedTypeBlob seqBases;
-    MapRenderCachedTypeBlob skeletalSeqs;
-    MapRenderCachedTypeBlob npcTypes;
-    MapRenderCachedTypeBlob basTypes;
-    MapRenderCachedTypeBlob objTypes;
-    MapRenderCachedTypeBlob objSpawns;
-    std::unordered_map<rs::i32, MapRenderCachedTypeEntryStore> typeEntriesByKind;
-    bool typeEntriesDirty = false;
-    std::unordered_map<rs::i32, std::vector<rs::i32>> textureArgbById;
-    std::unordered_map<rs::i32, std::vector<rs::i32>> materialParamsById;
+    struct BlobKey final {
+        rs::i32 domain = 0;
+        rs::i32 group = 0;
+        rs::i32 file = 0;
+
+        bool operator==(const BlobKey& other) const {
+            return domain == other.domain && group == other.group && file == other.file;
+        }
+    };
+
+    struct BlobKeyHash final {
+        std::size_t operator()(const BlobKey& key) const noexcept {
+            // Cheap, stable mixing for (domain,group,file). This is not crypto; it just reduces clustering.
+            const std::uint64_t a = static_cast<std::uint32_t>(key.domain);
+            const std::uint64_t b = static_cast<std::uint32_t>(key.group);
+            const std::uint64_t c = static_cast<std::uint32_t>(key.file);
+            std::uint64_t x = a;
+            x = (x * 0x9E3779B185EBCA87ull) ^ (b + 0xC2B2AE3D27D4EB4Full + (x << 6) + (x >> 2));
+            x = (x * 0x9E3779B185EBCA87ull) ^ (c + 0x165667B19E3779F9ull + (x << 6) + (x >> 2));
+            return static_cast<std::size_t>(x);
+        }
+    };
     std::vector<rs::i32> varps;
+    std::unordered_map<BlobKey, std::vector<rs::u8>, BlobKeyHash> blobEntries;
+    std::size_t blobEntriesBytes = 0;
+    // Dat (classic) seq frames: decoded from raw frame-map blobs (domain=3).
+    std::unordered_set<rs::i32> decodedDatSeqFrameMapIds{};
+    std::unordered_map<rs::i32, rs::SeqBase> datSeqFrameBaseByMapId{};
+    std::unordered_map<rs::i32, rs::SeqFrame> datSeqFrameById{};
+    std::unordered_map<rs::i32, rs::i32> datSeqFrameMapIdByFrameId{};
+    // Legacy seq frames: decoded from raw base/frame named file blobs (domain=4).
+    rs::LegacySeqFrameLoader legacySeqFrames{};
+    bool legacySeqFramesLoaded = false;
+    // Legacy models: decoded from raw legacy model named file blobs (domain=5).
+    rs::LegacyModelLoader legacyModels{};
+    bool legacyModelsLoaded = false;
     rs::i32 cacheGame = 0;
     rs::i32 cacheRevision = 0;
     rs::i32 sceneLevels = 4;
     rs::i32 unitsTileHeightBasis = 128;
     rs::i32 typeGeneration = 0;
     rs::i32 appliedTypeGeneration = -1;
+    rs::i32 datSeqFrameMapGeneration = 0;
+    rs::i32 appliedDatSeqFrameMapGeneration = -1;
+    rs::i32 legacySeqFilesGeneration = 0;
+    rs::i32 appliedLegacySeqFilesGeneration = -1;
+    rs::i32 legacyModelFilesGeneration = 0;
+    rs::i32 appliedLegacyModelFilesGeneration = -1;
 
     void clear() {
-        mapSquares.clear();
-        locTypes.clear();
-        varbits.clear();
-        models.clear();
-        textureTransparentIds.clear();
-        textureIds.clear();
-        underlays.clear();
-        overlays.clear();
-        seqTypes.clear();
-        seqFrames.clear();
-        seqAlphaHints.clear();
-        seqBases.clear();
-        skeletalSeqs.clear();
-        npcTypes.clear();
-        basTypes.clear();
-        objTypes.clear();
-        objSpawns.clear();
-        typeEntriesByKind.clear();
-        typeEntriesDirty = false;
-        textureArgbById.clear();
-        materialParamsById.clear();
         varps.clear();
+        blobEntries.clear();
+        blobEntriesBytes = 0;
+        decodedDatSeqFrameMapIds.clear();
+        datSeqFrameBaseByMapId.clear();
+        datSeqFrameById.clear();
+        datSeqFrameMapIdByFrameId.clear();
         typeGeneration = 0;
         appliedTypeGeneration = -1;
+        datSeqFrameMapGeneration = 0;
+        appliedDatSeqFrameMapGeneration = -1;
+        legacySeqFrames = rs::LegacySeqFrameLoader();
+        legacySeqFramesLoaded = false;
+        legacySeqFilesGeneration = 0;
+        appliedLegacySeqFilesGeneration = -1;
+        legacyModels = rs::LegacyModelLoader();
+        legacyModelsLoaded = false;
+        legacyModelFilesGeneration = 0;
+        appliedLegacyModelFilesGeneration = -1;
     }
 };
 
@@ -581,10 +514,9 @@ struct MapRenderRuntimeState {
     rs::tooling::MapRenderLoadedPayloadState mapPayload;
     MapRenderRuntimeCacheState cache;
     MapRenderCachedCommandStream lastBuiltCommandStream;
-    std::vector<rs::i32> debugLastCollisionFlags;
-    rs::i32 debugLastCollisionLevels = 0;
-    rs::i32 debugLastCollisionSizeX = 0;
-    rs::i32 debugLastCollisionSizeY = 0;
+    // Stable: blob keys missing during the last build attempt (packed [domain,group,file] triples).
+    // Used by JS/TS to drive on-demand uploads without a separate type-demand pass.
+    std::vector<rs::i32> lastMissingBlobTriples;
     rs::i32 payloadGeneration = 0;
     rs::i32 debugLastMapInputHashDirect = 0;
     rs::i32 debugLastMapInputHashCache = 0;
@@ -596,6 +528,34 @@ struct MapRenderRuntimeState {
     rs::i32 debugWorldHeightProbeLevel = -1;
     rs::i32 debugWorldHeightProbeWorldX = -1;
     rs::i32 debugWorldHeightProbeWorldZ = -1;
+    // Debug-only: last build failure summary for cache->packet builds.
+    // stage=0 means last build succeeded (or hasn't run yet).
+    rs::i32 debugLastBuildFailureStage = 0;
+    rs::i32 debugLastBuildFailureStatus = 0;
+    rs::i32 debugLastBuildFailureDetail0 = 0;
+    rs::i32 debugLastBuildFailureDetail1 = 0;
+    // Debug-only: last core Status from buildSceneCommandStream/PlanOnly (0=Ok).
+    rs::i32 debugLastCommandStreamCoreStatus = 0;
+    // Debug-only: legacy model loader observations (used to debug legacy cache support).
+    rs::i32 debugLastLegacyModelId = -1;
+    rs::i32 debugLastLegacyModelStatus = 0;
+    rs::i32 debugLastLegacyModelMissingFile = -1;
+    // Debug-only: last missing type info captured by SceneCommandBuilder.
+    rs::i32 debugLastMissingTypeKind = 0;
+    rs::i32 debugLastMissingTypeId = -1;
+    // Debug-only: last collectRuntimeCachedMapInput diagnostics.
+    rs::i32 debugLastCollectMapInputStatus = 0;
+    rs::i32 debugLastCollectMapInputReason = 0;
+    rs::i32 debugLastCollectMapInputMapStartX = 0;
+    rs::i32 debugLastCollectMapInputMapStartY = 0;
+    rs::i32 debugLastCollectMapInputMapEndX = 0;
+    rs::i32 debugLastCollectMapInputMapEndY = 0;
+    rs::i32 debugLastCollectMapInputExpectedSquares = 0;
+    rs::i32 debugLastCollectMapInputSquaresWithAny = 0;
+    rs::i32 debugLastCollectMapInputSquaresWithTerrain = 0;
+    rs::i32 debugLastCollectMapInputSquaresWithLoc = 0;
+    rs::i32 debugLastCollectMapInputFirstPresentMapSquareId = -1;
+    rs::i32 debugLastCollectMapInputFirstMissingMapSquareId = -1;
 };
 
 struct MapRenderPacketHandleState final {
@@ -605,6 +565,48 @@ struct MapRenderPacketHandleState final {
 
 static rs::tooling::RuntimeStore<MapRenderRuntimeState> gMapRenderRuntimes;
 static rs::tooling::HandleStore<MapRenderPacketHandleState> gMapRenderPacketHandles;
+
+enum MapRenderDebugBuildFailureStage : rs::i32 {
+    kBuildFailNone = 0,
+    kBuildFailInvalidArg = 1,
+    kBuildFailCollectMapInput = 2,
+    kBuildFailEnsureTypes = 3,
+    kBuildFailCollision = 4,
+    kBuildFailCommandStream = 5,
+    kBuildFailPlanPayload = 6,
+    kBuildFailBuildPayload = 7,
+    kBuildFailStorePayload = 8,
+};
+
+enum MapRenderCollectMapInputReason : rs::i32 {
+    kCollectMapInputReasonNone = 0,
+    kCollectMapInputReasonOk = 1,
+    kCollectMapInputReasonInvalidArg = 2,
+    kCollectMapInputReasonNoSquaresInWindow = 3,
+    kCollectMapInputReasonTerrainCapacity = 4,
+    kCollectMapInputReasonLocCapacity = 5,
+    kCollectMapInputReasonOther = 6,
+};
+
+static inline rs::i32 recordBuildFailure(
+    MapRenderRuntimeState* runtime,
+    rs::i32 stage,
+    rs::i32 status,
+    rs::i32 detail0 = 0,
+    rs::i32 detail1 = 0) noexcept {
+    if (runtime) {
+        runtime->debugLastBuildFailureStage = stage;
+        runtime->debugLastBuildFailureStatus = status;
+        runtime->debugLastBuildFailureDetail0 = detail0;
+        runtime->debugLastBuildFailureDetail1 = detail1;
+    }
+    return status;
+}
+
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_VERSION = 1;
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_HEADER_LENGTH = 2;
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_STRIDE = 3;
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_MAX_ENTRIES = 4096;
 
 static constexpr rs::i32 RS_NPC_PATH_QUEUE_LEN_PACKED = 10;
 static constexpr rs::i32 RS_MAP_RENDER_STATUS_OK = 1;
@@ -650,155 +652,86 @@ static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_LOC_MERGE_DECISION_ENTRIES_META_L
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_LOC_MERGE_EMIT_ENTRIES_META_LENGTH = 2;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_LOC_MERGE_NORMALS_TRACE_ENTRIES_META_LENGTH = 2;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_COMMAND_PROVENANCE_META_LENGTH = 2;
-static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_COLLISION_FLAGS_META_LENGTH = 4;
-
-enum MapRenderTypeBlobKind : rs::i32 {
-    RS_MAP_RENDER_TYPE_BLOB_LOC = 1,
-    RS_MAP_RENDER_TYPE_BLOB_VARBIT = 2,
-    RS_MAP_RENDER_TYPE_BLOB_MODEL = 3,
-    RS_MAP_RENDER_TYPE_BLOB_TEXTURE_TRANSPARENT = 4,
-    RS_MAP_RENDER_TYPE_BLOB_SEQ_TYPE = 5,
-    RS_MAP_RENDER_TYPE_BLOB_SEQ_FRAME = 6,
-    RS_MAP_RENDER_TYPE_BLOB_NPC = 7,
-    RS_MAP_RENDER_TYPE_BLOB_BAS = 8,
-    RS_MAP_RENDER_TYPE_BLOB_TEXTURE_IDS = 9,
-    RS_MAP_RENDER_TYPE_BLOB_UNDERLAY = 10,
-    RS_MAP_RENDER_TYPE_BLOB_OVERLAY = 11,
-    RS_MAP_RENDER_TYPE_BLOB_OBJ = 12,
-    RS_MAP_RENDER_TYPE_BLOB_OBJ_SPAWNS = 13,
-    RS_MAP_RENDER_TYPE_BLOB_SEQ_ALPHA_HINT = 14,
-    RS_MAP_RENDER_TYPE_BLOB_SEQ_BASE = 15,
-    RS_MAP_RENDER_TYPE_BLOB_SKELETAL_SEQ = 16,
-};
-
-static MapRenderCachedTypeBlob* resolveRuntimeTypeBlob(
-    MapRenderRuntimeState* runtime,
-    const rs::i32 blobKind) {
-    if (!runtime) {
-        return nullptr;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_LOC) {
-        return &runtime->cache.locTypes;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_VARBIT) {
-        return &runtime->cache.varbits;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_MODEL) {
-        return &runtime->cache.models;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_TEXTURE_TRANSPARENT) {
-        return &runtime->cache.textureTransparentIds;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_SEQ_TYPE) {
-        return &runtime->cache.seqTypes;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_SEQ_FRAME) {
-        return &runtime->cache.seqFrames;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_SEQ_ALPHA_HINT) {
-        return &runtime->cache.seqAlphaHints;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_SEQ_BASE) {
-        return &runtime->cache.seqBases;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_SKELETAL_SEQ) {
-        return &runtime->cache.skeletalSeqs;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_NPC) {
-        return &runtime->cache.npcTypes;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_BAS) {
-        return &runtime->cache.basTypes;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_TEXTURE_IDS) {
-        return &runtime->cache.textureIds;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_UNDERLAY) {
-        return &runtime->cache.underlays;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_OVERLAY) {
-        return &runtime->cache.overlays;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_OBJ) {
-        return &runtime->cache.objTypes;
-    }
-    if (blobKind == RS_MAP_RENDER_TYPE_BLOB_OBJ_SPAWNS) {
-        return &runtime->cache.objSpawns;
-    }
-    return nullptr;
-}
-
-static rs::i32 materializeRuntimeTypeEntryStoreIntoBlob(
-    const MapRenderCachedTypeEntryStore& entries,
-    MapRenderCachedTypeBlob* outBlob) {
-    if (!outBlob) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    outBlob->clear();
-    outBlob->loaded = entries.loaded;
-    if (!entries.loaded) {
-        return RS_MAP_RENDER_STATUS_OK;
-    }
-    if (entries.entriesById.empty()) {
-        return RS_MAP_RENDER_STATUS_OK;
-    }
-
-    std::vector<rs::i32> ids;
-    ids.reserve(entries.entriesById.size());
-    for (const auto& it : entries.entriesById) {
-        ids.push_back(it.first);
-    }
-    std::sort(ids.begin(), ids.end());
-
-    outBlob->ids.reserve(ids.size());
-    outBlob->offsets.reserve(ids.size());
-    outBlob->lengths.reserve(ids.size());
-
-    rs::i32 cursor = 0;
-    for (std::size_t i = 0; i < ids.size(); i++) {
-        const rs::i32 id = ids[i];
-        const auto it = entries.entriesById.find(id);
-        if (it == entries.entriesById.end()) {
-            continue;
-        }
-        const std::vector<rs::u8>& bytes = it->second;
-        if (cursor > static_cast<rs::i32>(2147483647 - static_cast<rs::i32>(bytes.size()))) {
-            return RS_MAP_RENDER_STATUS_CAPACITY;
-        }
-        outBlob->ids.push_back(id);
-        outBlob->offsets.push_back(cursor);
-        outBlob->lengths.push_back(static_cast<rs::i32>(bytes.size()));
-        if (!bytes.empty()) {
-            outBlob->bytes.insert(outBlob->bytes.end(), bytes.begin(), bytes.end());
-            cursor += static_cast<rs::i32>(bytes.size());
-        }
-    }
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
-static rs::i32 materializeRuntimeTypeEntriesIfDirty(MapRenderRuntimeState* runtime) {
-    if (!runtime) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    if (!runtime->cache.typeEntriesDirty) {
-        return RS_MAP_RENDER_STATUS_OK;
-    }
-    for (auto& byKind : runtime->cache.typeEntriesByKind) {
-        MapRenderCachedTypeBlob* blob = resolveRuntimeTypeBlob(runtime, byKind.first);
-        if (!blob) {
-            return RS_MAP_RENDER_STATUS_INVALID_ARG;
-        }
-        const rs::i32 status = materializeRuntimeTypeEntryStoreIntoBlob(byKind.second, blob);
-        if (status != RS_MAP_RENDER_STATUS_OK) {
-            return status;
-        }
-    }
-    runtime->cache.typeEntriesDirty = false;
-    return RS_MAP_RENDER_STATUS_OK;
-}
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_COLLECT_MAP_INPUT_DEBUG_LENGTH = 12;
+// Type-entry blobs are stored as (domain, group, file) where:
+// - domain is a stable "kind domain" in [101..116]
+// - group is the type id
+// - file is always 0
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_LOC = 101;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT = 102;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL = 103;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT = 104;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE = 105;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME = 106;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_NPC = 107;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_BAS = 108;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS = 109;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY = 110;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY = 111;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_OBJ = 112;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS = 113;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_ALPHA_HINT = 114;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE = 115;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ = 116;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MIN = RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_LOC;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MAX = RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_MAP_SQUARE = 2;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_MAP_SQUARE_FILE_TERRAIN = 0;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_MAP_SQUARE_FILE_LOC = 1;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_MAP_SQUARE_FILE_NPC = 2;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_DAT_SEQ_FRAME_MAP = 3;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DAT_SEQ_FRAME_MAP_FILE_BYTES = 0;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES = 4;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL = 0;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_HEAD = 0;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_TYPE = 1;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_LABEL = 2;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_HEAD = 3;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_TRAN1 = 4;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_TRAN2 = 5;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_DEL = 6;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_MODEL_FILES = 5;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_GROUP_GLOBAL = 0;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_HEAD = 0;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE1 = 1;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE2 = 2;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE3 = 3;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE4 = 4;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE5 = 5;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT1 = 6;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT2 = 7;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT3 = 8;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT4 = 9;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT5 = 10;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_VERTEX1 = 11;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_VERTEX2 = 12;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_AXIS = 13;
 
 static rs::i32 mapSquareId(const rs::i32 mapX, const rs::i32 mapY) noexcept {
     return (mapX << 8) + mapY;
+}
+
+static void collectBlobDomainGroup0IdsSortedUnique(
+    const MapRenderRuntimeState* runtime,
+    const rs::i32 domain,
+    std::vector<rs::i32>* outIds) {
+    if (!runtime || !outIds) {
+        return;
+    }
+    outIds->clear();
+    outIds->reserve(runtime->cache.blobEntries.size());
+    for (const auto& kv : runtime->cache.blobEntries) {
+        const MapRenderRuntimeCacheState::BlobKey& key = kv.first;
+        if (key.domain != domain || key.group != 0 || key.file < 0) {
+            continue;
+        }
+        outIds->push_back(key.file);
+    }
+    if (outIds->empty()) {
+        return;
+    }
+    std::sort(outIds->begin(), outIds->end());
+    outIds->erase(std::unique(outIds->begin(), outIds->end()), outIds->end());
 }
 
 static MapRenderRuntimeState* getMapRenderRuntime(const rs::i32 handle) {
@@ -808,8 +741,6 @@ static MapRenderRuntimeState* getMapRenderRuntime(const rs::i32 handle) {
 static const MapRenderRuntimeState* getMapRenderRuntimeConst(const rs::i32 handle) {
     return gMapRenderRuntimes.get(handle);
 }
-
-#include "MapRenderRuntimeCollision.inl"
 
 static void clearPacketHandlesForRuntime(const rs::i32 runtimeHandle) {
     gMapRenderPacketHandles.eraseIf([runtimeHandle](const MapRenderPacketHandleState& state) {
@@ -825,6 +756,518 @@ static rs::i32 allocateMapRenderPacketHandle(
 }
 
 #include "MapRenderRuntimeTypeDemandHelpers.inl"
+
+static void runtimeRecordMissingBlobKey(
+    MapRenderRuntimeState* runtime,
+    const rs::i32 domain,
+    const rs::i32 group,
+    const rs::i32 file) noexcept {
+    if (!runtime) {
+        return;
+    }
+    if (domain < 0 || group < 0 || file < 0) {
+        return;
+    }
+    std::vector<rs::i32>& out = runtime->lastMissingBlobTriples;
+    if (out.size() / RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_STRIDE >=
+        static_cast<std::size_t>(RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_MAX_ENTRIES)) {
+        return;
+    }
+    for (std::size_t i = 0; i + 2 < out.size(); i += RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_STRIDE) {
+        if (out[i] == domain && out[i + 1] == group && out[i + 2] == file) {
+            return;
+        }
+    }
+    out.push_back(domain);
+    out.push_back(group);
+    out.push_back(file);
+}
+
+static void clearRuntimeDatSeqFrameCache(MapRenderRuntimeCacheState* cache) noexcept {
+    if (!cache) {
+        return;
+    }
+    cache->decodedDatSeqFrameMapIds.clear();
+    cache->datSeqFrameBaseByMapId.clear();
+    cache->datSeqFrameById.clear();
+    cache->datSeqFrameMapIdByFrameId.clear();
+}
+
+static void ensureRuntimeDatSeqFrameCacheGeneration(MapRenderRuntimeState* runtime) noexcept {
+    if (!runtime) {
+        return;
+    }
+    if (runtime->cache.appliedDatSeqFrameMapGeneration == runtime->cache.datSeqFrameMapGeneration) {
+        return;
+    }
+    clearRuntimeDatSeqFrameCache(&runtime->cache);
+    runtime->cache.appliedDatSeqFrameMapGeneration = runtime->cache.datSeqFrameMapGeneration;
+}
+
+static void clearRuntimeLegacySeqFrameCache(MapRenderRuntimeCacheState* cache) noexcept {
+    if (!cache) {
+        return;
+    }
+    cache->legacySeqFrames = rs::LegacySeqFrameLoader();
+    cache->legacySeqFramesLoaded = false;
+}
+
+static void ensureRuntimeLegacySeqFrameCacheGeneration(MapRenderRuntimeState* runtime) noexcept {
+    if (!runtime) {
+        return;
+    }
+    if (runtime->cache.appliedLegacySeqFilesGeneration == runtime->cache.legacySeqFilesGeneration) {
+        return;
+    }
+    clearRuntimeLegacySeqFrameCache(&runtime->cache);
+    runtime->cache.appliedLegacySeqFilesGeneration = runtime->cache.legacySeqFilesGeneration;
+}
+
+static void clearRuntimeLegacyModelCache(MapRenderRuntimeCacheState* cache) noexcept {
+    if (!cache) {
+        return;
+    }
+    cache->legacyModels = rs::LegacyModelLoader();
+    cache->legacyModelsLoaded = false;
+}
+
+static void ensureRuntimeLegacyModelCacheGeneration(MapRenderRuntimeState* runtime) noexcept {
+    if (!runtime) {
+        return;
+    }
+    if (runtime->cache.appliedLegacyModelFilesGeneration == runtime->cache.legacyModelFilesGeneration) {
+        return;
+    }
+    clearRuntimeLegacyModelCache(&runtime->cache);
+    runtime->cache.appliedLegacyModelFilesGeneration = runtime->cache.legacyModelFilesGeneration;
+}
+
+static rs::Status tryLoadDatSeqFrameFromRuntimeBlobs(
+    MapRenderRuntimeState* runtime,
+    const rs::i32 frameId,
+    rs::SeqBase* outBase,
+    rs::SeqFrame* outFrame,
+    rs::Allocator& outAlloc) noexcept {
+    if (!runtime || !outBase || !outFrame) {
+        return rs::Status::InvalidArgument;
+    }
+    // Dat (classic) seq frames are u16 ids.
+    if (frameId < 0 || frameId > 0xffff) {
+        return rs::Status::NotFound;
+    }
+
+    ensureRuntimeDatSeqFrameCacheGeneration(runtime);
+
+    const auto cachedIt = runtime->cache.datSeqFrameById.find(frameId);
+    if (cachedIt != runtime->cache.datSeqFrameById.end()) {
+        const auto mapIt = runtime->cache.datSeqFrameMapIdByFrameId.find(frameId);
+        if (mapIt == runtime->cache.datSeqFrameMapIdByFrameId.end()) {
+            return rs::Status::NotFound;
+        }
+        const rs::i32 mapId = mapIt->second;
+        const auto baseIt = runtime->cache.datSeqFrameBaseByMapId.find(mapId);
+        if (baseIt == runtime->cache.datSeqFrameBaseByMapId.end()) {
+            return rs::Status::NotFound;
+        }
+        rs::Status bs = rs::cloneSeqBase(baseIt->second, outAlloc, outBase);
+        if (!rs::ok(bs)) {
+            return bs;
+        }
+        rs::Status fs = rs::cloneSeqFrame(cachedIt->second, outAlloc, outFrame);
+        return fs;
+    }
+
+    rs::Allocator& cacheAlloc = rs::defaultAllocator();
+    rs::SeqFrameDecodeScratch scratch(cacheAlloc);
+    rs::Vec<rs::i32> decodedIds(cacheAlloc);
+    rs::Vec<rs::SeqFrame> decodedFrames(cacheAlloc);
+
+    // Decode each uploaded frame-map once until the requested frame id is materialized.
+    for (const auto& kv : runtime->cache.blobEntries) {
+        const MapRenderRuntimeCacheState::BlobKey& key = kv.first;
+        if (key.domain != RS_MAP_RENDER_BLOB_DOMAIN_DAT_SEQ_FRAME_MAP ||
+            key.file != RS_MAP_RENDER_BLOB_DAT_SEQ_FRAME_MAP_FILE_BYTES) {
+            continue;
+        }
+        const rs::i32 mapId = key.group;
+        if (runtime->cache.decodedDatSeqFrameMapIds.find(mapId) != runtime->cache.decodedDatSeqFrameMapIds.end()) {
+            continue;
+        }
+        runtime->cache.decodedDatSeqFrameMapIds.insert(mapId);
+
+        const std::vector<rs::u8>& bytes = kv.second;
+        if (bytes.empty()) {
+            continue;
+        }
+
+        const rs::Status ds = rs::decodeDatSeqFrameMap(
+            rs::Span<const rs::u8>(bytes.data(), bytes.size()),
+            &scratch,
+            cacheAlloc,
+            &decodedIds,
+            &decodedFrames);
+        if (!rs::ok(ds)) {
+            continue;
+        }
+
+        rs::SeqBase base(-1, cacheAlloc);
+        const rs::Status bs = rs::decodeDatSeqBaseFromFrameMapBytes(
+            rs::Span<const rs::u8>(bytes.data(), bytes.size()),
+            cacheAlloc,
+            &base);
+        if (!rs::ok(bs)) {
+            continue;
+        }
+
+        runtime->cache.datSeqFrameBaseByMapId[mapId] = rs::move(base);
+
+        const std::size_t n = decodedIds.size();
+        for (std::size_t i = 0; i < n; i++) {
+            const rs::i32 id = decodedIds[i];
+            if (id < 0 || id > 0xffff) {
+                continue;
+            }
+            runtime->cache.datSeqFrameMapIdByFrameId[id] = mapId;
+            runtime->cache.datSeqFrameById[id] = rs::move(decodedFrames[i]);
+        }
+
+        const auto nowIt = runtime->cache.datSeqFrameById.find(frameId);
+        if (nowIt != runtime->cache.datSeqFrameById.end()) {
+            const auto mapIt = runtime->cache.datSeqFrameMapIdByFrameId.find(frameId);
+            const auto baseIt = mapIt != runtime->cache.datSeqFrameMapIdByFrameId.end()
+                ? runtime->cache.datSeqFrameBaseByMapId.find(mapIt->second)
+                : runtime->cache.datSeqFrameBaseByMapId.end();
+            if (mapIt == runtime->cache.datSeqFrameMapIdByFrameId.end() ||
+                baseIt == runtime->cache.datSeqFrameBaseByMapId.end()) {
+                return rs::Status::NotFound;
+            }
+            rs::Status outBs = rs::cloneSeqBase(baseIt->second, outAlloc, outBase);
+            if (!rs::ok(outBs)) {
+                return outBs;
+            }
+            rs::Status outFs = rs::cloneSeqFrame(nowIt->second, outAlloc, outFrame);
+            return outFs;
+        }
+    }
+
+    return rs::Status::NotFound;
+}
+
+static rs::Status tryLoadLegacySeqFrameFromRuntimeBlobs(
+    MapRenderRuntimeState* runtime,
+    const rs::i32 frameId,
+    rs::SeqBase* outBase,
+    rs::SeqFrame* outFrame,
+    rs::Allocator& outAlloc) noexcept {
+    if (!runtime || !outBase || !outFrame) {
+        return rs::Status::InvalidArgument;
+    }
+
+    ensureRuntimeLegacySeqFrameCacheGeneration(runtime);
+
+    if (!runtime->cache.legacySeqFramesLoaded) {
+        const auto findBlob = [&](rs::i32 file) -> const std::vector<rs::u8>* {
+            const MapRenderRuntimeCacheState::BlobKey key{
+                RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                file,
+            };
+            auto it = runtime->cache.blobEntries.find(key);
+            if (it == runtime->cache.blobEntries.end()) {
+                return nullptr;
+            }
+            return &it->second;
+        };
+
+        const std::vector<rs::u8>* baseHead = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_HEAD);
+        const std::vector<rs::u8>* baseType = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_TYPE);
+        const std::vector<rs::u8>* baseLabel = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_LABEL);
+        const std::vector<rs::u8>* frameHead = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_HEAD);
+        const std::vector<rs::u8>* frameTran1 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_TRAN1);
+        const std::vector<rs::u8>* frameTran2 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_TRAN2);
+        const std::vector<rs::u8>* frameDel = findBlob(RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_DEL);
+
+        if (!baseHead || !baseType || !baseLabel || !frameHead || !frameTran1 || !frameTran2 || !frameDel) {
+            if (!baseHead) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_HEAD);
+            }
+            if (!baseType) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_TYPE);
+            }
+            if (!baseLabel) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_BASE_LABEL);
+            }
+            if (!frameHead) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_HEAD);
+            }
+            if (!frameTran1) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_TRAN1);
+            }
+            if (!frameTran2) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_TRAN2);
+            }
+            if (!frameDel) {
+                runtimeRecordMissingBlobKey(
+                    runtime,
+                    RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_SEQ_FILES,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_GROUP_GLOBAL,
+                    RS_MAP_RENDER_BLOB_LEGACY_SEQ_FILE_FRAME_DEL);
+            }
+            return rs::Status::NotFound;
+        }
+        if (baseHead->empty() || baseType->empty() || baseLabel->empty() || frameHead->empty() ||
+            frameTran1->empty() || frameTran2->empty() || frameDel->empty()) {
+            return rs::Status::BadFormat;
+        }
+
+        rs::Allocator& cacheAlloc = rs::defaultAllocator();
+        auto res = rs::LegacySeqFrameLoader::createFromBytes(
+            rs::Span<const rs::u8>(baseHead->data(), baseHead->size()),
+            rs::Span<const rs::u8>(baseType->data(), baseType->size()),
+            rs::Span<const rs::u8>(baseLabel->data(), baseLabel->size()),
+            rs::Span<const rs::u8>(frameHead->data(), frameHead->size()),
+            rs::Span<const rs::u8>(frameTran1->data(), frameTran1->size()),
+            rs::Span<const rs::u8>(frameTran2->data(), frameTran2->size()),
+            rs::Span<const rs::u8>(frameDel->data(), frameDel->size()),
+            cacheAlloc);
+        if (!res.isOk()) {
+            return res.status();
+        }
+        runtime->cache.legacySeqFrames = rs::move(res.value());
+        runtime->cache.legacySeqFramesLoaded = true;
+    }
+
+    return runtime->cache.legacySeqFrames.tryLoadWithBase(frameId, outBase, outFrame, outAlloc);
+}
+
+static rs::Status tryLoadLegacyModelFromRuntimeBlobs(
+    MapRenderRuntimeState* runtime,
+    const rs::i32 modelId,
+    rs::ModelData* outModel,
+    rs::Allocator& outAlloc) noexcept {
+    if (!runtime || !outModel) {
+        return rs::Status::InvalidArgument;
+    }
+
+    ensureRuntimeLegacyModelCacheGeneration(runtime);
+
+    if (!runtime->cache.legacyModelsLoaded) {
+        const auto findBlob = [&](rs::i32 file) -> const std::vector<rs::u8>* {
+            const MapRenderRuntimeCacheState::BlobKey key{
+                RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_MODEL_FILES,
+                RS_MAP_RENDER_BLOB_LEGACY_MODEL_GROUP_GLOBAL,
+                file,
+            };
+            auto it = runtime->cache.blobEntries.find(key);
+            if (it == runtime->cache.blobEntries.end()) {
+                return nullptr;
+            }
+            return &it->second;
+        };
+
+        const std::vector<rs::u8>* head = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_HEAD);
+        const std::vector<rs::u8>* face1 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE1);
+        const std::vector<rs::u8>* face2 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE2);
+        const std::vector<rs::u8>* face3 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE3);
+        const std::vector<rs::u8>* face4 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE4);
+        const std::vector<rs::u8>* face5 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE5);
+        const std::vector<rs::u8>* point1 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT1);
+        const std::vector<rs::u8>* point2 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT2);
+        const std::vector<rs::u8>* point3 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT3);
+        const std::vector<rs::u8>* point4 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT4);
+        const std::vector<rs::u8>* point5 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT5);
+        const std::vector<rs::u8>* vertex1 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_VERTEX1);
+        const std::vector<rs::u8>* vertex2 = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_VERTEX2);
+        const std::vector<rs::u8>* axis = findBlob(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_AXIS);
+
+        auto missingFile = [&](rs::i32 file) noexcept -> rs::Status {
+            runtime->debugLastLegacyModelMissingFile = file;
+            runtimeRecordMissingBlobKey(
+                runtime,
+                RS_MAP_RENDER_BLOB_DOMAIN_LEGACY_MODEL_FILES,
+                RS_MAP_RENDER_BLOB_LEGACY_MODEL_GROUP_GLOBAL,
+                file);
+            return rs::Status::NotFound;
+        };
+        if (!head) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_HEAD);
+        if (!face1) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE1);
+        if (!face2) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE2);
+        if (!face3) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE3);
+        if (!face4) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE4);
+        if (!face5) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_FACE5);
+        if (!point1) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT1);
+        if (!point2) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT2);
+        if (!point3) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT3);
+        if (!point4) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT4);
+        if (!point5) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_POINT5);
+        if (!vertex1) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_VERTEX1);
+        if (!vertex2) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_VERTEX2);
+        if (!axis) return missingFile(RS_MAP_RENDER_BLOB_LEGACY_MODEL_FILE_AXIS);
+
+        if (head->empty() || face1->empty() || face2->empty() || face3->empty() || face4->empty() ||
+            face5->empty() || point1->empty() || point2->empty() || point3->empty() || point4->empty() ||
+            point5->empty() || vertex1->empty() || vertex2->empty() || axis->empty()) {
+            return rs::Status::BadFormat;
+        }
+
+        rs::Allocator& cacheAlloc = rs::defaultAllocator();
+        auto res = rs::LegacyModelLoader::createFromBytes(
+            rs::Span<const rs::u8>(head->data(), head->size()),
+            rs::Span<const rs::u8>(face1->data(), face1->size()),
+            rs::Span<const rs::u8>(face2->data(), face2->size()),
+            rs::Span<const rs::u8>(face3->data(), face3->size()),
+            rs::Span<const rs::u8>(face4->data(), face4->size()),
+            rs::Span<const rs::u8>(face5->data(), face5->size()),
+            rs::Span<const rs::u8>(point1->data(), point1->size()),
+            rs::Span<const rs::u8>(point2->data(), point2->size()),
+            rs::Span<const rs::u8>(point3->data(), point3->size()),
+            rs::Span<const rs::u8>(point4->data(), point4->size()),
+            rs::Span<const rs::u8>(point5->data(), point5->size()),
+            rs::Span<const rs::u8>(vertex1->data(), vertex1->size()),
+            rs::Span<const rs::u8>(vertex2->data(), vertex2->size()),
+            rs::Span<const rs::u8>(axis->data(), axis->size()),
+            cacheAlloc);
+        if (!res.isOk()) {
+            return res.status();
+        }
+        runtime->cache.legacyModels = rs::move(res.value());
+        runtime->cache.legacyModelsLoaded = true;
+    }
+
+    rs::ModelData model(outAlloc);
+    const rs::Status s = runtime->cache.legacyModels.tryLoad(modelId, &model);
+    if (!rs::ok(s)) {
+        return s;
+    }
+    *outModel = rs::move(model);
+    return rs::Status::Ok;
+}
+
+static rs::Status runtimeTryLoadDatSeqFrameFromRuntimeCtx(
+    const void* ctx,
+    const rs::i32 frameId,
+    rs::SeqBase* outBase,
+    rs::SeqFrame* outFrame,
+    rs::Allocator& alloc) noexcept {
+    auto* runtime = reinterpret_cast<MapRenderRuntimeState*>(const_cast<void*>(ctx));
+    if (!runtime) {
+        return rs::Status::InvalidArgument;
+    }
+    return tryLoadDatSeqFrameFromRuntimeBlobs(runtime, frameId, outBase, outFrame, alloc);
+}
+
+static rs::Status runtimeTryLoadLegacySeqFrameFromRuntimeCtx(
+    const void* ctx,
+    const rs::i32 frameId,
+    rs::SeqBase* outBase,
+    rs::SeqFrame* outFrame,
+    rs::Allocator& alloc) noexcept {
+    auto* runtime = reinterpret_cast<MapRenderRuntimeState*>(const_cast<void*>(ctx));
+    if (!runtime) {
+        return rs::Status::InvalidArgument;
+    }
+    return tryLoadLegacySeqFrameFromRuntimeBlobs(runtime, frameId, outBase, outFrame, alloc);
+}
+
+static rs::Status runtimeTryLoadLegacyModelFromRuntimeCtx(
+    const void* ctx,
+    const rs::i32 modelId,
+    rs::ModelData* outModel,
+    rs::Allocator& alloc) noexcept {
+    auto* runtime = reinterpret_cast<MapRenderRuntimeState*>(const_cast<void*>(ctx));
+    if (!runtime) {
+        return rs::Status::InvalidArgument;
+    }
+    runtime->debugLastLegacyModelId = modelId;
+    runtime->debugLastLegacyModelMissingFile = -1;
+    const rs::Status s = tryLoadLegacyModelFromRuntimeBlobs(runtime, modelId, outModel, alloc);
+    runtime->debugLastLegacyModelStatus = static_cast<rs::i32>(s);
+    return s;
+}
+
+static void runtimeRecordMissingTypeFromRuntimeCtx(
+    const void* ctx,
+    const rs::i32 kind,
+    const rs::i32 id) noexcept {
+    auto* runtime = reinterpret_cast<MapRenderRuntimeState*>(const_cast<void*>(ctx));
+    if (!runtime) {
+        return;
+    }
+    if (runtime->debugLastMissingTypeKind == 0) {
+        runtime->debugLastMissingTypeKind = kind;
+        runtime->debugLastMissingTypeId = id;
+    }
+    if (kind > 0 && id >= 0) {
+        // MapRender runtime type-entry convention: domain = 100 + kind, group=0, file=id.
+        runtimeRecordMissingBlobKey(runtime, 100 + kind, 0, id);
+    }
+}
+
+static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
+    const void* ctx,
+    const rs::i32 kind,
+    const rs::i32 id,
+    rs::Span<const rs::u8>* outBytes) noexcept {
+    if (!outBytes) {
+        return rs::Status::InvalidArgument;
+    }
+    *outBytes = rs::Span<const rs::u8>();
+    if (kind <= 0 || id < 0) {
+        return rs::Status::NotFound;
+    }
+    const auto* runtime = reinterpret_cast<const MapRenderRuntimeState*>(ctx);
+    if (!runtime) {
+        return rs::Status::InvalidArgument;
+    }
+    // MapRender runtime type-entry convention: domain = 100 + kind, group=0, file=id.
+    const rs::i32 domain = 100 + kind;
+    const std::vector<rs::u8>* payload = tryGetRuntimeCacheBlobBytes(*runtime, domain, 0, id);
+    if (!payload) {
+        runtimeRecordMissingBlobKey(
+            reinterpret_cast<MapRenderRuntimeState*>(const_cast<MapRenderRuntimeState*>(runtime)),
+            domain,
+            0,
+            id);
+        return rs::Status::NotFound;
+    }
+    // Treat empty bytes as NotFound for real type decode paths.
+    if (payload->empty() &&
+        kind != 4 && // textureTransparent presence
+        kind != 9) { // textureIds presence
+        runtimeRecordMissingBlobKey(
+            reinterpret_cast<MapRenderRuntimeState*>(const_cast<MapRenderRuntimeState*>(runtime)),
+            domain,
+            0,
+            id);
+        return rs::Status::NotFound;
+    }
+    *outBytes = rs::Span<const rs::u8>(payload->data(), payload->size());
+    return rs::Status::Ok;
+}
 
 static rs::u32 fnv1a32UpdateByte(rs::u32 hash, rs::u8 value) noexcept {
     hash ^= static_cast<rs::u32>(value);
@@ -962,7 +1405,7 @@ static rs::i32 mapTextureIdToPackedIndex(
 }
 
 static rs::Status tryDecodeSeqTypeFromBlob(
-    const MapRenderCachedTypeBlob& blob,
+    const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
     const rs::i32 seqId,
     std::vector<DecodedSeqTypeCacheEntry>* cache,
@@ -977,32 +1420,19 @@ static rs::Status tryDecodeSeqTypeFromBlob(
             return rs::Status::Ok;
         }
     }
-    if (!blob.loaded) {
-        return rs::Status::NotFound;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, seqId);
-    if (blobIdx < 0) {
-        return rs::Status::NotFound;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return rs::Status::SizeMismatch;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return rs::Status::NotFound;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return rs::Status::OutOfRange;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE,
+        seqId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss;
     }
     DecodedSeqTypeCacheEntry entry{};
     entry.id = seqId;
     entry.seq = rs::SeqType(seqId, cacheInfo);
-    rs::Uint8ArrayReader reader(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
-        0);
+    rs::Uint8ArrayReader reader(bytes, 0);
     rs::TypeDecodeError err{};
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::TypeDecodeContext ctx{cacheInfo, nullptr, &alloc};
@@ -1054,7 +1484,7 @@ static rs::i32 deriveLocSeqMetadataFromCompactIds(
         }
         const rs::SeqType* seq = nullptr;
         const rs::Status s = tryDecodeSeqTypeFromBlob(
-            runtime->cache.seqTypes,
+            runtime,
             cacheInfo,
             seqId,
             &seqCache,
@@ -1107,13 +1537,31 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     const std::vector<rs::i32>& locLengths,
     const std::vector<rs::u8>& locBytes,
     const bool planOnly,
-    MapRenderCachedCommandStream* outStream) {
+    MapRenderCachedCommandStream* outStream,
+    rs::Status* outBuildStatus) {
     if (!runtime || !outStream) {
+        if (outBuildStatus) {
+            *outBuildStatus = rs::Status::InvalidArgument;
+        }
         return RuntimeCommandStreamBuildResult::Failed;
+    }
+    runtime->debugLastCommandStreamCoreStatus = 0;
+    runtime->debugLastMissingTypeKind = 0;
+    runtime->debugLastMissingTypeId = -1;
+    runtime->lastMissingBlobTriples.clear();
+    if (outBuildStatus) {
+        *outBuildStatus = rs::Status::Ok;
     }
 
     const bool includeLocs = loadLocs != 0;
-    const bool includeObjs = loadObjs != 0;
+    (void)loadObjs;
+
+    // Texture id lists are presence-only domains uploaded by TS (empty bytes payloads).
+    // We collect keys directly from the blob-store and keep the SceneCommandBuilder API minimal.
+    std::vector<rs::i32> textureTransparentIds{};
+    std::vector<rs::i32> textureIds{};
+    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT, &textureTransparentIds);
+    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
 
     rs::SceneCommandBuildInput input{};
     input.baseX = baseX;
@@ -1156,271 +1604,35 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     input.locBytes = rs::Span<const rs::u8>(
         !locBytes.empty() ? locBytes.data() : nullptr,
         locBytes.size());
-    input.locTypeIds = rs::Span<const rs::i32>(
-        runtime->cache.locTypes.loaded && !runtime->cache.locTypes.ids.empty()
-            ? runtime->cache.locTypes.ids.data()
-            : nullptr,
-        runtime->cache.locTypes.loaded ? runtime->cache.locTypes.ids.size() : 0);
-    input.locTypeOffsets = rs::Span<const rs::i32>(
-        runtime->cache.locTypes.loaded && !runtime->cache.locTypes.offsets.empty()
-            ? runtime->cache.locTypes.offsets.data()
-            : nullptr,
-        runtime->cache.locTypes.loaded ? runtime->cache.locTypes.offsets.size() : 0);
-    input.locTypeLengths = rs::Span<const rs::i32>(
-        runtime->cache.locTypes.loaded && !runtime->cache.locTypes.lengths.empty()
-            ? runtime->cache.locTypes.lengths.data()
-            : nullptr,
-        runtime->cache.locTypes.loaded ? runtime->cache.locTypes.lengths.size() : 0);
-    input.locTypeBytes = rs::Span<const rs::u8>(
-        runtime->cache.locTypes.loaded && !runtime->cache.locTypes.bytes.empty()
-            ? runtime->cache.locTypes.bytes.data()
-            : nullptr,
-        runtime->cache.locTypes.loaded ? runtime->cache.locTypes.bytes.size() : 0);
-    input.varbitIds = rs::Span<const rs::i32>(
-        runtime->cache.varbits.loaded && !runtime->cache.varbits.ids.empty()
-            ? runtime->cache.varbits.ids.data()
-            : nullptr,
-        runtime->cache.varbits.loaded ? runtime->cache.varbits.ids.size() : 0);
-    input.varbitOffsets = rs::Span<const rs::i32>(
-        runtime->cache.varbits.loaded && !runtime->cache.varbits.offsets.empty()
-            ? runtime->cache.varbits.offsets.data()
-            : nullptr,
-        runtime->cache.varbits.loaded ? runtime->cache.varbits.offsets.size() : 0);
-    input.varbitLengths = rs::Span<const rs::i32>(
-        runtime->cache.varbits.loaded && !runtime->cache.varbits.lengths.empty()
-            ? runtime->cache.varbits.lengths.data()
-            : nullptr,
-        runtime->cache.varbits.loaded ? runtime->cache.varbits.lengths.size() : 0);
-    input.varbitBytes = rs::Span<const rs::u8>(
-        runtime->cache.varbits.loaded && !runtime->cache.varbits.bytes.empty()
-            ? runtime->cache.varbits.bytes.data()
-            : nullptr,
-        runtime->cache.varbits.loaded ? runtime->cache.varbits.bytes.size() : 0);
     input.varpValues = rs::Span<const rs::i32>(
         runtime->cache.varps.empty() ? nullptr : runtime->cache.varps.data(),
         runtime->cache.varps.size());
-    input.modelIds = rs::Span<const rs::i32>(
-        runtime->cache.models.loaded && !runtime->cache.models.ids.empty()
-            ? runtime->cache.models.ids.data()
-            : nullptr,
-        runtime->cache.models.loaded ? runtime->cache.models.ids.size() : 0);
-    input.modelOffsets = rs::Span<const rs::i32>(
-        runtime->cache.models.loaded && !runtime->cache.models.offsets.empty()
-            ? runtime->cache.models.offsets.data()
-            : nullptr,
-        runtime->cache.models.loaded ? runtime->cache.models.offsets.size() : 0);
-    input.modelLengths = rs::Span<const rs::i32>(
-        runtime->cache.models.loaded && !runtime->cache.models.lengths.empty()
-            ? runtime->cache.models.lengths.data()
-            : nullptr,
-        runtime->cache.models.loaded ? runtime->cache.models.lengths.size() : 0);
-    input.modelBytes = rs::Span<const rs::u8>(
-        runtime->cache.models.loaded && !runtime->cache.models.bytes.empty()
-            ? runtime->cache.models.bytes.data()
-            : nullptr,
-        runtime->cache.models.loaded ? runtime->cache.models.bytes.size() : 0);
-    input.objTypeIds = rs::Span<const rs::i32>(
-        includeObjs && runtime->cache.objTypes.loaded && !runtime->cache.objTypes.ids.empty()
-            ? runtime->cache.objTypes.ids.data()
-            : nullptr,
-        includeObjs && runtime->cache.objTypes.loaded ? runtime->cache.objTypes.ids.size() : 0);
-    input.objTypeOffsets = rs::Span<const rs::i32>(
-        includeObjs && runtime->cache.objTypes.loaded && !runtime->cache.objTypes.offsets.empty()
-            ? runtime->cache.objTypes.offsets.data()
-            : nullptr,
-        includeObjs && runtime->cache.objTypes.loaded ? runtime->cache.objTypes.offsets.size() : 0);
-    input.objTypeLengths = rs::Span<const rs::i32>(
-        includeObjs && runtime->cache.objTypes.loaded && !runtime->cache.objTypes.lengths.empty()
-            ? runtime->cache.objTypes.lengths.data()
-            : nullptr,
-        includeObjs && runtime->cache.objTypes.loaded ? runtime->cache.objTypes.lengths.size() : 0);
-    input.objTypeBytes = rs::Span<const rs::u8>(
-        includeObjs && runtime->cache.objTypes.loaded && !runtime->cache.objTypes.bytes.empty()
-            ? runtime->cache.objTypes.bytes.data()
-            : nullptr,
-        includeObjs && runtime->cache.objTypes.loaded ? runtime->cache.objTypes.bytes.size() : 0);
-    input.objSpawnMapIds = rs::Span<const rs::i32>(
-        includeObjs && runtime->cache.objSpawns.loaded && !runtime->cache.objSpawns.ids.empty()
-            ? runtime->cache.objSpawns.ids.data()
-            : nullptr,
-        includeObjs && runtime->cache.objSpawns.loaded ? runtime->cache.objSpawns.ids.size() : 0);
-    input.objSpawnOffsets = rs::Span<const rs::i32>(
-        includeObjs && runtime->cache.objSpawns.loaded && !runtime->cache.objSpawns.offsets.empty()
-            ? runtime->cache.objSpawns.offsets.data()
-            : nullptr,
-        includeObjs && runtime->cache.objSpawns.loaded ? runtime->cache.objSpawns.offsets.size() : 0);
-    input.objSpawnLengths = rs::Span<const rs::i32>(
-        includeObjs && runtime->cache.objSpawns.loaded && !runtime->cache.objSpawns.lengths.empty()
-            ? runtime->cache.objSpawns.lengths.data()
-            : nullptr,
-        includeObjs && runtime->cache.objSpawns.loaded ? runtime->cache.objSpawns.lengths.size() : 0);
-    input.objSpawnBytes = rs::Span<const rs::u8>(
-        includeObjs && runtime->cache.objSpawns.loaded && !runtime->cache.objSpawns.bytes.empty()
-            ? runtime->cache.objSpawns.bytes.data()
-            : nullptr,
-        includeObjs && runtime->cache.objSpawns.loaded ? runtime->cache.objSpawns.bytes.size() : 0);
+    input.typeEntryBytesCtx = runtime;
+    input.tryGetTypeEntryBytes = runtimeTryGetTypeEntryBytesFromRuntimeCtx;
     input.textureTransparentIds = rs::Span<const rs::i32>(
-        runtime->cache.textureTransparentIds.loaded &&
-                !runtime->cache.textureTransparentIds.ids.empty()
-            ? runtime->cache.textureTransparentIds.ids.data()
-            : nullptr,
-        runtime->cache.textureTransparentIds.loaded
-            ? runtime->cache.textureTransparentIds.ids.size()
-            : 0);
+        !textureTransparentIds.empty() ? textureTransparentIds.data() : nullptr,
+        textureTransparentIds.size());
     input.textureIds = rs::Span<const rs::i32>(
-        runtime->cache.textureIds.loaded &&
-                !runtime->cache.textureIds.ids.empty()
-            ? runtime->cache.textureIds.ids.data()
-            : nullptr,
-        runtime->cache.textureIds.loaded
-            ? runtime->cache.textureIds.ids.size()
-            : 0);
-    input.underlayTypeIds = rs::Span<const rs::i32>(
-        runtime->cache.underlays.loaded && !runtime->cache.underlays.ids.empty()
-            ? runtime->cache.underlays.ids.data()
-            : nullptr,
-        runtime->cache.underlays.loaded ? runtime->cache.underlays.ids.size() : 0);
-    input.underlayTypeOffsets = rs::Span<const rs::i32>(
-        runtime->cache.underlays.loaded && !runtime->cache.underlays.offsets.empty()
-            ? runtime->cache.underlays.offsets.data()
-            : nullptr,
-        runtime->cache.underlays.loaded ? runtime->cache.underlays.offsets.size() : 0);
-    input.underlayTypeLengths = rs::Span<const rs::i32>(
-        runtime->cache.underlays.loaded && !runtime->cache.underlays.lengths.empty()
-            ? runtime->cache.underlays.lengths.data()
-            : nullptr,
-        runtime->cache.underlays.loaded ? runtime->cache.underlays.lengths.size() : 0);
-    input.underlayTypeBytes = rs::Span<const rs::u8>(
-        runtime->cache.underlays.loaded && !runtime->cache.underlays.bytes.empty()
-            ? runtime->cache.underlays.bytes.data()
-            : nullptr,
-        runtime->cache.underlays.loaded ? runtime->cache.underlays.bytes.size() : 0);
-    input.overlayTypeIds = rs::Span<const rs::i32>(
-        runtime->cache.overlays.loaded && !runtime->cache.overlays.ids.empty()
-            ? runtime->cache.overlays.ids.data()
-            : nullptr,
-        runtime->cache.overlays.loaded ? runtime->cache.overlays.ids.size() : 0);
-    input.overlayTypeOffsets = rs::Span<const rs::i32>(
-        runtime->cache.overlays.loaded && !runtime->cache.overlays.offsets.empty()
-            ? runtime->cache.overlays.offsets.data()
-            : nullptr,
-        runtime->cache.overlays.loaded ? runtime->cache.overlays.offsets.size() : 0);
-    input.overlayTypeLengths = rs::Span<const rs::i32>(
-        runtime->cache.overlays.loaded && !runtime->cache.overlays.lengths.empty()
-            ? runtime->cache.overlays.lengths.data()
-            : nullptr,
-        runtime->cache.overlays.loaded ? runtime->cache.overlays.lengths.size() : 0);
-    input.overlayTypeBytes = rs::Span<const rs::u8>(
-        runtime->cache.overlays.loaded && !runtime->cache.overlays.bytes.empty()
-            ? runtime->cache.overlays.bytes.data()
-            : nullptr,
-        runtime->cache.overlays.loaded ? runtime->cache.overlays.bytes.size() : 0);
-    input.seqTypeIds = rs::Span<const rs::i32>(
-        runtime->cache.seqTypes.loaded && !runtime->cache.seqTypes.ids.empty()
-            ? runtime->cache.seqTypes.ids.data()
-            : nullptr,
-        runtime->cache.seqTypes.loaded ? runtime->cache.seqTypes.ids.size() : 0);
-    input.seqTypeOffsets = rs::Span<const rs::i32>(
-        runtime->cache.seqTypes.loaded && !runtime->cache.seqTypes.offsets.empty()
-            ? runtime->cache.seqTypes.offsets.data()
-            : nullptr,
-        runtime->cache.seqTypes.loaded ? runtime->cache.seqTypes.offsets.size() : 0);
-    input.seqTypeLengths = rs::Span<const rs::i32>(
-        runtime->cache.seqTypes.loaded && !runtime->cache.seqTypes.lengths.empty()
-            ? runtime->cache.seqTypes.lengths.data()
-            : nullptr,
-        runtime->cache.seqTypes.loaded ? runtime->cache.seqTypes.lengths.size() : 0);
-    input.seqTypeBytes = rs::Span<const rs::u8>(
-        runtime->cache.seqTypes.loaded && !runtime->cache.seqTypes.bytes.empty()
-            ? runtime->cache.seqTypes.bytes.data()
-            : nullptr,
-        runtime->cache.seqTypes.loaded ? runtime->cache.seqTypes.bytes.size() : 0);
-    input.seqFrameIds = rs::Span<const rs::i32>(
-        runtime->cache.seqFrames.loaded && !runtime->cache.seqFrames.ids.empty()
-            ? runtime->cache.seqFrames.ids.data()
-            : nullptr,
-        runtime->cache.seqFrames.loaded ? runtime->cache.seqFrames.ids.size() : 0);
-    input.seqFrameOffsets = rs::Span<const rs::i32>(
-        runtime->cache.seqFrames.loaded && !runtime->cache.seqFrames.offsets.empty()
-            ? runtime->cache.seqFrames.offsets.data()
-            : nullptr,
-        runtime->cache.seqFrames.loaded ? runtime->cache.seqFrames.offsets.size() : 0);
-    input.seqFrameLengths = rs::Span<const rs::i32>(
-        runtime->cache.seqFrames.loaded && !runtime->cache.seqFrames.lengths.empty()
-            ? runtime->cache.seqFrames.lengths.data()
-            : nullptr,
-        runtime->cache.seqFrames.loaded ? runtime->cache.seqFrames.lengths.size() : 0);
-    input.seqFrameBytes = rs::Span<const rs::u8>(
-        runtime->cache.seqFrames.loaded && !runtime->cache.seqFrames.bytes.empty()
-            ? runtime->cache.seqFrames.bytes.data()
-            : nullptr,
-        runtime->cache.seqFrames.loaded ? runtime->cache.seqFrames.bytes.size() : 0);
-    input.seqAlphaHintIds = rs::Span<const rs::i32>(
-        runtime->cache.seqAlphaHints.loaded && !runtime->cache.seqAlphaHints.ids.empty()
-            ? runtime->cache.seqAlphaHints.ids.data()
-            : nullptr,
-        runtime->cache.seqAlphaHints.loaded ? runtime->cache.seqAlphaHints.ids.size() : 0);
-    input.seqAlphaHintOffsets = rs::Span<const rs::i32>(
-        runtime->cache.seqAlphaHints.loaded && !runtime->cache.seqAlphaHints.offsets.empty()
-            ? runtime->cache.seqAlphaHints.offsets.data()
-            : nullptr,
-        runtime->cache.seqAlphaHints.loaded ? runtime->cache.seqAlphaHints.offsets.size() : 0);
-    input.seqAlphaHintLengths = rs::Span<const rs::i32>(
-        runtime->cache.seqAlphaHints.loaded && !runtime->cache.seqAlphaHints.lengths.empty()
-            ? runtime->cache.seqAlphaHints.lengths.data()
-            : nullptr,
-        runtime->cache.seqAlphaHints.loaded ? runtime->cache.seqAlphaHints.lengths.size() : 0);
-    input.seqAlphaHintBytes = rs::Span<const rs::u8>(
-        runtime->cache.seqAlphaHints.loaded && !runtime->cache.seqAlphaHints.bytes.empty()
-            ? runtime->cache.seqAlphaHints.bytes.data()
-            : nullptr,
-        runtime->cache.seqAlphaHints.loaded ? runtime->cache.seqAlphaHints.bytes.size() : 0);
-    input.seqBaseIds = rs::Span<const rs::i32>(
-        runtime->cache.seqBases.loaded && !runtime->cache.seqBases.ids.empty()
-            ? runtime->cache.seqBases.ids.data()
-            : nullptr,
-        runtime->cache.seqBases.loaded ? runtime->cache.seqBases.ids.size() : 0);
-    input.seqBaseOffsets = rs::Span<const rs::i32>(
-        runtime->cache.seqBases.loaded && !runtime->cache.seqBases.offsets.empty()
-            ? runtime->cache.seqBases.offsets.data()
-            : nullptr,
-        runtime->cache.seqBases.loaded ? runtime->cache.seqBases.offsets.size() : 0);
-    input.seqBaseLengths = rs::Span<const rs::i32>(
-        runtime->cache.seqBases.loaded && !runtime->cache.seqBases.lengths.empty()
-            ? runtime->cache.seqBases.lengths.data()
-            : nullptr,
-        runtime->cache.seqBases.loaded ? runtime->cache.seqBases.lengths.size() : 0);
-    input.seqBaseBytes = rs::Span<const rs::u8>(
-        runtime->cache.seqBases.loaded && !runtime->cache.seqBases.bytes.empty()
-            ? runtime->cache.seqBases.bytes.data()
-            : nullptr,
-        runtime->cache.seqBases.loaded ? runtime->cache.seqBases.bytes.size() : 0);
-    input.skeletalSeqIds = rs::Span<const rs::i32>(
-        runtime->cache.skeletalSeqs.loaded && !runtime->cache.skeletalSeqs.ids.empty()
-            ? runtime->cache.skeletalSeqs.ids.data()
-            : nullptr,
-        runtime->cache.skeletalSeqs.loaded ? runtime->cache.skeletalSeqs.ids.size() : 0);
-    input.skeletalSeqOffsets = rs::Span<const rs::i32>(
-        runtime->cache.skeletalSeqs.loaded && !runtime->cache.skeletalSeqs.offsets.empty()
-            ? runtime->cache.skeletalSeqs.offsets.data()
-            : nullptr,
-        runtime->cache.skeletalSeqs.loaded ? runtime->cache.skeletalSeqs.offsets.size() : 0);
-    input.skeletalSeqLengths = rs::Span<const rs::i32>(
-        runtime->cache.skeletalSeqs.loaded && !runtime->cache.skeletalSeqs.lengths.empty()
-            ? runtime->cache.skeletalSeqs.lengths.data()
-            : nullptr,
-        runtime->cache.skeletalSeqs.loaded ? runtime->cache.skeletalSeqs.lengths.size() : 0);
-    input.skeletalSeqBytes = rs::Span<const rs::u8>(
-        runtime->cache.skeletalSeqs.loaded && !runtime->cache.skeletalSeqs.bytes.empty()
-            ? runtime->cache.skeletalSeqs.bytes.data()
-            : nullptr,
-        runtime->cache.skeletalSeqs.loaded ? runtime->cache.skeletalSeqs.bytes.size() : 0);
+        !textureIds.empty() ? textureIds.data() : nullptr,
+        textureIds.size());
+    input.datSeqFrameCtx = runtime;
+    input.tryLoadDatSeqFrame = runtimeTryLoadDatSeqFrameFromRuntimeCtx;
+    input.legacySeqFrameCtx = runtime;
+    input.tryLoadLegacySeqFrame = runtimeTryLoadLegacySeqFrameFromRuntimeCtx;
+    input.modelDataCtx = runtime;
+    input.tryLoadModelData = runtimeTryLoadLegacyModelFromRuntimeCtx;
+    input.debugMissingTypeCtx = runtime;
+    input.debugRecordMissingType = runtimeRecordMissingTypeFromRuntimeCtx;
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::SceneCommandStream nativeStream{};
     const rs::Status buildStatus = planOnly
         ? rs::buildSceneCommandPlanOnly(input, &nativeStream, alloc)
         : rs::buildSceneCommandStream(input, &nativeStream, alloc);
     if (!rs::ok(buildStatus)) {
+        if (outBuildStatus) {
+            *outBuildStatus = buildStatus;
+        }
+        runtime->debugLastCommandStreamCoreStatus = static_cast<rs::i32>(buildStatus);
         return RuntimeCommandStreamBuildResult::Failed;
     }
 
@@ -1428,6 +1640,10 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     if (nativeStream.cmdBucketIndices.size() != nativeStream.cmdOffsets.size() ||
         nativeStream.cmdElements.size() != nativeStream.cmdOffsets.size() ||
         nativeStream.cmdInstanceCounts.size() != nativeStream.cmdOffsets.size()) {
+        if (outBuildStatus) {
+            *outBuildStatus = rs::Status::SizeMismatch;
+        }
+        runtime->debugLastCommandStreamCoreStatus = static_cast<rs::i32>(rs::Status::SizeMismatch);
         return RuntimeCommandStreamBuildResult::Failed;
     }
     outStream->clear();
@@ -1676,14 +1892,6 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
 
 extern "C" {
 
-static constexpr rs::i32 RS_MAP_RENDER_CAP_HEIGHTMAP = 1 << 0;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_NPC_DECODE = 1 << 1;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_DRAW_RANGE_PATCH = 1 << 4;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_ANIMATION_ADVANCE = 1 << 5;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_TICK_ADVANCE_AND_PATCH = 1 << 6;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_RUNTIME_STATE = 1 << 9;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_RUNTIME_CACHE_V2 = 1 << 10;
-static constexpr rs::i32 RS_MAP_RENDER_CAP_RUNTIME_PACKET_V2_ONLY = 1 << 11;
 static constexpr rs::i32 RS_DRAW_BUCKET_COUNT = 8;
 static constexpr rs::i32 RS_SCENE_LEVELS = 4;
 static constexpr rs::i32 RS_LOC_CYCLE_SCALE = 1024;
@@ -1691,86 +1899,47 @@ static constexpr rs::i32 RS_NPC_PATH_QUEUE_LEN = 10;
 static constexpr rs::i32 RS_MOVEMENT_TYPE_CRAWL = 0;
 static constexpr rs::i32 RS_MOVEMENT_TYPE_RUN = 2;
 
-RS_WASM_KEEPALIVE void rs_scene_types_reset();
-RS_WASM_KEEPALIVE rs::i32 rs_scene_types_init(
-    rs::i32 cacheGame,
-    rs::i32 cacheRevision,
-    const rs::i32* locTypeIds,
-    rs::i32 locTypeCount,
-    const rs::i32* locTypeOffsets,
-    const rs::i32* locTypeLengths,
-    const rs::u8* locTypeBytes,
-    rs::i32 locTypeBytesLength,
-    const rs::i32* varbitIds,
-    rs::i32 varbitCount,
-    const rs::i32* varbitOffsets,
-    const rs::i32* varbitLengths,
-    const rs::u8* varbitBytes,
-    rs::i32 varbitBytesLength);
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_abi_version() {
-    return 2;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_capabilities() {
-    return RS_MAP_RENDER_CAP_HEIGHTMAP |
-           RS_MAP_RENDER_CAP_NPC_DECODE |
-           RS_MAP_RENDER_CAP_DRAW_RANGE_PATCH |
-           RS_MAP_RENDER_CAP_ANIMATION_ADVANCE |
-           RS_MAP_RENDER_CAP_TICK_ADVANCE_AND_PATCH |
-           RS_MAP_RENDER_CAP_RUNTIME_STATE |
-           RS_MAP_RENDER_CAP_RUNTIME_CACHE_V2 |
-           RS_MAP_RENDER_CAP_RUNTIME_PACKET_V2_ONLY;
-}
+    RS_WASM_KEEPALIVE rs::i32 rs_map_render_bridge_abi_version() {
+        return 2;
+    }
 
 #include "MapRenderRuntimeLifecycle.inl"
 
 #include "MapRenderRuntimeCacheV2Api.inl"
 
-#include "MapRenderRuntimeTypeDemandApi.inl"
-
-#include "MapRenderRuntimeDebugExports.inl"
-
-static rs::i32 ensureRuntimeSceneTypesInitialized(MapRenderRuntimeState* runtime) {
-    if (!runtime) {
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_get_last_missing_blob_entries_packed(
+    const rs::i32 runtimeHandle,
+    rs::i32* outPacked,
+    const rs::i32 outPackedLength) {
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime || outPackedLength < 0) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    const rs::i32 materializeStatus = materializeRuntimeTypeEntriesIfDirty(runtime);
-    if (materializeStatus != RS_MAP_RENDER_STATUS_OK) {
-        return materializeStatus;
+    const rs::i32 entryCount =
+        static_cast<rs::i32>(
+            runtime->lastMissingBlobTriples.size() /
+            static_cast<std::size_t>(RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_STRIDE));
+    const rs::i32 neededLength =
+        RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_HEADER_LENGTH +
+        (entryCount * RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_STRIDE);
+    if (!outPacked || outPackedLength < neededLength) {
+        return neededLength;
     }
-    if (runtime->cache.appliedTypeGeneration == runtime->cache.typeGeneration) {
-        return RS_MAP_RENDER_STATUS_OK;
+    outPacked[0] = RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_VERSION;
+    outPacked[1] = entryCount;
+    if (entryCount > 0) {
+        std::memcpy(
+            outPacked + RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_HEADER_LENGTH,
+            runtime->lastMissingBlobTriples.data(),
+            static_cast<std::size_t>(entryCount * RS_MAP_RENDER_RUNTIME_MISSING_BLOB_ENTRIES_PACKED_STRIDE) *
+                sizeof(rs::i32));
     }
-
-    const MapRenderCachedTypeBlob& locTypes = runtime->cache.locTypes;
-    const MapRenderCachedTypeBlob& varbits = runtime->cache.varbits;
-    rs_scene_types_reset();
-    const rs::i32 initStatus = rs_scene_types_init(
-        runtime->cache.cacheGame,
-        runtime->cache.cacheRevision,
-        locTypes.loaded ? locTypes.ids.data() : nullptr,
-        locTypes.loaded ? static_cast<rs::i32>(locTypes.ids.size()) : 0,
-        locTypes.loaded ? locTypes.offsets.data() : nullptr,
-        locTypes.loaded ? locTypes.lengths.data() : nullptr,
-        locTypes.loaded ? locTypes.bytes.data() : nullptr,
-        locTypes.loaded ? static_cast<rs::i32>(locTypes.bytes.size()) : 0,
-        varbits.loaded ? varbits.ids.data() : nullptr,
-        varbits.loaded ? static_cast<rs::i32>(varbits.ids.size()) : 0,
-        varbits.loaded ? varbits.offsets.data() : nullptr,
-        varbits.loaded ? varbits.lengths.data() : nullptr,
-        varbits.loaded ? varbits.bytes.data() : nullptr,
-        varbits.loaded ? static_cast<rs::i32>(varbits.bytes.size()) : 0);
-    if (initStatus != RS_MAP_RENDER_STATUS_OK) {
-        runtime->cache.appliedTypeGeneration = -1;
-        return RS_MAP_RENDER_STATUS_STATE;
-    }
-
-    runtime->cache.appliedTypeGeneration = runtime->cache.typeGeneration;
-    return RS_MAP_RENDER_STATUS_OK;
+    return neededLength;
 }
 
-#include "MapRenderRuntimeTickStateSet.inl"
+    #include "MapRenderRuntimeDebugExports.inl"
+
+    #include "MapRenderRuntimeTickStateSet.inl"
 
 RS_WASM_KEEPALIVE rs::i32 rs_heightmap_from_scene_tile_heights(
     const rs::i32* tileHeights,
@@ -2576,16 +2745,6 @@ static rs::i32 runtimeBuildMapFromCacheInternal(
     const rs::i32 loadNpcs,
     const bool buildPayload) {
 #include "MapRenderRuntimeBuildMapBody.inl"
-}
-
-static rs::i32 runtimeBuildNpcPacketFromCacheInternal(
-    const rs::i32 runtimeHandle,
-    const rs::i32 mapX,
-    const rs::i32 mapY,
-    const rs::i32 borderSize,
-    const rs::i32 sizeX,
-    const rs::i32 sizeY) {
-#include "MapRenderRuntimeBuildNpcBody.inl"
 }
 
 #include "MapRenderRuntimePacketApi.inl"

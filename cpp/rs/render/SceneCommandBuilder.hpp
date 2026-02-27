@@ -11,6 +11,9 @@
 namespace rs {
 
 struct LocType;
+struct SeqBase;
+struct SeqFrame;
+struct ModelData;
 
 // Native scene-command build input for byte-driven runtime map builds.
 struct SceneCommandBuildInput final {
@@ -47,62 +50,57 @@ struct SceneCommandBuildInput final {
     Span<const i32> locOffsets{};
     Span<const i32> locLengths{};
     Span<const u8> locBytes{};
-    Span<const i32> locTypeIds{};
-    Span<const i32> locTypeOffsets{};
-    Span<const i32> locTypeLengths{};
-    Span<const u8> locTypeBytes{};
-    Span<const i32> varbitIds{};
-    Span<const i32> varbitOffsets{};
-    Span<const i32> varbitLengths{};
-    Span<const u8> varbitBytes{};
     Span<const i32> varpValues{};
-    Span<const i32> modelIds{};
-    Span<const i32> modelOffsets{};
-    Span<const i32> modelLengths{};
-    Span<const u8> modelBytes{};
-    Span<const i32> objTypeIds{};
-    Span<const i32> objTypeOffsets{};
-    Span<const i32> objTypeLengths{};
-    Span<const u8> objTypeBytes{};
-    Span<const i32> objSpawnMapIds{};
-    Span<const i32> objSpawnOffsets{};
-    Span<const i32> objSpawnLengths{};
-    Span<const u8> objSpawnBytes{};
+
+    // Byte-driven resource provider (blob-store backed in wasm runtime).
+    //
+    // `kind` matches the (100+kind) domain convention used by the runtime cache:
+    //   1=loc 2=varbit 3=model 5=seqType 6=seqFrame 8=bas 10=underlay 11=overlay
+    //   12=obj 13=objSpawns 14=seqAlphaHint 15=seqBase 16=skeletalSeq
+    // Implementations may return empty spans for presence-only kinds (e.g., textures), but
+    // core decode paths treat empty bytes as NotFound for real types.
+    const void* typeEntryBytesCtx = nullptr;
+    Status (*tryGetTypeEntryBytes)(
+        const void* ctx,
+        i32 kind,
+        i32 id,
+        Span<const u8>* outBytes) = nullptr;
+
     Span<const i32> textureTransparentIds{};
     Span<const i32> textureIds{};
-    Span<const i32> underlayTypeIds{};
-    Span<const i32> underlayTypeOffsets{};
-    Span<const i32> underlayTypeLengths{};
-    Span<const u8> underlayTypeBytes{};
-    Span<const i32> overlayTypeIds{};
-    Span<const i32> overlayTypeOffsets{};
-    Span<const i32> overlayTypeLengths{};
-    Span<const u8> overlayTypeBytes{};
-    Span<const i32> seqTypeIds{};
-    Span<const i32> seqTypeOffsets{};
-    Span<const i32> seqTypeLengths{};
-    Span<const u8> seqTypeBytes{};
-    Span<const i32> seqFrameIds{};
-    Span<const i32> seqFrameOffsets{};
-    Span<const i32> seqFrameLengths{};
-    Span<const u8> seqFrameBytes{};
-    Span<const i32> seqAlphaHintIds{};
-    Span<const i32> seqAlphaHintOffsets{};
-    Span<const i32> seqAlphaHintLengths{};
-    Span<const u8> seqAlphaHintBytes{};
 
-    // Dat2 skeletal animation support (OSRS "anim maya"): raw seq base + skeletal seq bytes.
-    // These are only required when building animated-loc frame geometry in C++.
-    Span<const i32> seqBaseIds{};
-    Span<const i32> seqBaseOffsets{};
-    Span<const i32> seqBaseLengths{};
-    Span<const u8> seqBaseBytes{};
+    // Optional fallback for dat (classic) seq frames: these do not have stable per-frame
+    // raw bytes, so the runtime can provide decoded base+frame directly from frame-map blobs.
+    const void* datSeqFrameCtx = nullptr;
+    Status (*tryLoadDatSeqFrame)(
+        const void* ctx,
+        i32 frameId,
+        SeqBase* outBase,
+        SeqFrame* outFrame,
+        Allocator& alloc) = nullptr;
 
-    Span<const i32> skeletalSeqIds{};
-    Span<const i32> skeletalSeqOffsets{};
-    Span<const i32> skeletalSeqLengths{};
-    Span<const u8> skeletalSeqBytes{};
+    // Optional fallback for legacy seq frames: upload raw legacy base/frame named files once,
+    // then let runtime decode+cache classic base+frame per id.
+    const void* legacySeqFrameCtx = nullptr;
+    Status (*tryLoadLegacySeqFrame)(
+        const void* ctx,
+        i32 frameId,
+        SeqBase* outBase,
+        SeqFrame* outFrame,
+        Allocator& alloc) = nullptr;
 
+    // Optional fallback for classic (legacy) model decoding when per-model raw bytes are not available.
+    // Used by the wasm runtime-cache path for legacy caches (models are stored in split .dat tables).
+    const void* modelDataCtx = nullptr;
+    Status (*tryLoadModelData)(
+        const void* ctx,
+        i32 modelId,
+        ModelData* outModel,
+        Allocator& alloc) = nullptr;
+
+    // Debug-only: record the first missing type entry encountered during command-stream build.
+    const void* debugMissingTypeCtx = nullptr;
+    void (*debugRecordMissingType)(const void* ctx, i32 kind, i32 id) = nullptr;
 };
 
 // Runtime command stream shape consumed by command-stream packing.

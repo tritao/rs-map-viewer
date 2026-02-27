@@ -12,7 +12,7 @@ inline constexpr i32 kMapRenderStatusOk = 1;
 inline constexpr i32 kMapRenderStatusInvalidArg = -1;
 inline constexpr i32 kMapRenderStatusNotFound = -2;
 inline constexpr i32 kMapRenderStatusSizeMismatch = -3;
-inline constexpr i32 kMapRenderRuntimePacketMetaInts = 44;
+inline constexpr i32 kMapRenderRuntimePacketMetaInts = 46;
 inline constexpr i32 kMapRenderRuntimePacketVersion = 3;
 inline constexpr i32 kMapRenderRuntimeDrawBucketCount = 8;
 
@@ -30,6 +30,7 @@ struct MapRenderLoadedPayloadState {
     std::vector<u8> npcVertices;
     std::vector<i32> npcIndices;
     std::vector<i32> npcOrderKeys;
+    std::vector<i32> usedTextureIds;
     i32 totalModelInfoLength = 0;
     i32 levels = 0;
     i32 sizeX = 0;
@@ -52,6 +53,7 @@ struct MapRenderLoadedPayloadState {
         npcVertices.clear();
         npcIndices.clear();
         npcOrderKeys.clear();
+        usedTextureIds.clear();
         totalModelInfoLength = 0;
         levels = 0;
         sizeX = 0;
@@ -146,6 +148,7 @@ inline i32 storeLoadedPayload(
     loaded.sizeX = sizeX;
     loaded.sizeY = sizeY;
     loaded.unitsTileHeightBasis = unitsTileHeightBasis;
+    loaded.usedTextureIds.clear();
     loaded.loaded = true;
     *payload = std::move(loaded);
     return kMapRenderStatusOk;
@@ -198,8 +201,9 @@ inline i32 packRenderPacketMeta(
     outMeta[41] = static_cast<i32>(reinterpret_cast<std::uintptr_t>(payload.npcOrderKeys.data()));
     outMeta[42] = static_cast<i32>(payload.npcOrderKeys.size());
     outMeta[43] = kMapRenderRuntimePacketVersion;
+    outMeta[44] = static_cast<i32>(reinterpret_cast<std::uintptr_t>(payload.usedTextureIds.data()));
+    outMeta[45] = static_cast<i32>(payload.usedTextureIds.size());
     return kMapRenderStatusOk;
 }
 
 } // namespace rs::tooling
-

@@ -88,6 +88,83 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_map_input_hashes(
     return RS_MAP_RENDER_STATUS_OK;
 }
 
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_build_failure(
+    const rs::i32 runtimeHandle,
+    rs::i32* outFailure,
+    const rs::i32 outFailureLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outFailure || outFailureLength < 4) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    outFailure[0] = runtime->debugLastBuildFailureStage;
+    outFailure[1] = runtime->debugLastBuildFailureStatus;
+    outFailure[2] = runtime->debugLastBuildFailureDetail0;
+    outFailure[3] = runtime->debugLastBuildFailureDetail1;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_collect_map_input(
+    const rs::i32 runtimeHandle,
+    rs::i32* outState,
+    const rs::i32 outStateLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outState || outStateLength < RS_MAP_RENDER_RUNTIME_COLLECT_MAP_INPUT_DEBUG_LENGTH) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    outState[0] = runtime->debugLastCollectMapInputStatus;
+    outState[1] = runtime->debugLastCollectMapInputReason;
+    outState[2] = runtime->debugLastCollectMapInputMapStartX;
+    outState[3] = runtime->debugLastCollectMapInputMapStartY;
+    outState[4] = runtime->debugLastCollectMapInputMapEndX;
+    outState[5] = runtime->debugLastCollectMapInputMapEndY;
+    outState[6] = runtime->debugLastCollectMapInputExpectedSquares;
+    outState[7] = runtime->debugLastCollectMapInputSquaresWithAny;
+    outState[8] = runtime->debugLastCollectMapInputSquaresWithTerrain;
+    outState[9] = runtime->debugLastCollectMapInputSquaresWithLoc;
+    outState[10] = runtime->debugLastCollectMapInputFirstPresentMapSquareId;
+    outState[11] = runtime->debugLastCollectMapInputFirstMissingMapSquareId;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_command_stream_status(
+    const rs::i32 runtimeHandle,
+    rs::i32* outStatus,
+    const rs::i32 outStatusLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outStatus || outStatusLength < 1) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    outStatus[0] = runtime->debugLastCommandStreamCoreStatus;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_legacy_model_load(
+    const rs::i32 runtimeHandle,
+    rs::i32* outState,
+    const rs::i32 outStateLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outState || outStateLength < 3) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    outState[0] = runtime->debugLastLegacyModelId;
+    outState[1] = runtime->debugLastLegacyModelStatus;
+    outState[2] = runtime->debugLastLegacyModelMissingFile;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_missing_type(
+    const rs::i32 runtimeHandle,
+    rs::i32* outState,
+    const rs::i32 outStateLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outState || outStateLength < 2) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    outState[0] = runtime->debugLastMissingTypeKind;
+    outState[1] = runtime->debugLastMissingTypeId;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_cached_command_stream_digest(
     const rs::i32 runtimeHandle,
     rs::i32* outDigest,
@@ -336,47 +413,6 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_terrain_tile_face
     return RS_MAP_RENDER_STATUS_OK;
 }
 
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_collision_flags_meta(
-    const rs::i32 runtimeHandle,
-    rs::i32* outMeta,
-    const rs::i32 outMetaLength) {
-    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
-    if (!runtime || !outMeta || outMetaLength < RS_MAP_RENDER_RUNTIME_COLLISION_FLAGS_META_LENGTH) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    const rs::i32 len = static_cast<rs::i32>(runtime->debugLastCollisionFlags.size());
-    if (len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    outMeta[0] = runtime->debugLastCollisionLevels;
-    outMeta[1] = runtime->debugLastCollisionSizeX;
-    outMeta[2] = runtime->debugLastCollisionSizeY;
-    outMeta[3] = len;
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
-RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_copy_last_collision_flags(
-    const rs::i32 runtimeHandle,
-    rs::i32* outFlags,
-    const rs::i32 outFlagsLength) {
-    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
-    if (!runtime || !outFlags || outFlagsLength < 0) {
-        return RS_MAP_RENDER_STATUS_INVALID_ARG;
-    }
-    const rs::i32 len = static_cast<rs::i32>(runtime->debugLastCollisionFlags.size());
-    if (len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (outFlagsLength != len) {
-        return RS_MAP_RENDER_STATUS_SIZE_MISMATCH;
-    }
-    std::memcpy(
-        outFlags,
-        runtime->debugLastCollisionFlags.data(),
-        static_cast<std::size_t>(len) * sizeof(rs::i32));
-    return RS_MAP_RENDER_STATUS_OK;
-}
-
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_copy_last_terrain_tile_face_counts(
     const rs::i32 runtimeHandle,
     rs::u8* outBytes,
@@ -570,12 +606,13 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_cached_terrain_cell
     }
 
     const rs::i32 key = mapSquareId(mapX, mapY);
-    const auto it = runtime->cache.mapSquares.find(key);
-    if (it == runtime->cache.mapSquares.end()) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const MapRenderCachedMapSquare& square = it->second;
-    if (!square.hasTerrain || square.terrainBytes.empty()) {
+    const std::vector<rs::u8>* terrainBytes =
+        tryGetRuntimeCacheBlobBytes(
+            *runtime,
+            RS_MAP_RENDER_BLOB_DOMAIN_MAP_SQUARE,
+            key,
+            RS_MAP_RENDER_BLOB_MAP_SQUARE_FILE_TERRAIN);
+    if (!terrainBytes || terrainBytes->empty()) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
     }
 
@@ -592,7 +629,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_cached_terrain_cell
     }
     const rs::Status ds = rs::decodeTerrainSquareFromBytesInto(
         scratch,
-        rs::Span<const rs::u8>(square.terrainBytes.data(), square.terrainBytes.size()),
+        rs::Span<const rs::u8>(terrainBytes->data(), terrainBytes->size()),
         newFormat,
         mapX * rs::TerrainConstants::MAP_SQUARE_SIZE,
         mapY * rs::TerrainConstants::MAP_SQUARE_SIZE);
@@ -612,7 +649,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_cached_terrain_cell
     }
     outI32[0] = 1;
     outI32[1] = newFormat ? 1 : 0;
-    outI32[2] = static_cast<rs::i32>(square.terrainBytes.size());
+    outI32[2] = static_cast<rs::i32>(terrainBytes->size());
     outI32[3] = static_cast<rs::i32>(scratch.underlay(level, localX, localY));
     outI32[4] = static_cast<rs::i32>(scratch.overlay(level, localX, localY));
     outI32[5] = static_cast<rs::i32>(scratch.shape(level, localX, localY));
@@ -859,7 +896,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_copy_last_loc_render_place
 
 // Forward-declared: used by model/loc debug exports; defined later in this file.
 static rs::Status decodeLocTypeFromTypeBlob(
-    const MapRenderCachedTypeBlob& blob,
+    const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
     const rs::i32 locTypeId,
     rs::StringArena* strings,
@@ -875,40 +912,32 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_model_faces_digest(
     if (!runtime || !outDigest || outDigestLength < RS_MAP_RENDER_RUNTIME_MODEL_FACES_DIGEST_LENGTH) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    const MapRenderCachedTypeBlob& blob = runtime->cache.models;
-    if (!blob.loaded) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, modelId);
-    if (blobIdx < 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return RS_MAP_RENDER_STATUS_STATE;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return RS_MAP_RENDER_STATUS_SIZE_MISMATCH;
+    rs::Span<const rs::u8> modelBytes{};
+    const rs::Status ms = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+        modelId,
+        &modelBytes);
+    if (!rs::ok(ms)) {
+        return ms == rs::Status::NotFound ? RS_MAP_RENDER_STATUS_NOT_FOUND : RS_MAP_RENDER_STATUS_STATE;
     }
 
     auto isTextureTransparent = [&](rs::i32 textureId) -> bool {
         if (textureId < 0) {
             return false;
         }
-        // textureTransparentIds is a list of raw texture ids.
-        return findTypeBlobIndex(runtime->cache.textureTransparentIds.ids, textureId) >= 0;
+        // textureTransparentIds is a set of raw texture ids (stored as empty type-entry keys).
+        const MapRenderRuntimeCacheState::BlobKey key{
+            RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+            textureId,
+            0};
+        return runtime->cache.blobEntries.find(key) != runtime->cache.blobEntries.end();
     };
 
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::ModelData model(alloc);
     const rs::Status ds = rs::decodeModelData(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        modelBytes,
         &model,
         alloc);
     if (!rs::ok(ds)) {
@@ -998,32 +1027,20 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_model_vertices_digest(
     if (!runtime || !outDigest || outDigestLength < RS_MAP_RENDER_RUNTIME_MODEL_VERTICES_DIGEST_LENGTH) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    const MapRenderCachedTypeBlob& blob = runtime->cache.models;
-    if (!blob.loaded) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, modelId);
-    if (blobIdx < 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return RS_MAP_RENDER_STATUS_STATE;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return RS_MAP_RENDER_STATUS_SIZE_MISMATCH;
+    rs::Span<const rs::u8> modelBytes{};
+    const rs::Status ms = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+        modelId,
+        &modelBytes);
+    if (!rs::ok(ms)) {
+        return ms == rs::Status::NotFound ? RS_MAP_RENDER_STATUS_NOT_FOUND : RS_MAP_RENDER_STATUS_STATE;
     }
 
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::ModelData model(alloc);
     const rs::Status ds = rs::decodeModelData(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        modelBytes,
         &model,
         alloc);
     if (!rs::ok(ds)) {
@@ -1068,32 +1085,20 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_model_vertices_sample(
     if (!runtime || !outSample || outSampleLength < RS_MAP_RENDER_RUNTIME_MODEL_VERTICES_SAMPLE_LENGTH) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    const MapRenderCachedTypeBlob& blob = runtime->cache.models;
-    if (!blob.loaded) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, modelId);
-    if (blobIdx < 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return RS_MAP_RENDER_STATUS_STATE;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return RS_MAP_RENDER_STATUS_SIZE_MISMATCH;
+    rs::Span<const rs::u8> modelBytes{};
+    const rs::Status ms = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+        modelId,
+        &modelBytes);
+    if (!rs::ok(ms)) {
+        return ms == rs::Status::NotFound ? RS_MAP_RENDER_STATUS_NOT_FOUND : RS_MAP_RENDER_STATUS_STATE;
     }
 
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::ModelData model(alloc);
     const rs::Status ds = rs::decodeModelData(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        modelBytes,
         &model,
         alloc);
     if (!rs::ok(ds)) {
@@ -1135,32 +1140,20 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_model_vertices_sample_
     if (!runtime || !outSample || outSampleLength < RS_MAP_RENDER_RUNTIME_MODEL_VERTICES_SAMPLE_LENGTH) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    const MapRenderCachedTypeBlob& blob = runtime->cache.models;
-    if (!blob.loaded) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, modelId);
-    if (blobIdx < 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return RS_MAP_RENDER_STATUS_STATE;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return RS_MAP_RENDER_STATUS_SIZE_MISMATCH;
+    rs::Span<const rs::u8> modelBytes{};
+    const rs::Status ms = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+        modelId,
+        &modelBytes);
+    if (!rs::ok(ms)) {
+        return ms == rs::Status::NotFound ? RS_MAP_RENDER_STATUS_NOT_FOUND : RS_MAP_RENDER_STATUS_STATE;
     }
 
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::ModelData model(alloc);
     const rs::Status ds = rs::decodeModelData(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+        modelBytes,
         &model,
         alloc);
     if (!rs::ok(ds)) {
@@ -1222,7 +1215,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_model_vertices_sam
 
     rs::LocType base;
     const rs::Status baseStatus = decodeLocTypeFromTypeBlob(
-        runtime->cache.locTypes,
+        runtime,
         cacheInfo,
         locTypeId,
         &strings,
@@ -1245,28 +1238,18 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_model_vertices_sam
         if (varbitId < 0) {
             return 0;
         }
-        const MapRenderCachedTypeBlob& blob = runtime->cache.varbits;
-        if (!blob.loaded) {
-            return 0;
-        }
-        const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, varbitId);
-        if (blobIdx < 0 ||
-            blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-            blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-            return 0;
-        }
-        const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-        const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-        if (off < 0 || len <= 0) {
-            return 0;
-        }
-        if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-            len > static_cast<rs::i32>(blob.bytes.size()) - off) {
+        rs::Span<const rs::u8> bytes{};
+        const rs::Status ss = getTypeEntrySpanForDeps(
+            runtime,
+            RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT,
+            varbitId,
+            &bytes);
+        if (!rs::ok(ss)) {
             return 0;
         }
         rs::VarBitType varbit(varbitId, cacheInfo);
         rs::Uint8ArrayReader reader(
-            rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+            bytes,
             0);
         rs::TypeDecodeError err{};
         const rs::Status ds = rs::decodeType(varbit, reader, &err, nullptr);
@@ -1294,7 +1277,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_model_vertices_sam
     rs::LocType transformed;
     if (transformId != -1 && transformId != base.id) {
         const rs::Status transformedStatus = decodeLocTypeFromTypeBlob(
-            runtime->cache.locTypes,
+            runtime,
             cacheInfo,
             transformId,
             &strings,
@@ -1306,33 +1289,25 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_model_vertices_sam
     }
 
     // Decode raw model bytes.
-    const MapRenderCachedTypeBlob& modelBlob = runtime->cache.models;
-    if (!modelBlob.loaded) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 modelBlobIdx = findTypeBlobIndex(modelBlob.ids, modelId);
-    if (modelBlobIdx < 0 ||
-        modelBlobIdx >= static_cast<rs::i32>(modelBlob.offsets.size()) ||
-        modelBlobIdx >= static_cast<rs::i32>(modelBlob.lengths.size())) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 off = modelBlob.offsets[static_cast<std::size_t>(modelBlobIdx)];
-    const rs::i32 len = modelBlob.lengths[static_cast<std::size_t>(modelBlobIdx)];
-    if (off < 0 || len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (off > static_cast<rs::i32>(modelBlob.bytes.size()) ||
-        len > static_cast<rs::i32>(modelBlob.bytes.size()) - off) {
-        return RS_MAP_RENDER_STATUS_SIZE_MISMATCH;
-    }
-
     rs::ModelData model(alloc);
-    const rs::Status ds = rs::decodeModelData(
-        rs::Span<const rs::u8>(modelBlob.bytes.data() + off, static_cast<std::size_t>(len)),
-        &model,
-        alloc);
-    if (!rs::ok(ds)) {
-        return RS_MAP_RENDER_STATUS_STATE;
+    {
+        rs::Span<const rs::u8> modelBytes{};
+        const rs::Status ms = getTypeEntrySpanForDeps(
+            runtime,
+            RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+            modelId,
+            &modelBytes);
+        if (rs::ok(ms)) {
+            const rs::Status ds = rs::decodeModelData(modelBytes, &model, alloc);
+            if (!rs::ok(ds)) {
+                return RS_MAP_RENDER_STATUS_STATE;
+            }
+        } else {
+            const rs::Status ls = runtimeTryLoadLegacyModelFromRuntimeCtx(runtime, modelId, &model, alloc);
+            if (!rs::ok(ls)) {
+                return RS_MAP_RENDER_STATUS_NOT_FOUND;
+            }
+        }
     }
 
     // Apply the same TS-style loc model mutations used by the runtime path.
@@ -1755,7 +1730,7 @@ static constexpr rs::i32 RS_MAP_RENDER_DEBUG_OVERLAY_TYPE_FIELDS = 12;
 static constexpr rs::i32 RS_MAP_RENDER_DEBUG_LOC_TYPE_FIELDS = 34;
 
 static rs::Status decodeLocTypeFromTypeBlob(
-    const MapRenderCachedTypeBlob& blob,
+    const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
     const rs::i32 locTypeId,
     rs::StringArena* strings,
@@ -1764,31 +1739,18 @@ static rs::Status decodeLocTypeFromTypeBlob(
     if (!strings || !outType || locTypeId < 0) {
         return rs::Status::InvalidArgument;
     }
-    if (!blob.loaded) {
-        return rs::Status::NotFound;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, locTypeId);
-    if (blobIdx < 0) {
-        return rs::Status::NotFound;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return rs::Status::SizeMismatch;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return rs::Status::NotFound;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return rs::Status::OutOfRange;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_LOC,
+        locTypeId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss;
     }
 
     *outType = rs::LocType(locTypeId, cacheInfo);
-    rs::Uint8ArrayReader reader(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
-        0);
+    rs::Uint8ArrayReader reader(bytes, 0);
     rs::TypeDecodeError err{};
     rs::TypeDecodeContext ctx{cacheInfo, strings, &alloc};
     const rs::Status ds = rs::decodeType(*outType, reader, &err, &ctx);
@@ -1832,26 +1794,14 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_overlay_type(
     if (!runtime || !outFields || outFieldsLength < RS_MAP_RENDER_DEBUG_OVERLAY_TYPE_FIELDS || overlayId < 0) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    const MapRenderCachedTypeBlob& blob = runtime->cache.overlays;
-    if (!blob.loaded) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, overlayId);
-    if (blobIdx < 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-        blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-        return RS_MAP_RENDER_STATUS_STATE;
-    }
-    const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-    const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-    if (off < 0 || len <= 0) {
-        return RS_MAP_RENDER_STATUS_NOT_FOUND;
-    }
-    if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-        len > static_cast<rs::i32>(blob.bytes.size()) - off) {
-        return RS_MAP_RENDER_STATUS_STATE;
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY,
+        overlayId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss == rs::Status::NotFound ? RS_MAP_RENDER_STATUS_NOT_FOUND : RS_MAP_RENDER_STATUS_STATE;
     }
 
     rs::CacheInfo cacheInfo{};
@@ -1859,9 +1809,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_overlay_type(
     cacheInfo.revision = runtime->cache.cacheRevision;
 
     rs::OverlayFloorType type(overlayId, cacheInfo);
-    rs::Uint8ArrayReader reader(
-        rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
-        0);
+    rs::Uint8ArrayReader reader(bytes, 0);
     rs::TypeDecodeError err{};
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::TypeDecodeContext ctx{cacheInfo, nullptr, &alloc};
@@ -1904,7 +1852,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_loc_type(
 
     rs::LocType base;
     const rs::Status baseStatus = decodeLocTypeFromTypeBlob(
-        runtime->cache.locTypes,
+        runtime,
         cacheInfo,
         locTypeId,
         &strings,
@@ -1927,28 +1875,18 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_loc_type(
         if (varbitId < 0) {
             return 0;
         }
-        const MapRenderCachedTypeBlob& blob = runtime->cache.varbits;
-        if (!blob.loaded) {
-            return 0;
-        }
-        const rs::i32 blobIdx = findTypeBlobIndex(blob.ids, varbitId);
-        if (blobIdx < 0 ||
-            blobIdx >= static_cast<rs::i32>(blob.offsets.size()) ||
-            blobIdx >= static_cast<rs::i32>(blob.lengths.size())) {
-            return 0;
-        }
-        const rs::i32 off = blob.offsets[static_cast<std::size_t>(blobIdx)];
-        const rs::i32 len = blob.lengths[static_cast<std::size_t>(blobIdx)];
-        if (off < 0 || len <= 0) {
-            return 0;
-        }
-        if (off > static_cast<rs::i32>(blob.bytes.size()) ||
-            len > static_cast<rs::i32>(blob.bytes.size()) - off) {
+        rs::Span<const rs::u8> bytes{};
+        const rs::Status ss = getTypeEntrySpanForDeps(
+            runtime,
+            RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT,
+            varbitId,
+            &bytes);
+        if (!rs::ok(ss)) {
             return 0;
         }
         rs::VarBitType varbit(varbitId, cacheInfo);
         rs::Uint8ArrayReader reader(
-            rs::Span<const rs::u8>(blob.bytes.data() + off, static_cast<std::size_t>(len)),
+            bytes,
             0);
         rs::TypeDecodeError err{};
         const rs::Status ds = rs::decodeType(varbit, reader, &err, nullptr);
@@ -1977,7 +1915,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_loc_type(
     bool resolvedFromTransform = false;
     if (transformId != -1 && transformId != base.id) {
         const rs::Status transformedStatus = decodeLocTypeFromTypeBlob(
-            runtime->cache.locTypes,
+            runtime,
             cacheInfo,
             transformId,
             &strings,
@@ -2025,4 +1963,3 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_loc_type(
     outFields[33] = resolved->contrast;
     return RS_MAP_RENDER_STATUS_OK;
 }
-

@@ -74,6 +74,32 @@ public:
         return Result<LegacySeqFrameLoader>::ok(rs::move(out));
     }
 
+    static Result<LegacySeqFrameLoader> createFromBytes(
+        Span<const u8> baseHeadBytes,
+        Span<const u8> baseTypeBytes,
+        Span<const u8> baseLabelBytes,
+        Span<const u8> frameHeadBytes,
+        Span<const u8> frameTran1Bytes,
+        Span<const u8> frameTran2Bytes,
+        Span<const u8> frameDelBytes,
+        Allocator& alloc = defaultAllocator()) noexcept {
+        LegacySeqFrameLoader out;
+        out.alloc_ = &alloc;
+        out.bases_ = Vec<SeqBase>(alloc);
+        out.hasBase_ = Vec<u8>(alloc);
+        out.frames_ = Vec<SeqFrame>(alloc);
+        out.hasFrame_ = Vec<u8>(alloc);
+        out.statusById_ = Vec<Status>(alloc);
+
+        Status s = out.decodeBases(baseHeadBytes, baseTypeBytes, baseLabelBytes);
+        if (!ok(s)) return Result<LegacySeqFrameLoader>::err(s);
+
+        s = out.decodeFrames(frameHeadBytes, frameTran1Bytes, frameTran2Bytes, frameDelBytes);
+        if (!ok(s)) return Result<LegacySeqFrameLoader>::err(s);
+
+        return Result<LegacySeqFrameLoader>::ok(rs::move(out));
+    }
+
     Status tryLoad(i32 id, SeqFrame* out) const noexcept {
         if (!out) return Status::InvalidArgument;
         if (id < 0) return Status::OutOfRange;
@@ -89,6 +115,34 @@ public:
         }
 
         return cloneSeqFrame(frames_[idx], *alloc_, out);
+    }
+
+    Status tryLoadWithBase(i32 id, SeqBase* outBase, SeqFrame* outFrame, Allocator& alloc) const noexcept {
+        if (!outBase || !outFrame) return Status::InvalidArgument;
+        if (id < 0) return Status::OutOfRange;
+
+        const std::size_t idx = static_cast<std::size_t>(id);
+        if (idx >= hasFrame_.size() || hasFrame_[idx] == 0) {
+            return Status::NotFound;
+        }
+
+        const Status st = (idx < statusById_.size()) ? statusById_[idx] : Status::NotFound;
+        if (!ok(st)) {
+            return st;
+        }
+
+        const SeqFrame& frame = frames_[idx];
+        const i32 baseId = frame.baseId;
+        if (baseId < 0) return Status::BadFormat;
+        const std::size_t bidx = static_cast<std::size_t>(baseId);
+        if (bidx >= hasBase_.size() || hasBase_[bidx] == 0) {
+            return Status::NotFound;
+        }
+        Status bs = cloneSeqBase(bases_[bidx], alloc, outBase);
+        if (!ok(bs)) {
+            return bs;
+        }
+        return cloneSeqFrame(frame, alloc, outFrame);
     }
 
     Status tryGet(i32 id, SeqFrame* out) const noexcept {
@@ -359,4 +413,3 @@ private:
 };
 
 } // namespace rs
-

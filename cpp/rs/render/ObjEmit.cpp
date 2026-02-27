@@ -40,23 +40,12 @@ static Status decodeObjSpawnsForMap(
         return Status::InvalidArgument;
     }
     outSpawns->clear();
-    const i32 mapIdx = findTypeBlobIndex(input.objSpawnMapIds, mapId);
-    if (mapIdx < 0) {
+    Span<const u8> bytes{};
+    const Status bs = tryGetTypeEntryBytesSpan(input, 13, mapId, &bytes);
+    if (!ok(bs) || bytes.size() <= 0) {
         return Status::NotFound;
     }
-    if (mapIdx >= static_cast<i32>(input.objSpawnOffsets.size()) ||
-        mapIdx >= static_cast<i32>(input.objSpawnLengths.size())) {
-        return Status::SizeMismatch;
-    }
-    const i32 off = input.objSpawnOffsets[static_cast<std::size_t>(mapIdx)];
-    const i32 len = input.objSpawnLengths[static_cast<std::size_t>(mapIdx)];
-    if (off < 0 || len <= 0) {
-        return Status::NotFound;
-    }
-    if (off > static_cast<i32>(input.objSpawnBytes.size()) ||
-        len > static_cast<i32>(input.objSpawnBytes.size()) - off) {
-        return Status::OutOfRange;
-    }
+    const i32 len = static_cast<i32>(bytes.size());
     if ((len % 20) != 0) {
         return Status::BadFormat;
     }
@@ -67,9 +56,6 @@ static Status decodeObjSpawnsForMap(
         return rr.status();
     }
 
-    Span<const u8> bytes(
-        input.objSpawnBytes.data() + off,
-        static_cast<std::size_t>(len));
     for (i32 i = 0; i < count; i++) {
         const i32 b = i * 20;
         ObjSpawnRecord rec{};
