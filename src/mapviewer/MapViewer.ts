@@ -15,7 +15,7 @@ import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
+import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";

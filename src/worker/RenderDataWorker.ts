@@ -13,7 +13,7 @@ import { initErrorToString } from "../rs/loaders/InitError";
 import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
-import { CacheSession, tryCreateCacheSession } from "../rs/runtime/createCacheSession";
+import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
