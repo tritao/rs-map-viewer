@@ -7,24 +7,18 @@ const DEFAULT_SQUARES = "17:51,17:52,18:52,18:53";
 function parseArgs(argv) {
   let cache;
   let squares = DEFAULT_SQUARES;
-  let withPacket = false;
-  let packetNonGating = true;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--cache") {
       cache = argv[++i];
     } else if (arg === "--squares") {
       squares = argv[++i] ?? "";
-    } else if (arg === "--with-packet") {
-      withPacket = true;
-    } else if (arg === "--packet-gating") {
-      packetNonGating = false;
     }
   }
   if (!squares || !squares.trim()) {
     throw new Error("Invalid --squares value");
   }
-  return { cache, squares, withPacket, packetNonGating };
+  return { cache, squares };
 }
 
 function run(cmd) {
@@ -49,16 +43,7 @@ function main() {
 
   results.push({ name: "bridge-contract", ok: run(buildRunCmd("rs:map-render-runtime-bridge-contract", args.cache)) });
   results.push({ name: "surface-regression", ok: run(buildRunCmd("rs:map-render-wasm-surface-regression", args.cache)) });
-  results.push({ name: "backend-parity", ok: run(buildRunCmd("rs:map-render-backend-parity", args.cache, squaresArg)) });
   results.push({ name: "runtime-cache-v2-parity", ok: run(buildRunCmd("rs:map-render-runtime-cache-v2-parity", args.cache, `${squaresArg} --stages`)) });
-
-  if (args.withPacket) {
-    const packetOk = run(buildRunCmd("rs:map-render-runtime-packet-parity", args.cache, squaresArg));
-    results.push({ name: "runtime-packet-parity", ok: packetOk || args.packetNonGating });
-    if (!packetOk && args.packetNonGating) {
-      console.warn("\n[non-gating] runtime-packet-parity failed");
-    }
-  }
 
   const failed = results.filter((r) => !r.ok).map((r) => r.name);
   console.log(`\nmap-render-parity-full: cache=${args.cache ?? "<latest>"} squares=${args.squares}`);

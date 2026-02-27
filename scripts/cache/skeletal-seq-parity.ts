@@ -7,7 +7,7 @@ import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHand
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { SkeletalSeq } from "../../src/rs/model/skeletal/SkeletalSeq";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/runtime/createCacheSession";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/loaders/CacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 

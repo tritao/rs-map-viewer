@@ -3,12 +3,9 @@ import { pathToFileURL } from "url";
 
 type WasmBackendModule = {
     _rs_map_render_bridge_abi_version(): number;
-    _rs_map_render_bridge_capabilities(): number;
     _rs_build_scene_pack_payload_from_command_stream_input?: unknown;
     _rs_build_scene_pack_payload_from_packed_seed_input?: unknown;
 };
-
-const CAP_LEGACY_PACKED_PAYLOAD = 1 << 3;
 
 function assert(condition: boolean, message: string): void {
     if (!condition) {
@@ -32,13 +29,8 @@ async function loadWasmBackendModule(): Promise<WasmBackendModule> {
 async function main(): Promise<void> {
     const module = await loadWasmBackendModule();
     const abi = module._rs_map_render_bridge_abi_version() | 0;
-    const caps = module._rs_map_render_bridge_capabilities() | 0;
 
     assert(abi === 2, `Unexpected ABI version ${abi}`);
-    assert(
-        (caps & CAP_LEGACY_PACKED_PAYLOAD) === 0,
-        "Unexpected legacy packed-payload capability bit is set",
-    );
     assert(
         typeof module._rs_build_scene_pack_payload_from_command_stream_input !== "function",
         "Unexpected export present: _rs_build_scene_pack_payload_from_command_stream_input",
@@ -48,7 +40,7 @@ async function main(): Promise<void> {
         "Unexpected export present: _rs_build_scene_pack_payload_from_packed_seed_input",
     );
 
-    console.log(`map-render-wasm-surface-regression: abi=${abi} caps=${caps} ok`);
+    console.log(`map-render-wasm-surface-regression: abi=${abi} ok`);
 }
 
 main().catch((e) => {

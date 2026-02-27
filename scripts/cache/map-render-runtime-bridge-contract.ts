@@ -5,18 +5,15 @@ import { pathToFileURL } from "node:url";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
-import { tryCreateCacheSession } from "../../src/rs/runtime/createCacheSession";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
-    MapRenderRuntimeDebugBridgeV2,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     createByteDrivenSceneBuildInput,
-    createMapRenderRuntimeUploadScratchState,
-    resetMapRenderRuntimeUploadScratchState,
-    uploadRuntimeCacheForBuildRequestWithBridge,
-} from "../../src/worker/MapRenderDataBackend";
+    uploadRuntimeCacheForBuildRequest,
+} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import {
     MapRenderRuntimePacket,
     runtimePacketToPayloadOverlay,
@@ -24,7 +21,6 @@ import {
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type RuntimeBridge = MapRenderRuntimeBridgeV2;
-type RuntimeDebugBridge = MapRenderRuntimeDebugBridgeV2;
 
 function pickFirstRenderableSquare(mapFileIndex: {
     tryGetTerrainArchiveId(x: number, y: number): number | undefined;
@@ -145,6 +141,10 @@ async function buildRuntimeLifecycleFixture(): Promise<
                 seqTypeLoader: session.loaders.seqTypeLoader,
                 seqFrameLoader: session.loaders.seqFrameLoader,
             },
+            seqTypeLoader: session.loaders.seqTypeLoader,
+            seqFrameLoader: session.loaders.seqFrameLoader,
+            skeletalSeqLoader: session.loaders.skeletalSeqLoader,
+            textureLoader: session.loaders.textureLoader,
             varProvider,
             cacheGame: loadedCache.info.game,
             cacheRevision: loadedCache.info.revision,
@@ -167,18 +167,19 @@ function assertFn(target: Record<string, unknown>, key: string): void {
 
 async function main(): Promise<void> {
     const runtimeBridgeModuleUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
-    ).href;
-    const runtimeDebugBridgeModuleUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_bridge.mjs"),
     ).href;
     const runtimeMod = (await import(runtimeBridgeModuleUrl)) as Record<string, unknown>;
-    const runtimeDebugMod = (await import(runtimeDebugBridgeModuleUrl)) as Record<string, unknown>;
+    assert.deepEqual(
+        Object.keys(runtimeMod).sort(),
+        ["mapRenderRuntimeBridge", "tryLoadBackendModule"],
+        "bridge module export surface changed",
+    );
     const runtimeBridgeCandidate = runtimeMod.mapRenderRuntimeBridge;
     assert.equal(
         typeof runtimeMod.mapRenderRuntimeDebugBridge,
         "undefined",
-        "runtime module must not export debug bridge",
+        "bridge module must not export a separate debug bridge",
     );
     assert.equal(
         typeof runtimeMod.mapRenderDataBridge,
@@ -194,26 +195,34 @@ async function main(): Promise<void> {
     assertFn(runtimeBridge, "createRuntimeWithConfig");
     assertFn(runtimeBridge, "destroyRuntime");
     assertFn(runtimeBridge, "resetRuntime");
-    assertFn(runtimeBridge, "cachePutTextureArgb");
-    assertFn(runtimeBridge, "cacheClearTextureArgb");
-    assertFn(runtimeBridge, "cachePutMaterialParams");
-    assertFn(runtimeBridge, "cacheClearMaterialParams");
-    assertFn(runtimeBridge, "cacheGetResourceCounts");
+    assertFn(runtimeBridge, "cachePutBlobBatch");
+    assertFn(runtimeBridge, "cacheClearAllBlobs");
+    assertFn(runtimeBridge, "cacheClearBlobDomain");
     assertFn(runtimeBridge, "cacheSetBuildConfig");
-    assertFn(runtimeBridge, "cacheClearMapSquares");
-    assertFn(runtimeBridge, "cachePutMapSquaresPacked");
-    assertFn(runtimeBridge, "cacheClearTypeKind");
-    assertFn(runtimeBridge, "cachePutTypeEntry");
-    assertFn(runtimeBridge, "collectRequiredPrimaryTypeIds");
-    assertFn(runtimeBridge, "collectRequiredExpandedTypeIds");
+    assertFn(runtimeBridge, "getLastMissingBlobEntries");
     assertFn(runtimeBridge, "cacheSetVarps");
     assertFn(runtimeBridge, "buildMapPacketFromCache");
-    assertFn(runtimeBridge, "releasePacket");
+    // Packets are deep-copied out of wasm and released before returning.
     assertFn(runtimeBridge, "setTickState");
     assertFn(runtimeBridge, "clearTickState");
     assertFn(runtimeBridge, "tickAdvanceAndEmitBasePatchesForState");
     assertFn(runtimeBridge, "decodeNpcSpawnsFromBytes");
     assertFn(runtimeBridge, "reset");
+    assert.equal(
+        typeof runtimeBridge.cacheClearBlobGroup,
+        "undefined",
+        "runtime bridge must not expose cacheClearBlobGroup (debug-only)",
+    );
+    assert.equal(
+        typeof runtimeBridge.cacheGetBlobStats,
+        "undefined",
+        "runtime bridge must not expose cacheGetBlobStats (debug-only)",
+    );
+    assert.equal(
+        typeof runtimeBridge.collectRequiredPrimaryTypeIds,
+        "undefined",
+        "runtime bridge must not expose collectRequiredPrimaryTypeIds (legacy/unused)",
+    );
     assert.equal(
         typeof runtimeBridge.uploadCacheInputs,
         "undefined",
@@ -285,33 +294,9 @@ async function main(): Promise<void> {
         "runtime bridge must not expose legacy packet-handle release API",
     );
 
-    const runtimeDebugBridgeCandidate = runtimeDebugMod.mapRenderRuntimeDebugBridge;
-    assert.equal(
-        typeof runtimeDebugMod.mapRenderRuntimeBridge,
-        "undefined",
-        "runtime debug module must not export runtime bridge",
-    );
-    assert.equal(
-        typeof runtimeDebugMod.mapRenderDataBridge,
-        "undefined",
-        "runtime debug module must not export legacy helper bridge",
-    );
-    assert.ok(
-        runtimeDebugBridgeCandidate && typeof runtimeDebugBridgeCandidate === "object",
-        "missing mapRenderRuntimeDebugBridge export",
-    );
-    const runtimeDebugBridge = runtimeDebugBridgeCandidate as Record<string, unknown>;
-    assertFn(runtimeDebugBridge, "debugCollectCachedMapInputDigest");
-    assertFn(runtimeDebugBridge, "debugGetRuntimeCacheConfig");
-    assertFn(runtimeDebugBridge, "debugGetRuntimeLoadedHeightHash");
-    assertFn(runtimeDebugBridge, "debugGetRuntimeMapInputHashes");
-
     const bridge = runtimeBridgeCandidate as RuntimeBridge;
-    const debugBridge = runtimeDebugBridgeCandidate as RuntimeDebugBridge;
     const runtimeReady = await bridge.initRuntime();
     assert.equal(runtimeReady, true, "runtime bridge init failed");
-    const debugRuntimeReady = await debugBridge.initRuntime();
-    assert.equal(debugRuntimeReady, true, "runtime debug bridge init failed");
 
     const runtimeHandle = await bridge.createRuntimeWithConfig({
         cacheGame: 0,
@@ -330,29 +315,28 @@ async function main(): Promise<void> {
     const setStateOk = bridge.setTickState(handle, 1, {});
     assert.equal(setStateOk, false, "invalid tick state input should fail");
 
-    const cachePutTexture = await bridge.cachePutTextureArgb(
+    const putBlob = await bridge.cachePutBlobBatch(
         handle,
-        42,
-        Int32Array.from([0xff00ff00]),
-    );
-    assert.equal(cachePutTexture, 1, "cachePutTextureArgb should succeed");
-    const cachePutMaterial = await bridge.cachePutMaterialParams(
-        handle,
-        7,
-        Int32Array.from([1, 2, 3]),
-    );
-    assert.equal(cachePutMaterial, 1, "cachePutMaterialParams should succeed");
-    const resourceCounts = await bridge.cacheGetResourceCounts(handle);
-    assert.equal(resourceCounts?.textureCount, 1, "resource stats should include uploaded texture");
-    assert.equal(
-        resourceCounts?.materialCount,
         1,
-        "resource stats should include uploaded material",
+        Int32Array.of(2),
+        Int32Array.of(3),
+        Int32Array.of(0),
+        Int32Array.of(3),
+        Uint8Array.from([1, 2, 3]),
     );
-    const cacheClearTexture = await bridge.cacheClearTextureArgb(handle);
-    assert.equal(cacheClearTexture, 1, "cacheClearTextureArgb should succeed");
-    const cacheClearMaterial = await bridge.cacheClearMaterialParams(handle);
-    assert.equal(cacheClearMaterial, 1, "cacheClearMaterialParams should succeed");
+    assert.equal(putBlob, 1, "cachePutBlobBatch should succeed");
+    const overwriteBlob = await bridge.cachePutBlobBatch(
+        handle,
+        1,
+        Int32Array.of(2),
+        Int32Array.of(3),
+        Int32Array.of(0),
+        Int32Array.of(4),
+        Uint8Array.from([1, 2, 3, 4]),
+    );
+    assert.equal(overwriteBlob, 1, "cachePutBlobBatch should allow overwrite");
+    const clearDomain = await bridge.cacheClearBlobDomain(handle, 1);
+    assert.equal(clearDomain, 1, "cacheClearBlobDomain should succeed");
 
     const defaultSetBuildConfig = await bridge.cacheSetBuildConfig(handle, {} as any);
     assert.equal(defaultSetBuildConfig, 1, "cacheSetBuildConfig should accept defaulted input");
@@ -396,6 +380,7 @@ async function main(): Promise<void> {
         heightMapTextureData: new Int16Array(4),
         vertices: new Uint8Array(0),
         indices: new Int32Array(0),
+        usedTextureIds: new Int32Array(0),
         levels: 1,
         sizeX: 2,
         sizeY: 2,
@@ -438,10 +423,6 @@ async function main(): Promise<void> {
         "runtimePacketToPayloadOverlay should reject unknown packet versions",
     );
 
-    assert.doesNotThrow(() => {
-        bridge.releasePacket?.(undefined);
-    }, "releasePacket should accept undefined packets");
-
     bridge.clearTickState(handle, 1);
     bridge.resetRuntime(handle);
     const setBuildConfigAfterReset = await bridge.cacheSetBuildConfig(handle, {} as any);
@@ -462,13 +443,11 @@ async function main(): Promise<void> {
     );
     const lifecycleHandle = lifecycleRuntimeHandle as number;
     const lifecycleFixture = await buildRuntimeLifecycleFixture();
-    const uploadScratchState = createMapRenderRuntimeUploadScratchState();
-    const uploadedLifecycle = await uploadRuntimeCacheForBuildRequestWithBridge(
+    const uploadedLifecycle = await uploadRuntimeCacheForBuildRequest(
         bridge,
         lifecycleHandle,
         lifecycleFixture.request,
         lifecycleFixture.sceneBuildInput,
-        uploadScratchState,
     );
     assert.equal(uploadedLifecycle, true, "expected lifecycle cache upload to succeed");
 
@@ -477,37 +456,18 @@ async function main(): Promise<void> {
         lifecycleFixture.request,
     )) as MapRenderRuntimePacket | undefined;
     assert.ok(packetA, "expected first lifecycle packet");
-    assert.equal(
-        bridge.releasePacket?.(packetA),
-        true,
-        "releasePacket should succeed for active packet handle",
-    );
-    assert.equal(
-        bridge.releasePacket?.(packetA),
-        false,
-        "releasePacket should fail when packet handle is already released",
-    );
 
     const packetB = (await bridge.buildMapPacketFromCache(
         lifecycleHandle,
         lifecycleFixture.request,
     )) as MapRenderRuntimePacket | undefined;
     assert.ok(packetB, "expected second lifecycle packet");
+
     const packetC = (await bridge.buildMapPacketFromCache(
         lifecycleHandle,
         lifecycleFixture.request,
     )) as MapRenderRuntimePacket | undefined;
     assert.ok(packetC, "expected third lifecycle packet");
-    assert.equal(
-        bridge.releasePacket?.(packetB),
-        false,
-        "releasePacket should fail for stale packet handle after rebuild",
-    );
-    assert.equal(
-        bridge.releasePacket?.(packetC),
-        true,
-        "releasePacket should succeed for newest packet handle",
-    );
 
     const packetD = (await bridge.buildMapPacketFromCache(
         lifecycleHandle,
@@ -515,18 +475,11 @@ async function main(): Promise<void> {
     )) as MapRenderRuntimePacket | undefined;
     assert.ok(packetD, "expected packet before reset");
     bridge.resetRuntime(lifecycleHandle);
-    resetMapRenderRuntimeUploadScratchState(uploadScratchState);
-    assert.equal(
-        bridge.releasePacket?.(packetD),
-        false,
-        "releasePacket should fail for stale packet handle after runtime reset",
-    );
-    const uploadedAfterReset = await uploadRuntimeCacheForBuildRequestWithBridge(
+    const uploadedAfterReset = await uploadRuntimeCacheForBuildRequest(
         bridge,
         lifecycleHandle,
         lifecycleFixture.request,
         lifecycleFixture.sceneBuildInput,
-        uploadScratchState,
     );
     assert.equal(uploadedAfterReset, true, "expected cache upload to succeed after reset");
     const packetE = (await bridge.buildMapPacketFromCache(
@@ -535,11 +488,6 @@ async function main(): Promise<void> {
     )) as MapRenderRuntimePacket | undefined;
     assert.ok(packetE, "expected packet after reset");
     bridge.destroyRuntime(lifecycleHandle);
-    assert.equal(
-        bridge.releasePacket?.(packetE),
-        false,
-        "releasePacket should fail for stale packet handle after runtime destroy",
-    );
     const packetAfterDestroy = await bridge.buildMapPacketFromCache(
         lifecycleHandle,
         lifecycleFixture.request,

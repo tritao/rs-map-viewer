@@ -2,7 +2,7 @@ import fs from "fs";
 import sharp from "sharp";
 
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { createCacheSession } from "../../src/rs/runtime/createCacheSession";
+import { createCacheSession } from "../../src/rs/loaders/CacheSession";
 import { loadCache, loadCacheInfos, loadCacheList } from "./load-util";
 
 function saveArgbArrayToPng(pixels: Int32Array, width: number, height: number, outputPath: string) {

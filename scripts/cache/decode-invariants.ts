@@ -3,7 +3,7 @@ import { LocType } from "../../src/rs/config/loctype/LocType";
 import { VarManager } from "../../src/rs/config/vartype/VarManager";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
-import { notFoundError } from "../../src/rs/errors/DecodeError";
+import { notFoundError } from "../../src/rs/core/DecodeError";
 import { MapFileLoader, mapBytesErrorToString } from "../../src/rs/map/MapFileLoader";
 import { Dat2SeqFrame, DatSeqFrame } from "../../src/rs/model/seq/SeqFrame";
 import { Scene } from "../../src/rs/scene/Scene";

@@ -5,7 +5,7 @@ import { CacheInfo, GameType } from "../../src/rs/cache/CacheInfo";
 import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
 import { Xtea } from "../../src/rs/crypto/Xtea";
-import { notFoundError } from "../../src/rs/errors/DecodeError";
+import { notFoundError } from "../../src/rs/core/DecodeError";
 import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";
 import { Uint8ArrayByteSource } from "../../src/rs/io/Uint8ArrayByteSource";

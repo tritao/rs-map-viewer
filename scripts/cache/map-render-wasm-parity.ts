@@ -11,7 +11,6 @@ type WasmBackendModule = {
     _malloc(size: number): number;
     _free(ptr: number): void;
     _rs_map_render_bridge_abi_version(): number;
-    _rs_map_render_bridge_capabilities(): number;
     _rs_heightmap_from_scene_tile_heights(
         tileHeightsPtr: number,
         levels: number,
@@ -37,9 +36,6 @@ type WasmBackendModule = {
         outPackedIntLength: number,
     ): number;
 };
-
-const CAP_HEIGHTMAP = 1 << 0;
-const CAP_NPC_DECODE = 1 << 1;
 
 function parseArgs(argv: string[]): { iterations: number } {
     let iterations = 40;
@@ -160,10 +156,7 @@ async function main(): Promise<void> {
     const module = await loadWasmBackendModule();
 
     const abi = module._rs_map_render_bridge_abi_version() | 0;
-    const caps = module._rs_map_render_bridge_capabilities() | 0;
     assert(abi === 2, `Unexpected ABI version ${abi}`);
-    assert((caps & CAP_HEIGHTMAP) !== 0, "WASM capability missing: heightmap");
-    assert((caps & CAP_NPC_DECODE) !== 0, "WASM capability missing: npc decode");
 
     let heightmapCases = 0;
     for (let i = 0; i < iterations; i++) {
@@ -285,7 +278,7 @@ async function main(): Promise<void> {
     }
 
     console.log(
-        `map-render-wasm-parity: abi=${abi} caps=${caps} heightmapCases=${heightmapCases} npcCases=${npcCases} ok`,
+        `map-render-wasm-parity: abi=${abi} heightmapCases=${heightmapCases} npcCases=${npcCases} ok`,
     );
 }
 

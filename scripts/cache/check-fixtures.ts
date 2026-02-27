@@ -6,7 +6,7 @@ import { Archive } from "../../src/rs/cache/format/Archive";
 import { SectorChainStore } from "../../src/rs/cache/store/SectorChainStore";
 import { VarBitType } from "../../src/rs/config/vartype/bit/VarBitType";
 import { Xtea } from "../../src/rs/crypto/Xtea";
-import { notFoundError } from "../../src/rs/errors/DecodeError";
+import { notFoundError } from "../../src/rs/core/DecodeError";
 import { ByteBuffer } from "../../src/rs/io/ByteBuffer";
 import { readAllBytes } from "../../src/rs/io/ByteSourceUtil";
 import { NamedBytesProvider } from "../../src/rs/io/NamedBytesProvider";

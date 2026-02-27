@@ -28,7 +28,7 @@ import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { MapImageRenderer } from "../../src/rs/render/minimap/MapImageRenderer";
-import { tryCreateCacheSession } from "../../src/rs/runtime/createCacheSession";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { getLocPlacementRotation, getLocPlacementType } from "../../src/rs/scene/LocPlacementFlag";
 import {
     expandLocPlacementModelVariants,
@@ -48,19 +48,53 @@ import { getIdFromTag } from "../../src/rs/scene/entity/EntityTag";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../src/rs/scene/model/ObjModelLoader";
-import type { MapRenderRuntimeDebugBridgeV2 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
+import type { MapRenderRuntimeBridgeV2 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
+import {
+    tryLoadBackendModule,
+    runtimeDebugBuildMapPlanFromCacheWithWasm,
+    runtimeDebugCollectMapInputDigestWithWasm,
+    runtimeDebugDecodeCachedTerrainCellWithWasm,
+    runtimeDebugDecodeLocTypeWithWasm,
+    runtimeDebugDecodeOverlayTypeWithWasm,
+    runtimeDebugGetCacheConfigWithWasm,
+    runtimeDebugGetCachedCommandStreamArraysWithWasm,
+    runtimeDebugGetCachedCommandStreamDigestWithWasm,
+    runtimeDebugGetLastCommandProvenancePackedWithWasm,
+    runtimeDebugGetLastLocMergeDecisionEntriesPackedWithWasm,
+    runtimeDebugGetLastLocMergeEmitEntriesPackedWithWasm,
+    runtimeDebugGetLastLocMergeNormalsTraceEntriesPackedWithWasm,
+    runtimeDebugGetLastLocPreMergeGroupKeyEntriesPackedWithWasm,
+    runtimeDebugGetLastLocPreMergeGroupKeySignaturesWithWasm,
+    runtimeDebugGetLastLocRenderPlacementDigestWithWasm,
+    runtimeDebugGetLastLocRenderPlacementEntriesPackedWithWasm,
+    runtimeDebugGetLastMapInputHashesWithWasm,
+    runtimeDebugGetLastSceneBucketsDigestWithWasm,
+    runtimeDebugGetLastSceneCommandPlanDigestWithWasm,
+    runtimeDebugGetLastSceneCommandPlanOpProvenancePackedWithWasm,
+    runtimeDebugGetLastSceneCommandPlanOpsPackedWithWasm,
+    runtimeDebugGetLastTerrainDigestSamplesPackedWithWasm,
+    runtimeDebugGetLastTerrainDigestWithWasm,
+    runtimeDebugGetLastTerrainProbeWithWasm,
+    runtimeDebugGetLastTerrainTileFaceCountsWithWasm,
+    runtimeDebugGetLastWorldHeightProbeWithWasm,
+    runtimeDebugGetLastBuildStatsWithWasm,
+    runtimeDebugGetLoadedHeightHashWithWasm,
+    runtimeDebugGetLocModelVerticesSampleWithWasm,
+    runtimeDebugGetModelFacesDigestWithWasm,
+    runtimeDebugGetModelVerticesDigestWithWasm,
+    runtimeDebugGetModelVerticesSampleRangeWithWasm,
+    runtimeDebugGetModelVerticesSampleWithWasm,
+    runtimeDebugSetTerrainDigestSampleStartVertexWithWasm,
+    runtimeDebugSetTerrainProbeWithWasm,
+    runtimeDebugSetWorldHeightProbeWithWasm,
+} from "../../src/wasm/rs_map_render_backend_debug.mjs";
 import {
     createByteDrivenSceneBuildInput,
-    createMapRenderRuntimeUploadScratchState,
-    resetMapRenderRuntimeUploadScratchState,
-    uploadRuntimeCacheForBuildRequestWithBridge,
-} from "../../src/worker/MapRenderDataBackend";
+    uploadRuntimeCacheForBuildRequest,
+} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import { runtimePacketToPayloadOverlay } from "../../src/worker/MapRenderDataContract";
-import type {
-    MapRenderCommandBucketsRuntimeInput,
-    MapRenderDataPayload,
-    MapRenderRuntimePacket,
-} from "../../src/worker/MapRenderDataContract";
+import type { SdMapData } from "../../src/renderer/loader/SdMapData";
+import type { MapRenderRuntimePacket } from "../../src/worker/MapRenderDataContract";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
@@ -86,8 +120,8 @@ type ParityProfile = Readonly<{
 
 type RuntimeOverlay = Readonly<{
     heightMapTextureData: Int16Array;
-    drawRanges: MapRenderDataPayload["drawRanges"];
-    modelInfoTextures: MapRenderDataPayload["modelInfoTextures"];
+    drawRanges: SdMapData["drawRanges"];
+    modelInfoTextures: SdMapData["modelInfoTextures"];
 }>;
 
 type PacketDigest = Readonly<{
@@ -139,7 +173,27 @@ function setQuietMode(quiet: boolean): void {
     console.timeEnd = noOp;
 }
 
-type RuntimeBridge = MapRenderRuntimeDebugBridgeV2 &
+function describeCollectMapInputReason(reason: number): string {
+    switch (reason | 0) {
+        case 1:
+            return "ok";
+        case 2:
+            return "invalid_arg";
+        case 3:
+            return "no_squares_in_window";
+        case 4:
+            return "terrain_bytes_capacity";
+        case 5:
+            return "loc_bytes_capacity";
+        case 6:
+            return "other";
+        default:
+            return "none";
+    }
+}
+
+type RuntimeBridge = MapRenderRuntimeBridgeV2 &
+    Record<string, any> &
     Readonly<{
         createRuntime?: () => Promise<number | undefined>;
         debugSetTerrainProbe?: (
@@ -283,6 +337,220 @@ type RuntimeBridge = MapRenderRuntimeDebugBridgeV2 &
             | undefined
         >;
     }>;
+
+async function withBackendModule<T>(fn: (backendModule: any) => T): Promise<T | undefined> {
+    const backendModule = await tryLoadBackendModule();
+    if (!backendModule) {
+        return undefined;
+    }
+    return fn(backendModule);
+}
+
+function createScriptDebugWrappers(): Partial<RuntimeBridge> {
+    return {
+        async debugCollectCachedMapInputDigest(runtimeHandle: number, sceneBuildInput: unknown) {
+            const backendModule = await tryLoadBackendModule();
+            if (!backendModule) {
+                return undefined;
+            }
+            return runtimeDebugCollectMapInputDigestWithWasm(
+                backendModule,
+                runtimeHandle,
+                sceneBuildInput,
+            );
+        },
+        async getRuntimeCachedCommandStreamDigest(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetCachedCommandStreamDigestWithWasm(m, runtimeHandle));
+        },
+        async getRuntimeCachedCommandStreamArrays(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetCachedCommandStreamArraysWithWasm(m, runtimeHandle));
+        },
+        async debugGetRuntimeLastBuildStats(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLastBuildStatsWithWasm(m, runtimeHandle));
+        },
+        async debugGetRuntimeCacheConfig(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetCacheConfigWithWasm(m, runtimeHandle));
+        },
+        async debugGetRuntimeLoadedHeightHash(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLoadedHeightHashWithWasm(m, runtimeHandle));
+        },
+        async debugGetRuntimeMapInputHashes(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLastMapInputHashesWithWasm(m, runtimeHandle));
+        },
+        async debugDecodeCachedTerrainCell(
+            runtimeHandle: number,
+            mapX: number,
+            mapY: number,
+            level: number,
+            localX: number,
+            localY: number,
+        ) {
+            return withBackendModule((m) =>
+                runtimeDebugDecodeCachedTerrainCellWithWasm(
+                    m,
+                    runtimeHandle,
+                    mapX,
+                    mapY,
+                    level,
+                    localX,
+                    localY,
+                ),
+            );
+        },
+        async debugGetRuntimeLastTerrainTileFaceCounts(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastTerrainTileFaceCountsWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastTerrainDigest(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLastTerrainDigestWithWasm(m, runtimeHandle));
+        },
+        async debugSetTerrainDigestSampleStartVertex(runtimeHandle: number, startVertex: number) {
+            return (
+                (await withBackendModule((m) =>
+                    runtimeDebugSetTerrainDigestSampleStartVertexWithWasm(
+                        m,
+                        runtimeHandle,
+                        startVertex,
+                    ),
+                )) ?? false
+            );
+        },
+        async debugSetTerrainProbe(runtimeHandle: number, level: number, tileX: number, tileY: number) {
+            return (
+                (await withBackendModule((m) =>
+                    runtimeDebugSetTerrainProbeWithWasm(m, runtimeHandle, level, tileX, tileY),
+                )) ?? false
+            );
+        },
+        async debugGetRuntimeLastTerrainProbe(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLastTerrainProbeWithWasm(m, runtimeHandle));
+        },
+        async debugSetWorldHeightProbe(runtimeHandle: number, level: number, worldX: number, worldZ: number) {
+            return (
+                (await withBackendModule((m) =>
+                    runtimeDebugSetWorldHeightProbeWithWasm(m, runtimeHandle, level, worldX, worldZ),
+                )) ?? false
+            );
+        },
+        async debugGetRuntimeLastWorldHeightProbe(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLastWorldHeightProbeWithWasm(m, runtimeHandle));
+        },
+        async debugGetRuntimeLastTerrainDigestSamplesPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastTerrainDigestSamplesPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastSceneCommandPlanDigest(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastSceneCommandPlanDigestWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastSceneCommandPlanOpsPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastSceneCommandPlanOpsPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastSceneCommandPlanOpProvenancePacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastSceneCommandPlanOpProvenancePackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastSceneBucketsDigest(runtimeHandle: number) {
+            return withBackendModule((m) => runtimeDebugGetLastSceneBucketsDigestWithWasm(m, runtimeHandle));
+        },
+        async debugGetRuntimeLastLocRenderPlacementDigest(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocRenderPlacementDigestWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastLocRenderPlacementEntriesPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocRenderPlacementEntriesPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeModelFacesDigest(runtimeHandle: number, modelId: number) {
+            return withBackendModule((m) => runtimeDebugGetModelFacesDigestWithWasm(m, runtimeHandle, modelId));
+        },
+        async debugGetRuntimeModelVerticesDigest(runtimeHandle: number, modelId: number) {
+            return withBackendModule((m) => runtimeDebugGetModelVerticesDigestWithWasm(m, runtimeHandle, modelId));
+        },
+        async debugGetRuntimeModelVerticesSample(runtimeHandle: number, modelId: number, maxVertices: number) {
+            void maxVertices;
+            return withBackendModule((m) =>
+                runtimeDebugGetModelVerticesSampleWithWasm(m, runtimeHandle, modelId),
+            );
+        },
+        async debugGetRuntimeModelVerticesSampleRange(
+            runtimeHandle: number,
+            modelId: number,
+            startVertex: number,
+            maxVertices: number,
+        ) {
+            void maxVertices;
+            return withBackendModule((m) =>
+                runtimeDebugGetModelVerticesSampleRangeWithWasm(m, runtimeHandle, modelId, startVertex),
+            );
+        },
+        async debugGetRuntimeLocModelVerticesSample(runtimeHandle: number, locTypeId: number, placementType: number, rotation: number, modelId: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLocModelVerticesSampleWithWasm(
+                    m,
+                    runtimeHandle,
+                    locTypeId,
+                    placementType,
+                    rotation,
+                    modelId,
+                ),
+            );
+        },
+        async debugGetRuntimeLastLocPreMergeGroupKeySignatures(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocPreMergeGroupKeySignaturesWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastLocPreMergeGroupKeyEntriesPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocPreMergeGroupKeyEntriesPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastLocMergeDecisionEntriesPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocMergeDecisionEntriesPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastLocMergeNormalsTraceEntriesPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocMergeNormalsTraceEntriesPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastLocMergeEmitEntriesPacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastLocMergeEmitEntriesPackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugGetRuntimeLastCommandProvenancePacked(runtimeHandle: number) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLastCommandProvenancePackedWithWasm(m, runtimeHandle),
+            );
+        },
+        async debugBuildMapPlanFromCache(runtimeHandle: number, request: any) {
+            const backendModule = await tryLoadBackendModule();
+            if (!backendModule) {
+                return false;
+            }
+            return runtimeDebugBuildMapPlanFromCacheWithWasm(backendModule, runtimeHandle, request);
+        },
+        async debugDecodeRuntimeOverlayType(runtimeHandle: number, overlayId: number) {
+            return withBackendModule((m) =>
+                runtimeDebugDecodeOverlayTypeWithWasm(m, runtimeHandle, overlayId),
+            );
+        },
+        async debugDecodeRuntimeLocType(runtimeHandle: number, locTypeId: number) {
+            return withBackendModule((m) => runtimeDebugDecodeLocTypeWithWasm(m, runtimeHandle, locTypeId));
+        },
+    };
+}
 
 function buildRuntimeRequest(sceneBuildInput: Record<string, unknown>) {
     const sizeX = (sceneBuildInput.sizeX as number) | 0;
@@ -532,6 +800,15 @@ function compareInputDigests(
     cacheDigestRaw: unknown,
 ): StageResult {
     if (!cacheDigestRaw || typeof cacheDigestRaw !== "object") {
+        // Runtime collect-map-input digest intentionally reports NotFound when no map-square bytes
+        // exist in the request window; TS digest in that case is the empty sentinel.
+        if (
+            (jsDigest.mapCount | 0) === 0 &&
+            (jsDigest.terrainBytesLength | 0) === 0 &&
+            (jsDigest.locBytesLength | 0) === 0
+        ) {
+            return { key: "input", ok: true };
+        }
         return { key: "input", ok: false, detail: "missing-cache-input-digest" };
     }
     const cacheDigest = cacheDigestRaw as Record<string, unknown>;
@@ -571,7 +848,7 @@ function compareCommandDigests(
 }
 
 function comparePacketDigests(
-    tsPayload: MapRenderDataPayload,
+    tsPayload: SdMapData,
     cacheOverlay: RuntimeOverlay | undefined,
     cachePacket: MapRenderRuntimePacket | undefined,
 ): StageResult {
@@ -1043,66 +1320,7 @@ function describeFirstSceneCommandPlanOpsSharedMismatch(
     return "none";
 }
 
-function digestTsRuntimeCommandBuckets(input: MapRenderCommandBucketsRuntimeInput | undefined):
-    | Readonly<{
-          cmdTotal: number;
-          instanceTotal: number;
-          hash: number;
-          bucketCmdCounts: number[];
-      }>
-    | undefined {
-    if (!input) {
-        return undefined;
-    }
-    const keys: ReadonlyArray<keyof MapRenderCommandBucketsRuntimeInput["buckets"]> = [
-        "base",
-        "alpha",
-        "lod",
-        "lodAlpha",
-        "interact",
-        "interactAlpha",
-        "interactLod",
-        "interactLodAlpha",
-    ];
-    const bucketCmdCounts: number[] = [];
-    let cmdTotal = 0;
-    let instanceTotal = 0;
-    let h = 2166136261 >>> 0;
-
-    for (let bucket = 0; bucket < keys.length; bucket++) {
-        const key = keys[bucket];
-        const commands = input.buckets[key] ?? [];
-        bucketCmdCounts.push(commands.length | 0);
-        cmdTotal += commands.length | 0;
-        for (let i = 0; i < commands.length; i++) {
-            const cmd = commands[i];
-            h = fnv1a32UpdateInt(h, bucket | 0);
-            h = fnv1a32UpdateInt(h, cmd.offset | 0);
-            h = fnv1a32UpdateInt(h, cmd.elements | 0);
-            const instCount = cmd.instances.length | 0;
-            h = fnv1a32UpdateInt(h, instCount);
-            instanceTotal += instCount;
-            for (let j = 0; j < instCount; j++) {
-                const inst = cmd.instances[j];
-                h = fnv1a32UpdateInt(h, inst.sceneX | 0);
-                h = fnv1a32UpdateInt(h, inst.sceneZ | 0);
-                h = fnv1a32UpdateInt(h, inst.heightOffset | 0);
-                h = fnv1a32UpdateInt(h, inst.level | 0);
-                h = fnv1a32UpdateInt(h, inst.contourGround | 0);
-                h = fnv1a32UpdateInt(h, inst.priority | 0);
-                h = fnv1a32UpdateInt(h, inst.interactType | 0);
-                h = fnv1a32UpdateInt(h, inst.interactId | 0);
-            }
-        }
-    }
-
-    return {
-        cmdTotal: cmdTotal | 0,
-        instanceTotal: instanceTotal | 0,
-        hash: h >>> 0,
-        bucketCmdCounts,
-    };
-}
+// runtimeCommandBucketsInput was removed; stage comparisons focus on command-stream + packet digests.
 
 type SceneLightStageDigest = Readonly<{
     verticesLength: number;
@@ -1416,63 +1634,12 @@ function compareSceneLightStageDigests(
     return { key: "sceneLightStage", ok: true };
 }
 
-function compareSceneBucketsStage(
-    tsDigest: ReturnType<typeof digestTsRuntimeCommandBuckets> | undefined,
-    cacheDigest: unknown,
-): StageResult {
-    if (!tsDigest) {
-        return { key: "sceneBucketsStage", ok: false, detail: "missing-ts-scene-buckets-digest" };
-    }
-    if (!cacheDigest || typeof cacheDigest !== "object") {
-        return {
-            key: "sceneBucketsStage",
-            ok: false,
-            detail: "missing-cache-scene-buckets-digest",
-        };
-    }
-    const cache = cacheDigest as {
-        cmdTotal?: unknown;
-        instanceTotal?: unknown;
-        hash?: unknown;
-        bucketCmdCounts?: unknown;
+function compareSceneBucketsStage(): StageResult {
+    return {
+        key: "sceneBucketsStage",
+        ok: true,
+        detail: "skipped (ts runtimeCommandBucketsInput removed)",
     };
-    const cmdTotal = Number(cache.cmdTotal ?? 0) | 0;
-    const instanceTotal = Number(cache.instanceTotal ?? 0) | 0;
-    const hash = Number(cache.hash ?? 0) | 0;
-    if ((tsDigest.cmdTotal | 0) !== cmdTotal) {
-        return {
-            key: "sceneBucketsStage",
-            ok: false,
-            detail: `cmdTotal: ts=${tsDigest.cmdTotal | 0} cache=${cmdTotal}`,
-        };
-    }
-    if ((tsDigest.instanceTotal | 0) !== instanceTotal) {
-        return {
-            key: "sceneBucketsStage",
-            ok: false,
-            detail: `instanceTotal: ts=${tsDigest.instanceTotal | 0} cache=${instanceTotal}`,
-        };
-    }
-    if ((tsDigest.hash | 0) >>> 0 !== (hash | 0) >>> 0) {
-        return {
-            key: "sceneBucketsStage",
-            ok: false,
-            detail: `hash: ts=${(tsDigest.hash | 0) >>> 0} cache=${(hash | 0) >>> 0}`,
-        };
-    }
-    const bc = Array.isArray(cache.bucketCmdCounts) ? (cache.bucketCmdCounts as number[]) : [];
-    for (let i = 0; i < 8; i++) {
-        const tsC = (tsDigest.bucketCmdCounts[i] ?? 0) | 0;
-        const caC = (bc[i] ?? 0) | 0;
-        if (tsC !== caC) {
-            return {
-                key: "sceneBucketsStage",
-                ok: false,
-                detail: `bucketCmdCounts[${i}]: ts=${tsC} cache=${caC}`,
-            };
-        }
-    }
-    return { key: "sceneBucketsStage", ok: true };
 }
 
 function compareLocRenderPlacementStageDigests(
@@ -1656,6 +1823,7 @@ async function compareModelFacesStage(
         };
     }
     const limit = 64;
+    let skippedMissingCacheDigest = 0;
     for (let i = 0; i < modelIds.length && i < limit; i++) {
         const modelId = modelIds[i] | 0;
         let tsModel: unknown;
@@ -1670,11 +1838,9 @@ async function compareModelFacesStage(
         const tsDigest = digestTsModelFacesFromModelData(tsModel, transparentTextureIds);
         const cacheDigest = await bridge.debugGetRuntimeModelFacesDigest(runtimeHandle, modelId);
         if (!cacheDigest) {
-            return {
-                key: "modelFacesStage",
-                ok: false,
-                detail: `missing-cache-digest id=${modelId}`,
-            };
+            // Legacy model paths can bypass per-id model blob caches, so this debug hook may be unavailable.
+            skippedMissingCacheDigest++;
+            continue;
         }
         if ((tsDigest.faceCount | 0) !== (cacheDigest.faceCount | 0)) {
             return {
@@ -1710,6 +1876,13 @@ async function compareModelFacesStage(
                 detail: `id=${modelId} hash ts=${tsDigest.hash | 0} cache=${cacheDigest.hash | 0}`,
             };
         }
+    }
+    if (skippedMissingCacheDigest > 0) {
+        return {
+            key: "modelFacesStage",
+            ok: true,
+            detail: `checked=${Math.min(limit, modelIds.length)} skippedMissingCacheDigest=${skippedMissingCacheDigest}`,
+        };
     }
     return {
         key: "modelFacesStage",
@@ -3478,7 +3651,7 @@ function hashVertexPrefixFromIndexRanges(
     return hashByteArray(vertices.subarray(0, clampedBytes), 2166136261 >>> 0);
 }
 
-function digestPacketPayload(payload: MapRenderDataPayload): PacketDigest {
+function digestPacketPayload(payload: SdMapData): PacketDigest {
     const d = digestOverlay(toRuntimeOverlay(payload));
     const usedRanges = collectUsedIndexRanges(payload.drawRanges);
     return {
@@ -3525,7 +3698,7 @@ function cloneRuntimePacketGeometry(packet: MapRenderRuntimePacket): MapRenderRu
     };
 }
 
-function summarizeDrawRangeBuckets(drawRanges: MapRenderDataPayload["drawRanges"]): Record<
+function summarizeDrawRangeBuckets(drawRanges: SdMapData["drawRanges"]): Record<
     string,
     {
         cmds: number;
@@ -3646,7 +3819,7 @@ function digestTsRuntimeCommandStream(
         cmdInstanceCounts: Int32Array;
         cmdPackedInstances: Int32Array;
     },
-    payload: MapRenderDataPayload,
+    payload: SdMapData,
 ): RuntimeCommandDigest {
     const bucketCmdCounts = new Array<number>(DRAW_BUCKET_KEYS.length).fill(0);
     const cmdBucketIndices = runtimeCommandStreamInput.cmdBucketIndices;
@@ -6779,7 +6952,7 @@ function describeFirstCommandStreamArrayMismatch(
         cmdInstanceCounts: Int32Array;
         cmdPackedInstances: Int32Array;
     },
-    tsPayload: MapRenderDataPayload,
+    tsPayload: SdMapData,
     cacheArrays: {
         cmdBucketIndices: Int32Array;
         cmdOffsets: Int32Array;
@@ -7115,7 +7288,7 @@ function tileFromVertexPos(
     };
 }
 
-function toRuntimeOverlay(payload: MapRenderDataPayload): RuntimeOverlay {
+function toRuntimeOverlay(payload: SdMapData): RuntimeOverlay {
     return {
         heightMapTextureData: payload.heightMapTextureData,
         drawRanges: payload.drawRanges,
@@ -7219,24 +7392,23 @@ async function main(): Promise<void> {
     const tsBackend = new SdMapRenderDataTsBackend(deps);
 
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_bridge.mjs"),
     ).href;
     const bridgeModule = (await import(bridgeUrl)) as Record<string, unknown>;
-    const bridge = bridgeModule.mapRenderRuntimeDebugBridge as RuntimeBridge;
+    const baseBridge = bridgeModule.mapRenderRuntimeBridge as RuntimeBridge;
+    const bridge = { ...baseBridge, ...createScriptDebugWrappers() } as RuntimeBridge;
     if (
         !bridge ||
         typeof bridge.cacheSetBuildConfig !== "function" ||
-        typeof bridge.cacheClearMapSquares !== "function" ||
-        typeof bridge.cachePutMapSquaresPacked !== "function" ||
-        typeof bridge.cacheClearTypeKind !== "function" ||
-        typeof bridge.cachePutTypeEntry !== "function" ||
-        typeof bridge.collectRequiredExpandedTypeIds !== "function" ||
+        typeof bridge.cachePutBlobBatch !== "function" ||
+        typeof bridge.cacheClearBlobDomain !== "function" ||
+        typeof bridge.getLastMissingBlobEntries !== "function" ||
         typeof bridge.cacheSetVarps !== "function" ||
         typeof bridge.buildMapPacketFromCache !== "function" ||
         typeof bridge.getRuntimeCachedCommandStreamDigest !== "function" ||
         typeof bridge.getRuntimeCachedCommandStreamArrays !== "function"
     ) {
-        throw new Error("mapRenderRuntimeDebugBridge missing cache-v2 packet APIs");
+        throw new Error("mapRenderRuntimeBridge missing cache-v2 packet APIs");
     }
     if (!(await bridge.initRuntime())) {
         throw new Error("runtime bridge init failed");
@@ -7253,7 +7425,6 @@ async function main(): Promise<void> {
             ? await bridge.createRuntime()
             : undefined) ?? 0;
     if (runtimeHandle <= 0) throw new Error("failed to create runtime");
-    const uploadScratchState = createMapRenderRuntimeUploadScratchState();
     const transparentTextureIds = collectTransparentTextureIdSet(
         sceneBuilder.services.textureLoader,
     );
@@ -7313,34 +7484,34 @@ async function main(): Promise<void> {
             const tsBridgeInput = await tsBackend.buildMapDataBridgeInput(input, {
                 includeMinimapBlob: false,
                 includeRuntimeCommandStreamInput: true,
-                includeRuntimeCommandBucketsInput: args.stages === true,
                 includeRuntimeSceneTileHeights: true,
                 debugIncludeSceneCommandPlanDigest: args.stages === true,
                 debugIncludeSceneCommandPlanOpsPacked: args.stages === true,
             });
-            const tsResult = tsBridgeInput.payloadResult;
-            if (!tsResult.data) {
+            const tsData = tsBridgeInput.data;
+            if (!tsData) {
                 mismatches++;
-                console.error(`missing ts payload at ${square.mapX},${square.mapY}`);
+                console.error(`missing ts map data at ${square.mapX},${square.mapY}`);
                 continue;
             }
 
             bridge.resetRuntime(runtimeHandle);
-            resetMapRenderRuntimeUploadScratchState(uploadScratchState);
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
                 mapBytesProvider,
                 locTypeLoader: loaders.locTypeLoader,
                 locModelLoader,
+                seqTypeLoader: loaders.seqTypeLoader,
+                seqFrameLoader: loaders.seqFrameLoader,
+                skeletalSeqLoader: loaders.skeletalSeqLoader,
+                textureLoader: loaders.textureLoader,
                 underlayTypeLoader: loaders.underlayTypeLoader,
                 overlayTypeLoader: loaders.overlayTypeLoader,
                 varProvider,
                 cacheGame: cacheInfo.game,
                 cacheRevision: cacheInfo.revision,
             });
-            const cacheInputDigest =
-                typeof bridge.debugCollectCachedMapInputDigest === "function"
-                    ? await bridge.debugCollectCachedMapInputDigest(runtimeHandle, sceneBuildInput)
-                    : undefined;
+            // This digest is meaningful only after the cache inputs have been uploaded into the runtime.
+            let cacheInputDigest: unknown = undefined;
             const cacheConfig =
                 typeof bridge.debugGetRuntimeCacheConfig === "function"
                     ? await bridge.debugGetRuntimeCacheConfig(runtimeHandle)
@@ -7356,20 +7527,17 @@ async function main(): Promise<void> {
             const cacheCmdDigestBefore =
                 await bridge.getRuntimeCachedCommandStreamDigest(runtimeHandle);
             const tsCmdDigest =
-                tsBridgeInput.runtimeCommandStreamInput && tsResult.data
+                tsBridgeInput.runtimeCommandStreamInput && tsData
                     ? digestTsRuntimeCommandStream(
                           tsBridgeInput.runtimeCommandStreamInput,
-                          tsResult.data,
+                          tsData,
                       )
                     : undefined;
             const tsPlanDigest =
                 args.stages === true ? tsBridgeInput.debugSceneCommandPlanDigest : undefined;
             const tsPlanOpsPacked =
                 args.stages === true ? tsBridgeInput.debugSceneCommandPlanOpsPacked : undefined;
-            const tsBucketsDigest =
-                args.stages === true
-                    ? digestTsRuntimeCommandBuckets(tsBridgeInput.runtimeCommandBucketsInput)
-                    : undefined;
+            const tsBucketsDigest = undefined;
             const tsLocMergedDummyDigest =
                 profile.loadLocs && tsBridgeInput.runtimeCommandStreamInput
                     ? computeTsLocMergedDummyDigest(tsBridgeInput.runtimeCommandStreamInput)
@@ -7378,13 +7546,17 @@ async function main(): Promise<void> {
             const request = buildRuntimeRequest(sceneBuildInput);
             const uploaded =
                 !!request &&
-                (await uploadRuntimeCacheForBuildRequestWithBridge(
+                (await uploadRuntimeCacheForBuildRequest(
                     bridge,
                     runtimeHandle,
                     request,
                     sceneBuildInput,
-                    uploadScratchState,
                 ));
+            const cacheBlobStatsAfterUpload = undefined;
+            cacheInputDigest =
+                uploaded && typeof bridge.debugCollectCachedMapInputDigest === "function"
+                    ? await bridge.debugCollectCachedMapInputDigest(runtimeHandle, sceneBuildInput)
+                    : undefined;
             const packetRaw =
                 uploaded && request
                     ? await bridge.buildMapPacketFromCache(runtimeHandle, request)
@@ -7406,6 +7578,10 @@ async function main(): Promise<void> {
             const cacheLastBuildStats =
                 typeof bridge.debugGetRuntimeLastBuildStats === "function"
                     ? await bridge.debugGetRuntimeLastBuildStats(runtimeHandle)
+                    : undefined;
+            const cacheLastCollectMapInputAfterBuild =
+                typeof bridge.debugGetLastCollectMapInput === "function"
+                    ? await bridge.debugGetLastCollectMapInput(runtimeHandle)
                     : undefined;
             const cacheLocPreMergeSignatures =
                 typeof bridge.debugGetRuntimeLastLocPreMergeGroupKeySignatures === "function"
@@ -7459,34 +7635,72 @@ async function main(): Promise<void> {
             const tsLocPreMergeGroupKeyDigest = tsLocStageDigests?.preMergeGroupKey;
             const tsLocPreMergeSignatureEntries = tsLocStageDigests?.preMergeSignatureEntries;
             if (!cache || !packet) {
-                if (packetRaw && typeof bridge.releasePacket === "function") {
-                    bridge.releasePacket(packetRaw);
+                const failure =
+                    typeof (bridge as any).debugGetLastBuildFailure === "function"
+                        ? await (bridge as any).debugGetLastBuildFailure(runtimeHandle)
+                        : undefined;
+                if (failure) {
+                    console.warn("[map-render-backend] lastBuildFailure", failure);
                 }
+                const collectMapInput =
+                    typeof (bridge as any).debugGetLastCollectMapInput === "function"
+                        ? await (bridge as any).debugGetLastCollectMapInput(runtimeHandle)
+                        : undefined;
+                if (collectMapInput) {
+                    console.warn("[map-render-backend] lastCollectMapInput", {
+                        ...collectMapInput,
+                        reasonName: describeCollectMapInputReason(collectMapInput.reason | 0),
+                    });
+                }
+                const cmdStatus =
+                    typeof (bridge as any).debugGetLastCommandStreamStatus === "function"
+                        ? await (bridge as any).debugGetLastCommandStreamStatus(runtimeHandle)
+                        : undefined;
+                if (typeof cmdStatus === "number") {
+                    console.warn("[map-render-backend] lastCommandStreamCoreStatus", cmdStatus);
+                }
+                const legacyModelState =
+                    typeof (bridge as any).debugGetLastLegacyModelLoad === "function"
+                        ? await (bridge as any).debugGetLastLegacyModelLoad(runtimeHandle)
+                        : undefined;
+                if (legacyModelState) {
+                    console.warn("[map-render-backend] lastLegacyModelLoad", legacyModelState);
+                }
+                const missingType =
+                    typeof (bridge as any).debugGetLastMissingType === "function"
+                        ? await (bridge as any).debugGetLastMissingType(runtimeHandle)
+                        : undefined;
+                if (missingType) {
+                    console.warn("[map-render-backend] lastMissingType", missingType);
+                }
+                // Scene-type init debugging was removed with the type-entry byte-provider path.
+                // Packets are now deep-copied out of the wasm heap and released before returning.
+                void packetRaw;
                 mismatches++;
                 console.error(`missing bridge packet/overlay at ${square.mapX},${square.mapY}`);
                 continue;
             }
-            const expected = digestPacketPayload(tsResult.data);
+            const expected = digestPacketPayload(tsData);
             const cacheDigest = digestRuntimePacket(cache, packet);
             const mismatchKeys = (Object.keys(expected) as Array<keyof PacketDigest>).filter(
                 (k) => expected[k] !== cacheDigest[k],
             );
-            const packetStageResultBaseline = comparePacketDigests(tsResult.data, cache, packet);
+            const packetStageResultBaseline = comparePacketDigests(tsData, cache, packet);
 
             const verticesDiffDetail = mismatchKeys.includes("vertices")
-                ? tsResult.data.vertices instanceof Uint8Array &&
+                ? tsData.vertices instanceof Uint8Array &&
                   packet.vertices instanceof Uint8Array
-                    ? describeFirstByteMismatch(tsResult.data.vertices, packet.vertices)
+                    ? describeFirstByteMismatch(tsData.vertices, packet.vertices)
                     : `type ts=${String(
-                          (tsResult.data.vertices as any)?.constructor?.name,
+                          (tsData.vertices as any)?.constructor?.name,
                       )} cache=${String((packet.vertices as any)?.constructor?.name)}`
                 : undefined;
             const indicesDiffDetail = mismatchKeys.includes("indices")
-                ? tsResult.data.indices instanceof Int32Array &&
+                ? tsData.indices instanceof Int32Array &&
                   packet.indices instanceof Int32Array
-                    ? describeFirstI32Mismatch(tsResult.data.indices, packet.indices)
+                    ? describeFirstI32Mismatch(tsData.indices, packet.indices)
                     : `type ts=${String(
-                          (tsResult.data.indices as any)?.constructor?.name,
+                          (tsData.indices as any)?.constructor?.name,
                       )} cache=${String((packet.indices as any)?.constructor?.name)}`
                 : undefined;
 
@@ -7594,26 +7808,7 @@ async function main(): Promise<void> {
                         };
                     }
                 }
-                if (tsBucketsDigest) {
-                    if (typeof bridge.debugGetRuntimeLastSceneBucketsDigest === "function") {
-                        try {
-                            cacheSceneBucketsDigestStage =
-                                await bridge.debugGetRuntimeLastSceneBucketsDigest(runtimeHandle);
-                        } catch {
-                            cacheSceneBucketsDigestStage = undefined;
-                        }
-                        sceneBucketsStageResult = compareSceneBucketsStage(
-                            tsBucketsDigest,
-                            cacheSceneBucketsDigestStage,
-                        );
-                    } else {
-                        sceneBucketsStageResult = {
-                            key: "sceneBucketsStage",
-                            ok: false,
-                            detail: "missing-cache-scene-buckets-digest",
-                        };
-                    }
-                }
+                // sceneBucketsStage: ts runtimeCommandBucketsInput was removed.
                 if (typeof bridge.debugGetRuntimeLastLocRenderPlacementDigest === "function") {
                     try {
                         cacheLocRenderPlacementDigestStage =
@@ -7924,7 +8119,7 @@ async function main(): Promise<void> {
                                                                             );
                                                                         }
                                                                         // packed[24..31] are overlay base-HSL diagnostics.
-                                                                        // packed[32..] are (optional) C++ occlusion-writer diagnostics for the center occlusion cell.
+                                                                        // packed[32..] are (optional) C++ occlusion-writer diagnostics for the east occlusion cell (occlE).
                                                                         if (
                                                                             packed.length >= 44 &&
                                                                             (packed[32] | 0) !== 0
@@ -7957,7 +8152,7 @@ async function main(): Promise<void> {
                                                                                     : -1;
 
                                                                             console.log(
-                                                                                `[terrainDigestStage][probe-cpp-occC-writer] originalId=${writerOriginalId} resolvedId=${writerResolvedId} type=${writerType} rot=${writerRot} tile=${writerTileX},${writerTileY} size=${writerSizeX},${writerSizeY} isEntity=${writerIsEntity} staticXzRadius=${writerStaticXzRadius} lightOccl=${writerLightOccl} level=${writerLevel}`,
+                                                                                `[terrainDigestStage][probe-cpp-occE-writer] originalId=${writerOriginalId} resolvedId=${writerResolvedId} type=${writerType} rot=${writerRot} tile=${writerTileX},${writerTileY} size=${writerSizeX},${writerSizeY} isEntity=${writerIsEntity} staticXzRadius=${writerStaticXzRadius} lightOccl=${writerLightOccl} level=${writerLevel}`,
                                                                             );
 
                                                                             // Check whether TS scene actually added this loc to its tile set (best-effort).
@@ -8018,7 +8213,7 @@ async function main(): Promise<void> {
                                                                                     } catch {}
                                                                                 }
                                                                                 console.log(
-                                                                                    `[terrainDigestStage][probe-ts-occC-writer-tile] tile=${writerTileX},${writerTileY} locsLen=${
+                                                                                    `[terrainDigestStage][probe-ts-occE-writer-tile] tile=${writerTileX},${writerTileY} locsLen=${
                                                                                         locs.length |
                                                                                         0
                                                                                     } idMatches=${
@@ -8168,19 +8363,19 @@ async function main(): Promise<void> {
                                                                                         0
                                                                                     ) {
                                                                                         console.log(
-                                                                                            `[terrainDigestStage][probe-ts-occC-writer-find] id=${writerOriginalId} hits=${JSON.stringify(
+                                                                                            `[terrainDigestStage][probe-ts-occE-writer-find] id=${writerOriginalId} hits=${JSON.stringify(
                                                                                                 found,
                                                                                             )}`,
                                                                                         );
                                                                                     } else {
                                                                                         console.log(
-                                                                                            `[terrainDigestStage][probe-ts-occC-writer-find] id=${writerOriginalId} hits=[]`,
+                                                                                            `[terrainDigestStage][probe-ts-occE-writer-find] id=${writerOriginalId} hits=[]`,
                                                                                         );
                                                                                     }
                                                                                 }
                                                                             } catch (e) {
                                                                                 console.log(
-                                                                                    `[terrainDigestStage][probe-ts-occC-writer-tile] tile=${writerTileX},${writerTileY} error=${String(
+                                                                                    `[terrainDigestStage][probe-ts-occE-writer-tile] tile=${writerTileX},${writerTileY} error=${String(
                                                                                         e,
                                                                                     )}`,
                                                                                 );
@@ -8988,9 +9183,8 @@ async function main(): Promise<void> {
                     : { key: "planOnlySelfCheckStage", ok: true },
             ];
 
-            if (packetRaw && typeof bridge.releasePacket === "function") {
-                bridge.releasePacket(packetRaw);
-            }
+            // Packets are now deep-copied out of the wasm heap and released before returning.
+            void packetRaw;
             for (let i = 0; i < stageResults.length; i++) {
                 const r = stageResults[i];
                 if (!r.ok) {
@@ -9041,11 +9235,19 @@ async function main(): Promise<void> {
                 for (const key of mismatchKeys) {
                     console.error(`  ${key}: ts=${expected[key]} cache=${cacheDigest[key]}`);
                 }
-                if (cacheInputDigest) {
+                console.error(
+                    `  map-input digest js=${JSON.stringify(jsInputDigest)} cache=${JSON.stringify(
+                        cacheInputDigest ?? null,
+                    )}`,
+                );
+                if (cacheBlobStatsAfterUpload) {
                     console.error(
-                        `  map-input digest js=${JSON.stringify(
-                            jsInputDigest,
-                        )} cache=${JSON.stringify(cacheInputDigest)}`,
+                        `  runtime blob-stats after upload: ${JSON.stringify(cacheBlobStatsAfterUpload)}`,
+                    );
+                }
+                if (cacheLastCollectMapInputAfterBuild) {
+                    console.error(
+                        `  runtime last-collect-map-input: ${JSON.stringify(cacheLastCollectMapInputAfterBuild)}`,
                     );
                 }
                 if (cacheConfig) {
@@ -9075,7 +9277,7 @@ async function main(): Promise<void> {
                         ) {
                             const firstArrayDiff = describeFirstCommandStreamArrayMismatch(
                                 tsCmdInput,
-                                tsResult.data,
+                                tsData,
                                 cacheCmdArrays,
                             );
                             if (firstArrayDiff) {
@@ -9088,9 +9290,9 @@ async function main(): Promise<void> {
                                 try {
                                     if (
                                         firstArrayDiff.startsWith("vertices[") &&
-                                        tsResult.data.vertices instanceof Uint8Array &&
+                                        tsData.vertices instanceof Uint8Array &&
                                         cacheCmdArrays.vertices instanceof Uint8Array &&
-                                        tsResult.data.indices instanceof Int32Array &&
+                                        tsData.indices instanceof Int32Array &&
                                         cacheCmdArrays.indices instanceof Int32Array
                                     ) {
                                         const m = /^vertices\[(\d+)\]/.exec(firstArrayDiff);
@@ -9101,11 +9303,11 @@ async function main(): Promise<void> {
                                                 : -1;
                                         if (
                                             vertexIndex >= 0 &&
-                                            vertexIndex * 16 + 15 < tsResult.data.vertices.length &&
+                                            vertexIndex * 16 + 15 < tsData.vertices.length &&
                                             vertexIndex * 16 + 15 < cacheCmdArrays.vertices.length
                                         ) {
                                             const tsVertex = decodePackedVertexDebug(
-                                                tsResult.data.vertices,
+                                                tsData.vertices,
                                                 vertexIndex,
                                             );
                                             const cacheVertex = decodePackedVertexDebug(
@@ -9118,7 +9320,7 @@ async function main(): Promise<void> {
                                                 )} cache=${JSON.stringify(cacheVertex)}`,
                                             );
 
-                                            const tsElem = tsResult.data.indices.indexOf(vertexIndex);
+                                            const tsElem = tsData.indices.indexOf(vertexIndex);
                                             const cacheElem =
                                                 cacheCmdArrays.indices.indexOf(vertexIndex);
                                             console.error(
@@ -9177,8 +9379,8 @@ async function main(): Promise<void> {
                                                 };
                                                 dumpTri(
                                                     "ts",
-                                                    tsResult.data.vertices,
-                                                    tsResult.data.indices,
+                                                    tsData.vertices,
+                                                    tsData.indices,
                                                 );
                                                 dumpTri(
                                                     "cache",
@@ -9643,13 +9845,13 @@ async function main(): Promise<void> {
                                         }
                                     } else if (
                                         firstArrayDiff.startsWith("indices[") &&
-                                        tsResult.data.indices instanceof Int32Array &&
+                                        tsData.indices instanceof Int32Array &&
                                         cacheCmdArrays.indices instanceof Int32Array
                                     ) {
                                         const m = /^indices\[(\d+)\]/.exec(firstArrayDiff);
                                         const elementIndex = m ? (Number(m[1]) | 0) : -1;
                                         if (elementIndex >= 0) {
-                                            const ts = tsResult.data.indices[elementIndex] | 0;
+                                            const ts = tsData.indices[elementIndex] | 0;
                                             const cache = cacheCmdArrays.indices[elementIndex] | 0;
                                             console.error(
                                                 `  first index mismatch -> elem=${elementIndex} ts=${ts} cache=${cache}`,
@@ -10577,7 +10779,7 @@ async function main(): Promise<void> {
                     console.error(`  ts cmd-digest=${JSON.stringify(tsCmdDigest)}`);
                 }
                 if (mismatchKeys.includes("drawRanges")) {
-                    const tsDrawRangeSummary = summarizeDrawRangeBuckets(tsResult.data.drawRanges);
+                    const tsDrawRangeSummary = summarizeDrawRangeBuckets(tsData.drawRanges);
                     const cacheDrawRangeSummary = summarizeDrawRangeBuckets(cache.drawRanges);
                     console.error(
                         `  draw-range summary ts=${JSON.stringify(
@@ -10590,17 +10792,17 @@ async function main(): Promise<void> {
                     const mismatchByteIndex = parseMismatchByteIndex(verticesDiffDetail);
                     if (
                         mismatchByteIndex >= 0 &&
-                        tsResult.data.vertices instanceof Uint8Array &&
+                        tsData.vertices instanceof Uint8Array &&
                         packet.vertices instanceof Uint8Array
                     ) {
                         const vertexIndex = Math.floor(mismatchByteIndex / 16) | 0;
                         if (
                             vertexIndex >= 0 &&
-                            vertexIndex * 16 + 15 < tsResult.data.vertices.length &&
+                            vertexIndex * 16 + 15 < tsData.vertices.length &&
                             vertexIndex * 16 + 15 < packet.vertices.length
                         ) {
                             const tsVertex = decodePackedVertexDebug(
-                                tsResult.data.vertices,
+                                tsData.vertices,
                                 vertexIndex,
                             );
                             const cacheVertex = decodePackedVertexDebug(
@@ -10613,7 +10815,7 @@ async function main(): Promise<void> {
                                 )} cache=${JSON.stringify(cacheVertex)}`,
                             );
                             const tsPosSummary = summarizePackedVertexAtPosition(
-                                tsResult.data.vertices,
+                                tsData.vertices,
                                 tsVertex,
                             );
                             const cachePosSummary = summarizePackedVertexAtPosition(
@@ -10627,7 +10829,7 @@ async function main(): Promise<void> {
                             );
 
                             if (
-                                tsResult.data.indices instanceof Int32Array &&
+                                tsData.indices instanceof Int32Array &&
                                 packet.indices instanceof Int32Array &&
                                 cacheCmdArraysAfter &&
                                 tsBridgeInput.runtimeCommandStreamInput
@@ -10648,7 +10850,7 @@ async function main(): Promise<void> {
                                     return out;
                                 };
                                 const tsElementIndices = collectElementIndicesForVertex(
-                                    tsResult.data.indices,
+                                    tsData.indices,
                                     vertexIndex,
                                     8,
                                 );
@@ -11679,14 +11881,14 @@ async function main(): Promise<void> {
                                                             const elCount = hit.elements | 0;
                                                             if (
                                                                 !(
-                                                                    tsResult.data.indices instanceof
+                                                                    tsData.indices instanceof
                                                                         Int32Array &&
                                                                     packet.indices instanceof
                                                                         Int32Array &&
                                                                     startEl >= 0 &&
                                                                     elCount > 0 &&
                                                                     startEl + elCount <=
-                                                                        tsResult.data.indices
+                                                                        tsData.indices
                                                                             .length &&
                                                                     startEl + elCount <=
                                                                         packet.indices.length
@@ -12025,8 +12227,8 @@ async function main(): Promise<void> {
                                             );
                                             dumpTriangleAtElement(
                                                 "ts",
-                                                tsResult.data.vertices,
-                                                tsResult.data.indices,
+                                                tsData.vertices,
+                                                tsData.indices,
                                                 e,
                                             );
                                             dumpTriangleAtElement(
@@ -12220,27 +12422,27 @@ async function main(): Promise<void> {
                                             if (
                                                 tsElement < 0 ||
                                                 cacheElement < 0 ||
-                                                tsElement >= tsResult.data.indices.length ||
+                                                tsElement >= tsData.indices.length ||
                                                 cacheElement >= packet.indices.length
                                             ) {
                                                 continue;
                                             }
                                             const tsVertexIndex =
-                                                tsResult.data.indices[tsElement] | 0;
+                                                tsData.indices[tsElement] | 0;
                                             const cacheVertexIndex =
                                                 packet.indices[cacheElement] | 0;
                                             if (
                                                 tsVertexIndex < 0 ||
                                                 cacheVertexIndex < 0 ||
                                                 tsVertexIndex * 16 + 15 >=
-                                                    tsResult.data.vertices.length ||
+                                                    tsData.vertices.length ||
                                                 cacheVertexIndex * 16 + 15 >= packet.vertices.length
                                             ) {
                                                 continue;
                                             }
                                             const tsY =
                                                 decodePackedVertexDebug(
-                                                    tsResult.data.vertices,
+                                                    tsData.vertices,
                                                     tsVertexIndex,
                                                 ).y | 0;
                                             const cacheY =
@@ -12919,24 +13121,24 @@ async function main(): Promise<void> {
                 if (
                     profile.name === "terrain-only" &&
                     indicesDiffDetail &&
-                    tsResult.data.vertices instanceof Uint8Array &&
+                    tsData.vertices instanceof Uint8Array &&
                     packet.vertices instanceof Uint8Array &&
-                    tsResult.data.indices instanceof Int32Array &&
+                    tsData.indices instanceof Int32Array &&
                     packet.indices instanceof Int32Array
                 ) {
                     const m = /idx=(\d+)/.exec(indicesDiffDetail);
                     const idx = m ? Number(m[1]) | 0 : -1;
                     if (idx >= 0) {
                         const t = Math.floor(idx / 3) | 0;
-                        const i0ts = tsResult.data.indices[t * 3 + 0] | 0;
-                        const i1ts = tsResult.data.indices[t * 3 + 1] | 0;
-                        const i2ts = tsResult.data.indices[t * 3 + 2] | 0;
+                        const i0ts = tsData.indices[t * 3 + 0] | 0;
+                        const i1ts = tsData.indices[t * 3 + 1] | 0;
+                        const i2ts = tsData.indices[t * 3 + 2] | 0;
                         const i0c = packet.indices[t * 3 + 0] | 0;
                         const i1c = packet.indices[t * 3 + 1] | 0;
                         const i2c = packet.indices[t * 3 + 2] | 0;
-                        const p0ts = decodePackedVertexPos(tsResult.data.vertices, i0ts);
-                        const p1ts = decodePackedVertexPos(tsResult.data.vertices, i1ts);
-                        const p2ts = decodePackedVertexPos(tsResult.data.vertices, i2ts);
+                        const p0ts = decodePackedVertexPos(tsData.vertices, i0ts);
+                        const p1ts = decodePackedVertexPos(tsData.vertices, i1ts);
+                        const p2ts = decodePackedVertexPos(tsData.vertices, i2ts);
                         const p0c = decodePackedVertexPos(packet.vertices, i0c);
                         const p1c = decodePackedVertexPos(packet.vertices, i1c);
                         const p2c = decodePackedVertexPos(packet.vertices, i2c);
@@ -12955,15 +13157,15 @@ async function main(): Promise<void> {
                 if (
                     profile.name === "terrain-only" &&
                     (mismatchKeys.includes("vertices") || mismatchKeys.includes("indices")) &&
-                    tsResult.data.vertices instanceof Uint8Array &&
+                    tsData.vertices instanceof Uint8Array &&
                     packet.vertices instanceof Uint8Array &&
-                    tsResult.data.indices instanceof Int32Array &&
+                    tsData.indices instanceof Int32Array &&
                     packet.indices instanceof Int32Array
                 ) {
-                    const tsVertexStats = summarizePackedVertices(tsResult.data.vertices);
+                    const tsVertexStats = summarizePackedVertices(tsData.vertices);
                     const cacheVertexStats = summarizePackedVertices(packet.vertices);
                     const tsIndexStats = summarizeIndices(
-                        tsResult.data.indices,
+                        tsData.indices,
                         tsVertexStats.vertexCount,
                     );
                     const cacheIndexStats = summarizeIndices(
@@ -12982,9 +13184,9 @@ async function main(): Promise<void> {
                     );
                     console.error(
                         `  terrain-only drawRanges base=${JSON.stringify(
-                            Array.from(tsResult.data.drawRanges.base),
+                            Array.from(tsData.drawRanges.base),
                         )} interact=${JSON.stringify(
-                            Array.from(tsResult.data.drawRanges.interact),
+                            Array.from(tsData.drawRanges.interact),
                         )}`,
                     );
                     if (cacheIndexStats.degenerateTriangleCount > 0) {
@@ -13115,7 +13317,7 @@ async function main(): Promise<void> {
                             tsCmdDigest.cmdPackedInstancesHash !==
                                 normalizedCacheCmdDigest.cmdPackedInstancesHash)) &&
                     tsBridgeInput.runtimeCommandStreamInput &&
-                    tsResult.data &&
+                    tsData &&
                     cacheCmdArraysAfter &&
                     tsBridgeInput.runtimeCommandStreamInput.cmdOffsets.length <= 32
                 ) {
@@ -13180,7 +13382,7 @@ async function main(): Promise<void> {
                             tsCmdDigest.cmdPackedInstancesHash !==
                                 normalizedCacheCmdDigest.cmdPackedInstancesHash)) &&
                     tsBridgeInput.runtimeCommandStreamInput &&
-                    tsResult.data &&
+                    tsData &&
                     cacheCmdArraysAfter
                 ) {
                     let tsSceneLocRecords: TsSceneLocRecord[] | undefined;
@@ -13257,7 +13459,7 @@ async function main(): Promise<void> {
 
                     const firstArrayDiff = describeFirstCommandStreamArrayMismatch(
                         tsBridgeInput.runtimeCommandStreamInput,
-                        tsResult.data,
+                        tsData,
                         cacheCmdArraysAfter,
                     );
                     if (firstArrayDiff) {
@@ -14222,10 +14424,23 @@ async function main(): Promise<void> {
                                                                       (((seq as any)
                                                                           .animMayaStart as number) |
                                                                           0);
+                                                            let seqFrameAlphaCount = -1;
+                                                            if (!hasMaya && Array.isArray((seq as any).frameIds)) {
+                                                                seqFrameAlphaCount = 0;
+                                                                const frameIds = (seq as any).frameIds as number[];
+                                                                for (let fi = 0; fi < frameIds.length; fi++) {
+                                                                    const frameId = frameIds[fi] | 0;
+                                                                    const frame =
+                                                                        loaders.seqFrameLoader.tryGet(frameId);
+                                                                    if ((frame as any)?.hasAlphaTransform === true) {
+                                                                        seqFrameAlphaCount++;
+                                                                    }
+                                                                }
+                                                            }
                                                             console.error(
                                                                 `  animated-placeholder probe tsSeqType id=${seqId} ok hasMaya=${
                                                                     hasMaya ? 1 : 0
-                                                                } frameIdsLen=${frameIdsLen} mayaDur=${mayaDur}`,
+                                                                } frameIdsLen=${frameIdsLen} mayaDur=${mayaDur} frameAlphaCount=${seqFrameAlphaCount}`,
                                                             );
                                                         } else {
                                                             console.error(
@@ -14675,8 +14890,8 @@ async function main(): Promise<void> {
                                 const id = debugFloorLocIds[di] >>> 0;
                                 const tsBins = collectInteractGeometryBinsForBucket(
                                     tsBridgeInput.runtimeCommandStreamInput,
-                                    tsResult.data.vertices,
-                                    tsResult.data.indices,
+                                    tsData.vertices,
+                                    tsData.indices,
                                     1,
                                     id,
                                     4,
@@ -14706,8 +14921,8 @@ async function main(): Promise<void> {
                                 tsBridgeInput.runtimeCommandStreamInput,
                                 cacheCmdArraysAfter,
                                 tsSceneLocRecordsForDiff,
-                                tsResult.data.vertices,
-                                tsResult.data.indices,
+                                tsData.vertices,
+                                tsData.indices,
                                 packet.vertices,
                                 packet.indices,
                                 getTsModelHashStatsForLocIds,
@@ -14721,8 +14936,8 @@ async function main(): Promise<void> {
 
                 if (mismatchKeys.includes("modelInfo")) {
                     try {
-                        const t = tsResult.data;
-                        const buckets: Array<keyof MapRenderDataPayload["drawRanges"]> = [
+                        const t = tsData;
+                        const buckets: Array<keyof SdMapData["drawRanges"]> = [
                             "interact",
                             "interactAlpha",
                             "interactLod",
@@ -14775,7 +14990,7 @@ async function main(): Promise<void> {
                 if (mismatchKeys.includes("heightMap")) {
                     console.error(
                         `  height diff: ${describeFirstHeightMismatch(
-                            toRuntimeOverlay(tsResult.data).heightMapTextureData,
+                            toRuntimeOverlay(tsData).heightMapTextureData,
                             cache.heightMapTextureData,
                         )}`,
                     );

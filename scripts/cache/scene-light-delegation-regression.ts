@@ -12,7 +12,7 @@ import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHand
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { MergeNormalsScratch } from "../../src/rs/model/ModelData";
-import { tryCreateCacheSession } from "../../src/rs/runtime/createCacheSession";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { Scene } from "../../src/rs/scene/Scene";
 import {
     createSceneBuildContext,

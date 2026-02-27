@@ -10,7 +10,7 @@ import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHand
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { MapImageRenderer } from "../../src/rs/render/minimap/MapImageRenderer";
-import { tryCreateCacheSession } from "../../src/rs/runtime/createCacheSession";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { SceneBuilder } from "../../src/rs/scene/SceneBuilder";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
@@ -22,11 +22,12 @@ import type {
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     createByteDrivenSceneBuildInput,
-    createMapRenderRuntimeUploadScratchState,
-    uploadRuntimeCacheForBuildRequestWithBridge,
-} from "../../src/worker/MapRenderDataBackend";
+    uploadRuntimeCacheForBuildRequest,
+} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import type { MapRenderRuntimePacket } from "../../src/worker/MapRenderDataContract";
-import { runtimePacketToPayloadOverlay } from "../../src/worker/MapRenderDataContract";
+import {
+    runtimePacketToPayloadOverlay,
+} from "../../src/worker/MapRenderDataContract";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
@@ -47,21 +48,10 @@ type RuntimeBridge = MapRenderRuntimeBridgeV2 &
         createRuntime?(): Promise<number | undefined>;
     }>;
 
-type WasmBridge = Readonly<{
-    runtimeHandle: number;
-}> &
-    Pick<
-        RuntimeBridge,
-        | "cacheSetBuildConfig"
-        | "cacheClearMapSquares"
-        | "cachePutMapSquaresPacked"
-        | "cacheClearTypeKind"
-        | "cachePutTypeEntry"
-        | "collectRequiredExpandedTypeIds"
-        | "cacheSetVarps"
-        | "buildMapPacketFromCache"
-        | "releasePacket"
-    >;
+type WasmBridge = RuntimeBridge &
+    Readonly<{
+        runtimeHandle: number;
+    }>;
 
 function buildRuntimeRequest(
     sceneBuildInput: Record<string, unknown>,
@@ -185,7 +175,7 @@ function pickSquares(
 
 async function loadWasmBridge(): Promise<WasmBridge> {
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_runtime.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_bridge.mjs"),
     ).href;
     const mod = (await import(bridgeUrl)) as Record<string, unknown>;
     const runtimeCandidate = mod.mapRenderRuntimeBridge as Partial<RuntimeBridge> | undefined;
@@ -194,11 +184,9 @@ async function loadWasmBridge(): Promise<WasmBridge> {
         (typeof runtimeCandidate.createRuntime !== "function" &&
             typeof runtimeCandidate.createRuntimeWithConfig !== "function") ||
         typeof runtimeCandidate.cacheSetBuildConfig !== "function" ||
-        typeof runtimeCandidate.cacheClearMapSquares !== "function" ||
-        typeof runtimeCandidate.cachePutMapSquaresPacked !== "function" ||
-        typeof runtimeCandidate.cacheClearTypeKind !== "function" ||
-        typeof runtimeCandidate.cachePutTypeEntry !== "function" ||
-        typeof runtimeCandidate.collectRequiredExpandedTypeIds !== "function" ||
+        typeof runtimeCandidate.cachePutBlobBatch !== "function" ||
+        typeof runtimeCandidate.cacheClearBlobDomain !== "function" ||
+        typeof runtimeCandidate.getLastMissingBlobEntries !== "function" ||
         typeof runtimeCandidate.cacheSetVarps !== "function" ||
         typeof runtimeCandidate.buildMapPacketFromCache !== "function"
     ) {
@@ -223,18 +211,7 @@ async function loadWasmBridge(): Promise<WasmBridge> {
     if (runtimeHandle === undefined) {
         throw new Error("Failed to create wasm map-render runtime");
     }
-    return {
-        runtimeHandle,
-        cacheSetBuildConfig: runtimeCandidate.cacheSetBuildConfig,
-        cacheClearMapSquares: runtimeCandidate.cacheClearMapSquares,
-        cachePutMapSquaresPacked: runtimeCandidate.cachePutMapSquaresPacked,
-        cacheClearTypeKind: runtimeCandidate.cacheClearTypeKind,
-        cachePutTypeEntry: runtimeCandidate.cachePutTypeEntry,
-        collectRequiredExpandedTypeIds: runtimeCandidate.collectRequiredExpandedTypeIds,
-        cacheSetVarps: runtimeCandidate.cacheSetVarps,
-        buildMapPacketFromCache: runtimeCandidate.buildMapPacketFromCache,
-        releasePacket: runtimeCandidate.releasePacket,
-    };
+    return Object.assign({ runtimeHandle }, runtimeCandidate) as WasmBridge;
 }
 
 async function main(): Promise<void> {
@@ -328,22 +305,25 @@ async function main(): Promise<void> {
 
     async function runTs(): Promise<void> {
         for (const input of inputs) {
-            const result = await tsBackend.buildMapDataPayload(input, {
+            const result = await tsBackend.buildMapData(input, {
                 includeMinimapBlob: false,
             });
-            if (!result.data) {
-                throw new Error(`TS backend returned no payload at ${input.mapX},${input.mapY}`);
+            if (!result) {
+                throw new Error(`TS backend returned no data at ${input.mapX},${input.mapY}`);
             }
         }
     }
 
     async function runCppWasm(): Promise<void> {
-        const uploadScratchState = createMapRenderRuntimeUploadScratchState();
         for (const input of inputs) {
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
                 mapBytesProvider,
                 locTypeLoader: loaders.locTypeLoader,
                 locModelLoader,
+                seqTypeLoader: loaders.seqTypeLoader,
+                seqFrameLoader: loaders.seqFrameLoader,
+                skeletalSeqLoader: loaders.skeletalSeqLoader,
+                textureLoader: loaders.textureLoader,
                 underlayTypeLoader: loaders.underlayTypeLoader,
                 overlayTypeLoader: loaders.overlayTypeLoader,
                 varProvider,
@@ -353,21 +333,19 @@ async function main(): Promise<void> {
             const request = buildRuntimeRequest(sceneBuildInput);
             const uploaded =
                 !!request &&
-                (await uploadRuntimeCacheForBuildRequestWithBridge(
+                (await uploadRuntimeCacheForBuildRequest(
                     wasmBridge as unknown as MapRenderRuntimeBridgeV2,
                     wasmBridge.runtimeHandle,
                     request,
                     sceneBuildInput,
-                    uploadScratchState,
                 ));
             const packet =
                 uploaded && request
                     ? await wasmBridge.buildMapPacketFromCache(wasmBridge.runtimeHandle, request)
                     : undefined;
             const overlay = runtimePacketToPayloadOverlay(packet);
-            if (typeof wasmBridge.releasePacket === "function") {
-                wasmBridge.releasePacket(packet);
-            }
+            // Packets are now deep-copied out of the wasm heap and released before returning.
+            void packet;
             if (!overlay) {
                 throw new Error(
                     `WASM bridge returned no runtime packet/overlay at ${input.mapX},${input.mapY}`,
