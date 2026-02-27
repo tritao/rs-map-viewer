@@ -16,6 +16,7 @@ import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
@@ -24,12 +25,11 @@ import { SpriteLoader } from "../rs/sprite/SpriteLoader";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
+import type { BackendKind } from "../util/BackendKind";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
-import { createSceneBuildBackend } from "./SceneBuildBackend";
-import type { SceneBuildBackend } from "./SceneBuildBackend";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -45,7 +45,6 @@ export type WorkerState = {
     npcModelLoader: NpcModelLoader;
 
     sceneBuilder: SceneBuilder;
-    sceneBuildBackend: SceneBuildBackend;
     mapRenderDataBackend: MapRenderDataBackend;
 
     mapImageRenderer: MapImageRenderer;
@@ -61,10 +60,7 @@ export type WorkerRuntimeOptions = Readonly<{
     mapRenderBackend?: MapRenderDataBackendKind;
     // Allows isolating tick/patch issues from map-build issues.
     // If unset, tick behavior follows mapRenderBackend.
-    mapRenderTickBackend?: "ts" | "cpp-wasm";
-    mapRenderBackendModuleUrl?: string;
-    mapRenderStrictCppWasm?: boolean;
-    mapRenderStrictCppWasmPacketGeometry?: boolean;
+    mapRenderTickBackend?: BackendKind;
     mapRenderTelemetry?: boolean;
     // Debug-only: "mapX:mapY" to enable verbose tick/patch logging/validation for a single square.
     mapRenderDebugTickSquare?: string;
@@ -146,10 +142,6 @@ async function initWorker(
         varProvider,
     });
     const mapRenderBackendKind = options?.mapRenderBackend ?? "cpp-wasm";
-    const sceneBuildBackend = createSceneBuildBackend({
-        sceneBuilder,
-        mapBytesProvider,
-    });
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,
@@ -171,9 +163,6 @@ async function initWorker(
             npcSpawns,
         },
         {
-            cppWasmModuleUrl: options?.mapRenderBackendModuleUrl,
-            strictCppWasm: options?.mapRenderStrictCppWasm,
-            strictCppWasmPacketGeometry: options?.mapRenderStrictCppWasmPacketGeometry,
             telemetry: options?.mapRenderTelemetry,
         },
     );
@@ -189,7 +178,6 @@ async function initWorker(
         npcModelLoader,
 
         sceneBuilder,
-        sceneBuildBackend,
         mapRenderDataBackend,
 
         mapImageRenderer,
@@ -218,7 +206,6 @@ const worker = {
     async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
         const workerState = await requireWorkerState();
-        workerState.sceneBuildBackend.reset();
         workerState.mapRenderDataBackend.reset();
     },
     async load<I, D>(
@@ -262,14 +249,16 @@ const worker = {
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
-        const scene = await workerState.sceneBuildBackend.buildScene({
+        const scene = buildSceneFromMapBytesProvider(
+            workerState.sceneBuilder,
+            workerState.mapBytesProvider,
             baseX,
             baseY,
-            sizeX: mapSize,
-            sizeY: mapSize,
-            smoothTerrain: false,
-            locLoadType: LocLoadType.NO_MODELS,
-        });
+            mapSize,
+            mapSize,
+            false,
+            LocLoadType.NO_MODELS,
+        );
 
         const minimapBlob = await loadMinimapBlob(
             workerState.mapImageRenderer,
