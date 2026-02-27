@@ -1,4 +1,4 @@
-import { importMapRenderBridgeModule } from "../../wasm/loadMapRenderBridgeModule";
+import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
 
 type DrawRangePatchBridge = Readonly<{
     initRuntime(): Promise<boolean>;
@@ -122,8 +122,7 @@ export type DrawRangeTickStateInput = Readonly<{
     outNpcAlphaPatchesPacked: Int32Array;
 }>;
 
-let bridgePromise: Promise<DrawRangePatchBridge | undefined> | undefined;
-let bridgeInstance: DrawRangePatchBridge | undefined;
+const bridge = mapRenderRuntimeBridge as unknown as DrawRangePatchBridge;
 let runtimeReady = false;
 let runtimeHandle: number | undefined;
 const registeredTickStateKeys = new Set<number>();
@@ -629,61 +628,14 @@ function logTickStateFailure(
     });
 }
 
-function resolveBridge(mod: Record<string, unknown>): DrawRangePatchBridge | undefined {
-    const runtimeCandidate = mod.mapRenderRuntimeBridge;
-    if (runtimeCandidate && typeof runtimeCandidate === "object") {
-        const runtimeBridge = runtimeCandidate as DrawRangePatchBridge;
-        if (
-            typeof runtimeBridge.initRuntime === "function" &&
-            typeof runtimeBridge.createRuntimeWithConfig === "function" &&
-            typeof runtimeBridge.destroyRuntime === "function" &&
-            typeof runtimeBridge.resetRuntime === "function" &&
-            typeof runtimeBridge.setTickState === "function" &&
-            typeof runtimeBridge.clearTickState === "function" &&
-            typeof runtimeBridge.tickAdvanceAndEmitBasePatchesForState === "function"
-        ) {
-            return runtimeBridge;
-        }
-    }
-    return undefined;
-}
-
-async function loadBridge(): Promise<DrawRangePatchBridge | undefined> {
-    if (!bridgePromise) {
-        bridgePromise = (async () => {
-            try {
-                const mod = await importMapRenderBridgeModule(undefined, import.meta.url);
-                const bridge = resolveBridge(mod);
-                if (!bridge) {
-                    return undefined;
-                }
-                return bridge;
-            } catch {
-                return undefined;
-            }
-        })();
-    }
-    if (!bridgeInstance) {
-        bridgeInstance = await bridgePromise;
-    }
-    return bridgeInstance;
-}
-
 export async function initDrawRangePatchBackend(): Promise<boolean> {
-    const bridge = await loadBridge();
-    if (!bridge) {
-        runtimeReady = false;
-        runtimeHandle = undefined;
-        registeredTickStateKeys.clear();
-        return false;
-    }
-    if (runtimeHandle !== undefined && bridgeInstance) {
+    if (runtimeHandle !== undefined) {
         for (const stateKey of registeredTickStateKeys) {
-            bridgeInstance.clearTickState(runtimeHandle, stateKey);
+            bridge.clearTickState(runtimeHandle, stateKey);
         }
         registeredTickStateKeys.clear();
-        bridgeInstance.resetRuntime(runtimeHandle);
-        bridgeInstance.destroyRuntime(runtimeHandle);
+        bridge.resetRuntime(runtimeHandle);
+        bridge.destroyRuntime(runtimeHandle);
         runtimeHandle = undefined;
         runtimeReady = false;
     }
@@ -718,13 +670,12 @@ export function registerDrawRangeTickState(
     if (
         !runtimeReady ||
         runtimeHandle === undefined ||
-        !bridgeInstance ||
-        typeof bridgeInstance.setTickState !== "function"
+        typeof bridge.setTickState !== "function"
     ) {
         logTickStateFailure("backend not ready", stateKey, input, undefined);
         return false;
     }
-    const registered = bridgeInstance.setTickState(runtimeHandle, stateKey | 0, input);
+    const registered = bridge.setTickState(runtimeHandle, stateKey | 0, input);
     if (!registered) {
         logTickStateFailure("setTickState returned false", stateKey, input, undefined);
         return false;
@@ -735,14 +686,13 @@ export function registerDrawRangeTickState(
 
 export function unregisterDrawRangeTickState(stateKey: number): void {
     if (
-        !bridgeInstance ||
         runtimeHandle === undefined ||
-        typeof bridgeInstance.clearTickState !== "function"
+        typeof bridge.clearTickState !== "function"
     ) {
         registeredTickStateKeys.delete(stateKey | 0);
         return;
     }
-    bridgeInstance.clearTickState(runtimeHandle, stateKey | 0);
+    bridge.clearTickState(runtimeHandle, stateKey | 0);
     registeredTickStateKeys.delete(stateKey | 0);
 }
 
@@ -767,12 +717,11 @@ export function tickAdvanceAndEmitBasePatchesForState(
     if (
         !runtimeReady ||
         runtimeHandle === undefined ||
-        !bridgeInstance ||
-        typeof bridgeInstance.tickAdvanceAndEmitBasePatchesForState !== "function"
+        typeof bridge.tickAdvanceAndEmitBasePatchesForState !== "function"
     ) {
         return undefined;
     }
-    return bridgeInstance.tickAdvanceAndEmitBasePatchesForState(
+    return bridge.tickAdvanceAndEmitBasePatchesForState(
         runtimeHandle,
         stateKey | 0,
         cycleNowFixed | 0,
@@ -781,18 +730,18 @@ export function tickAdvanceAndEmitBasePatchesForState(
 }
 
 export function resetDrawRangePatchBackend(): void {
-    if (!bridgeInstance || runtimeHandle === undefined) {
+    if (runtimeHandle === undefined) {
         runtimeReady = false;
         runtimeHandle = undefined;
         registeredTickStateKeys.clear();
         return;
     }
     for (const stateKey of registeredTickStateKeys) {
-        bridgeInstance.clearTickState(runtimeHandle, stateKey);
+        bridge.clearTickState(runtimeHandle, stateKey);
     }
     registeredTickStateKeys.clear();
-    bridgeInstance.resetRuntime(runtimeHandle);
-    bridgeInstance.destroyRuntime(runtimeHandle);
+    bridge.resetRuntime(runtimeHandle);
+    bridge.destroyRuntime(runtimeHandle);
     runtimeReady = false;
     runtimeHandle = undefined;
 }

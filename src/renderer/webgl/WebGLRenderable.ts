@@ -16,7 +16,7 @@ import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { Scene } from "../../rs/scene/Scene";
-import { DrawRange } from "../DrawRange";
+import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
 import { RenderableType } from "../Renderer";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { LocAnimated } from "../loc/LocAnimated";
@@ -388,17 +388,18 @@ export class WebGLRenderable {
 
     createNpcGeometryBuffers(app: PicoApp, data: SdRenderableData) {
         if (
-            !data.npcGeometry ||
-            data.npcGeometry.vertices.length === 0 ||
-            data.npcGeometry.indices.length === 0
+            !(data.npcVertices instanceof Uint8Array) ||
+            !(data.npcIndices instanceof Int32Array) ||
+            data.npcVertices.length === 0 ||
+            data.npcIndices.length === 0
         ) {
             this.npcInterleavedBuffer = undefined;
             this.npcIndexBuffer = undefined;
             this.npcVertexArray = undefined;
             return;
         }
-        this.npcInterleavedBuffer = app.createInterleavedBuffer(16, data.npcGeometry.vertices);
-        this.npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.npcGeometry.indices);
+        this.npcInterleavedBuffer = app.createInterleavedBuffer(16, data.npcVertices);
+        this.npcIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.npcIndices);
 
         this.npcVertexArray = app
             .createVertexArray()
@@ -663,7 +664,7 @@ export class WebGLRenderable {
         npcProgram: Program,
     ) {
         this.npcs = [];
-        const npcInput = orderNpcDataByPacketKeys(data.npcs, data.npcGeometry?.orderKeys);
+        const npcInput = orderNpcDataByPacketKeys(data.npcs, data.npcOrderKeys);
         for (const npc of npcInput) {
             const npcResult = npcTypeLoader.tryLoad(npc.id);
             if (!npcResult.ok) {
@@ -686,11 +687,11 @@ export class WebGLRenderable {
         }
 
         const hasPacketNpcDrawRanges =
-            data.npcGeometry?.drawRangesBase instanceof Int32Array &&
-            data.npcGeometry.drawRangesBase.length === this.npcs.length * DRAW_RANGE_STRIDE;
+            data.npcDrawRangesBase instanceof Int32Array &&
+            data.npcDrawRangesBase.length === this.npcs.length * DRAW_RANGE_STRIDE;
 
         const drawRangesNpc = hasPacketNpcDrawRanges
-            ? new Int32Array(data.npcGeometry!.drawRangesBase)
+            ? new Int32Array(data.npcDrawRangesBase!)
             : new Int32Array(this.npcs.length * DRAW_RANGE_STRIDE);
         if (!hasPacketNpcDrawRanges) {
             for (let i = 0; i < this.npcs.length; i++) {
@@ -710,8 +711,8 @@ export class WebGLRenderable {
         this.initNpcAnimationPatchData(
             seqTypeLoader,
             seqFrameLoader,
-            data.npcGeometry?.drawRangesBase,
-            data.npcGeometry?.drawRangesAlpha,
+            data.npcDrawRangesBase,
+            data.npcDrawRangesAlpha,
         );
     }
 
@@ -1048,6 +1049,71 @@ export class WebGLRenderable {
         this.locTickInteractLodAlphaPatchCount = -1;
         this.npcTickBasePatchCount = -1;
         this.npcTickAlphaPatchCount = -1;
+    }
+
+    getLocTickPatchStream(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): Readonly<{ patches: Int32Array; count: number }> | undefined {
+        if (isInteract) {
+            if (isLod) {
+                const count = isAlpha
+                    ? this.locTickInteractLodAlphaPatchCount
+                    : this.locTickInteractLodPatchCount;
+                if (count < 0) return undefined;
+                return {
+                    patches: isAlpha
+                        ? this.locTickInteractLodAlphaPatches
+                        : this.locTickInteractLodPatches,
+                    count,
+                };
+            }
+            const count = isAlpha ? this.locTickInteractAlphaPatchCount : this.locTickInteractPatchCount;
+            if (count < 0) return undefined;
+            return {
+                patches: isAlpha ? this.locTickInteractAlphaPatches : this.locTickInteractPatches,
+                count,
+            };
+        }
+        if (isLod) {
+            const count = isAlpha ? this.locTickLodAlphaPatchCount : this.locTickLodPatchCount;
+            if (count < 0) return undefined;
+            return {
+                patches: isAlpha ? this.locTickLodAlphaPatches : this.locTickLodPatches,
+                count,
+            };
+        }
+        const count = isAlpha ? this.locTickAlphaPatchCount : this.locTickBasePatchCount;
+        if (count < 0) return undefined;
+        return {
+            patches: isAlpha ? this.locTickAlphaPatches : this.locTickBasePatches,
+            count,
+        };
+    }
+
+    getNpcTickPatchStream(
+        isAlpha: boolean,
+    ): Readonly<{ patches: Int32Array; count: number }> | undefined {
+        const count = isAlpha ? this.npcTickAlphaPatchCount : this.npcTickBasePatchCount;
+        if (count < 0) return undefined;
+        return {
+            patches: isAlpha ? this.npcTickAlphaPatches : this.npcTickBasePatches,
+            count,
+        };
+    }
+
+    resetTickPatchCountsToZero(): void {
+        this.locTickBasePatchCount = 0;
+        this.locTickAlphaPatchCount = 0;
+        this.locTickLodPatchCount = 0;
+        this.locTickLodAlphaPatchCount = 0;
+        this.locTickInteractPatchCount = 0;
+        this.locTickInteractAlphaPatchCount = 0;
+        this.locTickInteractLodPatchCount = 0;
+        this.locTickInteractLodAlphaPatchCount = 0;
+        this.npcTickBasePatchCount = 0;
+        this.npcTickAlphaPatchCount = 0;
     }
 
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {

@@ -1,7 +1,7 @@
 import Denque from "denque";
 import PicoGL, { Texture } from "picogl";
 
-import { CacheSession } from "../../rs/runtime/createCacheSession";
+import { CacheSession } from "../../rs/loaders/CacheSession";
 import { InputManager } from "../../util/InputManager";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { Camera } from "../Camera";
@@ -32,10 +32,6 @@ export class WebGLRenderer extends WebGLMapRenderer {
         this.setLoadLocs(false);
         this.setLoadNpcs(false);
         this.setLoadObjs(false);
-    }
-
-    async init(canvas: HTMLCanvasElement): Promise<void> {
-        await super.init(canvas);
     }
 
     // Models
@@ -91,26 +87,6 @@ export class WebGLRenderer extends WebGLMapRenderer {
         );
 
         this.updateTextureArray(data.loadedTextures);
-    }
-
-    updateNpcDataTexture() {
-        const frameCount = this.stats.frameCount;
-
-        const newNpcDataTextureIndex = frameCount % this.npcDataTextureBuffer.length;
-        const npcDataTextureIndex = (frameCount + 1) % this.npcDataTextureBuffer.length;
-        this.npcDataTextureBuffer[newNpcDataTextureIndex]?.delete();
-        this.npcDataTextureBuffer[newNpcDataTextureIndex] = this.app.createTexture2D(
-            this.npcRenderData,
-            16,
-            Math.max(Math.ceil(this.npcRenderCount / 16), 1),
-            {
-                internalFormat: PicoGL.RGBA16UI,
-                minFilter: PicoGL.NEAREST,
-                magFilter: PicoGL.NEAREST,
-            },
-        );
-
-        return npcDataTextureIndex;
     }
 
     override render(time: number, deltaTime: number, resized: boolean): void {
@@ -170,12 +146,7 @@ export class WebGLRenderer extends WebGLMapRenderer {
                 continue;
             }
 
-            let dataOffset = renderable.npcDataTextureOffsets[npcDataTextureIndex];
-            dataOffset = 0;
-
-            if (dataOffset === -1) {
-                continue;
-            }
+            const dataOffset = 0;
 
             const { drawCall, drawRangesPacked } = renderable.drawCallNpc;
 
