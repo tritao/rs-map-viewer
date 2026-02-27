@@ -22,6 +22,7 @@ import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
 import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { BackendKind } from "../util/BackendKind";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -35,19 +36,14 @@ type CacheContext = {
 };
 
 export type MapViewerRuntimeOptions = Readonly<{
-    mapRenderBackend: "ts" | "cpp-wasm";
-    mapRenderTickBackend?: "ts" | "cpp-wasm";
-    mapRenderStrictCppWasm: boolean;
-    mapRenderStrictCppWasmPacketGeometry: boolean;
+    mapRenderBackend: BackendKind;
+    mapRenderTickBackend?: BackendKind;
     mapRenderTelemetry: boolean;
-    mapRenderBackendModuleUrl?: string;
     mapRenderDebugTickSquare?: string;
 }>;
 
 const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
     mapRenderBackend: "ts",
-    mapRenderStrictCppWasm: false,
-    mapRenderStrictCppWasmPacketGeometry: false,
     mapRenderTelemetry: false,
 };
 
@@ -55,14 +51,8 @@ function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRunti
     return {
         mapRenderBackend: options?.mapRenderBackend ?? DEFAULT_RUNTIME_OPTIONS.mapRenderBackend,
         mapRenderTickBackend: options?.mapRenderTickBackend,
-        mapRenderStrictCppWasm:
-            options?.mapRenderStrictCppWasm ?? DEFAULT_RUNTIME_OPTIONS.mapRenderStrictCppWasm,
-        mapRenderStrictCppWasmPacketGeometry:
-            options?.mapRenderStrictCppWasmPacketGeometry ??
-            DEFAULT_RUNTIME_OPTIONS.mapRenderStrictCppWasmPacketGeometry,
         mapRenderTelemetry:
             options?.mapRenderTelemetry ?? DEFAULT_RUNTIME_OPTIONS.mapRenderTelemetry,
-        mapRenderBackendModuleUrl: options?.mapRenderBackendModuleUrl,
         mapRenderDebugTickSquare: options?.mapRenderDebugTickSquare,
     };
 }
@@ -71,10 +61,7 @@ function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOpti
     return (
         a.mapRenderBackend === b.mapRenderBackend &&
         a.mapRenderTickBackend === b.mapRenderTickBackend &&
-        a.mapRenderStrictCppWasm === b.mapRenderStrictCppWasm &&
-        a.mapRenderStrictCppWasmPacketGeometry === b.mapRenderStrictCppWasmPacketGeometry &&
         a.mapRenderTelemetry === b.mapRenderTelemetry &&
-        a.mapRenderBackendModuleUrl === b.mapRenderBackendModuleUrl &&
         a.mapRenderDebugTickSquare === b.mapRenderDebugTickSquare
     );
 }
@@ -235,17 +222,8 @@ export class MapViewer {
             params["mrbtick"] =
                 this.runtimeOptions.mapRenderTickBackend === "cpp-wasm" ? "cpp" : "ts";
         }
-        if (this.runtimeOptions.mapRenderStrictCppWasm) {
-            params["mrbs"] = "1";
-        }
-        if (this.runtimeOptions.mapRenderStrictCppWasmPacketGeometry) {
-            params["mrbg"] = "1";
-        }
         if (this.runtimeOptions.mapRenderTelemetry) {
             params["mrt"] = "1";
-        }
-        if (this.runtimeOptions.mapRenderBackendModuleUrl) {
-            params["mrbm"] = this.runtimeOptions.mapRenderBackendModuleUrl;
         }
         if (this.runtimeOptions.mapRenderDebugTickSquare) {
             params["mrdtick"] = this.runtimeOptions.mapRenderDebugTickSquare;

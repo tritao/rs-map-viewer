@@ -13,6 +13,7 @@ import { errorToString } from "../util/ErrorUtil";
 import { renderDataLoaderSerializer } from "../worker/RenderDataLoader";
 import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { BackendKind } from "../util/BackendKind";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
 
@@ -28,7 +29,7 @@ const cachesPromise = fetchCacheList();
 
 const workerPool = RenderDataWorkerPool.create(isWallpaperEngine ? 1 : 4);
 
-function parseBackendKind(value: string | null): "ts" | "cpp-wasm" {
+function parseBackendKind(value: string | null): BackendKind {
     if (value === "cpp" || value === "cpp-wasm") {
         return "cpp-wasm";
     }
@@ -42,18 +43,12 @@ function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntime
         mapRenderTickBackendParam !== null
             ? parseBackendKind(mapRenderTickBackendParam)
             : undefined;
-    const mapRenderStrictCppWasm = searchParams.get("mrbs") === "1";
-    const mapRenderStrictCppWasmPacketGeometry = searchParams.get("mrbg") === "1";
     const mapRenderTelemetry = searchParams.get("mrt") === "1";
-    const mapRenderBackendModuleUrl = searchParams.get("mrbm") ?? undefined;
     const mapRenderDebugTickSquare = searchParams.get("mrdtick") ?? undefined;
     return {
         mapRenderBackend,
         mapRenderTickBackend,
-        mapRenderStrictCppWasm,
-        mapRenderStrictCppWasmPacketGeometry,
         mapRenderTelemetry,
-        mapRenderBackendModuleUrl,
         mapRenderDebugTickSquare,
     };
 }

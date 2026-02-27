@@ -7,6 +7,7 @@ import { memo, useEffect, useState } from "react";
 import { CameraView, ProjectionType } from "../renderer/Camera";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
+import type { BackendKind } from "../util/BackendKind";
 import { MapViewer } from "./MapViewer";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
@@ -47,14 +48,9 @@ export const MapViewerControls = memo(
         const [varId, setVarId] = useState(0);
         const [varValue, setVarValue] = useState(0);
         const initialRuntimeOptions = mapViewer.getWorkerRuntimeOptions();
-        const [mapRenderBackend, setMapRenderBackend] = useState<"ts" | "cpp-wasm">(
+        const [mapRenderBackend, setMapRenderBackend] = useState<BackendKind>(
             initialRuntimeOptions.mapRenderBackend,
         );
-        const [mapRenderStrictCppWasm, setMapRenderStrictCppWasm] = useState<boolean>(
-            initialRuntimeOptions.mapRenderStrictCppWasm,
-        );
-        const [mapRenderStrictCppWasmPacketGeometry, setMapRenderStrictCppWasmPacketGeometry] =
-            useState<boolean>(initialRuntimeOptions.mapRenderStrictCppWasmPacketGeometry);
         const [mapRenderTelemetry, setMapRenderTelemetry] = useState<boolean>(
             initialRuntimeOptions.mapRenderTelemetry,
         );
@@ -313,7 +309,7 @@ export const MapViewerControls = memo(
                                 TS: "ts",
                                 "C++ WASM": "cpp-wasm",
                             },
-                            onChange: (v: "ts" | "cpp-wasm") => {
+                            onChange: (v: BackendKind) => {
                                 setMapRenderBackend(v);
                             },
                         },
@@ -323,23 +319,9 @@ export const MapViewerControls = memo(
                                 setMapRenderTelemetry(v);
                             },
                         },
-                        "Map Strict C++": {
-                            value: mapRenderStrictCppWasm,
-                            onChange: (v: boolean) => {
-                                setMapRenderStrictCppWasm(v);
-                            },
-                        },
-                        "Map Strict Geometry": {
-                            value: mapRenderStrictCppWasmPacketGeometry,
-                            onChange: (v: boolean) => {
-                                setMapRenderStrictCppWasmPacketGeometry(v);
-                            },
-                        },
                         Apply: button(async () => {
                             await mapViewer.setWorkerRuntimeOptions({
                                 mapRenderBackend,
-                                mapRenderStrictCppWasm,
-                                mapRenderStrictCppWasmPacketGeometry,
                                 mapRenderTelemetry,
                             });
                         }),
@@ -476,8 +458,6 @@ export const MapViewerControls = memo(
                 varId,
                 varValue,
                 mapRenderBackend,
-                mapRenderStrictCppWasm,
-                mapRenderStrictCppWasmPacketGeometry,
                 mapRenderTelemetry,
                 pointsControls,
                 isCameraRunning,
