@@ -12,7 +12,7 @@ import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Model } from "../../rs/model/Model";
 import type { MapImageRenderer } from "../../rs/render/minimap/MapImageRenderer";
-import type { CacheSession } from "../../rs/runtime/createCacheSession";
+import type { CacheSession } from "../../rs/loaders/CacheSession";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
@@ -22,12 +22,7 @@ import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
-import {
-    MapRenderCommandBucketsRuntimeInput,
-    MapRenderCommandStreamRuntimeInput,
-    MapRenderDataPayloadResult,
-    sdMapDataToPayload,
-} from "../../worker/MapRenderDataContract";
+import { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderDataContract";
 import { loadMinimapBlob } from "../../worker/MinimapData";
 import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
@@ -61,6 +56,7 @@ import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
 import { addNpcAnimationFrames } from "./SdRenderableDataLoader";
 import { createSdTexturePacking } from "./SdTexturePacking";
+import type { BackendKind } from "../../util/BackendKind";
 
 export type SdMapRenderDataTsBackendDeps = Readonly<{
     session: CacheSession;
@@ -78,7 +74,7 @@ export type SdMapRenderDataTsBackendDeps = Readonly<{
 }>;
 
 export type NpcSpawnDecodeBackend = Readonly<{
-    name: "ts" | "cpp-wasm";
+    name: BackendKind;
     filtersLoginScreenProps?: boolean;
     decodeNpcSpawnsFromBytes(
         tileRenderFlagsLevel1: Uint8Array[],
@@ -91,9 +87,8 @@ export type NpcSpawnDecodeBackend = Readonly<{
     ): Promise<NpcSpawn[] | undefined>;
 }>;
 
-export type BuildMapDataPayloadOptions = Readonly<{
+export type BuildMapDataOptions = Readonly<{
     includeRuntimeCommandStreamInput?: boolean;
-    includeRuntimeCommandBucketsInput?: boolean;
     includeRuntimeSceneTileHeights?: boolean;
     preferWasmPacking?: boolean;
     includeMinimapBlob?: boolean;
@@ -104,9 +99,8 @@ export type BuildMapDataPayloadOptions = Readonly<{
 }>;
 
 export type BuildMapDataBridgeInputResult = Readonly<{
-    payloadResult: MapRenderDataPayloadResult;
+    data: SdMapData | undefined;
     runtimeCommandStreamInput: MapRenderCommandStreamRuntimeInput | undefined;
-    runtimeCommandBucketsInput: MapRenderCommandBucketsRuntimeInput | undefined;
     debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
     debugSceneCommandPlanOpsPacked?: Int32Array;
 }>;
@@ -571,7 +565,7 @@ export class SdMapRenderDataTsBackend {
             minimizeDrawCalls,
             loadedTextureIds,
         }: SdMapLoaderInput,
-        options?: BuildMapDataPayloadOptions,
+        options?: BuildMapDataOptions,
     ): Promise<BuildMapDataBridgeInputResult> {
         console.time(`load map ${mapX},${mapY}`);
         this.init();
@@ -791,18 +785,12 @@ export class SdMapRenderDataTsBackend {
 
         const preferWasmPacking = options?.preferWasmPacking === true;
         const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
-        const includeRuntimeCommandBucketsInput =
-            options?.includeRuntimeCommandBucketsInput === true;
         const includeRuntimeSceneTileHeights = options?.includeRuntimeSceneTileHeights !== false;
-        const includeAnyRuntimeInput =
-            includeRuntimeCommandStreamInput || includeRuntimeCommandBucketsInput;
         const useWasmDrawPacking = preferWasmPacking;
         const useWasmHeightMapPacking = preferWasmPacking;
 
         const runtimeDrawCommandBuckets =
-            includeRuntimeCommandStreamInput ||
-            includeRuntimeCommandBucketsInput ||
-            !useWasmDrawPacking
+            includeRuntimeCommandStreamInput || !useWasmDrawPacking
                 ? timeStep("collectRuntimeDrawCommandBuckets", () =>
                       collectRuntimeDrawCommandBuckets(sceneBuf),
                   )
@@ -843,17 +831,6 @@ export class SdMapRenderDataTsBackend {
                   ),
               )
             : undefined;
-
-        const runtimeCommandBucketsInput =
-            includeRuntimeCommandBucketsInput && runtimeDrawCommandBuckets
-                ? {
-                      levels: scene.levels,
-                      sizeX: scene.sizeX,
-                      sizeY: scene.sizeY,
-                      unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
-                      buckets: runtimeDrawCommandBuckets,
-                  }
-                : undefined;
 
         const vertices = sceneBuf.vertexBuf.byteArray();
         const indices = timeStep("packIndices", () => new Int32Array(sceneBuf.indices));
@@ -947,22 +924,19 @@ export class SdMapRenderDataTsBackend {
         );
 
         return {
-            payloadResult: {
-                data: sdMapDataToPayload(data),
-            },
+            data,
             runtimeCommandStreamInput,
-            runtimeCommandBucketsInput,
             debugSceneCommandPlanDigest,
             debugSceneCommandPlanOpsPacked,
         };
     }
 
-    async buildMapDataPayload(
+    async buildMapData(
         input: SdMapLoaderInput,
-        options?: BuildMapDataPayloadOptions,
-    ): Promise<MapRenderDataPayloadResult> {
+        options?: BuildMapDataOptions,
+    ): Promise<SdMapData | undefined> {
         const bridgeInput = await this.buildMapDataBridgeInput(input, options);
-        return bridgeInput.payloadResult;
+        return bridgeInput.data;
     }
 
     reset(): void {

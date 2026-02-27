@@ -1,11 +1,10 @@
 let backendModulePromise;
 let backendModuleInstance;
 const runtimeTickOutputByHandle = new Map();
-const runtimeCacheUploadByHandle = new Map();
-const CAP_NPC_DECODE = 1 << 1;
-const CAP_RUNTIME_STATE = 1 << 9;
-const CAP_RUNTIME_CACHE_V2 = 1 << 10;
-const CAP_RUNTIME_PACKET_V2_ONLY = 1 << 11;
+const RUNTIME_BLOB_DOMAIN_MAP_SQUARE = 2;
+const RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN = 0;
+const RUNTIME_BLOB_MAP_SQUARE_FILE_LOC = 1;
+const RUNTIME_BLOB_MAP_SQUARE_FILE_NPC = 2;
 const MAP_SQUARE_SIZE = 64;
 const SCENE_LEVELS = 4;
 const SD_TEXTURE_PACK_LIMIT = 2047;
@@ -20,25 +19,8 @@ const TICK_FIELD_LOC_FRAME_LENGTH_OFFSETS = 5;
 const TICK_FIELD_LOC_FRAME_LENGTH_COUNTS = 6;
 const TICK_FIELD_LOC_FRAME_LENGTHS_PACKED = 7;
 const RUNTIME_STATUS_OK = 1;
-const RUNTIME_PACKET_META_LENGTH = 44;
+const RUNTIME_PACKET_META_LENGTH = 46;
 const RUNTIME_PACKET_VERSION = 3;
-const RUNTIME_BUILD_DEBUG_STATS_LENGTH = 65;
-const RUNTIME_TYPE_BLOB_LOC_KIND = 1;
-const RUNTIME_TYPE_BLOB_VARBIT_KIND = 2;
-const RUNTIME_TYPE_BLOB_MODEL_KIND = 3;
-const RUNTIME_TYPE_BLOB_TEXTURE_TRANSPARENT_KIND = 4;
-const RUNTIME_TYPE_BLOB_SEQ_TYPE_KIND = 5;
-const RUNTIME_TYPE_BLOB_SEQ_FRAME_KIND = 6;
-const RUNTIME_TYPE_BLOB_NPC_KIND = 7;
-const RUNTIME_TYPE_BLOB_BAS_KIND = 8;
-const RUNTIME_TYPE_BLOB_TEXTURE_IDS_KIND = 9;
-const RUNTIME_TYPE_BLOB_UNDERLAY_KIND = 10;
-const RUNTIME_TYPE_BLOB_OVERLAY_KIND = 11;
-const RUNTIME_TYPE_BLOB_OBJ_KIND = 12;
-const RUNTIME_TYPE_BLOB_OBJ_SPAWNS_KIND = 13;
-const RUNTIME_TYPE_BLOB_SEQ_ALPHA_HINT_KIND = 14;
-const RUNTIME_TYPE_BLOB_SEQ_BASE_KIND = 15;
-const RUNTIME_TYPE_BLOB_SKELETAL_SEQ_KIND = 16;
 
 
 function createWasmModuleLocator(path) {
@@ -62,7 +44,6 @@ export async function tryLoadBackendModule() {
             });
             if (
                 typeof backendModule._rs_map_render_bridge_abi_version !== "function" ||
-                typeof backendModule._rs_map_render_bridge_capabilities !== "function" ||
                 typeof backendModule._rs_decode_npc_spawns_from_bytes !== "function" ||
                 typeof backendModule._malloc !== "function" ||
                 typeof backendModule._free !== "function"
@@ -75,49 +56,29 @@ export async function tryLoadBackendModule() {
                 console.warn(`[map-render-backend] unsupported wasm ABI version: ${abiVersion}`);
                 return undefined;
             }
-            backendModule.__rsCapabilities = backendModule._rs_map_render_bridge_capabilities() | 0;
-            if (
-                (backendModule.__rsCapabilities & CAP_RUNTIME_STATE) !== 0 &&
-                (typeof getRuntimeDestroyExport(backendModule) !== "function" ||
-                    typeof getRuntimeResetExport(backendModule) !== "function" ||
-                    typeof getRuntimeIsValidExport(backendModule) !== "function" ||
-                    typeof getRuntimeClearTickStateExport(backendModule) !== "function" ||
-                    typeof getRuntimeSetTickStatePackedExport(backendModule) !== "function" ||
-                    typeof getRuntimeTickForStatePackedExport(backendModule) !== "function")
-            ) {
-                console.warn(
-                    "[map-render-backend] runtime-state capability advertised but required runtime exports are missing",
-                );
-                backendModule.__rsCapabilities &= ~CAP_RUNTIME_STATE;
-            }
-            if (
-                (backendModule.__rsCapabilities & CAP_RUNTIME_CACHE_V2) !== 0 &&
-                (typeof getRuntimeCreateWithConfigExport(backendModule) !== "function" ||
-                    typeof getRuntimeCachePutMapSquaresPackedExport(backendModule) !== "function" ||
-                    typeof getRuntimeCachePutTypeEntryExport(backendModule) !== "function" ||
-                    typeof getRuntimeCacheClearTypeKindExport(backendModule) !== "function" ||
-                    typeof getRuntimeCollectRequiredPrimaryTypeIdsExport(backendModule) !==
-                        "function" ||
-                    typeof getRuntimeCollectRequiredExpandedTypeIdsExport(backendModule) !==
-                        "function" ||
-                    typeof getRuntimeCacheSetVarpsExport(backendModule) !== "function" ||
-                    typeof getRuntimeBuildMapPacketHandleFromCacheExport(backendModule) !== "function" ||
-                    typeof getRuntimeGetPacketMetaExport(backendModule) !== "function" ||
-                    typeof getRuntimeReleasePacketExport(backendModule) !== "function")
-            ) {
-                console.warn(
-                    "[map-render-backend] runtime-cache-v2 capability advertised but required exports are missing",
-                );
-                backendModule.__rsCapabilities &= ~CAP_RUNTIME_CACHE_V2;
-            }
-            if (
-                (backendModule.__rsCapabilities & CAP_RUNTIME_CACHE_V2) !== 0 &&
-                (backendModule.__rsCapabilities & CAP_RUNTIME_PACKET_V2_ONLY) === 0
-            ) {
-                console.warn(
-                    "[map-render-backend] runtime-cache-v2 capability advertised without runtime-packet-v2-only bit",
-                );
-                backendModule.__rsCapabilities &= ~CAP_RUNTIME_CACHE_V2;
+            const requiredRuntimeExports = [
+                getRuntimeCreateWithConfigExport(backendModule),
+                getRuntimeDestroyExport(backendModule),
+                getRuntimeResetExport(backendModule),
+                getRuntimeIsValidExport(backendModule),
+                getRuntimeClearTickStateExport(backendModule),
+                getRuntimeSetTickStatePackedExport(backendModule),
+                getRuntimeTickForStatePackedExport(backendModule),
+                getRuntimeGetLastMissingBlobEntriesPackedExport(backendModule),
+                getRuntimeCacheSetBuildConfigExport(backendModule),
+                getRuntimeCacheSetVarpsExport(backendModule),
+                getRuntimeCachePutBlobBatchExport(backendModule),
+                getRuntimeCacheClearBlobDomainExport(backendModule),
+                getRuntimeCacheClearAllBlobsExport(backendModule),
+                getRuntimeBuildMapPacketHandleFromCacheExport(backendModule),
+                getRuntimeGetPacketMetaExport(backendModule),
+                getRuntimeReleasePacketExport(backendModule),
+            ];
+            for (let i = 0; i < requiredRuntimeExports.length; i++) {
+                if (typeof requiredRuntimeExports[i] !== "function") {
+                    console.warn("[map-render-backend] wasm module missing required runtime exports");
+                    return undefined;
+                }
             }
             backendModuleInstance = backendModule;
             return backendModule;
@@ -168,28 +129,8 @@ function getRuntimeTickForStatePackedExport(backendModule) {
     return backendModule._rs_map_render_runtime_tick_advance_and_emit_base_patches_for_state_packed;
 }
 
-function getRuntimeCachePutMapSquaresPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_put_map_squares_packed;
-}
-
-function getRuntimeCacheClearMapSquaresExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_clear_map_squares;
-}
-
-function getRuntimeCachePutTypeEntryExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_put_type_entry;
-}
-
-function getRuntimeCacheClearTypeKindExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_clear_type_kind;
-}
-
-function getRuntimeCollectRequiredPrimaryTypeIdsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_collect_required_primary_type_ids;
-}
-
-function getRuntimeCollectRequiredExpandedTypeIdsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_collect_required_expanded_type_ids;
+function getRuntimeGetLastMissingBlobEntriesPackedExport(backendModule) {
+    return backendModule._rs_map_render_runtime_get_last_missing_blob_entries_packed;
 }
 
 function getRuntimeCacheSetBuildConfigExport(backendModule) {
@@ -200,232 +141,44 @@ function getRuntimeCacheSetVarpsExport(backendModule) {
     return backendModule._rs_map_render_runtime_cache_set_varps;
 }
 
-function getRuntimeCachePutTextureArgbExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_put_texture_argb;
+function getRuntimeCachePutBlobBatchExport(backendModule) {
+    return backendModule._rs_map_render_runtime_cache_put_blob_batch;
 }
 
-function getRuntimeCacheClearTextureArgbExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_clear_texture_argb;
+function getRuntimeCacheClearBlobDomainExport(backendModule) {
+    return backendModule._rs_map_render_runtime_cache_clear_blob_domain;
 }
 
-function getRuntimeCachePutMaterialParamsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_put_material_params;
+function getRuntimeCacheClearAllBlobsExport(backendModule) {
+    return backendModule._rs_map_render_runtime_cache_clear_all_blobs;
 }
 
-function getRuntimeCacheClearMaterialParamsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_clear_material_params;
+function getRuntimeDebugGetLastBuildFailureExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_build_failure;
 }
 
-function getRuntimeCacheGetResourceCountsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_cache_get_resource_counts;
+function getRuntimeDebugGetLastCollectMapInputExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_collect_map_input;
 }
 
-function getRuntimeDebugCollectMapInputDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_collect_map_input_digest;
+function getRuntimeDebugGetLastCommandStreamStatusExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_command_stream_status;
 }
 
-function getRuntimeDebugGetCacheConfigExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_cache_config;
+function getRuntimeDebugGetLastLegacyModelLoadExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_legacy_model_load;
 }
 
-function getRuntimeDebugGetLoadedHeightHashExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_loaded_height_hash;
-}
-
-function getRuntimeDebugGetLastMapInputHashesExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_map_input_hashes;
-}
-
-function getRuntimeDebugGetLastBuildStatsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_build_stats;
-}
-
-function getRuntimeDebugDecodeOverlayTypeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_decode_overlay_type;
-}
-
-function getRuntimeDebugDecodeLocTypeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_decode_loc_type;
-}
-
-function getRuntimeDebugGetLastTerrainTileFaceCountsMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_terrain_tile_face_counts_meta;
-}
-
-function getRuntimeDebugCopyLastTerrainTileFaceCountsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_terrain_tile_face_counts;
-}
-
-function getRuntimeDebugGetLastCollisionFlagsMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_collision_flags_meta;
-}
-
-function getRuntimeDebugCopyLastCollisionFlagsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_collision_flags;
-}
-
-function getRuntimeDebugGetLastTerrainDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_terrain_digest;
-}
-
-function getRuntimeDebugSetTerrainDigestSampleStartVertexExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_set_terrain_digest_sample_start_vertex;
-}
-
-function getRuntimeDebugSetTerrainProbeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_set_terrain_probe;
-}
-
-function getRuntimeDebugGetLastTerrainProbeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_terrain_probe;
-}
-
-function getRuntimeDebugDecodeCachedTerrainCellExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_decode_cached_terrain_cell;
-}
-
-function getRuntimeDebugSetWorldHeightProbeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_set_world_height_probe;
-}
-
-function getRuntimeDebugGetLastWorldHeightProbeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_world_height_probe;
-}
-
-function getRuntimeDebugGetLastTerrainDigestSamplesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_terrain_digest_samples_meta;
-}
-
-function getRuntimeDebugCopyLastTerrainDigestSamplesPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_terrain_digest_samples_packed;
-}
-
-function getRuntimeDebugGetLastSceneCommandPlanDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_scene_command_plan_digest;
-}
-
-function getRuntimeDebugGetLastSceneCommandPlanOpsPackedMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_scene_command_plan_ops_packed_meta;
-}
-
-function getRuntimeDebugCopyLastSceneCommandPlanOpsPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_scene_command_plan_ops_packed;
-}
-
-function getRuntimeDebugGetLastSceneCommandPlanOpProvenancePackedMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_scene_command_plan_op_provenance_packed_meta;
-}
-
-function getRuntimeDebugCopyLastSceneCommandPlanOpProvenancePackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_scene_command_plan_op_provenance_packed;
-}
-
-function getRuntimeDebugGetLastSceneBucketsDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_scene_buckets_digest;
-}
-
-function getRuntimeDebugGetLastLocRenderPlacementDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_render_placement_digest;
-}
-
-function getRuntimeDebugGetLastLocRenderPlacementEntriesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_render_placement_entries_meta;
-}
-
-function getRuntimeDebugCopyLastLocRenderPlacementEntriesPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_loc_render_placement_entries_packed;
-}
-
-function getRuntimeDebugGetModelFacesDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_model_faces_digest;
-}
-
-function getRuntimeDebugGetModelVerticesDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_model_vertices_digest;
-}
-
-function getRuntimeDebugGetModelVerticesSampleExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_model_vertices_sample;
-}
-
-function getRuntimeDebugGetModelVerticesSampleRangeExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_model_vertices_sample_range;
-}
-
-function getRuntimeDebugGetLocModelVerticesSampleExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_loc_model_vertices_sample;
-}
-
-function getRuntimeDebugGetLastLocPreMergeGroupKeySignaturesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_pre_merge_group_key_signatures_meta;
-}
-
-function getRuntimeDebugCopyLastLocPreMergeGroupKeySignaturesExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_loc_pre_merge_group_key_signatures;
-}
-
-function getRuntimeDebugGetLastLocPreMergeGroupKeyEntriesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_pre_merge_group_key_entries_meta;
-}
-
-function getRuntimeDebugCopyLastLocPreMergeGroupKeyEntriesPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_loc_pre_merge_group_key_entries_packed;
-}
-
-function getRuntimeDebugGetLastLocMergeDecisionEntriesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_merge_decision_entries_meta;
-}
-
-function getRuntimeDebugCopyLastLocMergeDecisionEntriesPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_loc_merge_decision_entries_packed;
-}
-
-function getRuntimeDebugGetLastLocMergeEmitEntriesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_merge_emit_entries_meta;
-}
-
-function getRuntimeDebugCopyLastLocMergeEmitEntriesPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_loc_merge_emit_entries_packed;
-}
-
-function getRuntimeDebugGetLastLocMergeNormalsTraceEntriesMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_loc_merge_normals_trace_entries_meta;
-}
-
-function getRuntimeDebugCopyLastLocMergeNormalsTraceEntriesPackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_loc_merge_normals_trace_entries_packed;
-}
-
-function getRuntimeDebugGetLastCommandProvenanceMetaExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_last_command_provenance_meta;
-}
-
-function getRuntimeDebugCopyLastCommandProvenancePackedExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_last_command_provenance_packed;
-}
-
-function getRuntimeDebugGetCachedCommandStreamDigestExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_cached_command_stream_digest;
-}
-function getRuntimeDebugGetCachedCommandStreamLengthsExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_get_cached_command_stream_lengths;
-}
-
-function getRuntimeDebugCopyCachedCommandStreamExport(backendModule) {
-    return backendModule._rs_map_render_runtime_debug_copy_cached_command_stream;
-}
-
-
-function getRuntimeBuildMapPacketHandleFromCacheExport(backendModule) {
-    return backendModule._rs_map_render_runtime_build_map_packet_handle_from_cache;
+function getRuntimeDebugGetLastMissingTypeExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_missing_type;
 }
 
 function getRuntimeDebugBuildMapPlanFromCacheExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_build_map_plan_from_cache;
 }
 
-function getRuntimeBuildNpcPacketHandleFromCacheExport(backendModule) {
-    return backendModule._rs_map_render_runtime_build_npc_packet_handle_from_cache;
+function getRuntimeBuildMapPacketHandleFromCacheExport(backendModule) {
+    return backendModule._rs_map_render_runtime_build_map_packet_handle_from_cache;
 }
 
 function getRuntimeGetPacketMetaExport(backendModule) {
@@ -501,328 +254,6 @@ function mallocI32(backendModule, length) {
 }
 
 
-function tryGetVarbitLoader(varProvider) {
-    if (!varProvider) {
-        return undefined;
-    }
-    const fromManager = varProvider.varManager?.varbitLoader;
-    if (fromManager && typeof fromManager.tryLoad === "function") {
-        return fromManager;
-    }
-    const direct = varProvider.varbitLoader;
-    if (direct && typeof direct.tryLoad === "function") {
-        return direct;
-    }
-    return undefined;
-}
-
-function toUint8ArrayView(data) {
-    if (data instanceof Uint8Array) {
-        return data;
-    }
-    if (data instanceof Int8Array) {
-        return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    }
-    return undefined;
-}
-
-function tryLoadTypeBytes(loader, id) {
-    if (!loader) {
-        return undefined;
-    }
-    if (typeof loader.tryLoadBytes === "function") {
-        try {
-            const fromLoader = toUint8ArrayView(loader.tryLoadBytes(id));
-            if (fromLoader) {
-                return fromLoader;
-            }
-        } catch {
-            // ignore and fall through
-        }
-    }
-    if (typeof loader.getData === "function") {
-        try {
-            return toUint8ArrayView(loader.getData(id));
-        } catch {
-            return undefined;
-        }
-    }
-    if (
-        loader.modelSource &&
-        typeof loader.modelSource.getBytes === "function"
-    ) {
-        try {
-            return toUint8ArrayView(loader.modelSource.getBytes(id));
-        } catch {
-            return undefined;
-        }
-    }
-    return undefined;
-}
-
-function encodeVarbitTypeBytes(varbit) {
-    const baseVar = (varbit?.baseVar ?? 0) & 0xffff;
-    const startBit = (varbit?.startBit ?? 0) & 0xff;
-    const endBit = (varbit?.endBit ?? 0) & 0xff;
-    const bytes = new Uint8Array(6);
-    bytes[0] = 1;
-    bytes[1] = (baseVar >>> 8) & 0xff;
-    bytes[2] = baseVar & 0xff;
-    bytes[3] = startBit;
-    bytes[4] = endBit;
-    bytes[5] = 0;
-    return bytes;
-}
-
-// Encode a decoded SeqFrame (Dat2 / Legacy / Dat) into a small bridge format so C++ can
-// consume classic animation frames without requiring raw cache bytes + SeqBase blobs.
-//
-// Format (little-endian):
-//   u8[4]  magic "RSQF"
-//   u8     version = 1
-//   u8     flags (bit0 hasAlphaTransform, bit1 hasColorTransform)
-//   u16    baseCount
-//   u8[baseCount] baseTypes
-//   for each base group:
-//     u8 labelCount
-//     u8[labelCount] labels
-//   u16 transformCount
-//   for each transform:
-//     u16 group
-//     i16 tx, i16 ty, i16 tz
-//     i16 resetOriginGroup
-function encodeSeqFrameBytes(seqFrame) {
-    if (!seqFrame || typeof seqFrame !== "object") {
-        return undefined;
-    }
-    const base = seqFrame.base;
-    const baseTypes = Array.isArray(base?.types) ? base.types : undefined;
-    const baseLabels = Array.isArray(base?.labels) ? base.labels : undefined;
-    const transformCount = seqFrame.transformCount | 0;
-    const transformGroups = Array.isArray(seqFrame.transformGroups) ? seqFrame.transformGroups : [];
-    const transformX = Array.isArray(seqFrame.transformX) ? seqFrame.transformX : [];
-    const transformY = Array.isArray(seqFrame.transformY) ? seqFrame.transformY : [];
-    const transformZ = Array.isArray(seqFrame.transformZ) ? seqFrame.transformZ : [];
-    const resetOriginGroups = Array.isArray(seqFrame.resetOriginGroups)
-        ? seqFrame.resetOriginGroups
-        : [];
-
-    const baseCount = base?.count ?? (Array.isArray(baseTypes) ? baseTypes.length | 0 : 0);
-    if (!baseTypes || !baseLabels || (baseCount | 0) <= 0) {
-        return undefined;
-    }
-    const bc = baseCount | 0;
-
-    // Worst-case size upper bound.
-    let labelsBytes = 0;
-    for (let i = 0; i < bc; i++) {
-        const labels = Array.isArray(baseLabels[i]) ? baseLabels[i] : [];
-        labelsBytes += 1 + (labels.length | 0);
-    }
-    const tc = Math.max(0, transformCount | 0);
-    const bytesLen =
-        4 + // magic
-        1 + // version
-        1 + // flags
-        2 + // baseCount
-        bc + // baseTypes
-        labelsBytes +
-        2 + // transformCount
-        tc * (2 + 2 + 2 + 2 + 2); // group + tx/ty/tz + resetOriginGroup
-
-    const out = new Uint8Array(bytesLen);
-    let o = 0;
-    out[o++] = 0x52; // R
-    out[o++] = 0x53; // S
-    out[o++] = 0x51; // Q
-    out[o++] = 0x46; // F
-    out[o++] = 1; // version
-    let flags = 0;
-    if (seqFrame.hasAlphaTransform === true) flags |= 1;
-    if (seqFrame.hasColorTransform === true) flags |= 2;
-    out[o++] = flags & 0xff;
-    out[o++] = bc & 0xff;
-    out[o++] = (bc >>> 8) & 0xff;
-    for (let i = 0; i < bc; i++) {
-        out[o++] = (baseTypes[i] ?? 0) & 0xff;
-    }
-    for (let i = 0; i < bc; i++) {
-        const labels = Array.isArray(baseLabels[i]) ? baseLabels[i] : [];
-        const lc = labels.length | 0;
-        out[o++] = lc & 0xff;
-        for (let j = 0; j < lc; j++) {
-            out[o++] = (labels[j] ?? 0) & 0xff;
-        }
-    }
-    out[o++] = tc & 0xff;
-    out[o++] = (tc >>> 8) & 0xff;
-    const writeI16 = (v) => {
-        const x = (v | 0) & 0xffff;
-        out[o++] = x & 0xff;
-        out[o++] = (x >>> 8) & 0xff;
-    };
-    const writeU16 = (v) => {
-        const x = (v | 0) & 0xffff;
-        out[o++] = x & 0xff;
-        out[o++] = (x >>> 8) & 0xff;
-    };
-    for (let i = 0; i < tc; i++) {
-        writeU16(transformGroups[i] ?? 0);
-        writeI16(transformX[i] ?? 0);
-        writeI16(transformY[i] ?? 0);
-        writeI16(transformZ[i] ?? 0);
-        writeI16(resetOriginGroups[i] ?? -1);
-    }
-    return o === out.length ? out : out.slice(0, o);
-}
-
-function emptyTypeBytePack() {
-    return {
-        ids: new Int32Array(0),
-        offsets: new Int32Array(0),
-        lengths: new Int32Array(0),
-        bytes: new Uint8Array(0),
-    };
-}
-
-function buildTypeBytePackFromLoader(loader, encodeFallback) {
-    if (!loader || typeof loader.getCount !== "function") {
-        return emptyTypeBytePack();
-    }
-
-    const count = loader.getCount() | 0;
-    if (count <= 0) {
-        return emptyTypeBytePack();
-    }
-
-    const ids = [];
-    const offsets = [];
-    const lengths = [];
-    const chunks = [];
-    let totalLength = 0;
-
-    for (let id = 0; id < count; id++) {
-        let bytes = tryLoadTypeBytes(loader, id);
-        if (!bytes && encodeFallback && typeof loader.tryLoad === "function") {
-            let result;
-            try {
-                result = loader.tryLoad(id);
-            } catch {
-                result = undefined;
-            }
-            if (result?.ok) {
-                bytes = encodeFallback(result.value);
-            }
-        }
-        if (!bytes || bytes.length <= 0) {
-            continue;
-        }
-        ids.push(id | 0);
-        offsets.push(totalLength | 0);
-        lengths.push(bytes.length | 0);
-        chunks.push(bytes);
-        totalLength += bytes.length | 0;
-    }
-
-    return {
-        ids: Int32Array.from(ids),
-        offsets: Int32Array.from(offsets),
-        lengths: Int32Array.from(lengths),
-        bytes: concatByteChunks(chunks, totalLength),
-    };
-}
-
-function buildTypeBytePackFromIds(loader, ids, encodeFallback) {
-    if (!loader || !Array.isArray(ids) || ids.length <= 0) {
-        return emptyTypeBytePack();
-    }
-    const sortedUniqueIds = Array.from(new Set(ids.map((v) => v | 0)))
-        .filter((v) => v >= 0)
-        .sort((a, b) => a - b);
-    if (sortedUniqueIds.length <= 0) {
-        return emptyTypeBytePack();
-    }
-
-    const outIds = [];
-    const offsets = [];
-    const lengths = [];
-    const chunks = [];
-    let totalLength = 0;
-
-    for (let i = 0; i < sortedUniqueIds.length; i++) {
-        const id = sortedUniqueIds[i] | 0;
-        let bytes = tryLoadTypeBytes(loader, id);
-        if (!bytes && encodeFallback && typeof loader.tryLoad === "function") {
-            let result;
-            try {
-                result = loader.tryLoad(id);
-            } catch {
-                result = undefined;
-            }
-            if (result?.ok) {
-                bytes = encodeFallback(result.value);
-            }
-        }
-        if (!bytes || bytes.length <= 0) {
-            continue;
-        }
-        outIds.push(id);
-        offsets.push(totalLength | 0);
-        lengths.push(bytes.length | 0);
-        chunks.push(bytes);
-        totalLength += bytes.length | 0;
-    }
-
-    return {
-        ids: Int32Array.from(outIds),
-        offsets: Int32Array.from(offsets),
-        lengths: Int32Array.from(lengths),
-        bytes: concatByteChunks(chunks, totalLength),
-    };
-}
-
-function buildTypeBytePackFromIdsWithByteGetter(ids, tryGetBytes) {
-    if (!Array.isArray(ids) || ids.length <= 0 || typeof tryGetBytes !== "function") {
-        return emptyTypeBytePack();
-    }
-    const sortedUniqueIds = Array.from(new Set(ids.map((v) => v | 0)))
-        .filter((v) => v >= 0)
-        .sort((a, b) => a - b);
-    if (sortedUniqueIds.length <= 0) {
-        return emptyTypeBytePack();
-    }
-
-    const outIds = [];
-    const offsets = [];
-    const lengths = [];
-    const chunks = [];
-    let totalLength = 0;
-
-    for (let i = 0; i < sortedUniqueIds.length; i++) {
-        const id = sortedUniqueIds[i] | 0;
-        let bytes;
-        try {
-            bytes = toUint8ArrayView(tryGetBytes(id));
-        } catch {
-            bytes = undefined;
-        }
-        if (!bytes || bytes.length <= 0) {
-            continue;
-        }
-        outIds.push(id);
-        offsets.push(totalLength | 0);
-        lengths.push(bytes.length | 0);
-        chunks.push(bytes);
-        totalLength += bytes.length | 0;
-    }
-
-    return {
-        ids: Int32Array.from(outIds),
-        offsets: Int32Array.from(offsets),
-        lengths: Int32Array.from(lengths),
-        bytes: concatByteChunks(chunks, totalLength),
-    };
-}
 
 function sortedUniqueTypeIds(ids) {
     if (!Array.isArray(ids) || ids.length <= 0) {
@@ -831,716 +262,6 @@ function sortedUniqueTypeIds(ids) {
     return Array.from(new Set(ids.map((v) => v | 0)))
         .filter((v) => v >= 0)
         .sort((a, b) => a - b);
-}
-
-function tryLoadSeqBaseBytesFromLoader(seqBaseLoader, id) {
-    if (!seqBaseLoader || id < 0) {
-        return undefined;
-    }
-    // Best-effort generic hooks (some loaders expose raw bytes).
-    const generic = tryLoadTypeBytes(seqBaseLoader, id);
-    if (generic) {
-        return generic;
-    }
-    // Dat2SeqBaseLoader: bytes live in baseSource (IndexFileBytesProvider).
-    const baseSource = seqBaseLoader.baseSource;
-    if (baseSource && typeof baseSource.getBytes === "function") {
-        try {
-            return toUint8ArrayView(baseSource.getBytes(id));
-        } catch {
-            return undefined;
-        }
-    }
-    return undefined;
-}
-
-function tryLoadSkeletalSeqBytesFromLoader(skeletalSeqLoader, id) {
-    if (!skeletalSeqLoader || id < 0) {
-        return undefined;
-    }
-    // Best-effort generic hooks first.
-    const generic = tryLoadTypeBytes(skeletalSeqLoader, id);
-    if (generic) {
-        return generic;
-    }
-    // ProviderSkeletalSeqLoader: bytes are in an animation group provider (archive=fileMap).
-    const archiveId = (id >> 16) | 0;
-    const fileId = id & 0xffff;
-    let group;
-    try {
-        group = skeletalSeqLoader.groupCache?.get?.(archiveId);
-    } catch {
-        group = undefined;
-    }
-    if (!group) {
-        try {
-            group = skeletalSeqLoader.animGroupProviderFactory?.getGroup?.(archiveId);
-        } catch {
-            group = undefined;
-        }
-        try {
-            if (group && skeletalSeqLoader.groupCache?.set) {
-                skeletalSeqLoader.groupCache.set(archiveId, group);
-            }
-        } catch {
-            // ignore
-        }
-    }
-    if (!group || typeof group.getBytes !== "function") {
-        return undefined;
-    }
-    try {
-        return toUint8ArrayView(group.getBytes(fileId));
-    } catch {
-        return undefined;
-    }
-}
-
-function tryGetSeqFrameFromLoader(seqFrameLoader, frameId) {
-    if (!seqFrameLoader || frameId < 0) {
-        return undefined;
-    }
-    if (typeof seqFrameLoader.tryGet === "function") {
-        try {
-            const seqFrame = seqFrameLoader.tryGet(frameId | 0);
-            if (seqFrame) {
-                return seqFrame;
-            }
-        } catch {
-            // ignore and fall through
-        }
-    }
-    if (typeof seqFrameLoader.tryLoad === "function") {
-        try {
-            const result = seqFrameLoader.tryLoad(frameId | 0);
-            if (result?.ok && result.value) {
-                return result.value;
-            }
-        } catch {
-            // ignore and return undefined
-        }
-    }
-    return undefined;
-}
-
-function tryGetSkeletalSeqFromLoader(skeletalSeqLoader, seqId) {
-    if (!skeletalSeqLoader || seqId < 0 || typeof skeletalSeqLoader.tryGet !== "function") {
-        return undefined;
-    }
-    try {
-        return skeletalSeqLoader.tryGet(seqId | 0);
-    } catch {
-        return undefined;
-    }
-}
-
-function buildSeqAlphaHintPack(seqIds, seqTypeLoader, seqFrameLoader, skeletalSeqLoader) {
-    if (!seqTypeLoader || !Array.isArray(seqIds) || seqIds.length <= 0) {
-        return emptyTypeBytePack();
-    }
-    if (typeof seqTypeLoader.tryLoad !== "function") {
-        return emptyTypeBytePack();
-    }
-
-    const sortedUniqueIds = Array.from(new Set(seqIds.map((v) => v | 0)))
-        .filter((v) => v >= 0)
-        .sort((a, b) => a - b);
-    if (sortedUniqueIds.length <= 0) {
-        return emptyTypeBytePack();
-    }
-
-    const outIds = [];
-    const offsets = [];
-    const lengths = [];
-    const bytes = new Uint8Array(sortedUniqueIds.length);
-    let cursor = 0;
-
-    for (let i = 0; i < sortedUniqueIds.length; i++) {
-        const seqId = sortedUniqueIds[i] | 0;
-        let seqResult;
-        try {
-            seqResult = seqTypeLoader.tryLoad(seqId);
-        } catch {
-            seqResult = undefined;
-        }
-        if (!seqResult?.ok || !seqResult.value) {
-            continue;
-        }
-
-        const seqType = seqResult.value;
-        let hasAlphaTransform = false;
-        const hasAnimMaya =
-            typeof seqType?.hasAnimMayaSeq === "function"
-                ? seqType.hasAnimMayaSeq()
-                : (seqType?.animMayaId ?? -1) >= 0;
-        if (hasAnimMaya) {
-            const skeletalSeq = tryGetSkeletalSeqFromLoader(
-                skeletalSeqLoader,
-                seqType.animMayaId | 0,
-            );
-            hasAlphaTransform = skeletalSeq?.hasAlphaTransform === true;
-        } else {
-            const frameIds = Array.isArray(seqType?.frameIds) ? seqType.frameIds : [];
-            for (let f = 0; f < frameIds.length; f++) {
-                const frameId = frameIds[f] | 0;
-                const seqFrame = tryGetSeqFrameFromLoader(seqFrameLoader, frameId);
-                if (seqFrame?.hasAlphaTransform === true) {
-                    hasAlphaTransform = true;
-                    break;
-                }
-            }
-        }
-
-        outIds.push(seqId);
-        offsets.push(cursor);
-        lengths.push(1);
-        bytes[cursor] = hasAlphaTransform ? 1 : 0;
-        cursor++;
-    }
-
-    return {
-        ids: Int32Array.from(outIds),
-        offsets: Int32Array.from(offsets),
-        lengths: Int32Array.from(lengths),
-        bytes: bytes.slice(0, cursor),
-    };
-}
-
-function readUnsignedShortBE(bytes, offset) {
-    return ((bytes[offset] << 8) | bytes[offset + 1]) & 0xffff;
-}
-
-function readUnsignedSmart(bytes, cursorRef) {
-    const cursor = cursorRef.value | 0;
-    if (cursor >= bytes.length) {
-        return 0;
-    }
-    const b0 = bytes[cursor] & 0xff;
-    if (b0 < 128) {
-        cursorRef.value = (cursor + 1) | 0;
-        return b0 | 0;
-    }
-    if (cursor + 1 >= bytes.length) {
-        cursorRef.value = bytes.length | 0;
-        return 0;
-    }
-    const v = (readUnsignedShortBE(bytes, cursor) - 0x8000) | 0;
-    cursorRef.value = (cursor + 2) | 0;
-    return v;
-}
-
-function readSmart3(bytes, cursorRef) {
-    let total = 0;
-    let delta = readUnsignedSmart(bytes, cursorRef);
-    while (delta === 32767) {
-        total = (total + 32767) | 0;
-        delta = readUnsignedSmart(bytes, cursorRef);
-    }
-    return (total + delta) | 0;
-}
-
-function decodeLocPlacementsFromBytesRaw(data) {
-    const placements = [];
-    if (!(data instanceof Uint8Array) || data.length <= 0) {
-        return placements;
-    }
-    const cursorRef = { value: 0 };
-    let id = -1;
-    for (;;) {
-        const idDelta = readSmart3(data, cursorRef);
-        if ((idDelta | 0) === 0) {
-            break;
-        }
-        id = (id + idDelta) | 0;
-        let pos = 0;
-        for (;;) {
-            const posDelta = readUnsignedSmart(data, cursorRef);
-            if ((posDelta | 0) === 0) {
-                break;
-            }
-            pos = (pos + posDelta - 1) | 0;
-            if (cursorRef.value >= data.length) {
-                break;
-            }
-            const localX = (pos >> 6) & 0x3f;
-            const localY = pos & 0x3f;
-            const level = pos >> 12;
-            const attributes = data[cursorRef.value++] & 0xff;
-            placements.push({
-                id: id | 0,
-                level: level | 0,
-                localX: localX | 0,
-                localY: localY | 0,
-                type: (attributes >> 2) | 0,
-                rotation: (attributes & 0x3) | 0,
-            });
-        }
-    }
-    return placements;
-}
-
-function getVarpValue(varpValues, varpId) {
-    if (!(varpValues instanceof Int32Array) || varpId < 0 || varpId >= varpValues.length) {
-        return 0;
-    }
-    return varpValues[varpId] | 0;
-}
-
-function getSceneBuildVarpValues(sceneBuildInput) {
-    if (sceneBuildInput?.varpValues instanceof Int32Array) {
-        return sceneBuildInput.varpValues;
-    }
-    const managerValues = sceneBuildInput?.varProvider?.varManager?.values;
-    if (managerValues instanceof Int32Array) {
-        return managerValues;
-    }
-    const directValues = sceneBuildInput?.varProvider?.values;
-    if (directValues instanceof Int32Array) {
-        return directValues;
-    }
-    return new Int32Array(0);
-}
-
-function getVarbitValue(varbitLoader, varpValues, varbitId) {
-    if (!varbitLoader || typeof varbitLoader.tryLoad !== "function" || varbitId < 0) {
-        return 0;
-    }
-    let varbitResult;
-    try {
-        varbitResult = varbitLoader.tryLoad(varbitId | 0);
-    } catch {
-        varbitResult = undefined;
-    }
-    if (!varbitResult?.ok || !varbitResult.value) {
-        return 0;
-    }
-    const varbit = varbitResult.value;
-    const baseVar = varbit.baseVar | 0;
-    const startBit = varbit.startBit | 0;
-    const endBit = varbit.endBit | 0;
-    const bitCount = (endBit - startBit + 1) | 0;
-    if (bitCount <= 0 || bitCount > 31) {
-        return 0;
-    }
-    const value = getVarpValue(varpValues, baseVar);
-    const mask = ((1 << bitCount) - 1) | 0;
-    return (value >> startBit) & mask;
-}
-
-function tryLoadLocType(locTypeLoader, id, cache) {
-    if (!locTypeLoader || typeof locTypeLoader.tryLoad !== "function" || id < 0) {
-        return undefined;
-    }
-    if (cache && cache.has(id)) {
-        return cache.get(id);
-    }
-    let result;
-    try {
-        result = locTypeLoader.tryLoad(id | 0);
-    } catch {
-        result = undefined;
-    }
-    const value = result?.ok ? result.value : undefined;
-    if (cache) {
-        cache.set(id, value);
-    }
-    return value;
-}
-
-function resolveLocTypeForPlacement(
-    placementId,
-    locTypeLoader,
-    varbitLoader,
-    varpValues,
-    locTypeCache,
-) {
-    const base = tryLoadLocType(locTypeLoader, placementId | 0, locTypeCache);
-    if (!base) {
-        return undefined;
-    }
-    const transforms = Array.isArray(base.transforms) ? base.transforms : [];
-    if (transforms.length <= 0) {
-        return base;
-    }
-    let transformIndex = -1;
-    const transformVarbit = base.transformVarbit | 0;
-    const transformVarp = base.transformVarp | 0;
-    if (transformVarbit !== -1) {
-        transformIndex = getVarbitValue(varbitLoader, varpValues, transformVarbit);
-    } else if (transformVarp !== -1) {
-        transformIndex = getVarpValue(varpValues, transformVarp);
-    }
-    let transformId = transforms[transforms.length - 1] | 0;
-    if (
-        transformIndex >= 0 &&
-        transformIndex < transforms.length - 1 &&
-        (transforms[transformIndex] | 0) !== -1
-    ) {
-        transformId = transforms[transformIndex] | 0;
-    }
-    if (transformId === -1) {
-        return undefined;
-    }
-    // Match TS: if the transform can't be loaded, keep the base type.
-    return tryLoadLocType(locTypeLoader, transformId, locTypeCache);
-}
-
-function getLocTypeModelGroupForPlacement(locType, placementType) {
-    if (!locType || !Array.isArray(locType.models) || locType.models.length <= 0) {
-        return undefined;
-    }
-    const hasTypes = Array.isArray(locType.types) && locType.types.length > 0;
-    if (!hasTypes) {
-        if ((placementType | 0) !== 10) {
-            return undefined;
-        }
-        return Array.isArray(locType.models[0]) ? locType.models[0] : undefined;
-    }
-    const types = locType.types;
-    for (let i = 0; i < types.length; i++) {
-        if ((types[i] | 0) === (placementType | 0)) {
-            return Array.isArray(locType.models[i]) ? locType.models[i] : undefined;
-        }
-    }
-    return undefined;
-}
-
-function expandLocPlacementModelTypes(type) {
-    const t = type | 0;
-    switch (t) {
-        case 11: // NORMAL_DIAGIONAL -> NORMAL
-            return [10];
-        case 2: // WALL_CORNER emits two wall-corner variants
-            return [2, 2];
-        case 5: // WALL_DECORATION_OUTSIDE -> INSIDE
-        case 6: // WALL_DECORATION_DIAGONAL_OUTSIDE -> INSIDE
-        case 7: // WALL_DECORATION_DIAGONAL_INSIDE -> INSIDE
-            return [4];
-        case 8: // WALL_DECORATION_DIAGONAL_DOUBLE -> INSIDE + INSIDE
-            return [4, 4];
-        default:
-            return [t];
-    }
-}
-
-function collectLocModelIdsForSceneBuild(sceneBuildInput) {
-    const locTypeLoader = sceneBuildInput?.locTypeLoader;
-    const locModelLoader = sceneBuildInput?.locModelLoader;
-    const modelLoader = locModelLoader?.modelLoader;
-    if (!locTypeLoader || typeof locTypeLoader.tryLoad !== "function") {
-        return {
-            modelIds: [],
-            seqIds: [],
-            locTypeIds: [],
-            varbitIds: [],
-        };
-    }
-
-    const mapEntries = collectRuntimeCacheMapSquareEntries(sceneBuildInput);
-    if (!Array.isArray(mapEntries) || mapEntries.length <= 0) {
-        return {
-            modelIds: [],
-            seqIds: [],
-            locTypeIds: [],
-            varbitIds: [],
-        };
-    }
-
-    const sizeX = sceneBuildInput.sizeX | 0;
-    const sizeY = sceneBuildInput.sizeY | 0;
-    const baseX = sceneBuildInput.baseX | 0;
-    const baseY = sceneBuildInput.baseY | 0;
-    const varProvider = sceneBuildInput?.varProvider;
-    const varbitLoader = tryGetVarbitLoader(varProvider);
-    const varpValues = getSceneBuildVarpValues(sceneBuildInput);
-    const locTypeCache = new Map();
-    const outModelIds = new Set();
-    const outSeqIds = new Set();
-    const outLocTypeIds = new Set();
-    const outVarbitIds = new Set();
-
-    function collectLocTypeDepsForPlacementType(locType, placementType, explicitTypeId = undefined) {
-        if (!locType) {
-            return;
-        }
-        const resolvedTypeId = locType?.id | 0;
-        if (resolvedTypeId >= 0) {
-            outLocTypeIds.add(resolvedTypeId);
-        }
-        if (explicitTypeId !== undefined) {
-            const baseTypeId = explicitTypeId | 0;
-            if (baseTypeId >= 0 && baseTypeId !== resolvedTypeId) {
-                outLocTypeIds.add(baseTypeId);
-            }
-        }
-        const transformVarbit = locType.transformVarbit | 0;
-        if (transformVarbit >= 0) {
-            outVarbitIds.add(transformVarbit);
-        }
-        const placementTypes = expandLocPlacementModelTypes(placementType);
-        for (let v = 0; v < placementTypes.length; v++) {
-            const group = getLocTypeModelGroupForPlacement(locType, placementTypes[v] | 0);
-            if (!Array.isArray(group)) {
-                continue;
-            }
-            for (let j = 0; j < group.length; j++) {
-                const modelId = group[j] | 0;
-                if (modelId >= 0) {
-                    outModelIds.add(modelId);
-                }
-            }
-        }
-        const seqId = locType.seqId | 0;
-        if (seqId >= 0) {
-            outSeqIds.add(seqId);
-        } else if (Array.isArray(locType.randomSeqIds) && locType.randomSeqIds.length > 0) {
-            for (let s = 0; s < locType.randomSeqIds.length; s++) {
-                const randomSeqId = locType.randomSeqIds[s] | 0;
-                if (randomSeqId >= 0) {
-                    outSeqIds.add(randomSeqId);
-                }
-            }
-        }
-    }
-
-    for (let i = 0; i < mapEntries.length; i++) {
-        const entry = mapEntries[i];
-        const placements = decodeLocPlacementsFromBytesRaw(entry.locBytes);
-        if (placements.length <= 0) {
-            continue;
-        }
-        const offsetX = (entry.mapX | 0) * MAP_SQUARE_SIZE - baseX;
-        const offsetY = (entry.mapY | 0) * MAP_SQUARE_SIZE - baseY;
-        for (let p = 0; p < placements.length; p++) {
-            const placement = placements[p];
-            const sceneX = (placement.localX + offsetX) | 0;
-            const sceneY = (placement.localY + offsetY) | 0;
-            if (!(sceneX > 0 && sceneY > 0 && sceneX < sizeX - 1 && sceneY < sizeY - 1)) {
-                continue;
-            }
-
-            const placementId = placement.id | 0;
-            const placementType = placement.type | 0;
-            const baseLocType = tryLoadLocType(locTypeLoader, placementId, locTypeCache);
-            if (baseLocType) {
-                if (placementId >= 0) {
-                    outLocTypeIds.add(placementId);
-                }
-                const transformVarbit = baseLocType.transformVarbit | 0;
-                if (transformVarbit >= 0) {
-                    outVarbitIds.add(transformVarbit);
-                }
-            }
-
-            const locType = resolveLocTypeForPlacement(
-                placementId,
-                locTypeLoader,
-                varbitLoader,
-                varpValues,
-                locTypeCache,
-            );
-            if (!locType) {
-                continue;
-            }
-            collectLocTypeDepsForPlacementType(locType, placementType, placementId);
-        }
-    }
-    return {
-        modelIds: Array.from(outModelIds),
-        seqIds: Array.from(outSeqIds),
-        locTypeIds: Array.from(outLocTypeIds),
-        varbitIds: Array.from(outVarbitIds),
-    };
-}
-
-function tryLoadObjType(objTypeLoader, id, cache) {
-    if (!objTypeLoader || typeof objTypeLoader.tryLoad !== "function" || id < 0) {
-        return undefined;
-    }
-    if (cache && cache.has(id)) {
-        return cache.get(id);
-    }
-    let result;
-    try {
-        result = objTypeLoader.tryLoad(id | 0);
-    } catch {
-        result = undefined;
-    }
-    const value = result?.ok ? result.value : undefined;
-    if (cache) {
-        cache.set(id, value);
-    }
-    return value;
-}
-
-function collectObjTypeAndModelIdsForSceneBuild(sceneBuildInput) {
-    const loadObjs = sceneBuildInput?.loadObjs === true;
-    const objTypeLoader =
-        sceneBuildInput?.objTypeLoader ??
-        sceneBuildInput?.session?.loaders?.objTypeLoader;
-    const objSpawns = Array.isArray(sceneBuildInput?.objSpawns)
-        ? sceneBuildInput.objSpawns
-        : [];
-    const mapX = sceneBuildInput?.mapX | 0;
-    const mapY = sceneBuildInput?.mapY | 0;
-    const maxLevel = sceneBuildInput?.maxLevel | 0;
-
-    if (!loadObjs || !objTypeLoader || typeof objTypeLoader.tryLoad !== "function") {
-        return {
-            modelIds: [],
-            objTypeIds: [],
-            objSpawnsByMap: {
-                ids: new Int32Array(0),
-                offsets: new Int32Array(0),
-                lengths: new Int32Array(0),
-                bytes: new Uint8Array(0),
-            },
-        };
-    }
-
-    const outModelIds = new Set();
-    const outObjTypeIds = new Set();
-    const objTypeCache = new Map();
-    const selectedSpawns = [];
-
-    for (let i = 0; i < objSpawns.length; i++) {
-        const spawn = objSpawns[i];
-        if (!spawn || typeof spawn !== "object") {
-            continue;
-        }
-        const id = spawn.id | 0;
-        const count = spawn.count | 0;
-        const x = spawn.x | 0;
-        const y = spawn.y | 0;
-        const plane = spawn.plane | 0;
-        if (plane > maxLevel) {
-            continue;
-        }
-        const spawnMapX = Math.floor(x / MAP_SQUARE_SIZE) | 0;
-        const spawnMapY = Math.floor(y / MAP_SQUARE_SIZE) | 0;
-        if (spawnMapX !== mapX || spawnMapY !== mapY) {
-            continue;
-        }
-
-        const baseObjType = tryLoadObjType(objTypeLoader, id, objTypeCache);
-        if (!baseObjType) {
-            continue;
-        }
-        if ((baseObjType?.name ?? "null") === "null") {
-            continue;
-        }
-
-        selectedSpawns.push({ id, count, x, y, plane });
-
-        let currentId = id;
-        let currentCount = count;
-        for (let depth = 0; depth < 16; depth++) {
-            const objType = tryLoadObjType(objTypeLoader, currentId, objTypeCache);
-            if (!objType) {
-                break;
-            }
-            outObjTypeIds.add(currentId | 0);
-            const modelId = objType.model | 0;
-            if (modelId >= 0) {
-                outModelIds.add(modelId);
-            }
-
-            let nextId = -1;
-            const countObj = Array.isArray(objType.countObj) ? objType.countObj : [];
-            const countCo = Array.isArray(objType.countCo) ? objType.countCo : [];
-            if (currentCount > 1 && countObj.length > 0 && countCo.length > 0) {
-                const n = Math.min(10, countObj.length, countCo.length);
-                for (let j = 0; j < n; j++) {
-                    const threshold = countCo[j] | 0;
-                    if (threshold !== 0 && currentCount >= threshold) {
-                        nextId = countObj[j] | 0;
-                    }
-                }
-            }
-            if (nextId < 0 || nextId === currentId) {
-                break;
-            }
-            currentId = nextId | 0;
-            currentCount = 1;
-        }
-    }
-
-    if (selectedSpawns.length <= 0) {
-        return {
-            modelIds: Array.from(outModelIds),
-            objTypeIds: Array.from(outObjTypeIds),
-            objSpawnsByMap: {
-                ids: new Int32Array(0),
-                offsets: new Int32Array(0),
-                lengths: new Int32Array(0),
-                bytes: new Uint8Array(0),
-            },
-        };
-    }
-
-    const mapId = ((mapX & 0xff) << 8) | (mapY & 0xff);
-    const packed = new Int32Array(selectedSpawns.length * 5);
-    for (let i = 0; i < selectedSpawns.length; i++) {
-        const off = i * 5;
-        const spawn = selectedSpawns[i];
-        packed[off + 0] = spawn.id | 0;
-        packed[off + 1] = spawn.count | 0;
-        packed[off + 2] = spawn.x | 0;
-        packed[off + 3] = spawn.y | 0;
-        packed[off + 4] = spawn.plane | 0;
-    }
-    const bytes = new Uint8Array(packed.byteLength);
-    bytes.set(new Uint8Array(packed.buffer));
-
-    return {
-        modelIds: Array.from(outModelIds),
-        objTypeIds: Array.from(outObjTypeIds),
-        objSpawnsByMap: {
-            ids: Int32Array.of(mapId),
-            offsets: Int32Array.of(0),
-            lengths: Int32Array.of(bytes.length | 0),
-            bytes,
-        },
-    };
-}
-
-function collectRuntimeCacheMapSquareEntries(sceneBuildInput) {
-    if (!sceneBuildInput || typeof sceneBuildInput !== "object") {
-        return undefined;
-    }
-    const mapBytesProvider = sceneBuildInput.mapBytesProvider;
-    if (!mapBytesProvider) {
-        return undefined;
-    }
-    const bounds = computeSceneBuildMapBounds(
-        sceneBuildInput.baseX | 0,
-        sceneBuildInput.baseY | 0,
-        sceneBuildInput.sizeX | 0,
-        sceneBuildInput.sizeY | 0,
-    );
-
-    const entries = [];
-    for (let mapX = bounds.mapStartX; mapX < bounds.mapEndX; mapX++) {
-        for (let mapY = bounds.mapStartY; mapY < bounds.mapEndY; mapY++) {
-            const terrainBytes = mapBytesProvider.getTerrainBytes(mapX, mapY);
-            const locBytes = mapBytesProvider.getLocBytes(mapX, mapY);
-            const npcBytes =
-                typeof mapBytesProvider.getNpcSpawnBytes === "function"
-                    ? mapBytesProvider.getNpcSpawnBytes(mapX, mapY)
-                    : undefined;
-            if (!terrainBytes && !locBytes && !npcBytes) {
-                continue;
-            }
-            entries.push({
-                mapX,
-                mapY,
-                terrainBytes,
-                locBytes,
-                npcBytes,
-            });
-        }
-    }
-    return entries;
 }
 
 function normalizeTickStateKey(stateKey) {
@@ -1559,24 +280,6 @@ function getRuntimeTickOutputsForHandle(runtimeHandle, create) {
         runtimeTickOutputByHandle.set(handle, byHandle);
     }
     return byHandle;
-}
-
-function getRuntimeCacheUploadState(runtimeHandle, create) {
-    const handle = runtimeHandle | 0;
-    let state = runtimeCacheUploadByHandle.get(handle);
-    if (!state && create) {
-        state = {
-            typeCacheKey: "",
-            typeEntryIdsByKind: new Map(),
-            mapSquareKeys: new Set(),
-        };
-        runtimeCacheUploadByHandle.set(handle, state);
-    }
-    return state;
-}
-
-function clearRuntimeCacheUploadState(runtimeHandle) {
-    runtimeCacheUploadByHandle.delete(runtimeHandle | 0);
 }
 
 function createTickOutputRefs(input) {
@@ -1979,14 +682,6 @@ function isMapRenderRuntimeHandleValid(runtimeHandle) {
 }
 
 function setRuntimeTickStateWithWasm(backendModule, runtimeHandle, stateKey, input) {
-    if ((backendModule.__rsCapabilities & CAP_RUNTIME_STATE) === 0) {
-        logTickStateDebug("runtime state capability missing", {
-            runtimeHandle: runtimeHandle | 0,
-            stateKey,
-            capabilities: backendModule.__rsCapabilities | 0,
-        });
-        return false;
-    }
     const key = normalizeTickStateKey(stateKey);
     if (key === undefined) {
         logTickStateDebug("invalid state key", { runtimeHandle: runtimeHandle | 0, stateKey });
@@ -2064,9 +759,6 @@ function setRuntimeTickStateWithWasm(backendModule, runtimeHandle, stateKey, inp
 }
 
 function clearRuntimeTickStateWithWasm(backendModule, runtimeHandle, stateKey) {
-    if ((backendModule.__rsCapabilities & CAP_RUNTIME_STATE) === 0) {
-        return;
-    }
     const key = normalizeTickStateKey(stateKey);
     if (key === undefined) {
         return;
@@ -2087,9 +779,6 @@ function tickRuntimeStateForOutputRefsWithWasm(
     clientTickCount,
     outputRefs,
 ) {
-    if ((backendModule.__rsCapabilities & CAP_RUNTIME_STATE) === 0) {
-        return undefined;
-    }
     const tickForStatePacked = getRuntimeTickForStatePackedExport(backendModule);
     if (typeof tickForStatePacked !== "function") {
         return undefined;
@@ -2268,9 +957,6 @@ function decodeNpcSpawnsWithWasm(
     npcLoginScreenPropsById,
     requiredLoginScreenPropsMask,
 ) {
-    if ((backendModule.__rsCapabilities & CAP_NPC_DECODE) === 0) {
-        return undefined;
-    }
     if (!(data instanceof Uint8Array)) {
         return undefined;
     }
@@ -2421,814 +1107,6 @@ function normalizeRuntimeBuildRequest(request) {
     };
 }
 
-function hasRuntimeTypeEntryApi(backendModule) {
-    return (
-        typeof getRuntimeCachePutTypeEntryExport(backendModule) === "function" &&
-        typeof getRuntimeCacheClearTypeKindExport(backendModule) === "function"
-    );
-}
-
-function getUploadedTypeIdSet(uploadState, kind, create) {
-    if (!uploadState) {
-        return undefined;
-    }
-    if (!(uploadState.typeEntryIdsByKind instanceof Map)) {
-        if (!create) {
-            return undefined;
-        }
-        uploadState.typeEntryIdsByKind = new Map();
-    }
-    let set = uploadState.typeEntryIdsByKind.get(kind | 0);
-    if (!set && create) {
-        set = new Set();
-        uploadState.typeEntryIdsByKind.set(kind | 0, set);
-    }
-    return set;
-}
-
-function uploadTypeEntriesFromIdsWithByteGetter(
-    backendModule,
-    runtimeHandle,
-    kind,
-    ids,
-    tryGetBytes,
-    options,
-) {
-    if (typeof tryGetBytes !== "function") {
-        return false;
-    }
-    const uploadedIdsSet = options?.uploadedIdsSet instanceof Set ? options.uploadedIdsSet : undefined;
-    const sortedIds = sortedUniqueTypeIds(ids);
-    const allowEmptyBytes = options?.allowEmptyBytes === true;
-    for (let i = 0; i < sortedIds.length; i++) {
-        const id = sortedIds[i] | 0;
-        if (uploadedIdsSet?.has(id)) {
-            continue;
-        }
-        let bytes;
-        try {
-            bytes = toUint8ArrayView(tryGetBytes(id));
-        } catch {
-            bytes = undefined;
-        }
-        if (!bytes) {
-            continue;
-        }
-        if (!allowEmptyBytes && (bytes.length | 0) <= 0) {
-            continue;
-        }
-        const status = runtimeCachePutTypeEntryWithWasm(
-            backendModule,
-            runtimeHandle,
-            kind,
-            id,
-            bytes,
-        );
-        if (status !== RUNTIME_STATUS_OK) {
-            return false;
-        }
-        uploadedIdsSet?.add(id);
-    }
-    return true;
-}
-
-function uploadTypeEntriesFromLoaderIdsWithWasm(
-    backendModule,
-    runtimeHandle,
-    kind,
-    loader,
-    ids,
-    encodeFallback,
-    options,
-) {
-    return uploadTypeEntriesFromIdsWithByteGetter(
-        backendModule,
-        runtimeHandle,
-        kind,
-        ids,
-        (id) => {
-            let bytes = tryLoadTypeBytes(loader, id);
-            if (!bytes && encodeFallback && typeof loader?.tryLoad === "function") {
-                let result;
-                try {
-                    result = loader.tryLoad(id | 0);
-                } catch {
-                    result = undefined;
-                }
-                if (result?.ok) {
-                    bytes = encodeFallback(result.value);
-                }
-            }
-            return bytes;
-        },
-        options,
-    );
-}
-
-function uploadTypeEntriesFromPackWithWasm(
-    backendModule,
-    runtimeHandle,
-    kind,
-    pack,
-    options,
-) {
-    const ids = pack?.ids;
-    const offsets = pack?.offsets;
-    const lengths = pack?.lengths;
-    const bytes = pack?.bytes;
-    if (
-        !(ids instanceof Int32Array) ||
-        !(offsets instanceof Int32Array) ||
-        !(lengths instanceof Int32Array) ||
-        !(bytes instanceof Uint8Array)
-    ) {
-        return false;
-    }
-    if (ids.length !== offsets.length || ids.length !== lengths.length) {
-        return false;
-    }
-    const uploadedIdsSet = options?.uploadedIdsSet instanceof Set ? options.uploadedIdsSet : undefined;
-    const allowEmptyBytes = options?.allowEmptyBytes === true;
-    for (let i = 0; i < ids.length; i++) {
-        const id = ids[i] | 0;
-        if (uploadedIdsSet?.has(id)) {
-            continue;
-        }
-        const offset = offsets[i] | 0;
-        const length = lengths[i] | 0;
-        if (id < 0 || offset < 0 || length < 0) {
-            return false;
-        }
-        if (offset > bytes.length || length > bytes.length - offset) {
-            return false;
-        }
-        if (!allowEmptyBytes && length <= 0) {
-            continue;
-        }
-        const entryBytes = length > 0 ? bytes.subarray(offset, offset + length) : new Uint8Array(0);
-        const status = runtimeCachePutTypeEntryWithWasm(
-            backendModule,
-            runtimeHandle,
-            kind,
-            id,
-            entryBytes,
-        );
-        if (status !== RUNTIME_STATUS_OK) {
-            return false;
-        }
-        uploadedIdsSet?.add(id);
-    }
-    return true;
-}
-
-function uploadRuntimeTypesWithEntryApiWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-    uploadState,
-) {
-    const locTypeLoader = sceneBuildInput?.locTypeLoader;
-    const locModelLoader = sceneBuildInput?.locModelLoader;
-    const modelLoader = locModelLoader?.modelLoader;
-    const objTypeLoader =
-        sceneBuildInput?.objTypeLoader ??
-        sceneBuildInput?.session?.loaders?.objTypeLoader;
-    const textureLoader =
-        sceneBuildInput?.textureLoader ??
-        locModelLoader?.textureLoader ??
-        sceneBuildInput?.session?.getTextureLoader?.();
-    const seqTypeLoader =
-        sceneBuildInput?.seqTypeLoader ??
-        locModelLoader?.seqTypeLoader ??
-        sceneBuildInput?.session?.loaders?.seqTypeLoader;
-    const seqFrameLoader =
-        sceneBuildInput?.seqFrameLoader ??
-        locModelLoader?.seqFrameLoader ??
-        sceneBuildInput?.session?.loaders?.seqFrameLoader;
-    const skeletalSeqLoader =
-        sceneBuildInput?.skeletalSeqLoader ??
-        locModelLoader?.skeletalSeqLoader ??
-        sceneBuildInput?.session?.getSkeletalSeqLoader?.() ??
-        sceneBuildInput?.session?.loaders?.skeletalSeqLoader;
-    const npcTypeLoader =
-        sceneBuildInput?.npcTypeLoader ??
-        sceneBuildInput?.session?.loaders?.npcTypeLoader;
-    const basTypeLoader =
-        sceneBuildInput?.basTypeLoader ??
-        sceneBuildInput?.session?.loaders?.basTypeLoader;
-    const underlayTypeLoader =
-        sceneBuildInput?.underlayTypeLoader ??
-        sceneBuildInput?.session?.loaders?.underlayTypeLoader;
-    const overlayTypeLoader =
-        sceneBuildInput?.overlayTypeLoader ??
-        sceneBuildInput?.session?.loaders?.overlayTypeLoader;
-    const varProvider = sceneBuildInput?.varProvider;
-    const varbitLoader = tryGetVarbitLoader(varProvider);
-
-    const locUploadedIds = getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_LOC_KIND, true);
-    const objUploadedIds = getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_OBJ_KIND, true);
-    const npcUploadedIds = getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_NPC_KIND, true);
-
-    let requiredExpandedTypeIds = undefined;
-    for (let pass = 0; pass < 8; pass++) {
-        const expanded = runtimeCollectRequiredExpandedTypeIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            sceneBuildInput,
-        );
-        if (!expanded) {
-            return false;
-        }
-        requiredExpandedTypeIds = expanded;
-        const beforeLoc = locUploadedIds?.size ?? 0;
-        const beforeObj = objUploadedIds?.size ?? 0;
-        const beforeNpc = npcUploadedIds?.size ?? 0;
-        if (
-            !uploadTypeEntriesFromLoaderIdsWithWasm(
-                backendModule,
-                runtimeHandle,
-                RUNTIME_TYPE_BLOB_LOC_KIND,
-                locTypeLoader,
-                expanded.locTypeIds,
-                undefined,
-                { uploadedIdsSet: locUploadedIds },
-            )
-        ) {
-            return false;
-        }
-        if (
-            !uploadTypeEntriesFromLoaderIdsWithWasm(
-                backendModule,
-                runtimeHandle,
-                RUNTIME_TYPE_BLOB_OBJ_KIND,
-                objTypeLoader,
-                expanded.objTypeIds,
-                undefined,
-                { uploadedIdsSet: objUploadedIds },
-            )
-        ) {
-            return false;
-        }
-        if (
-            !uploadTypeEntriesFromLoaderIdsWithWasm(
-                backendModule,
-                runtimeHandle,
-                RUNTIME_TYPE_BLOB_NPC_KIND,
-                npcTypeLoader,
-                expanded.npcTypeIds,
-                undefined,
-                { uploadedIdsSet: npcUploadedIds },
-            )
-        ) {
-            return false;
-        }
-        const changed =
-            (locUploadedIds?.size ?? 0) !== beforeLoc ||
-            (objUploadedIds?.size ?? 0) !== beforeObj ||
-            (npcUploadedIds?.size ?? 0) !== beforeNpc;
-        if (!changed) {
-            break;
-        }
-    }
-
-    const finalizedExpanded = runtimeCollectRequiredExpandedTypeIdsWithWasm(
-        backendModule,
-        runtimeHandle,
-        sceneBuildInput,
-    );
-    if (!finalizedExpanded) {
-        return false;
-    }
-    requiredExpandedTypeIds = finalizedExpanded;
-
-    if (!requiredExpandedTypeIds) {
-        return false;
-    }
-    const locTypeIds = requiredExpandedTypeIds.locTypeIds;
-    const objTypeIds = requiredExpandedTypeIds.objTypeIds;
-    const npcTypeIds = requiredExpandedTypeIds.npcTypeIds;
-    const basTypeIds = requiredExpandedTypeIds.basTypeIds;
-    const mergedModelIds = requiredExpandedTypeIds.modelIds;
-    const sortedSeqIds = requiredExpandedTypeIds.seqTypeIds;
-    const varbitIds = requiredExpandedTypeIds.varbitTypeIds;
-    const underlayTypeIds = requiredExpandedTypeIds.underlayTypeIds;
-    const overlayTypeIds = requiredExpandedTypeIds.overlayTypeIds;
-
-    const seqFrameIds = [];
-    const skeletalSeqIds = [];
-    if (seqTypeLoader && typeof seqTypeLoader.tryLoad === "function") {
-        for (let i = 0; i < sortedSeqIds.length; i++) {
-            let seqResult;
-            try {
-                seqResult = seqTypeLoader.tryLoad(sortedSeqIds[i] | 0);
-            } catch {
-                seqResult = undefined;
-            }
-            if (!seqResult?.ok) {
-                continue;
-            }
-            const animMayaId = seqResult.value?.animMayaId ?? -1;
-            if ((animMayaId | 0) >= 0) {
-                skeletalSeqIds.push(animMayaId | 0);
-            }
-            const frameIds = seqResult.value?.frameIds;
-            if (!Array.isArray(frameIds)) {
-                continue;
-            }
-            for (let f = 0; f < frameIds.length; f++) {
-                const frameId = frameIds[f] | 0;
-                if (frameId >= 0) {
-                    seqFrameIds.push(frameId);
-                }
-            }
-        }
-    }
-
-    const seqAlphaHintPack = buildSeqAlphaHintPack(
-        sortedSeqIds,
-        seqTypeLoader,
-        seqFrameLoader,
-        skeletalSeqLoader,
-    );
-
-    const skeletalSeqBytesById = new Map();
-    const seqBaseIds = new Set();
-    const sortedSkeletalSeqIds = sortedUniqueTypeIds(skeletalSeqIds);
-    for (let i = 0; i < sortedSkeletalSeqIds.length; i++) {
-        const id = sortedSkeletalSeqIds[i] | 0;
-        const bytes = tryLoadSkeletalSeqBytesFromLoader(skeletalSeqLoader, id);
-        if (!bytes || bytes.length < 3) {
-            continue;
-        }
-        skeletalSeqBytesById.set(id, bytes);
-        const baseId = readUnsignedShortBE(bytes, 1) | 0;
-        if (baseId >= 0) {
-            seqBaseIds.add(baseId);
-        }
-    }
-
-    const transparentTextureIds = [];
-    const sdTextureIds = [];
-    if (
-        textureLoader &&
-        typeof textureLoader.getTextureIds === "function" &&
-        typeof textureLoader.isSd === "function" &&
-        typeof textureLoader.isTransparent === "function"
-    ) {
-        const allTextureIds = textureLoader.getTextureIds();
-        if (Array.isArray(allTextureIds)) {
-            for (let i = 0; i < allTextureIds.length; i++) {
-                const textureId = allTextureIds[i] | 0;
-                if (textureId < 0) {
-                    continue;
-                }
-                if (textureLoader.isTransparent(textureId)) {
-                    transparentTextureIds.push(textureId);
-                }
-                if (!textureLoader.isSd(textureId)) {
-                    continue;
-                }
-                if (sdTextureIds.length < SD_TEXTURE_PACK_LIMIT) {
-                    sdTextureIds.push(textureId);
-                }
-            }
-        }
-    }
-
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_LOC_KIND,
-            locTypeLoader,
-            locTypeIds,
-            undefined,
-            { uploadedIdsSet: locUploadedIds },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_VARBIT_KIND,
-            varbitLoader,
-            varbitIds,
-            encodeVarbitTypeBytes,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_VARBIT_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_MODEL_KIND,
-            modelLoader,
-            mergedModelIds,
-            undefined,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_MODEL_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_OBJ_KIND,
-            objTypeLoader,
-            objTypeIds,
-            undefined,
-            { uploadedIdsSet: objUploadedIds },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_SEQ_TYPE_KIND,
-            seqTypeLoader,
-            sortedSeqIds,
-            undefined,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_SEQ_TYPE_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_SEQ_FRAME_KIND,
-            seqFrameLoader,
-            seqFrameIds,
-            encodeSeqFrameBytes,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_SEQ_FRAME_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromPackWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_SEQ_ALPHA_HINT_KIND,
-            seqAlphaHintPack,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_SEQ_ALPHA_HINT_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromIdsWithByteGetter(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_SEQ_BASE_KIND,
-            Array.from(seqBaseIds),
-            (id) => tryLoadSeqBaseBytesFromLoader(skeletalSeqLoader?.baseLoader ?? seqFrameLoader?.baseLoader, id | 0),
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_SEQ_BASE_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromIdsWithByteGetter(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_SKELETAL_SEQ_KIND,
-            Array.from(skeletalSeqBytesById.keys()),
-            (id) => skeletalSeqBytesById.get(id | 0),
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_SKELETAL_SEQ_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_NPC_KIND,
-            npcTypeLoader,
-            npcTypeIds,
-            undefined,
-            { uploadedIdsSet: npcUploadedIds },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_BAS_KIND,
-            basTypeLoader,
-            basTypeIds,
-            undefined,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_BAS_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_UNDERLAY_KIND,
-            underlayTypeLoader,
-            underlayTypeIds,
-            undefined,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_UNDERLAY_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromLoaderIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_OVERLAY_KIND,
-            overlayTypeLoader,
-            overlayTypeIds,
-            undefined,
-            { uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_OVERLAY_KIND, true) },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromIdsWithByteGetter(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_TEXTURE_TRANSPARENT_KIND,
-            transparentTextureIds,
-            () => new Uint8Array(0),
-            {
-                allowEmptyBytes: true,
-                uploadedIdsSet: getUploadedTypeIdSet(
-                    uploadState,
-                    RUNTIME_TYPE_BLOB_TEXTURE_TRANSPARENT_KIND,
-                    true,
-                ),
-            },
-        )
-    ) {
-        return false;
-    }
-    if (
-        !uploadTypeEntriesFromIdsWithByteGetter(
-            backendModule,
-            runtimeHandle,
-            RUNTIME_TYPE_BLOB_TEXTURE_IDS_KIND,
-            sdTextureIds,
-            () => new Uint8Array(0),
-            {
-                allowEmptyBytes: true,
-                uploadedIdsSet: getUploadedTypeIdSet(uploadState, RUNTIME_TYPE_BLOB_TEXTURE_IDS_KIND, true),
-            },
-        )
-    ) {
-        return false;
-    }
-    return true;
-}
-
-function uploadRuntimeMapSquaresAndObjSpawnsWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-    mapEntries,
-    state,
-) {
-    const { objSpawnsByMap } = collectObjTypeAndModelIdsForSceneBuild(sceneBuildInput);
-    const objSpawnStatus = uploadTypeEntriesFromPackWithWasm(
-        backendModule,
-        runtimeHandle,
-        RUNTIME_TYPE_BLOB_OBJ_SPAWNS_KIND,
-        objSpawnsByMap,
-        {
-            uploadedIdsSet: getUploadedTypeIdSet(
-                state,
-                RUNTIME_TYPE_BLOB_OBJ_SPAWNS_KIND,
-                true,
-            ),
-        },
-    )
-        ? RUNTIME_STATUS_OK
-        : -1;
-    if (objSpawnStatus !== RUNTIME_STATUS_OK) {
-        return false;
-    }
-
-    const clearMapSquaresStatus = runtimeCacheClearMapSquaresWithWasm(
-        backendModule,
-        runtimeHandle,
-    );
-    const nextMapSquareKeys = new Set();
-    for (let i = 0; i < mapEntries.length; i++) {
-        const entry = mapEntries[i];
-        nextMapSquareKeys.add(`${entry.mapX | 0},${entry.mapY | 0}`);
-    }
-
-    if (clearMapSquaresStatus === RUNTIME_STATUS_OK) {
-        if (mapEntries.length > 0) {
-            const status = runtimeCachePutMapSquaresPackedWithWasm(
-                backendModule,
-                runtimeHandle,
-                mapEntries,
-            );
-            if (status !== RUNTIME_STATUS_OK) {
-                return false;
-            }
-        }
-    } else if (clearMapSquaresStatus === undefined) {
-        if (mapEntries.length > 0) {
-            const status = runtimeCachePutMapSquaresPackedWithWasm(
-                backendModule,
-                runtimeHandle,
-                mapEntries,
-            );
-            if (status !== RUNTIME_STATUS_OK) {
-                return false;
-            }
-        }
-        const clearEntries = [];
-        for (const staleKey of state?.mapSquareKeys ?? []) {
-            if (nextMapSquareKeys.has(staleKey)) {
-                continue;
-            }
-            const comma = staleKey.indexOf(",");
-            if (comma <= 0) {
-                continue;
-            }
-            const mapX = Number.parseInt(staleKey.slice(0, comma), 10) | 0;
-            const mapY = Number.parseInt(staleKey.slice(comma + 1), 10) | 0;
-            clearEntries.push({ mapX, mapY });
-        }
-        if (clearEntries.length > 0) {
-            const clearStatus = runtimeCachePutMapSquaresPackedWithWasm(
-                backendModule,
-                runtimeHandle,
-                clearEntries,
-            );
-            if (clearStatus !== RUNTIME_STATUS_OK) {
-                return false;
-            }
-        }
-    } else {
-        return false;
-    }
-
-    if (state) {
-        state.mapSquareKeys = nextMapSquareKeys;
-    }
-    return true;
-}
-
-function getOrResetRuntimeUploadStateForCacheKey(runtimeHandle, sceneBuildInput) {
-    const state = getRuntimeCacheUploadState(runtimeHandle, true);
-    const cacheKey = `${sceneBuildInput?.cacheGame | 0}:${sceneBuildInput?.cacheRevision | 0}`;
-    if (state && state.typeCacheKey !== cacheKey) {
-        state.typeCacheKey = cacheKey;
-        state.typeEntryIdsByKind = new Map();
-    }
-    return { state, cacheKey };
-}
-
-function ensureRuntimeTypeEntryApi(backendModule) {
-    const useEntryTypeApi = hasRuntimeTypeEntryApi(backendModule);
-    if (!useEntryTypeApi) {
-        console.warn(
-            "[map-render-backend][cache-upload] runtime type-entry api is required for cache-v2 uploads",
-        );
-        return false;
-    }
-    return true;
-}
-
-export function uploadRuntimeObjSpawnTypeEntriesWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-) {
-    if (!ensureRuntimeTypeEntryApi(backendModule)) {
-        return false;
-    }
-    const { state, cacheKey } = getOrResetRuntimeUploadStateForCacheKey(
-        runtimeHandle,
-        sceneBuildInput,
-    );
-    const { objSpawnsByMap } = collectObjTypeAndModelIdsForSceneBuild(sceneBuildInput);
-    const ok = uploadTypeEntriesFromPackWithWasm(
-        backendModule,
-        runtimeHandle,
-        RUNTIME_TYPE_BLOB_OBJ_SPAWNS_KIND,
-        objSpawnsByMap,
-        {
-            uploadedIdsSet: getUploadedTypeIdSet(
-                state,
-                RUNTIME_TYPE_BLOB_OBJ_SPAWNS_KIND,
-                true,
-            ),
-        },
-    );
-    if (ok && state) {
-        state.typeCacheKey = cacheKey;
-    }
-    return ok;
-}
-
-export function uploadRuntimeRequiredTypeEntriesWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-) {
-    if (!ensureRuntimeTypeEntryApi(backendModule)) {
-        return false;
-    }
-    const { state, cacheKey } = getOrResetRuntimeUploadStateForCacheKey(
-        runtimeHandle,
-        sceneBuildInput,
-    );
-    const ok = uploadRuntimeTypesWithEntryApiWithWasm(
-        backendModule,
-        runtimeHandle,
-        sceneBuildInput,
-        state,
-    );
-    if (ok && state) {
-        state.typeCacheKey = cacheKey;
-    }
-    return ok;
-}
-
-export function uploadRuntimeCacheInputsWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-) {
-    const { state, cacheKey } = getOrResetRuntimeUploadStateForCacheKey(
-        runtimeHandle,
-        sceneBuildInput,
-    );
-
-    const buildConfigStatus = runtimeCacheSetBuildConfigWithWasm(
-        backendModule,
-        runtimeHandle,
-        sceneBuildInput,
-    );
-    if (buildConfigStatus !== RUNTIME_STATUS_OK) {
-        return false;
-    }
-
-    const mapEntries = collectRuntimeCacheMapSquareEntries(sceneBuildInput);
-    if (!Array.isArray(mapEntries)) {
-        return false;
-    }
-
-    if (!ensureRuntimeTypeEntryApi(backendModule)) {
-        return false;
-    }
-
-    if (
-        !uploadRuntimeMapSquaresAndObjSpawnsWithWasm(
-            backendModule,
-            runtimeHandle,
-            sceneBuildInput,
-            mapEntries,
-            state,
-        )
-    ) {
-        return false;
-    }
-
-    if (
-        !uploadRuntimeTypesWithEntryApiWithWasm(
-            backendModule,
-            runtimeHandle,
-            sceneBuildInput,
-            state,
-        )
-    ) {
-        return false;
-    }
-    if (state) {
-        state.typeCacheKey = cacheKey;
-    }
-
-    const varpValues = getSceneBuildVarpValues(sceneBuildInput);
-    const varpStatus = runtimeCacheSetVarpsWithWasm(backendModule, runtimeHandle, varpValues);
-    if (varpStatus !== 1) {
-        return false;
-    }
-
-    return true;
-}
-
 function copyI32FromHeap(backendModule, ptr, length) {
     if ((length | 0) <= 0 || (ptr >>> 0) === 0) {
         return new Int32Array(0);
@@ -3236,15 +1114,6 @@ function copyI32FromHeap(backendModule, ptr, length) {
     const start = ptr >>> 2;
     const end = start + (length | 0);
     return backendModule.HEAP32.slice(start, end);
-}
-
-function viewI32FromHeap(backendModule, ptr, length) {
-    if ((length | 0) <= 0 || (ptr >>> 0) === 0) {
-        return new Int32Array(0);
-    }
-    const start = ptr >>> 2;
-    const end = start + (length | 0);
-    return backendModule.HEAP32.subarray(start, end);
 }
 
 function copyI16FromHeap(backendModule, ptr, length) {
@@ -3256,15 +1125,6 @@ function copyI16FromHeap(backendModule, ptr, length) {
     return backendModule.HEAP16.slice(start, end);
 }
 
-function viewI16FromHeap(backendModule, ptr, length) {
-    if ((length | 0) <= 0 || (ptr >>> 0) === 0) {
-        return new Int16Array(0);
-    }
-    const start = ptr >>> 1;
-    const end = start + (length | 0);
-    return backendModule.HEAP16.subarray(start, end);
-}
-
 function copyU16FromHeap(backendModule, ptr, length) {
     if ((length | 0) <= 0 || (ptr >>> 0) === 0) {
         return new Uint16Array(0);
@@ -3272,15 +1132,6 @@ function copyU16FromHeap(backendModule, ptr, length) {
     const start = ptr >>> 1;
     const end = start + (length | 0);
     return backendModule.HEAPU16.slice(start, end);
-}
-
-function viewU16FromHeap(backendModule, ptr, length) {
-    if ((length | 0) <= 0 || (ptr >>> 0) === 0) {
-        return new Uint16Array(0);
-    }
-    const start = ptr >>> 1;
-    const end = start + (length | 0);
-    return backendModule.HEAPU16.subarray(start, end);
 }
 
 function copyU8FromHeap(backendModule, ptr, length) {
@@ -3292,223 +1143,15 @@ function copyU8FromHeap(backendModule, ptr, length) {
     return backendModule.HEAPU8.slice(start, end);
 }
 
-function viewU8FromHeap(backendModule, ptr, length) {
-    if ((length | 0) <= 0 || (ptr >>> 0) === 0) {
-        return new Uint8Array(0);
-    }
-    const start = ptr >>> 0;
-    const end = start + (length | 0);
-    return backendModule.HEAPU8.subarray(start, end);
-}
-
-function runtimeCachePutMapSquaresPackedWithWasm(
+function runtimeGetLastMissingBlobEntriesWithWasm(
     backendModule,
     runtimeHandle,
-    mapEntries,
 ) {
-    const cachePutMapSquaresPacked = getRuntimeCachePutMapSquaresPackedExport(backendModule);
-    if (typeof cachePutMapSquaresPacked !== "function") {
-        return -1;
-    }
-    const count = Array.isArray(mapEntries) ? mapEntries.length | 0 : 0;
-    if (count <= 0) {
-        return 1;
-    }
-
-    const mapXs = new Int32Array(count);
-    const mapYs = new Int32Array(count);
-    const terrainOffsets = new Int32Array(count);
-    const terrainLengths = new Int32Array(count);
-    const locOffsets = new Int32Array(count);
-    const locLengths = new Int32Array(count);
-    const npcOffsets = new Int32Array(count);
-    const npcLengths = new Int32Array(count);
-    terrainOffsets.fill(-1);
-    terrainLengths.fill(-1);
-    locOffsets.fill(-1);
-    locLengths.fill(-1);
-    npcOffsets.fill(-1);
-    npcLengths.fill(-1);
-
-    const terrainChunks = [];
-    const locChunks = [];
-    const npcChunks = [];
-    let terrainTotalBytes = 0;
-    let locTotalBytes = 0;
-    let npcTotalBytes = 0;
-
-    for (let i = 0; i < count; i++) {
-        const entry = mapEntries[i] ?? {};
-        mapXs[i] = entry.mapX | 0;
-        mapYs[i] = entry.mapY | 0;
-
-        const terrain = entry.terrainBytes instanceof Uint8Array ? entry.terrainBytes : undefined;
-        if (terrain && terrain.length > 0) {
-            terrainOffsets[i] = terrainTotalBytes | 0;
-            terrainLengths[i] = terrain.length | 0;
-            terrainChunks.push(terrain);
-            terrainTotalBytes += terrain.length | 0;
-        }
-
-        const loc = entry.locBytes instanceof Uint8Array ? entry.locBytes : undefined;
-        if (loc && loc.length > 0) {
-            locOffsets[i] = locTotalBytes | 0;
-            locLengths[i] = loc.length | 0;
-            locChunks.push(loc);
-            locTotalBytes += loc.length | 0;
-        }
-
-        const npc = entry.npcBytes instanceof Uint8Array ? entry.npcBytes : undefined;
-        if (npc && npc.length > 0) {
-            npcOffsets[i] = npcTotalBytes | 0;
-            npcLengths[i] = npc.length | 0;
-            npcChunks.push(npc);
-            npcTotalBytes += npc.length | 0;
-        }
-    }
-
-    const terrainBytes = concatByteChunks(terrainChunks, terrainTotalBytes);
-    const locBytes = concatByteChunks(locChunks, locTotalBytes);
-    const npcBytes = concatByteChunks(npcChunks, npcTotalBytes);
-
-    const mapXsPtr = mallocI32AndCopy(backendModule, mapXs);
-    const mapYsPtr = mallocI32AndCopy(backendModule, mapYs);
-    const terrainOffsetsPtr = mallocI32AndCopy(backendModule, terrainOffsets);
-    const terrainLengthsPtr = mallocI32AndCopy(backendModule, terrainLengths);
-    const terrainBytesPtr = mallocU8AndCopy(backendModule, terrainBytes);
-    const locOffsetsPtr = mallocI32AndCopy(backendModule, locOffsets);
-    const locLengthsPtr = mallocI32AndCopy(backendModule, locLengths);
-    const locBytesPtr = mallocU8AndCopy(backendModule, locBytes);
-    const npcOffsetsPtr = mallocI32AndCopy(backendModule, npcOffsets);
-    const npcLengthsPtr = mallocI32AndCopy(backendModule, npcLengths);
-    const npcBytesPtr = mallocU8AndCopy(backendModule, npcBytes);
-    if (!mapXsPtr || !mapYsPtr || !terrainOffsetsPtr || !terrainLengthsPtr || !locOffsetsPtr || !locLengthsPtr || !npcOffsetsPtr || !npcLengthsPtr) {
-        if (mapXsPtr) backendModule._free(mapXsPtr);
-        if (mapYsPtr) backendModule._free(mapYsPtr);
-        if (terrainOffsetsPtr) backendModule._free(terrainOffsetsPtr);
-        if (terrainLengthsPtr) backendModule._free(terrainLengthsPtr);
-        if (terrainBytesPtr) backendModule._free(terrainBytesPtr);
-        if (locOffsetsPtr) backendModule._free(locOffsetsPtr);
-        if (locLengthsPtr) backendModule._free(locLengthsPtr);
-        if (locBytesPtr) backendModule._free(locBytesPtr);
-        if (npcOffsetsPtr) backendModule._free(npcOffsetsPtr);
-        if (npcLengthsPtr) backendModule._free(npcLengthsPtr);
-        if (npcBytesPtr) backendModule._free(npcBytesPtr);
-        return -1;
-    }
-    try {
-        return cachePutMapSquaresPacked(
-            runtimeHandle | 0,
-            count | 0,
-            mapXsPtr,
-            mapYsPtr,
-            terrainOffsetsPtr,
-            terrainLengthsPtr,
-            terrainBytesPtr,
-            terrainBytes.length | 0,
-            locOffsetsPtr,
-            locLengthsPtr,
-            locBytesPtr,
-            locBytes.length | 0,
-            npcOffsetsPtr,
-            npcLengthsPtr,
-            npcBytesPtr,
-            npcBytes.length | 0,
-        ) | 0;
-    } finally {
-        backendModule._free(mapXsPtr);
-        backendModule._free(mapYsPtr);
-        backendModule._free(terrainOffsetsPtr);
-        backendModule._free(terrainLengthsPtr);
-        if (terrainBytesPtr) {
-            backendModule._free(terrainBytesPtr);
-        }
-        backendModule._free(locOffsetsPtr);
-        backendModule._free(locLengthsPtr);
-        if (locBytesPtr) {
-            backendModule._free(locBytesPtr);
-        }
-        backendModule._free(npcOffsetsPtr);
-        backendModule._free(npcLengthsPtr);
-        if (npcBytesPtr) {
-            backendModule._free(npcBytesPtr);
-        }
-    }
-}
-
-function runtimeCacheClearTypeKindWithWasm(backendModule, runtimeHandle, kind) {
-    const clearTypeKind = getRuntimeCacheClearTypeKindExport(backendModule);
-    if (typeof clearTypeKind !== "function") {
-        return -1;
-    }
-    return clearTypeKind(runtimeHandle | 0, kind | 0) | 0;
-}
-
-function runtimeCachePutTypeEntryWithWasm(
-    backendModule,
-    runtimeHandle,
-    kind,
-    id,
-    bytes,
-) {
-    const putTypeEntry = getRuntimeCachePutTypeEntryExport(backendModule);
-    if (typeof putTypeEntry !== "function") {
-        return -1;
-    }
-    const safeBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(0);
-    const bytesPtr = mallocU8AndCopy(backendModule, safeBytes);
-    try {
-        return putTypeEntry(
-            runtimeHandle | 0,
-            kind | 0,
-            id | 0,
-            bytesPtr,
-            safeBytes.length | 0,
-        ) | 0;
-    } finally {
-        if (bytesPtr) {
-            backendModule._free(bytesPtr);
-        }
-    }
-}
-
-function runtimeCollectRequiredTypeIdsWithWasm(
-    backendModule,
-    runtimeHandle,
-    requestOrSceneBuildInput,
-    collectFn,
-) {
-    if (typeof collectFn !== "function") {
+    const getPacked = getRuntimeGetLastMissingBlobEntriesPackedExport(backendModule);
+    if (typeof getPacked !== "function") {
         return undefined;
     }
-    const runtimeRequest =
-        normalizeRuntimeBuildRequest(requestOrSceneBuildInput) ??
-        createRuntimeCacheBuildRequest(requestOrSceneBuildInput);
-    if (!runtimeRequest) {
-        return undefined;
-    }
-    const sizeX = runtimeRequest.sizeX | 0;
-    const sizeY = runtimeRequest.sizeY | 0;
-    if (sizeX <= 0 || sizeY <= 0) {
-        return undefined;
-    }
-    const baseX = ((runtimeRequest.mapX | 0) * MAP_SQUARE_SIZE - (runtimeRequest.borderSize | 0)) | 0;
-    const baseY = ((runtimeRequest.mapY | 0) * MAP_SQUARE_SIZE - (runtimeRequest.borderSize | 0)) | 0;
-    const includeLocs = runtimeRequest.loadLocs === false ? 0 : 1;
-    const includeObjs = runtimeRequest.loadObjs === false ? 0 : 1;
-    const includeNpcs = runtimeRequest.loadNpcs === false ? 0 : 1;
-    const requiredLength = collectFn(
-        runtimeHandle | 0,
-        baseX,
-        baseY,
-        sizeX,
-        sizeY,
-        includeLocs,
-        includeObjs,
-        includeNpcs,
-        0,
-        0,
-    ) | 0;
+    const requiredLength = getPacked(runtimeHandle | 0, 0, 0) | 0;
     if (requiredLength < 2) {
         return undefined;
     }
@@ -3517,111 +1160,50 @@ function runtimeCollectRequiredTypeIdsWithWasm(
         return undefined;
     }
     try {
-        const written = collectFn(
-            runtimeHandle | 0,
-            baseX,
-            baseY,
-            sizeX,
-            sizeY,
-            includeLocs,
-            includeObjs,
-            includeNpcs,
-            outPtr,
-            requiredLength,
-        ) | 0;
+        const written = getPacked(runtimeHandle | 0, outPtr, requiredLength) | 0;
         if (written < 2 || written > requiredLength) {
             return undefined;
         }
         const packed = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + written);
         const packedVersion = packed[0] | 0;
-        const pairCount = packed[1] | 0;
-        if (packedVersion !== 1 || pairCount < 0 || written !== (2 + pairCount * 2)) {
+        const entryCount = packed[1] | 0;
+        if (packedVersion !== 1 || entryCount < 0 || written !== (2 + entryCount * 3)) {
             return undefined;
         }
-        const typeIdsByKind = new Map();
-        const locTypeIds = [];
-        const objTypeIds = [];
-        const npcTypeIds = [];
-        const varbitTypeIds = [];
-        const modelIds = [];
-        const seqTypeIds = [];
-        const basTypeIds = [];
-        const underlayTypeIds = [];
-        const overlayTypeIds = [];
-        for (let i = 0; i < pairCount; i++) {
-            const off = 2 + i * 2;
-            const kind = packed[off] | 0;
-            const id = packed[off + 1] | 0;
-            if (id < 0) {
-                continue;
-            }
-            let ids = typeIdsByKind.get(kind);
-            if (!Array.isArray(ids)) {
-                ids = [];
-                typeIdsByKind.set(kind, ids);
-            }
-            ids.push(id);
-            if (kind === RUNTIME_TYPE_BLOB_LOC_KIND) {
-                locTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_OBJ_KIND) {
-                objTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_NPC_KIND) {
-                npcTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_VARBIT_KIND) {
-                varbitTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_MODEL_KIND) {
-                modelIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_SEQ_TYPE_KIND) {
-                seqTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_BAS_KIND) {
-                basTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_UNDERLAY_KIND) {
-                underlayTypeIds.push(id);
-            } else if (kind === RUNTIME_TYPE_BLOB_OVERLAY_KIND) {
-                overlayTypeIds.push(id);
-            }
+        const domains = new Int32Array(entryCount);
+        const groups = new Int32Array(entryCount);
+        const files = new Int32Array(entryCount);
+        for (let i = 0; i < entryCount; i++) {
+            const off = 2 + i * 3;
+            domains[i] = packed[off] | 0;
+            groups[i] = packed[off + 1] | 0;
+            files[i] = packed[off + 2] | 0;
         }
-        return {
-            locTypeIds: sortedUniqueTypeIds(locTypeIds),
-            objTypeIds: sortedUniqueTypeIds(objTypeIds),
-            npcTypeIds: sortedUniqueTypeIds(npcTypeIds),
-            varbitTypeIds: sortedUniqueTypeIds(varbitTypeIds),
-            modelIds: sortedUniqueTypeIds(modelIds),
-            seqTypeIds: sortedUniqueTypeIds(seqTypeIds),
-            basTypeIds: sortedUniqueTypeIds(basTypeIds),
-            underlayTypeIds: sortedUniqueTypeIds(underlayTypeIds),
-            overlayTypeIds: sortedUniqueTypeIds(overlayTypeIds),
-            typeIdsByKind,
-        };
+        return { domains, groups, files };
     } finally {
         backendModule._free(outPtr);
     }
 }
 
-export function runtimeCollectRequiredPrimaryTypeIdsWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-) {
-    return runtimeCollectRequiredTypeIdsWithWasm(
-        backendModule,
-        runtimeHandle,
-        sceneBuildInput,
-        getRuntimeCollectRequiredPrimaryTypeIdsExport(backendModule),
-    );
-}
-
-export function runtimeCollectRequiredExpandedTypeIdsWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-) {
-    return runtimeCollectRequiredTypeIdsWithWasm(
-        backendModule,
-        runtimeHandle,
-        sceneBuildInput,
-        getRuntimeCollectRequiredExpandedTypeIdsExport(backendModule),
-    );
+function runtimeDebugBuildMapPlanFromCacheWithWasm(backendModule, runtimeHandle, request) {
+    const buildPlan = getRuntimeDebugBuildMapPlanFromCacheExport(backendModule);
+    if (typeof buildPlan !== "function") {
+        return -1;
+    }
+    return buildPlan(
+        runtimeHandle | 0,
+        request?.mapX | 0,
+        request?.mapY | 0,
+        request?.borderSize | 0,
+        request?.sizeX | 0,
+        request?.sizeY | 0,
+        request?.smoothTerrain ? 1 : 0,
+        request?.locLoadType | 0,
+        request?.minimizeDrawCalls === true ? 1 : 0,
+        request?.loadLocs === false ? 0 : 1,
+        request?.loadObjs === false ? 0 : 1,
+        request?.loadNpcs === false ? 0 : 1,
+    ) | 0;
 }
 
 function runtimeCacheSetVarpsWithWasm(backendModule, runtimeHandle, varps) {
@@ -3640,67 +1222,186 @@ function runtimeCacheSetVarpsWithWasm(backendModule, runtimeHandle, varps) {
     }
 }
 
-function runtimeCachePutTextureArgbWithWasm(backendModule, runtimeHandle, textureId, argb) {
-    const putTextureArgb = getRuntimeCachePutTextureArgbExport(backendModule);
-    if (typeof putTextureArgb !== "function") {
+function runtimeCachePutBlobBatchWithWasm(
+    backendModule,
+    runtimeHandle,
+    domain,
+    groups,
+    files,
+    offsets,
+    lengths,
+    bytes,
+) {
+    const putBlobBatch = getRuntimeCachePutBlobBatchExport(backendModule);
+    if (typeof putBlobBatch !== "function") {
         return -1;
     }
-    const values = argb instanceof Int32Array ? argb : new Int32Array(0);
-    const valuesPtr = mallocI32AndCopy(backendModule, values);
+
+    const safeGroups = groups instanceof Int32Array ? groups : new Int32Array(0);
+    const safeFiles = files instanceof Int32Array ? files : new Int32Array(0);
+    const safeOffsets = offsets instanceof Int32Array ? offsets : new Int32Array(0);
+    const safeLengths = lengths instanceof Int32Array ? lengths : new Int32Array(0);
+    const safeBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(0);
+
+    const n = safeGroups.length | 0;
+    if (
+        (safeFiles.length | 0) !== n ||
+        (safeOffsets.length | 0) !== n ||
+        (safeLengths.length | 0) !== n
+    ) {
+        return -1;
+    }
+
+    const groupsPtr = mallocI32AndCopy(backendModule, safeGroups);
+    const filesPtr = mallocI32AndCopy(backendModule, safeFiles);
+    const offsetsPtr = mallocI32AndCopy(backendModule, safeOffsets);
+    const lengthsPtr = mallocI32AndCopy(backendModule, safeLengths);
+    const bytesPtr = mallocU8AndCopy(backendModule, safeBytes);
     try {
-        return putTextureArgb(
+        return putBlobBatch(
             runtimeHandle | 0,
-            textureId | 0,
-            valuesPtr,
-            values.length | 0,
+            domain | 0,
+            groupsPtr,
+            filesPtr,
+            offsetsPtr,
+            lengthsPtr,
+            n,
+            bytesPtr,
+            safeBytes.length | 0,
         ) | 0;
     } finally {
-        if (valuesPtr) {
-            backendModule._free(valuesPtr);
-        }
+        if (groupsPtr) backendModule._free(groupsPtr);
+        if (filesPtr) backendModule._free(filesPtr);
+        if (offsetsPtr) backendModule._free(offsetsPtr);
+        if (lengthsPtr) backendModule._free(lengthsPtr);
+        if (bytesPtr) backendModule._free(bytesPtr);
     }
 }
 
-function runtimeCacheClearTextureArgbWithWasm(backendModule, runtimeHandle) {
-    const clearTextureArgb = getRuntimeCacheClearTextureArgbExport(backendModule);
-    if (typeof clearTextureArgb !== "function") {
+function runtimeCacheClearBlobDomainWithWasm(backendModule, runtimeHandle, domain) {
+    const clearBlobDomain = getRuntimeCacheClearBlobDomainExport(backendModule);
+    if (typeof clearBlobDomain !== "function") {
         return -1;
     }
-    return clearTextureArgb(runtimeHandle | 0) | 0;
+    return clearBlobDomain(runtimeHandle | 0, domain | 0) | 0;
 }
 
-function runtimeCachePutMaterialParamsWithWasm(backendModule, runtimeHandle, materialId, params) {
-    const putMaterialParams = getRuntimeCachePutMaterialParamsExport(backendModule);
-    if (typeof putMaterialParams !== "function") {
+function runtimeCacheClearAllBlobsWithWasm(backendModule, runtimeHandle) {
+    const clearAllBlobs = getRuntimeCacheClearAllBlobsExport(backendModule);
+    if (typeof clearAllBlobs !== "function") {
         return -1;
     }
-    const values = params instanceof Int32Array ? params : new Int32Array(0);
-    const valuesPtr = mallocI32AndCopy(backendModule, values);
+    return clearAllBlobs(runtimeHandle | 0) | 0;
+}
+
+function runtimeDebugGetLastBuildFailureWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastBuildFailureExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 4);
+    if (!outPtr) {
+        return undefined;
+    }
     try {
-        return putMaterialParams(
-            runtimeHandle | 0,
-            materialId | 0,
-            valuesPtr,
-            values.length | 0,
-        ) | 0;
-    } finally {
-        if (valuesPtr) {
-            backendModule._free(valuesPtr);
+        const status = fn(runtimeHandle | 0, outPtr, 4) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
         }
+        const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 4);
+        return {
+            stage: out[0] | 0,
+            status: out[1] | 0,
+            detail0: out[2] | 0,
+            detail1: out[3] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
     }
 }
 
-function runtimeCacheClearMaterialParamsWithWasm(backendModule, runtimeHandle) {
-    const clearMaterialParams = getRuntimeCacheClearMaterialParamsExport(backendModule);
-    if (typeof clearMaterialParams !== "function") {
-        return -1;
+function runtimeDebugGetLastCollectMapInputWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastCollectMapInputExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
     }
-    return clearMaterialParams(runtimeHandle | 0) | 0;
+    const outPtr = mallocI32(backendModule, 12);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = fn(runtimeHandle | 0, outPtr, 12) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 12);
+        return {
+            status: out[0] | 0,
+            reason: out[1] | 0,
+            mapStartX: out[2] | 0,
+            mapStartY: out[3] | 0,
+            mapEndX: out[4] | 0,
+            mapEndY: out[5] | 0,
+            expectedSquares: out[6] | 0,
+            squaresWithAny: out[7] | 0,
+            squaresWithTerrain: out[8] | 0,
+            squaresWithLoc: out[9] | 0,
+            firstPresentMapSquareId: out[10] | 0,
+            firstMissingMapSquareId: out[11] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
 }
 
-function runtimeCacheGetResourceCountsWithWasm(backendModule, runtimeHandle) {
-    const getResourceCounts = getRuntimeCacheGetResourceCountsExport(backendModule);
-    if (typeof getResourceCounts !== "function") {
+function runtimeDebugGetLastCommandStreamStatusWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastCommandStreamStatusExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 1);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = fn(runtimeHandle | 0, outPtr, 1) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        return backendModule.HEAP32[outPtr >> 2] | 0;
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+function runtimeDebugGetLastLegacyModelLoadWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastLegacyModelLoadExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 3);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = fn(runtimeHandle | 0, outPtr, 3) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 3);
+        return {
+            modelId: out[0] | 0,
+            status: out[1] | 0,
+            missingFile: out[2] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+function runtimeDebugGetLastMissingTypeWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastMissingTypeExport(backendModule);
+    if (typeof fn !== "function") {
         return undefined;
     }
     const outPtr = mallocI32(backendModule, 2);
@@ -3708,26 +1409,18 @@ function runtimeCacheGetResourceCountsWithWasm(backendModule, runtimeHandle) {
         return undefined;
     }
     try {
-        const status = getResourceCounts(runtimeHandle | 0, outPtr, 2) | 0;
+        const status = fn(runtimeHandle | 0, outPtr, 2) | 0;
         if (status !== RUNTIME_STATUS_OK) {
             return undefined;
         }
         const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 2);
         return {
-            textureCount: out[0] | 0,
-            materialCount: out[1] | 0,
+            kind: out[0] | 0,
+            id: out[1] | 0,
         };
     } finally {
         backendModule._free(outPtr);
     }
-}
-
-function runtimeCacheClearMapSquaresWithWasm(backendModule, runtimeHandle) {
-    const clearMapSquares = getRuntimeCacheClearMapSquaresExport(backendModule);
-    if (typeof clearMapSquares !== "function") {
-        return undefined;
-    }
-    return clearMapSquares(runtimeHandle | 0) | 0;
 }
 
 function runtimeCacheSetBuildConfigWithWasm(
@@ -3752,1394 +1445,7 @@ function runtimeCacheSetBuildConfigWithWasm(
     ) | 0;
 }
 
-export function runtimeDebugCollectMapInputDigestWithWasm(
-    backendModule,
-    runtimeHandle,
-    sceneBuildInput,
-) {
-    const collectDigest = getRuntimeDebugCollectMapInputDigestExport(backendModule);
-    if (typeof collectDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 8);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = collectDigest(
-            runtimeHandle | 0,
-            sceneBuildInput?.baseX | 0,
-            sceneBuildInput?.baseY | 0,
-            sceneBuildInput?.sizeX | 0,
-            sceneBuildInput?.sizeY | 0,
-            outPtr,
-            8,
-        ) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const digest = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 8);
-        return {
-            mapCount: digest[0] | 0,
-            terrainBytesLength: digest[1] | 0,
-            locBytesLength: digest[2] | 0,
-            mapSquareIdsHash: digest[3] | 0,
-            terrainOffsetsHash: digest[4] | 0,
-            terrainLengthsHash: digest[5] | 0,
-            terrainBytesHash: digest[6] | 0,
-            locBytesHash: digest[7] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetCacheConfigWithWasm(backendModule, runtimeHandle) {
-    const getCacheConfig = getRuntimeDebugGetCacheConfigExport(backendModule);
-    if (typeof getCacheConfig !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 4);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getCacheConfig(runtimeHandle | 0, outPtr, 4) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const config = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 4);
-        return {
-            cacheGame: config[0] | 0,
-            cacheRevision: config[1] | 0,
-            sceneLevels: config[2] | 0,
-            unitsTileHeightBasis: config[3] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLoadedHeightHashWithWasm(backendModule, runtimeHandle) {
-    const getLoadedHeightHash = getRuntimeDebugGetLoadedHeightHashExport(backendModule);
-    if (typeof getLoadedHeightHash !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 1);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getLoadedHeightHash(runtimeHandle | 0, outPtr) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        return backendModule.HEAP32[outPtr >> 2] | 0;
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastMapInputHashesWithWasm(backendModule, runtimeHandle) {
-    const getLastMapInputHashes = getRuntimeDebugGetLastMapInputHashesExport(backendModule);
-    if (typeof getLastMapInputHashes !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 3);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getLastMapInputHashes(runtimeHandle | 0, outPtr, 3) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const hashes = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 3);
-        return {
-            direct: hashes[0] | 0,
-            cache: hashes[1] | 0,
-            cacheScratchHeight: hashes[2] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetCachedCommandStreamArraysWithWasm(backendModule, runtimeHandle) {
-    const getLengths = getRuntimeDebugGetCachedCommandStreamLengthsExport(backendModule);
-    const copyStream = getRuntimeDebugCopyCachedCommandStreamExport(backendModule);
-    if (typeof getLengths !== "function" || typeof copyStream !== "function") {
-        return undefined;
-    }
-
-    const lengthsPtr = mallocI32(backendModule, 4);
-    if (!lengthsPtr) {
-        return undefined;
-    }
-    let cmdBucketPtr = 0;
-    let cmdOffsetsPtr = 0;
-    let cmdElementsPtr = 0;
-    let cmdInstanceCountsPtr = 0;
-    let cmdPackedInstancesPtr = 0;
-    let verticesPtr = 0;
-    let indicesPtr = 0;
-    try {
-        const lengthsStatus = getLengths(runtimeHandle | 0, lengthsPtr, 4) | 0;
-        if (lengthsStatus !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const lengths = backendModule.HEAP32.slice(lengthsPtr >> 2, (lengthsPtr >> 2) + 4);
-        const cmdCount = lengths[0] | 0;
-        const packedCount = lengths[1] | 0;
-        const verticesCount = lengths[2] | 0;
-        const indicesCount = lengths[3] | 0;
-        if (cmdCount < 0 || packedCount < 0 || verticesCount < 0 || indicesCount < 0) {
-            return undefined;
-        }
-
-        cmdBucketPtr = mallocI32(backendModule, cmdCount) || 0;
-        cmdOffsetsPtr = mallocI32(backendModule, cmdCount) || 0;
-        cmdElementsPtr = mallocI32(backendModule, cmdCount) || 0;
-        cmdInstanceCountsPtr = mallocI32(backendModule, cmdCount) || 0;
-        cmdPackedInstancesPtr = mallocI32(backendModule, packedCount) || 0;
-        verticesPtr = verticesCount > 0 ? backendModule._malloc(verticesCount) : 0;
-        indicesPtr = mallocI32(backendModule, indicesCount) || 0;
-
-        if ((cmdCount > 0 && (!cmdBucketPtr || !cmdOffsetsPtr || !cmdElementsPtr || !cmdInstanceCountsPtr)) ||
-            (packedCount > 0 && !cmdPackedInstancesPtr) ||
-            (verticesCount > 0 && !verticesPtr) ||
-            (indicesCount > 0 && !indicesPtr)) {
-            return undefined;
-        }
-
-        const copyStatus = copyStream(
-            runtimeHandle | 0,
-            cmdBucketPtr,
-            cmdCount,
-            cmdOffsetsPtr,
-            cmdCount,
-            cmdElementsPtr,
-            cmdCount,
-            cmdInstanceCountsPtr,
-            cmdCount,
-            cmdPackedInstancesPtr,
-            packedCount,
-            verticesPtr,
-            verticesCount,
-            indicesPtr,
-            indicesCount,
-        ) | 0;
-        if (copyStatus !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-
-        const cmdBucketIndices =
-            cmdCount > 0
-                ? backendModule.HEAP32.slice(cmdBucketPtr >> 2, (cmdBucketPtr >> 2) + cmdCount)
-                : new Int32Array(0);
-        const cmdOffsets =
-            cmdCount > 0
-                ? backendModule.HEAP32.slice(cmdOffsetsPtr >> 2, (cmdOffsetsPtr >> 2) + cmdCount)
-                : new Int32Array(0);
-        const cmdElements =
-            cmdCount > 0
-                ? backendModule.HEAP32.slice(cmdElementsPtr >> 2, (cmdElementsPtr >> 2) + cmdCount)
-                : new Int32Array(0);
-        const cmdInstanceCounts =
-            cmdCount > 0
-                ? backendModule.HEAP32.slice(
-                      cmdInstanceCountsPtr >> 2,
-                      (cmdInstanceCountsPtr >> 2) + cmdCount,
-                  )
-                : new Int32Array(0);
-        const cmdPackedInstances =
-            packedCount > 0
-                ? backendModule.HEAP32.slice(
-                      cmdPackedInstancesPtr >> 2,
-                      (cmdPackedInstancesPtr >> 2) + packedCount,
-                  )
-                : new Int32Array(0);
-        const vertices =
-            verticesCount > 0
-                ? backendModule.HEAPU8.slice(verticesPtr, verticesPtr + verticesCount)
-                : new Uint8Array(0);
-        const indices =
-            indicesCount > 0
-                ? backendModule.HEAP32.slice(indicesPtr >> 2, (indicesPtr >> 2) + indicesCount)
-                : new Int32Array(0);
-
-        return {
-            cmdBucketIndices,
-            cmdOffsets,
-            cmdElements,
-            cmdInstanceCounts,
-            cmdPackedInstances,
-            vertices,
-            indices,
-        };
-    } finally {
-        if (lengthsPtr) backendModule._free(lengthsPtr);
-        if (cmdBucketPtr) backendModule._free(cmdBucketPtr);
-        if (cmdOffsetsPtr) backendModule._free(cmdOffsetsPtr);
-        if (cmdElementsPtr) backendModule._free(cmdElementsPtr);
-        if (cmdInstanceCountsPtr) backendModule._free(cmdInstanceCountsPtr);
-        if (cmdPackedInstancesPtr) backendModule._free(cmdPackedInstancesPtr);
-        if (verticesPtr) backendModule._free(verticesPtr);
-        if (indicesPtr) backendModule._free(indicesPtr);
-    }
-}
-
-export function runtimeDebugGetCachedCommandStreamDigestWithWasm(backendModule, runtimeHandle) {
-    const getDigest = getRuntimeDebugGetCachedCommandStreamDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 16);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, outPtr, 16) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const digest = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 16);
-        return {
-            totalCmdCount: digest[0] | 0,
-            cmdBucketIndicesHash: digest[1] | 0,
-            cmdOffsetsHash: digest[2] | 0,
-            cmdElementsHash: digest[3] | 0,
-            cmdInstanceCountsHash: digest[4] | 0,
-            cmdPackedInstancesHash: digest[5] | 0,
-            verticesHash: digest[6] | 0,
-            indicesHash: digest[7] | 0,
-            bucketCmdCounts: Array.from(digest.slice(8, 16), (v) => v | 0),
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastBuildStatsWithWasm(backendModule, runtimeHandle) {
-    const getLastBuildStats = getRuntimeDebugGetLastBuildStatsExport(backendModule);
-    if (typeof getLastBuildStats !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, RUNTIME_BUILD_DEBUG_STATS_LENGTH);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getLastBuildStats(
-            runtimeHandle | 0,
-            outPtr,
-            RUNTIME_BUILD_DEBUG_STATS_LENGTH,
-        ) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const stats = backendModule.HEAP32.slice(
-            outPtr >> 2,
-            (outPtr >> 2) + RUNTIME_BUILD_DEBUG_STATS_LENGTH,
-        );
-        return {
-            terrainTilesConsidered: stats[0] | 0,
-            terrainTilesEmitted: stats[1] | 0,
-            terrainFacesEmitted: stats[2] | 0,
-            locPlacementsDecoded: stats[3] | 0,
-            locPlacementsInBounds: stats[4] | 0,
-            locPlacementsResolved: stats[5] | 0,
-            locResolveNotFound: stats[6] | 0,
-            locNoModelsForPlacement: stats[7] | 0,
-            locModelCandidates: stats[8] | 0,
-            locModelStatsDecodeFailed: stats[9] | 0,
-            locModelStatsNotFound: stats[10] | 0,
-            locModelStatsOtherError: stats[11] | 0,
-            locMissingModelSampleCount: stats[12] | 0,
-            locMissingModelSample0: stats[13] | 0,
-            locMissingModelSample1: stats[14] | 0,
-            locMissingModelSample2: stats[15] | 0,
-            locMissingModelSample3: stats[16] | 0,
-            locMissingModelLocTypeId: stats[17] | 0,
-            locMissingModelPlacementType: stats[18] | 0,
-            locMissingModelRotation: stats[19] | 0,
-            locModelStatsZeroFaces: stats[20] | 0,
-            locGroupStatsMismatch: stats[21] | 0,
-            locPlacementsQueuedAnyModel: stats[22] | 0,
-            locInstancesQueued: stats[23] | 0,
-            locAnimatedNoFaces: stats[24] | 0,
-            locAnimatedQueued: stats[25] | 0,
-            objSpawnsDecoded: stats[26] | 0,
-            objSpawnsInBounds: stats[27] | 0,
-            objModelCandidates: stats[28] | 0,
-            objInstancesQueued: stats[29] | 0,
-            locMergeByPlacementCount: stats[30] | 0,
-            locInstancedGroupCount: stats[31] | 0,
-            locVariantGroupsQueued: stats[32] | 0,
-            locVariantGroupsHash: stats[33] | 0,
-            locVariantType9Queued: stats[34] | 0,
-            locVariantType0Queued: stats[35] | 0,
-            locVariantId1651Type9Queued: stats[36] | 0,
-            locVariantId1651Type0Queued: stats[37] | 0,
-            objMergeByPlacementCount: stats[38] | 0,
-            objInstancedGroupCount: stats[39] | 0,
-            terrainFacesUnderlayLevel0: stats[40] | 0,
-            terrainFacesUnderlayLevel1: stats[41] | 0,
-            terrainFacesUnderlayLevel2: stats[42] | 0,
-            terrainFacesUnderlayLevel3: stats[43] | 0,
-            terrainFacesOverlayLevel0: stats[44] | 0,
-            terrainFacesOverlayLevel1: stats[45] | 0,
-            terrainFacesOverlayLevel2: stats[46] | 0,
-            terrainFacesOverlayLevel3: stats[47] | 0,
-            locMergedDummyCommandCount: stats[48] | 0,
-            locMergedDummyElementsTotal: stats[49] | 0,
-            locMergedDummyHash: stats[50] | 0,
-            locMergedDummyBaseCount: stats[51] | 0,
-            locMergedDummyAlphaCount: stats[52] | 0,
-            locMergedDummyLodCount: stats[53] | 0,
-            locMergedDummyLodAlphaCount: stats[54] | 0,
-            geometryElementMismatchCount: stats[55] | 0,
-            geometryElementMismatchTotalDelta: stats[56] | 0,
-            geometryElementMismatchMaxDelta: stats[57] | 0,
-            geometryElementMismatchSampleTypeId: stats[58] | 0,
-            geometryElementMismatchSamplePlacementType: stats[59] | 0,
-            geometryElementMismatchSampleRotation: stats[60] | 0,
-            locPreMergeGroupKeysQueued: stats[61] | 0,
-            locPreMergeGroupKeysHash: stats[62] | 0,
-            locVariantCandidatesExpanded: stats[63] | 0,
-            locVariantDecodeFailed: stats[64] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugDecodeOverlayTypeWithWasm(backendModule, runtimeHandle, overlayId) {
-    const decode = getRuntimeDebugDecodeOverlayTypeExport(backendModule);
-    if (typeof decode !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 12);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = decode(runtimeHandle | 0, overlayId | 0, outPtr, 12) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 12);
-        return {
-            primaryRgb: a[0] | 0,
-            primaryHsl: a[1] | 0,
-            textureId: a[2] | 0,
-            secondaryTextureId: a[3] | 0,
-            blendRgb: a[4] | 0,
-            blendHsl: a[5] | 0,
-            blendable: (a[6] | 0) !== 0,
-            blendPriority: a[7] | 0,
-            hideUnderlay: (a[8] | 0) !== 0,
-            occludes: (a[9] | 0) !== 0,
-            textureSize: a[10] | 0,
-            blockShadow: (a[11] | 0) !== 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugDecodeLocTypeWithWasm(backendModule, runtimeHandle, locTypeId) {
-    const decode = getRuntimeDebugDecodeLocTypeExport(backendModule);
-    if (typeof decode !== "function") {
-        return undefined;
-    }
-    // Keep in sync with RS_MAP_RENDER_DEBUG_LOC_TYPE_FIELDS in cpp/tools/rs_map_render_backend.cpp
-    const outPtr = mallocI32(backendModule, 34);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = decode(runtimeHandle | 0, locTypeId | 0, outPtr, 34) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 34);
-        return {
-            id: a[0] | 0,
-            resolvedId: a[1] | 0,
-            mergeNormals: (a[2] | 0) !== 0,
-            resolvedMergeNormals: (a[3] | 0) !== 0,
-            contourGroundType: a[4] | 0,
-            resolvedContourGroundType: a[5] | 0,
-            contouredGround: a[6] | 0,
-            resolvedContouredGround: a[7] | 0,
-            contourGroundParam: a[8] | 0,
-            resolvedContourGroundParam: a[9] | 0,
-            hasTypes: (a[10] | 0) !== 0,
-            resolvedHasTypes: (a[11] | 0) !== 0,
-            typeCount: a[12] | 0,
-            resolvedTypeCount: a[13] | 0,
-            modelGroupCount: a[14] | 0,
-            resolvedModelGroupCount: a[15] | 0,
-            modelIdCount: a[16] | 0,
-            resolvedModelIdCount: a[17] | 0,
-            firstType: a[18] | 0,
-            resolvedFirstType: a[19] | 0,
-            firstModelId: a[20] | 0,
-            resolvedFirstModelId: a[21] | 0,
-            transformsCount: a[22] | 0,
-            transformVarbit: a[23] | 0,
-            transformVarp: a[24] | 0,
-            transformIndex: a[25] | 0,
-            transformId: a[26] | 0,
-            resolvedFromTransform: (a[27] | 0) !== 0,
-            decorDisplacement: a[28] | 0,
-            resolvedDecorDisplacement: a[29] | 0,
-            ambient: a[30] | 0,
-            contrast: a[31] | 0,
-            resolvedAmbient: a[32] | 0,
-            resolvedContrast: a[33] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastTerrainTileFaceCountsWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastTerrainTileFaceCountsMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastTerrainTileFaceCountsExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 5);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 5) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const meta = backendModule.HEAP32.slice(metaPtr >> 2, (metaPtr >> 2) + 5);
-        const levels = meta[0] | 0;
-        const width = meta[1] | 0;
-        const height = meta[2] | 0;
-        const border = meta[3] | 0;
-        const len = meta[4] | 0;
-        if (len <= 0) {
-            return { levels, width, height, border, counts: new Uint8Array(0) };
-        }
-        const bytesPtr = backendModule._malloc(len);
-        if (!bytesPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, bytesPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            const counts = backendModule.HEAPU8.slice(bytesPtr >>> 0, (bytesPtr >>> 0) + len);
-            return { levels, width, height, border, counts };
-        } finally {
-            backendModule._free(bytesPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastCollisionFlagsWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastCollisionFlagsMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastCollisionFlagsExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 4);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 4) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const meta = backendModule.HEAP32.slice(metaPtr >> 2, (metaPtr >> 2) + 4);
-        const levels = meta[0] | 0;
-        const sizeX = meta[1] | 0;
-        const sizeY = meta[2] | 0;
-        const len = meta[3] | 0;
-        const expectedLen = (levels | 0) * (sizeX | 0) * (sizeY | 0);
-        if (expectedLen !== (len | 0)) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return { levels, sizeX, sizeY, flags: new Int32Array(0) };
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            const flags = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-            return { levels, sizeX, sizeY, flags };
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastTerrainDigestWithWasm(backendModule, runtimeHandle) {
-    const getDigest = getRuntimeDebugGetLastTerrainDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 12);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, outPtr, 12) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 12);
-        return {
-            levels: a[0] | 0,
-            facesTotal: a[1] | 0,
-            verticesTotal: a[2] | 0,
-            hash: a[3] | 0,
-            levelFaces: [a[4] | 0, a[5] | 0, a[6] | 0, a[7] | 0],
-            levelVertices: [a[8] | 0, a[9] | 0, a[10] | 0, a[11] | 0],
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugSetTerrainDigestSampleStartVertexWithWasm(
-    backendModule,
-    runtimeHandle,
-    startVertex,
-) {
-    const setStart = getRuntimeDebugSetTerrainDigestSampleStartVertexExport(backendModule);
-    if (typeof setStart !== "function") {
-        return false;
-    }
-    const status = setStart(runtimeHandle | 0, startVertex | 0) | 0;
-    return status === RUNTIME_STATUS_OK;
-}
-
-export function runtimeDebugSetTerrainProbeWithWasm(
-    backendModule,
-    runtimeHandle,
-    level,
-    tileX,
-    tileY,
-) {
-    const setProbe = getRuntimeDebugSetTerrainProbeExport(backendModule);
-    if (typeof setProbe !== "function") {
-        return false;
-    }
-    const status = setProbe(runtimeHandle | 0, level | 0, tileX | 0, tileY | 0) | 0;
-    return status === RUNTIME_STATUS_OK;
-}
-
-export function runtimeDebugGetLastTerrainProbeWithWasm(backendModule, runtimeHandle) {
-    const getProbe = getRuntimeDebugGetLastTerrainProbeExport(backendModule);
-    if (typeof getProbe !== "function") {
-        return undefined;
-    }
-    const PROBE_LEN = 68;
-    const outPtr = mallocI32(backendModule, PROBE_LEN);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getProbe(runtimeHandle | 0, outPtr, PROBE_LEN) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + PROBE_LEN);
-        return {
-            hit: (a[0] | 0) !== 0,
-            level: a[1] | 0,
-            tileX: a[2] | 0,
-            tileY: a[3] | 0,
-            packed: new Int32Array(a.slice(4)),
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugDecodeCachedTerrainCellWithWasm(
-    backendModule,
-    runtimeHandle,
-    mapX,
-    mapY,
-    level,
-    localX,
-    localY,
-) {
-    const decode = getRuntimeDebugDecodeCachedTerrainCellExport(backendModule);
-    if (typeof decode !== "function") {
-        return undefined;
-    }
-    const OUT_LEN = 16;
-    const outPtr = mallocI32(backendModule, OUT_LEN);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = decode(
-            runtimeHandle | 0,
-            mapX | 0,
-            mapY | 0,
-            level | 0,
-            localX | 0,
-            localY | 0,
-            outPtr,
-            OUT_LEN,
-        ) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + OUT_LEN);
-        return {
-            ok: (a[0] | 0) !== 0,
-            newFormat: (a[1] | 0) !== 0,
-            terrainBytesLength: a[2] | 0,
-            underlayRaw: a[3] | 0,
-            overlayRaw: a[4] | 0,
-            shape: a[5] | 0,
-            rotation: a[6] | 0,
-            renderFlags: a[7] | 0,
-            height: a[8] | 0,
-            cacheGame: a[9] | 0,
-            cacheRevision: a[10] | 0,
-            mapX: a[11] | 0,
-            mapY: a[12] | 0,
-            packed: new Int32Array(a),
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugSetWorldHeightProbeWithWasm(
-    backendModule,
-    runtimeHandle,
-    level,
-    worldX,
-    worldZ,
-) {
-    const setProbe = getRuntimeDebugSetWorldHeightProbeExport(backendModule);
-    if (typeof setProbe !== "function") {
-        return false;
-    }
-    const status = setProbe(runtimeHandle | 0, level | 0, worldX | 0, worldZ | 0) | 0;
-    return status === RUNTIME_STATUS_OK;
-}
-
-export function runtimeDebugGetLastWorldHeightProbeWithWasm(backendModule, runtimeHandle) {
-    const getProbe = getRuntimeDebugGetLastWorldHeightProbeExport(backendModule);
-    if (typeof getProbe !== "function") {
-        return undefined;
-    }
-    const PROBE_LEN = 20;
-    const outPtr = mallocI32(backendModule, PROBE_LEN);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getProbe(runtimeHandle | 0, outPtr, PROBE_LEN) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + PROBE_LEN);
-        return {
-            rawHit: a[0] | 0,
-            hit: (a[0] | 0) !== 0,
-            level: a[1] | 0,
-            worldX: a[2] | 0,
-            worldZ: a[3] | 0,
-            packed: new Int32Array(a.slice(4)),
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastTerrainDigestSamplesPackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastTerrainDigestSamplesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastTerrainDigestSamplesPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 3);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 3) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const meta = backendModule.HEAP32.slice(metaPtr >> 2, (metaPtr >> 2) + 3);
-        const count = meta[0] | 0;
-        const stride = meta[1] | 0;
-        const len = meta[2] | 0;
-        if (len <= 0) {
-            return { count, stride, packed: new Int32Array(0) };
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-            return { count, stride, packed: new Int32Array(a) };
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastSceneCommandPlanDigestWithWasm(backendModule, runtimeHandle) {
-    const getDigest = getRuntimeDebugGetLastSceneCommandPlanDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 9);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, outPtr, 9) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 9);
-        return {
-            opCount: a[0] | 0,
-            mergedGroupOpCount: a[1] | 0,
-            instancedOpCount: a[2] | 0,
-            instancedFacesTotal: a[3] | 0,
-            instancedInstancesTotal: a[4] | 0,
-            instancedLodInstancesTotal: a[5] | 0,
-            seqHash: a[6] | 0,
-            multisetHashSum: a[7] | 0,
-            multisetHashXor: a[8] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastSceneCommandPlanOpsPackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastSceneCommandPlanOpsPackedMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastSceneCommandPlanOpsPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 1);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 1) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastSceneCommandPlanOpProvenancePackedWithWasm(
-    backendModule,
-    runtimeHandle,
-) {
-    const getMeta = getRuntimeDebugGetLastSceneCommandPlanOpProvenancePackedMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastSceneCommandPlanOpProvenancePackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 1);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 1) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastSceneBucketsDigestWithWasm(backendModule, runtimeHandle) {
-    const getDigest = getRuntimeDebugGetLastSceneBucketsDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 11);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, outPtr, 11) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 11);
-        return {
-            cmdTotal: a[0] | 0,
-            instanceTotal: a[1] | 0,
-            hash: a[2] | 0,
-            bucketCmdCounts: [
-                a[3] | 0,
-                a[4] | 0,
-                a[5] | 0,
-                a[6] | 0,
-                a[7] | 0,
-                a[8] | 0,
-                a[9] | 0,
-                a[10] | 0,
-            ],
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocRenderPlacementDigestWithWasm(backendModule, runtimeHandle) {
-    const getDigest = getRuntimeDebugGetLastLocRenderPlacementDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 2);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, outPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 2);
-        return {
-            count: a[0] | 0,
-            hash: a[1] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocRenderPlacementEntriesPackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastLocRenderPlacementEntriesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastLocRenderPlacementEntriesPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 2);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        const stride = backendModule.HEAP32[(metaPtr >> 2) + 1] | 0;
-        if (stride !== 13) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetModelFacesDigestWithWasm(backendModule, runtimeHandle, modelId) {
-    const getDigest = getRuntimeDebugGetModelFacesDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 4);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, modelId | 0, outPtr, 4) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 4);
-        return {
-            faceCount: a[0] | 0,
-            opaqueCount: a[1] | 0,
-            transparentCount: a[2] | 0,
-            hash: a[3] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetModelVerticesDigestWithWasm(backendModule, runtimeHandle, modelId) {
-    const getDigest = getRuntimeDebugGetModelVerticesDigestExport(backendModule);
-    if (typeof getDigest !== "function") {
-        return undefined;
-    }
-    const outPtr = mallocI32(backendModule, 4);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getDigest(runtimeHandle | 0, modelId | 0, outPtr, 4) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 4);
-        return {
-            verticesCount: a[0] | 0,
-            usedVertexCount: a[1] | 0,
-            faceCount: a[2] | 0,
-            hash: a[3] | 0,
-        };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetModelVerticesSampleWithWasm(backendModule, runtimeHandle, modelId) {
-    const getSample = getRuntimeDebugGetModelVerticesSampleExport(backendModule);
-    if (typeof getSample !== "function") {
-        return undefined;
-    }
-    const LEN = 5 + 32 * 3;
-    const outPtr = mallocI32(backendModule, LEN);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getSample(runtimeHandle | 0, modelId | 0, outPtr, LEN) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + LEN);
-        const version = a[0] | 0;
-        const verticesCount = a[1] | 0;
-        const usedVertexCount = a[2] | 0;
-        const faceCount = a[3] | 0;
-        const written = a[4] | 0;
-        const clampWritten = written >= 0 ? Math.min(written, 32) | 0 : 0;
-        const xyz = new Int32Array(clampWritten * 3);
-        for (let i = 0; i < xyz.length; i++) {
-            xyz[i] = a[5 + i] | 0;
-        }
-        return { version, verticesCount, usedVertexCount, faceCount, written: clampWritten, xyz };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetModelVerticesSampleRangeWithWasm(
-    backendModule,
-    runtimeHandle,
-    modelId,
-    startVertex,
-) {
-    const getSample = getRuntimeDebugGetModelVerticesSampleRangeExport(backendModule);
-    if (typeof getSample !== "function") {
-        return undefined;
-    }
-    const LEN = 5 + 32 * 3;
-    const outPtr = mallocI32(backendModule, LEN);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getSample(runtimeHandle | 0, modelId | 0, startVertex | 0, outPtr, LEN) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + LEN);
-        const version = a[0] | 0;
-        const verticesCount = a[1] | 0;
-        const usedVertexCount = a[2] | 0;
-        const faceCount = a[3] | 0;
-        const written = a[4] | 0;
-        const clampWritten = written >= 0 ? Math.min(written, 32) | 0 : 0;
-        const xyz = new Int32Array(clampWritten * 3);
-        for (let i = 0; i < xyz.length; i++) {
-            xyz[i] = a[5 + i] | 0;
-        }
-        return { version, verticesCount, usedVertexCount, faceCount, written: clampWritten, xyz };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLocModelVerticesSampleWithWasm(
-    backendModule,
-    runtimeHandle,
-    locTypeId,
-    placementType,
-    rotation,
-    modelId,
-) {
-    const getSample = getRuntimeDebugGetLocModelVerticesSampleExport(backendModule);
-    if (typeof getSample !== "function") {
-        return undefined;
-    }
-    const LEN = 5 + 32 * 3;
-    const outPtr = mallocI32(backendModule, LEN);
-    if (!outPtr) {
-        return undefined;
-    }
-    try {
-        const status = getSample(
-            runtimeHandle | 0,
-            locTypeId | 0,
-            placementType | 0,
-            rotation | 0,
-            modelId | 0,
-            outPtr,
-            LEN,
-        ) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + LEN);
-        const version = a[0] | 0;
-        const verticesCount = a[1] | 0;
-        const usedVertexCount = a[2] | 0;
-        const faceCount = a[3] | 0;
-        const written = a[4] | 0;
-        const clampWritten = written >= 0 ? Math.min(written, 32) | 0 : 0;
-        const xyz = new Int32Array(clampWritten * 3);
-        for (let i = 0; i < xyz.length; i++) {
-            xyz[i] = a[5 + i] | 0;
-        }
-        return { version, verticesCount, usedVertexCount, faceCount, written: clampWritten, xyz };
-    } finally {
-        backendModule._free(outPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocPreMergeGroupKeySignaturesWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastLocPreMergeGroupKeySignaturesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastLocPreMergeGroupKeySignaturesExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 1);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 1) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocPreMergeGroupKeyEntriesPackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastLocPreMergeGroupKeyEntriesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastLocPreMergeGroupKeyEntriesPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 2);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        const stride = backendModule.HEAP32[(metaPtr >> 2) + 1] | 0;
-        if (stride !== 17 && stride !== 10) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocMergeDecisionEntriesPackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastLocMergeDecisionEntriesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastLocMergeDecisionEntriesPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 2);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        const stride = backendModule.HEAP32[(metaPtr >> 2) + 1] | 0;
-        if (stride !== 26) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocMergeEmitEntriesPackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastLocMergeEmitEntriesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastLocMergeEmitEntriesPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 2);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        const stride = backendModule.HEAP32[(metaPtr >> 2) + 1] | 0;
-        if (stride !== 13 && stride !== 11) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastLocMergeNormalsTraceEntriesPackedWithWasm(
-    backendModule,
-    runtimeHandle,
-) {
-    const getMeta = getRuntimeDebugGetLastLocMergeNormalsTraceEntriesMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastLocMergeNormalsTraceEntriesPackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 2);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        const stride = backendModule.HEAP32[(metaPtr >> 2) + 1] | 0;
-        if (stride !== 22) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugGetLastCommandProvenancePackedWithWasm(backendModule, runtimeHandle) {
-    const getMeta = getRuntimeDebugGetLastCommandProvenanceMetaExport(backendModule);
-    const copy = getRuntimeDebugCopyLastCommandProvenancePackedExport(backendModule);
-    if (typeof getMeta !== "function" || typeof copy !== "function") {
-        return undefined;
-    }
-    const metaPtr = mallocI32(backendModule, 2);
-    if (!metaPtr) {
-        return undefined;
-    }
-    try {
-        const status = getMeta(runtimeHandle | 0, metaPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
-            return undefined;
-        }
-        const len = backendModule.HEAP32[metaPtr >> 2] | 0;
-        const stride = backendModule.HEAP32[(metaPtr >> 2) + 1] | 0;
-        if (stride !== 11 && stride !== 12) {
-            return undefined;
-        }
-        if (len <= 0) {
-            return new Int32Array(0);
-        }
-        const outPtr = mallocI32(backendModule, len);
-        if (!outPtr) {
-            return undefined;
-        }
-        try {
-            const copyStatus = copy(runtimeHandle | 0, outPtr, len) | 0;
-            if (copyStatus !== RUNTIME_STATUS_OK) {
-                return undefined;
-            }
-            return backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + len);
-        } finally {
-            backendModule._free(outPtr);
-        }
-    } finally {
-        backendModule._free(metaPtr);
-    }
-}
-
-function parseRuntimePacketFromMetaArray(backendModule, meta, options) {
-    const asView = !!options?.asView;
+function parseRuntimePacketFromMetaArray(backendModule, meta) {
     const bucketCmdCountsPtr = meta[0] >>> 0;
     const bucketCmdCountsLen = meta[1] | 0;
     const bucketModelInfoLengthsPtr = meta[2] >>> 0;
@@ -5164,6 +1470,8 @@ function parseRuntimePacketFromMetaArray(backendModule, meta, options) {
     const npcOrderKeysPtr = meta[41] >>> 0;
     const npcOrderKeysLen = meta[42] | 0;
     const packetVersion = meta[43] | 0;
+    const usedTextureIdsPtr = meta[44] >>> 0;
+    const usedTextureIdsLen = meta[45] | 0;
     if (
         (meta.length | 0) < RUNTIME_PACKET_META_LENGTH ||
         bucketCmdCountsLen !== DRAW_BUCKET_KEYS.length ||
@@ -5177,16 +1485,13 @@ function parseRuntimePacketFromMetaArray(backendModule, meta, options) {
         npcVerticesLen < 0 ||
         npcIndicesLen < 0 ||
         npcOrderKeysLen < 0 ||
+        usedTextureIdsLen < 0 ||
         packetVersion !== RUNTIME_PACKET_VERSION
     ) {
         return undefined;
     }
-    const i32Reader = asView ? viewI32FromHeap : copyI32FromHeap;
-    const i16Reader = asView ? viewI16FromHeap : copyI16FromHeap;
-    const u16Reader = asView ? viewU16FromHeap : copyU16FromHeap;
-    const u8Reader = asView ? viewU8FromHeap : copyU8FromHeap;
-    const bucketCmdCounts = i32Reader(backendModule, bucketCmdCountsPtr, bucketCmdCountsLen);
-    const bucketModelInfoLengths = i32Reader(
+    const bucketCmdCounts = copyI32FromHeap(backendModule, bucketCmdCountsPtr, bucketCmdCountsLen);
+    const bucketModelInfoLengths = copyI32FromHeap(
         backendModule,
         bucketModelInfoLengthsPtr,
         bucketModelInfoLengthsLen,
@@ -5212,7 +1517,7 @@ function parseRuntimePacketFromMetaArray(backendModule, meta, options) {
         if (len > 0 && ptr === 0) {
             return undefined;
         }
-        modelInfoTextureBuckets[bucket] = u16Reader(backendModule, ptr, len);
+        modelInfoTextureBuckets[bucket] = copyU16FromHeap(backendModule, ptr, len);
         if (modelInfoTextureBuckets[bucket].length !== len) {
             return undefined;
         }
@@ -5226,22 +1531,22 @@ function parseRuntimePacketFromMetaArray(backendModule, meta, options) {
         bucketCmdCounts,
         bucketModelInfoLengths,
         modelInfoTextureBuckets,
-        heightMapTextureData: i16Reader(backendModule, heightMapPtr, heightMapLen),
+        heightMapTextureData: copyI16FromHeap(backendModule, heightMapPtr, heightMapLen),
         levels: meta[6] | 0,
         sizeX: meta[7] | 0,
         sizeY: meta[8] | 0,
         unitsTileHeightBasis: meta[9] | 0,
         totalModelInfoLength,
         packetVersion,
-        drawRangesPacked: i32Reader(backendModule, drawRangesPackedPtr, drawRangesPackedLen),
-        vertices: u8Reader(backendModule, verticesPtr, verticesLen),
-        indices: i32Reader(backendModule, indicesPtr, indicesLen),
-        npcDrawRangesBase: i32Reader(backendModule, npcDrawRangesBasePtr, npcDrawRangesBaseLen),
-        npcDrawRangesAlpha: i32Reader(backendModule, npcDrawRangesAlphaPtr, npcDrawRangesAlphaLen),
-        npcVertices: u8Reader(backendModule, npcVerticesPtr, npcVerticesLen),
-        npcIndices: i32Reader(backendModule, npcIndicesPtr, npcIndicesLen),
-        npcOrderKeys: i32Reader(backendModule, npcOrderKeysPtr, npcOrderKeysLen),
-        __packetHandle: (options?.packetHandle | 0) > 0 ? (options.packetHandle | 0) : 0,
+        drawRangesPacked: copyI32FromHeap(backendModule, drawRangesPackedPtr, drawRangesPackedLen),
+        vertices: copyU8FromHeap(backendModule, verticesPtr, verticesLen),
+        indices: copyI32FromHeap(backendModule, indicesPtr, indicesLen),
+        npcDrawRangesBase: copyI32FromHeap(backendModule, npcDrawRangesBasePtr, npcDrawRangesBaseLen),
+        npcDrawRangesAlpha: copyI32FromHeap(backendModule, npcDrawRangesAlphaPtr, npcDrawRangesAlphaLen),
+        npcVertices: copyU8FromHeap(backendModule, npcVerticesPtr, npcVerticesLen),
+        npcIndices: copyI32FromHeap(backendModule, npcIndicesPtr, npcIndicesLen),
+        npcOrderKeys: copyI32FromHeap(backendModule, npcOrderKeysPtr, npcOrderKeysLen),
+        usedTextureIds: copyI32FromHeap(backendModule, usedTextureIdsPtr, usedTextureIdsLen),
     };
 }
 
@@ -5287,105 +1592,58 @@ function runtimeBuildMapPacketFromCacheWithWasm(backendModule, runtimeHandle, re
             outHandlePtr,
         ) | 0;
         if (buildStatus !== 1) {
+            console.warn("[map-render-backend] buildMapPacketFromCache failed", {
+                runtimeHandle: runtimeHandle | 0,
+                mapX: request?.mapX | 0,
+                mapY: request?.mapY | 0,
+                borderSize: request?.borderSize | 0,
+                sizeX: request?.sizeX | 0,
+                sizeY: request?.sizeY | 0,
+                buildStatus,
+            });
             return undefined;
         }
         packetHandle = backendModule.HEAP32[outHandlePtr >> 2] | 0;
         if (packetHandle <= 0) {
+            console.warn("[map-render-backend] buildMapPacketFromCache produced invalid packet handle", {
+                runtimeHandle: runtimeHandle | 0,
+                mapX: request?.mapX | 0,
+                mapY: request?.mapY | 0,
+                packetHandle,
+            });
             return undefined;
         }
         const metaStatus = getPacketMeta(packetHandle | 0, metaPtr, metaLength) | 0;
         if (metaStatus !== 1) {
+            console.warn("[map-render-backend] buildMapPacketFromCache getPacketMeta failed", {
+                runtimeHandle: runtimeHandle | 0,
+                mapX: request?.mapX | 0,
+                mapY: request?.mapY | 0,
+                packetHandle,
+                metaStatus,
+            });
             releasePacket(packetHandle | 0);
             return undefined;
         }
         const meta = backendModule.HEAP32.slice(metaPtr >> 2, (metaPtr >> 2) + metaLength);
-        return parseRuntimePacketFromMetaArray(backendModule, meta, {
-            asView: true,
-            packetHandle,
-        });
+        const parsed = parseRuntimePacketFromMetaArray(backendModule, meta);
+        // Parsed packets are deep-copied out of the wasm heap, so we can release the packet handle
+        // before returning to the caller.
+        releasePacket(packetHandle | 0);
+        packetHandle = 0;
+        if (!parsed) {
+            console.warn("[map-render-backend] buildMapPacketFromCache failed to parse packet meta", {
+                runtimeHandle: runtimeHandle | 0,
+                mapX: request?.mapX | 0,
+                mapY: request?.mapY | 0,
+                packetHandle,
+            });
+        }
+        return parsed;
     } finally {
-        backendModule._free(outHandlePtr);
-        backendModule._free(metaPtr);
-    }
-}
-
-export function runtimeDebugBuildMapPlanFromCacheWithWasm(backendModule, runtimeHandle, request) {
-    const buildMapPlanFromCache = getRuntimeDebugBuildMapPlanFromCacheExport(backendModule);
-    if (typeof buildMapPlanFromCache !== "function") {
-        return false;
-    }
-    const status = buildMapPlanFromCache(
-        runtimeHandle | 0,
-        request?.mapX | 0,
-        request?.mapY | 0,
-        request?.borderSize | 0,
-        request?.sizeX | 0,
-        request?.sizeY | 0,
-        request?.smoothTerrain ? 1 : 0,
-        request?.locLoadType | 0,
-        request?.minimizeDrawCalls === true ? 1 : 0,
-        request?.loadLocs === false ? 0 : 1,
-        request?.loadObjs === false ? 0 : 1,
-        request?.loadNpcs === false ? 0 : 1,
-    ) | 0;
-    return status === RUNTIME_STATUS_OK;
-}
-
-
-
-function runtimeBuildNpcPacketFromCacheWithWasm(backendModule, runtimeHandle, request) {
-    const buildNpcPacketHandleFromCache = getRuntimeBuildNpcPacketHandleFromCacheExport(backendModule);
-    const getPacketMeta = getRuntimeGetPacketMetaExport(backendModule);
-    const releasePacket = getRuntimeReleasePacketExport(backendModule);
-    if (
-        typeof buildNpcPacketHandleFromCache !== "function" ||
-        typeof getPacketMeta !== "function" ||
-        typeof releasePacket !== "function"
-    ) {
-        return undefined;
-    }
-
-    const outHandlePtr = mallocI32(backendModule, 1);
-    const metaLength = RUNTIME_PACKET_META_LENGTH;
-    const metaPtr = mallocI32(backendModule, metaLength);
-    if (!outHandlePtr || !metaPtr) {
-        if (outHandlePtr) {
-            backendModule._free(outHandlePtr);
-        }
-        if (metaPtr) {
-            backendModule._free(metaPtr);
-        }
-        return undefined;
-    }
-    let packetHandle = 0;
-    try {
-        const buildStatus = buildNpcPacketHandleFromCache(
-            runtimeHandle | 0,
-            request?.mapX | 0,
-            request?.mapY | 0,
-            request?.borderSize | 0,
-            request?.sizeX | 0,
-            request?.sizeY | 0,
-            outHandlePtr,
-        ) | 0;
-        if (buildStatus !== 1) {
-            return undefined;
-        }
-        packetHandle = backendModule.HEAP32[outHandlePtr >> 2] | 0;
-        if (packetHandle <= 0) {
-            return undefined;
-        }
-        const metaStatus = getPacketMeta(packetHandle | 0, metaPtr, metaLength) | 0;
-        if (metaStatus !== 1) {
+        if ((packetHandle | 0) > 0) {
             releasePacket(packetHandle | 0);
-            return undefined;
         }
-        const meta = backendModule.HEAP32.slice(metaPtr >> 2, (metaPtr >> 2) + metaLength);
-        return parseRuntimePacketFromMetaArray(backendModule, meta, {
-            asView: true,
-            packetHandle,
-        });
-    } finally {
         backendModule._free(outHandlePtr);
         backendModule._free(metaPtr);
     }
@@ -5396,10 +1654,7 @@ export const mapRenderRuntimeBridge = {
         if (!backendModule) {
             return false;
         }
-        return (
-            (backendModule.__rsCapabilities & CAP_RUNTIME_CACHE_V2) !== 0 &&
-            (backendModule.__rsCapabilities & CAP_RUNTIME_PACKET_V2_ONLY) !== 0
-        );
+        return true;
     },
     async createRuntimeWithConfig(config) {
         const backendModule = await tryLoadBackendModule();
@@ -5416,7 +1671,6 @@ export const mapRenderRuntimeBridge = {
             ) | 0;
             if (runtimeHandle > 0) {
                 getRuntimeTickOutputsForHandle(runtimeHandle, true);
-                getRuntimeCacheUploadState(runtimeHandle, true);
                 return runtimeHandle;
             }
             return undefined;
@@ -5433,7 +1687,6 @@ export const mapRenderRuntimeBridge = {
             destroyRuntime(handle);
         }
         runtimeTickOutputByHandle.delete(handle);
-        clearRuntimeCacheUploadState(handle);
     },
     resetRuntime(runtimeHandle) {
         if (!backendModuleInstance) {
@@ -5446,7 +1699,6 @@ export const mapRenderRuntimeBridge = {
         }
         const byHandle = getRuntimeTickOutputsForHandle(handle, false);
         byHandle?.clear();
-        clearRuntimeCacheUploadState(handle);
     },
     async cacheSetVarps(runtimeHandle, varps) {
         const backendModule = await tryLoadBackendModule();
@@ -5455,51 +1707,70 @@ export const mapRenderRuntimeBridge = {
         }
         return runtimeCacheSetVarpsWithWasm(backendModule, runtimeHandle, varps);
     },
-
-    async cachePutTextureArgb(runtimeHandle, textureId, argb) {
+    async cachePutBlobBatch(runtimeHandle, domain, groups, files, offsets, lengths, bytes) {
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
             return -1;
         }
-        return runtimeCachePutTextureArgbWithWasm(
+        return runtimeCachePutBlobBatchWithWasm(
             backendModule,
             runtimeHandle,
-            textureId,
-            argb,
+            domain,
+            groups,
+            files,
+            offsets,
+            lengths,
+            bytes,
         );
     },
-    async cacheClearTextureArgb(runtimeHandle) {
+    async cacheClearBlobDomain(runtimeHandle, domain) {
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
             return -1;
         }
-        return runtimeCacheClearTextureArgbWithWasm(backendModule, runtimeHandle);
+        return runtimeCacheClearBlobDomainWithWasm(backendModule, runtimeHandle, domain);
     },
-    async cachePutMaterialParams(runtimeHandle, materialId, params) {
+    async cacheClearAllBlobs(runtimeHandle) {
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
             return -1;
         }
-        return runtimeCachePutMaterialParamsWithWasm(
-            backendModule,
-            runtimeHandle,
-            materialId,
-            params,
-        );
+        return runtimeCacheClearAllBlobsWithWasm(backendModule, runtimeHandle);
     },
-    async cacheClearMaterialParams(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return -1;
-        }
-        return runtimeCacheClearMaterialParamsWithWasm(backendModule, runtimeHandle);
-    },
-    async cacheGetResourceCounts(runtimeHandle) {
+    async debugGetLastBuildFailure(runtimeHandle) {
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
             return undefined;
         }
-        return runtimeCacheGetResourceCountsWithWasm(backendModule, runtimeHandle);
+        return runtimeDebugGetLastBuildFailureWithWasm(backendModule, runtimeHandle);
+    },
+    async debugGetLastCollectMapInput(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeDebugGetLastCollectMapInputWithWasm(backendModule, runtimeHandle);
+    },
+    async debugGetLastCommandStreamStatus(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeDebugGetLastCommandStreamStatusWithWasm(backendModule, runtimeHandle);
+    },
+    async debugGetLastLegacyModelLoad(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeDebugGetLastLegacyModelLoadWithWasm(backendModule, runtimeHandle);
+    },
+    async debugGetLastMissingType(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeDebugGetLastMissingTypeWithWasm(backendModule, runtimeHandle);
     },
     async cacheSetBuildConfig(runtimeHandle, request) {
         const backendModule = await tryLoadBackendModule();
@@ -5508,107 +1779,19 @@ export const mapRenderRuntimeBridge = {
         }
         return runtimeCacheSetBuildConfigWithWasm(backendModule, runtimeHandle, request);
     },
-    async cacheClearMapSquares(runtimeHandle) {
+    async getLastMissingBlobEntries(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeGetLastMissingBlobEntriesWithWasm(backendModule, runtimeHandle);
+    },
+    async debugBuildMapPlanFromCache(runtimeHandle, request) {
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
             return -1;
         }
-        const status = runtimeCacheClearMapSquaresWithWasm(backendModule, runtimeHandle);
-        if (status === RUNTIME_STATUS_OK) {
-            const state = getRuntimeCacheUploadState(runtimeHandle, false);
-            state?.mapSquareKeys?.clear();
-        }
-        return status ?? -1;
-    },
-    async cachePutMapSquaresPacked(runtimeHandle, entries) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return -1;
-        }
-        const status = runtimeCachePutMapSquaresPackedWithWasm(backendModule, runtimeHandle, entries);
-        if (status === RUNTIME_STATUS_OK) {
-            const state = getRuntimeCacheUploadState(runtimeHandle, true);
-            const nextMapSquareKeys = new Set();
-            for (let i = 0; i < (entries?.length ?? 0); i++) {
-                const entry = entries[i];
-                nextMapSquareKeys.add(`${entry?.mapX | 0},${entry?.mapY | 0}`);
-            }
-            if (state) {
-                state.mapSquareKeys = nextMapSquareKeys;
-            }
-        }
-        return status ?? -1;
-    },
-    async cacheClearTypeKind(runtimeHandle, kind) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return -1;
-        }
-        return runtimeCacheClearTypeKindWithWasm(backendModule, runtimeHandle, kind);
-    },
-    async cachePutTypeEntry(runtimeHandle, kind, id, bytes) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return -1;
-        }
-        return runtimeCachePutTypeEntryWithWasm(backendModule, runtimeHandle, kind, id, bytes);
-    },
-    async collectRequiredPrimaryTypeIds(runtimeHandle, request) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeCollectRequiredPrimaryTypeIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            request,
-        );
-    },
-    async collectRequiredExpandedTypeIds(runtimeHandle, request) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeCollectRequiredExpandedTypeIdsWithWasm(
-            backendModule,
-            runtimeHandle,
-            request,
-        );
-    },
-    async getRuntimeCachedCommandStreamDigest(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeDebugGetCachedCommandStreamDigestWithWasm(backendModule, runtimeHandle);
-    },
-    async getRuntimeCachedCommandStreamArrays(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeDebugGetCachedCommandStreamArraysWithWasm(backendModule, runtimeHandle);
-    },
-    async debugGetRuntimeLastBuildStats(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeDebugGetLastBuildStatsWithWasm(backendModule, runtimeHandle);
-    },
-    async debugGetRuntimeLastCommandProvenancePacked(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeDebugGetLastCommandProvenancePackedWithWasm(backendModule, runtimeHandle);
-    },
-    async debugGetRuntimeLastLocMergeEmitEntriesPacked(runtimeHandle) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeDebugGetLastLocMergeEmitEntriesPackedWithWasm(backendModule, runtimeHandle);
+        return runtimeDebugBuildMapPlanFromCacheWithWasm(backendModule, runtimeHandle, request);
     },
     async buildMapPacketFromCache(runtimeHandle, request) {
         const backendModule = await tryLoadBackendModule();
@@ -5616,27 +1799,6 @@ export const mapRenderRuntimeBridge = {
             return undefined;
         }
         return runtimeBuildMapPacketFromCacheWithWasm(backendModule, runtimeHandle, request);
-    },
-    async buildNpcPacketFromCache(runtimeHandle, request) {
-        const backendModule = await tryLoadBackendModule();
-        if (!backendModule) {
-            return undefined;
-        }
-        return runtimeBuildNpcPacketFromCacheWithWasm(backendModule, runtimeHandle, request);
-    },
-    releasePacket(packet) {
-        if (!backendModuleInstance) {
-            return false;
-        }
-        const packetHandle = packet?.__packetHandle | 0;
-        if (packetHandle <= 0) {
-            return false;
-        }
-        const releasePacket = getRuntimeReleasePacketExport(backendModuleInstance);
-        if (typeof releasePacket === "function") {
-            return (releasePacket(packetHandle) | 0) === 1;
-        }
-        return false;
     },
     setTickState(runtimeHandle, stateKey, input) {
         if (!backendModuleInstance) {
@@ -5704,7 +1866,6 @@ export const mapRenderRuntimeBridge = {
     },
     reset() {
         runtimeTickOutputByHandle.clear();
-        runtimeCacheUploadByHandle.clear();
         backendModulePromise = undefined;
         backendModuleInstance = undefined;
     },

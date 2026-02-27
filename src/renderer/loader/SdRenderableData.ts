@@ -3,14 +3,6 @@ import { RenderableType } from "../Renderer";
 import { LocAnimatedData } from "../loc/LocAnimatedData";
 import { NpcData } from "../npc/NpcData";
 
-export type SdRenderableNpcPacketGeometry = Readonly<{
-    drawRangesBase: Int32Array;
-    drawRangesAlpha?: Int32Array;
-    vertices: Uint8Array;
-    indices: Int32Array;
-    orderKeys?: Int32Array;
-}>;
-
 export type SdRenderableModelInfoTextures = {
     readonly base: Uint16Array;
     readonly alpha: Uint16Array;
@@ -60,6 +52,10 @@ export class SdRenderableData {
         readonly npcs: NpcData[],
 
         readonly loadedTextures: Map<number, Int32Array>,
-        readonly npcGeometry?: SdRenderableNpcPacketGeometry,
+        readonly npcDrawRangesBase?: Int32Array,
+        readonly npcDrawRangesAlpha?: Int32Array,
+        readonly npcVertices?: Uint8Array,
+        readonly npcIndices?: Int32Array,
+        readonly npcOrderKeys?: Int32Array,
     ) {}
 }

@@ -120,49 +120,61 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
     ): Promise<MapRenderRuntimeHandle | undefined>;
     destroyRuntime(runtimeHandle: MapRenderRuntimeHandle): void;
     resetRuntime(runtimeHandle: MapRenderRuntimeHandle): void;
-    cachePutTextureArgb(
+    // Blob-store is the only cache surface. Clients should upload any resource bytes via (domain,group,file).
+    cachePutBlobBatch(
         runtimeHandle: MapRenderRuntimeHandle,
-        textureId: number,
-        argb: Int32Array,
+        domain: number,
+        groups: Int32Array,
+        files: Int32Array,
+        offsets: Int32Array,
+        lengths: Int32Array,
+        bytes: Uint8Array,
     ): Promise<number>;
-    cacheClearTextureArgb(runtimeHandle: MapRenderRuntimeHandle): Promise<number>;
-    cachePutMaterialParams(
+    cacheClearBlobDomain(runtimeHandle: MapRenderRuntimeHandle, domain: number): Promise<number>;
+    cacheClearAllBlobs(runtimeHandle: MapRenderRuntimeHandle): Promise<number>;
+    debugGetLastBuildFailure?(
         runtimeHandle: MapRenderRuntimeHandle,
-        materialId: number,
-        params: Int32Array,
-    ): Promise<number>;
-    cacheClearMaterialParams(runtimeHandle: MapRenderRuntimeHandle): Promise<number>;
-    cacheGetResourceCounts(
+    ): Promise<Readonly<{ stage: number; status: number; detail0: number; detail1: number }> | undefined>;
+    debugGetLastCollectMapInput?(
         runtimeHandle: MapRenderRuntimeHandle,
-    ): Promise<Readonly<{ textureCount: number; materialCount: number }> | undefined>;
+    ): Promise<
+        | Readonly<{
+              status: number;
+              reason: number;
+              mapStartX: number;
+              mapStartY: number;
+              mapEndX: number;
+              mapEndY: number;
+              expectedSquares: number;
+              squaresWithAny: number;
+              squaresWithTerrain: number;
+              squaresWithLoc: number;
+              firstPresentMapSquareId: number;
+              firstMissingMapSquareId: number;
+          }>
+        | undefined
+    >;
+    debugGetLastCommandStreamStatus?(
+        runtimeHandle: MapRenderRuntimeHandle,
+    ): Promise<number | undefined>;
+    debugGetLastLegacyModelLoad?(
+        runtimeHandle: MapRenderRuntimeHandle,
+    ): Promise<Readonly<{ modelId: number; status: number; missingFile: number }> | undefined>;
+    debugGetLastMissingType?(
+        runtimeHandle: MapRenderRuntimeHandle,
+    ): Promise<Readonly<{ kind: number; id: number }> | undefined>;
     cacheSetVarps(runtimeHandle: MapRenderRuntimeHandle, varps: Int32Array): Promise<number>;
     cacheSetBuildConfig(
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,
     ): Promise<number>;
-    cacheClearMapSquares(runtimeHandle: MapRenderRuntimeHandle): Promise<number>;
-    cachePutMapSquaresPacked(
+    getLastMissingBlobEntries(
         runtimeHandle: MapRenderRuntimeHandle,
-        entries: ReadonlyArray<MapRenderRuntimeMapSquareEntry>,
-    ): Promise<number>;
-    cacheClearTypeKind(
-        runtimeHandle: MapRenderRuntimeHandle,
-        kind: number,
-    ): Promise<number>;
-    cachePutTypeEntry(
-        runtimeHandle: MapRenderRuntimeHandle,
-        kind: number,
-        id: number,
-        bytes: Uint8Array,
-    ): Promise<number>;
-    collectRequiredPrimaryTypeIds(
+    ): Promise<MapRenderRuntimeMissingBlobEntries | undefined>;
+    debugBuildMapPlanFromCache?(
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,
-    ): Promise<MapRenderRuntimeRequiredTypeIds | undefined>;
-    collectRequiredExpandedTypeIds(
-        runtimeHandle: MapRenderRuntimeHandle,
-        request: MapRenderRuntimeBuildRequest,
-    ): Promise<MapRenderRuntimeRequiredTypeIds | undefined>;
+    ): Promise<boolean>;
     getRuntimeCachedCommandStreamDigest?(
         runtimeHandle: MapRenderRuntimeHandle,
     ): Promise<MapRenderRuntimeCachedCommandStreamDigest | undefined>;
@@ -176,11 +188,6 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,
     ): Promise<MapRenderRuntimePacket | undefined>;
-    buildNpcPacketFromCache?(
-        runtimeHandle: MapRenderRuntimeHandle,
-        request: MapRenderRuntimeBuildRequest,
-    ): Promise<MapRenderRuntimePacket | undefined>;
-    releasePacket?(packet: MapRenderRuntimePacket | undefined): boolean;
     setTickState(runtimeHandle: MapRenderRuntimeHandle, stateKey: number, input: unknown): boolean;
     clearTickState(runtimeHandle: MapRenderRuntimeHandle, stateKey: number): void;
     tickAdvanceAndEmitBasePatchesForState(
@@ -199,6 +206,12 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         requiredLoginScreenPropsMask?: number,
     ): Promise<NpcSpawn[] | undefined>;
     reset(): void;
+}>; 
+
+export type MapRenderRuntimeMissingBlobEntries = Readonly<{
+    domains: Int32Array;
+    groups: Int32Array;
+    files: Int32Array;
 }>;
 
 export type MapRenderRuntimeDebugLocType = Readonly<{
@@ -297,19 +310,6 @@ export type MapRenderRuntimeLocRenderPlacementDigest = Readonly<{
     hash: number;
 }>;
 
-export type MapRenderRuntimeRequiredTypeIds = Readonly<{
-    locTypeIds: ReadonlyArray<number>;
-    objTypeIds: ReadonlyArray<number>;
-    npcTypeIds: ReadonlyArray<number>;
-    varbitTypeIds: ReadonlyArray<number>;
-    modelIds: ReadonlyArray<number>;
-    seqTypeIds: ReadonlyArray<number>;
-    basTypeIds: ReadonlyArray<number>;
-    underlayTypeIds: ReadonlyArray<number>;
-    overlayTypeIds: ReadonlyArray<number>;
-    typeIdsByKind: ReadonlyMap<number, ReadonlyArray<number>>;
-}>;
-
 export type MapRenderRuntimeCachedCommandStreamDigest = Readonly<{
     totalCmdCount: number;
     cmdBucketIndicesHash: number;
@@ -349,14 +349,6 @@ export type MapRenderRuntimeDebugBridgeV2 = MapRenderRuntimeBridgeV2 &
             localY: number,
         ): Promise<unknown>;
         debugGetRuntimeMapInputHashes(runtimeHandle: MapRenderRuntimeHandle): Promise<unknown>;
-        debugCollectRequiredPrimaryTypeIds?(
-            runtimeHandle: MapRenderRuntimeHandle,
-            sceneBuildInput: unknown,
-        ): Promise<MapRenderRuntimeRequiredTypeIds | undefined>;
-        debugCollectRequiredExpandedTypeIds?(
-            runtimeHandle: MapRenderRuntimeHandle,
-            sceneBuildInput: unknown,
-        ): Promise<MapRenderRuntimeRequiredTypeIds | undefined>;
         debugGetRuntimeCachedCommandStreamDigest(
             runtimeHandle: MapRenderRuntimeHandle,
         ): Promise<MapRenderRuntimeCachedCommandStreamDigest | undefined>;
@@ -391,17 +383,6 @@ export type MapRenderRuntimeDebugBridgeV2 = MapRenderRuntimeBridgeV2 &
         debugGetRuntimeLastTerrainDigest?(
             runtimeHandle: MapRenderRuntimeHandle,
         ): Promise<MapRenderRuntimeTerrainDigest | undefined>;
-        debugGetRuntimeLastCollisionFlags?(
-            runtimeHandle: MapRenderRuntimeHandle,
-        ): Promise<
-            | Readonly<{
-                  levels: number;
-                  sizeX: number;
-                  sizeY: number;
-                  flags: Int32Array;
-              }>
-            | undefined
-        >;
         debugSetWorldHeightProbe?(
             runtimeHandle: MapRenderRuntimeHandle,
             level: number,
