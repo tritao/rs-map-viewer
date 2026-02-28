@@ -108,7 +108,23 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
+        const devsq = this.mapViewer.getDevFixedMapSquare();
+        if (devsq && (mapX !== devsq.mapX || mapY !== devsq.mapY)) {
+            // Fixed-square dev mode: never queue builds for other squares.
+            return;
+        }
         const mapData = await this.loadSdMapData(mapX, mapY);
+        const devsqAfter = this.mapViewer.getDevFixedMapSquare();
+        if (
+            devsqAfter &&
+            mapData &&
+            (mapData.mapX !== devsqAfter.mapX || mapData.mapY !== devsqAfter.mapY)
+        ) {
+            // Dev mode may have been enabled while this async build was in flight. Drop the result
+            // to avoid loading/building maps outside the fixed square.
+            this.mapManager.loadingMapIds.delete(getMapSquareId(mapData.mapX, mapData.mapY));
+            return;
+        }
         if (mapData) {
             if (this.renderer.isValidMapData(mapData)) {
                 const sdMapData = mapData as unknown as SdMapData;
@@ -143,7 +159,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
                 if (runtimeOptions.mapRenderNpcSimInWorker) {
                     const level1 = sdMapData.tileRenderFlags[1] ?? [];
-                    void this.workerPool.registerMapNpcSimState(
+                    void this.workerPool
+                        .registerMapNpcSimState(
                         mapId,
                         sdMapData.borderSize,
                         level1,
@@ -151,7 +168,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                         sdMapData.locsAnimated,
                         sdMapData.npcs,
                         sdMapData.npcOrderKeys,
-                    );
+                        )
+                        .catch(() => {
+                            // Avoid unhandled promise rejections; registration is best-effort.
+                        });
                 } else {
                     // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
                     this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
@@ -259,6 +279,10 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
+            this.pendingFramePacket = undefined;
+            this.latestFramePacket = undefined;
+            this.latestFramePacketFrameCount = -1;
+            this.npcDataOffsetByMapId.clear();
             this.mapManager.cleanUp();
             this.tickController.reset();
 
@@ -520,6 +544,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                     .then((pkt) => {
                         this.latestFramePacket = pkt;
                         return pkt;
+                    })
+                    .catch(() => {
+                        this.latestFramePacket = undefined;
+                        return undefined;
                     })
                     .finally(() => {
                         this.pendingFramePacket = undefined;

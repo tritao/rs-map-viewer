@@ -52,9 +52,8 @@ export class WebGLPrograms {
             await p.catch(() => undefined);
         }
 
-        this.frameDrawCall?.delete();
+        // PicoGL DrawCall has no delete(); releasing references is sufficient.
         this.frameDrawCall = undefined;
-        this.frameFxaaDrawCall?.delete();
         this.frameFxaaDrawCall = undefined;
 
         for (const prog of this.createdPrograms) {

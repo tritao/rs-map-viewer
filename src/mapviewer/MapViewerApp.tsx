@@ -98,13 +98,13 @@ function MapViewerApp() {
                 mapImageCache,
                 context,
                 runtimeOptions,
+                searchParams,
             );
             if (!mapViewerResult.ok) {
                 setErrorMessage(mapViewerResult.error);
                 return;
             }
             const mapViewer = mapViewerResult.value;
-            mapViewer.applySearchParams(searchParams);
             mapViewer.init();
 
             setDownloadProgress(undefined);

@@ -73,10 +73,25 @@ export class MapManager {
 
     setFixedMapSquare(mapX: number, mapY: number): void {
         this.fixedMapId = getMapSquareId(mapX, mapY);
+        // Drop any queued/loaded state outside the fixed square immediately.
+        for (const map of this.mapSquares.values()) {
+            if (map.mapId !== this.fixedMapId) {
+                this.removeMap(map.mapX, map.mapY);
+            }
+        }
+        for (const mapId of Array.from(this.loadingMapIds)) {
+            if (mapId !== this.fixedMapId) {
+                this.loadingMapIds.delete(mapId);
+            }
+        }
+        // Force the next update() to treat bounds as changed.
+        this.renderBounds.fill(-1);
     }
 
     clearFixedMapSquare(): void {
         this.fixedMapId = undefined;
+        // Force the next update() to treat bounds as changed.
+        this.renderBounds.fill(-1);
     }
 
     init(mapFileIndex: MapFileIndex, fillEmptyTerrain: boolean): void {
@@ -141,6 +156,9 @@ export class MapManager {
         const mapId = getMapSquareId(mapX, mapY);
         this.loadingMapIds.delete(mapId);
         this.invalidMapIds.delete(mapId);
+        if (this.fixedMapId !== undefined && mapId !== this.fixedMapId) {
+            return;
+        }
         this.mapSquares.set(mapId, new MapSquareInfo(mapX, mapY));
     }
 
@@ -161,6 +179,9 @@ export class MapManager {
 
     loadMap(mapX: number, mapY: number): void {
         const mapId = getMapSquareId(mapX, mapY);
+        if (this.fixedMapId !== undefined && mapId !== this.fixedMapId) {
+            return;
+        }
         if (
             this.mapSquares.has(mapId) ||
             this.invalidMapIds.has(mapId) ||

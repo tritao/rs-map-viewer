@@ -151,9 +151,18 @@ export class MapViewer {
         mapImageCache: Cache,
         context: CacheContext,
         runtimeOptions?: WorkerRuntimeOptions,
+        initialSearchParams?: URLSearchParams,
     ): Result<MapViewer, string> {
         return ok(
-            new MapViewer(workerPool, cacheList, objSpawns, mapImageCache, context, runtimeOptions),
+            new MapViewer(
+                workerPool,
+                cacheList,
+                objSpawns,
+                mapImageCache,
+                context,
+                runtimeOptions,
+                initialSearchParams,
+            ),
         );
     }
 
@@ -186,10 +195,15 @@ export class MapViewer {
         readonly mapImageCache: Cache,
         context: CacheContext,
         runtimeOptions?: WorkerRuntimeOptions,
+        initialSearchParams?: URLSearchParams,
     ) {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
         this.renderer = new MapViewerRenderer(this);
+
+        if (initialSearchParams) {
+            this.applySearchParams(initialSearchParams);
+        }
 
         this.workerPool.initCache(
             context.loadedCache,
