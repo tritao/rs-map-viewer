@@ -223,6 +223,11 @@ export const MapViewerControls = memo(
             Direction: { value: directionControls, editable: false },
         };
 
+        const [devOnly5050, setDevOnly5050] = useState<boolean>(() => {
+            const sq = mapViewer.getDevFixedMapSquare();
+            return !!sq && sq.mapX === 50 && sq.mapY === 50;
+        });
+
         const [animationDuration, setAnimationDuration] = useState(10);
         const [cameraPoints, setCameraPoints] = useState<CameraView[]>(() => []);
 
@@ -466,6 +471,13 @@ export const MapViewerControls = memo(
                 ),
                 Runtime: folder(
                     {
+                        "Dev: Only 50:50": {
+                            value: devOnly5050,
+                            onChange: (v: boolean) => {
+                                setDevOnly5050(v);
+                                mapViewer.setDevFixedMapSquare(v ? { mapX: 50, mapY: 50 } : undefined);
+                            },
+                        },
                         "Map Backend": {
                             value: mapRenderBackend,
                             options: {
@@ -633,6 +645,8 @@ export const MapViewerControls = memo(
                 varValue,
                 mapRenderBackend,
                 mapRenderTelemetry,
+                mapRenderNpcSimInWorker,
+                devOnly5050,
                 pointsControls,
                 isCameraRunning,
                 isExportingSprites,

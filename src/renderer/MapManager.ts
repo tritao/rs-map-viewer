@@ -63,12 +63,21 @@ export class MapManager {
     mapSquares: Map<number, MapSquareInfo> = new Map();
 
     mode: MapManagerUpdateMode = MapManagerUpdateMode.RenderDistance;
+    private fixedMapId: number | undefined;
 
     constructor(
         readonly maxQueuedTasks: number,
         readonly loadMapFunction: LoadMapFunction,
         readonly removeMapFunction: RemoveMapFunction,
     ) {}
+
+    setFixedMapSquare(mapX: number, mapY: number): void {
+        this.fixedMapId = getMapSquareId(mapX, mapY);
+    }
+
+    clearFixedMapSquare(): void {
+        this.fixedMapId = undefined;
+    }
 
     init(mapFileIndex: MapFileIndex, fillEmptyTerrain: boolean): void {
         this.cleanUp();
@@ -221,6 +230,14 @@ export class MapManager {
         mapStartY: number,
         mapEndY: number,
     ) {
+        if (this.fixedMapId !== undefined) {
+            for (const map of this.mapSquares.values()) {
+                if (map.mapId !== this.fixedMapId) {
+                    this.removeMap(map.mapX, map.mapY);
+                }
+            }
+            return;
+        }
         for (const map of this.mapSquares.values()) {
             const { mapX, mapY } = map;
             if (
@@ -261,6 +278,14 @@ export class MapManager {
         const cameraX = camera.getPosX();
         const cameraZ = camera.getPosZ();
 
+        if (this.fixedMapId !== undefined) {
+            const mapStartX = this.fixedMapId >> 8;
+            const mapStartY = this.fixedMapId & 0xff;
+            const mapEndX = mapStartX;
+            const mapEndY = mapStartY;
+            return { mapStartX, mapEndX, mapStartY, mapEndY };
+        }
+
         if (this.mode == MapManagerUpdateMode.Loaded) {
             // Go through all loaded maps and calculate max/min.
             let mapStartX = MapManager.MAX_MAP_X,
@@ -292,6 +317,20 @@ export class MapManager {
     }
 
     private updateVisible(camera: Camera, frameCount: number) {
+        if (this.fixedMapId !== undefined) {
+            this.visibleMapCount = 0;
+            const mapId = this.fixedMapId;
+            const mapX = mapId >> 8;
+            const mapY = mapId & 0xff;
+            const mapSquare = this.mapSquares.get(mapId);
+            if (mapSquare) {
+                this.visibleMaps[this.visibleMapCount++] = mapSquare;
+            } else {
+                this.loadMap(mapX, mapY);
+            }
+            return;
+        }
+
         this.visibleMapCount = 0;
         for (let i = 0; i < this.renderDistMapCount; i++) {
             const mapId = this.renderDistMapIds[i];

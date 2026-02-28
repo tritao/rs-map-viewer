@@ -222,6 +222,12 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.mapViewer.session.mapFileIndex,
             SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
         );
+        const devsq = this.mapViewer.getDevFixedMapSquare();
+        if (devsq) {
+            this.mapManager.setFixedMapSquare(devsq.mapX, devsq.mapY);
+        } else {
+            this.mapManager.clearFixedMapSquare();
+        }
         this.mapManager.update(
             this.camera,
             this.renderer.stats.frameCount,

@@ -35,6 +35,8 @@ type CacheContext = {
     readonly npcSpawns: NpcSpawn[];
 };
 
+type DevFixedMapSquare = Readonly<{ mapX: number; mapY: number }>;
+
 export type MapViewerRuntimeOptions = Readonly<{
     mapRenderBackend: BackendKind;
     mapRenderTickBackend?: BackendKind;
@@ -67,6 +69,29 @@ function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOpti
         a.mapRenderNpcSimInWorker === b.mapRenderNpcSimInWorker &&
         a.mapRenderDebugTickSquare === b.mapRenderDebugTickSquare
     );
+}
+
+function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined {
+    if (!value) {
+        return undefined;
+    }
+    const m = /^(\d+):(\d+)$/.exec(value.trim());
+    if (!m) {
+        return undefined;
+    }
+    const mapX = Number(m[1]);
+    const mapY = Number(m[2]);
+    if (
+        !Number.isFinite(mapX) ||
+        !Number.isFinite(mapY) ||
+        mapX < 0 ||
+        mapY < 0 ||
+        mapX >= MapManager.MAX_MAP_X ||
+        mapY >= MapManager.MAX_MAP_Y
+    ) {
+        return undefined;
+    }
+    return { mapX, mapY };
 }
 
 export type CacheSwitchStatus =
@@ -117,6 +142,7 @@ export class MapViewer {
     loadingMapImageIds: Set<number> = new Set();
 
     cameraSpeed: number = 1;
+    private devFixedMapSquare: DevFixedMapSquare | undefined;
 
     static tryCreate(
         workerPool: RenderDataWorkerPool,
@@ -234,10 +260,29 @@ export class MapViewer {
         if (this.runtimeOptions.mapRenderDebugTickSquare) {
             params["mrdtick"] = this.runtimeOptions.mapRenderDebugTickSquare;
         }
+        if (this.devFixedMapSquare) {
+            params["devsq"] = `${this.devFixedMapSquare.mapX}:${this.devFixedMapSquare.mapY}`;
+        }
 
         params["v"] = 1;
 
         return params;
+    }
+
+    getDevFixedMapSquare(): DevFixedMapSquare | undefined {
+        return this.devFixedMapSquare;
+    }
+
+    // Dev feature: pin map loading to a single square (speeds iteration; reduces memory).
+    setDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
+        this.devFixedMapSquare = square;
+        if (square) {
+            this.renderer.mapManager.setFixedMapSquare(square.mapX, square.mapY);
+        } else {
+            this.renderer.mapManager.clearFixedMapSquare();
+        }
+        // Update URL immediately; no heavy work should run here.
+        this.emitSearchParamsNow();
     }
 
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
@@ -348,6 +393,14 @@ export class MapViewer {
             if (!v) {
                 this.camera.yaw = 2048 - this.camera.yaw;
             }
+        }
+
+        const devsq = parseDevMapSquare(searchParams.get("devsq"));
+        this.devFixedMapSquare = devsq;
+        if (devsq) {
+            this.renderer.mapManager.setFixedMapSquare(devsq.mapX, devsq.mapY);
+        } else {
+            this.renderer.mapManager.clearFixedMapSquare();
         }
     }
 
