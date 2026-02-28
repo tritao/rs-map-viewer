@@ -9,15 +9,9 @@ import { MapData } from "../renderer/loader/MapData";
 import { SdMapData } from "../renderer/loader/SdMapData";
 import type { FramePacket } from "../renderer/packet/FramePacket";
 import {
-    NPC_MOVE_META_STRIDE,
-    NPC_MOVE_STATE_STRIDE,
     NPC_OFFSETS_BY_MAP_ID_STRIDE,
-    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
-    TICK_PATCH_ENTRY_STRIDE,
-    TICK_PATCH_STREAM_COUNT,
 } from "../renderer/packet/FramePacket";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
-import { LocTickPatchVariant, NpcTickPatchVariant } from "../renderer/patch/TickPatchStreams";
 import { TickController } from "../sim/tick/TickController";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
@@ -391,6 +385,14 @@ export class MapViewerRenderer extends RendererMainLoop {
                     .getNpcGpuDataConsumerRenderer()
                     ?.setNpcGpuFrameData(packet.npcGpuFrameData);
 
+                const anyRenderer = this.renderer as any;
+                if (typeof anyRenderer.setFrameTickPatchesFromPacket === "function") {
+                    anyRenderer.setFrameTickPatchesFromPacket(
+                        packet.tickPatchCountsByMapId,
+                        packet.tickPatchPacked,
+                    );
+                }
+
                 // Per-map npc texture offsets.
                 const pairs = packet.npcOffsetsByMapIdPairs;
                 const pairCount = Math.floor(pairs.length / NPC_OFFSETS_BY_MAP_ID_STRIDE);
@@ -399,107 +401,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                     const mapId = pairs[off + 0] | 0;
                     const dataOffset = pairs[off + 1] | 0;
                     this.npcDataOffsetByMapId.set(mapId, dataOffset);
-                }
-
-                // Sync NPC movement state onto the renderer-side NPC objects.
-                const meta = packet.npcMoveStateMeta;
-                const metaCount = Math.floor(meta.length / NPC_MOVE_META_STRIDE);
-                const packed = packet.npcMoveStatePacked;
-                for (let m = 0; m < metaCount; m++) {
-                    const moff = m * NPC_MOVE_META_STRIDE;
-                    const mapId = meta[moff + 0] | 0;
-                    const npcCount = meta[moff + 1] | 0;
-                    const stateOffset = meta[moff + 2] | 0;
-                    const map = this.renderer.getMap(mapId) as any;
-                    if (!map || !Array.isArray(map.npcs)) {
-                        continue;
-                    }
-                    const outNpcs = map.npcs as any[];
-                    const safeCount = Math.min(npcCount, outNpcs.length);
-                    for (let i = 0; i < safeCount; i++) {
-                        const base = stateOffset + i * NPC_MOVE_STATE_STRIDE;
-                        const npc = outNpcs[i];
-                        npc.x = packed[base + 0] | 0;
-                        npc.y = packed[base + 1] | 0;
-                        npc.orientation = packed[base + 2] | 0;
-                        npc.rotation = packed[base + 3] | 0;
-                        npc.pathLength = packed[base + 4] | 0;
-                        npc.movementSeqId = packed[base + 5] | 0;
-                    }
-                }
-
-                // Apply per-map tick patch streams for animated locs/NPC draw ranges.
-                const countsByMapId = packet.tickPatchCountsByMapId;
-                const countsEntryCount = Math.floor(
-                    countsByMapId.length / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
-                );
-                const patchesPacked = packet.tickPatchPacked;
-                const emptyPatches = new Int32Array(0);
-                let patchReadOff = 0;
-                for (let e = 0; e < countsEntryCount; e++) {
-                    const baseOff = e * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
-                    const mapId = countsByMapId[baseOff + 0] | 0;
-                    const map = this.renderer.getMap(mapId) as any;
-                    if (!map || typeof map.setLocTickPatchStreamFromPacket !== "function") {
-                        // Still advance the packed offset so the packet stays parseable.
-                        for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
-                            patchReadOff =
-                                (patchReadOff +
-                                    (countsByMapId[baseOff + 1 + s] | 0) *
-                                        TICK_PATCH_ENTRY_STRIDE) |
-                                0;
-                        }
-                        continue;
-                    }
-
-                    // Loc variants 0..7.
-                    for (let v = 0; v < 8; v++) {
-                        const count = countsByMapId[baseOff + 1 + v] | 0;
-                        const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
-                        const slice =
-                            len > 0
-                                ? patchesPacked.subarray(patchReadOff, patchReadOff + len)
-                                : emptyPatches;
-                        map.setLocTickPatchStreamFromPacket(v as LocTickPatchVariant, slice, count);
-                        patchReadOff = (patchReadOff + len) | 0;
-                    }
-                    // NPC variants 8..9 map to base/alpha.
-                    {
-                        const baseCount = countsByMapId[baseOff + 1 + 8] | 0;
-                        const baseLen = (baseCount * TICK_PATCH_ENTRY_STRIDE) | 0;
-                        const baseSlice =
-                            baseLen > 0
-                                ? patchesPacked.subarray(patchReadOff, patchReadOff + baseLen)
-                                : emptyPatches;
-                        map.setNpcTickPatchStreamFromPacket(
-                            NpcTickPatchVariant.Base,
-                            baseSlice,
-                            baseCount,
-                        );
-                        patchReadOff = (patchReadOff + baseLen) | 0;
-                    }
-                    {
-                        const alphaCount = countsByMapId[baseOff + 1 + 9] | 0;
-                        const alphaLen = (alphaCount * TICK_PATCH_ENTRY_STRIDE) | 0;
-                        const alphaSlice =
-                            alphaLen > 0
-                                ? patchesPacked.subarray(patchReadOff, patchReadOff + alphaLen)
-                                : emptyPatches;
-                        map.setNpcTickPatchStreamFromPacket(
-                            NpcTickPatchVariant.Alpha,
-                            alphaSlice,
-                            alphaCount,
-                        );
-                        patchReadOff = (patchReadOff + alphaLen) | 0;
-                    }
-                }
-                if (runtimeOptions.mapRenderTelemetry && patchReadOff !== (patchesPacked.length | 0)) {
-                    console.warn("[map-render][telemetry] tick patch packet length mismatch", {
-                        expected: patchesPacked.length | 0,
-                        consumed: patchReadOff | 0,
-                        countsEntryCount,
-                        countsPackedLength: countsByMapId.length | 0,
-                    });
                 }
             }
 
@@ -554,6 +455,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
             }
         } else {
+            const anyRenderer = this.renderer as any;
+            if (typeof anyRenderer.clearFrameTickPatches === "function") {
+                anyRenderer.clearFrameTickPatches();
+            }
             this.npcGpuDataBuilder.beginFrame();
         }
 

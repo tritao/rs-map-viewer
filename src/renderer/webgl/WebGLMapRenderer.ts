@@ -37,6 +37,16 @@ import type { TickControllerRenderer } from "../patch/TickCapability";
 import { NpcDataTextureRing } from "./texture/NpcDataTextureRing";
 import type { NpcGpuDataConsumer, NpcGpuFrameData } from "../npc/NpcGpuData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
+import {
+    chooseLocTickPatchVariant,
+    chooseNpcTickPatchVariant,
+} from "../patch/TickPatchStreams";
+import {
+    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
+    TICK_PATCH_ENTRY_STRIDE,
+    TICK_PATCH_STREAM_COUNT,
+} from "../packet/FramePacket";
+import { applyDrawRangePatches } from "./core/applyDrawRangePatches";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
@@ -56,6 +66,14 @@ export class WebGLMapRenderer
     private readonly postProcessPass = new PostProcessPass();
     private readonly npcDataTextureRing = new NpcDataTextureRing(NPC_DATA_TEXTURE_RING_SIZE);
     private npcGpuFrameData: NpcGpuFrameData | undefined;
+    private frameTickPatches:
+        | {
+              patchesPacked: Int32Array;
+              mapIdToIndex: Map<number, number>;
+              streamOffsets: Int32Array;
+              streamCounts: Int32Array;
+          }
+        | undefined;
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -115,6 +133,44 @@ export class WebGLMapRenderer
 
     override getNpcGpuDataConsumerRenderer(): NpcGpuDataConsumer | undefined {
         return this;
+    }
+
+    setFrameTickPatchesFromPacket(countsByMapId: Int32Array, patchesPacked: Int32Array): void {
+        const entryCount = Math.floor(
+            (countsByMapId.length | 0) / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
+        );
+        if (entryCount <= 0 || !(patchesPacked instanceof Int32Array)) {
+            this.frameTickPatches = undefined;
+            return;
+        }
+        const streamOffsets = new Int32Array((entryCount | 0) * TICK_PATCH_STREAM_COUNT);
+        const streamCounts = new Int32Array((entryCount | 0) * TICK_PATCH_STREAM_COUNT);
+        const mapIdToIndex = new Map<number, number>();
+
+        let readOff = 0;
+        for (let e = 0; e < entryCount; e++) {
+            const baseOff = (e | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+            const mapId = countsByMapId[baseOff + 0] | 0;
+            mapIdToIndex.set(mapId, e | 0);
+            for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
+                const count = countsByMapId[baseOff + 1 + s] | 0;
+                const idx = (e * TICK_PATCH_STREAM_COUNT + s) | 0;
+                streamCounts[idx] = count;
+                streamOffsets[idx] = readOff | 0;
+                readOff = (readOff + ((count * TICK_PATCH_ENTRY_STRIDE) | 0)) | 0;
+            }
+        }
+
+        this.frameTickPatches = {
+            patchesPacked,
+            mapIdToIndex,
+            streamOffsets,
+            streamCounts,
+        };
+    }
+
+    clearFrameTickPatches(): void {
+        this.frameTickPatches = undefined;
     }
 
     setInteractionInput(input: InteractionInput): void {
@@ -429,6 +485,26 @@ export class WebGLMapRenderer
         drawCall: DrawCall,
         drawRangesPacked: Int32Array,
     ): void {
+        const frame = this.frameTickPatches;
+        if (frame) {
+            const variant = chooseLocTickPatchVariant(isAlpha, isInteract, isLod) as number;
+            const mapId = renderable.id | 0;
+            const entryIndex = frame.mapIdToIndex.get(mapId);
+            if (entryIndex !== undefined) {
+                const streamIndex = variant | 0; // loc variants 0..7
+                const idx = (entryIndex * TICK_PATCH_STREAM_COUNT + streamIndex) | 0;
+                const count = frame.streamCounts[idx] | 0;
+                if (count > 0) {
+                    const off = frame.streamOffsets[idx] | 0;
+                    const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
+                    const end = Math.min((off + len) | 0, frame.patchesPacked.length | 0);
+                    const slice = frame.patchesPacked.subarray(off, end);
+                    applyDrawRangePatches(drawCall, drawRangesPacked, slice, count);
+                }
+            }
+            return;
+        }
+
         this.geometry.applyLocAnimationPatchesForPass(
             renderable,
             isAlpha,
@@ -445,6 +521,27 @@ export class WebGLMapRenderer
         drawCall: DrawCall,
         drawRangesPacked: Int32Array,
     ): void {
+        const frame = this.frameTickPatches;
+        if (frame) {
+            const mapId = renderable.id | 0;
+            const entryIndex = frame.mapIdToIndex.get(mapId);
+            if (entryIndex !== undefined) {
+                // npc variants occupy streams 8..9 in the packet
+                const npcVariant = chooseNpcTickPatchVariant(isAlpha) as number;
+                const streamIndex = (8 + (npcVariant | 0)) | 0;
+                const idx = (entryIndex * TICK_PATCH_STREAM_COUNT + streamIndex) | 0;
+                const count = frame.streamCounts[idx] | 0;
+                if (count > 0) {
+                    const off = frame.streamOffsets[idx] | 0;
+                    const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
+                    const end = Math.min((off + len) | 0, frame.patchesPacked.length | 0);
+                    const slice = frame.patchesPacked.subarray(off, end);
+                    applyDrawRangePatches(drawCall, drawRangesPacked, slice, count);
+                }
+            }
+            return;
+        }
+
         this.geometry.applyNpcAnimationPatchesForPass(
             renderable,
             isAlpha,
