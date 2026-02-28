@@ -473,18 +473,22 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
             }
 
-            // Keep the per-map npc data offsets in sync with the renderer's ring index even if
-            // the worker packet lags. This prevents flicker when the scheduler reads a ring slot
-            // that hasn't been updated yet.
-            const npcNewIndex = (this.renderer.stats.frameCount | 0) % 5;
+            // Keep the per-map npc data offsets in sync with the renderer's *write* ring index even
+            // if the worker packet lags. WebGL renders from a stable slot (one behind), so the slot
+            // written at (frameCount % ringSize) will be read on the next frame.
             for (let i = 0; i < this.renderer.visibleMapCount; i++) {
                 const mapInfo = this.renderer.visibleMaps[i];
                 const map = this.renderer.getMap(mapInfo.mapId) as any;
                 if (!map || !Array.isArray(map.npcDataTextureOffsets)) {
                     continue;
                 }
+                const ringSize = map.npcDataTextureOffsets.length | 0;
+                if (ringSize <= 0) {
+                    continue;
+                }
+                const npcWriteIndex = (this.renderer.stats.frameCount | 0) % ringSize;
                 const dataOffset = this.npcDataOffsetByMapId.get(mapInfo.mapId) ?? -1;
-                map.npcDataTextureOffsets[npcNewIndex] = dataOffset | 0;
+                map.npcDataTextureOffsets[npcWriteIndex] = dataOffset | 0;
             }
 
             // Kick an async tick request if one isn't already in flight.

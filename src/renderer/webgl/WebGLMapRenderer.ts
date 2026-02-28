@@ -36,13 +36,12 @@ import type { InteractionControllerRenderer, InteractionInput } from "../interac
 import type { TickControllerRenderer } from "../patch/TickCapability";
 import { NpcDataTextureRing } from "./texture/NpcDataTextureRing";
 import type { NpcGpuDataConsumer, NpcGpuFrameData } from "../npc/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
-
-const NPC_DATA_TEXTURE_RING_SIZE = 5;
 
 export class WebGLMapRenderer
     extends MapRenderer<WebGLMapSquare, SdMapData>

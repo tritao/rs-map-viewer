@@ -35,6 +35,7 @@ import type { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
 import { orderByPacketKeys } from "../renderer/npc/orderByPacketKeys";
 import { Npc } from "../renderer/npc/Npc";
 import type { NpcData } from "../renderer/npc/NpcData";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/npc/NpcGpuData";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
 import type { FramePacket } from "../renderer/packet/FramePacket";
 import {
@@ -488,7 +489,7 @@ const worker = {
             collisionMaps,
             seededNpcFlags: false,
             npcs,
-            npcDataTextureOffsets: new Array(5).fill(-1),
+            npcDataTextureOffsets: new Array(NPC_DATA_TEXTURE_RING_SIZE).fill(-1),
             locsAnimated: locs,
             locTickPatchesByVariant,
             locTickPatchCountsByVariant: new Int32Array(8),
@@ -526,7 +527,7 @@ const worker = {
         const safeTicksElapsed = Math.max(0, Math.min(ticksElapsed | 0, 4));
         const safeClientTicks = Math.max(0, Math.min(clientTicksElapsed | 0, 50));
 
-        const ringSize = 5;
+        const ringSize = NPC_DATA_TEXTURE_RING_SIZE;
         const newIndexMod = (frameCount | 0) % ringSize;
 
         let totalTickPatchCount = 0;

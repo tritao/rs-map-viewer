@@ -37,10 +37,10 @@ import {
     type NpcTickPatchProvider,
     type TickPatchStream,
 } from "../../patch/TickPatchStreams";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../npc/NpcGpuData";
 
 const FRAME_RENDER_DELAY = 3;
 
-const NPC_DATA_TEXTURE_BUFFER_SIZE = 5;
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
@@ -336,7 +336,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {
-        this.npcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_BUFFER_SIZE).fill(-1);
+        this.npcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_RING_SIZE).fill(-1);
     }
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
