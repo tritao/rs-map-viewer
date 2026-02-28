@@ -40,7 +40,7 @@ import {
 } from "./InitError";
 import { Loaders, createLoaderCapabilities } from "./Loaders";
 
-type LegacyLoaderSources = Readonly<{
+export type LegacyLoaderSources = Readonly<{
     configArchive: Archive;
     mediaArchive: Archive;
     textureArchive: Archive;
@@ -72,7 +72,9 @@ function requireArchive(
     return ok(archive);
 }
 
-function tryCreateLegacyLoaderSources(cacheSystem: CacheSystem): Result<LegacyLoaderSources, InitError> {
+export function tryCreateLegacyLoaderSources(
+    cacheSystem: CacheSystem,
+): Result<LegacyLoaderSources, InitError> {
     const configIndexResult = requireIndex(cacheSystem, LegacyIndexId.configs, "legacy configs");
     if (!configIndexResult.ok) {
         return configIndexResult;

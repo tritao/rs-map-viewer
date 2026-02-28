@@ -42,7 +42,7 @@ import {
 } from "./InitError";
 import { Loaders, createLoaderCapabilities } from "./Loaders";
 
-type DatLoaderSources = Readonly<{
+export type DatLoaderSources = Readonly<{
     configIndex: CacheIndex;
     configArchive: Archive;
     mediaArchive: Archive;
@@ -78,7 +78,7 @@ function requireArchive(
     return ok(archive);
 }
 
-function tryCreateDatLoaderSources(
+export function tryCreateDatLoaderSources(
     cacheInfo: CacheInfo,
     cacheSystem: CacheSystem,
 ): Result<DatLoaderSources, InitError> {

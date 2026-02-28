@@ -23,27 +23,10 @@ import {
     getQuestTypeLoader,
     getSkeletalSeqLoader,
 } from "../loaders/Loaders";
-import { tryCreateDat2Loaders } from "./Dat2Loaders";
-import { tryCreateDatLoaders } from "./DatLoaders";
-import { tryCreateLegacyLoaders } from "./LegacyLoaders";
+import { tryCreateDat2LoaderSources, tryCreateDat2LoadersFromSources } from "./Dat2Loaders";
+import { tryCreateDatLoaderSources, tryCreateDatLoadersFromSources } from "./DatLoaders";
+import { tryCreateLegacyLoaderSources, tryCreateLegacyLoadersFromSources } from "./LegacyLoaders";
 import { MapFileIndex } from "../map/MapFileIndex";
-
-function tryCreateLoaders(cacheInfo: CacheInfo, cacheSystem: CacheSystem): Result<Loaders, InitError> {
-    try {
-        const cacheType = detectCacheType(cacheInfo);
-        switch (cacheType) {
-            case CacheType.Legacy:
-                return tryCreateLegacyLoaders(cacheInfo, cacheSystem);
-            case CacheType.Dat:
-                return tryCreateDatLoaders(cacheInfo, cacheType, cacheSystem);
-            case CacheType.Dat2:
-                return tryCreateDat2Loaders(cacheInfo, cacheType, cacheSystem);
-        }
-        return err(unexpected("Not implemented"));
-    } catch (e) {
-        return err(unexpected(e));
-    }
-}
 
 export type CacheSession = {
     cache: LoadedCache;
@@ -116,61 +99,108 @@ export function tryCreateCacheSessionFromSystem(
     cache: LoadedCache,
     cacheSystem: CacheSystem,
 ): Result<CacheSession, InitError> {
-    const loadersResult = tryCreateLoaders(cache.info, cacheSystem);
-    if (!loadersResult.ok) {
-        return loadersResult;
+    function createSessionFromLoaders(
+        loaders: Loaders,
+        tryFork: () => Result<CacheSession, InitError>,
+    ): Result<CacheSession, InitError> {
+        const varManager = new VarManager(loaders.varBitTypeLoader);
+        const questTypeLoader = getQuestTypeLoader(loaders);
+        if (questTypeLoader) {
+            varManager.setQuestsCompleted(questTypeLoader);
+        }
+
+        const session: CacheSession = {
+            cache,
+            cacheSystem,
+            loaders,
+            varManager,
+            mapFileIndex: loaders.mapFileLoader.mapFileIndex,
+            tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
+            tryGetDat2SpriteSource: () => {
+                const index = cacheSystem.tryGetIndex(Dat2IndexId.sprites);
+                if (!index) {
+                    return undefined;
+                }
+                return new IndexFileBytesProvider(index, 0);
+            },
+            tryGetDatMediaArchive: () => {
+                const configIndex = cacheSystem.tryGetIndex(DatIndexId.configs);
+                if (!configIndex) {
+                    return undefined;
+                }
+                return configIndex.tryGetArchive(DatConfigArchiveId.media);
+            },
+            hasQuestTypeLoader: () => loaders.capabilities.hasQuestTypeLoader,
+            hasSkeletalSeqLoader: () => loaders.capabilities.hasSkeletalSeqLoader,
+            hasDistinctUnderlayTypeLoader: () => loaders.capabilities.hasDistinctUnderlayTypeLoader,
+            getQuestTypeLoader: () => getQuestTypeLoader(loaders),
+            getSkeletalSeqLoader: () => getSkeletalSeqLoader(loaders),
+            getTextureLoader: () => loaders.textureLoader,
+            getModelLoader: () => loaders.modelLoader,
+            getSeqTypeLoader: () => loaders.seqTypeLoader,
+            getNpcTypeLoader: () => loaders.npcTypeLoader,
+            getBasTypeLoader: () => loaders.basTypeLoader,
+            getSeqFrameLoader: () => loaders.seqFrameLoader,
+            getMapFileLoader: () => loaders.mapFileLoader,
+            tryLoadUnderlayType: (id: number) => loaders.underlayTypeLoader.tryLoad(id),
+            tryLoadOverlayType: (id: number) => loaders.overlayTypeLoader.tryLoad(id),
+            tryLoadVarBitType: (id: number) => loaders.varBitTypeLoader.tryLoad(id),
+            tryLoadLocType: (id: number) => loaders.locTypeLoader.tryLoad(id),
+            tryLoadNpcType: (id: number) => loaders.npcTypeLoader.tryLoad(id),
+            tryLoadObjType: (id: number) => loaders.objTypeLoader.tryLoad(id),
+            tryLoadSeqType: (id: number) => loaders.seqTypeLoader.tryLoad(id),
+            clearCaches: () => clearLoaderCaches(loaders),
+            tryFork,
+        };
+
+        return ok(session);
     }
-    const loaders = loadersResult.value;
 
-    const varManager = new VarManager(loaders.varBitTypeLoader);
-    const questTypeLoader = getQuestTypeLoader(loaders);
-    if (questTypeLoader) {
-        varManager.setQuestsCompleted(questTypeLoader);
+    try {
+        const cacheType = detectCacheType(cache.info);
+        switch (cacheType) {
+            case CacheType.Legacy: {
+                const sourcesResult = tryCreateLegacyLoaderSources(cacheSystem);
+                if (!sourcesResult.ok) return sourcesResult;
+                const sources = sourcesResult.value;
+
+                function createFromSources(): Result<CacheSession, InitError> {
+                    const loadersResult = tryCreateLegacyLoadersFromSources(cache.info, sources);
+                    if (!loadersResult.ok) return loadersResult;
+                    return createSessionFromLoaders(loadersResult.value, createFromSources);
+                }
+
+                return createFromSources();
+            }
+            case CacheType.Dat: {
+                const sourcesResult = tryCreateDatLoaderSources(cache.info, cacheSystem);
+                if (!sourcesResult.ok) return sourcesResult;
+                const sources = sourcesResult.value;
+
+                function createFromSources(): Result<CacheSession, InitError> {
+                    const loadersResult = tryCreateDatLoadersFromSources(cache.info, cacheType, sources);
+                    if (!loadersResult.ok) return loadersResult;
+                    return createSessionFromLoaders(loadersResult.value, createFromSources);
+                }
+
+                return createFromSources();
+            }
+            case CacheType.Dat2: {
+                const sourcesResult = tryCreateDat2LoaderSources(cache.info, cacheSystem);
+                if (!sourcesResult.ok) return sourcesResult;
+                const sources = sourcesResult.value;
+
+                function createFromSources(): Result<CacheSession, InitError> {
+                    const loadersResult = tryCreateDat2LoadersFromSources(cache.info, cacheType, sources);
+                    if (!loadersResult.ok) return loadersResult;
+                    return createSessionFromLoaders(loadersResult.value, createFromSources);
+                }
+
+                return createFromSources();
+            }
+        }
+        return err(unexpected("Not implemented"));
+    } catch (e) {
+        return err(unexpected(e));
     }
-
-    const session: CacheSession = {
-        cache,
-        cacheSystem,
-        loaders,
-        varManager,
-        mapFileIndex: loaders.mapFileLoader.mapFileIndex,
-        tryGetIndex: (indexId: number) => cacheSystem.tryGetIndex(indexId),
-        tryGetDat2SpriteSource: () => {
-            const index = cacheSystem.tryGetIndex(Dat2IndexId.sprites);
-            if (!index) {
-                return undefined;
-            }
-            return new IndexFileBytesProvider(index, 0);
-        },
-        tryGetDatMediaArchive: () => {
-            const configIndex = cacheSystem.tryGetIndex(DatIndexId.configs);
-            if (!configIndex) {
-                return undefined;
-            }
-            return configIndex.tryGetArchive(DatConfigArchiveId.media);
-        },
-        hasQuestTypeLoader: () => loaders.capabilities.hasQuestTypeLoader,
-        hasSkeletalSeqLoader: () => loaders.capabilities.hasSkeletalSeqLoader,
-        hasDistinctUnderlayTypeLoader: () => loaders.capabilities.hasDistinctUnderlayTypeLoader,
-        getQuestTypeLoader: () => getQuestTypeLoader(loaders),
-        getSkeletalSeqLoader: () => getSkeletalSeqLoader(loaders),
-        getTextureLoader: () => loaders.textureLoader,
-        getModelLoader: () => loaders.modelLoader,
-        getSeqTypeLoader: () => loaders.seqTypeLoader,
-        getNpcTypeLoader: () => loaders.npcTypeLoader,
-        getBasTypeLoader: () => loaders.basTypeLoader,
-        getSeqFrameLoader: () => loaders.seqFrameLoader,
-        getMapFileLoader: () => loaders.mapFileLoader,
-        tryLoadUnderlayType: (id: number) => loaders.underlayTypeLoader.tryLoad(id),
-        tryLoadOverlayType: (id: number) => loaders.overlayTypeLoader.tryLoad(id),
-        tryLoadVarBitType: (id: number) => loaders.varBitTypeLoader.tryLoad(id),
-        tryLoadLocType: (id: number) => loaders.locTypeLoader.tryLoad(id),
-        tryLoadNpcType: (id: number) => loaders.npcTypeLoader.tryLoad(id),
-        tryLoadObjType: (id: number) => loaders.objTypeLoader.tryLoad(id),
-        tryLoadSeqType: (id: number) => loaders.seqTypeLoader.tryLoad(id),
-        clearCaches: () => clearLoaderCaches(loaders),
-        tryFork: () => tryCreateCacheSessionFromSystem(cache, cacheSystem),
-    };
-
-    return ok(session);
 }

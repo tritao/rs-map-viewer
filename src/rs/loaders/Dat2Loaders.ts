@@ -83,7 +83,7 @@ import {
 } from "./InitError";
 import { Loaders, OptionalIndexedSprite, createLoaderCapabilities } from "./Loaders";
 
-type Dat2LoaderSources = Readonly<{
+export type Dat2LoaderSources = Readonly<{
     rules: CacheRules;
 
     configIndex: CacheIndex;
@@ -133,7 +133,7 @@ function requireArchive(
     return ok(archive);
 }
 
-function tryCreateDat2LoaderSources(
+export function tryCreateDat2LoaderSources(
     cacheInfo: CacheInfo,
     cacheSystem: CacheSystem,
 ): Result<Dat2LoaderSources, InitError> {
@@ -292,7 +292,14 @@ export function tryCreateDat2Loaders(
     if (!sourcesResult.ok) {
         return sourcesResult;
     }
-    const sources = sourcesResult.value;
+    return tryCreateDat2LoadersFromSources(cacheInfo, _cacheType, sourcesResult.value);
+}
+
+export function tryCreateDat2LoadersFromSources(
+    cacheInfo: CacheInfo,
+    _cacheType: CacheType,
+    sources: Dat2LoaderSources,
+): Result<Loaders, InitError> {
 
     const rules = sources.rules;
     const configIndex = sources.configIndex;
