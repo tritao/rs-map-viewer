@@ -11,6 +11,7 @@ import { Npc } from "./npc/Npc";
 import type { InteractionControllerRenderer } from "./interaction/InteractionState";
 import type { TickCapability, TickControllerRenderer } from "./patch/TickCapability";
 import type { NpcGpuDataConsumer } from "./npc/NpcGpuData";
+import type { FramePacket } from "./packet/FramePacket";
 
 export enum TextureFilterMode {
     DISABLED,
@@ -147,6 +148,10 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     getNpcGpuDataConsumerRenderer(): NpcGpuDataConsumer | undefined {
         return undefined;
     }
+
+    // Optional capability: renderer instance can consume per-frame worker packets (npc gpu data +
+    // tick patch streams). Default is a no-op so non-packet renderers don't need to implement it.
+    applyFramePacket(_packet: FramePacket | undefined): void {}
 
     addMap(mapData: U): void {
         this.mapsToLoad.push(mapData);

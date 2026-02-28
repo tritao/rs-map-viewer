@@ -46,6 +46,7 @@ import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
 } from "../packet/FramePacket";
+import type { FramePacket } from "../packet/FramePacket";
 import { applyDrawRangePatches } from "./core/applyDrawRangePatches";
 
 const DRAW_RANGE_STRIDE = 3;
@@ -66,6 +67,8 @@ export class WebGLMapRenderer
     private readonly postProcessPass = new PostProcessPass();
     private readonly npcDataTextureRing = new NpcDataTextureRing(NPC_DATA_TEXTURE_RING_SIZE);
     private npcGpuFrameData: NpcGpuFrameData | undefined;
+    private readonly npcDataOffsetByMapId = new Map<number, number>();
+    private lastAppliedFramePacketFrameCount: number = -1;
     private frameTickPatches:
         | {
               patchesPacked: Int32Array;
@@ -135,7 +138,64 @@ export class WebGLMapRenderer
         return this;
     }
 
+    override applyFramePacket(packet: FramePacket | undefined): void {
+        if (!packet) {
+            this.lastAppliedFramePacketFrameCount = -1;
+            this.npcDataOffsetByMapId.clear();
+            this.clearFrameTickPatches();
+            return;
+        }
+
+        // Avoid re-parsing the packet when the worker output lags by a frame; we still need to
+        // keep per-map offset rings in sync (write index changes every frame), so callers may
+        // invoke this repeatedly with the same packet.
+        if ((packet.frameCount | 0) !== (this.lastAppliedFramePacketFrameCount | 0)) {
+            this.lastAppliedFramePacketFrameCount = packet.frameCount | 0;
+
+            this.setNpcGpuFrameData(packet.npcGpuFrameData);
+            this.setFrameTickPatchesFromPacket(packet.tickPatchCountsByMapId, packet.tickPatchPacked);
+
+            // Cache the latest per-map npc data offsets from the worker.
+            const pairs = packet.npcOffsetsByMapIdPairs;
+            const pairCount = Math.floor((pairs.length | 0) / 2);
+            for (let i = 0; i < pairCount; i++) {
+                const off = (i * 2) | 0;
+                const mapId = pairs[off + 0] | 0;
+                const dataOffset = pairs[off + 1] | 0;
+                this.npcDataOffsetByMapId.set(mapId, dataOffset);
+            }
+        }
+
+        // Keep the per-map npc data offsets in sync with the renderer's write ring index every
+        // frame. WebGL renders from a stable slot (one behind), so the slot written at
+        // (frameCount % ringSize) will be read on the next frame.
+        if (!this.loadNpcs) {
+            return;
+        }
+        for (let i = 0; i < this.visibleMapCount; i++) {
+            const mapInfo = this.visibleMaps[i];
+            const map = this.loadedMaps.get(mapInfo.mapId) as any;
+            if (!map || !Array.isArray(map.npcDataTextureOffsets)) {
+                continue;
+            }
+            const ringSize = map.npcDataTextureOffsets.length | 0;
+            if (ringSize <= 0) {
+                continue;
+            }
+            const npcWriteIndex = (this.stats.frameCount | 0) % ringSize;
+            const dataOffset = this.npcDataOffsetByMapId.get(mapInfo.mapId) ?? -1;
+            map.npcDataTextureOffsets[npcWriteIndex] = dataOffset | 0;
+        }
+    }
+
     setFrameTickPatchesFromPacket(countsByMapId: Int32Array, patchesPacked: Int32Array): void {
+        const totalInts = countsByMapId.length | 0;
+        if ((totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+            throw new Error(
+                `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
+                    `len=${totalInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
+            );
+        }
         const entryCount = Math.floor(
             (countsByMapId.length | 0) / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
         );
@@ -159,6 +219,15 @@ export class WebGLMapRenderer
                 streamOffsets[idx] = readOff | 0;
                 readOff = (readOff + ((count * TICK_PATCH_ENTRY_STRIDE) | 0)) | 0;
             }
+        }
+
+        const expected = readOff | 0;
+        const actual = patchesPacked.length | 0;
+        if (expected !== actual) {
+            throw new Error(
+                `[map-render][frame-packet] tickPatchPacked length mismatch: ` +
+                    `expected=${expected} actual=${actual}`,
+            );
         }
 
         this.frameTickPatches = {

@@ -8,9 +8,6 @@ import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { SdMapData } from "../renderer/loader/SdMapData";
 import type { FramePacket } from "../renderer/packet/FramePacket";
-import {
-    NPC_OFFSETS_BY_MAP_ID_STRIDE,
-} from "../renderer/packet/FramePacket";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
 import { TickController } from "../sim/tick/TickController";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
@@ -44,6 +41,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly simWorld = new SimWorld();
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
+    private lastNpcSimInWorker: boolean = false;
 
     // State
     lastClientTick: number = 0;
@@ -53,7 +51,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     private pendingFramePacket?: Promise<FramePacket | undefined>;
     private latestFramePacket?: FramePacket;
     private latestFramePacketFrameCount: number = -1;
-    private readonly npcDataOffsetByMapId = new Map<number, number>();
 
     constructor(public mapViewer: MapViewer) {
         super();
@@ -73,6 +70,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.renderer.getTickControllerRenderer(),
         );
         this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+        this.lastNpcSimInWorker = !!this.lastRuntimeOptions?.mapRenderNpcSimInWorker;
         this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
@@ -214,7 +212,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.tickController.onRenderableRemoved(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
-        this.npcDataOffsetByMapId.delete(mapInfo.mapId);
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         if (runtimeOptions.mapRenderNpcSimInWorker) {
             void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId);
@@ -231,7 +228,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initCache(): void {
         this.renderer.initCache();
-        this.npcDataOffsetByMapId.clear();
         this.mapManager.init(
             this.mapViewer.session.mapFileIndex,
             SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
@@ -276,7 +272,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.pendingFramePacket = undefined;
             this.latestFramePacket = undefined;
             this.latestFramePacketFrameCount = -1;
-            this.npcDataOffsetByMapId.clear();
+            this.lastNpcSimInWorker = false;
             this.mapManager.cleanUp();
             this.tickController.reset();
 
@@ -369,57 +365,33 @@ export class MapViewerRenderer extends RendererMainLoop {
         const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
         const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+        const prevNpcSimInWorker = this.lastNpcSimInWorker;
         if (runtimeOptions !== this.lastRuntimeOptions) {
             this.lastRuntimeOptions = runtimeOptions;
             this.tickController.setRuntimeOptions(runtimeOptions);
         }
+        const npcSimInWorker = !!runtimeOptions.mapRenderNpcSimInWorker;
+        this.lastNpcSimInWorker = npcSimInWorker;
+        if (prevNpcSimInWorker && !npcSimInWorker) {
+            // Ensure any packet-driven tick patch state is cleared when switching back to the
+            // main-thread tick path.
+            this.renderer.applyFramePacket(undefined);
+            this.latestFramePacketFrameCount = -1;
+        } else if (!prevNpcSimInWorker && npcSimInWorker) {
+            // Clear stale packet state when switching into worker mode.
+            this.pendingFramePacket = undefined;
+            this.latestFramePacket = undefined;
+            this.latestFramePacketFrameCount = -1;
+            this.renderer.applyFramePacket(undefined);
+        }
 
-        if (runtimeOptions.mapRenderNpcSimInWorker) {
+        if (npcSimInWorker) {
             const packet = this.latestFramePacket;
-
-            // Apply the latest worker packet (best-effort, may lag by a frame).
+            // Apply the latest worker packet each frame. The renderer tracks frameCount to avoid
+            // re-parsing; this keeps the npc offset rings in sync even if the packet lags.
+            this.renderer.applyFramePacket(packet);
             if (packet && packet.frameCount !== this.latestFramePacketFrameCount) {
                 this.latestFramePacketFrameCount = packet.frameCount | 0;
-
-                this.renderer
-                    .getNpcGpuDataConsumerRenderer()
-                    ?.setNpcGpuFrameData(packet.npcGpuFrameData);
-
-                const anyRenderer = this.renderer as any;
-                if (typeof anyRenderer.setFrameTickPatchesFromPacket === "function") {
-                    anyRenderer.setFrameTickPatchesFromPacket(
-                        packet.tickPatchCountsByMapId,
-                        packet.tickPatchPacked,
-                    );
-                }
-
-                // Per-map npc texture offsets.
-                const pairs = packet.npcOffsetsByMapIdPairs;
-                const pairCount = Math.floor(pairs.length / NPC_OFFSETS_BY_MAP_ID_STRIDE);
-                for (let i = 0; i < pairCount; i++) {
-                    const off = i * NPC_OFFSETS_BY_MAP_ID_STRIDE;
-                    const mapId = pairs[off + 0] | 0;
-                    const dataOffset = pairs[off + 1] | 0;
-                    this.npcDataOffsetByMapId.set(mapId, dataOffset);
-                }
-            }
-
-            // Keep the per-map npc data offsets in sync with the renderer's *write* ring index even
-            // if the worker packet lags. WebGL renders from a stable slot (one behind), so the slot
-            // written at (frameCount % ringSize) will be read on the next frame.
-            for (let i = 0; i < this.renderer.visibleMapCount; i++) {
-                const mapInfo = this.renderer.visibleMaps[i];
-                const map = this.renderer.getMap(mapInfo.mapId) as any;
-                if (!map || !Array.isArray(map.npcDataTextureOffsets)) {
-                    continue;
-                }
-                const ringSize = map.npcDataTextureOffsets.length | 0;
-                if (ringSize <= 0) {
-                    continue;
-                }
-                const npcWriteIndex = (this.renderer.stats.frameCount | 0) % ringSize;
-                const dataOffset = this.npcDataOffsetByMapId.get(mapInfo.mapId) ?? -1;
-                map.npcDataTextureOffsets[npcWriteIndex] = dataOffset | 0;
             }
 
             // Kick an async tick request if one isn't already in flight.
@@ -455,10 +427,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
             }
         } else {
-            const anyRenderer = this.renderer as any;
-            if (typeof anyRenderer.clearFrameTickPatches === "function") {
-                anyRenderer.clearFrameTickPatches();
-            }
             this.npcGpuDataBuilder.beginFrame();
         }
 
