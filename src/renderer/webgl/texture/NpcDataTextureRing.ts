@@ -18,16 +18,19 @@ export class NpcDataTextureRing {
         frameCount: number,
         input: NpcDataTextureFlushInput,
     ): { npcDataTextureIndex: number; npcDataTexture: Texture | undefined } {
-        const newIndex = (frameCount | 0) % this.textures.length;
+        const writeIndex = (frameCount | 0) % this.textures.length;
+        const readIndex = ((frameCount | 0) + this.textures.length - 1) % this.textures.length;
 
-        this.textures[newIndex]?.delete();
-        this.textures[newIndex] = app.createTexture2D(input.data, input.width, input.height, {
+        this.textures[writeIndex]?.delete();
+        this.textures[writeIndex] = app.createTexture2D(input.data, input.width, input.height, {
             internalFormat: PicoGL.RGBA16UI,
             minFilter: PicoGL.NEAREST,
             magFilter: PicoGL.NEAREST,
         });
 
-        return { npcDataTextureIndex: newIndex, npcDataTexture: this.textures[newIndex] };
+        // Render from a stable slot (one behind) to avoid sampling a texture that was just replaced.
+        // This also naturally aligns with per-map offset rings that write at (frameCount % ringSize).
+        return { npcDataTextureIndex: readIndex, npcDataTexture: this.textures[readIndex] };
     }
 
     dispose(): void {
@@ -39,4 +42,3 @@ export class NpcDataTextureRing {
         }
     }
 }
-
