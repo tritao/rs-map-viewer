@@ -1,17 +1,11 @@
 import { TileRenderFlag } from "../../rs/scene/Scene";
 import type { Npc } from "./Npc";
+import type { NpcGpuFrameData } from "./NpcGpuData";
 
 type NpcGpuDataTarget = Readonly<{
     npcs: ReadonlyArray<Npc>;
     npcDataTextureOffsets: number[];
     getTileRenderFlag(level: number, tileX: number, tileY: number): number;
-}>;
-
-type NpcGpuFrameData = Readonly<{
-    width: number;
-    height: number;
-    data: Uint16Array;
-    count: number;
 }>;
 
 export class NpcGpuDataBuilder {
@@ -63,7 +57,6 @@ export class NpcGpuDataBuilder {
             width: 16,
             height,
             data: this.data.subarray(0, required),
-            count: this.count,
         };
     }
 
@@ -84,4 +77,3 @@ export class NpcGpuDataBuilder {
         this.count = nextCount;
     }
 }
-

@@ -10,6 +10,7 @@ import { LocAnimated } from "./loc/LocAnimated";
 import { Npc } from "./npc/Npc";
 import type { InteractionControllerRenderer } from "./interaction/InteractionState";
 import type { TickCapability, TickControllerRenderer } from "./patch/TickCapability";
+import type { NpcGpuDataConsumer } from "./npc/NpcGpuData";
 
 export enum TextureFilterMode {
     DISABLED,
@@ -139,6 +140,11 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     // Optional capability: renderer instance can accept interaction input events.
     getInteractionControllerRenderer(): InteractionControllerRenderer | undefined {
+        return undefined;
+    }
+
+    // Optional capability: renderer instance can accept packed NPC GPU instance data.
+    getNpcGpuDataConsumerRenderer(): NpcGpuDataConsumer | undefined {
         return undefined;
     }
 
