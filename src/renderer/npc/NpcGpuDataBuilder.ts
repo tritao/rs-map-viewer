@@ -53,10 +53,13 @@ export class NpcGpuDataBuilder {
             newData.set(this.data);
             this.data = newData;
         }
+        // Important: this buffer may be transferred from worker -> main thread. Never return a view
+        // into `this.data` directly, otherwise the next frame would try to write into a detached
+        // buffer (threads Transfer detaches). Returning a copy keeps the internal scratch reusable.
         return {
             width: 16,
             height,
-            data: this.data.subarray(0, required),
+            data: this.data.slice(0, required),
         };
     }
 
