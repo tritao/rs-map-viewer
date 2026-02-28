@@ -45,6 +45,15 @@ export class RenderDataWorkerPool {
         }
     }
 
+    initCacheAndWait(
+        cache: LoadedCache,
+        objSpawns: ObjSpawn[],
+        npcSpawns: NpcSpawn[],
+        options?: WorkerRuntimeOptions,
+    ): Promise<void> {
+        return this.runAll((w) => w.initCache(cache, objSpawns, npcSpawns, options));
+    }
+
     async runAll(task: (w: RenderDataWorkerThread) => any): Promise<void> {
         await Promise.all(this.workers.map((desc) => desc.init.then(task)));
     }

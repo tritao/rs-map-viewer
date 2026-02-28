@@ -250,7 +250,10 @@ export class MapViewer {
             return;
         }
         this.runtimeOptions = normalized;
-        this.workerPool.initCache(
+        // Update URL immediately so the user sees the new mode even if rebuilding takes time.
+        this.emitSearchParamsNow();
+
+        await this.workerPool.initCacheAndWait(
             this.cacheContext.loadedCache,
             this.objSpawns,
             this.cacheContext.npcSpawns,
@@ -259,7 +262,6 @@ export class MapViewer {
         this.clearMapImageUrls();
         await this.renderer.applyCacheContext();
         this.resetMenu();
-        this.updateSearchParams();
     }
 
     subscribeSearchParams(listener: (params: URLSearchParamsInit) => void): () => void {
@@ -295,6 +297,17 @@ export class MapViewer {
                 listener(params);
             }
         }, 200);
+    }
+
+    private emitSearchParamsNow(): void {
+        if (this.searchParamsDebounceTimer !== undefined) {
+            window.clearTimeout(this.searchParamsDebounceTimer);
+            this.searchParamsDebounceTimer = undefined;
+        }
+        const params = this.getSearchParams();
+        for (const listener of this.searchParamsListeners) {
+            listener(params);
+        }
     }
 
     applySearchParams(searchParams: URLSearchParams) {

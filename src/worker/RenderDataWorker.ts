@@ -314,17 +314,19 @@ async function initWorker(
 }
 
 const worker = {
-    initCache(
+    async initCache(
         cache: LoadedCache,
         objSpawns: ObjSpawn[],
         npcSpawns: NpcSpawn[],
         options?: WorkerRuntimeOptions,
-    ) {
+    ): Promise<void> {
         console.log("init worker", cache.info);
         workerStatePromise = initWorker(cache, objSpawns, npcSpawns, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
         npcSimByMapId.clear();
+        // Make initCache awaitable so callers can block until the worker is fully ready.
+        await requireWorkerState();
     },
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.init();
