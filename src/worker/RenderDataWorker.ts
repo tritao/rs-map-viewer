@@ -39,8 +39,6 @@ import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/npc/NpcGpuData";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
 import type { FramePacket } from "../renderer/packet/FramePacket";
 import {
-    NPC_MOVE_META_STRIDE,
-    NPC_MOVE_STATE_STRIDE,
     NPC_OFFSETS_BY_MAP_ID_STRIDE,
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -517,8 +515,6 @@ const worker = {
 
         npcGpuDataBuilder.beginFrame();
 
-        const meta: number[] = [];
-        const packed: number[] = [];
         const offsetsPairs = new Int32Array((mapIds.length | 0) * NPC_OFFSETS_BY_MAP_ID_STRIDE);
         const tickPatchCountsByMapId = new Int32Array(
             (mapIds.length | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
@@ -594,21 +590,7 @@ const worker = {
                 }
             }
 
-            // Record movement state snapshot for syncing main-thread NPC objects.
             const npcCount = state.npcs.length | 0;
-            const stateOffset = packed.length | 0;
-            meta.push(mapId, npcCount, stateOffset);
-            for (let i = 0; i < npcCount; i++) {
-                const npc = state.npcs[i];
-                packed.push(
-                    npc.x | 0,
-                    npc.y | 0,
-                    npc.orientation | 0,
-                    npc.rotation | 0,
-                    npc.pathLength | 0,
-                    npc.movementSeqId | 0,
-                );
-            }
 
             // Build packed NPC gpu info (x,y,rotationAndPlane,typeId) and per-map offset.
             const target = {
@@ -712,8 +694,6 @@ const worker = {
             frameCount: frameCount | 0,
             npcGpuFrameData,
             npcOffsetsByMapIdPairs: offsetsPairs,
-            npcMoveStateMeta: Int32Array.from(meta),
-            npcMoveStatePacked: Int32Array.from(packed),
             tickPatchCountsByMapId,
             tickPatchPacked,
         };
