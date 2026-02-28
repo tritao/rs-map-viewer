@@ -42,6 +42,18 @@ import {
 } from "./InitError";
 import { Loaders, createLoaderCapabilities } from "./Loaders";
 
+type DatLoaderSources = Readonly<{
+    configIndex: CacheIndex;
+    configArchive: Archive;
+    mediaArchive: Archive;
+    textureArchive: Archive;
+    mapIndex: CacheIndex;
+    versionListArchive: Archive;
+    mapIndexBytes: Uint8Array;
+    modelsIndex: CacheIndex;
+    animationsIndex: CacheIndex;
+}>;
+
 function requireIndex(
     cacheSystem: CacheSystem,
     indexId: number,
@@ -64,6 +76,90 @@ function requireArchive(
         return err(missingArchive(index.id, archiveId, description));
     }
     return ok(archive);
+}
+
+function tryCreateDatLoaderSources(
+    cacheInfo: CacheInfo,
+    cacheSystem: CacheSystem,
+): Result<DatLoaderSources, InitError> {
+    const configIndexResult = requireIndex(cacheSystem, DatIndexId.configs, "dat configs");
+    if (!configIndexResult.ok) {
+        return configIndexResult;
+    }
+    const configIndex = configIndexResult.value;
+
+    const configArchiveResult = requireArchive(
+        configIndex,
+        DatConfigArchiveId.configs,
+        "dat config",
+    );
+    if (!configArchiveResult.ok) {
+        return configArchiveResult;
+    }
+    const mediaArchiveResult = requireArchive(configIndex, DatConfigArchiveId.media, "dat media");
+    if (!mediaArchiveResult.ok) {
+        return mediaArchiveResult;
+    }
+    const textureArchiveResult = requireArchive(
+        configIndex,
+        DatConfigArchiveId.textures,
+        "dat textures",
+    );
+    if (!textureArchiveResult.ok) {
+        return textureArchiveResult;
+    }
+
+    const mapIndexResult = requireIndex(cacheSystem, DatIndexId.maps, "dat maps");
+    if (!mapIndexResult.ok) {
+        return mapIndexResult;
+    }
+
+    const versionListArchiveResult = requireArchive(
+        configIndex,
+        DatConfigArchiveId.versionList,
+        "dat version list",
+    );
+    if (!versionListArchiveResult.ok) {
+        return versionListArchiveResult;
+    }
+
+    const versionListSource = new ArchiveNamedBytesProvider(versionListArchiveResult.value);
+    const mapIndexBytes = versionListSource.getBytes("map_index");
+    if (!mapIndexBytes) {
+        return err(
+            missingNamedFile(
+                configIndex.id,
+                DatConfigArchiveId.versionList,
+                "map_index",
+                "map index",
+            ),
+        );
+    }
+
+    const modelsIndexResult = requireIndex(cacheSystem, DatIndexId.models, "dat models");
+    if (!modelsIndexResult.ok) {
+        return modelsIndexResult;
+    }
+    const animationsIndexResult = requireIndex(
+        cacheSystem,
+        DatIndexId.animations,
+        "dat animations",
+    );
+    if (!animationsIndexResult.ok) {
+        return animationsIndexResult;
+    }
+
+    return ok({
+        configIndex,
+        configArchive: configArchiveResult.value,
+        mediaArchive: mediaArchiveResult.value,
+        textureArchive: textureArchiveResult.value,
+        mapIndex: mapIndexResult.value,
+        versionListArchive: versionListArchiveResult.value,
+        mapIndexBytes,
+        modelsIndex: modelsIndexResult.value,
+        animationsIndex: animationsIndexResult.value,
+    });
 }
 
 export function loadMapSprites(mediaSource: NamedBytesProvider, name: string): IndexedSprite[] {
@@ -95,27 +191,20 @@ export function tryCreateDatLoaders(
     _cacheType: CacheType,
     cacheSystem: CacheSystem,
 ): Result<Loaders, InitError> {
-    const configIndexResult = requireIndex(cacheSystem, DatIndexId.configs, "dat configs");
-    if (!configIndexResult.ok) {
-        return configIndexResult;
+    const sourcesResult = tryCreateDatLoaderSources(cacheInfo, cacheSystem);
+    if (!sourcesResult.ok) {
+        return sourcesResult;
     }
-    const configIndex = configIndexResult.value;
+    return tryCreateDatLoadersFromSources(cacheInfo, _cacheType, sourcesResult.value);
+}
 
-    const configArchiveResult = requireArchive(
-        configIndex,
-        DatConfigArchiveId.configs,
-        "dat config",
-    );
-    if (!configArchiveResult.ok) {
-        return configArchiveResult;
-    }
-    const configArchive = configArchiveResult.value;
-
-    const mediaArchiveResult = requireArchive(configIndex, DatConfigArchiveId.media, "dat media");
-    if (!mediaArchiveResult.ok) {
-        return mediaArchiveResult;
-    }
-    const mediaArchive = mediaArchiveResult.value;
+export function tryCreateDatLoadersFromSources(
+    cacheInfo: CacheInfo,
+    _cacheType: CacheType,
+    sources: DatLoaderSources,
+): Result<Loaders, InitError> {
+    const configArchive = sources.configArchive;
+    const mediaArchive = sources.mediaArchive;
 
     let floTypeLoader: OverlayFloorTypeLoader;
     try {
@@ -135,53 +224,16 @@ export function tryCreateDatLoaders(
         }
     }
 
-    const textureArchiveResult = requireArchive(
-        configIndex,
-        DatConfigArchiveId.textures,
-        "dat textures",
-    );
-    if (!textureArchiveResult.ok) {
-        return textureArchiveResult;
-    }
-    const textureArchive = textureArchiveResult.value;
-
     const animatedTextureIds = [DatTextureLoader.WATER_DROPLETS_TEXTURE_ID, 24];
     if (cacheInfo.revision > 289) {
         animatedTextureIds.push(34, 40);
     }
-    const textureLoader = new DatTextureLoader(textureArchive, animatedTextureIds);
-
-    const mapIndexResult = requireIndex(cacheSystem, DatIndexId.maps, "dat maps");
-    if (!mapIndexResult.ok) {
-        return mapIndexResult;
-    }
-    const mapIndex = mapIndexResult.value;
-
-    const versionListArchiveResult = requireArchive(
-        configIndex,
-        DatConfigArchiveId.versionList,
-        "dat version list",
-    );
-    if (!versionListArchiveResult.ok) {
-        return versionListArchiveResult;
-    }
+    const textureLoader = new DatTextureLoader(sources.textureArchive, animatedTextureIds);
 
     let mapFileIndex: DatMapFileIndex;
     {
-        const versionListSource = new ArchiveNamedBytesProvider(versionListArchiveResult.value);
-        const mapIndexBytes = versionListSource.getBytes("map_index");
-        if (!mapIndexBytes) {
-            return err(
-                missingNamedFile(
-                    configIndex.id,
-                    DatConfigArchiveId.versionList,
-                    "map_index",
-                    "map index",
-                ),
-            );
-        }
         try {
-            mapFileIndex = DatMapFileIndex.decodeMapIndex(mapIndexBytes);
+            mapFileIndex = DatMapFileIndex.decodeMapIndex(sources.mapIndexBytes);
         } catch (e) {
             return err(createFailed("map file index", e));
         }
@@ -198,19 +250,6 @@ export function tryCreateDatLoaders(
         seqTypeLoader = DatSeqTypeLoader.create(cacheInfo, configArchive);
     } catch (e) {
         return err(createFailed("dat type loaders", e));
-    }
-
-    const modelsIndexResult = requireIndex(cacheSystem, DatIndexId.models, "dat models");
-    if (!modelsIndexResult.ok) {
-        return modelsIndexResult;
-    }
-    const animationsIndexResult = requireIndex(
-        cacheSystem,
-        DatIndexId.animations,
-        "dat animations",
-    );
-    if (!animationsIndexResult.ok) {
-        return animationsIndexResult;
     }
 
     const mediaSource = new ArchiveNamedBytesProvider(mediaArchive);
@@ -235,11 +274,11 @@ export function tryCreateDatLoaders(
 
         textureLoader,
 
-        modelLoader: IndexModelLoader.create(modelsIndexResult.value),
-        seqFrameLoader: DatSeqFrameLoader.create(animationsIndexResult.value),
+        modelLoader: IndexModelLoader.create(sources.modelsIndex),
+        seqFrameLoader: DatSeqFrameLoader.create(sources.animationsIndex),
         skeletalSeqLoader: undefined,
 
-        mapFileLoader: new MapFileLoader(new CacheIndexMapBytesProvider(mapIndex), mapFileIndex),
+        mapFileLoader: new MapFileLoader(new CacheIndexMapBytesProvider(sources.mapIndex), mapFileIndex),
 
         mapScenes: loadMapScenes(mediaSource),
         mapFunctions: loadMapFunctions(mediaSource),

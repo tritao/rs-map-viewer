@@ -8,7 +8,7 @@ import {
     OsrsConfigArchiveId,
     Rs2ConfigArchiveId,
 } from "../cache/ConfigArchiveId";
-import { Dat2IndexId, Rs2IndexId } from "../cache/IndexId";
+import { Dat2IndexId, OsrsIndexId, Rs2IndexId } from "../cache/IndexId";
 import { Archive } from "../cache/format/Archive";
 import {
     ArchiveBasTypeLoader,
@@ -83,6 +83,32 @@ import {
 } from "./InitError";
 import { Loaders, OptionalIndexedSprite, createLoaderCapabilities } from "./Loaders";
 
+type Dat2LoaderSources = Readonly<{
+    rules: CacheRules;
+
+    configIndex: CacheIndex;
+    spriteIndex: CacheIndex;
+    textureIndex: CacheIndex;
+    modelsIndex: CacheIndex;
+    skeletonsIndex: CacheIndex;
+    animationsIndex: CacheIndex;
+    mapsIndex: CacheIndex;
+
+    // Optional (only used when rules.isIndexConfigs is true).
+    varbitsIndex?: CacheIndex;
+    locsIndex?: CacheIndex;
+    npcsIndex?: CacheIndex;
+    objsIndex?: CacheIndex;
+    seqsIndex?: CacheIndex;
+
+    // Optional (only used when rules.texture.mode === "materials").
+    materialsBytes?: Uint8Array;
+
+    // Optional indices used by GraphicsDefaults.tryCreateFromSources.
+    osrsGraphicDefaultsIndex?: CacheIndex;
+    rs2DefaultsIndex?: CacheIndex;
+}>;
+
 function requireIndex(
     cacheSystem: CacheSystem,
     indexId: number,
@@ -105,6 +131,115 @@ function requireArchive(
         return err(missingArchive(index.id, archiveId, description));
     }
     return ok(archive);
+}
+
+function tryCreateDat2LoaderSources(
+    cacheInfo: CacheInfo,
+    cacheSystem: CacheSystem,
+): Result<Dat2LoaderSources, InitError> {
+    let rules: CacheRules;
+    try {
+        rules = computeCacheRules(cacheInfo, cacheSystem);
+    } catch (e) {
+        return err(createFailed("cache rules", e));
+    }
+
+    const configIndexResult = requireIndex(cacheSystem, Dat2IndexId.configs, "dat2 configs");
+    if (!configIndexResult.ok) {
+        return configIndexResult;
+    }
+    const spriteIndexResult = requireIndex(cacheSystem, Dat2IndexId.sprites, "dat2 sprites");
+    if (!spriteIndexResult.ok) {
+        return spriteIndexResult;
+    }
+    const textureIndexResult = requireIndex(cacheSystem, Dat2IndexId.textures, "dat2 textures");
+    if (!textureIndexResult.ok) {
+        return textureIndexResult;
+    }
+    const modelsIndexResult = requireIndex(cacheSystem, Dat2IndexId.models, "dat2 models");
+    if (!modelsIndexResult.ok) {
+        return modelsIndexResult;
+    }
+    const skeletonsIndexResult = requireIndex(
+        cacheSystem,
+        Dat2IndexId.skeletons,
+        "dat2 skeletons",
+    );
+    if (!skeletonsIndexResult.ok) {
+        return skeletonsIndexResult;
+    }
+    const animationsIndexResult = requireIndex(
+        cacheSystem,
+        Dat2IndexId.animations,
+        "dat2 animations",
+    );
+    if (!animationsIndexResult.ok) {
+        return animationsIndexResult;
+    }
+    const mapsIndexResult = requireIndex(cacheSystem, Dat2IndexId.maps, "dat2 maps");
+    if (!mapsIndexResult.ok) {
+        return mapsIndexResult;
+    }
+
+    let materialsBytes: Uint8Array | undefined;
+    if (rules.texture.mode === "materials") {
+        const materialsIndexResult = requireIndex(cacheSystem, Rs2IndexId.materials, "rs2 materials");
+        if (!materialsIndexResult.ok) {
+            return materialsIndexResult;
+        }
+        const materialsIndex = materialsIndexResult.value;
+        const materialsFile = materialsIndex.tryGetFile(0, 0);
+        if (!materialsFile) {
+            return err(missingFile(materialsIndex.id, 0, 0, "rs2 materials"));
+        }
+        materialsBytes = materialsFile.data;
+    }
+
+    let varbitsIndex: CacheIndex | undefined;
+    let locsIndex: CacheIndex | undefined;
+    let npcsIndex: CacheIndex | undefined;
+    let objsIndex: CacheIndex | undefined;
+    let seqsIndex: CacheIndex | undefined;
+    if (rules.isIndexConfigs) {
+        const varbitsIndexResult = requireIndex(cacheSystem, Rs2IndexId.varbits, "rs2 varbits");
+        if (!varbitsIndexResult.ok) return varbitsIndexResult;
+        varbitsIndex = varbitsIndexResult.value;
+
+        const locsIndexResult = requireIndex(cacheSystem, Rs2IndexId.locs, "rs2 locs");
+        if (!locsIndexResult.ok) return locsIndexResult;
+        locsIndex = locsIndexResult.value;
+
+        const npcsIndexResult = requireIndex(cacheSystem, Rs2IndexId.npcs, "rs2 npcs");
+        if (!npcsIndexResult.ok) return npcsIndexResult;
+        npcsIndex = npcsIndexResult.value;
+
+        const objsIndexResult = requireIndex(cacheSystem, Rs2IndexId.objs, "rs2 objs");
+        if (!objsIndexResult.ok) return objsIndexResult;
+        objsIndex = objsIndexResult.value;
+
+        const seqsIndexResult = requireIndex(cacheSystem, Rs2IndexId.seqs, "rs2 seqs");
+        if (!seqsIndexResult.ok) return seqsIndexResult;
+        seqsIndex = seqsIndexResult.value;
+    }
+
+    return ok({
+        rules,
+        configIndex: configIndexResult.value,
+        spriteIndex: spriteIndexResult.value,
+        textureIndex: textureIndexResult.value,
+        modelsIndex: modelsIndexResult.value,
+        skeletonsIndex: skeletonsIndexResult.value,
+        animationsIndex: animationsIndexResult.value,
+        mapsIndex: mapsIndexResult.value,
+        materialsBytes,
+        varbitsIndex,
+        locsIndex,
+        npcsIndex,
+        objsIndex,
+        seqsIndex,
+        osrsGraphicDefaultsIndex: cacheSystem.tryGetIndex(OsrsIndexId.graphicDefaults) ?? undefined,
+        rs2DefaultsIndex: cacheSystem.tryGetIndex(Rs2IndexId.defaults) ?? undefined,
+    });
 }
 
 function loadMapElementSprites(
@@ -153,24 +288,15 @@ export function tryCreateDat2Loaders(
     _cacheType: CacheType,
     cacheSystem: CacheSystem,
 ): Result<Loaders, InitError> {
-    let rules: CacheRules;
-    try {
-        rules = computeCacheRules(cacheInfo, cacheSystem);
-    } catch (e) {
-        return err(createFailed("cache rules", e));
+    const sourcesResult = tryCreateDat2LoaderSources(cacheInfo, cacheSystem);
+    if (!sourcesResult.ok) {
+        return sourcesResult;
     }
+    const sources = sourcesResult.value;
 
-    const configIndexResult = requireIndex(cacheSystem, Dat2IndexId.configs, "dat2 configs");
-    if (!configIndexResult.ok) {
-        return configIndexResult;
-    }
-    const configIndex = configIndexResult.value;
-
-    const spriteIndexResult = requireIndex(cacheSystem, Dat2IndexId.sprites, "dat2 sprites");
-    if (!spriteIndexResult.ok) {
-        return spriteIndexResult;
-    }
-    const spriteIndex = spriteIndexResult.value;
+    const rules = sources.rules;
+    const configIndex = sources.configIndex;
+    const spriteIndex = sources.spriteIndex;
 
     const spriteSource = new IndexFileBytesProvider(spriteIndex, 0);
 
@@ -202,11 +328,11 @@ export function tryCreateDat2Loaders(
 
     let varBitTypeLoader: VarBitTypeLoader;
     if (rules.isIndexConfigs) {
-        const varbitsIndexResult = requireIndex(cacheSystem, Rs2IndexId.varbits, "rs2 varbits");
-        if (!varbitsIndexResult.ok) {
-            return varbitsIndexResult;
+        const varbitsIndex = sources.varbitsIndex;
+        if (!varbitsIndex) {
+            return err(missingIndex(Rs2IndexId.varbits, "rs2 varbits"));
         }
-        varBitTypeLoader = new IndexVarBitTypeLoader(cacheInfo, varbitsIndexResult.value);
+        varBitTypeLoader = new IndexVarBitTypeLoader(cacheInfo, varbitsIndex);
     } else {
         const varbitsArchiveResult = requireArchive(
             configIndex,
@@ -221,11 +347,11 @@ export function tryCreateDat2Loaders(
 
     let locTypeLoader: LocTypeLoader;
     if (rules.isIndexConfigs) {
-        const locsIndexResult = requireIndex(cacheSystem, Rs2IndexId.locs, "rs2 locs");
-        if (!locsIndexResult.ok) {
-            return locsIndexResult;
+        const locsIndex = sources.locsIndex;
+        if (!locsIndex) {
+            return err(missingIndex(Rs2IndexId.locs, "rs2 locs"));
         }
-        locTypeLoader = new IndexLocTypeLoader(cacheInfo, locsIndexResult.value);
+        locTypeLoader = new IndexLocTypeLoader(cacheInfo, locsIndex);
     } else {
         const locsArchiveResult = requireArchive(
             configIndex,
@@ -240,11 +366,11 @@ export function tryCreateDat2Loaders(
 
     let npcTypeLoader: NpcTypeLoader;
     if (rules.isIndexConfigs) {
-        const npcsIndexResult = requireIndex(cacheSystem, Rs2IndexId.npcs, "rs2 npcs");
-        if (!npcsIndexResult.ok) {
-            return npcsIndexResult;
+        const npcsIndex = sources.npcsIndex;
+        if (!npcsIndex) {
+            return err(missingIndex(Rs2IndexId.npcs, "rs2 npcs"));
         }
-        npcTypeLoader = new IndexNpcTypeLoader(cacheInfo, npcsIndexResult.value);
+        npcTypeLoader = new IndexNpcTypeLoader(cacheInfo, npcsIndex);
     } else {
         const npcsArchiveResult = requireArchive(
             configIndex,
@@ -259,11 +385,11 @@ export function tryCreateDat2Loaders(
 
     let objTypeLoader: ObjTypeLoader;
     if (rules.isIndexConfigs) {
-        const objsIndexResult = requireIndex(cacheSystem, Rs2IndexId.objs, "rs2 objs");
-        if (!objsIndexResult.ok) {
-            return objsIndexResult;
+        const objsIndex = sources.objsIndex;
+        if (!objsIndex) {
+            return err(missingIndex(Rs2IndexId.objs, "rs2 objs"));
         }
-        objTypeLoader = new IndexObjTypeLoader(cacheInfo, objsIndexResult.value);
+        objTypeLoader = new IndexObjTypeLoader(cacheInfo, objsIndex);
     } else {
         const objsArchiveResult = requireArchive(
             configIndex,
@@ -278,11 +404,11 @@ export function tryCreateDat2Loaders(
 
     let seqTypeLoader: SeqTypeLoader;
     if (rules.isIndexConfigs) {
-        const seqsIndexResult = requireIndex(cacheSystem, Rs2IndexId.seqs, "rs2 seqs");
-        if (!seqsIndexResult.ok) {
-            return seqsIndexResult;
+        const seqsIndex = sources.seqsIndex;
+        if (!seqsIndex) {
+            return err(missingIndex(Rs2IndexId.seqs, "rs2 seqs"));
         }
-        seqTypeLoader = new IndexSeqTypeLoader(cacheInfo, seqsIndexResult.value);
+        seqTypeLoader = new IndexSeqTypeLoader(cacheInfo, seqsIndex);
     } else {
         const seqsArchiveResult = requireArchive(
             configIndex,
@@ -321,11 +447,7 @@ export function tryCreateDat2Loaders(
         questTypeLoader = undefined;
     }
 
-    const textureIndexResult = requireIndex(cacheSystem, Dat2IndexId.textures, "dat2 textures");
-    if (!textureIndexResult.ok) {
-        return textureIndexResult;
-    }
-    const textureIndex = textureIndexResult.value;
+    const textureIndex = sources.textureIndex;
 
     let textureLoader: TextureLoader;
     switch (rules.texture.mode) {
@@ -339,24 +461,15 @@ export function tryCreateDat2Loaders(
             );
             break;
         case "materials": {
-            const materialsIndexResult = requireIndex(
-                cacheSystem,
-                Rs2IndexId.materials,
-                "rs2 materials",
-            );
-            if (!materialsIndexResult.ok) {
-                return materialsIndexResult;
-            }
-            const materialsIndex = materialsIndexResult.value;
-            const materialsFile = materialsIndex.tryGetFile(0, 0);
-            if (!materialsFile) {
-                return err(missingFile(materialsIndex.id, 0, 0, "rs2 materials"));
+            const materialsBytes = sources.materialsBytes;
+            if (!materialsBytes) {
+                return err(createFailed("rs2 materials", new Error("missing materials bytes")));
             }
             try {
                 textureLoader = ProceduralTextureLoader.create(
                     rules.texture.hasAlphaMaterialField,
                     rules.texture.hasAlphaOperation,
-                    materialsFile.data,
+                    materialsBytes,
                     new IndexSmartFileBytesProvider(textureIndex, null),
                     new IndexFileBytesProvider(spriteIndex, 0),
                 );
@@ -376,30 +489,14 @@ export function tryCreateDat2Loaders(
             break;
     }
 
-    const modelsIndexResult = requireIndex(cacheSystem, Dat2IndexId.models, "dat2 models");
-    if (!modelsIndexResult.ok) {
-        return modelsIndexResult;
-    }
-    const modelLoader: ModelLoader = IndexModelLoader.create(modelsIndexResult.value);
+    const modelLoader: ModelLoader = IndexModelLoader.create(sources.modelsIndex);
 
-    const skeletonsIndexResult = requireIndex(cacheSystem, Dat2IndexId.skeletons, "dat2 skeletons");
-    if (!skeletonsIndexResult.ok) {
-        return skeletonsIndexResult;
-    }
     const seqBaseLoader: SeqBaseLoader = Dat2SeqBaseLoader.create(
         cacheInfo,
-        skeletonsIndexResult.value,
+        sources.skeletonsIndex,
     );
 
-    const animationsIndexResult = requireIndex(
-        cacheSystem,
-        Dat2IndexId.animations,
-        "dat2 animations",
-    );
-    if (!animationsIndexResult.ok) {
-        return animationsIndexResult;
-    }
-    const animationsArchiveProvider = new IndexArchiveProvider(animationsIndexResult.value);
+    const animationsArchiveProvider = new IndexArchiveProvider(sources.animationsIndex);
 
     const groupFactory = new ArchiveProviderGroupBytesProviderFactory(animationsArchiveProvider);
 
@@ -413,11 +510,7 @@ export function tryCreateDat2Loaders(
         seqBaseLoader,
     );
 
-    const mapsIndexResult = requireIndex(cacheSystem, Dat2IndexId.maps, "dat2 maps");
-    if (!mapsIndexResult.ok) {
-        return mapsIndexResult;
-    }
-    const mapIndex = mapsIndexResult.value;
+    const mapIndex = sources.mapsIndex;
     const mapFileIndex: MapFileIndex = new Dat2MapIndex(mapIndex);
     const mapFileLoader: MapFileLoader = new MapFileLoader(
         new CacheIndexMapBytesProvider(mapIndex),
@@ -460,7 +553,11 @@ export function tryCreateDat2Loaders(
         }
         mapScenes = mapSceneSprites;
     } else {
-        const graphicDefaultsResult = GraphicsDefaults.tryCreate(cacheInfo, cacheSystem);
+        const graphicDefaultsResult = GraphicsDefaults.tryCreateFromSources(cacheInfo, {
+            osrsGraphicDefaultsIndex: sources.osrsGraphicDefaultsIndex,
+            rs2DefaultsIndex: sources.rs2DefaultsIndex,
+            dat2SpriteIndex: sources.spriteIndex,
+        });
         if (!graphicDefaultsResult.ok) {
             mapScenes = [];
         } else {
@@ -516,7 +613,11 @@ export function tryCreateDat2Loaders(
             break;
         }
         case "graphics_defaults": {
-            const graphicDefaultsResult = GraphicsDefaults.tryCreate(cacheInfo, cacheSystem);
+            const graphicDefaultsResult = GraphicsDefaults.tryCreateFromSources(cacheInfo, {
+                osrsGraphicDefaultsIndex: sources.osrsGraphicDefaultsIndex,
+                rs2DefaultsIndex: sources.rs2DefaultsIndex,
+                dat2SpriteIndex: sources.spriteIndex,
+            });
             if (!graphicDefaultsResult.ok) {
                 mapFunctions = [];
                 break;

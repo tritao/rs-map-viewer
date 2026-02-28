@@ -2,10 +2,17 @@ import { Result, err, ok } from "../../../util/Result";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheSystem } from "../../cache/CacheSystem";
 import { Dat2IndexId, OsrsIndexId, Rs2IndexId } from "../../cache/IndexId";
+import type { CacheIndex } from "../../cache/CacheIndex";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { InitError, missingFile, missingIndex } from "../../loaders/InitError";
 import { Type } from "../Type";
 import { DefaultsGroup } from "./DefaultsGroup";
+
+export type GraphicsDefaultsSources = Readonly<{
+    osrsGraphicDefaultsIndex?: CacheIndex;
+    rs2DefaultsIndex?: CacheIndex;
+    dat2SpriteIndex?: CacheIndex;
+}>;
 
 export class GraphicsDefaults extends Type {
     compass: number = -1;
@@ -33,7 +40,18 @@ export class GraphicsDefaults extends Type {
         cacheInfo: CacheInfo,
         fileSystem: CacheSystem,
     ): Result<GraphicsDefaults, InitError> {
-        const osrsDefaultsIndex = fileSystem.tryGetIndex(OsrsIndexId.graphicDefaults);
+        return GraphicsDefaults.tryCreateFromSources(cacheInfo, {
+            osrsGraphicDefaultsIndex: fileSystem.tryGetIndex(OsrsIndexId.graphicDefaults),
+            rs2DefaultsIndex: fileSystem.tryGetIndex(Rs2IndexId.defaults),
+            dat2SpriteIndex: fileSystem.tryGetIndex(Dat2IndexId.sprites),
+        });
+    }
+
+    static tryCreateFromSources(
+        cacheInfo: CacheInfo,
+        sources: GraphicsDefaultsSources,
+    ): Result<GraphicsDefaults, InitError> {
+        const osrsDefaultsIndex = sources.osrsGraphicDefaultsIndex;
         if (cacheInfo.game === GameType.Oldschool && osrsDefaultsIndex) {
             const defaultsFile = osrsDefaultsIndex.tryGetFile(DefaultsGroup.GRAPHICS, 0);
             if (!defaultsFile) {
@@ -53,10 +71,10 @@ export class GraphicsDefaults extends Type {
             return ok(defaults);
         }
 
-        if (cacheInfo.game === GameType.Runescape && fileSystem.tryGetIndex(Rs2IndexId.defaults)) {
+        if (cacheInfo.game === GameType.Runescape && sources.rs2DefaultsIndex) {
             return ok(new GraphicsDefaults(-1, cacheInfo));
         } else {
-            const spriteIndex = fileSystem.tryGetIndex(Dat2IndexId.sprites);
+            const spriteIndex = sources.dat2SpriteIndex;
             if (!spriteIndex) {
                 return err(
                     missingIndex(Dat2IndexId.sprites, "dat2 sprites (for graphics defaults)"),
