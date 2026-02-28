@@ -29,13 +29,13 @@ import { WebGLPrograms } from "./core/WebGLPrograms";
 import { WebGLMapSquare } from "./renderables/WebGLMapSquare";
 import { DrawCallKey, WebGLRenderable } from "./renderables/WebGLRenderable";
 import {
-    MapRenderScheduler,
-    type MapRenderScheduleInput,
-} from "../schedule/MapRenderScheduler";
+    MapRenderWorkBuilder,
+    type MapRenderWorkInput,
+} from "../MapRenderWorkBuilder";
 import type { InteractionControllerRenderer, InteractionInput } from "../interaction/InteractionState";
 import type { TickControllerRenderer } from "../patch/TickCapability";
-import { NpcGpuDataBuilder } from "../npc/NpcGpuDataBuilder";
 import { NpcDataTextureRing } from "./texture/NpcDataTextureRing";
+import type { NpcGpuDataConsumer, NpcGpuFrameData } from "../npc/NpcGpuData";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
@@ -44,16 +44,19 @@ const DRAW_RANGE_INSTANCES_INDEX = 2;
 
 const NPC_DATA_TEXTURE_RING_SIZE = 5;
 
-export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
+export class WebGLMapRenderer
+    extends MapRenderer<WebGLMapSquare, SdMapData>
+    implements NpcGpuDataConsumer
+{
     protected readonly textures: WebGLTextureSystem;
     private readonly interactions: WebGLInteractionSystem;
     protected readonly geometry = new WebGLGeometrySystem();
-    private readonly scheduler = new MapRenderScheduler();
+    private readonly scheduler = new MapRenderWorkBuilder();
     protected readonly programs = new WebGLPrograms();
     private readonly renderTargets = new RenderTargets();
     private readonly postProcessPass = new PostProcessPass();
-    private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
     private readonly npcDataTextureRing = new NpcDataTextureRing(NPC_DATA_TEXTURE_RING_SIZE);
+    private npcGpuFrameData: NpcGpuFrameData | undefined;
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -108,6 +111,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     override getInteractionControllerRenderer(): InteractionControllerRenderer | undefined {
+        return this;
+    }
+
+    override getNpcGpuDataConsumerRenderer(): NpcGpuDataConsumer | undefined {
         return this;
     }
 
@@ -256,7 +263,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.stats.frameCount,
             this.rendererStats,
         );
-        const scheduleInput: MapRenderScheduleInput<DrawCallKey, WebGLMapSquare> = {
+        const scheduleInput: MapRenderWorkInput<WebGLMapSquare> = {
             camera: this.camera,
             visibleMapCount: this.visibleMapCount,
             visibleMaps: this.visibleMaps,
@@ -266,18 +273,19 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             loadNpcs: this.loadNpcs,
             hoveredMapIds: this.interactions.getHoveredMapIds(),
         };
-        const gatheredMaps = this.scheduler.gatherRenderableMaps<DrawCallKey, WebGLMapSquare>(
-            scheduleInput,
-        );
+        const gatheredMaps = this.scheduler.gatherRenderableMaps(scheduleInput);
         this.textures.updateVisibleResidency(
             this.collectVisibleUsedTextureIds(),
             this.stats.frameCount,
             this.debugTextureMode !== 0,
         );
 
-        this.gatherNpcRenderData(gatheredMaps);
         this.renderSceneToFramebuffer();
-        const packedNpcData = this.npcGpuDataBuilder.flushPacked();
+        const packedNpcData = this.npcGpuFrameData ?? {
+            width: 16,
+            height: 1,
+            data: new Uint16Array(16 * 4),
+        };
         const { npcDataTextureIndex, npcDataTexture } = this.npcDataTextureRing.flush(
             this.app,
             this.stats.frameCount,
@@ -348,14 +356,14 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     protected renderPasses(
-        scheduleInput: MapRenderScheduleInput<DrawCallKey, WebGLMapSquare>,
+        scheduleInput: MapRenderWorkInput<WebGLMapSquare>,
         gatheredMaps: ReadonlyArray<WebGLMapSquare>,
         npcDataTextureIndex: number,
         npcDataTexture: Texture | undefined,
     ): void {
         this.app.disable(PicoGL.BLEND);
         const opaquePassStart = performance.now();
-        const locOpaque = this.scheduler.buildLocWork<DrawCallKey, WebGLMapSquare>(
+        const locOpaque = this.scheduler.buildLocWork<WebGLMapSquare>(
             scheduleInput,
             false,
             false,
@@ -364,19 +372,18 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.geometry.mapDrawPasses.renderLoc(this, locOpaque);
         this.rendererStats.opaquePassTime = performance.now() - opaquePassStart;
         const opaqueNpcPassStart = performance.now();
-        const npcOpaque = this.scheduler.buildNpcWork<DrawCallKey, WebGLMapSquare>(
+        const npcOpaque = this.scheduler.buildNpcWork<WebGLMapSquare>(
             scheduleInput,
-            npcDataTextureIndex,
             false,
             false,
             gatheredMaps,
         );
-        this.geometry.mapDrawPasses.renderNpc(this, npcOpaque, npcDataTexture);
+        this.geometry.mapDrawPasses.renderNpc(this, npcOpaque, npcDataTextureIndex, npcDataTexture);
         this.rendererStats.opaqueNpcPassTime = performance.now() - opaqueNpcPassStart;
 
         this.app.enable(PicoGL.BLEND);
         const transparentPassStart = performance.now();
-        const locTrans = this.scheduler.buildLocWork<DrawCallKey, WebGLMapSquare>(
+        const locTrans = this.scheduler.buildLocWork<WebGLMapSquare>(
             scheduleInput,
             true,
             true,
@@ -385,14 +392,13 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.geometry.mapDrawPasses.renderLoc(this, locTrans);
         this.rendererStats.transparentPassTime = performance.now() - transparentPassStart;
         const transparentNpcPassStart = performance.now();
-        const npcTrans = this.scheduler.buildNpcWork<DrawCallKey, WebGLMapSquare>(
+        const npcTrans = this.scheduler.buildNpcWork<WebGLMapSquare>(
             scheduleInput,
-            npcDataTextureIndex,
             true,
             true,
             gatheredMaps,
         );
-        this.geometry.mapDrawPasses.renderNpc(this, npcTrans, npcDataTexture);
+        this.geometry.mapDrawPasses.renderNpc(this, npcTrans, npcDataTextureIndex, npcDataTexture);
         this.rendererStats.transparentNpcPassTime = performance.now() - transparentNpcPassStart;
     }
 
@@ -408,17 +414,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.stats.onFrameEnd();
     }
 
-    protected gatherNpcRenderData(gatheredMaps: ReadonlyArray<WebGLMapSquare>): void {
-        this.npcGpuDataBuilder.beginFrame();
-
-        for (let i = 0; i < gatheredMaps.length; i++) {
-            const map = gatheredMaps[i];
-            this.npcGpuDataBuilder.addRenderable(map, this.stats.frameCount);
-        }
-    }
-
     isDrawRangePatchWasmReady(): boolean {
         return this.geometry.isTickBackendReady();
+    }
+
+    setNpcGpuFrameData(data: NpcGpuFrameData): void {
+        this.npcGpuFrameData = data;
     }
 
     applyLocAnimationPatchesForPass(

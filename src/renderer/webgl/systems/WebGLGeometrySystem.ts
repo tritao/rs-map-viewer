@@ -4,7 +4,7 @@ import type { App as PicoApp, Texture, UniformBuffer } from "picogl";
 import type { CacheSession } from "../../../rs/loaders/CacheSession";
 import type { SdMapData } from "../../loader/SdMapData";
 import type { WebGLPrograms } from "../core/WebGLPrograms";
-import type { LocDrawWorkItem, NpcDrawWorkItem } from "../../schedule/MapRenderScheduler";
+import type { LocMapWorkItem, NpcMapWorkItem } from "../../MapRenderWorkBuilder";
 import type { WebGLMapSquare } from "../renderables/WebGLMapSquare";
 import { WebGLMapSquare as WebGLMapSquareImpl } from "../renderables/WebGLMapSquare";
 import type { DrawCallKey } from "../renderables/WebGLRenderable";
@@ -38,11 +38,12 @@ type MapDrawPassExecutor = Readonly<{
 class MapDrawPasses {
     renderLoc(
         executor: MapDrawPassExecutor,
-        items: ReadonlyArray<LocDrawWorkItem<DrawCallKey, WebGLMapSquare>>,
+        items: ReadonlyArray<LocMapWorkItem<WebGLMapSquare>>,
     ): void {
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            const { drawCall, drawRangesPacked } = item.map.getDrawCallByKey(item.drawCallKey);
+            const drawCallKey = item.map.getDrawCallKey(item.isAlpha, item.isInteract, item.isLod);
+            const { drawCall, drawRangesPacked } = item.map.getDrawCallByKey(drawCallKey);
             executor.applyLocAnimationPatchesForPass(
                 item.map,
                 item.isAlpha,
@@ -57,7 +58,8 @@ class MapDrawPasses {
 
     renderNpc(
         executor: MapDrawPassExecutor,
-        items: ReadonlyArray<NpcDrawWorkItem<WebGLMapSquare>>,
+        items: ReadonlyArray<NpcMapWorkItem<WebGLMapSquare>>,
+        npcDataTextureIndex: number,
         npcDataTexture: Texture | undefined,
     ): void {
         if (!npcDataTexture) {
@@ -66,8 +68,12 @@ class MapDrawPasses {
 
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
+            const dataOffset = item.map.npcDataTextureOffsets[npcDataTextureIndex] | 0;
+            if (dataOffset === -1) {
+                continue;
+            }
             const { drawCall, drawRangesPacked } = item.map.drawCallNpc;
-            drawCall.uniform("u_npcDataOffset", item.dataOffset);
+            drawCall.uniform("u_npcDataOffset", dataOffset);
             drawCall.texture("u_npcDataTexture", npcDataTexture);
             executor.applyNpcAnimationPatchesForPass(item.map, item.isAlpha, drawCall, drawRangesPacked);
             executor.draw(drawCall, drawRangesPacked);

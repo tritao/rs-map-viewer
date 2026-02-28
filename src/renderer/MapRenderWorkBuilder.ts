@@ -1,17 +1,15 @@
-import type { Camera } from "../Camera";
-import type { MapSquareInfo } from "../MapManager";
+import type { Camera } from "./Camera";
+import type { MapSquareInfo } from "./MapManager";
 
-export interface ScheduledMapSquare<TKey> {
+export interface SchedulableMapSquare {
     readonly id: number;
     readonly npcs: ArrayLike<unknown>;
-    readonly npcDataTextureOffsets: ArrayLike<number>;
 
     canRender(frameCount: number): boolean;
     getMapDistance(cameraMapX: number, cameraMapY: number): number;
-    getDrawCallKey(isAlpha: boolean, isInteract: boolean, isLod: boolean): TKey;
 }
 
-export type MapRenderScheduleInput<TKey, TMap extends ScheduledMapSquare<TKey>> = Readonly<{
+export type MapRenderWorkInput<TMap extends SchedulableMapSquare> = Readonly<{
     camera: Camera;
     visibleMapCount: number;
     visibleMaps: ReadonlyArray<MapSquareInfo>;
@@ -22,23 +20,21 @@ export type MapRenderScheduleInput<TKey, TMap extends ScheduledMapSquare<TKey>> 
     hoveredMapIds: ReadonlySet<number>;
 }>;
 
-export type LocDrawWorkItem<TKey, TMap> = Readonly<{
+export type LocMapWorkItem<TMap> = Readonly<{
     map: TMap;
     isAlpha: boolean;
     isInteract: boolean;
     isLod: boolean;
-    drawCallKey: TKey;
 }>;
 
-export type NpcDrawWorkItem<TMap> = Readonly<{
+export type NpcMapWorkItem<TMap> = Readonly<{
     map: TMap;
     isAlpha: boolean;
-    dataOffset: number;
 }>;
 
-export class MapRenderScheduler {
-    gatherRenderableMaps<TKey, TMap extends ScheduledMapSquare<TKey>>(
-        input: MapRenderScheduleInput<TKey, TMap>,
+export class MapRenderWorkBuilder {
+    gatherRenderableMaps<TMap extends SchedulableMapSquare>(
+        input: MapRenderWorkInput<TMap>,
     ): TMap[] {
         const out: TMap[] = [];
         for (let i = 0; i < input.visibleMapCount; i++) {
@@ -52,16 +48,16 @@ export class MapRenderScheduler {
         return out;
     }
 
-    buildLocWork<TKey, TMap extends ScheduledMapSquare<TKey>>(
-        input: MapRenderScheduleInput<TKey, TMap>,
+    buildLocWork<TMap extends SchedulableMapSquare>(
+        input: MapRenderWorkInput<TMap>,
         isAlpha: boolean,
         backToFront: boolean,
         maps?: ReadonlyArray<TMap>,
-    ): LocDrawWorkItem<TKey, TMap>[] {
+    ): LocMapWorkItem<TMap>[] {
         const cameraMapX = input.camera.getMapX();
         const cameraMapY = input.camera.getMapY();
 
-        const out: LocDrawWorkItem<TKey, TMap>[] = [];
+        const out: LocMapWorkItem<TMap>[] = [];
         const gathered = maps ?? this.gatherRenderableMaps(input);
         if (backToFront) {
             for (let i = gathered.length - 1; i >= 0; i--) {
@@ -75,9 +71,9 @@ export class MapRenderScheduler {
         return out;
     }
 
-    private pushLocWork<TKey, TMap extends ScheduledMapSquare<TKey>>(
-        out: LocDrawWorkItem<TKey, TMap>[],
-        input: MapRenderScheduleInput<TKey, TMap>,
+    private pushLocWork<TMap extends SchedulableMapSquare>(
+        out: LocMapWorkItem<TMap>[],
+        input: MapRenderWorkInput<TMap>,
         map: TMap,
         cameraMapX: number,
         cameraMapY: number,
@@ -86,52 +82,41 @@ export class MapRenderScheduler {
         const dist = map.getMapDistance(cameraMapX, cameraMapY);
         const isInteract = input.hoveredMapIds.has(map.id);
         const isLod = dist >= input.lodDistance;
-
-        const drawCallKey = map.getDrawCallKey(isAlpha, isInteract, isLod);
-        out.push({ map, isAlpha, isInteract, isLod, drawCallKey });
+        out.push({ map, isAlpha, isInteract, isLod });
     }
 
-    buildNpcWork<TKey, TMap extends ScheduledMapSquare<TKey>>(
-        input: MapRenderScheduleInput<TKey, TMap>,
-        npcDataTextureIndex: number,
+    buildNpcWork<TMap extends SchedulableMapSquare>(
+        input: MapRenderWorkInput<TMap>,
         isAlpha: boolean,
         backToFront: boolean,
         maps?: ReadonlyArray<TMap>,
-    ): NpcDrawWorkItem<TMap>[] {
+    ): NpcMapWorkItem<TMap>[] {
         if (!input.loadNpcs) {
             return [];
         }
 
-        const out: NpcDrawWorkItem<TMap>[] = [];
+        const out: NpcMapWorkItem<TMap>[] = [];
         const gathered = maps ?? this.gatherRenderableMaps(input);
         if (backToFront) {
             for (let i = gathered.length - 1; i >= 0; i--) {
-                this.pushNpcWork(out, gathered[i], npcDataTextureIndex, isAlpha);
+                this.pushNpcWork(out, gathered[i], isAlpha);
             }
             return out;
         }
         for (let i = 0; i < gathered.length; i++) {
-            this.pushNpcWork(out, gathered[i], npcDataTextureIndex, isAlpha);
+            this.pushNpcWork(out, gathered[i], isAlpha);
         }
         return out;
     }
 
-    private pushNpcWork<TKey, TMap extends ScheduledMapSquare<TKey>>(
-        out: NpcDrawWorkItem<TMap>[],
+    private pushNpcWork<TMap extends SchedulableMapSquare>(
+        out: NpcMapWorkItem<TMap>[],
         map: TMap,
-        npcDataTextureIndex: number,
         isAlpha: boolean,
     ): void {
         if (map.npcs.length === 0) {
             return;
         }
-
-        const dataOffset = map.npcDataTextureOffsets[npcDataTextureIndex] | 0;
-        if (dataOffset === -1) {
-            return;
-        }
-
-        out.push({ map, isAlpha, dataOffset });
+        out.push({ map, isAlpha });
     }
 }
-
