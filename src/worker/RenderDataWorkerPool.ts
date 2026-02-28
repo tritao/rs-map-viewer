@@ -9,6 +9,10 @@ import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
+import type { FramePacket } from "../renderer/packet/FramePacket";
+import type { CollisionData } from "../rs/scene/CollisionMap";
+import type { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
+import type { NpcData } from "../renderer/npc/NpcData";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -94,6 +98,53 @@ export class RenderDataWorkerPool {
 
     exportTextures(): QueuedTask<RenderDataWorkerThread, Blob> {
         return this.pool.queue((w) => w.exportTexturesToZip());
+    }
+
+    // Dedicated worker for per-frame sim/tick packets. Keeping it sticky avoids state divergence.
+    private getTickWorker(): Promise<RenderDataWorkerThread> {
+        const desc = this.workers[0];
+        if (!desc) {
+            throw new Error("RenderDataWorkerPool has no workers");
+        }
+        return desc.init;
+    }
+
+    registerMapNpcSimState(
+        mapId: number,
+        borderSize: number,
+        tileRenderFlagsLevel1: Uint8Array[],
+        collisionDatas: CollisionData[],
+        locsAnimated: ReadonlyArray<LocAnimatedData>,
+        npcs: ReadonlyArray<NpcData>,
+        npcOrderKeys?: Int32Array,
+    ): Promise<void> {
+        return this.getTickWorker().then((w) =>
+            w.registerMapNpcSimState(
+                mapId,
+                borderSize,
+                tileRenderFlagsLevel1,
+                collisionDatas,
+                locsAnimated as any,
+                npcs as any,
+                npcOrderKeys,
+            ),
+        );
+    }
+
+    unregisterMapNpcSimState(mapId: number): Promise<void> {
+        return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId));
+    }
+
+    tickFrame(
+        frameCount: number,
+        mapIds: Int32Array,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+        cycleNow: number,
+    ): Promise<FramePacket | undefined> {
+        return this.getTickWorker().then((w) =>
+            w.tickFrame(frameCount, mapIds, ticksElapsed, clientTicksElapsed, cycleNow) as any,
+        );
     }
 
     terminate(): Promise<void> {

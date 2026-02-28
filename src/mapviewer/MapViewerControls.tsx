@@ -203,6 +203,9 @@ export const MapViewerControls = memo(
         const [mapRenderTelemetry, setMapRenderTelemetry] = useState<boolean>(
             initialRuntimeOptions.mapRenderTelemetry,
         );
+        const [mapRenderNpcSimInWorker, setMapRenderNpcSimInWorker] = useState<boolean>(
+            !!initialRuntimeOptions.mapRenderNpcSimInWorker,
+        );
 
         const controlsSchema: Schema = {
             Position: { value: positionControls, editable: false },
@@ -468,10 +471,17 @@ export const MapViewerControls = memo(
                                 setMapRenderTelemetry(v);
                             },
                         },
+                        "NPC Sim in Worker": {
+                            value: mapRenderNpcSimInWorker,
+                            onChange: (v: boolean) => {
+                                setMapRenderNpcSimInWorker(v);
+                            },
+                        },
                         Apply: button(async () => {
                             await mapViewer.setWorkerRuntimeOptions({
                                 mapRenderBackend,
                                 mapRenderTelemetry,
+                                mapRenderNpcSimInWorker,
                             });
                         }),
                     },

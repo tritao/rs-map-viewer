@@ -35,6 +35,7 @@ function parseTickDebugSquare(value: unknown): TickDebugSquare {
 type RuntimeOptionsLike = Readonly<{
     mapRenderBackend?: TickBackendKind;
     mapRenderTickBackend?: TickBackendKind;
+    mapRenderNpcSimInWorker?: boolean;
     mapRenderDebugTickSquare?: string;
 }>;
 
@@ -65,6 +66,10 @@ export class TickController {
     }
 
     private shouldUseCppWasmTickBackend(): boolean {
+        if (this.runtimeOptions.mapRenderNpcSimInWorker) {
+            // Worker-driven NPC movement sim requires the TS tick path for now.
+            return false;
+        }
         const tickBackend =
             this.runtimeOptions.mapRenderTickBackend ?? this.runtimeOptions.mapRenderBackend;
 
@@ -133,7 +138,11 @@ export class TickController {
         const npcCount = npcs.length | 0;
         for (let t = 0; t < clientTicksElapsed; t++) {
             for (let i = 0; i < npcCount; i++) {
-                npcs[i].updateMovement(seqTypeLoader, seqFrameLoader);
+                if (this.runtimeOptions.mapRenderNpcSimInWorker) {
+                    npcs[i].updateMovementSeq(seqTypeLoader, seqFrameLoader);
+                } else {
+                    npcs[i].updateMovement(seqTypeLoader, seqFrameLoader);
+                }
             }
         }
         for (let i = 0; i < npcCount; i++) {

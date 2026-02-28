@@ -7,6 +7,17 @@ import { MapManager, MapSquareInfo } from "../renderer/MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { SdMapData } from "../renderer/loader/SdMapData";
+import type { FramePacket } from "../renderer/packet/FramePacket";
+import {
+    NPC_MOVE_META_STRIDE,
+    NPC_MOVE_STATE_STRIDE,
+    NPC_OFFSETS_BY_MAP_ID_STRIDE,
+    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
+    TICK_PATCH_ENTRY_STRIDE,
+    TICK_PATCH_STREAM_COUNT,
+} from "../renderer/packet/FramePacket";
+import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
+import { LocTickPatchVariant, NpcTickPatchVariant } from "../renderer/patch/TickPatchStreams";
 import { TickController } from "../sim/tick/TickController";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
@@ -38,12 +49,17 @@ export class MapViewerRenderer extends RendererMainLoop {
     private lastRuntimeOptions: MapViewerRuntimeOptions | undefined;
     private readonly simWorld = new SimWorld();
     private readonly sdMapDataLoader = new SdMapDataLoader();
+    private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
 
     // State
     lastClientTick: number = 0;
     lastTick: number = 0;
 
     private isInitialized: boolean = false;
+    private pendingFramePacket?: Promise<FramePacket | undefined>;
+    private latestFramePacket?: FramePacket;
+    private latestFramePacketFrameCount: number = -1;
+    private readonly npcDataOffsetByMapId = new Map<number, number>();
 
     constructor(public mapViewer: MapViewer) {
         super();
@@ -97,8 +113,49 @@ export class MapViewerRenderer extends RendererMainLoop {
             if (this.renderer.isValidMapData(mapData)) {
                 const sdMapData = mapData as unknown as SdMapData;
                 const mapId = getMapSquareId(sdMapData.mapX, sdMapData.mapY);
-                // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
-                this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
+                const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+                if (runtimeOptions.mapRenderTelemetry) {
+                    const ranges = sdMapData.drawRanges.base;
+                    const drawCount = Math.floor((ranges?.length ?? 0) / 3);
+                    let nonZero = 0;
+                    if (ranges instanceof Int32Array) {
+                        for (let i = 0; i < drawCount; i++) {
+                            const off = i * 3;
+                            if ((ranges[off + 1] | 0) > 0) {
+                                nonZero++;
+                            }
+                        }
+                    }
+                    console.log("[map-render][telemetry] map packet summary", {
+                        square: `${sdMapData.mapX}:${sdMapData.mapY}`,
+                        verts: sdMapData.vertices?.length ?? -1,
+                        indices: sdMapData.indices?.length ?? -1,
+                        drawRangesBaseCount: drawCount,
+                        drawRangesBaseNonZero: nonZero,
+                        loadObjs: sdMapData.loadObjs,
+                        loadLocs: sdMapData.loadLocs,
+                        loadNpcs: sdMapData.loadNpcs,
+                        locsAnimated: sdMapData.locsAnimated?.length ?? -1,
+                        npcs: sdMapData.npcs?.length ?? -1,
+                        npcVerts: sdMapData.npcVertices?.length ?? 0,
+                        npcIndices: sdMapData.npcIndices?.length ?? 0,
+                    });
+                }
+                if (runtimeOptions.mapRenderNpcSimInWorker) {
+                    const level1 = sdMapData.tileRenderFlags[1] ?? [];
+                    void this.workerPool.registerMapNpcSimState(
+                        mapId,
+                        sdMapData.borderSize,
+                        level1,
+                        sdMapData.collisionDatas,
+                        sdMapData.locsAnimated,
+                        sdMapData.npcs,
+                        sdMapData.npcOrderKeys,
+                    );
+                } else {
+                    // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
+                    this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
+                }
 
                 this.mapManager.addMap(mapX, mapY);
                 this.renderer.addMap(mapData);
@@ -143,7 +200,13 @@ export class MapViewerRenderer extends RendererMainLoop {
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.tickController.onRenderableRemoved(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
-        this.simWorld.onMapUnloaded(mapInfo.mapId);
+        this.npcDataOffsetByMapId.delete(mapInfo.mapId);
+        const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+        if (runtimeOptions.mapRenderNpcSimInWorker) {
+            void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId);
+        } else {
+            this.simWorld.onMapUnloaded(mapInfo.mapId);
+        }
     }
 
     override async init() {
@@ -154,6 +217,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initCache(): void {
         this.renderer.initCache();
+        this.npcDataOffsetByMapId.clear();
         this.mapManager.init(
             this.mapViewer.session.mapFileIndex,
             SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
@@ -286,30 +350,222 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.tickController.setRuntimeOptions(runtimeOptions);
         }
 
+        if (runtimeOptions.mapRenderNpcSimInWorker) {
+            const packet = this.latestFramePacket;
+
+            // Apply the latest worker packet (best-effort, may lag by a frame).
+            if (packet && packet.frameCount !== this.latestFramePacketFrameCount) {
+                this.latestFramePacketFrameCount = packet.frameCount | 0;
+
+                this.renderer
+                    .getNpcGpuDataConsumerRenderer()
+                    ?.setNpcGpuFrameData(packet.npcGpuFrameData);
+
+                // Per-map npc texture offsets.
+                const pairs = packet.npcOffsetsByMapIdPairs;
+                const pairCount = Math.floor(pairs.length / NPC_OFFSETS_BY_MAP_ID_STRIDE);
+                for (let i = 0; i < pairCount; i++) {
+                    const off = i * NPC_OFFSETS_BY_MAP_ID_STRIDE;
+                    const mapId = pairs[off + 0] | 0;
+                    const dataOffset = pairs[off + 1] | 0;
+                    this.npcDataOffsetByMapId.set(mapId, dataOffset);
+                }
+
+                // Sync NPC movement state onto the renderer-side NPC objects.
+                const meta = packet.npcMoveStateMeta;
+                const metaCount = Math.floor(meta.length / NPC_MOVE_META_STRIDE);
+                const packed = packet.npcMoveStatePacked;
+                for (let m = 0; m < metaCount; m++) {
+                    const moff = m * NPC_MOVE_META_STRIDE;
+                    const mapId = meta[moff + 0] | 0;
+                    const npcCount = meta[moff + 1] | 0;
+                    const stateOffset = meta[moff + 2] | 0;
+                    const map = this.renderer.getMap(mapId) as any;
+                    if (!map || !Array.isArray(map.npcs)) {
+                        continue;
+                    }
+                    const outNpcs = map.npcs as any[];
+                    const safeCount = Math.min(npcCount, outNpcs.length);
+                    for (let i = 0; i < safeCount; i++) {
+                        const base = stateOffset + i * NPC_MOVE_STATE_STRIDE;
+                        const npc = outNpcs[i];
+                        npc.x = packed[base + 0] | 0;
+                        npc.y = packed[base + 1] | 0;
+                        npc.orientation = packed[base + 2] | 0;
+                        npc.rotation = packed[base + 3] | 0;
+                        npc.pathLength = packed[base + 4] | 0;
+                        npc.movementSeqId = packed[base + 5] | 0;
+                    }
+                }
+
+                // Apply per-map tick patch streams for animated locs/NPC draw ranges.
+                const countsByMapId = packet.tickPatchCountsByMapId;
+                const countsEntryCount = Math.floor(
+                    countsByMapId.length / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
+                );
+                const patchesPacked = packet.tickPatchPacked;
+                const emptyPatches = new Int32Array(0);
+                let patchReadOff = 0;
+                for (let e = 0; e < countsEntryCount; e++) {
+                    const baseOff = e * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+                    const mapId = countsByMapId[baseOff + 0] | 0;
+                    const map = this.renderer.getMap(mapId) as any;
+                    if (!map || typeof map.setLocTickPatchStreamFromPacket !== "function") {
+                        // Still advance the packed offset so the packet stays parseable.
+                        for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
+                            patchReadOff =
+                                (patchReadOff +
+                                    (countsByMapId[baseOff + 1 + s] | 0) *
+                                        TICK_PATCH_ENTRY_STRIDE) |
+                                0;
+                        }
+                        continue;
+                    }
+
+                    // Loc variants 0..7.
+                    for (let v = 0; v < 8; v++) {
+                        const count = countsByMapId[baseOff + 1 + v] | 0;
+                        const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
+                        const slice =
+                            len > 0
+                                ? patchesPacked.subarray(patchReadOff, patchReadOff + len)
+                                : emptyPatches;
+                        map.setLocTickPatchStreamFromPacket(v as LocTickPatchVariant, slice, count);
+                        patchReadOff = (patchReadOff + len) | 0;
+                    }
+                    // NPC variants 8..9 map to base/alpha.
+                    {
+                        const baseCount = countsByMapId[baseOff + 1 + 8] | 0;
+                        const baseLen = (baseCount * TICK_PATCH_ENTRY_STRIDE) | 0;
+                        const baseSlice =
+                            baseLen > 0
+                                ? patchesPacked.subarray(patchReadOff, patchReadOff + baseLen)
+                                : emptyPatches;
+                        map.setNpcTickPatchStreamFromPacket(
+                            NpcTickPatchVariant.Base,
+                            baseSlice,
+                            baseCount,
+                        );
+                        patchReadOff = (patchReadOff + baseLen) | 0;
+                    }
+                    {
+                        const alphaCount = countsByMapId[baseOff + 1 + 9] | 0;
+                        const alphaLen = (alphaCount * TICK_PATCH_ENTRY_STRIDE) | 0;
+                        const alphaSlice =
+                            alphaLen > 0
+                                ? patchesPacked.subarray(patchReadOff, patchReadOff + alphaLen)
+                                : emptyPatches;
+                        map.setNpcTickPatchStreamFromPacket(
+                            NpcTickPatchVariant.Alpha,
+                            alphaSlice,
+                            alphaCount,
+                        );
+                        patchReadOff = (patchReadOff + alphaLen) | 0;
+                    }
+                }
+                if (runtimeOptions.mapRenderTelemetry && patchReadOff !== (patchesPacked.length | 0)) {
+                    console.warn("[map-render][telemetry] tick patch packet length mismatch", {
+                        expected: patchesPacked.length | 0,
+                        consumed: patchReadOff | 0,
+                        countsEntryCount,
+                        countsPackedLength: countsByMapId.length | 0,
+                    });
+                }
+            }
+
+            // Keep the per-map npc data offsets in sync with the renderer's ring index even if
+            // the worker packet lags. This prevents flicker when the scheduler reads a ring slot
+            // that hasn't been updated yet.
+            const npcNewIndex = (this.renderer.stats.frameCount | 0) % 5;
+            for (let i = 0; i < this.renderer.visibleMapCount; i++) {
+                const mapInfo = this.renderer.visibleMaps[i];
+                const map = this.renderer.getMap(mapInfo.mapId) as any;
+                if (!map || !Array.isArray(map.npcDataTextureOffsets)) {
+                    continue;
+                }
+                const dataOffset = this.npcDataOffsetByMapId.get(mapInfo.mapId) ?? -1;
+                map.npcDataTextureOffsets[npcNewIndex] = dataOffset | 0;
+            }
+
+            // Kick an async tick request if one isn't already in flight.
+            if (!this.pendingFramePacket && (ticksElapsed > 0 || clientTicksElapsed > 0)) {
+                const ids: number[] = [];
+                for (let i = 0; i < this.renderer.visibleMapCount; i++) {
+                    const mapInfo = this.renderer.visibleMaps[i];
+                    const map = this.renderer.getMap(mapInfo.mapId);
+                    if (!map || !map.canRender(this.renderer.stats.frameCount)) {
+                        continue;
+                    }
+                    ids.push(mapInfo.mapId | 0);
+                }
+                const mapIds = Int32Array.from(ids);
+                this.pendingFramePacket = this.workerPool
+                    .tickFrame(
+                        this.renderer.stats.frameCount,
+                        mapIds,
+                        ticksElapsed,
+                        clientTicksElapsed,
+                        cycle,
+                    )
+                    .then((pkt) => {
+                        this.latestFramePacket = pkt;
+                        return pkt;
+                    })
+                    .finally(() => {
+                        this.pendingFramePacket = undefined;
+                    });
+            }
+        } else {
+            this.npcGpuDataBuilder.beginFrame();
+        }
+
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];
             const map = this.renderer.getMap(mapInfo.mapId)!;
             if (!map || !map.canRender(this.renderer.stats.frameCount)) {
                 continue;
             }
-            this.simWorld.tickNpcMovement(
-                mapInfo.mapId,
-                this.pathfinder,
-                map.borderSize,
-                map.npcs,
-                ticksElapsed,
-            );
-            const tickCap = map.getTickCapability?.();
-            if (tickCap) {
-                this.tickController.tickRenderable(
-                    tickCap,
-                    mapInfo,
-                    cycle,
-                    clientTicksElapsed,
-                    seqTypeLoader,
-                    seqFrameLoader,
+            if (!runtimeOptions.mapRenderNpcSimInWorker) {
+                this.simWorld.tickNpcMovement(
+                    mapInfo.mapId,
+                    this.pathfinder,
+                    map.borderSize,
+                    map.npcs,
+                    ticksElapsed,
                 );
             }
+            if (!runtimeOptions.mapRenderNpcSimInWorker) {
+                const tickCap = map.getTickCapability?.();
+                if (tickCap) {
+                    this.tickController.tickRenderable(
+                        tickCap,
+                        mapInfo,
+                        cycle,
+                        clientTicksElapsed,
+                        seqTypeLoader,
+                        seqFrameLoader,
+                    );
+                }
+            }
+
+            // Build per-frame NPC GPU instance data outside the WebGL renderer. This relies on
+            // the map-square implementation exposing the scheduling offsets + tile flags.
+            if (!runtimeOptions.mapRenderNpcSimInWorker && this.renderer.loadNpcs) {
+                const anyMap = map as any;
+                if (
+                    typeof anyMap.getTileRenderFlag === "function" &&
+                    Array.isArray(anyMap.npcDataTextureOffsets)
+                ) {
+                    this.npcGpuDataBuilder.addRenderable(anyMap, this.renderer.stats.frameCount);
+                }
+            }
+        }
+
+        if (!runtimeOptions.mapRenderNpcSimInWorker) {
+            const npcGpuFrameData = this.renderer.loadNpcs
+                ? this.npcGpuDataBuilder.flushPacked()
+                : { width: 16, height: 1, data: new Uint16Array(16 * 4) };
+            this.renderer.getNpcGpuDataConsumerRenderer()?.setNpcGpuFrameData(npcGpuFrameData);
         }
     }
 

@@ -44,11 +44,13 @@ function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntime
             ? parseBackendKind(mapRenderTickBackendParam)
             : undefined;
     const mapRenderTelemetry = searchParams.get("mrt") === "1";
+    const mapRenderNpcSimInWorker = searchParams.get("mrnpcw") === "1";
     const mapRenderDebugTickSquare = searchParams.get("mrdtick") ?? undefined;
     return {
         mapRenderBackend,
         mapRenderTickBackend,
         mapRenderTelemetry,
+        mapRenderNpcSimInWorker,
         mapRenderDebugTickSquare,
     };
 }
