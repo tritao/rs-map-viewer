@@ -21,6 +21,7 @@ import { SdRenderableData } from "../../loader/SdRenderableData";
 import { LocAnimated } from "../../loc/LocAnimated";
 import { Npc } from "../../npc/Npc";
 import { LOC_CYCLE_SCALE } from "../../../wasm/LocCycle";
+import { orderByPacketKeys } from "../../npc/orderByPacketKeys";
 import type { DrawRangeTickStateInput } from "../../../wasm/DrawRangeTickState";
 import type {
     TickCapability,
@@ -44,38 +45,6 @@ const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
-
-function orderNpcDataByPacketKeys(
-    npcs: SdRenderableData["npcs"],
-    orderKeys: Int32Array | undefined,
-): SdRenderableData["npcs"] {
-    if (!(orderKeys instanceof Int32Array) || orderKeys.length === 0) {
-        return npcs;
-    }
-    const byKey = new Map<number, typeof npcs>();
-    for (const npc of npcs) {
-        const key = npc.orderKey;
-        if (key === undefined) {
-            continue;
-        }
-        const list = byKey.get(key);
-        if (list) {
-            list.push(npc);
-        } else {
-            byKey.set(key, [npc]);
-        }
-    }
-    const ordered: typeof npcs = [];
-    for (let i = 0; i < orderKeys.length; i++) {
-        const key = orderKeys[i] | 0;
-        const list = byKey.get(key);
-        if (!list || list.length === 0) {
-            continue;
-        }
-        ordered.push(list.shift()!);
-    }
-    return ordered.length > 0 ? ordered : npcs;
-}
 
 function createModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
     return app.createTexture2D(data, 16, Math.max(Math.ceil(data.length / 16 / 4), 1), {
@@ -685,7 +654,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         npcProgram: Program,
     ) {
         this.npcs = [];
-        const npcInput = orderNpcDataByPacketKeys(data.npcs, data.npcOrderKeys);
+        const npcInput = orderByPacketKeys(data.npcs, data.npcOrderKeys);
         for (const npc of npcInput) {
             const npcResult = npcTypeLoader.tryLoad(npc.id);
             if (!npcResult.ok) {
@@ -1414,6 +1383,76 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         this.locTickInteractLodAlphaPatchCount = 0;
         this.npcTickBasePatchCount = 0;
         this.npcTickAlphaPatchCount = 0;
+    }
+
+    setLocTickPatchStreamFromPacket(
+        variant: LocTickPatchVariant,
+        patchesPacked: Int32Array,
+        patchCount: number,
+    ): void {
+        const count = Math.max(0, patchCount | 0);
+        const dst = this.getLocTickPatches(variant);
+        const copyLen = Math.min(dst.length | 0, (count * 4) | 0);
+        if (copyLen > 0) {
+            dst.set(patchesPacked.subarray(0, copyLen));
+        }
+        this.setLocTickPatchCountInternal(variant, count);
+    }
+
+    setNpcTickPatchStreamFromPacket(
+        variant: NpcTickPatchVariant,
+        patchesPacked: Int32Array,
+        patchCount: number,
+    ): void {
+        const count = Math.max(0, patchCount | 0);
+        const dst = this.getNpcTickPatches(variant);
+        const copyLen = Math.min(dst.length | 0, (count * 4) | 0);
+        if (copyLen > 0) {
+            dst.set(patchesPacked.subarray(0, copyLen));
+        }
+        this.setNpcTickPatchCountInternal(variant, count);
+    }
+
+    private setLocTickPatchCountInternal(variant: LocTickPatchVariant, count: number): void {
+        const v = variant as number;
+        switch (v) {
+            case LocTickPatchVariant.Base:
+                this.locTickBasePatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.Alpha:
+                this.locTickAlphaPatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.Lod:
+                this.locTickLodPatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.LodAlpha:
+                this.locTickLodAlphaPatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.Interact:
+                this.locTickInteractPatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.InteractAlpha:
+                this.locTickInteractAlphaPatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.InteractLod:
+                this.locTickInteractLodPatchCount = count | 0;
+                return;
+            case LocTickPatchVariant.InteractLodAlpha:
+                this.locTickInteractLodAlphaPatchCount = count | 0;
+                return;
+        }
+    }
+
+    private setNpcTickPatchCountInternal(variant: NpcTickPatchVariant, count: number): void {
+        const v = variant as number;
+        switch (v) {
+            case NpcTickPatchVariant.Base:
+                this.npcTickBasePatchCount = count | 0;
+                return;
+            case NpcTickPatchVariant.Alpha:
+                this.npcTickAlphaPatchCount = count | 0;
+                return;
+        }
     }
 
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {
