@@ -2,7 +2,7 @@ import FileSaver from "file-saver";
 import { vec3 } from "gl-matrix";
 import { Leva, button, buttonGroup, folder, useControls } from "leva";
 import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 import { CameraView, ProjectionType } from "../renderer/Camera";
 import { MapRenderer, TextureFilterMode } from "../renderer/MapRenderer";
@@ -206,6 +206,17 @@ export const MapViewerControls = memo(
         const [mapRenderNpcSimInWorker, setMapRenderNpcSimInWorker] = useState<boolean>(
             !!initialRuntimeOptions.mapRenderNpcSimInWorker,
         );
+        // Leva may keep button callbacks stable; avoid stale React state closures by reading the latest
+        // pending values from a ref.
+        const runtimeOptionsRef = useRef<{
+            mapRenderBackend: BackendKind;
+            mapRenderTelemetry: boolean;
+            mapRenderNpcSimInWorker: boolean;
+        }>({
+            mapRenderBackend: initialRuntimeOptions.mapRenderBackend,
+            mapRenderTelemetry: initialRuntimeOptions.mapRenderTelemetry,
+            mapRenderNpcSimInWorker: !!initialRuntimeOptions.mapRenderNpcSimInWorker,
+        });
 
         const controlsSchema: Schema = {
             Position: { value: positionControls, editable: false },
@@ -462,26 +473,30 @@ export const MapViewerControls = memo(
                                 "C++ WASM": "cpp-wasm",
                             },
                             onChange: (v: BackendKind) => {
+                                runtimeOptionsRef.current.mapRenderBackend = v;
                                 setMapRenderBackend(v);
                             },
                         },
                         "Map Telemetry": {
                             value: mapRenderTelemetry,
                             onChange: (v: boolean) => {
+                                runtimeOptionsRef.current.mapRenderTelemetry = v;
                                 setMapRenderTelemetry(v);
                             },
                         },
                         "NPC Sim in Worker": {
                             value: mapRenderNpcSimInWorker,
                             onChange: (v: boolean) => {
+                                runtimeOptionsRef.current.mapRenderNpcSimInWorker = v;
                                 setMapRenderNpcSimInWorker(v);
                             },
                         },
                         Apply: button(async () => {
+                            const opts = runtimeOptionsRef.current;
                             await mapViewer.setWorkerRuntimeOptions({
-                                mapRenderBackend,
-                                mapRenderTelemetry,
-                                mapRenderNpcSimInWorker,
+                                mapRenderBackend: opts.mapRenderBackend,
+                                mapRenderTelemetry: opts.mapRenderTelemetry,
+                                mapRenderNpcSimInWorker: opts.mapRenderNpcSimInWorker,
                             });
                         }),
                     },

@@ -253,6 +253,10 @@ export class MapViewer {
         // Update URL immediately so the user sees the new mode even if rebuilding takes time.
         this.emitSearchParamsNow();
 
+        // Yield so the URL update is observable before we do potentially heavy work
+        // (threads RPC / structured clone of cache inputs).
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
         await this.workerPool.initCacheAndWait(
             this.cacheContext.loadedCache,
             this.objSpawns,
