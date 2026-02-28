@@ -362,8 +362,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const cycle = time / 0.02;
 
-        const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
-        const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         const prevNpcSimInWorker = this.lastNpcSimInWorker;
         if (runtimeOptions !== this.lastRuntimeOptions) {
@@ -396,16 +394,11 @@ export class MapViewerRenderer extends RendererMainLoop {
 
             // Kick an async tick request if one isn't already in flight.
             if (!this.pendingFramePacket && (ticksElapsed > 0 || clientTicksElapsed > 0)) {
-                const ids: number[] = [];
-                for (let i = 0; i < this.renderer.visibleMapCount; i++) {
-                    const mapInfo = this.renderer.visibleMaps[i];
-                    const map = this.renderer.getMap(mapInfo.mapId);
-                    if (!map || !map.canRender(this.renderer.stats.frameCount)) {
-                        continue;
-                    }
-                    ids.push(mapInfo.mapId | 0);
+                const n = this.renderer.visibleMapCount | 0;
+                const mapIds = new Int32Array(n);
+                for (let i = 0; i < n; i++) {
+                    mapIds[i] = this.renderer.visibleMaps[i]!.mapId | 0;
                 }
-                const mapIds = Int32Array.from(ids);
                 this.pendingFramePacket = this.workerPool
                     .tickFrame(
                         this.renderer.stats.frameCount,
@@ -426,9 +419,16 @@ export class MapViewerRenderer extends RendererMainLoop {
                         this.pendingFramePacket = undefined;
                     });
             }
+
+            // In worker mode, all per-map tick work happens in the worker; the renderer consumes the
+            // resulting frame packet during draw.
+            return;
         } else {
             this.npcGpuDataBuilder.beginFrame();
         }
+
+        const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
+        const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
 
         for (let i = 0; i < this.renderer.visibleMapCount; i++) {
             const mapInfo = this.renderer.visibleMaps[i];

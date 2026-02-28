@@ -143,6 +143,7 @@ export class WebGLMapRenderer
             this.lastAppliedFramePacketFrameCount = -1;
             this.npcDataOffsetByMapId.clear();
             this.clearFrameTickPatches();
+            this.npcGpuFrameData = undefined;
             return;
         }
 
