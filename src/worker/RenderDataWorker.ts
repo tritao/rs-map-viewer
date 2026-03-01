@@ -22,7 +22,7 @@ import {
     buildFramePacketMapEntry,
     buildFramePacketFromMapEntries,
     type FramePacketMapEntry,
-} from "../runtime/tick/MainThreadFramePacketBuilder";
+} from "../runtime/contracts/FramePacketBuilder";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";

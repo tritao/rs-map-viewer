@@ -1,30 +1,19 @@
 import {
     buildFramePacket,
-    createTickPatchStreamsByMap,
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     TICK_PATCH_STREAM_COUNT,
     type FramePacket,
-} from "../contracts/FramePacket";
+} from "./FramePacket";
 import type { NpcGpuFrameData } from "../entities/NpcGpuData";
 
 export type FramePacketMapEntry = Readonly<{
     mapId: number;
     renderFlags: number;
     npcOffset: number;
-    tickPatchCounts: Int32Array;
+    tickPatchCounts: ArrayLike<number>;
     tickPatchStreams: readonly (Int32Array | undefined)[];
-}>;
-
-export type FramePacketMapEntryStreamSource = Int32Array | ReadonlyArray<number> | undefined;
-
-export type CreateFramePacketMapEntryInput = Readonly<{
-    mapId: number;
-    renderFlags: number;
-    npcOffset: number;
-    tickPatchCounts: Int32Array | ReadonlyArray<number>;
-    tickPatchStreams: readonly FramePacketMapEntryStreamSource[];
 }>;
 
 export type BuildFramePacketMapEntryInput = Readonly<{
@@ -35,8 +24,8 @@ export type BuildFramePacketMapEntryInput = Readonly<{
     hoveredMapIds: ReadonlySet<number>;
     hasNpcs: boolean;
     npcOffset: number;
-    tickPatchCounts: Int32Array | ReadonlyArray<number>;
-    tickPatchStreams: readonly FramePacketMapEntryStreamSource[];
+    tickPatchCounts: ArrayLike<number>;
+    tickPatchStreams: readonly (Int32Array | undefined)[];
 }>;
 
 export type BuildFramePacketFromMapEntriesInput = Readonly<{
@@ -45,62 +34,6 @@ export type BuildFramePacketFromMapEntriesInput = Readonly<{
     npcGpuFrameData: NpcGpuFrameData;
     entries: readonly FramePacketMapEntry[];
 }>;
-
-export function createFramePacketMapEntry(
-    input: CreateFramePacketMapEntryInput,
-): FramePacketMapEntry {
-    const streamCount = TICK_PATCH_STREAM_COUNT | 0;
-    const counts = new Int32Array(streamCount);
-    for (let i = 0; i < streamCount; i++) {
-        counts[i] = input.tickPatchCounts[i] | 0;
-    }
-
-    const streams = new Array<Int32Array | undefined>(streamCount);
-    for (let i = 0; i < streamCount; i++) {
-        const count = counts[i] | 0;
-        if (count <= 0) {
-            streams[i] = undefined;
-            continue;
-        }
-        const stream = input.tickPatchStreams[i];
-        if (stream instanceof Int32Array) {
-            streams[i] = stream;
-            continue;
-        }
-        if (stream && stream.length > 0) {
-            streams[i] = Int32Array.from(stream);
-            continue;
-        }
-        streams[i] = undefined;
-    }
-
-    return {
-        mapId: input.mapId | 0,
-        renderFlags: input.renderFlags | 0,
-        npcOffset: input.npcOffset | 0,
-        tickPatchCounts: counts,
-        tickPatchStreams: streams,
-    };
-}
-
-export function buildFramePacketMapEntry(
-    input: BuildFramePacketMapEntryInput,
-): FramePacketMapEntry {
-    return createFramePacketMapEntry({
-        mapId: input.mapId | 0,
-        renderFlags: computeFrameRenderFlags(
-            input.mapId | 0,
-            input.cameraMapX | 0,
-            input.cameraMapY | 0,
-            input.lodDistance | 0,
-            input.hoveredMapIds,
-            !!input.hasNpcs,
-        ),
-        npcOffset: input.npcOffset | 0,
-        tickPatchCounts: input.tickPatchCounts,
-        tickPatchStreams: input.tickPatchStreams,
-    });
-}
 
 export function computeFrameRenderFlags(
     mapId: number,
@@ -129,14 +62,35 @@ export function computeFrameRenderFlags(
     return flags | 0;
 }
 
+export function buildFramePacketMapEntry(
+    input: BuildFramePacketMapEntryInput,
+): FramePacketMapEntry {
+    return {
+        mapId: input.mapId | 0,
+        renderFlags: computeFrameRenderFlags(
+            input.mapId | 0,
+            input.cameraMapX | 0,
+            input.cameraMapY | 0,
+            input.lodDistance | 0,
+            input.hoveredMapIds,
+            !!input.hasNpcs,
+        ),
+        npcOffset: input.npcOffset | 0,
+        tickPatchCounts: input.tickPatchCounts,
+        tickPatchStreams: input.tickPatchStreams,
+    };
+}
+
 export function buildFramePacketFromMapEntries(
     input: BuildFramePacketFromMapEntriesInput,
 ): FramePacket {
     const entryCount = input.entries.length | 0;
     const npcOffsetsByMapIdPairs = new Int32Array((entryCount | 0) * 2);
     const renderListPacked = new Int32Array((entryCount | 0) * 2);
-    const tickPatchCountsByMapId = new Int32Array((entryCount | 0) * (1 + TICK_PATCH_STREAM_COUNT));
-    const tickPatchStreamsByMap = createTickPatchStreamsByMap(entryCount | 0);
+    const tickPatchCountsByMapId = new Int32Array(
+        (entryCount | 0) * (1 + TICK_PATCH_STREAM_COUNT),
+    );
+    const tickPatchStreamsByMap = new Array<(Int32Array | undefined)[]>(entryCount | 0);
 
     for (let i = 0; i < entryCount; i++) {
         const entry = input.entries[i]!;
@@ -152,8 +106,8 @@ export function buildFramePacketFromMapEntries(
         for (let streamIndex = 0; streamIndex < TICK_PATCH_STREAM_COUNT; streamIndex++) {
             tickPatchCountsByMapId[metaOff + 1 + streamIndex] =
                 entry.tickPatchCounts[streamIndex] | 0;
-            tickPatchStreamsByMap[i]![streamIndex] = entry.tickPatchStreams[streamIndex];
         }
+        tickPatchStreamsByMap[i] = entry.tickPatchStreams as (Int32Array | undefined)[];
     }
 
     return buildFramePacket({
