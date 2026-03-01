@@ -1,5 +1,5 @@
 import { NpcSpawn, getMapNpcSpawns } from "../../data/npc/NpcSpawn";
-import { ObjSpawn, getMapObjSpawns } from "../../data/obj/ObjSpawn";
+import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
@@ -9,10 +9,10 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
+import type { CacheSession } from "../../rs/loaders/CacheSession";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Model } from "../../rs/model/Model";
 import type { MapImageRenderer } from "../../rs/render/minimap/MapImageRenderer";
-import type { CacheSession } from "../../rs/loaders/CacheSession";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
@@ -22,6 +22,7 @@ import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
+import type { BackendKind } from "../../util/BackendKind";
 import { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderDataContract";
 import { loadMinimapBlob } from "../../worker/MinimapData";
 import { AnimationFrames } from "../AnimationFrames";
@@ -55,7 +56,6 @@ import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
 import { createSdTexturePacking } from "./SdTexturePacking";
-import type { BackendKind } from "../../util/BackendKind";
 
 function addNpcAnimationFrames(
     npcModelLoader: NpcModelLoader,
@@ -694,8 +694,8 @@ export class SdMapRenderDataTsBackend {
         }
 
         if (loadObjs) {
-            const objSpawns = timeStep("getMapObjSpawns", () =>
-                getMapObjSpawns(this.deps.objSpawns, maxLevel, mapX, mapY),
+            const objSpawns = timeStep("getWindowObjSpawns", () =>
+                getWindowObjSpawns(this.deps.objSpawns, maxLevel, baseX, baseY, mapSize, mapSize),
             );
             timeStep("createObjSceneModels", () =>
                 createObjSceneModels(

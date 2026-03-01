@@ -25,3 +25,22 @@ export function getMapObjSpawns(
         return mapX === objMapX && mapY === objMapY && obj.plane <= maxLevel;
     });
 }
+
+export function getWindowObjSpawns(
+    spawns: ObjSpawn[],
+    maxLevel: number,
+    baseX: number,
+    baseY: number,
+    sizeX: number,
+    sizeY: number,
+): ObjSpawn[] {
+    const x0 = baseX | 0;
+    const y0 = baseY | 0;
+    const x1 = (baseX + sizeX) | 0;
+    const y1 = (baseY + sizeY) | 0;
+    return spawns.filter((obj) => {
+        const x = obj.x | 0;
+        const y = obj.y | 0;
+        return obj.plane <= maxLevel && x >= x0 && x < x1 && y >= y0 && y < y1;
+    });
+}
