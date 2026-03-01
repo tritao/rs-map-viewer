@@ -1,9 +1,15 @@
 import type { App as PicoApp, Framebuffer } from "picogl";
+import PicoGL from "picogl";
+import { pixelRatio } from "../../../util/DeviceUtil";
 
-import { InteractionState, type InteractionInput } from "../../interaction/InteractionState";
+import {
+    INTERACTION_RADIUS,
+    INTERACT_BUFFER_COUNT,
+    InteractionState,
+    type InteractionInput,
+} from "../../interaction/InteractionState";
 import type { RendererStats } from "../../Renderer";
-import { InteractionPicking } from "./InteractionPicking";
-import type { InteractionsReadback } from "./InteractionsReadback";
+import { InteractionsReadback } from "./InteractionsReadback";
 
 export type InteractionsCallback = (
     interactReady: boolean,
@@ -13,10 +19,16 @@ export type InteractionsCallback = (
 
 export class WebGLInteractionSystem {
     readonly state = new InteractionState();
-    private readonly picking = new InteractionPicking(this.state);
+    private interactBuffer?: Float32Array;
+    private readonly interactions: InteractionsReadback[];
     private input: InteractionInput = { pointerLocked: false, mouseX: -1, mouseY: -1 };
 
-    constructor(private readonly onInteractions: InteractionsCallback | undefined) {}
+    constructor(private readonly onInteractions: InteractionsCallback | undefined) {
+        this.interactions = new Array(INTERACT_BUFFER_COUNT);
+        for (let i = 0; i < INTERACT_BUFFER_COUNT; i++) {
+            this.interactions[i] = new InteractionsReadback(INTERACTION_RADIUS);
+        }
+    }
 
     setInput(input: InteractionInput): void {
         this.input = input;
@@ -26,37 +38,83 @@ export class WebGLInteractionSystem {
         return this.state.hoveredMapIds;
     }
 
-    prepare(
-        gl: WebGL2RenderingContext,
-        frameCount: number,
-        rendererStats: RendererStats | undefined,
-    ): InteractionsReadback {
-        const interactionsStart = performance.now();
-        const { interactions, interactReady } = this.picking.prepare(gl, this.input, frameCount);
-        if (this.onInteractions && this.picking.interactBuffer) {
-            this.onInteractions(
-                interactReady,
-                this.picking.interactBuffer,
-                this.state.closestInteractIndices,
-            );
-        }
-        if (rendererStats) {
-            rendererStats.interactionsTime = performance.now() - interactionsStart;
-        }
-        return interactions;
+    private getForFrame(frameCount: number): InteractionsReadback {
+        return this.interactions[(frameCount | 0) % this.interactions.length];
     }
 
-    readAtMouse(
+    private prepareFrame(
+        gl: WebGL2RenderingContext,
+        frameCount: number,
+    ): { interactions: InteractionsReadback; interactReady: boolean } {
+        const interactions = this.getForFrame(frameCount);
+        if (!this.input.pointerLocked) {
+            const interactReady = interactions.check(gl, this.state);
+            if (interactReady) {
+                this.interactBuffer = interactions.interactBuffer;
+            }
+            return { interactions, interactReady };
+        }
+
+        if (this.state.hoveredMapIds.size > 0) {
+            this.state.hoveredMapIds.clear();
+        }
+        return { interactions, interactReady: false };
+    }
+
+    private readAtMouse(
         gl: WebGL2RenderingContext,
         app: PicoApp,
         msaaEnabled: boolean,
         interactFramebuffer: Framebuffer,
         interactions: InteractionsReadback,
     ): void {
-        this.picking.readAtMouse(gl, app, this.input, msaaEnabled, interactFramebuffer, interactions);
+        if (this.input.pointerLocked) {
+            return;
+        }
+        const mouseX = this.input.mouseX;
+        const mouseY = this.input.mouseY;
+        if (mouseX === -1 || mouseY === -1) {
+            return;
+        }
+        if (msaaEnabled) {
+            // TODO: reading from the multisampled framebuffer is not accurate
+            app.drawFramebuffer(interactFramebuffer);
+            gl.readBuffer(PicoGL.COLOR_ATTACHMENT1);
+            app.blitFramebuffer(PicoGL.COLOR_BUFFER_BIT);
+
+            app.readFramebuffer(interactFramebuffer);
+            gl.readBuffer(PicoGL.COLOR_ATTACHMENT0);
+        } else {
+            gl.readBuffer(PicoGL.COLOR_ATTACHMENT1);
+        }
+        interactions.read(gl, (mouseX * pixelRatio) | 0, (mouseY * pixelRatio) | 0);
+    }
+
+    frame(
+        gl: WebGL2RenderingContext,
+        app: PicoApp,
+        msaaEnabled: boolean,
+        interactFramebuffer: Framebuffer,
+        frameCount: number,
+        rendererStats: RendererStats | undefined,
+    ): void {
+        const interactionsStart = performance.now();
+        const { interactions, interactReady } = this.prepareFrame(gl, frameCount);
+        if (this.onInteractions && this.interactBuffer) {
+            this.onInteractions(
+                interactReady,
+                this.interactBuffer,
+                this.state.closestInteractIndices,
+            );
+        }
+        this.readAtMouse(gl, app, msaaEnabled, interactFramebuffer, interactions);
+        if (rendererStats) {
+            rendererStats.interactionsTime = performance.now() - interactionsStart;
+        }
     }
 
     reset(): void {
-        this.picking.reset();
+        this.state.reset();
+        this.interactBuffer = undefined;
     }
 }

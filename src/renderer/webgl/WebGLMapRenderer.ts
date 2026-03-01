@@ -350,11 +350,6 @@ export class WebGLMapRenderer
         }
 
         this.updateSceneUniforms(timeSec);
-        const currInteractions = this.interactions.prepare(
-            this.gl,
-            this.stats.frameCount,
-            this.rendererStats,
-        );
         const frameRenderMaps = this.collectFrameRenderMaps();
         this.textures.updateVisibleResidency(
             this.collectVisibleUsedTextureIds(frameRenderMaps),
@@ -379,12 +374,13 @@ export class WebGLMapRenderer
         }
         this.renderPasses(frameRenderMaps, this.npcDataTexture);
         this.postProcessPass.blitSceneToTexture(this.app, this.gl, this.renderTargets);
-        this.interactions.readAtMouse(
+        this.interactions.frame(
             this.gl,
             this.app,
             this.msaaEnabled,
             this.renderTargets.interactFramebuffer!,
-            currInteractions,
+            this.stats.frameCount,
+            this.rendererStats,
         );
         this.postProcessPass.present(
             this.app,
