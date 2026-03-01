@@ -29,7 +29,7 @@ import {
     type InteractionControllerRenderer,
     type InteractionInput,
     type InteractionSnapshotRenderer,
-} from "../../mapviewer/interaction/InteractionState";
+} from "../../runtime/interaction/InteractionState";
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/entities/NpcGpuData";
 import {

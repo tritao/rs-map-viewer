@@ -2,7 +2,7 @@ import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import { Camera } from "./Camera";
 import { InteractType } from "../renderer/InteractType";
-import { INTERACTION_RADIUS } from "./interaction/InteractionState";
+import { INTERACTION_RADIUS } from "../runtime/interaction/InteractionState";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
@@ -20,11 +20,10 @@ import {
     type FramePacket,
 } from "../runtime/FramePacket";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/entities/NpcGpuData";
 import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/tick/TickPatchStreams";
-import { MapSquareTickState } from "../runtime/tick/MapSquareTickState";
-import { buildMapSquareTickState } from "../runtime/tick/MapSquareTickStateBuilder";
 import { TickController, type TickPatchSink } from "../runtime/tick/TickController";
+import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
@@ -58,7 +57,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly simWorld = new SimWorld();
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
-    private readonly mapTickStates = new Map<number, MapSquareTickState>();
+    private runtimeStateStore: MapRuntimeStateStore;
     private lastNpcSimInWorker: boolean = false;
 
     // State
@@ -88,6 +87,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         this.lastNpcSimInWorker = !!this.lastRuntimeOptions?.mapRenderNpcSimInWorker;
         this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
+        this.runtimeStateStore = this.createRuntimeStateStore();
         this.mapManager = new MapManager(
             this.workerPool.size * 2,
             this.queueLoadMap.bind(this),
@@ -113,6 +113,15 @@ export class MapViewerRenderer extends RendererMainLoop {
             SdMapData | undefined,
             SdMapDataLoader
         >(this.sdMapDataLoader, input);
+    }
+
+    private createRuntimeStateStore(): MapRuntimeStateStore {
+        return new MapRuntimeStateStore({
+            seqTypeLoader: this.mapViewer.session.getSeqTypeLoader(),
+            seqFrameLoader: this.mapViewer.session.getSeqFrameLoader(),
+            npcTypeLoader: this.mapViewer.session.getNpcTypeLoader(),
+            basTypeLoader: this.mapViewer.session.getBasTypeLoader(),
+        });
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
@@ -184,17 +193,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                     // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
                     this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
                 }
-                this.mapTickStates.set(
+                this.runtimeStateStore.buildAndStoreMap(
                     mapId,
-                    buildMapSquareTickState(
-                        mapId,
-                        sdMapData,
-                        this.mapViewer.session.getSeqTypeLoader(),
-                        this.mapViewer.session.getSeqFrameLoader(),
-                        this.mapViewer.session.getNpcTypeLoader(),
-                        this.mapViewer.session.getBasTypeLoader(),
-                        performance.now() / 1000,
-                    ).tickState,
+                    sdMapData,
+                    performance.now() / 1000,
                 );
 
                 this.mapManager.addMap(mapX, mapY);
@@ -239,7 +241,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.tickController.onRenderableRemoved(mapInfo.mapId);
-        this.mapTickStates.delete(mapInfo.mapId);
+        this.runtimeStateStore.removeMap(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         if (runtimeOptions.mapRenderNpcSimInWorker) {
@@ -304,7 +306,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.lastNpcSimInWorker = false;
             this.mapManager.cleanUp();
             this.tickController.reset();
-            this.mapTickStates.clear();
+            this.runtimeStateStore.clear();
 
             this.renderer = new WebGLMapRenderer(
                 this.mapViewer.session,
@@ -317,6 +319,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.tickController = new TickController();
             this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
             this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
+            this.runtimeStateStore = this.createRuntimeStateStore();
             this.mapManager = new MapManager(
                 this.workerPool.size * 2,
                 this.queueLoadMap.bind(this),
@@ -339,7 +342,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
         this.tickController.reset();
-        this.mapTickStates.clear();
+        this.runtimeStateStore.clear();
     }
 
     override update(time: number, deltaTime: number) {
@@ -515,7 +518,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 renderListPacked[renderOff + 1] = renderFlags | 0;
                 continue;
             }
-            const tickState = this.mapTickStates.get(mapId);
+            const tickState = this.runtimeStateStore.getTickState(mapId);
             const mapNpcs = tickState?.getNpcs() ?? [];
             if ((mapNpcs.length | 0) > 0) {
                 renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
@@ -582,7 +585,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                 };
                 this.tickController.tickRenderable(
                     tickState,
-                    mapInfo,
                     cycle,
                     clientTicksElapsed,
                     seqTypeLoader,
@@ -594,13 +596,12 @@ export class MapViewerRenderer extends RendererMainLoop {
             // Build per-frame NPC GPU instance data outside the WebGL renderer. This relies on
             // the map-square implementation exposing the scheduling offsets + tile flags.
             if (this.renderer.loadNpcs) {
-                if (tickState) {
-                    const target: NpcGpuDataTarget = {
-                        id: mapId,
-                        getNpcs: () => tickState.getNpcs(),
-                        getTileRenderFlag: (level: number, tileX: number, tileY: number): number =>
-                            map.getTileRenderFlag(level, tileX, tileY),
-                    };
+                const target = this.runtimeStateStore.createNpcGpuDataTarget(
+                    mapId,
+                    (level: number, tileX: number, tileY: number): number =>
+                        map.getTileRenderFlag(level, tileX, tileY),
+                );
+                if (target) {
                     npcOffsetsByMapIdPairs[pairOff + 1] = this.npcGpuDataBuilder.addRenderable(
                         target,
                     );

@@ -1,7 +1,6 @@
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import type { BackendKind } from "../../util/BackendKind";
-import type { MapSquareInfo } from "../../mapviewer/MapManager";
 import { NULL_DRAW_RANGE } from "../../renderer/DrawRange";
 import {
     isDrawRangePatchBackendReady,
@@ -264,7 +263,6 @@ export class TickController {
 
     private tickWithWasm(
         renderable: TickCapability,
-        _mapInfo: MapSquareInfo,
         cycleNowFixed: number,
         clientTicksElapsed: number,
         sink?: TickPatchSink,
@@ -325,7 +323,6 @@ export class TickController {
 
     tickRenderable(
         renderable: TickCapability,
-        mapInfo: MapSquareInfo,
         cycle: number,
         clientTicksElapsed: number,
         seqTypeLoader: SeqTypeLoader,
@@ -337,7 +334,6 @@ export class TickController {
         if (useWasm) {
             const ok = this.tickWithWasm(
                 renderable,
-                mapInfo,
                 cycleNowFixed,
                 clientTicksElapsed,
                 sink,

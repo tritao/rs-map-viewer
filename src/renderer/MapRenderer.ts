@@ -3,14 +3,17 @@ import { vec4 } from "gl-matrix";
 
 import { Scene } from "../rs/scene/Scene";
 import { LoadedCache } from "../util/Caches";
-import { MapSquareInfo } from "../mapviewer/MapManager";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 import { MapData } from "./loader/MapData";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
-} from "../mapviewer/interaction/InteractionState";
+} from "../runtime/interaction/InteractionState";
 import type { FramePacket } from "../runtime/FramePacket";
+
+type MapRemovalInfo = Readonly<{
+    mapId: number;
+}>;
 
 export enum TextureFilterMode {
     DISABLED,
@@ -141,7 +144,7 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
         this.mapsToLoad.push(mapData);
     }
 
-    removeMap(mapInfo: MapSquareInfo) {
+    removeMap(mapInfo: MapRemovalInfo) {
         let map = this.loadedMaps.get(mapInfo.mapId);
         if (map) {
             map.delete();
