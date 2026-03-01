@@ -29,13 +29,13 @@ import {
     type InteractionControllerRenderer,
     type InteractionInput,
     type InteractionSnapshotRenderer,
-} from "../../runtime/interaction/InteractionState";
+} from "../../runtime/contracts/Interaction";
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/entities/NpcGpuData";
 import {
     chooseLocTickPatchVariant,
     chooseNpcTickPatchVariant,
-} from "../../runtime/tick/TickPatchStreams";
+} from "../../runtime/contracts/TickPatchStreams";
 import {
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
@@ -43,8 +43,8 @@ import {
     FRAME_RENDER_LIST_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../../runtime/FramePacket";
-import type { FramePacket } from "../../runtime/FramePacket";
+} from "../../runtime/contracts/FramePacket";
+import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import { applyDrawRangePatches } from "./applyDrawRangePatches";
 import {
     ensureDrawRangePatchBackendInit,

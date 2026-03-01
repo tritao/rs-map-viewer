@@ -5,9 +5,9 @@ import { pixelRatio } from "../../util/DeviceUtil";
 import {
     INTERACTION_RADIUS,
     INTERACT_BUFFER_COUNT,
-    InteractionState,
     type InteractionInput,
-} from "../../runtime/interaction/InteractionState";
+} from "../../runtime/contracts/Interaction";
+import { InteractionState } from "../../runtime/interaction/InteractionState";
 import type { RendererStats } from "../Renderer";
 import { InteractionsReadback } from "./InteractionsReadback";
 

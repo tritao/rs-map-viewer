@@ -6,7 +6,7 @@ import type { LocAnimated } from "../entities/LocAnimated";
 import type { Npc } from "../entities/Npc";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickCapability, TickPatchBackendResult } from "./TickCapability";
+import type { TickCapability, TickPatchBackendResult } from "../contracts/TickCapability";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;

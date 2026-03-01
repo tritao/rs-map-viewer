@@ -13,7 +13,7 @@ import type { NpcData } from "../runtime/entities/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import { orderByPacketKeys } from "../runtime/entities/orderByPacketKeys";
-import type { FramePacket } from "../runtime/FramePacket";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
 import {
     buildFramePacket,
     createTickPatchStreamsByMap,
@@ -26,7 +26,7 @@ import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     framePacketTransferables,
-} from "../runtime/FramePacket";
+} from "../runtime/contracts/FramePacket";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";

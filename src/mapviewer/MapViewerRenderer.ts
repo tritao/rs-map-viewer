@@ -2,7 +2,7 @@ import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import { Camera } from "./Camera";
 import { InteractType } from "../renderer/InteractType";
-import { INTERACTION_RADIUS } from "../runtime/interaction/InteractionState";
+import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
@@ -18,10 +18,10 @@ import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     type FramePacket,
-} from "../runtime/FramePacket";
+} from "../runtime/contracts/FramePacket";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/entities/NpcGpuData";
-import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/tick/TickPatchStreams";
+import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/contracts/TickPatchStreams";
 import { TickController, type TickPatchSink } from "../runtime/tick/TickController";
 import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
@@ -364,10 +364,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapManagerTime = performance.now() - mapManagerStart;
 
         this.renderer.getInteractionControllerRenderer()?.setInteractionInput({
-                pointerLocked: this.inputManager.isPointerLock(),
-                mouseX: this.inputManager.mouseX,
-                mouseY: this.inputManager.mouseY,
-            });
+            pointerLocked: this.inputManager.isPointerLock(),
+            mouseX: this.inputManager.mouseX,
+            mouseY: this.inputManager.mouseY,
+        });
 
         const timeSec = time / 1000;
 
@@ -412,56 +412,77 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.renderer.applyFramePacket(undefined);
         }
 
-        if (npcSimInWorker) {
-            const packet = this.latestFramePacket;
-            // Apply the latest worker packet each frame. The renderer tracks frameCount to avoid
-            // re-parsing; this keeps the npc offset rings in sync even if the packet lags.
-            this.renderer.applyFramePacket(packet);
-            if (packet && packet.frameCount !== this.latestFramePacketFrameCount) {
-                this.latestFramePacketFrameCount = packet.frameCount | 0;
-            }
-
-            // Kick an async tick request if one isn't already in flight.
-            if (!this.pendingFramePacket && (ticksElapsed > 0 || clientTicksElapsed > 0)) {
-                const n = this.mapManager.visibleMapCount | 0;
-                const mapIds = new Int32Array(n);
-                for (let i = 0; i < n; i++) {
-                    mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
-                }
-                const interactionSnapshotRenderer = this.renderer.getInteractionSnapshotRenderer?.();
-                const hoveredMapIdsPacked =
-                    interactionSnapshotRenderer?.getHoveredMapIdsPacked() ?? new Int32Array(0);
-                this.pendingFramePacket = this.workerPool
-                    .tickFrame(
-                        this.renderer.stats.frameCount,
-                        mapIds,
-                        ticksElapsed,
-                        clientTicksElapsed,
-                        cycle,
-                        this.camera.getMapX(),
-                        this.camera.getMapY(),
-                        this.renderer.lodDistance,
-                        hoveredMapIdsPacked,
-                    )
-                    .then((pkt) => {
-                        this.latestFramePacket = pkt;
-                        return pkt;
-                    })
-                    .catch(() => {
-                        this.latestFramePacket = undefined;
-                        return undefined;
-                    })
-                    .finally(() => {
-                        this.pendingFramePacket = undefined;
-                    });
-            }
-
-            // In worker mode, all per-map tick work happens in the worker; the renderer consumes the
-            // resulting frame packet during draw.
+        if (this.tickWithWorkerPacketMode(cycle, ticksElapsed, clientTicksElapsed)) {
             return;
-        } else {
-            this.npcGpuDataBuilder.beginFrame();
         }
+        this.renderer.applyFramePacket(
+            this.buildMainThreadFramePacket(cycle, ticksElapsed, clientTicksElapsed),
+        );
+    }
+
+    private tickWithWorkerPacketMode(
+        cycle: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+    ): boolean {
+        if (!this.lastNpcSimInWorker) {
+            return false;
+        }
+
+        const packet = this.latestFramePacket;
+        // Apply the latest worker packet each frame. The renderer tracks frameCount to avoid
+        // re-parsing; this keeps the npc offset rings in sync even if the packet lags.
+        this.renderer.applyFramePacket(packet);
+        if (packet && packet.frameCount !== this.latestFramePacketFrameCount) {
+            this.latestFramePacketFrameCount = packet.frameCount | 0;
+        }
+
+        // Kick an async tick request if one isn't already in flight.
+        if (!this.pendingFramePacket && (ticksElapsed > 0 || clientTicksElapsed > 0)) {
+            const n = this.mapManager.visibleMapCount | 0;
+            const mapIds = new Int32Array(n);
+            for (let i = 0; i < n; i++) {
+                mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
+            }
+            const interactionSnapshotRenderer = this.renderer.getInteractionSnapshotRenderer?.();
+            const hoveredMapIdsPacked =
+                interactionSnapshotRenderer?.getHoveredMapIdsPacked() ?? new Int32Array(0);
+            this.pendingFramePacket = this.workerPool
+                .tickFrame(
+                    this.renderer.stats.frameCount,
+                    mapIds,
+                    ticksElapsed,
+                    clientTicksElapsed,
+                    cycle,
+                    this.camera.getMapX(),
+                    this.camera.getMapY(),
+                    this.renderer.lodDistance,
+                    hoveredMapIdsPacked,
+                )
+                .then((pkt) => {
+                    this.latestFramePacket = pkt;
+                    return pkt;
+                })
+                .catch(() => {
+                    this.latestFramePacket = undefined;
+                    return undefined;
+                })
+                .finally(() => {
+                    this.pendingFramePacket = undefined;
+                });
+        }
+
+        // In worker mode, all per-map tick work happens in the worker; the renderer consumes the
+        // resulting frame packet during draw.
+        return true;
+    }
+
+    private buildMainThreadFramePacket(
+        cycle: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+    ): FramePacket {
+        this.npcGpuDataBuilder.beginFrame();
 
         const cameraMapX = this.camera.getMapX();
         const cameraMapY = this.camera.getMapY();
@@ -475,14 +496,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
         const tickPatchStreamsByMap = createTickPatchStreamsByMap(visibleCount | 0);
         const tickPatchStreamAccumByMap: (number[] | undefined)[][] = new Array(visibleCount);
-        const hoveredPacked =
-            this.renderer
-                .getInteractionSnapshotRenderer?.()
-                ?.getHoveredMapIdsPacked() ?? EMPTY_INT32;
-        const hoveredMapIds = new Set<number>();
-        for (let i = 0; i < hoveredPacked.length; i++) {
-            hoveredMapIds.add(hoveredPacked[i] | 0);
-        }
+        const hoveredMapIds = this.getHoveredMapIds();
 
         const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
         const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
@@ -531,65 +545,17 @@ export class MapViewerRenderer extends RendererMainLoop {
                 ticksElapsed,
             );
             if (tickState) {
-                const sink: TickPatchSink = {
-                    emitLocPatch: (
-                        variant: LocTickPatchVariant,
-                        drawRangeIndex: number,
-                        offset: number,
-                        elements: number,
-                        instances: number,
-                    ): void => {
-                        if ((drawRangeIndex | 0) < 0) {
-                            return;
-                        }
-                        const streamIndex = variant as number;
-                        const countOff = (metaOff + 1 + streamIndex) | 0;
-                        tickPatchCountsByMapId[countOff] = (tickPatchCountsByMapId[countOff] + 1) | 0;
-                        let stream = streamsForMap[streamIndex];
-                        if (!stream) {
-                            stream = [];
-                            streamsForMap[streamIndex] = stream;
-                        }
-                        stream.push(
-                            drawRangeIndex | 0,
-                            offset | 0,
-                            elements | 0,
-                            instances | 0,
-                        );
-                    },
-                    emitNpcPatch: (
-                        variant: NpcTickPatchVariant,
-                        drawRangeIndex: number,
-                        offset: number,
-                        elements: number,
-                        instances: number,
-                    ): void => {
-                        if ((drawRangeIndex | 0) < 0) {
-                            return;
-                        }
-                        const streamIndex = (8 + (variant as number)) | 0;
-                        const countOff = (metaOff + 1 + streamIndex) | 0;
-                        tickPatchCountsByMapId[countOff] = (tickPatchCountsByMapId[countOff] + 1) | 0;
-                        let stream = streamsForMap[streamIndex];
-                        if (!stream) {
-                            stream = [];
-                            streamsForMap[streamIndex] = stream;
-                        }
-                        stream.push(
-                            drawRangeIndex | 0,
-                            offset | 0,
-                            elements | 0,
-                            instances | 0,
-                        );
-                    },
-                };
                 this.tickController.tickRenderable(
                     tickState,
                     cycle,
                     clientTicksElapsed,
                     seqTypeLoader,
                     seqFrameLoader,
-                    sink,
+                    this.createTickPatchSink(
+                        tickPatchCountsByMapId,
+                        metaOff,
+                        streamsForMap,
+                    ),
                 );
             }
 
@@ -626,7 +592,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             }
         }
         const frameCount = this.renderer.stats.frameCount | 0;
-        const packet = buildFramePacket({
+        return buildFramePacket({
             frameCount,
             npcRingWriteIndex: frameCount % NPC_DATA_TEXTURE_RING_SIZE,
             npcGpuFrameData,
@@ -635,7 +601,67 @@ export class MapViewerRenderer extends RendererMainLoop {
             tickPatchCountsByMapId,
             tickPatchStreamsByMap,
         });
-        this.renderer.applyFramePacket(packet);
+    }
+
+    private getHoveredMapIds(): Set<number> {
+        const packed =
+            this.renderer
+                .getInteractionSnapshotRenderer?.()
+                ?.getHoveredMapIdsPacked() ?? EMPTY_INT32;
+        const out = new Set<number>();
+        for (let i = 0; i < packed.length; i++) {
+            out.add(packed[i] | 0);
+        }
+        return out;
+    }
+
+    private createTickPatchSink(
+        tickPatchCountsByMapId: Int32Array,
+        metaOff: number,
+        streamsForMap: (number[] | undefined)[],
+    ): TickPatchSink {
+        return {
+            emitLocPatch: (
+                variant: LocTickPatchVariant,
+                drawRangeIndex: number,
+                offset: number,
+                elements: number,
+                instances: number,
+            ): void => {
+                if ((drawRangeIndex | 0) < 0) {
+                    return;
+                }
+                const streamIndex = variant as number;
+                const countOff = (metaOff + 1 + streamIndex) | 0;
+                tickPatchCountsByMapId[countOff] = (tickPatchCountsByMapId[countOff] + 1) | 0;
+                let stream = streamsForMap[streamIndex];
+                if (!stream) {
+                    stream = [];
+                    streamsForMap[streamIndex] = stream;
+                }
+                stream.push(drawRangeIndex | 0, offset | 0, elements | 0, instances | 0);
+            },
+            emitNpcPatch: (
+                variant: NpcTickPatchVariant,
+                drawRangeIndex: number,
+                offset: number,
+                elements: number,
+                instances: number,
+            ): void => {
+                if ((drawRangeIndex | 0) < 0) {
+                    return;
+                }
+                const streamIndex = (8 + (variant as number)) | 0;
+                const countOff = (metaOff + 1 + streamIndex) | 0;
+                tickPatchCountsByMapId[countOff] = (tickPatchCountsByMapId[countOff] + 1) | 0;
+                let stream = streamsForMap[streamIndex];
+                if (!stream) {
+                    stream = [];
+                    streamsForMap[streamIndex] = stream;
+                }
+                stream.push(drawRangeIndex | 0, offset | 0, elements | 0, instances | 0);
+            },
+        };
     }
 
     override render(time: number, deltaTime: number, resized: boolean) {

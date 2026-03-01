@@ -8,8 +8,8 @@ import { MapData } from "./loader/MapData";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
-} from "../runtime/interaction/InteractionState";
-import type { FramePacket } from "../runtime/FramePacket";
+} from "../runtime/contracts/Interaction";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
 
 type MapRemovalInfo = Readonly<{
     mapId: number;

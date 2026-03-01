@@ -4,7 +4,7 @@ import {
     type FramePacket,
     type ParsedFramePacket,
     type ParsedFrameTickPatches,
-} from "../../runtime/FramePacket";
+} from "../../runtime/contracts/FramePacket";
 
 export class WebGLFramePacketState {
     private readonly npcDataOffsetsByMapIdByRing: Map<number, number>[] = Array.from(

@@ -9,7 +9,7 @@ import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
-import type { FramePacket } from "../runtime/FramePacket";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { NpcData } from "../runtime/entities/NpcData";

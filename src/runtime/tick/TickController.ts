@@ -9,8 +9,8 @@ import {
     unregisterDrawRangeTickState,
 } from "../../wasm/DrawRangePatchBackend";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickCapability } from "./TickCapability";
-import { LocTickPatchVariant, NpcTickPatchVariant } from "./TickPatchStreams";
+import type { TickCapability } from "../contracts/TickCapability";
+import { LocTickPatchVariant, NpcTickPatchVariant } from "../contracts/TickPatchStreams";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 
 type TickBackendKind = BackendKind;
