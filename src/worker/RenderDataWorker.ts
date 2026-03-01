@@ -18,9 +18,8 @@ import {
     framePacketTransferables,
 } from "../runtime/contracts/FramePacket";
 import {
+    buildFramePacketMapEntry,
     buildFramePacketFromMapEntries,
-    createFramePacketMapEntry,
-    computeFrameRenderFlags,
     type FramePacketMapEntry,
 } from "../runtime/tick/MainThreadFramePacketBuilder";
 import { CacheType } from "../rs/cache/CacheType";
@@ -330,7 +329,7 @@ const worker = {
         workerStatePromise = initWorker(cache, objSpawns, npcSpawns, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
-        npcSimStateStore.clear();
+        npcSimStateStore.resetForCache();
         // Make initCache awaitable so callers can block until the worker is fully ready.
         await requireWorkerState();
     },
@@ -339,7 +338,7 @@ const worker = {
     },
     async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
-        npcSimStateStore.clear();
+        npcSimStateStore.resetForLoaderReset();
         const workerState = await requireWorkerState();
         workerState.mapRenderDataBackend.reset();
     },
@@ -546,16 +545,13 @@ const worker = {
                 }
             }
             if (!state) {
-                entries[mi] = createFramePacketMapEntry({
+                entries[mi] = buildFramePacketMapEntry({
                     mapId,
-                    renderFlags: computeFrameRenderFlags(
-                        mapId,
-                        cameraMapX,
-                        cameraMapY,
-                        safeLodDistance,
-                        hoveredMapIds,
-                        false,
-                    ),
+                    cameraMapX,
+                    cameraMapY,
+                    lodDistance: safeLodDistance,
+                    hoveredMapIds,
+                    hasNpcs: false,
                     npcOffset: -1,
                     tickPatchCounts: streamCounts,
                     tickPatchStreams: streamsForMap,
@@ -702,16 +698,13 @@ const worker = {
             }
             streamsForMap[8] = state.npcTickPatchesByVariant[0];
             streamsForMap[9] = state.npcTickPatchesByVariant[1];
-            entries[mi] = createFramePacketMapEntry({
+            entries[mi] = buildFramePacketMapEntry({
                 mapId,
-                renderFlags: computeFrameRenderFlags(
-                    mapId,
-                    cameraMapX,
-                    cameraMapY,
-                    safeLodDistance,
-                    hoveredMapIds,
-                    hasNpcs,
-                ),
+                cameraMapX,
+                cameraMapY,
+                lodDistance: safeLodDistance,
+                hoveredMapIds,
+                hasNpcs,
                 npcOffset: npcOffset | 0,
                 tickPatchCounts: streamCounts,
                 tickPatchStreams: streamsForMap,

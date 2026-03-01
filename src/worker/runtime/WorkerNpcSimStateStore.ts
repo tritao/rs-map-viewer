@@ -43,7 +43,11 @@ export type WorkerNpcSimStateStoreDeps = Readonly<{
 export class WorkerNpcSimStateStore {
     private readonly maps = new Map<number, WorkerNpcSimMapState>();
 
-    clear(): void {
+    resetForCache(): void {
+        this.maps.clear();
+    }
+
+    resetForLoaderReset(): void {
         this.maps.clear();
     }
 

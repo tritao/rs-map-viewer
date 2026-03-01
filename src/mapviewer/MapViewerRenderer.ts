@@ -16,9 +16,8 @@ import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/entities/NpcGpuData";
 import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/contracts/TickPatchStreams";
 import { TickController, type TickPatchSink } from "../runtime/tick/TickController";
 import {
+    buildFramePacketMapEntry,
     buildFramePacketFromMapEntries,
-    createFramePacketMapEntry,
-    computeFrameRenderFlags,
     type FramePacketMapEntry,
 } from "../runtime/tick/MainThreadFramePacketBuilder";
 import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
@@ -542,17 +541,13 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
             }
 
-            const renderFlags = computeFrameRenderFlags(
+            entries[i] = buildFramePacketMapEntry({
                 mapId,
                 cameraMapX,
                 cameraMapY,
-                this.renderer.lodDistance,
+                lodDistance: this.renderer.lodDistance,
                 hoveredMapIds,
                 hasNpcs,
-            );
-            entries[i] = createFramePacketMapEntry({
-                mapId,
-                renderFlags,
                 npcOffset,
                 tickPatchCounts: streamCounts,
                 tickPatchStreams: streamsForMap,

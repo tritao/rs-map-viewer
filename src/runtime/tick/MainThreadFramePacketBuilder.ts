@@ -27,6 +27,18 @@ export type CreateFramePacketMapEntryInput = Readonly<{
     tickPatchStreams: readonly FramePacketMapEntryStreamSource[];
 }>;
 
+export type BuildFramePacketMapEntryInput = Readonly<{
+    mapId: number;
+    cameraMapX: number;
+    cameraMapY: number;
+    lodDistance: number;
+    hoveredMapIds: ReadonlySet<number>;
+    hasNpcs: boolean;
+    npcOffset: number;
+    tickPatchCounts: Int32Array | ReadonlyArray<number>;
+    tickPatchStreams: readonly FramePacketMapEntryStreamSource[];
+}>;
+
 export type BuildFramePacketFromMapEntriesInput = Readonly<{
     frameCount: number;
     npcRingWriteIndex: number;
@@ -69,6 +81,25 @@ export function createFramePacketMapEntry(
         tickPatchCounts: counts,
         tickPatchStreams: streams,
     };
+}
+
+export function buildFramePacketMapEntry(
+    input: BuildFramePacketMapEntryInput,
+): FramePacketMapEntry {
+    return createFramePacketMapEntry({
+        mapId: input.mapId | 0,
+        renderFlags: computeFrameRenderFlags(
+            input.mapId | 0,
+            input.cameraMapX | 0,
+            input.cameraMapY | 0,
+            input.lodDistance | 0,
+            input.hoveredMapIds,
+            !!input.hasNpcs,
+        ),
+        npcOffset: input.npcOffset | 0,
+        tickPatchCounts: input.tickPatchCounts,
+        tickPatchStreams: input.tickPatchStreams,
+    });
 }
 
 export function computeFrameRenderFlags(
