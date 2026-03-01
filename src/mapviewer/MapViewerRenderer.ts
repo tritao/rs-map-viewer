@@ -35,6 +35,7 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewer } from "./MapViewer";
 import type { MapViewerRuntimeOptions } from "./MapViewer";
 import { SimWorld } from "./SimWorld";
+import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 
 const EMPTY_INT32 = new Int32Array(0);
 
@@ -54,17 +55,10 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly simWorld = new SimWorld();
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
+    private readonly tickCoordinator = new MapRenderTickCoordinator();
     private runtimeStateStore: MapRuntimeStateStore;
-    private lastNpcSimInWorker: boolean = false;
-
-    // State
-    lastClientTick: number = 0;
-    lastTick: number = 0;
 
     private isInitialized: boolean = false;
-    private pendingFramePacket?: Promise<FramePacket | undefined>;
-    private latestFramePacket?: FramePacket;
-    private latestFramePacketFrameCount: number = -1;
 
     constructor(public mapViewer: MapViewer) {
         super();
@@ -82,7 +76,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
         this.tickController = new TickController();
         this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-        this.lastNpcSimInWorker = !!this.lastRuntimeOptions?.mapRenderNpcSimInWorker;
         this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
         this.runtimeStateStore = this.createRuntimeStateStore();
         this.mapManager = new MapManager(
@@ -299,10 +292,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
-            this.pendingFramePacket = undefined;
-            this.latestFramePacket = undefined;
-            this.latestFramePacketFrameCount = -1;
-            this.lastNpcSimInWorker = false;
+            this.tickCoordinator.resetForCacheContext();
             this.mapManager.cleanUp();
             this.runtimeStateStore.clear();
             this.tickController.reset();
@@ -338,6 +328,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
+        this.tickCoordinator.resetForShutdown();
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
         this.runtimeStateStore.clear();
@@ -369,114 +360,56 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
 
         const timeSec = time / 1000;
-
-        const tick = Math.floor(timeSec / 0.6);
-        const ticksElapsed = Math.min(tick - this.lastTick, 1);
-        if (ticksElapsed > 0) {
-            this.lastTick = tick;
-        }
-
-        const clientTick = Math.floor(timeSec / 0.02);
-        const clientTicksElapsed = Math.min(clientTick - this.lastClientTick, 50);
-        if (clientTicksElapsed > 0) {
-            this.lastClientTick = clientTick;
-        }
+        const tickState = this.tickCoordinator.advanceClocks(timeSec);
 
         const tickStart = performance.now();
-        this.tickPass(timeSec, ticksElapsed, clientTicksElapsed);
+        this.tickPass(tickState.cycle, tickState.ticksElapsed, tickState.clientTicksElapsed);
         this.renderer.rendererStats.tickTime = performance.now() - tickStart;
     }
 
-    tickPass(time: number, ticksElapsed: number, clientTicksElapsed: number): void {
-        const cycle = time / 0.02;
-
+    tickPass(cycle: number, ticksElapsed: number, clientTicksElapsed: number): void {
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-        const prevNpcSimInWorker = this.lastNpcSimInWorker;
         if (runtimeOptions !== this.lastRuntimeOptions) {
             this.lastRuntimeOptions = runtimeOptions;
             this.tickController.setRuntimeOptions(runtimeOptions);
         }
-        const npcSimInWorker = !!runtimeOptions.mapRenderNpcSimInWorker;
-        this.lastNpcSimInWorker = npcSimInWorker;
-        if (prevNpcSimInWorker && !npcSimInWorker) {
-            // Ensure any packet-driven tick patch state is cleared when switching back to the
-            // main-thread tick path.
-            this.renderer.applyFramePacket(undefined);
-            this.latestFramePacketFrameCount = -1;
-        } else if (!prevNpcSimInWorker && npcSimInWorker) {
-            // Clear stale packet state when switching into worker mode.
-            this.pendingFramePacket = undefined;
-            this.latestFramePacket = undefined;
-            this.latestFramePacketFrameCount = -1;
-            this.renderer.applyFramePacket(undefined);
-        }
-
-        if (this.tickWithWorkerPacketMode(cycle, ticksElapsed, clientTicksElapsed)) {
-            return;
-        }
-        this.renderer.applyFramePacket(
-            this.buildMainThreadFramePacket(cycle, ticksElapsed, clientTicksElapsed),
-        );
+        this.tickCoordinator.applyTick({
+            runtimeOptions,
+            frameCount: this.renderer.stats.frameCount,
+            cycle,
+            ticksElapsed,
+            clientTicksElapsed,
+            applyFramePacket: (packet) => this.renderer.applyFramePacket(packet),
+            buildMainThreadFramePacket: (c, t, ct) => this.buildMainThreadFramePacket(c, t, ct),
+            requestWorkerFramePacket: (request) => this.requestWorkerFramePacket(request),
+        });
     }
 
-    private tickWithWorkerPacketMode(
-        cycle: number,
-        ticksElapsed: number,
-        clientTicksElapsed: number,
-    ): boolean {
-        if (!this.lastNpcSimInWorker) {
-            return false;
+    private requestWorkerFramePacket(request: {
+        frameCount: number;
+        ticksElapsed: number;
+        clientTicksElapsed: number;
+        cycle: number;
+    }): Promise<FramePacket | undefined> {
+        const n = this.mapManager.visibleMapCount | 0;
+        const mapIds = new Int32Array(n);
+        for (let i = 0; i < n; i++) {
+            mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
         }
-
-        const packet = this.latestFramePacket;
-        // Apply the latest worker packet each frame. The renderer tracks frameCount to avoid
-        // re-parsing; this keeps the npc offset rings in sync even if the packet lags.
-        this.renderer.applyFramePacket(packet);
-        if (packet && packet.frameCount !== this.latestFramePacketFrameCount) {
-            this.latestFramePacketFrameCount = packet.frameCount | 0;
-        }
-
-        // Kick an async tick request if one isn't already in flight.
-        if (
-            !this.pendingFramePacket &&
-            (ticksElapsed > 0 || clientTicksElapsed > 0 || !this.latestFramePacket)
-        ) {
-            const n = this.mapManager.visibleMapCount | 0;
-            const mapIds = new Int32Array(n);
-            for (let i = 0; i < n; i++) {
-                mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
-            }
-            const interactionSnapshotRenderer = this.renderer.getInteractionSnapshotRenderer?.();
-            const hoveredMapIdsPacked =
-                interactionSnapshotRenderer?.getHoveredMapIdsPacked() ?? new Int32Array(0);
-            this.pendingFramePacket = this.workerPool
-                .tickFrame(
-                    this.renderer.stats.frameCount,
-                    mapIds,
-                    ticksElapsed,
-                    clientTicksElapsed,
-                    cycle,
-                    this.camera.getMapX(),
-                    this.camera.getMapY(),
-                    this.renderer.lodDistance,
-                    hoveredMapIdsPacked,
-                )
-                .then((pkt) => {
-                    this.latestFramePacket = pkt;
-                    return pkt;
-                })
-                .catch(() => {
-                    this.latestFramePacket = undefined;
-                    return undefined;
-                })
-                .finally(() => {
-                    this.pendingFramePacket = undefined;
-                });
-        }
-
-        // In worker mode, all per-map tick work happens in the worker; the renderer consumes the
-        // resulting frame packet during draw.
-        return true;
+        const interactionSnapshotRenderer = this.renderer.getInteractionSnapshotRenderer?.();
+        const hoveredMapIdsPacked =
+            interactionSnapshotRenderer?.getHoveredMapIdsPacked() ?? new Int32Array(0);
+        return this.workerPool.tickFrame(
+            request.frameCount,
+            mapIds,
+            request.ticksElapsed,
+            request.clientTicksElapsed,
+            request.cycle,
+            this.camera.getMapX(),
+            this.camera.getMapY(),
+            this.renderer.lodDistance,
+            hoveredMapIdsPacked,
+        );
     }
 
     private buildMainThreadFramePacket(
