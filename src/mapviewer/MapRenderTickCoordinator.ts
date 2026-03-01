@@ -1,5 +1,6 @@
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { MapViewerRuntimeOptions } from "./MapViewer";
+import type { MapRenderFramePacketSource, TickFrameInput } from "./MapRenderFramePacketSource";
 
 export type TickClockState = Readonly<{
     cycle: number;
@@ -7,37 +8,18 @@ export type TickClockState = Readonly<{
     clientTicksElapsed: number;
 }>;
 
-type WorkerTickRequest = Readonly<{
-    frameCount: number;
-    ticksElapsed: number;
-    clientTicksElapsed: number;
-    cycle: number;
-}>;
-
 type TickPassInput = Readonly<{
     runtimeOptions: MapViewerRuntimeOptions;
-    frameCount: number;
-    cycle: number;
-    ticksElapsed: number;
-    clientTicksElapsed: number;
+    frameInput: TickFrameInput;
+    mainThreadSource: MapRenderFramePacketSource;
+    workerSource: MapRenderFramePacketSource;
     applyFramePacket(packet: FramePacket | undefined): void;
-    buildMainThreadFramePacket(
-        cycle: number,
-        ticksElapsed: number,
-        clientTicksElapsed: number,
-    ): FramePacket;
-    requestWorkerFramePacket(request: WorkerTickRequest): Promise<FramePacket | undefined>;
 }>;
 
 export class MapRenderTickCoordinator {
     private lastTick: number = 0;
     private lastClientTick: number = 0;
-
-    private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
-    private latestFramePacket: FramePacket | undefined;
-    private latestFramePacketFrameCount: number = -1;
     private lastNpcSimInWorker: boolean = false;
-    private packetEpoch: number = 0;
 
     advanceClocks(timeSec: number): TickClockState {
         const tick = Math.floor(timeSec / 0.6);
@@ -61,78 +43,34 @@ export class MapRenderTickCoordinator {
 
     applyTick(input: TickPassInput): void {
         const npcSimInWorker = !!input.runtimeOptions.mapRenderNpcSimInWorker;
-        const prevNpcSimInWorker = this.lastNpcSimInWorker;
-        this.lastNpcSimInWorker = npcSimInWorker;
-
-        if (prevNpcSimInWorker !== npcSimInWorker) {
-            this.clearWorkerPacketState();
+        if (this.lastNpcSimInWorker !== npcSimInWorker) {
+            // Ensure stale packet state from one mode never leaks into the next mode.
+            input.mainThreadSource.reset();
+            input.workerSource.reset();
             input.applyFramePacket(undefined);
         }
+        this.lastNpcSimInWorker = npcSimInWorker;
 
-        if (!npcSimInWorker) {
-            input.applyFramePacket(
-                input.buildMainThreadFramePacket(
-                    input.cycle,
-                    input.ticksElapsed,
-                    input.clientTicksElapsed,
-                ),
-            );
-            return;
-        }
-
-        const packet = this.latestFramePacket;
+        const source = npcSimInWorker ? input.workerSource : input.mainThreadSource;
+        const packet = source.nextPacket(input.frameInput);
         input.applyFramePacket(packet);
-        if (packet && packet.frameCount !== this.latestFramePacketFrameCount) {
-            this.latestFramePacketFrameCount = packet.frameCount | 0;
-        }
-
-        if (
-            !this.pendingFramePacket &&
-            (input.ticksElapsed > 0 || input.clientTicksElapsed > 0 || !this.latestFramePacket)
-        ) {
-            const epoch = this.packetEpoch | 0;
-            this.pendingFramePacket = input
-                .requestWorkerFramePacket({
-                    frameCount: input.frameCount,
-                    ticksElapsed: input.ticksElapsed,
-                    clientTicksElapsed: input.clientTicksElapsed,
-                    cycle: input.cycle,
-                })
-                .then((packet) => {
-                    if ((this.packetEpoch | 0) === epoch) {
-                        this.latestFramePacket = packet;
-                    }
-                    return packet;
-                })
-                .catch(() => {
-                    if ((this.packetEpoch | 0) === epoch) {
-                        this.latestFramePacket = undefined;
-                    }
-                    return undefined;
-                })
-                .finally(() => {
-                    if ((this.packetEpoch | 0) === epoch) {
-                        this.pendingFramePacket = undefined;
-                    }
-                });
-        }
     }
 
-    resetForCacheContext(): void {
-        this.clearWorkerPacketState();
+    resetForCacheContext(
+        mainThreadSource: MapRenderFramePacketSource,
+        workerSource: MapRenderFramePacketSource,
+    ): void {
+        mainThreadSource.reset();
+        workerSource.reset();
         this.lastNpcSimInWorker = false;
     }
 
-    resetForShutdown(): void {
-        this.resetForCacheContext();
+    resetForShutdown(
+        mainThreadSource: MapRenderFramePacketSource,
+        workerSource: MapRenderFramePacketSource,
+    ): void {
+        this.resetForCacheContext(mainThreadSource, workerSource);
         this.lastTick = 0;
         this.lastClientTick = 0;
-    }
-
-    private clearWorkerPacketState(): void {
-        this.packetEpoch = (this.packetEpoch + 1) | 0;
-        this.pendingFramePacket = undefined;
-        this.latestFramePacket = undefined;
-        this.latestFramePacketFrameCount = -1;
     }
 }
