@@ -1,7 +1,7 @@
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import type { BackendKind } from "../../util/BackendKind";
-import type { MapSquareInfo } from "../../renderer/MapManager";
+import type { MapSquareInfo } from "../../mapviewer/MapManager";
 import { NULL_DRAW_RANGE } from "../../renderer/DrawRange";
 import {
     isDrawRangePatchBackendReady,
@@ -10,8 +10,8 @@ import {
     unregisterDrawRangeTickState,
 } from "../../wasm/DrawRangePatchBackend";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickCapability } from "../../renderer/patch/TickCapability";
-import { LocTickPatchVariant, NpcTickPatchVariant } from "../../renderer/patch/TickPatchStreams";
+import type { TickCapability } from "./TickCapability";
+import { LocTickPatchVariant, NpcTickPatchVariant } from "./TickPatchStreams";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 
 type TickBackendKind = BackendKind;

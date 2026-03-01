@@ -2,11 +2,11 @@ import type { SeqType } from "../../rs/config/seqtype/SeqType";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import type { DrawRange } from "../../renderer/DrawRange";
-import type { LocAnimated } from "../../renderer/loc/LocAnimated";
-import type { Npc } from "../../renderer/npc/Npc";
+import type { LocAnimated } from "../entities/LocAnimated";
+import type { Npc } from "../entities/Npc";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickCapability, TickPatchBackendResult } from "../../renderer/patch/TickCapability";
+import type { TickCapability, TickPatchBackendResult } from "./TickCapability";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;

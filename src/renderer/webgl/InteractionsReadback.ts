@@ -1,4 +1,4 @@
-import { applyInteractionReadbackToState, type InteractionState } from "../interaction/InteractionState";
+import { applyInteractionReadbackToState, type InteractionState } from "../../mapviewer/interaction/InteractionState";
 
 export class InteractionsReadback {
     interactSize: number;

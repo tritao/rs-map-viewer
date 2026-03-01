@@ -1,8 +1,8 @@
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CollisionData } from "../../rs/scene/CollisionMap";
 import { RenderableType } from "../Renderer";
-import { LocAnimatedData } from "../loc/LocAnimatedData";
-import { NpcData } from "../npc/NpcData";
+import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import { NpcData } from "../../runtime/entities/NpcData";
 import { MapData } from "./MapData";
 import {
     SdRenderableData,

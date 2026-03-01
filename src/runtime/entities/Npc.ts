@@ -7,7 +7,7 @@ import { ExactRouteStrategy } from "../../rs/pathfinder/RouteStrategy";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { clamp } from "../../util/MathUtil";
-import { AnimationFrames } from "../AnimationFrames";
+import { AnimationFrames } from "../../renderer/AnimationFrames";
 
 export enum MovementType {
     CRAWL = 0,

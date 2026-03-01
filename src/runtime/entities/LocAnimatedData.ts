@@ -1,4 +1,4 @@
-import { AnimationFrames } from "../AnimationFrames";
+import { AnimationFrames } from "../../renderer/AnimationFrames";
 
 export type LocAnimatedData = {
     drawRangeIndex: number;

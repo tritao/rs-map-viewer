@@ -1,5 +1,5 @@
 import { NpcSpawn } from "../../data/npc/NpcSpawn";
-import { AnimationFrames } from "../AnimationFrames";
+import { AnimationFrames } from "../../renderer/AnimationFrames";
 import { NpcSpawnGroup } from "./NpcSpawnGroup";
 
 export type NpcData = {

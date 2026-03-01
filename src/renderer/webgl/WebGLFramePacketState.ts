@@ -1,10 +1,10 @@
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../npc/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../../runtime/entities/NpcGpuData";
 import {
     parseFramePacket,
     type FramePacket,
     type ParsedFramePacket,
     type ParsedFrameTickPatches,
-} from "../packet/FramePacket";
+} from "../../runtime/FramePacket";
 
 export class WebGLFramePacketState {
     private readonly npcDataOffsetsByMapIdByRing: Map<number, number>[] = Array.from(

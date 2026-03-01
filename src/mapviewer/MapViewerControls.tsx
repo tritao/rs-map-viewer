@@ -4,7 +4,7 @@ import { Leva, button, buttonGroup, folder, useControls } from "leva";
 import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useRef, useState } from "react";
 
-import { CameraView, ProjectionType } from "../renderer/Camera";
+import { CameraView, ProjectionType } from "./Camera";
 import { MapRenderer, TextureFilterMode } from "../renderer/MapRenderer";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";

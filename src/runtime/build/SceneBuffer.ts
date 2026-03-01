@@ -5,11 +5,11 @@ import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { clamp } from "../../util/MathUtil";
-import { DrawRange, newDrawRange } from "../DrawRange";
-import { InteractType } from "../InteractType";
-import { LocAnimatedData } from "../loc/LocAnimatedData";
-import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
-import { SceneLocEntity } from "../loc/SceneLocEntity";
+import { DrawRange, newDrawRange } from "../../renderer/DrawRange";
+import { InteractType } from "../../renderer/InteractType";
+import { LocAnimatedData } from "../entities/LocAnimatedData";
+import { LocAnimatedGroup } from "../entities/LocAnimatedGroup";
+import { SceneLocEntity } from "./SceneLocEntity";
 import { VertexBuffer } from "./VertexBuffer";
 
 export enum ContourGroundType {

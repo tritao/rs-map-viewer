@@ -1,9 +1,9 @@
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { Camera } from "../renderer/Camera";
+import { Camera } from "./Camera";
 import { InteractType } from "../renderer/InteractType";
-import { INTERACTION_RADIUS } from "../renderer/interaction/InteractionState";
-import { MapManager, MapSquareInfo } from "../renderer/MapManager";
+import { INTERACTION_RADIUS } from "./interaction/InteractionState";
+import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { SdMapData } from "../renderer/loader/SdMapData";
@@ -18,13 +18,13 @@ import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     type FramePacket,
-} from "../renderer/packet/FramePacket";
-import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../renderer/npc/NpcGpuData";
-import { LocTickPatchVariant, NpcTickPatchVariant } from "../renderer/patch/TickPatchStreams";
-import { MapSquareTickState } from "../sim/tick/MapSquareTickState";
-import { buildMapSquareTickState } from "../sim/tick/MapSquareTickStateBuilder";
-import { TickController, type TickPatchSink } from "../sim/tick/TickController";
+} from "../runtime/FramePacket";
+import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
+import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/tick/TickPatchStreams";
+import { MapSquareTickState } from "../runtime/tick/MapSquareTickState";
+import { buildMapSquareTickState } from "../runtime/tick/MapSquareTickStateBuilder";
+import { TickController, type TickPatchSink } from "../runtime/tick/TickController";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";

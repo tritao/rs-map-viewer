@@ -2,7 +2,7 @@ import type { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderD
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
-} from "../loader/SdRenderableData";
+} from "../../renderer/loader/SdRenderableData";
 import {
     DRAW_BUCKET_KEYS,
     type DrawBucketKey,

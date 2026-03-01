@@ -1,6 +1,6 @@
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { LocAnimated } from "../loc/LocAnimated";
-import type { Npc } from "../npc/Npc";
+import type { LocAnimated } from "../entities/LocAnimated";
+import type { Npc } from "../entities/Npc";
 
 export type TickPatchBackendResult = Readonly<{
     locBasePatchCount: number;

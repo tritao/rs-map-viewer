@@ -1,6 +1,6 @@
 import { RenderableType } from "../Renderer";
-import { LocAnimatedData } from "../loc/LocAnimatedData";
-import { NpcData } from "../npc/NpcData";
+import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import { NpcData } from "../../runtime/entities/NpcData";
 
 export type SdRenderableModelInfoTextures = {
     readonly base: Uint16Array;

@@ -1,4 +1,4 @@
-import { DataBuffer } from "../../renderer/buffer/DataBuffer";
+import { DataBuffer } from "./DataBuffer";
 import { Model } from "../../rs/model/Model";
 import { Hasher } from "../../util/Hasher";
 

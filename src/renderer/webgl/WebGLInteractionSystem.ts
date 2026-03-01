@@ -7,7 +7,7 @@ import {
     INTERACT_BUFFER_COUNT,
     InteractionState,
     type InteractionInput,
-} from "../interaction/InteractionState";
+} from "../../mapviewer/interaction/InteractionState";
 import type { RendererStats } from "../Renderer";
 import { InteractionsReadback } from "./InteractionsReadback";
 

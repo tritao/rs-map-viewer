@@ -3,14 +3,14 @@ import { vec4 } from "gl-matrix";
 
 import { Scene } from "../rs/scene/Scene";
 import { LoadedCache } from "../util/Caches";
-import { MapSquareInfo } from "./MapManager";
+import { MapSquareInfo } from "../mapviewer/MapManager";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 import { MapData } from "./loader/MapData";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
-} from "./interaction/InteractionState";
-import type { FramePacket } from "./packet/FramePacket";
+} from "../mapviewer/interaction/InteractionState";
+import type { FramePacket } from "../runtime/FramePacket";
 
 export enum TextureFilterMode {
     DISABLED,

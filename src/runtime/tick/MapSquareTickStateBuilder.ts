@@ -3,9 +3,9 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { SdMapData } from "../../renderer/loader/SdMapData";
-import { LocAnimated } from "../../renderer/loc/LocAnimated";
-import { Npc } from "../../renderer/npc/Npc";
-import { orderByPacketKeys } from "../../renderer/npc/orderByPacketKeys";
+import { LocAnimated } from "../entities/LocAnimated";
+import { Npc } from "../entities/Npc";
+import { orderByPacketKeys } from "../entities/orderByPacketKeys";
 import { MapSquareTickState } from "./MapSquareTickState";
 
 export function buildLocsAnimated(

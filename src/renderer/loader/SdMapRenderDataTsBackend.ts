@@ -28,30 +28,30 @@ import { loadMinimapBlob } from "../../worker/MinimapData";
 import { AnimationFrames } from "../AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
 import { InteractType } from "../InteractType";
-import { ModelHashBuffer } from "../buffer/ModelHashBuffer";
-import { ContourGroundType, SceneBuffer, SceneModel } from "../buffer/SceneBuffer";
+import { ModelHashBuffer } from "../../runtime/build/ModelHashBuffer";
+import { ContourGroundType, SceneBuffer, SceneModel } from "../../runtime/build/SceneBuffer";
 import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
-} from "../buffer/SceneCommandBuilder";
-import { emitSceneModelsToSceneBuffer } from "../buffer/SceneCommandPlan";
+} from "../../runtime/build/SceneCommandBuilder";
+import { emitSceneModelsToSceneBuffer } from "../../runtime/build/SceneCommandPlan";
 import {
     type SceneCommandPlan,
     type SceneCommandPlanDigest,
     summarizeSceneCommandPlan,
-} from "../buffer/SceneCommandPlan";
-import { LocAnimatedData } from "../loc/LocAnimatedData";
-import { LocAnimatedGroup } from "../loc/LocAnimatedGroup";
+} from "../../runtime/build/SceneCommandPlan";
+import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import { LocAnimatedGroup } from "../../runtime/entities/LocAnimatedGroup";
 import {
     createLocAnimatedGroupKey,
     resolveLocRenderPlacement,
-} from "../loc/LocRenderPlacementResolver";
-import { SceneLocEntity } from "../loc/SceneLocEntity";
-import { getSceneLocs } from "../loc/SceneLocs";
-import { createNpcDatas, createNpcDatasFromSpawns } from "../npc/NpcData";
-import { NpcSpawnGroup } from "../npc/NpcSpawnGroup";
+} from "../../runtime/build/LocRenderPlacementResolver";
+import { SceneLocEntity } from "../../runtime/build/SceneLocEntity";
+import { getSceneLocs } from "../../runtime/build/SceneLocs";
+import { createNpcDatas, createNpcDatasFromSpawns } from "../../runtime/entities/NpcData";
+import { NpcSpawnGroup } from "../../runtime/entities/NpcSpawnGroup";
 import { SdMapData } from "./SdMapData";
 import { SdMapLoaderInput } from "./SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";

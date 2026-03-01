@@ -6,14 +6,14 @@ import { Transfer, expose } from "threads/worker";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { type DrawRange, NULL_DRAW_RANGE } from "../renderer/DrawRange";
-import { LocAnimated } from "../renderer/loc/LocAnimated";
-import type { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
-import { Npc } from "../renderer/npc/Npc";
-import type { NpcData } from "../renderer/npc/NpcData";
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../renderer/npc/NpcGpuData";
-import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
-import { orderByPacketKeys } from "../renderer/npc/orderByPacketKeys";
-import type { FramePacket } from "../renderer/packet/FramePacket";
+import { LocAnimated } from "../runtime/entities/LocAnimated";
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import { Npc } from "../runtime/entities/Npc";
+import type { NpcData } from "../runtime/entities/NpcData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
+import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
+import { orderByPacketKeys } from "../runtime/entities/orderByPacketKeys";
+import type { FramePacket } from "../runtime/FramePacket";
 import {
     buildFramePacket,
     createTickPatchStreamsByMap,
@@ -26,7 +26,7 @@ import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     framePacketTransferables,
-} from "../renderer/packet/FramePacket";
+} from "../runtime/FramePacket";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";

@@ -13,7 +13,7 @@ import { GameType } from "../../rs/cache/CacheInfo";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CacheSession } from "../../rs/loaders/CacheSession";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
-import { Camera } from "../Camera";
+import { Camera } from "../../mapviewer/Camera";
 import { DrawRange } from "../DrawRange";
 import { MapRenderer, TextureFilterMode } from "../MapRenderer";
 import { FrameStats, RendererStats } from "../Renderer";
@@ -29,13 +29,13 @@ import {
     type InteractionControllerRenderer,
     type InteractionInput,
     type InteractionSnapshotRenderer,
-} from "../interaction/InteractionState";
+} from "../../mapviewer/interaction/InteractionState";
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/entities/NpcGpuData";
 import {
     chooseLocTickPatchVariant,
     chooseNpcTickPatchVariant,
-} from "../patch/TickPatchStreams";
+} from "../../runtime/tick/TickPatchStreams";
 import {
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
@@ -43,8 +43,8 @@ import {
     FRAME_RENDER_LIST_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../packet/FramePacket";
-import type { FramePacket } from "../packet/FramePacket";
+} from "../../runtime/FramePacket";
+import type { FramePacket } from "../../runtime/FramePacket";
 import { applyDrawRangePatches } from "./applyDrawRangePatches";
 import {
     ensureDrawRangePatchBackendInit,
