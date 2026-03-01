@@ -2,6 +2,7 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
+import { applyNpcServerDeltas, type NpcServerDelta } from "../../runtime/sim/NpcSimMovement";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { Npc } from "../../runtime/entities/Npc";
@@ -14,6 +15,7 @@ export type WorkerNpcSimMapState = {
     collisionMaps: CollisionMap[];
     seededNpcFlags: boolean;
     npcs: Npc[];
+    npcIndexByOrderKey: Map<number, number>;
     locsAnimated: LocAnimated[];
 
     // Tick patch scratch buffers (per-map) to avoid per-frame allocations.
@@ -59,12 +61,24 @@ export class WorkerNpcSimStateStore {
         return this.maps.get(mapId | 0);
     }
 
+    applyServerDeltas(mapId: number, deltas: ReadonlyArray<NpcServerDelta>): number {
+        if ((deltas.length | 0) <= 0) {
+            return 0;
+        }
+        const state = this.maps.get(mapId | 0);
+        if (!state) {
+            return 0;
+        }
+        return applyNpcServerDeltas(state.npcs, deltas, state.npcIndexByOrderKey);
+    }
+
     registerMap(
         input: RegisterWorkerNpcSimMapInput,
         deps: WorkerNpcSimStateStoreDeps,
     ): void {
         const ordered = orderByPacketKeys(input.npcsIn, input.npcOrderKeys);
         const npcs: Npc[] = [];
+        const npcIndexByOrderKey = new Map<number, number>();
         for (const init of ordered) {
             const npcTypeResult = deps.npcTypeLoader.tryLoad(init.id);
             if (!npcTypeResult.ok) {
@@ -83,8 +97,12 @@ export class WorkerNpcSimStateStore {
                     npcType,
                     idleSeqId | 0,
                     walkSeqId | 0,
+                    init.orderKey,
                 ),
             );
+            if (init.orderKey !== undefined) {
+                npcIndexByOrderKey.set(init.orderKey | 0, (npcs.length - 1) | 0);
+            }
         }
 
         const cycleNow = 0;
@@ -132,6 +150,7 @@ export class WorkerNpcSimStateStore {
             collisionMaps: input.collisionDatas.map(CollisionMap.fromData),
             seededNpcFlags: false,
             npcs,
+            npcIndexByOrderKey,
             locsAnimated: locs,
             locTickPatchesByVariant,
             locTickPatchCountsByVariant: new Int32Array(8),

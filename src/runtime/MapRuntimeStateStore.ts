@@ -4,6 +4,7 @@ import { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../rs/model/seq/SeqFrameLoader";
 import { SdMapData } from "../renderer/loader/SdMapData";
 import type { NpcGpuDataTarget } from "./entities/NpcGpuData";
+import { applyNpcServerDeltas, type NpcServerDelta } from "./sim/NpcSimMovement";
 import { MapSquareTickState } from "./tick/MapSquareTickState";
 import { buildMapSquareTickState } from "./tick/MapSquareTickStateBuilder";
 
@@ -66,5 +67,24 @@ export class MapRuntimeStateStore {
             getNpcs: () => tickState.getNpcs(),
             getTileRenderFlag,
         };
+    }
+
+    applyNpcServerDeltas(mapId: number, deltas: ReadonlyArray<NpcServerDelta>): number {
+        if ((deltas.length | 0) <= 0) {
+            return 0;
+        }
+        const tickState = this.tickStates.get(mapId | 0);
+        if (!tickState) {
+            return 0;
+        }
+        const npcs = tickState.getNpcs();
+        const npcIndexByOrderKey = new Map<number, number>();
+        for (let i = 0; i < npcs.length; i++) {
+            const orderKey = npcs[i]?.orderKey;
+            if (orderKey !== undefined) {
+                npcIndexByOrderKey.set(orderKey | 0, i | 0);
+            }
+        }
+        return applyNpcServerDeltas(npcs, deltas, npcIndexByOrderKey);
     }
 }

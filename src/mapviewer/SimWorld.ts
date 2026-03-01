@@ -5,7 +5,7 @@ import { CollisionMap } from "../rs/scene/CollisionMap";
 import {
     stepNpcSimulatedServerMovement,
     type NpcServerMovementLike,
-} from "./sim/NpcSimMovement";
+} from "../runtime/sim/NpcSimMovement";
 
 export type SimNpcLike = NpcServerMovementLike;
 

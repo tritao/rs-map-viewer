@@ -4,7 +4,7 @@ import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import type { DrawRange } from "../../renderer/DrawRange";
 import { NULL_DRAW_RANGE } from "../../renderer/DrawRange";
-import { stepNpcSimulatedServerMovement } from "../../mapviewer/sim/NpcSimMovement";
+import { stepNpcSimulatedServerMovement } from "../../runtime/sim/NpcSimMovement";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,

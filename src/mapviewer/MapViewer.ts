@@ -24,6 +24,8 @@ import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
 import { MapViewerRenderer } from "./MapViewerRenderer";
+import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
+import { decodeNpcServerDeltaPacket } from "../runtime/sim/NpcServerDeltaPacket";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -295,6 +297,20 @@ export class MapViewer {
 
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
         return this.runtimeOptions;
+    }
+
+    applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): void {
+        this.renderer.applyMapNpcServerDeltas(mapId | 0, deltas);
+    }
+
+    applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): number {
+        const decoded = decodeNpcServerDeltaPacket(packet);
+        let applied = 0;
+        for (const [mapId, deltas] of decoded.deltasByMapId.entries()) {
+            this.renderer.applyMapNpcServerDeltas(mapId | 0, deltas);
+            applied = (applied + (deltas.length | 0)) | 0;
+        }
+        return applied | 0;
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {

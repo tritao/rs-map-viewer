@@ -10,6 +10,7 @@ import { SdMapData } from "../renderer/loader/SdMapData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import { TickController } from "../runtime/tick/TickController";
 import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
+import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
 import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
@@ -251,6 +252,20 @@ export class MapViewerRenderer extends RendererMainLoop {
         } else {
             this.simWorld.onMapUnloaded(mapInfo.mapId);
         }
+    }
+
+    applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): void {
+        if ((deltas.length | 0) <= 0) {
+            return;
+        }
+        const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
+        if (runtimeOptions.mapRenderNpcSimInWorker) {
+            void this.workerPool.applyMapNpcServerDeltas(mapId | 0, deltas).catch(() => {
+                return;
+            });
+            return;
+        }
+        this.runtimeStateStore.applyNpcServerDeltas(mapId | 0, deltas);
     }
 
     override async init() {

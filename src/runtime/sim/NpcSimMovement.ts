@@ -9,11 +9,18 @@ import { clamp } from "../../util/MathUtil";
 const routeStrategy = new ExactRouteStrategy();
 
 export type NpcServerMovementLike = {
+    orderKey?: number;
     level: number;
     spawnX: number;
     spawnY: number;
-    pathX: ArrayLike<number>;
-    pathY: ArrayLike<number>;
+    x: number;
+    y: number;
+    orientation: number;
+    rotation: number;
+    pathX: number[];
+    pathY: number[];
+    pathLength: number;
+    pathMovementType: MovementType[];
     serverPathX: number[];
     serverPathY: number[];
     serverPathMovementType: MovementType[];
@@ -22,6 +29,102 @@ export type NpcServerMovementLike = {
     getSize(): number;
     queuePath(x: number, y: number, movementType: MovementType): void;
 };
+
+export type NpcServerPathDelta = Readonly<{
+    length?: number;
+    pathX: ArrayLike<number>;
+    pathY: ArrayLike<number>;
+    pathMovementType?: ArrayLike<number>;
+}>;
+
+export type NpcServerDelta = Readonly<{
+    npcIndex?: number;
+    npcOrderKey?: number;
+    clearServerPath?: boolean;
+    snapTileX?: number;
+    snapTileY?: number;
+    snapWorldX?: number;
+    snapWorldY?: number;
+    orientation?: number;
+    rotation?: number;
+    path?: NpcServerPathDelta;
+}>;
+
+function isFiniteNumber(value: number | undefined): value is number {
+    return typeof value === "number" && Number.isFinite(value);
+}
+
+export function applyNpcServerDelta(npc: NpcServerMovementLike, delta: NpcServerDelta): void {
+    if (delta.clearServerPath) {
+        npc.serverPathLength = 0;
+    }
+
+    if (delta.path) {
+        const path = delta.path;
+        const maxLen = Math.min(
+            25,
+            path.length ?? Math.min(path.pathX.length | 0, path.pathY.length | 0),
+        );
+        for (let i = 0; i < maxLen; i++) {
+            npc.serverPathX[i] = path.pathX[i] | 0;
+            npc.serverPathY[i] = path.pathY[i] | 0;
+            const movement = path.pathMovementType?.[i];
+            npc.serverPathMovementType[i] =
+                movement === MovementType.CRAWL || movement === MovementType.RUN
+                    ? movement
+                    : MovementType.WALK;
+        }
+        npc.serverPathLength = maxLen | 0;
+    }
+
+    const size = npc.getSize() | 0;
+    if (isFiniteNumber(delta.snapTileX) && isFiniteNumber(delta.snapTileY)) {
+        const tileX = clamp(delta.snapTileX | 0, 0, 64 - size - 1);
+        const tileY = clamp(delta.snapTileY | 0, 0, 64 - size - 1);
+        npc.pathX[0] = tileX;
+        npc.pathY[0] = tileY;
+        npc.pathLength = 0;
+        npc.pathMovementType[0] = MovementType.WALK;
+        npc.x = tileX * 128 + size * 64;
+        npc.y = tileY * 128 + size * 64;
+    }
+    if (isFiniteNumber(delta.snapWorldX)) {
+        npc.x = delta.snapWorldX | 0;
+    }
+    if (isFiniteNumber(delta.snapWorldY)) {
+        npc.y = delta.snapWorldY | 0;
+    }
+    if (isFiniteNumber(delta.orientation)) {
+        npc.orientation = (delta.orientation | 0) & 2047;
+    }
+    if (isFiniteNumber(delta.rotation)) {
+        npc.rotation = (delta.rotation | 0) & 2047;
+    }
+}
+
+export function applyNpcServerDeltas(
+    npcs: ReadonlyArray<NpcServerMovementLike>,
+    deltas: ReadonlyArray<NpcServerDelta>,
+    npcIndexByOrderKey?: ReadonlyMap<number, number>,
+): number {
+    let applied = 0;
+    for (const delta of deltas) {
+        let index = delta.npcIndex;
+        if (index === undefined && delta.npcOrderKey !== undefined) {
+            index = npcIndexByOrderKey?.get(delta.npcOrderKey | 0);
+        }
+        if (index === undefined) {
+            continue;
+        }
+        const npc = npcs[index | 0];
+        if (!npc) {
+            continue;
+        }
+        applyNpcServerDelta(npc, delta);
+        applied++;
+    }
+    return applied | 0;
+}
 
 export function planNpcLocalWanderPath(
     npc: NpcServerMovementLike,

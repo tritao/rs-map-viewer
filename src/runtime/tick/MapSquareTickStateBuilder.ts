@@ -69,6 +69,7 @@ export function buildNpcs(
                 npcType,
                 npcType.getIdleSeqId(basTypeLoader),
                 npcType.getWalkSeqId(basTypeLoader),
+                npc.orderKey,
             ),
         );
     }

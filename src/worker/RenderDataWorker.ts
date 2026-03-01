@@ -10,6 +10,7 @@ import type { NpcData } from "../runtime/entities/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
+import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -357,6 +358,9 @@ const worker = {
     unregisterMapNpcSimState(mapId: number): void {
         npcSimStateStore.unregisterMap(mapId);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
+    },
+    applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): number {
+        return npcSimStateStore.applyServerDeltas(mapId, deltas);
     },
     async tickFrame(
         frameCount: number,
