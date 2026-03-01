@@ -99,9 +99,22 @@ const npcSimPathfinder = new Pathfinder();
 const npcGpuDataBuilder = new NpcGpuDataBuilder();
 const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBridgeV2;
 let workerRuntimeOptions: WorkerRuntimeOptions | undefined;
+const mapSimTokenByMapId = new Map<number, number>();
+const warnedMissingTickStateMapIds = new Set<number>();
 
 function shouldUseWasmTickInWorker(): boolean {
     return workerRuntimeOptions?.mapRenderBackend === "cpp-wasm";
+}
+
+function tryAcceptMapSimToken(mapId: number, mapSimToken: number | undefined): boolean {
+    const id = mapId | 0;
+    const incoming = mapSimToken === undefined ? 0 : mapSimToken | 0;
+    const current = mapSimTokenByMapId.get(id) ?? 0;
+    if (incoming < current) {
+        return false;
+    }
+    mapSimTokenByMapId.set(id, incoming);
+    return true;
 }
 
 function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
@@ -280,6 +293,8 @@ const worker = {
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
         npcSimStateStore.resetForCache();
+        mapSimTokenByMapId.clear();
+        warnedMissingTickStateMapIds.clear();
         // Make initCache awaitable so callers can block until the worker is fully ready.
         await requireWorkerState();
     },
@@ -289,6 +304,8 @@ const worker = {
     async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
         npcSimStateStore.resetForLoaderReset();
+        mapSimTokenByMapId.clear();
+        warnedMissingTickStateMapIds.clear();
         const workerState = await requireWorkerState();
         workerState.mapRenderDataBackend.reset();
     },
@@ -368,7 +385,11 @@ const worker = {
         locsAnimated: LocAnimatedData[],
         npcsIn: NpcData[],
         npcOrderKeys?: Int32Array,
+        mapSimToken?: number,
     ): Promise<void> {
+        if (!tryAcceptMapSimToken(mapId, mapSimToken)) {
+            return;
+        }
         const workerState = await requireWorkerState();
         const hydratedNpcs = maybeHydrateNpcSimDatasFromMapBytes(
             workerState,
@@ -394,9 +415,14 @@ const worker = {
                 tickPatchEntryStride: TICK_PATCH_ENTRY_STRIDE,
             },
         );
+        warnedMissingTickStateMapIds.delete(mapId | 0);
     },
-    unregisterMapNpcSimState(mapId: number): void {
+    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): void {
+        if (!tryAcceptMapSimToken(mapId, mapSimToken)) {
+            return;
+        }
         npcSimStateStore.unregisterMap(mapId);
+        warnedMissingTickStateMapIds.delete(mapId | 0);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
     },
     applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): number {
@@ -463,7 +489,6 @@ const worker = {
             }
         }
         let wasmReadOff = 0;
-
         for (let mi = 0; mi < mapIds.length; mi++) {
             const mapId = mapIds[mi] | 0;
             const state = npcSimStateStore.getMap(mapId);
@@ -476,6 +501,16 @@ const worker = {
             );
             wasmReadOff = wasmPatchRead.nextReadOff | 0;
             if (!state) {
+                if (!warnedMissingTickStateMapIds.has(mapId)) {
+                    warnedMissingTickStateMapIds.add(mapId);
+                    const { mapX, mapY } = decodeMapSquareFromId(mapId);
+                    console.warn(
+                        `[map-render][tick] missing worker sim state for visible map ${mapX},${mapY} ` +
+                            `(mapId=${mapId | 0} index=${mi | 0} backend=${
+                                workerRuntimeOptions?.mapRenderBackend ?? "unknown"
+                            })`,
+                    );
+                }
                 entries[mi] = buildFramePacketMapEntry({
                     mapId,
                     cameraMapX,
@@ -536,7 +571,6 @@ const worker = {
             });
 
         }
-
         if (
             wasmPatchesPacked instanceof Int32Array &&
             wasmCountsByMapId instanceof Int32Array &&

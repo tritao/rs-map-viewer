@@ -35,6 +35,9 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly tickCoordinator = new MapRenderTickCoordinator();
     private readonly workerFramePacketSource: WorkerFramePacketSource;
+    private readonly mapSimTokenByMapId = new Map<number, number>();
+    private nextMapSimToken: number = 1;
+    private loadEpoch: number = 1;
 
     private isInitialized: boolean = false;
 
@@ -84,13 +87,32 @@ export class MapViewerRenderer extends RendererMainLoop {
         >(this.sdMapDataLoader, input);
     }
 
+    private reserveMapSimToken(mapId: number): number {
+        const token = this.nextMapSimToken | 0;
+        this.nextMapSimToken = (token + 1) | 0;
+        this.mapSimTokenByMapId.set(mapId | 0, token);
+        return token;
+    }
+
+    private invalidateMapSimToken(mapId: number): number {
+        return this.reserveMapSimToken(mapId | 0);
+    }
+
+    private hasMapSimToken(mapId: number, token: number): boolean {
+        return (this.mapSimTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
+    }
+
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
+        const queuedLoadEpoch = this.loadEpoch | 0;
         const devsq = this.mapViewer.getDevFixedMapSquare();
         if (devsq && (mapX !== devsq.mapX || mapY !== devsq.mapY)) {
             // Fixed-square dev mode: never queue builds for other squares.
             return;
         }
         const mapData = await this.loadSdMapData(mapX, mapY);
+        if ((this.loadEpoch | 0) !== queuedLoadEpoch) {
+            return;
+        }
         const devsqAfter = this.mapViewer.getDevFixedMapSquare();
         if (
             devsqAfter &&
@@ -106,6 +128,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             if (this.renderer.isValidMapData(mapData)) {
                 const sdMapData = mapData as unknown as SdMapData;
                 const mapId = getMapSquareId(sdMapData.mapX, sdMapData.mapY);
+                const mapSimToken = this.reserveMapSimToken(mapId);
                 const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
                 if (runtimeOptions.mapRenderTelemetry) {
                     const ranges = sdMapData.drawRanges.base;
@@ -144,6 +167,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         sdMapData.locsAnimated,
                         sdMapData.npcs,
                         sdMapData.npcOrderKeys,
+                        mapSimToken,
                     );
                 } catch (e) {
                     console.warn(
@@ -151,6 +175,9 @@ export class MapViewerRenderer extends RendererMainLoop {
                         e,
                     );
                     this.mapManager.addInvalidMap(sdMapData.mapX, sdMapData.mapY);
+                    return;
+                }
+                if ((this.loadEpoch | 0) !== queuedLoadEpoch || !this.hasMapSimToken(mapId, mapSimToken)) {
                     return;
                 }
 
@@ -196,7 +223,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId);
+        const mapSimToken = this.invalidateMapSimToken(mapInfo.mapId);
+        void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
 
     applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): void {
@@ -254,6 +282,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async applyCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
+        this.loadEpoch = (this.loadEpoch + 1) | 0;
+        this.mapSimTokenByMapId.clear();
 
         try {
             await this.renderer.cleanUp();
@@ -287,6 +317,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
+        this.loadEpoch = (this.loadEpoch + 1) | 0;
+        this.mapSimTokenByMapId.clear();
         this.tickCoordinator.resetForShutdown(this.workerFramePacketSource);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();

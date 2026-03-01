@@ -127,6 +127,7 @@ export class RenderDataWorkerPool {
         locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcs: ReadonlyArray<NpcData>,
         npcOrderKeys?: Int32Array,
+        mapSimToken?: number,
     ): Promise<void> {
         return this.getTickWorker().then((w) =>
             w.registerMapNpcSimState(
@@ -137,12 +138,13 @@ export class RenderDataWorkerPool {
                 locsAnimated as any,
                 npcs as any,
                 npcOrderKeys,
+                mapSimToken,
             ),
         );
     }
 
-    unregisterMapNpcSimState(mapId: number): Promise<void> {
-        return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId));
+    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): Promise<void> {
+        return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
     }
 
     applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): Promise<number> {
