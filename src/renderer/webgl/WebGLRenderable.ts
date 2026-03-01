@@ -9,24 +9,24 @@ import PicoGL, {
     VertexBuffer,
 } from "picogl";
 
-import { BasTypeLoader } from "../../../rs/config/bastype/BasTypeLoader";
-import { NpcTypeLoader } from "../../../rs/config/npctype/NpcTypeLoader";
-import { SeqType } from "../../../rs/config/seqtype/SeqType";
-import { SeqTypeLoader } from "../../../rs/config/seqtype/SeqTypeLoader";
-import { SeqFrameLoader } from "../../../rs/model/seq/SeqFrameLoader";
-import { Scene } from "../../../rs/scene/Scene";
-import { DrawRange, NULL_DRAW_RANGE } from "../../DrawRange";
-import { RenderableType } from "../../Renderer";
-import { SdRenderableData } from "../../loader/SdRenderableData";
-import { LocAnimated } from "../../loc/LocAnimated";
-import { Npc } from "../../npc/Npc";
-import { LOC_CYCLE_SCALE } from "../../../wasm/LocCycle";
-import { orderByPacketKeys } from "../../npc/orderByPacketKeys";
-import type { DrawRangeTickStateInput } from "../../../wasm/DrawRangeTickState";
+import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
+import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
+import { SeqType } from "../../rs/config/seqtype/SeqType";
+import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
+import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
+import { Scene } from "../../rs/scene/Scene";
+import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
+import { RenderableType } from "../Renderer";
+import { SdRenderableData } from "../loader/SdRenderableData";
+import { LocAnimated } from "../loc/LocAnimated";
+import { Npc } from "../npc/Npc";
+import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
+import { orderByPacketKeys } from "../npc/orderByPacketKeys";
+import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
 import type {
     TickCapability,
     TickPatchBackendResult,
-} from "../../patch/TickCapability";
+} from "../patch/TickCapability";
 
 const FRAME_RENDER_DELAY = 3;
 

@@ -18,20 +18,20 @@ import { DrawRange } from "../DrawRange";
 import { MapRenderer, TextureFilterMode } from "../MapRenderer";
 import { FrameStats, RendererStats } from "../Renderer";
 import { SdMapData } from "../loader/SdMapData";
-import { PostProcessPass } from "./core/PostProcessPass";
-import { RenderTargets } from "./core/RenderTargets";
-import { WebGLInteractionSystem, type InteractionsCallback } from "./systems/WebGLInteractionSystem";
-import { WebGLTextureSystem } from "./systems/WebGLTextureSystem";
-import { createWebGLDevice } from "./core/WebGLDevice";
-import { WebGLPrograms } from "./core/WebGLPrograms";
-import { WebGLMapSquare } from "./renderables/WebGLMapSquare";
+import { PostProcessPass } from "./PostProcessPass";
+import { RenderTargets } from "./RenderTargets";
+import { WebGLInteractionSystem, type InteractionsCallback } from "./WebGLInteractionSystem";
+import { WebGLTextureSystem } from "./WebGLTextureSystem";
+import { createWebGLDevice } from "./WebGLDevice";
+import { WebGLPrograms } from "./WebGLPrograms";
+import { WebGLMapSquare } from "./WebGLMapSquare";
 import {
     type InteractionControllerRenderer,
     type InteractionInput,
     type InteractionSnapshotRenderer,
 } from "../interaction/InteractionState";
 import type { TickControllerRenderer } from "../patch/TickCapability";
-import { NpcDataTextureRing } from "./texture/NpcDataTextureRing";
+import { NpcDataTextureRing } from "./NpcDataTextureRing";
 import type { NpcGpuFrameData } from "../npc/NpcGpuData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
 import {
@@ -50,7 +50,7 @@ import {
     TICK_PATCH_STREAM_COUNT,
 } from "../packet/FramePacket";
 import type { FramePacket } from "../packet/FramePacket";
-import { applyDrawRangePatches } from "./core/applyDrawRangePatches";
+import { applyDrawRangePatches } from "./applyDrawRangePatches";
 import {
     ensureDrawRangePatchBackendInit,
     isDrawRangePatchBackendReady,

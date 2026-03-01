@@ -1,14 +1,14 @@
 import type { App as PicoApp, Framebuffer } from "picogl";
 import PicoGL from "picogl";
-import { pixelRatio } from "../../../util/DeviceUtil";
+import { pixelRatio } from "../../util/DeviceUtil";
 
 import {
     INTERACTION_RADIUS,
     INTERACT_BUFFER_COUNT,
     InteractionState,
     type InteractionInput,
-} from "../../interaction/InteractionState";
-import type { RendererStats } from "../../Renderer";
+} from "../interaction/InteractionState";
+import type { RendererStats } from "../Renderer";
 import { InteractionsReadback } from "./InteractionsReadback";
 
 export type InteractionsCallback = (

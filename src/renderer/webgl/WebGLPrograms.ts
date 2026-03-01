@@ -6,7 +6,7 @@ import {
     FRAME_PROGRAM,
     createMainProgram,
     createNpcProgram,
-} from "../shaders/Shaders";
+} from "./shaders/Shaders";
 
 export class WebGLPrograms {
     private initPromise: Promise<void> | undefined;

@@ -1,16 +1,16 @@
 import { vec2 } from "gl-matrix";
 import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 
-import { BasTypeLoader } from "../../../rs/config/bastype/BasTypeLoader";
-import { NpcTypeLoader } from "../../../rs/config/npctype/NpcTypeLoader";
-import { SeqTypeLoader } from "../../../rs/config/seqtype/SeqTypeLoader";
-import { getMapSquareId } from "../../../rs/map/MapFileIndex";
-import { SeqFrameLoader } from "../../../rs/model/seq/SeqFrameLoader";
-import { Scene } from "../../../rs/scene/Scene";
-import { MapSquareRenderable } from "../../MapRenderer";
-import type { NpcGpuDataTarget } from "../../npc/NpcGpuData";
-import { RenderableType } from "../../Renderer";
-import { SdMapData } from "../../loader/SdMapData";
+import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
+import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
+import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
+import { Scene } from "../../rs/scene/Scene";
+import { MapSquareRenderable } from "../MapRenderer";
+import type { NpcGpuDataTarget } from "../npc/NpcGpuData";
+import { RenderableType } from "../Renderer";
+import { SdMapData } from "../loader/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
