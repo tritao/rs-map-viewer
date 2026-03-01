@@ -28,6 +28,7 @@ import { loadMinimapBlob } from "../../worker/MinimapData";
 import { AnimationFrames } from "../../renderer/AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../renderer/DrawRange";
 import { InteractType } from "../../renderer/InteractType";
+import { RenderableType } from "../../renderer/Renderer";
 import {
     ContourGroundType,
     createLocAnimatedGroupKey,
@@ -934,40 +935,30 @@ export class SdMapRenderDataTsBackend {
             );
         }
 
-        const data = new SdMapData(
+        const data: SdMapData = {
+            type: RenderableType.Map,
             mapX,
             mapY,
-
-            this.deps.session.cache.info.name,
-
+            cacheName: this.deps.session.cache.info.name,
             maxLevel,
             loadObjs,
             loadNpcs,
             loadLocs,
-
             smoothTerrain,
-
             borderSize,
-            scene.tileRenderFlags,
-            scene.collisionMaps,
-
+            tileRenderFlags: scene.tileRenderFlags,
+            collisionDatas: scene.collisionMaps,
             minimapBlob,
-
             vertices,
             indices,
-
             modelInfoTextures,
-
             heightMapTextureData,
-
             drawRanges,
-
             locsAnimated,
             npcs,
-
             usedTextureIds,
             loadedTextures,
-        );
+        };
 
         return {
             data,

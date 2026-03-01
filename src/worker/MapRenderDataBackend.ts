@@ -5,6 +5,7 @@ import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTs
 import type { SdMapRenderDataTsBackendDeps } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
 import type { CollisionData } from "../rs/scene/CollisionMap";
+import { RenderableType } from "../renderer/Renderer";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -341,34 +342,35 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             const sizeX = packet.sizeX | 0;
             const sizeY = packet.sizeY | 0;
 
-            return new SdMapData(
-                input.mapX | 0,
-                input.mapY | 0,
-                this.cacheName,
-                input.maxLevel | 0,
-                input.loadObjs === true,
-                input.loadNpcs === true,
-                input.loadLocs === true,
-                input.smoothTerrain === true,
-                request.borderSize | 0,
-                createEmptyTileRenderFlags(levels, sizeX, sizeY),
-                createEmptyCollisionDatas(levels, sizeX, sizeY),
-                new Blob(),
-                packet.vertices,
-                packet.indices,
-                overlay.modelInfoTextures,
-                overlay.heightMapTextureData,
-                overlay.drawRanges,
-                [],
-                [],
-                packet.usedTextureIds,
-                new Map(),
-                packet.npcDrawRangesBase,
-                packet.npcDrawRangesAlpha,
-                packet.npcVertices,
-                packet.npcIndices,
-                packet.npcOrderKeys,
-            );
+            return {
+                type: RenderableType.Map,
+                mapX: input.mapX | 0,
+                mapY: input.mapY | 0,
+                cacheName: this.cacheName,
+                maxLevel: input.maxLevel | 0,
+                loadObjs: input.loadObjs === true,
+                loadNpcs: input.loadNpcs === true,
+                loadLocs: input.loadLocs === true,
+                smoothTerrain: input.smoothTerrain === true,
+                borderSize: request.borderSize | 0,
+                tileRenderFlags: createEmptyTileRenderFlags(levels, sizeX, sizeY),
+                collisionDatas: createEmptyCollisionDatas(levels, sizeX, sizeY),
+                minimapBlob: new Blob(),
+                vertices: packet.vertices,
+                indices: packet.indices,
+                modelInfoTextures: overlay.modelInfoTextures,
+                heightMapTextureData: overlay.heightMapTextureData,
+                drawRanges: overlay.drawRanges,
+                locsAnimated: [],
+                npcs: [],
+                usedTextureIds: packet.usedTextureIds,
+                loadedTextures: new Map(),
+                npcDrawRangesBase: packet.npcDrawRangesBase,
+                npcDrawRangesAlpha: packet.npcDrawRangesAlpha,
+                npcVertices: packet.npcVertices,
+                npcIndices: packet.npcIndices,
+                npcOrderKeys: packet.npcOrderKeys,
+            };
         }
         return undefined;
     }

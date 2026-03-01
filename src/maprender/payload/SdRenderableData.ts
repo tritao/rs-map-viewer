@@ -30,30 +30,27 @@ export type SdRenderableDrawRanges = {
     readonly interactLodAlpha: Int32Array;
 };
 
-export class SdRenderableData {
-    constructor(
-        readonly type: RenderableType,
-        readonly ids: number,
+export type SdRenderableData = {
+    readonly type: RenderableType;
 
-        readonly cacheName: string,
+    readonly cacheName: string;
 
-        readonly borderSize: number,
-        readonly tileRenderFlags: Uint8Array[][],
+    readonly borderSize: number;
+    readonly tileRenderFlags: Uint8Array[][];
 
-        readonly vertices: Uint8Array,
-        readonly indices: Int32Array,
+    readonly vertices: Uint8Array;
+    readonly indices: Int32Array;
 
-        readonly modelInfoTextures: SdRenderableModelInfoTextures,
-        readonly drawRanges: SdRenderableDrawRanges,
+    readonly modelInfoTextures: SdRenderableModelInfoTextures;
+    readonly drawRanges: SdRenderableDrawRanges;
 
-        readonly locsAnimated: LocAnimatedData[],
-        readonly npcs: NpcData[],
+    readonly locsAnimated: LocAnimatedData[];
+    readonly npcs: NpcData[];
 
-        readonly loadedTextures: Map<number, Int32Array>,
-        readonly npcDrawRangesBase?: Int32Array,
-        readonly npcDrawRangesAlpha?: Int32Array,
-        readonly npcVertices?: Uint8Array,
-        readonly npcIndices?: Int32Array,
-        readonly npcOrderKeys?: Int32Array,
-    ) {}
-}
+    readonly loadedTextures: Map<number, Int32Array>;
+    readonly npcDrawRangesBase?: Int32Array;
+    readonly npcDrawRangesAlpha?: Int32Array;
+    readonly npcVertices?: Uint8Array;
+    readonly npcIndices?: Int32Array;
+    readonly npcOrderKeys?: Int32Array;
+};
