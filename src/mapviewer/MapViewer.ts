@@ -41,9 +41,7 @@ type DevFixedMapSquare = Readonly<{ mapX: number; mapY: number }>;
 
 export type MapViewerRuntimeOptions = Readonly<{
     mapRenderBackend: BackendKind;
-    mapRenderTickBackend?: BackendKind;
     mapRenderTelemetry: boolean;
-    mapRenderNpcSimInWorker?: boolean;
 }>;
 
 const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
@@ -54,19 +52,15 @@ const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
 function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
     return {
         mapRenderBackend: options?.mapRenderBackend ?? DEFAULT_RUNTIME_OPTIONS.mapRenderBackend,
-        mapRenderTickBackend: options?.mapRenderTickBackend,
         mapRenderTelemetry:
             options?.mapRenderTelemetry ?? DEFAULT_RUNTIME_OPTIONS.mapRenderTelemetry,
-        mapRenderNpcSimInWorker: options?.mapRenderNpcSimInWorker,
     };
 }
 
 function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOptions): boolean {
     return (
         a.mapRenderBackend === b.mapRenderBackend &&
-        a.mapRenderTickBackend === b.mapRenderTickBackend &&
-        a.mapRenderTelemetry === b.mapRenderTelemetry &&
-        a.mapRenderNpcSimInWorker === b.mapRenderNpcSimInWorker
+        a.mapRenderTelemetry === b.mapRenderTelemetry
     );
 }
 
@@ -260,15 +254,8 @@ export class MapViewer {
         if (this.runtimeOptions.mapRenderBackend !== DEFAULT_RUNTIME_OPTIONS.mapRenderBackend) {
             params["mrb"] = this.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
         }
-        if (this.runtimeOptions.mapRenderTickBackend) {
-            params["mrbtick"] =
-                this.runtimeOptions.mapRenderTickBackend === "cpp-wasm" ? "cpp" : "ts";
-        }
         if (this.runtimeOptions.mapRenderTelemetry) {
             params["mrt"] = "1";
-        }
-        if (this.runtimeOptions.mapRenderNpcSimInWorker) {
-            params["mrnpcw"] = "1";
         }
         if (this.devFixedMapSquare) {
             params["devsq"] = `${this.devFixedMapSquare.mapX}:${this.devFixedMapSquare.mapY}`;

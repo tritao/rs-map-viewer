@@ -41,7 +41,6 @@ import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { IndexedSprite } from "../rs/sprite/IndexedSprite";
 import { SpriteLoader } from "../rs/sprite/SpriteLoader";
-import type { BackendKind } from "../util/BackendKind";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
@@ -89,12 +88,7 @@ type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: st
 
 export type WorkerRuntimeOptions = Readonly<{
     mapRenderBackend?: MapRenderDataBackendKind;
-    // Allows isolating tick/patch issues from map-build issues.
-    // If unset, tick behavior follows mapRenderBackend.
-    mapRenderTickBackend?: BackendKind;
     mapRenderTelemetry?: boolean;
-    // Experimental: run NPC movement sim + GPU packing in the worker, emitting per-frame packets.
-    mapRenderNpcSimInWorker?: boolean;
 }>;
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
@@ -105,13 +99,7 @@ const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBrid
 let workerRuntimeOptions: WorkerRuntimeOptions | undefined;
 
 function shouldUseWasmTickInWorker(): boolean {
-    if (!workerRuntimeOptions?.mapRenderNpcSimInWorker) {
-        return false;
-    }
-    const tickBackend =
-        workerRuntimeOptions.mapRenderTickBackend ?? workerRuntimeOptions.mapRenderBackend;
-    // Runtime-owned tick state requires that map builds also happen in the same C++ wasm runtime.
-    return tickBackend === "cpp-wasm" && workerRuntimeOptions.mapRenderBackend === "cpp-wasm";
+    return workerRuntimeOptions?.mapRenderBackend === "cpp-wasm";
 }
 
 async function requireWorkerState(): Promise<WorkerState> {

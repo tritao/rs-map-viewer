@@ -203,19 +203,14 @@ export const MapViewerControls = memo(
         const [mapRenderTelemetry, setMapRenderTelemetry] = useState<boolean>(
             initialRuntimeOptions.mapRenderTelemetry,
         );
-        const [mapRenderNpcSimInWorker, setMapRenderNpcSimInWorker] = useState<boolean>(
-            !!initialRuntimeOptions.mapRenderNpcSimInWorker,
-        );
         // Leva may keep button callbacks stable; avoid stale React state closures by reading the latest
         // pending values from a ref.
         const runtimeOptionsRef = useRef<{
             mapRenderBackend: BackendKind;
             mapRenderTelemetry: boolean;
-            mapRenderNpcSimInWorker: boolean;
         }>({
             mapRenderBackend: initialRuntimeOptions.mapRenderBackend,
             mapRenderTelemetry: initialRuntimeOptions.mapRenderTelemetry,
-            mapRenderNpcSimInWorker: !!initialRuntimeOptions.mapRenderNpcSimInWorker,
         });
 
         const controlsSchema: Schema = {
@@ -496,19 +491,11 @@ export const MapViewerControls = memo(
                                 setMapRenderTelemetry(v);
                             },
                         },
-                        "NPC Sim in Worker": {
-                            value: mapRenderNpcSimInWorker,
-                            onChange: (v: boolean) => {
-                                runtimeOptionsRef.current.mapRenderNpcSimInWorker = v;
-                                setMapRenderNpcSimInWorker(v);
-                            },
-                        },
                         Apply: button(async () => {
                             const opts = runtimeOptionsRef.current;
                             await mapViewer.setWorkerRuntimeOptions({
                                 mapRenderBackend: opts.mapRenderBackend,
                                 mapRenderTelemetry: opts.mapRenderTelemetry,
-                                mapRenderNpcSimInWorker: opts.mapRenderNpcSimInWorker,
                             });
                         }),
                     },
@@ -645,7 +632,6 @@ export const MapViewerControls = memo(
                 varValue,
                 mapRenderBackend,
                 mapRenderTelemetry,
-                mapRenderNpcSimInWorker,
                 devOnly5050,
                 pointsControls,
                 isCameraRunning,

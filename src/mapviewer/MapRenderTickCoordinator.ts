@@ -1,5 +1,4 @@
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { MapViewerRuntimeOptions } from "./MapViewer";
 import type { MapRenderFramePacketSource, TickFrameInput } from "./MapRenderFramePacketSource";
 
 export type TickClockState = Readonly<{
@@ -9,9 +8,7 @@ export type TickClockState = Readonly<{
 }>;
 
 type TickPassInput = Readonly<{
-    runtimeOptions: MapViewerRuntimeOptions;
     frameInput: TickFrameInput;
-    mainThreadSource: MapRenderFramePacketSource;
     workerSource: MapRenderFramePacketSource;
     applyFramePacket(packet: FramePacket | undefined): void;
 }>;
@@ -19,7 +16,6 @@ type TickPassInput = Readonly<{
 export class MapRenderTickCoordinator {
     private lastTick: number = 0;
     private lastClientTick: number = 0;
-    private lastNpcSimInWorker: boolean = false;
 
     advanceClocks(timeSec: number): TickClockState {
         const tick = Math.floor(timeSec / 0.6);
@@ -42,34 +38,16 @@ export class MapRenderTickCoordinator {
     }
 
     applyTick(input: TickPassInput): void {
-        const npcSimInWorker = !!input.runtimeOptions.mapRenderNpcSimInWorker;
-        if (this.lastNpcSimInWorker !== npcSimInWorker) {
-            // Ensure stale packet state from one mode never leaks into the next mode.
-            input.mainThreadSource.reset();
-            input.workerSource.reset();
-            input.applyFramePacket(undefined);
-        }
-        this.lastNpcSimInWorker = npcSimInWorker;
-
-        const source = npcSimInWorker ? input.workerSource : input.mainThreadSource;
-        const packet = source.nextPacket(input.frameInput);
+        const packet = input.workerSource.nextPacket(input.frameInput);
         input.applyFramePacket(packet);
     }
 
-    resetForCacheContext(
-        mainThreadSource: MapRenderFramePacketSource,
-        workerSource: MapRenderFramePacketSource,
-    ): void {
-        mainThreadSource.reset();
+    resetForCacheContext(workerSource: MapRenderFramePacketSource): void {
         workerSource.reset();
-        this.lastNpcSimInWorker = false;
     }
 
-    resetForShutdown(
-        mainThreadSource: MapRenderFramePacketSource,
-        workerSource: MapRenderFramePacketSource,
-    ): void {
-        this.resetForCacheContext(mainThreadSource, workerSource);
+    resetForShutdown(workerSource: MapRenderFramePacketSource): void {
+        this.resetForCacheContext(workerSource);
         this.lastTick = 0;
         this.lastClientTick = 0;
     }

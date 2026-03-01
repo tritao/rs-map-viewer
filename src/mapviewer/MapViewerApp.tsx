@@ -37,19 +37,15 @@ function parseBackendKind(value: string | null): BackendKind {
 }
 
 function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntimeOptions {
-    const mapRenderBackend = parseBackendKind(searchParams.get("mrb"));
+    const mapRenderBackendParam = searchParams.get("mrb");
     const mapRenderTickBackendParam = searchParams.get("mrbtick");
-    const mapRenderTickBackend =
-        mapRenderTickBackendParam !== null
-            ? parseBackendKind(mapRenderTickBackendParam)
-            : undefined;
+    const mapRenderBackend = parseBackendKind(
+        mapRenderBackendParam !== null ? mapRenderBackendParam : mapRenderTickBackendParam,
+    );
     const mapRenderTelemetry = searchParams.get("mrt") === "1";
-    const mapRenderNpcSimInWorker = searchParams.get("mrnpcw") === "1";
     return {
         mapRenderBackend,
-        mapRenderTickBackend,
         mapRenderTelemetry,
-        mapRenderNpcSimInWorker,
     };
 }
 

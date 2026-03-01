@@ -7,50 +7,34 @@ import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
 import { SdMapData } from "../maprender/payload/SdMapData";
-import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
-import { TickController } from "../runtime/tick/TickController";
-import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
 import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
-import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewer } from "./MapViewer";
-import type { MapViewerRuntimeOptions } from "./MapViewer";
-import { SimWorld } from "./SimWorld";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
-import {
-    MainThreadFramePacketSource,
-    WorkerFramePacketSource,
-} from "./MapRenderFramePacketSource";
+import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
     workerPool: RenderDataWorkerPool;
 
     camera: Camera;
-    pathfinder: Pathfinder;
 
     mapManager: MapManager;
     mapManagerTime: number = 0;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
-    tickController: TickController;
-    private lastRuntimeOptions: MapViewerRuntimeOptions | undefined;
-    private readonly simWorld = new SimWorld();
     private readonly sdMapDataLoader = new SdMapDataLoader();
-    private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
     private readonly tickCoordinator = new MapRenderTickCoordinator();
-    private readonly mainThreadFramePacketSource: MainThreadFramePacketSource;
     private readonly workerFramePacketSource: WorkerFramePacketSource;
-    private runtimeStateStore: MapRuntimeStateStore;
 
     private isInitialized: boolean = false;
 
@@ -59,7 +43,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.inputManager = mapViewer.inputManager;
         this.workerPool = mapViewer.workerPool;
         this.camera = mapViewer.camera;
-        this.pathfinder = mapViewer.pathfinder;
         this.renderer = new WebGLMapRenderer(
             mapViewer.session,
             mapViewer.renderDistance,
@@ -68,21 +51,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.tickController = new TickController();
-        this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-        this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
-        this.runtimeStateStore = this.createRuntimeStateStore();
-        this.mainThreadFramePacketSource = new MainThreadFramePacketSource({
-            getRenderer: () => this.renderer,
-            getMapManager: () => this.mapManager,
-            getCamera: () => this.camera,
-            getRuntimeStateStore: () => this.runtimeStateStore,
-            getSession: () => this.mapViewer.session,
-            tickController: this.tickController,
-            simWorld: this.simWorld,
-            npcGpuDataBuilder: this.npcGpuDataBuilder,
-            pathfinder: this.pathfinder,
-        });
         this.workerFramePacketSource = new WorkerFramePacketSource({
             workerPool: this.workerPool,
             getRenderer: () => this.renderer,
@@ -114,18 +82,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             SdMapData | undefined,
             SdMapDataLoader
         >(this.sdMapDataLoader, input);
-    }
-
-    private createRuntimeStateStore(): MapRuntimeStateStore {
-        return new MapRuntimeStateStore({
-            seqTypeLoader: this.mapViewer.session.getSeqTypeLoader(),
-            seqFrameLoader: this.mapViewer.session.getSeqFrameLoader(),
-            npcTypeLoader: this.mapViewer.session.getNpcTypeLoader(),
-            basTypeLoader: this.mapViewer.session.getBasTypeLoader(),
-            onMapRemoved: (mapId: number): void => {
-                this.tickController.onRenderableRemoved(mapId);
-            },
-        });
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
@@ -178,10 +134,9 @@ export class MapViewerRenderer extends RendererMainLoop {
                         npcIndices: sdMapData.npcIndices?.length ?? 0,
                     });
                 }
-                if (runtimeOptions.mapRenderNpcSimInWorker) {
-                    const level1 = sdMapData.tileRenderFlags[1] ?? [];
-                    void this.workerPool
-                        .registerMapNpcSimState(
+                const level1 = sdMapData.tileRenderFlags[1] ?? [];
+                void this.workerPool
+                    .registerMapNpcSimState(
                         mapId,
                         sdMapData.borderSize,
                         level1,
@@ -189,19 +144,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                         sdMapData.locsAnimated,
                         sdMapData.npcs,
                         sdMapData.npcOrderKeys,
-                        )
-                        .catch(() => {
-                            // Avoid unhandled promise rejections; registration is best-effort.
-                        });
-                } else {
-                    // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
-                    this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
-                }
-                this.runtimeStateStore.buildAndStoreMap(
-                    mapId,
-                    sdMapData,
-                    performance.now() / 1000,
-                );
+                    )
+                    .catch(() => {
+                        // Avoid unhandled promise rejections; registration is best-effort.
+                    });
 
                 this.mapManager.addMap(mapX, mapY);
                 this.renderer.addMap(mapData);
@@ -244,28 +190,17 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
-        this.runtimeStateStore.removeMap(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
-        const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-        if (runtimeOptions.mapRenderNpcSimInWorker) {
-            void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId);
-        } else {
-            this.simWorld.onMapUnloaded(mapInfo.mapId);
-        }
+        void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId);
     }
 
     applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): void {
         if ((deltas.length | 0) <= 0) {
             return;
         }
-        const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-        if (runtimeOptions.mapRenderNpcSimInWorker) {
-            void this.workerPool.applyMapNpcServerDeltas(mapId | 0, deltas).catch(() => {
-                return;
-            });
+        void this.workerPool.applyMapNpcServerDeltas(mapId | 0, deltas).catch(() => {
             return;
-        }
-        this.runtimeStateStore.applyNpcServerDeltas(mapId | 0, deltas);
+        });
     }
 
     override async init() {
@@ -317,13 +252,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
-            this.tickCoordinator.resetForCacheContext(
-                this.mainThreadFramePacketSource,
-                this.workerFramePacketSource,
-            );
+            this.tickCoordinator.resetForCacheContext(this.workerFramePacketSource);
             this.mapManager.cleanUp();
-            this.runtimeStateStore.clear();
-            this.tickController.reset();
 
             this.renderer = new WebGLMapRenderer(
                 this.mapViewer.session,
@@ -333,10 +263,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.camera,
                 this.checkInteractions.bind(this),
             );
-            this.tickController = new TickController();
-            this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-            this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
-            this.runtimeStateStore = this.createRuntimeStateStore();
             this.mapManager = new MapManager(
                 this.workerPool.size * 2,
                 this.queueLoadMap.bind(this),
@@ -356,14 +282,9 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
-        this.tickCoordinator.resetForShutdown(
-            this.mainThreadFramePacketSource,
-            this.workerFramePacketSource,
-        );
+        this.tickCoordinator.resetForShutdown(this.workerFramePacketSource);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
-        this.runtimeStateStore.clear();
-        this.tickController.reset();
     }
 
     override update(time: number, deltaTime: number) {
@@ -399,20 +320,13 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     tickPass(cycle: number, ticksElapsed: number, clientTicksElapsed: number): void {
-        const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
-        if (runtimeOptions !== this.lastRuntimeOptions) {
-            this.lastRuntimeOptions = runtimeOptions;
-            this.tickController.setRuntimeOptions(runtimeOptions);
-        }
         this.tickCoordinator.applyTick({
-            runtimeOptions,
             frameInput: {
                 frameCount: this.renderer.stats.frameCount,
                 cycle,
                 ticksElapsed,
                 clientTicksElapsed,
             },
-            mainThreadSource: this.mainThreadFramePacketSource,
             workerSource: this.workerFramePacketSource,
             applyFramePacket: (packet) => this.renderer.applyFramePacket(packet),
         });
