@@ -5,38 +5,14 @@ import { Transfer, expose } from "threads/worker";
 
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
-import { CacheType } from "../rs/cache/CacheType";
-import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
-import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
-import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
-import { initErrorToString } from "../rs/loaders/InitError";
-import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
-import { getMapSquareId } from "../rs/map/MapFileIndex";
-import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
-import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
-import { Scene } from "../rs/scene/Scene";
-import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
-import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
-import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
-import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { IndexedSprite } from "../rs/sprite/IndexedSprite";
-import { SpriteLoader } from "../rs/sprite/SpriteLoader";
-import { LoadedCache } from "../util/Caches";
-import { errorToString } from "../util/ErrorUtil";
-import { Hasher } from "../util/Hasher";
-import type { BackendKind } from "../util/BackendKind";
-import { CollisionMap, type CollisionData } from "../rs/scene/CollisionMap";
-import { CollisionFlag } from "../rs/pathfinder/flag/CollisionFlag";
-import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { NULL_DRAW_RANGE, type DrawRange } from "../renderer/DrawRange";
+import { type DrawRange, NULL_DRAW_RANGE } from "../renderer/DrawRange";
 import { LocAnimated } from "../renderer/loc/LocAnimated";
 import type { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
-import { orderByPacketKeys } from "../renderer/npc/orderByPacketKeys";
 import { Npc } from "../renderer/npc/Npc";
 import type { NpcData } from "../renderer/npc/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/npc/NpcGpuData";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
+import { orderByPacketKeys } from "../renderer/npc/orderByPacketKeys";
 import type { FramePacket } from "../renderer/packet/FramePacket";
 import {
     NPC_OFFSETS_BY_MAP_ID_STRIDE,
@@ -45,6 +21,36 @@ import {
     TICK_PATCH_STREAM_COUNT,
     framePacketTransferables,
 } from "../renderer/packet/FramePacket";
+import { CacheType } from "../rs/cache/CacheType";
+import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
+import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
+import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
+import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
+import { initErrorToString } from "../rs/loaders/InitError";
+import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
+import { getMapSquareId } from "../rs/map/MapFileIndex";
+import { Pathfinder } from "../rs/pathfinder/Pathfinder";
+import { CollisionFlag } from "../rs/pathfinder/flag/CollisionFlag";
+import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
+import { type CollisionData, CollisionMap } from "../rs/scene/CollisionMap";
+import { Scene } from "../rs/scene/Scene";
+import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
+import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
+import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
+import { IndexedSprite } from "../rs/sprite/IndexedSprite";
+import { SpriteLoader } from "../rs/sprite/SpriteLoader";
+import type { BackendKind } from "../util/BackendKind";
+import { LoadedCache } from "../util/Caches";
+import { errorToString } from "../util/ErrorUtil";
+import { Hasher } from "../util/Hasher";
+import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
+import type {
+    MapRenderRuntimeBridgeV2,
+    MapRenderRuntimeHandle,
+} from "../wasm/MapRenderRuntimeBridgeAbi";
+import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
@@ -109,6 +115,19 @@ const npcSimByMapId = new Map<number, MapNpcSimState>();
 const npcSimPathfinder = new Pathfinder();
 const npcGpuDataBuilder = new NpcGpuDataBuilder();
 
+const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBridgeV2;
+let workerRuntimeOptions: WorkerRuntimeOptions | undefined;
+
+function shouldUseWasmTickInWorker(): boolean {
+    if (!workerRuntimeOptions?.mapRenderNpcSimInWorker) {
+        return false;
+    }
+    const tickBackend =
+        workerRuntimeOptions.mapRenderTickBackend ?? workerRuntimeOptions.mapRenderBackend;
+    // Runtime-owned tick state requires that map builds also happen in the same C++ wasm runtime.
+    return tickBackend === "cpp-wasm" && workerRuntimeOptions.mapRenderBackend === "cpp-wasm";
+}
+
 function emitTickPatch(
     outPacked: Int32Array,
     count: number,
@@ -129,7 +148,11 @@ function emitTickPatch(
     return (count + 1) | 0;
 }
 
-function emitLocPatchesForChangedFrame(state: MapNpcSimState, locIndex: number, newFrameId: number) {
+function emitLocPatchesForChangedFrame(
+    state: MapNpcSimState,
+    locIndex: number,
+    newFrameId: number,
+) {
     const loc = state.locsAnimated[locIndex];
     const baseFrame = (loc.anim.frames?.[newFrameId] ?? undefined) as DrawRange | undefined;
     if (!baseFrame) {
@@ -320,6 +343,7 @@ const worker = {
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
         console.log("init worker", cache.info);
+        workerRuntimeOptions = options;
         workerStatePromise = initWorker(cache, objSpawns, npcSpawns, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
@@ -497,6 +521,7 @@ const worker = {
     },
     unregisterMapNpcSimState(mapId: number): void {
         npcSimByMapId.delete(mapId | 0);
+        // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
     },
     async tickFrame(
         frameCount: number,
@@ -522,6 +547,31 @@ const worker = {
 
         const safeTicksElapsed = Math.max(0, Math.min(ticksElapsed | 0, 4));
         const safeClientTicks = Math.max(0, Math.min(clientTicksElapsed | 0, 50));
+
+        const useWasmTick =
+            shouldUseWasmTickInWorker() &&
+            typeof tickWasmBridge.tickMapsEmitPatchStreams === "function";
+        const cycleNowFixed = Math.round(cycleNow * LOC_CYCLE_SCALE) | 0;
+        let wasmTick:
+            | Readonly<{ tickPatchCountsByMapId: Int32Array; tickPatchPacked: Int32Array }>
+            | undefined;
+        if (useWasmTick) {
+            const handle = workerState.mapRenderDataBackend.getCppWasmRuntimeHandle?.();
+            if (handle === undefined) {
+                throw new Error("[map-render][tick][cpp-wasm] map-render runtime handle missing");
+            }
+            wasmTick = tickWasmBridge.tickMapsEmitPatchStreams?.(
+                handle,
+                mapIds,
+                cycleNowFixed,
+                safeClientTicks,
+            ) as any;
+            if (!wasmTick) {
+                throw new Error("[map-render][tick][cpp-wasm] tickMapsEmitPatchStreams failed");
+            }
+        }
+        const wasmCountsByMapId = wasmTick?.tickPatchCountsByMapId;
+        const wasmPatchesPacked = wasmTick?.tickPatchPacked;
 
         const ringSize = NPC_DATA_TEXTURE_RING_SIZE;
         const newIndexMod = (frameCount | 0) % ringSize;
@@ -598,7 +648,7 @@ const worker = {
                 npcDataTextureOffsets: state.npcDataTextureOffsets,
                 getTileRenderFlag: (_level: number, tileX: number, tileY: number): number => {
                     const col = state.tileRenderFlagsLevel1[(tileX + state.borderSize) | 0];
-                    return col ? (col[(tileY + state.borderSize) | 0] | 0) : 0;
+                    return col ? col[(tileY + state.borderSize) | 0] | 0 : 0;
                 },
             };
             npcGpuDataBuilder.addRenderable(target as any, frameCount | 0);
@@ -611,13 +661,15 @@ const worker = {
             state.npcTickPatchCountsByVariant[0] = 0;
             state.npcTickPatchCountsByVariant[1] = 0;
 
-            for (let li = 0; li < state.locsAnimated.length; li++) {
-                const loc = state.locsAnimated[li];
-                loc.update(seqFrameLoader, cycleNow);
-                const newFrameId = loc.frame | 0;
-                // Always emit a patch for the current frame. Some map packets may have placeholder
-                // draw ranges for animated locs until the first tick patch is applied.
-                emitLocPatchesForChangedFrame(state, li, newFrameId);
+            if (!wasmTick) {
+                for (let li = 0; li < state.locsAnimated.length; li++) {
+                    const loc = state.locsAnimated[li];
+                    loc.update(seqFrameLoader, cycleNow);
+                    const newFrameId = loc.frame | 0;
+                    // Always emit a patch for the current frame. Some map packets may have placeholder
+                    // draw ranges for animated locs until the first tick patch is applied.
+                    emitLocPatchesForChangedFrame(state, li, newFrameId);
+                }
             }
 
             for (let ni = 0; ni < npcCount; ni++) {
@@ -625,7 +677,8 @@ const worker = {
                 const newFrameId = npc.movementFrame | 0;
                 const anim = npc.getAnimationFrames();
                 const baseFrame = (anim?.frames?.[newFrameId] ?? NULL_DRAW_RANGE) as DrawRange;
-                const alphaFrame = (anim?.framesAlpha?.[newFrameId] ?? NULL_DRAW_RANGE) as DrawRange;
+                const alphaFrame = (anim?.framesAlpha?.[newFrameId] ??
+                    NULL_DRAW_RANGE) as DrawRange;
                 state.npcTickPatchCountsByVariant[0] = emitTickPatch(
                     state.npcTickPatchesByVariant[0]!,
                     state.npcTickPatchCountsByVariant[0] | 0,
@@ -641,15 +694,39 @@ const worker = {
             }
 
             // Write per-map patch counts meta in stream order.
-            for (let v = 0; v < 8; v++) {
-                tickPatchCountsByMapId[metaOff + 1 + v] = state.locTickPatchCountsByVariant[v] | 0;
+            if (wasmCountsByMapId instanceof Int32Array) {
+                const wasmMetaOff = (mi | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+                if (wasmMetaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE <= wasmCountsByMapId.length) {
+                    const wasmMapId = wasmCountsByMapId[wasmMetaOff + 0] | 0;
+                    if (wasmMapId === (mapId | 0)) {
+                        for (let v = 0; v < 8; v++) {
+                            tickPatchCountsByMapId[metaOff + 1 + v] =
+                                wasmCountsByMapId[wasmMetaOff + 1 + v] | 0;
+                        }
+                    } else {
+                        for (let v = 0; v < 8; v++) {
+                            tickPatchCountsByMapId[metaOff + 1 + v] =
+                                state.locTickPatchCountsByVariant[v] | 0;
+                        }
+                    }
+                } else {
+                    for (let v = 0; v < 8; v++) {
+                        tickPatchCountsByMapId[metaOff + 1 + v] =
+                            state.locTickPatchCountsByVariant[v] | 0;
+                    }
+                }
+            } else {
+                for (let v = 0; v < 8; v++) {
+                    tickPatchCountsByMapId[metaOff + 1 + v] =
+                        state.locTickPatchCountsByVariant[v] | 0;
+                }
             }
             tickPatchCountsByMapId[metaOff + 1 + 8] = state.npcTickPatchCountsByVariant[0] | 0;
             tickPatchCountsByMapId[metaOff + 1 + 9] = state.npcTickPatchCountsByVariant[1] | 0;
 
             // Accumulate total patch tuple count for packed output sizing.
             for (let s = 0; s < 8; s++) {
-                totalTickPatchCount += state.locTickPatchCountsByVariant[s] | 0;
+                totalTickPatchCount += tickPatchCountsByMapId[metaOff + 1 + s] | 0;
             }
             totalTickPatchCount += state.npcTickPatchCountsByVariant[0] | 0;
             totalTickPatchCount += state.npcTickPatchCountsByVariant[1] | 0;
@@ -659,21 +736,62 @@ const worker = {
             Math.max(0, totalTickPatchCount | 0) * TICK_PATCH_ENTRY_STRIDE,
         );
         let writeOff = 0;
+        let wasmReadOff = 0;
         for (let mi = 0; mi < mapIds.length; mi++) {
             const mapId = mapIds[mi] | 0;
             const state = npcSimByMapId.get(mapId);
             if (!state) {
                 continue;
             }
-            for (let v = 0; v < 8; v++) {
-                const count = state.locTickPatchCountsByVariant[v] | 0;
-                const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
-                if (len > 0) {
-                    tickPatchPacked.set(
-                        state.locTickPatchesByVariant[v]!.subarray(0, len),
-                        writeOff,
-                    );
-                    writeOff = (writeOff + len) | 0;
+            const metaOff = (mi | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+            if (
+                wasmPatchesPacked instanceof Int32Array &&
+                wasmCountsByMapId instanceof Int32Array
+            ) {
+                // Copy loc streams [0..7] from wasm tick output when available, otherwise skip
+                // them and use TS patches (keeping wasmReadOff aligned).
+                if (metaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE <= wasmCountsByMapId.length) {
+                    for (let v = 0; v < 8; v++) {
+                        const wasmCount = wasmCountsByMapId[metaOff + 1 + v] | 0;
+                        const len = (wasmCount * TICK_PATCH_ENTRY_STRIDE) | 0;
+                        if (len > 0) {
+                            const end = (wasmReadOff + len) | 0;
+                            if (end > (wasmPatchesPacked.length | 0)) {
+                                throw new Error(
+                                    `[map-render][tick][cpp-wasm] wasm patch stream OOB ` +
+                                        `mapId=${mapId | 0} stream=${v} readOff=${
+                                            wasmReadOff | 0
+                                        } len=${len | 0} ` +
+                                        `packedLen=${wasmPatchesPacked.length | 0}`,
+                                );
+                            }
+                            tickPatchPacked.set(
+                                wasmPatchesPacked.subarray(wasmReadOff, end),
+                                writeOff,
+                            );
+                            writeOff = (writeOff + len) | 0;
+                        }
+                        wasmReadOff = (wasmReadOff + len) | 0;
+                    }
+                    // Skip wasm npc streams (must be zero in loc-only tick-state).
+                    for (let v = 8; v < 10; v++) {
+                        const count = wasmCountsByMapId[metaOff + 1 + v] | 0;
+                        const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
+                        wasmReadOff = (wasmReadOff + len) | 0;
+                    }
+                }
+            } else {
+                // TS loc streams.
+                for (let v = 0; v < 8; v++) {
+                    const count = state.locTickPatchCountsByVariant[v] | 0;
+                    const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
+                    if (len > 0) {
+                        tickPatchPacked.set(
+                            state.locTickPatchesByVariant[v]!.subarray(0, len),
+                            writeOff,
+                        );
+                        writeOff = (writeOff + len) | 0;
+                    }
                 }
             }
             for (let v = 0; v < 2; v++) {

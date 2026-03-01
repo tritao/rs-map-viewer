@@ -25,6 +25,7 @@ struct SceneCommandBuildInput final {
     bool minimizeDrawCalls = false;
     i32 locLoadType = 0;
     bool loadLocs = true;
+    bool loadObjs = true;
     i32 cacheGame = 0;
     i32 cacheRevision = 0;
     i32 unitsTileHeightBasis = 0;
@@ -66,7 +67,15 @@ struct SceneCommandBuildInput final {
         i32 id,
         Span<const u8>* outBytes) = nullptr;
 
+    // Texture presence lists (blob-store-backed, presence encoded by domain/group/file ids).
+    //
+    // TS parity notes:
+    // - ModelData.light() considers a face "textured" iff `textureId != -1 && textureLoader.isSd(textureId)`.
+    // - Packed texture indices stored in vertices use `createSdTexturePacking(...).textureIds`, which is
+    //   the SD texture id list truncated to the first 2047 entries; ids beyond that still count as "textured"
+    //   for transparency decisions, but pack as -1 in vertex data.
     Span<const i32> textureTransparentIds{};
+    // Ordered list of all SD texture ids (not truncated to 2047). Packed index is `index < 2047 ? index : -1`.
     Span<const i32> textureIds{};
 
     // Optional fallback for dat (classic) seq frames: these do not have stable per-frame
@@ -521,6 +530,81 @@ struct SceneLocCommandGroupKey final {
     i32 contourProfileHash = 0;
 };
 
+// Optional loc-animation tick-state init produced during scene command stream build.
+// This is used by the wasm runtime to register per-map tick state without TS packing.
+//
+// Layout mirrors the tick backend contracts in cpp/tools/rs_map_render_backend.cpp:
+// - Per-loc arrays have length=locCount (entries.size()) and align to animated placeholder order.
+// - Anim frame tables are packed as [offsetBytes, elements, instances] tuples (stride=3) concatenated
+//   by group; per-loc offsets/counts reference into these packed arrays.
+struct SceneLocAnimatedTickInit final {
+    // Per-loc metadata.
+    Vec<i32> locSeqIds{};
+    Vec<i32> locRandomStart{}; // 0/1
+    Vec<i32> locSortKeys{}; // stable ordering key (used for deterministic random start)
+
+    // Per-loc placeholder draw-range indices by bucket (or -1 when absent).
+    Vec<i32> locDrawRangeIndicesBase{};
+    Vec<i32> locDrawRangeIndicesAlpha{};
+    Vec<i32> locDrawRangeIndicesLod{};
+    Vec<i32> locDrawRangeIndicesLodAlpha{};
+    Vec<i32> locDrawRangeIndicesInteract{};
+    Vec<i32> locDrawRangeIndicesInteractAlpha{};
+    Vec<i32> locDrawRangeIndicesInteractLod{};
+    Vec<i32> locDrawRangeIndicesInteractLodAlpha{};
+
+    // Per-loc offsets/counts into packed anim frame tables.
+    Vec<i32> locAnimFrameOffsetsBase{};
+    Vec<i32> locAnimFrameCountsBase{};
+    Vec<i32> locAnimFrameOffsetsAlpha{};
+    Vec<i32> locAnimFrameCountsAlpha{};
+
+    // Packed frame tables (stride=3): [offsetBytes, elements, instances]
+    Vec<i32> locAnimFramesBasePacked{};
+    Vec<i32> locAnimFramesAlphaPacked{};
+
+    Result<void> init(Allocator& alloc) noexcept {
+        locSeqIds = Vec<i32>(alloc);
+        locRandomStart = Vec<i32>(alloc);
+        locSortKeys = Vec<i32>(alloc);
+        locDrawRangeIndicesBase = Vec<i32>(alloc);
+        locDrawRangeIndicesAlpha = Vec<i32>(alloc);
+        locDrawRangeIndicesLod = Vec<i32>(alloc);
+        locDrawRangeIndicesLodAlpha = Vec<i32>(alloc);
+        locDrawRangeIndicesInteract = Vec<i32>(alloc);
+        locDrawRangeIndicesInteractAlpha = Vec<i32>(alloc);
+        locDrawRangeIndicesInteractLod = Vec<i32>(alloc);
+        locDrawRangeIndicesInteractLodAlpha = Vec<i32>(alloc);
+        locAnimFrameOffsetsBase = Vec<i32>(alloc);
+        locAnimFrameCountsBase = Vec<i32>(alloc);
+        locAnimFrameOffsetsAlpha = Vec<i32>(alloc);
+        locAnimFrameCountsAlpha = Vec<i32>(alloc);
+        locAnimFramesBasePacked = Vec<i32>(alloc);
+        locAnimFramesAlphaPacked = Vec<i32>(alloc);
+        return Result<void>::ok();
+    }
+
+    void clear() noexcept {
+        locSeqIds.clear();
+        locRandomStart.clear();
+        locSortKeys.clear();
+        locDrawRangeIndicesBase.clear();
+        locDrawRangeIndicesAlpha.clear();
+        locDrawRangeIndicesLod.clear();
+        locDrawRangeIndicesLodAlpha.clear();
+        locDrawRangeIndicesInteract.clear();
+        locDrawRangeIndicesInteractAlpha.clear();
+        locDrawRangeIndicesInteractLod.clear();
+        locDrawRangeIndicesInteractLodAlpha.clear();
+        locAnimFrameOffsetsBase.clear();
+        locAnimFrameCountsBase.clear();
+        locAnimFrameOffsetsAlpha.clear();
+        locAnimFrameCountsAlpha.clear();
+        locAnimFramesBasePacked.clear();
+        locAnimFramesAlphaPacked.clear();
+    }
+};
+
 bool sceneLocCommandGroupKeysEqual(
     const SceneLocCommandGroupKey& a,
     const SceneLocCommandGroupKey& b) noexcept;
@@ -529,6 +613,13 @@ bool sceneLocCommandGroupKeysEqual(
 Status buildSceneCommandStream(
     const SceneCommandBuildInput& input,
     SceneCommandStream* out,
+    Allocator& alloc = defaultAllocator()) noexcept;
+
+// Builds runtime command stream and also captures loc-animation tick init data (if any).
+Status buildSceneCommandStreamWithLocAnimatedTickInit(
+    const SceneCommandBuildInput& input,
+    SceneCommandStream* out,
+    SceneLocAnimatedTickInit* outTickInit,
     Allocator& alloc = defaultAllocator()) noexcept;
 
 // Builds only scene plan/debug outputs (no vertex/index or command bucket emission).

@@ -159,21 +159,22 @@ inline Status decodeModelDataV3(Span<const u8> data, ModelData* out) noexcept {
         if (!ok(s)) return s;
         s = initRequiredVec(&out->textureMappingN, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleX, static_cast<std::size_t>(complexTextureFaceCount));
+        // TS parity: these arrays are indexed by texture-face index (0..textureFaceCount-1), not compacted.
+        s = initRequiredVec(&out->textureScaleX, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleY, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureScaleY, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleZ, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureScaleZ, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureRotation, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureRotation, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureDirection, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureDirection, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureSpeed, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureSpeed, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureTransU, static_cast<std::size_t>(cubeTextureFaceCount));
+        s = initRequiredVec(&out->textureTransU, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureTransV, static_cast<std::size_t>(cubeTextureFaceCount));
+        s = initRequiredVec(&out->textureTransV, static_cast<std::size_t>(texTriangleCount));
         if (!ok(s)) return s;
     } else {
         clearVec(&out->textureMappingP);
@@ -324,6 +325,9 @@ inline Status decodeModelDataV3(Span<const u8> data, ModelData* out) noexcept {
         complexTextureTranslationOffset,
         out);
     if (!ok(s)) return s;
+
+    // TS parity: clear redundant texture-coord references and drop optional arrays when empty.
+    cleanupLegacyTextureFlags(out, hasFaceTextures == 1, hasFaceRenderTypes == 1);
 
     return Status::Ok;
 }

@@ -23,6 +23,7 @@
 #include "../rs/model/seq/SeqFrameLoaderCommon.hpp"
 #include "../rs/render/MapRenderRuntimeApi.hpp"
 #include "../rs/render/SceneCommandBuilder.hpp"
+#include "../rs/render/SceneCommandBuilderInternal.hpp"
 #include "../rs/render/SceneCommandPack.hpp"
 #include "../rs/scene/SceneBuildStages.hpp"
 #include "MapRenderRuntimeBackendApi.hpp"
@@ -511,6 +512,13 @@ struct MapRenderRuntimeCacheState final {
 
 struct MapRenderRuntimeState {
     std::unordered_map<rs::i32, MapRenderTickState> tickStates;
+    // Tick output scratch (FramePacket-compatible patch stream).
+    // Layout matches src/renderer/packet/FramePacket.ts:
+    // - counts: per-map tuples [mapId, <10 stream counts>] (stride=11)
+    // - patches: concatenated by map, and within each map by stream index [0..9],
+    //   where each patch tuple is [drawRangeIndex, offset, elements, instances] (stride=4).
+    std::vector<rs::i32> tickPatchCountsByMapIdScratch;
+    std::vector<rs::i32> tickPatchPackedScratch;
     rs::tooling::MapRenderLoadedPayloadState mapPayload;
     MapRenderRuntimeCacheState cache;
     MapRenderCachedCommandStream lastBuiltCommandStream;
@@ -1243,10 +1251,33 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
     if (!runtime) {
         return rs::Status::InvalidArgument;
     }
+    // Some resources are not representable as per-id raw bytes in legacy/dat caches:
+    // - Models: legacy caches decode from named-file blobs (domain=5).
+    // - Seq frames: legacy caches decode from named-file blobs (domain=4), dat caches decode from
+    //   frame-map blobs (domain=3).
+    // Avoid recording (domain=100+kind,group=0,file=id) as missing for these cache types, otherwise
+    // the worker/parity upload loop will spin trying to upload unfulfillable entries.
+    if (kind == 3 || kind == 6) {
+        rs::CacheInfo cacheInfo{};
+        cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
+        cacheInfo.revision = runtime->cache.cacheRevision;
+        const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
+        if (kind == 3 && cacheType == rs::CacheType::Legacy) {
+            return rs::Status::NotFound;
+        }
+        if (kind == 6 && (cacheType == rs::CacheType::Legacy || cacheType == rs::CacheType::Dat)) {
+            return rs::Status::NotFound;
+        }
+    }
     // MapRender runtime type-entry convention: domain = 100 + kind, group=0, file=id.
     const rs::i32 domain = 100 + kind;
     const std::vector<rs::u8>* payload = tryGetRuntimeCacheBlobBytes(*runtime, domain, 0, id);
     if (!payload) {
+        // Obj spawns (kind=13) are ephemeral/optional and sourced from the TS worker input list,
+        // not cache bytes. Missing entries should not cause rebuild loops.
+        if (kind == 13) {
+            return rs::Status::NotFound;
+        }
         runtimeRecordMissingBlobKey(
             reinterpret_cast<MapRenderRuntimeState*>(const_cast<MapRenderRuntimeState*>(runtime)),
             domain,
@@ -1258,6 +1289,9 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
     if (payload->empty() &&
         kind != 4 && // textureTransparent presence
         kind != 9) { // textureIds presence
+        if (kind == 13) {
+            return rs::Status::NotFound;
+        }
         runtimeRecordMissingBlobKey(
             reinterpret_cast<MapRenderRuntimeState*>(const_cast<MapRenderRuntimeState*>(runtime)),
             domain,
@@ -1538,7 +1572,8 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     const std::vector<rs::u8>& locBytes,
     const bool planOnly,
     MapRenderCachedCommandStream* outStream,
-    rs::Status* outBuildStatus) {
+    rs::Status* outBuildStatus,
+    rs::SceneLocAnimatedTickInit* outLocTickInit) {
     if (!runtime || !outStream) {
         if (outBuildStatus) {
             *outBuildStatus = rs::Status::InvalidArgument;
@@ -1548,13 +1583,18 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     runtime->debugLastCommandStreamCoreStatus = 0;
     runtime->debugLastMissingTypeKind = 0;
     runtime->debugLastMissingTypeId = -1;
+    runtime->debugLastLegacyModelId = -1;
+    runtime->debugLastLegacyModelStatus = 0;
+    runtime->debugLastLegacyModelMissingFile = -1;
     runtime->lastMissingBlobTriples.clear();
+    if (outLocTickInit) {
+        outLocTickInit->clear();
+    }
     if (outBuildStatus) {
         *outBuildStatus = rs::Status::Ok;
     }
 
     const bool includeLocs = loadLocs != 0;
-    (void)loadObjs;
 
     // Texture id lists are presence-only domains uploaded by TS (empty bytes payloads).
     // We collect keys directly from the blob-store and keep the SceneCommandBuilder API minimal.
@@ -1572,6 +1612,7 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     input.locLoadType = locLoadType;
     input.minimizeDrawCalls = minimizeDrawCalls != 0;
     input.loadLocs = includeLocs;
+    input.loadObjs = loadObjs != 0;
     input.cacheGame = runtime->cache.cacheGame;
     input.cacheRevision = runtime->cache.cacheRevision;
     input.unitsTileHeightBasis = runtime->cache.unitsTileHeightBasis;
@@ -1615,19 +1656,44 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     input.textureIds = rs::Span<const rs::i32>(
         !textureIds.empty() ? textureIds.data() : nullptr,
         textureIds.size());
-    input.datSeqFrameCtx = runtime;
-    input.tryLoadDatSeqFrame = runtimeTryLoadDatSeqFrameFromRuntimeCtx;
-    input.legacySeqFrameCtx = runtime;
-    input.tryLoadLegacySeqFrame = runtimeTryLoadLegacySeqFrameFromRuntimeCtx;
-    input.modelDataCtx = runtime;
-    input.tryLoadModelData = runtimeTryLoadLegacyModelFromRuntimeCtx;
+    rs::CacheInfo cacheInfo{};
+    cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
+    cacheInfo.revision = runtime->cache.cacheRevision;
+    const rs::CacheType cacheType = rs::detectCacheType(cacheInfo);
+
+    // Only enable classic/legacy fallbacks for cache types that need them. For Dat2 caches, all
+    // resources should be satisfied via per-id raw bytes in type-entry domains.
+    if (cacheType == rs::CacheType::Dat) {
+        input.datSeqFrameCtx = runtime;
+        input.tryLoadDatSeqFrame = runtimeTryLoadDatSeqFrameFromRuntimeCtx;
+    } else if (cacheType == rs::CacheType::Legacy) {
+        input.legacySeqFrameCtx = runtime;
+        input.tryLoadLegacySeqFrame = runtimeTryLoadLegacySeqFrameFromRuntimeCtx;
+        input.modelDataCtx = runtime;
+        input.tryLoadModelData = runtimeTryLoadLegacyModelFromRuntimeCtx;
+    }
     input.debugMissingTypeCtx = runtime;
     input.debugRecordMissingType = runtimeRecordMissingTypeFromRuntimeCtx;
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::SceneCommandStream nativeStream{};
-    const rs::Status buildStatus = planOnly
-        ? rs::buildSceneCommandPlanOnly(input, &nativeStream, alloc)
-        : rs::buildSceneCommandStream(input, &nativeStream, alloc);
+    rs::Status buildStatus = rs::Status::Ok;
+    if (planOnly) {
+        buildStatus = rs::buildSceneCommandPlanOnly(input, &nativeStream, alloc);
+    } else if (outLocTickInit) {
+        // Capture loc-animation tick init data during build so the runtime can own tick state.
+        const auto initRes = outLocTickInit->init(alloc);
+        if (!initRes.isOk()) {
+            buildStatus = initRes.status();
+        } else {
+            buildStatus = rs::buildSceneCommandStreamWithLocAnimatedTickInit(
+                input,
+                &nativeStream,
+                outLocTickInit,
+                alloc);
+        }
+    } else {
+        buildStatus = rs::buildSceneCommandStream(input, &nativeStream, alloc);
+    }
     if (!rs::ok(buildStatus)) {
         if (outBuildStatus) {
             *outBuildStatus = buildStatus;
@@ -1939,12 +2005,23 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_get_last_missing_blob_entries_pa
 
     #include "MapRenderRuntimeDebugExports.inl"
 
-    #include "MapRenderRuntimeTickStateSet.inl"
+	    #include "MapRenderRuntimeTickStateSet.inl"
 
-RS_WASM_KEEPALIVE rs::i32 rs_heightmap_from_scene_tile_heights(
-    const rs::i32* tileHeights,
-    rs::i32 levels,
-    rs::i32 sizeX,
+// Query whether a runtime tick state exists for a given key (we use mapId as the key in TS).
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_has_tick_state(
+    const rs::i32 runtimeHandle,
+    const rs::i32 stateKey) {
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime) {
+        return 0;
+    }
+    return runtime->tickStates.find(stateKey) != runtime->tickStates.end() ? 1 : 0;
+}
+
+	RS_WASM_KEEPALIVE rs::i32 rs_heightmap_from_scene_tile_heights(
+	    const rs::i32* tileHeights,
+	    rs::i32 levels,
+	    rs::i32 sizeX,
     rs::i32 sizeY,
     rs::i32 unitsTileHeightBasis,
     rs::i16* outHeightMap,

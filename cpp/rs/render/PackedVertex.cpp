@@ -1,5 +1,7 @@
 #include "PackedVertex.hpp"
 
+#include <cmath>
+
 namespace rs {
 
 namespace {
@@ -16,7 +18,10 @@ static i32 clampI32(i32 value, i32 minValue, i32 maxValue) noexcept {
 
 // Matches `FloatUtil.packFloat11`.
 static i32 packFloat11Js(float v) noexcept {
-    return static_cast<i32>(1024 - static_cast<i32>(v * 64.0f + (v >= 0.0f ? 0.5f : -0.5f)));
+    // TS parity: `Math.round(v * 64)` is `floor(v * 64 + 0.5)` even for negative values.
+    const double scaled = static_cast<double>(v) * 64.0;
+    const double rounded = std::floor(scaled + 0.5);
+    return static_cast<i32>(1024 - static_cast<i32>(rounded));
 }
 
 static Status appendPackedVertexU32(Vec<u8>* outVertices, const PackedVertexU32& v) noexcept {

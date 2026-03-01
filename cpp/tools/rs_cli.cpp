@@ -4224,6 +4224,36 @@ static int cmdModelHashes(int argc, char** argv) {
             writeJsonEscaped(std::cout, std::string(statusErrorClass(st)));
             std::cout << ", \"statusCode\": " << static_cast<int>(st) << " }";
         } else {
+            // Debug helper: inspect raw bytes for a specific model id without changing JSON output.
+            // Usage: `RS_CLI_DEBUG_MODEL_ID=53832 ./cpp/build/rs_cli model_hashes ...`
+            if (const char* dbg = std::getenv("RS_CLI_DEBUG_MODEL_ID")) {
+                const int dbgId = std::atoi(dbg);
+                if (dbgId == id && session.modelLoaders.modelKind == rs::ModelLoaders::ModelKind::Index) {
+                    rs::Vec<rs::u8> raw(alloc);
+                    const rs::Status bs = session.modelLoaders.modelBytes.tryGetBytes(
+                        static_cast<rs::i32>(id),
+                        &raw,
+                        alloc);
+                    if (rs::ok(bs) && raw.size() >= 2) {
+                        const rs::u8 b2 = raw[raw.size() - 2];
+                        const rs::u8 b1 = raw[raw.size() - 1];
+                        std::cerr << "[rs_cli][debug] model id=" << id
+                                  << " rawLen=" << raw.size()
+                                  << " tail8=";
+                        const std::size_t start = raw.size() >= 8 ? raw.size() - 8 : 0;
+                        for (std::size_t bi = start; bi < raw.size(); bi++) {
+                            std::cerr << std::hex << std::setw(2) << std::setfill('0')
+                                      << static_cast<unsigned>(raw[bi]) << (bi + 1 < raw.size() ? " " : "");
+                        }
+                        std::cerr << std::dec << " b2=" << static_cast<unsigned>(b2)
+                                  << " b1=" << static_cast<unsigned>(b1) << "\n";
+                    } else {
+                        std::cerr << "[rs_cli][debug] model id=" << id
+                                  << " failed to load raw bytes status=" << statusName(bs) << "\n";
+                    }
+                }
+            }
+
             const ModelHashParts parts = hashModelDataParts(model);
             const rs::u32 hash = hashModelData(model);
             std::cout << R"(, "ok": true, "hash": )" << static_cast<rs::i32>(hash)

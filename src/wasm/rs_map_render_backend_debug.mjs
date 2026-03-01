@@ -2,7 +2,16 @@
 //
 // This module intentionally contains the debug-only JS glue so runtime imports do not
 // pull debug code into the app bundle.
-
+//
+// Parity scripts can opt into the debug wasm build by setting:
+//   `RS_MAP_RENDER_WASM_EXPORT_PROFILE=debug`
+// and building the debug wasm target:
+//   `npm run -s rs:cpp-map-render-wasm-debug`
+//
+// The debug wasm build is written to `src/wasm/rs_map_render_backend_debug.js/.wasm`.
+//
+// We intentionally reuse the main bridge loader so scripts and debug helpers share the same
+// wasm module instance (otherwise runtime handles would not be valid across modules).
 import { tryLoadBackendModule } from "./rs_map_render_backend_bridge.mjs";
 
 export { tryLoadBackendModule };
@@ -134,8 +143,16 @@ function getRuntimeDebugGetModelFacesDigestExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_model_faces_digest;
 }
 
+function getRuntimeDebugGetLocClassicAnimFrameFacesDigestExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_loc_classic_anim_frame_faces_digest;
+}
+
 function getRuntimeDebugGetModelVerticesDigestExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_model_vertices_digest;
+}
+
+function getRuntimeDebugGetLocVariantModelVerticesDigestExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_loc_variant_model_vertices_digest;
 }
 
 function getRuntimeDebugGetModelVerticesSampleExport(backendModule) {
@@ -144,6 +161,10 @@ function getRuntimeDebugGetModelVerticesSampleExport(backendModule) {
 
 function getRuntimeDebugGetModelVerticesSampleRangeExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_model_vertices_sample_range;
+}
+
+function getRuntimeDebugGetModelTextureFaceParamsExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_model_texture_face_params;
 }
 
 function getRuntimeDebugGetLocModelVerticesSampleExport(backendModule) {
@@ -616,16 +637,16 @@ export function runtimeDebugDecodeLocTypeWithWasm(backendModule, runtimeHandle, 
         return undefined;
     }
     // Keep in sync with RS_MAP_RENDER_DEBUG_LOC_TYPE_FIELDS in cpp/tools/rs_map_render_backend.cpp
-    const outPtr = mallocI32(backendModule, 34);
+    const outPtr = mallocI32(backendModule, 56);
     if (!outPtr) {
         return undefined;
     }
     try {
-        const status = decode(runtimeHandle | 0, locTypeId | 0, outPtr, 34) | 0;
+        const status = decode(runtimeHandle | 0, locTypeId | 0, outPtr, 56) | 0;
         if (status !== RUNTIME_STATUS_OK) {
             return undefined;
         }
-        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 34);
+        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 56);
         return {
             id: a[0] | 0,
             resolvedId: a[1] | 0,
@@ -661,6 +682,28 @@ export function runtimeDebugDecodeLocTypeWithWasm(backendModule, runtimeHandle, 
             contrast: a[31] | 0,
             resolvedAmbient: a[32] | 0,
             resolvedContrast: a[33] | 0,
+            isRotated: (a[34] | 0) !== 0,
+            resolvedIsRotated: (a[35] | 0) !== 0,
+            clipped: (a[36] | 0) !== 0,
+            resolvedClipped: (a[37] | 0) !== 0,
+            sizeX: a[38] | 0,
+            sizeY: a[39] | 0,
+            resolvedSizeX: a[40] | 0,
+            resolvedSizeY: a[41] | 0,
+            modelSizeX: a[42] | 0,
+            modelSizeHeight: a[43] | 0,
+            modelSizeY: a[44] | 0,
+            resolvedModelSizeX: a[45] | 0,
+            resolvedModelSizeHeight: a[46] | 0,
+            resolvedModelSizeY: a[47] | 0,
+            offsetX: a[48] | 0,
+            offsetHeight: a[49] | 0,
+            offsetY: a[50] | 0,
+            resolvedOffsetX: a[51] | 0,
+            resolvedOffsetHeight: a[52] | 0,
+            resolvedOffsetY: a[53] | 0,
+            seqId: a[54] | 0,
+            resolvedSeqId: a[55] | 0,
         };
     } finally {
         backendModule._free(outPtr);
@@ -1167,8 +1210,15 @@ export function runtimeDebugGetModelFacesDigestWithWasm(backendModule, runtimeHa
     }
 }
 
-export function runtimeDebugGetModelVerticesDigestWithWasm(backendModule, runtimeHandle, modelId) {
-    const getDigest = getRuntimeDebugGetModelVerticesDigestExport(backendModule);
+export function runtimeDebugGetLocClassicAnimFrameFacesDigestWithWasm(
+    backendModule,
+    runtimeHandle,
+    locTypeId,
+    placementType,
+    rotation,
+    frameId,
+) {
+    const getDigest = getRuntimeDebugGetLocClassicAnimFrameFacesDigestExport(backendModule);
     if (typeof getDigest !== "function") {
         return undefined;
     }
@@ -1177,7 +1227,81 @@ export function runtimeDebugGetModelVerticesDigestWithWasm(backendModule, runtim
         return undefined;
     }
     try {
-        const status = getDigest(runtimeHandle | 0, modelId | 0, outPtr, 4) | 0;
+        const status = getDigest(
+            runtimeHandle | 0,
+            locTypeId | 0,
+            placementType | 0,
+            rotation | 0,
+            frameId | 0,
+            outPtr,
+            4,
+        );
+        if ((status | 0) !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 4);
+        return {
+            faceCount: a[0] | 0,
+            opaqueCount: a[1] | 0,
+            transparentCount: a[2] | 0,
+            hash: a[3] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+export function runtimeDebugGetModelVerticesDigestWithWasm(backendModule, runtimeHandle, modelId) {
+    const getDigest = getRuntimeDebugGetModelVerticesDigestExport(backendModule);
+    if (typeof getDigest !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 5);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = getDigest(runtimeHandle | 0, modelId | 0, outPtr, 5) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 5);
+        return {
+            verticesCount: a[0] | 0,
+            usedVertexCount: a[1] | 0,
+            faceCount: a[2] | 0,
+            hash: a[3] | 0,
+            textureFaceCount: a[4] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+export function runtimeDebugGetLocVariantModelVerticesDigestWithWasm(
+    backendModule,
+    runtimeHandle,
+    locTypeId,
+    placementType,
+    rotation,
+) {
+    const getDigest = getRuntimeDebugGetLocVariantModelVerticesDigestExport(backendModule);
+    if (typeof getDigest !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 4);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = getDigest(
+            runtimeHandle | 0,
+            locTypeId | 0,
+            placementType | 0,
+            rotation | 0,
+            outPtr,
+            4,
+        ) | 0;
         if (status !== RUNTIME_STATUS_OK) {
             return undefined;
         }
@@ -1257,6 +1381,39 @@ export function runtimeDebugGetModelVerticesSampleRangeWithWasm(
             xyz[i] = a[5 + i] | 0;
         }
         return { version, verticesCount, usedVertexCount, faceCount, written: clampWritten, xyz };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+export function runtimeDebugGetModelTextureFaceParamsWithWasm(
+    backendModule,
+    runtimeHandle,
+    modelId,
+    texFaceIndex,
+) {
+    const getParams = getRuntimeDebugGetModelTextureFaceParamsExport(backendModule);
+    if (typeof getParams !== "function") {
+        return undefined;
+    }
+    const LEN = 16;
+    const outPtr = mallocI32(backendModule, LEN);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = getParams(
+            runtimeHandle | 0,
+            modelId | 0,
+            texFaceIndex | 0,
+            outPtr,
+            LEN,
+        ) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + LEN);
+        return new Int32Array(a);
     } finally {
         backendModule._free(outPtr);
     }

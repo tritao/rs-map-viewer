@@ -53,8 +53,11 @@ inline Status decodeModelDataV1(Span<const u8> data, ModelData* out) noexcept {
 
     i32 version = 1;
     if (hasVersion) {
-        if (data.size() < 30) return Status::BadFormat;
-        Uint8ArrayReader versionReader(data, data.size() - 30);
+        // TS parity: in decodeV1, `buf1.offset` starts at (len - 23) and after reading
+        // vertexCount/faceCount/texFaceCount/flags it is at (len - 17); then it does `offset -= 7`,
+        // so the version byte is at (len - 24).
+        if (data.size() < 24) return Status::BadFormat;
+        Uint8ArrayReader versionReader(data, data.size() - 24);
         u8 v = 0;
         s = versionReader.readUnsignedByte(&v);
         if (!ok(s)) return s;
@@ -160,21 +163,22 @@ inline Status decodeModelDataV1(Span<const u8> data, ModelData* out) noexcept {
         if (!ok(s)) return s;
         s = initRequiredVec(&out->textureMappingN, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleX, static_cast<std::size_t>(complexTextureFaceCount));
+        // TS parity: these arrays are indexed by texture-face index (0..textureFaceCount-1), not compacted.
+        s = initRequiredVec(&out->textureScaleX, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleY, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureScaleY, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleZ, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureScaleZ, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureRotation, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureRotation, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureDirection, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureDirection, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureSpeed, static_cast<std::size_t>(complexTextureFaceCount));
+        s = initRequiredVec(&out->textureSpeed, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureTransU, static_cast<std::size_t>(cubeTextureFaceCount));
+        s = initRequiredVec(&out->textureTransU, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureTransV, static_cast<std::size_t>(cubeTextureFaceCount));
+        s = initRequiredVec(&out->textureTransV, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
     } else {
         clearVec(&out->textureMappingP);
@@ -305,7 +309,7 @@ inline Status decodeModelDataV1(Span<const u8> data, ModelData* out) noexcept {
     if (!ok(s)) return s;
 
     if (version >= 13) {
-        scaleDownVertices(out, 2);
+        out->scaleDown(2);
     }
     return Status::Ok;
 }

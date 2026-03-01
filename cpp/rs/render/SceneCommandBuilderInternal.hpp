@@ -19,6 +19,8 @@ struct LocPlacement;
 struct VarBitType;
 struct SeqType;
 struct ModelData;
+struct SeqBase;
+struct SeqFrame;
 struct ModelFaceStats final {
     i32 opaqueElements = 0;
     i32 alphaElements = 0;
@@ -54,6 +56,24 @@ static inline Status tryGetTypeEntryBytesSpan(
     }
     return input.tryGetTypeEntryBytes(input.typeEntryBytesCtx, kind, id, out);
 }
+
+// Loc animation helpers (classic seq frames) shared between build and debug tooling.
+// Implemented in `LocEmit.cpp`.
+Status tryDecodeBridgeSeqFrameFromBlob(
+    const SceneCommandBuildInput& input,
+    i32 frameId,
+    SeqBase* outBase,
+    SeqFrame* outFrame,
+    Allocator& alloc) noexcept;
+
+// Apply a classic seq frame to a decoded model, matching TS `transformModel` semantics used for
+// loc animated frames. This applies the frame transform ops; callers handle any rotation/diagonal
+// rotation steps around it.
+Status applyClassicSeqFrameToModelDataTS(
+    ModelData* model,
+    const SeqBase& base,
+    const SeqFrame& frame,
+    Allocator& alloc) noexcept;
 
 // TS animated-loc grouping. These are planned during loc planning, but their frame geometry is appended
 // after all static scene geometry (locs + objs) so animated frame ranges match TS buffer layout.
@@ -572,6 +592,7 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
     i32* indexCount,
     DecodedLocTypeCache* locTypeCache,
     DecodedSeqTypeCache* seqTypeCache,
+    SceneLocAnimatedTickInit* outTickInit,
     Allocator& alloc) noexcept;
 
 Status appendLocPlanOpsFromMapLocBytes(

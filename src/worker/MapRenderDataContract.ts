@@ -211,6 +211,17 @@ export function runtimePacketToPayloadOverlay(
     return buildOverlayFromRuntimePacket(packet);
 }
 
+export function runtimePacketToPayloadOverlayDiagnostic(
+    packet: MapRenderRuntimePacket | undefined,
+): Readonly<{ overlay?: MapRenderPayloadOverlay; failure?: RuntimePacketOverlayFailure }> {
+    if (!packet) {
+        return { overlay: undefined, failure: { reason: "packet_missing" } };
+    }
+    const out: { value?: RuntimePacketOverlayFailure } = {};
+    const overlay = buildOverlayFromRuntimePacket(packet, out);
+    return { overlay, failure: out.value };
+}
+
 export function sdMapDataTransferables(data: SdMapData): Transferable[] {
     const loadedTextureBuffers = Array.from(data.loadedTextures.values()).map(
         (pixels) => pixels.buffer as Transferable,

@@ -387,7 +387,7 @@ static void applyBridgeSeqFrameToModelClassic(
     }
 }
 
-static Status tryDecodeBridgeSeqFrameFromBlob(
+Status tryDecodeBridgeSeqFrameFromBlob(
     const SceneCommandBuildInput& input,
     i32 frameId,
     SeqBase* outBase,
@@ -459,6 +459,23 @@ static Status tryDecodeBridgeSeqFrameFromBlob(
     return decodeStatus;
 }
 
+Status applyClassicSeqFrameToModelDataTS(
+    ModelData* model,
+    const SeqBase& base,
+    const SeqFrame& frame,
+    Allocator& alloc) noexcept {
+    if (!model) {
+        return Status::InvalidArgument;
+    }
+    AnimLabelTables labelTables(alloc);
+    const Status ls = buildAnimLabelTables(*model, &labelTables, alloc);
+    if (!ok(ls)) {
+        return ls;
+    }
+    applyBridgeSeqFrameToModelClassic(model, labelTables, base, frame);
+    return Status::Ok;
+}
+
 static Status tryDecodeSeqBaseFromBlob(
     const SceneCommandBuildInput& input,
     i32 baseId,
@@ -515,18 +532,37 @@ static bool modelHasTransparentFacesForAnimatedFrameTs(
         }
 
         // TS `getModelFaces` skips faces where lit faceColors3 == -2.
-        // In the source ModelData this corresponds to raw alpha sentinel -1 (renderType=2).
+        // In the source ModelData this corresponds to raw alpha sentinel -2.
         i32 rawAlphaSigned = 0;
         if (model.hasFaceAlphas && fi >= 0 && fi < static_cast<i32>(model.faceAlphas.size())) {
             rawAlphaSigned = static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]);
         }
-        if (rawAlphaSigned == -1) {
+        if (rawAlphaSigned == -2) {
             continue;
         }
 
         i32 textureId = -1;
         if (model.hasFaceTextures && fi >= 0 && fi < static_cast<i32>(model.faceTextures.size())) {
             textureId = static_cast<i32>(model.faceTextures[static_cast<std::size_t>(fi)]);
+        }
+
+        // TS parity: `getModelFaces` filters out non-drawable faces based on renderType and texture.
+        // This matters for `framesAlpha` because "transparent" is computed over drawable faces only.
+        i32 renderType = 0;
+        const bool hasRenderTypes =
+            model.hasFaceRenderTypes && fi >= 0 && fi < static_cast<i32>(model.faceRenderTypes.size());
+        if (hasRenderTypes) {
+            renderType = static_cast<i32>(model.faceRenderTypes[static_cast<std::size_t>(fi)]) & 0xff;
+        }
+        bool drawable = false;
+        if (hasRenderTypes) {
+            drawable = (renderType == 0) || (renderType == 1 && textureId != -1);
+        } else {
+            // When the renderTypes array is absent, TS treats types 0/1 as drawable.
+            drawable = (renderType == 0) || (renderType == 1);
+        }
+        if (!drawable) {
+            continue;
         }
 
         i32 alpha = 0xff;
@@ -949,6 +985,11 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
     i32* indexCount,
     DecodedLocTypeCache* locTypeCache,
     DecodedSeqTypeCache* seqTypeCache,
+    SceneLocAnimatedTickInit* outTickInit,
+    Vec<i32>* outGroupFrameOffsetsBase,
+    Vec<i32>* outGroupFrameCountsBase,
+    Vec<i32>* outGroupFrameOffsetsAlpha,
+    Vec<i32>* outGroupFrameCountsAlpha,
     Vec<u8>* outGroupHasAlpha,
     Allocator& alloc) noexcept;
 
@@ -993,7 +1034,8 @@ static Status executeLocMergeBuckets(
 
 static Status emitLocAnimatedPlaceholders(
     Span<const LocAnimatedPlaceholder> entries,
-    SceneBuffer* buffer) noexcept;
+    SceneBuffer* buffer,
+    SceneLocAnimatedTickInit* outTickInit) noexcept;
 
 static void computeLocScenePosition(
     const LocType& locType,
@@ -2218,7 +2260,8 @@ static Status executeLocMergeBuckets(
 
 static Status emitLocAnimatedPlaceholders(
     Span<const LocAnimatedPlaceholder> entries,
-    SceneBuffer* buffer) noexcept {
+    SceneBuffer* buffer,
+    SceneLocAnimatedTickInit* outTickInit) noexcept {
     if (!buffer) {
         return Status::InvalidArgument;
     }
@@ -2244,6 +2287,7 @@ static Status emitLocAnimatedPlaceholders(
             1,
             4);
 
+        const i32 drawIndexBase = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::Base) : 0;
         Status as = buffer->emitCommandToBucket(
             DrawBucketKey::Base,
             0,
@@ -2253,7 +2297,11 @@ static Status emitLocAnimatedPlaceholders(
         if (!ok(as)) {
             return as;
         }
+        if (outTickInit && ai < outTickInit->locDrawRangeIndicesBase.size()) {
+            outTickInit->locDrawRangeIndicesBase[ai] = drawIndexBase;
+        }
         if (animated.hasAlpha) {
+            const i32 drawIndexAlpha = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::Alpha) : 0;
             as = buffer->emitCommandToBucket(
                 DrawBucketKey::Alpha,
                 0,
@@ -2263,9 +2311,13 @@ static Status emitLocAnimatedPlaceholders(
             if (!ok(as)) {
                 return as;
             }
+            if (outTickInit && ai < outTickInit->locDrawRangeIndicesAlpha.size()) {
+                outTickInit->locDrawRangeIndicesAlpha[ai] = drawIndexAlpha;
+            }
         }
 
         if (animated.includeLod) {
+            const i32 drawIndexLod = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::Lod) : 0;
             as = buffer->emitCommandToBucket(
                 DrawBucketKey::Lod,
                 0,
@@ -2275,7 +2327,11 @@ static Status emitLocAnimatedPlaceholders(
             if (!ok(as)) {
                 return as;
             }
+            if (outTickInit && ai < outTickInit->locDrawRangeIndicesLod.size()) {
+                outTickInit->locDrawRangeIndicesLod[ai] = drawIndexLod;
+            }
             if (animated.hasAlpha) {
+                const i32 drawIndexLodAlpha = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::LodAlpha) : 0;
                 as = buffer->emitCommandToBucket(
                     DrawBucketKey::LodAlpha,
                     0,
@@ -2285,9 +2341,13 @@ static Status emitLocAnimatedPlaceholders(
                 if (!ok(as)) {
                     return as;
                 }
+                if (outTickInit && ai < outTickInit->locDrawRangeIndicesLodAlpha.size()) {
+                    outTickInit->locDrawRangeIndicesLodAlpha[ai] = drawIndexLodAlpha;
+                }
             }
         }
 
+        const i32 drawIndexInteract = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::Interact) : 0;
         as = buffer->emitCommandToBucket(
             DrawBucketKey::Interact,
             0,
@@ -2297,7 +2357,11 @@ static Status emitLocAnimatedPlaceholders(
         if (!ok(as)) {
             return as;
         }
+        if (outTickInit && ai < outTickInit->locDrawRangeIndicesInteract.size()) {
+            outTickInit->locDrawRangeIndicesInteract[ai] = drawIndexInteract;
+        }
         if (animated.hasAlpha) {
+            const i32 drawIndexInteractAlpha = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::InteractAlpha) : 0;
             as = buffer->emitCommandToBucket(
                 DrawBucketKey::InteractAlpha,
                 0,
@@ -2307,9 +2371,13 @@ static Status emitLocAnimatedPlaceholders(
             if (!ok(as)) {
                 return as;
             }
+            if (outTickInit && ai < outTickInit->locDrawRangeIndicesInteractAlpha.size()) {
+                outTickInit->locDrawRangeIndicesInteractAlpha[ai] = drawIndexInteractAlpha;
+            }
         }
 
         if (animated.includeLod) {
+            const i32 drawIndexInteractLod = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::InteractLod) : 0;
             as = buffer->emitCommandToBucket(
                 DrawBucketKey::InteractLod,
                 0,
@@ -2319,7 +2387,11 @@ static Status emitLocAnimatedPlaceholders(
             if (!ok(as)) {
                 return as;
             }
+            if (outTickInit && ai < outTickInit->locDrawRangeIndicesInteractLod.size()) {
+                outTickInit->locDrawRangeIndicesInteractLod[ai] = drawIndexInteractLod;
+            }
             if (animated.hasAlpha) {
+                const i32 drawIndexInteractLodAlpha = outTickInit ? buffer->bucketCommandCount(DrawBucketKey::InteractLodAlpha) : 0;
                 as = buffer->emitCommandToBucket(
                     DrawBucketKey::InteractLodAlpha,
                     0,
@@ -2328,6 +2400,9 @@ static Status emitLocAnimatedPlaceholders(
                     &animatedAlphaProvenance);
                 if (!ok(as)) {
                     return as;
+                }
+                if (outTickInit && ai < outTickInit->locDrawRangeIndicesInteractLodAlpha.size()) {
+                    outTickInit->locDrawRangeIndicesInteractLodAlpha[ai] = drawIndexInteractLodAlpha;
                 }
             }
         }
@@ -3667,7 +3742,7 @@ static Status planLocCommandsFromMapLocBytes(
                     // TS parity: ModelData.light() filters faceTextures to SD-only (otherwise texture=-1).
                     const bool hasTexture =
                         textureId != -1 &&
-                        mapTextureIdToPackedIndex(input.textureIds, textureId) >= 0;
+                        findTypeBlobIndex(input.textureIds, textureId) >= 0;
 
                     i32 alpha = 0xff;
                     if (!hasTexture &&
@@ -4959,6 +5034,11 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
     i32* indexCount,
     DecodedLocTypeCache* locTypeCache,
     DecodedSeqTypeCache* seqTypeCache,
+    SceneLocAnimatedTickInit* outTickInit,
+    Vec<i32>* outGroupFrameOffsetsBase,
+    Vec<i32>* outGroupFrameCountsBase,
+    Vec<i32>* outGroupFrameOffsetsAlpha,
+    Vec<i32>* outGroupFrameCountsAlpha,
     Vec<u8>* outGroupHasAlpha,
     Allocator& alloc) noexcept {
     if (!buffer || !indexCount || !locTypeCache || !seqTypeCache) {
@@ -4966,6 +5046,27 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
     }
     if (groups.empty()) {
         return Status::Ok;
+    }
+
+    if (outGroupFrameOffsetsBase) {
+        auto rr = outGroupFrameOffsetsBase->resize(groups.size());
+        if (!rr.isOk()) return rr.status();
+        for (std::size_t i = 0; i < outGroupFrameOffsetsBase->size(); i++) (*outGroupFrameOffsetsBase)[i] = -1;
+    }
+    if (outGroupFrameCountsBase) {
+        auto rr = outGroupFrameCountsBase->resize(groups.size());
+        if (!rr.isOk()) return rr.status();
+        for (std::size_t i = 0; i < outGroupFrameCountsBase->size(); i++) (*outGroupFrameCountsBase)[i] = 0;
+    }
+    if (outGroupFrameOffsetsAlpha) {
+        auto rr = outGroupFrameOffsetsAlpha->resize(groups.size());
+        if (!rr.isOk()) return rr.status();
+        for (std::size_t i = 0; i < outGroupFrameOffsetsAlpha->size(); i++) (*outGroupFrameOffsetsAlpha)[i] = -1;
+    }
+    if (outGroupFrameCountsAlpha) {
+        auto rr = outGroupFrameCountsAlpha->resize(groups.size());
+        if (!rr.isOk()) return rr.status();
+        for (std::size_t i = 0; i < outGroupFrameCountsAlpha->size(); i++) (*outGroupFrameCountsAlpha)[i] = 0;
     }
 
     if (outGroupHasAlpha) {
@@ -4980,13 +5081,25 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
 
     Vec<i32> modelIds(alloc);
 
+    const auto pushAnimFrame = [&](Vec<i32>* packed, i32 offsetBytes, i32 elements, i32 instances) noexcept -> Status {
+        if (!packed) {
+            return Status::Ok;
+        }
+        auto rr0 = packed->pushBack(offsetBytes);
+        if (!rr0.isOk()) return rr0.status();
+        auto rr1 = packed->pushBack(elements);
+        if (!rr1.isOk()) return rr1.status();
+        auto rr2 = packed->pushBack(instances);
+        if (!rr2.isOk()) return rr2.status();
+        return Status::Ok;
+    };
+
     for (std::size_t gi = 0; gi < groups.size(); gi++) {
         const LocAnimatedGroupPlan& g = groups[gi];
         bool groupHasAlpha = false;
-        bool seqHintHasAlpha = false;
-        if (g.seqId >= 0 && tryGetSeqAlphaHintFromBlob(input, g.seqId, &seqHintHasAlpha) && seqHintHasAlpha) {
-            groupHasAlpha = true;
-        }
+        // TS parity: alpha placeholder buckets (`framesAlpha`) are enabled only when transparent
+        // geometry is actually emitted for at least one frame (i.e. `addModelAnimFrame(..., true)`
+        // returns elements > 0). Do not use seq alpha-hints as a proxy signal here.
         if (g.seqId < 0 || g.locTypeId < 0) {
             if (outGroupHasAlpha && groupHasAlpha) {
                 (*outGroupHasAlpha)[gi] = 1;
@@ -5031,11 +5144,18 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
         placement.rotation = g.rotation;
         placement.level = 0;
 
+        const i32 groupBaseOffset =
+            outTickInit ? static_cast<i32>(outTickInit->locAnimFramesBasePacked.size()) : -1;
+        const i32 groupAlphaOffset =
+            outTickInit ? static_cast<i32>(outTickInit->locAnimFramesAlphaPacked.size()) : -1;
+        i32 groupFrameCount = 0;
+
         if (seq->animMayaId >= 0) {
             const i32 duration = seq->animMayaEnd - seq->animMayaStart;
             if (duration <= 0) {
                 continue;
             }
+            groupFrameCount = duration;
 
             SkeletalSeq skeletalSeq(alloc);
             SeqBase seqBase(-1, alloc);
@@ -5050,6 +5170,7 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
             }
 
             for (i32 frame = 0; frame < duration; frame++) {
+                bool haveModel = true;
                 // TS LocModelLoader.getLocModelData merges all variant models *before* lighting/animation.
                 ModelData model(alloc);
                 if (modelIds.size() == 1) {
@@ -5063,7 +5184,7 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                         /*applyDiagonalNormalVariantRotation=*/false,
                         alloc);
                     if (!ok(ms)) {
-                        continue;
+                        haveModel = false;
                     }
                 } else {
                     Vec<ModelData> parts(alloc);
@@ -5093,21 +5214,36 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                         }
                     }
                     if (!okAll) {
-                        continue;
+                        haveModel = false;
                     }
-                    const Status ms = mergeModelDataTS(
-                        Span<const ModelData>(parts.data(), parts.size()),
-                        static_cast<i32>(parts.size()),
-                        &model,
-                        alloc);
-                    if (!ok(ms)) {
-                        continue;
+                    if (haveModel) {
+                        const Status ms = mergeModelDataTS(
+                            Span<const ModelData>(parts.data(), parts.size()),
+                            static_cast<i32>(parts.size()),
+                            &model,
+                            alloc);
+                        if (!ok(ms)) {
+                            haveModel = false;
+                        }
                     }
+                }
+
+                if (!haveModel) {
+                    // TS parity: missing model decodes become NULL_DRAW_RANGE for both passes.
+                    Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                    if (!ok(ps)) return ps;
+                    ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                    if (!ok(ps)) return ps;
+                    continue;
                 }
 
                 ModelFaceLightingState lighting(alloc);
                 const Status ls = initModelFaceLightingState(model, &lighting, alloc);
                 if (!ok(ls)) {
+                    Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                    if (!ok(ps)) return ps;
+                    ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                    if (!ok(ps)) return ps;
                     continue;
                 }
 
@@ -5125,6 +5261,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
 
                 const Status as = applySkeletalToModel(&model, seqBase, skeletalSeq, frame, alloc);
                 if (!ok(as)) {
+                    Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                    if (!ok(ps)) return ps;
+                    ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                    if (!ok(ps)) return ps;
                     continue;
                 }
 
@@ -5137,13 +5277,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     model.rotate(256);
                 }
 
-                if (modelHasTransparentFacesForAnimatedFrameTs(input, model)) {
-                    groupHasAlpha = true;
-                }
-
                 // Opaque then alpha, matching TS addModelAnimFrame(false/true).
                 for (int pass = 0; pass < 2; pass++) {
                     const bool transparentOnly = (pass == 1);
+                    const i32 offsetBytes = buffer->indexByteOffset();
                     i32 generatedElements = 0;
                     const Status gs = appendLocPlacementGeometryFromDecodedModelWithLightingState(
                         input,
@@ -5169,21 +5306,35 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     }
                     *indexCount += generatedElements;
                     if (transparentOnly && generatedElements > 0) {
-                        // TS `addModelAnimFrame(..., true)` treats any non-zero transparent frame
-                        // geometry as an alpha animation stream for placeholder buckets.
+                        // TS parity: `framesAlpha` exists iff any alpha pass returns elements > 0.
                         groupHasAlpha = true;
                     }
+                    const i32 instances = 1;
+                    Status ps = pushAnimFrame(
+                        outTickInit
+                            ? (transparentOnly ? &outTickInit->locAnimFramesAlphaPacked
+                                               : &outTickInit->locAnimFramesBasePacked)
+                            : nullptr,
+                        offsetBytes,
+                        generatedElements,
+                        instances);
+                    if (!ok(ps)) return ps;
                 }
             }
             if (outGroupHasAlpha && groupHasAlpha) {
                 (*outGroupHasAlpha)[gi] = 1;
             }
+            if (outGroupFrameOffsetsBase) (*outGroupFrameOffsetsBase)[gi] = groupBaseOffset;
+            if (outGroupFrameCountsBase) (*outGroupFrameCountsBase)[gi] = groupFrameCount;
+            if (outGroupFrameOffsetsAlpha) (*outGroupFrameOffsetsAlpha)[gi] = groupAlphaOffset;
+            if (outGroupFrameCountsAlpha) (*outGroupFrameCountsAlpha)[gi] = groupFrameCount;
             continue;
         }
 
         if (seq->frameIds.empty()) {
             continue;
         }
+        groupFrameCount = static_cast<i32>(seq->frameIds.size());
 
         for (std::size_t fi = 0; fi < seq->frameIds.size(); fi++) {
             const i32 frameId = seq->frameIds[fi];
@@ -5191,10 +5342,16 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
             SeqFrame frame(alloc);
             const Status fs = tryDecodeBridgeSeqFrameFromBlob(input, frameId, &frameBase, &frame, alloc);
             if (!ok(fs)) {
+                // TS parity: missing frame/model decode becomes NULL_DRAW_RANGE.
+                Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
+                ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
                 continue;
             }
 
             // TS LocModelLoader.getLocModelData merges all variant models *before* lighting/animation.
+            bool haveModel = true;
             ModelData model(alloc);
             if (modelIds.size() == 1) {
                 const Status ms = decodeLocModelFromBlobForPlacement(
@@ -5207,7 +5364,7 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     /*applyDiagonalNormalVariantRotation=*/false,
                     alloc);
                 if (!ok(ms)) {
-                    continue;
+                    haveModel = false;
                 }
             } else {
                 Vec<ModelData> parts(alloc);
@@ -5237,16 +5394,26 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                     }
                 }
                 if (!okAll) {
-                    continue;
+                    haveModel = false;
                 }
-                const Status ms = mergeModelDataTS(
-                    Span<const ModelData>(parts.data(), parts.size()),
-                    static_cast<i32>(parts.size()),
-                    &model,
-                    alloc);
-                if (!ok(ms)) {
-                    continue;
+                if (haveModel) {
+                    const Status ms = mergeModelDataTS(
+                        Span<const ModelData>(parts.data(), parts.size()),
+                        static_cast<i32>(parts.size()),
+                        &model,
+                        alloc);
+                    if (!ok(ms)) {
+                        haveModel = false;
+                    }
                 }
+            }
+
+            if (!haveModel) {
+                Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
+                ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
+                continue;
             }
 
             // Classic animation uses vertex labels for transform ops and face labels for alpha ops.
@@ -5254,6 +5421,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
             AnimLabelTables labelTables(alloc);
             const Status lts2 = buildAnimLabelTables(model, &labelTables, alloc);
             if (!ok(lts2)) {
+                Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
+                ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
                 continue;
             }
 
@@ -5267,6 +5438,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
             ModelFaceLightingState lighting(alloc);
             const Status ls = initModelFaceLightingState(model, &lighting, alloc);
             if (!ok(ls)) {
+                Status ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesBasePacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
+                ps = pushAnimFrame(outTickInit ? &outTickInit->locAnimFramesAlphaPacked : nullptr, 0, 0, 0);
+                if (!ok(ps)) return ps;
                 continue;
             }
 
@@ -5286,13 +5461,10 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                 model.rotate(256);
             }
 
-            if (modelHasTransparentFacesForAnimatedFrameTs(input, model)) {
-                groupHasAlpha = true;
-            }
-
             // Opaque then alpha, matching TS addModelAnimFrame(false/true).
             for (int pass = 0; pass < 2; pass++) {
                 const bool transparentOnly = (pass == 1);
+                const i32 offsetBytes = buffer->indexByteOffset();
                 i32 generatedElements = 0;
                 const Status gs = appendLocPlacementGeometryFromDecodedModelWithLightingState(
                     input,
@@ -5318,32 +5490,28 @@ static Status appendAnimatedLocFrameGeometryFromPlan(
                 }
                 *indexCount += generatedElements;
                 if (transparentOnly && generatedElements > 0) {
-                    // TS `addModelAnimFrame(..., true)` treats any non-zero transparent frame
-                    // geometry as an alpha animation stream for placeholder buckets.
+                    // TS parity: `framesAlpha` exists iff any alpha pass returns elements > 0.
                     groupHasAlpha = true;
                 }
-            }
-        }
-        if (!groupHasAlpha) {
-            // If emitted transparent geometry is absent, still mirror TS `framesAlpha` behavior by
-            // checking per-frame alpha transforms directly.
-            for (std::size_t fi = 0; fi < seq->frameIds.size(); fi++) {
-                const i32 frameId = seq->frameIds[fi];
-                SeqBase frameBase(-1, alloc);
-                SeqFrame frame(alloc);
-                const Status fs = tryDecodeBridgeSeqFrameFromBlob(input, frameId, &frameBase, &frame, alloc);
-                if (!ok(fs)) {
-                    continue;
-                }
-                if (frame.hasAlphaTransform) {
-                    groupHasAlpha = true;
-                    break;
-                }
+                const i32 instances = 1;
+                Status ps = pushAnimFrame(
+                    outTickInit
+                        ? (transparentOnly ? &outTickInit->locAnimFramesAlphaPacked
+                                           : &outTickInit->locAnimFramesBasePacked)
+                        : nullptr,
+                    offsetBytes,
+                    generatedElements,
+                    instances);
+                if (!ok(ps)) return ps;
             }
         }
         if (outGroupHasAlpha && groupHasAlpha) {
             (*outGroupHasAlpha)[gi] = 1;
         }
+        if (outGroupFrameOffsetsBase) (*outGroupFrameOffsetsBase)[gi] = groupBaseOffset;
+        if (outGroupFrameCountsBase) (*outGroupFrameCountsBase)[gi] = groupFrameCount;
+        if (outGroupFrameOffsetsAlpha) (*outGroupFrameOffsetsAlpha)[gi] = groupAlphaOffset;
+        if (outGroupFrameCountsAlpha) (*outGroupFrameCountsAlpha)[gi] = groupFrameCount;
     }
     return Status::Ok;
 }
@@ -5417,6 +5585,7 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
     i32* indexCount,
     DecodedLocTypeCache* locTypeCache,
     DecodedSeqTypeCache* seqTypeCache,
+    SceneLocAnimatedTickInit* outTickInit,
     Allocator& alloc) noexcept {
     if (!buffer || !indexCount || !locTypeCache || !seqTypeCache) {
         return Status::InvalidArgument;
@@ -5426,6 +5595,10 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
     }
 
     Vec<u8> groupHasAlpha(alloc);
+    Vec<i32> groupFrameOffsetsBase(alloc);
+    Vec<i32> groupFrameCountsBase(alloc);
+    Vec<i32> groupFrameOffsetsAlpha(alloc);
+    Vec<i32> groupFrameCountsAlpha(alloc);
     const Status animGeoStatus = appendAnimatedLocFrameGeometryFromPlan(
         input,
         scene,
@@ -5434,6 +5607,11 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
         indexCount,
         locTypeCache,
         seqTypeCache,
+        outTickInit,
+        &groupFrameOffsetsBase,
+        &groupFrameCountsBase,
+        &groupFrameOffsetsAlpha,
+        &groupFrameCountsAlpha,
         &groupHasAlpha,
         alloc);
     if (!ok(animGeoStatus)) {
@@ -5453,23 +5631,126 @@ Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
     }
     for (std::size_t i = 0; i < entries.size(); i++) {
         LocAnimatedPlaceholder entry = entries[i];
+        bool matchedGroup = false;
         for (std::size_t gi = 0; gi < groups.size(); gi++) {
             if (groups[gi].groupKey != entry.groupKey) {
                 continue;
             }
             if (gi < groupHasAlpha.size()) {
-                // Keep emitted-frame alpha as the primary signal, but preserve planned alpha hints
-                // as fallback when frame decoding/texture metadata is incomplete.
-                entry.hasAlpha = entry.hasAlpha || (groupHasAlpha[gi] != 0);
+                // TS parity: placeholder alpha buckets are controlled exclusively by whether any
+                // frame actually emitted transparent geometry (`framesAlpha` exists).
+                entry.hasAlpha = (groupHasAlpha[gi] != 0);
             }
+            matchedGroup = true;
             break;
         }
+        // If we didn't match a group (should be rare), keep the planned hint instead of forcing off.
+        (void)matchedGroup;
         normalizedEntries[i] = entry;
+    }
+
+    if (outTickInit) {
+        const std::size_t locCount = normalizedEntries.size();
+        // Resize per-loc arrays and set defaults.
+        auto rr = outTickInit->locSeqIds.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locRandomStart.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locSortKeys.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+
+        rr = outTickInit->locDrawRangeIndicesBase.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesAlpha.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesLod.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesLodAlpha.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesInteract.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesInteractAlpha.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesInteractLod.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locDrawRangeIndicesInteractLodAlpha.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+
+        rr = outTickInit->locAnimFrameOffsetsBase.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locAnimFrameCountsBase.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locAnimFrameOffsetsAlpha.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+        rr = outTickInit->locAnimFrameCountsAlpha.resize(locCount);
+        if (!rr.isOk()) return rr.status();
+
+        for (std::size_t i = 0; i < locCount; i++) {
+            outTickInit->locSeqIds[i] = -1;
+            outTickInit->locRandomStart[i] = 0;
+            outTickInit->locSortKeys[i] = normalizedEntries[i].sortKey;
+
+            outTickInit->locDrawRangeIndicesBase[i] = -1;
+            outTickInit->locDrawRangeIndicesAlpha[i] = -1;
+            outTickInit->locDrawRangeIndicesLod[i] = -1;
+            outTickInit->locDrawRangeIndicesLodAlpha[i] = -1;
+            outTickInit->locDrawRangeIndicesInteract[i] = -1;
+            outTickInit->locDrawRangeIndicesInteractAlpha[i] = -1;
+            outTickInit->locDrawRangeIndicesInteractLod[i] = -1;
+            outTickInit->locDrawRangeIndicesInteractLodAlpha[i] = -1;
+
+            outTickInit->locAnimFrameOffsetsBase[i] = -1;
+            outTickInit->locAnimFrameCountsBase[i] = 0;
+            outTickInit->locAnimFrameOffsetsAlpha[i] = -1;
+            outTickInit->locAnimFrameCountsAlpha[i] = 0;
+        }
+
+        // Fill per-loc seq/frames table refs by matching groupKey.
+        for (std::size_t li = 0; li < locCount; li++) {
+            const LocAnimatedPlaceholder& e = normalizedEntries[li];
+            i32 groupIndex = -1;
+            for (std::size_t gi = 0; gi < groups.size(); gi++) {
+                if (groups[gi].groupKey == e.groupKey) {
+                    groupIndex = static_cast<i32>(gi);
+                    break;
+                }
+            }
+            if (groupIndex < 0) {
+                continue;
+            }
+            const LocAnimatedGroupPlan& g = groups[static_cast<std::size_t>(groupIndex)];
+            outTickInit->locSeqIds[li] = g.seqId;
+
+            const LocType* locType = nullptr;
+            const Status lts = tryDecodeLocTypeFromBlob(input, locTypeCache, g.locTypeId, &locType, alloc);
+            if (ok(lts) && locType) {
+                outTickInit->locRandomStart[li] = locType->seqRandomStart ? 1 : 0;
+            }
+
+            if (groupIndex >= 0 && groupIndex < static_cast<i32>(groupFrameOffsetsBase.size())) {
+                const i32 offBase = groupFrameOffsetsBase[static_cast<std::size_t>(groupIndex)];
+                const i32 cntBase = groupFrameCountsBase[static_cast<std::size_t>(groupIndex)];
+                if (offBase >= 0 && cntBase > 0) {
+                    outTickInit->locAnimFrameOffsetsBase[li] = offBase;
+                    outTickInit->locAnimFrameCountsBase[li] = cntBase;
+                }
+            }
+            if (e.hasAlpha &&
+                groupIndex >= 0 && groupIndex < static_cast<i32>(groupFrameOffsetsAlpha.size())) {
+                const i32 offAlpha = groupFrameOffsetsAlpha[static_cast<std::size_t>(groupIndex)];
+                const i32 cntAlpha = groupFrameCountsAlpha[static_cast<std::size_t>(groupIndex)];
+                if (offAlpha >= 0 && cntAlpha > 0) {
+                    outTickInit->locAnimFrameOffsetsAlpha[li] = offAlpha;
+                    outTickInit->locAnimFrameCountsAlpha[li] = cntAlpha;
+                }
+            }
+        }
     }
 
     return emitLocAnimatedPlaceholders(
         Span<const LocAnimatedPlaceholder>(normalizedEntries.data(), normalizedEntries.size()),
-        buffer);
+        buffer,
+        outTickInit);
 }
 
 Status appendLocPlanOpsFromMapLocBytes(

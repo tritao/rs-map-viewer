@@ -5,6 +5,7 @@ import { SdMapRenderDataTsBackend } from "../renderer/loader/SdMapRenderDataTsBa
 import type { SdMapRenderDataTsBackendDeps } from "../renderer/loader/SdMapRenderDataTsBackend";
 import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
 import type { CollisionData } from "../rs/scene/CollisionMap";
+import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
@@ -14,17 +15,13 @@ import type {
 } from "../wasm/MapRenderRuntimeBridgeAbi";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
+import { runtimePacketToPayloadOverlay, sdMapDataTransferables } from "./MapRenderDataContract";
+import type { RenderDataResult } from "./RenderDataLoader";
 import {
-    createByteDrivenSceneBuildInput,
     MapRenderByteDrivenSceneBuildInput,
     MapRenderRuntimeCacheV2Uploader,
+    createByteDrivenSceneBuildInput,
 } from "./runtime-cache/MapRenderRuntimeCacheV2Uploader";
-import {
-    runtimePacketToPayloadOverlay,
-    sdMapDataTransferables,
-} from "./MapRenderDataContract";
-import type { RenderDataResult } from "./RenderDataLoader";
-import type { BackendKind } from "../util/BackendKind";
 
 export type MapRenderDataBackendKind = BackendKind;
 
@@ -38,6 +35,9 @@ export interface MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind;
     buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>>;
     reset(): void;
+    // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
+    // This allows the worker tick path to use the same runtime instance that built the map packets.
+    getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
 }
 
 const CPP_WASM_OUTCOME_KEYS = [
@@ -310,62 +310,65 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         for (let pass = 0; pass < 12; pass++) {
             const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
             const overlay = runtimePacketToPayloadOverlay(packet);
-            if (
+            const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+            if (missing && (missing.domains.length | 0) > 0) {
+                // Even if we got *some* geometry back (e.g. terrain-only), treat any missing
+                // blob entries as an incomplete build and retry after uploading them.
+                const okMissing = await this.cacheUploader.uploadMissingBlobEntriesForBuildRequest(
+                    bridge,
+                    runtimeHandle,
+                    missing,
+                    byteDrivenSceneBuildInput,
+                );
+                if (!okMissing) {
+                    return undefined;
+                }
+                continue;
+            }
+
+            const hasGeometry =
                 overlay &&
                 packet?.vertices instanceof Uint8Array &&
                 packet.vertices.length > 0 &&
                 packet?.indices instanceof Int32Array &&
                 packet.indices.length > 0 &&
-                packet?.usedTextureIds instanceof Int32Array
-            ) {
-                const levels = packet.levels | 0;
-                const sizeX = packet.sizeX | 0;
-                const sizeY = packet.sizeY | 0;
-
-                return new SdMapData(
-                    input.mapX | 0,
-                    input.mapY | 0,
-                    this.cacheName,
-                    input.maxLevel | 0,
-                    input.loadObjs === true,
-                    input.loadNpcs === true,
-                    input.loadLocs === true,
-                    input.smoothTerrain === true,
-                    request.borderSize | 0,
-                    createEmptyTileRenderFlags(levels, sizeX, sizeY),
-                    createEmptyCollisionDatas(levels, sizeX, sizeY),
-                    new Blob(),
-                    packet.vertices,
-                    packet.indices,
-                    overlay.modelInfoTextures,
-                    overlay.heightMapTextureData,
-                    overlay.drawRanges,
-                    [],
-                    [],
-                    packet.usedTextureIds,
-                    new Map(),
-                    packet.npcDrawRangesBase,
-                    packet.npcDrawRangesAlpha,
-                    packet.npcVertices,
-                    packet.npcIndices,
-                    packet.npcOrderKeys,
-                );
-            }
-
-            // Build failed: upload whatever C++ observed as missing and retry.
-            const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-            if (!missing || (missing.domains.length | 0) <= 0) {
+                packet?.usedTextureIds instanceof Int32Array;
+            if (!hasGeometry) {
                 return undefined;
             }
-            const okMissing = await this.cacheUploader.uploadMissingBlobEntriesForBuildRequest(
-                bridge,
-                runtimeHandle,
-                missing,
-                byteDrivenSceneBuildInput,
+
+            const levels = packet.levels | 0;
+            const sizeX = packet.sizeX | 0;
+            const sizeY = packet.sizeY | 0;
+
+            return new SdMapData(
+                input.mapX | 0,
+                input.mapY | 0,
+                this.cacheName,
+                input.maxLevel | 0,
+                input.loadObjs === true,
+                input.loadNpcs === true,
+                input.loadLocs === true,
+                input.smoothTerrain === true,
+                request.borderSize | 0,
+                createEmptyTileRenderFlags(levels, sizeX, sizeY),
+                createEmptyCollisionDatas(levels, sizeX, sizeY),
+                new Blob(),
+                packet.vertices,
+                packet.indices,
+                overlay.modelInfoTextures,
+                overlay.heightMapTextureData,
+                overlay.drawRanges,
+                [],
+                [],
+                packet.usedTextureIds,
+                new Map(),
+                packet.npcDrawRangesBase,
+                packet.npcDrawRangesAlpha,
+                packet.npcVertices,
+                packet.npcIndices,
+                packet.npcOrderKeys,
             );
-            if (!okMissing) {
-                return undefined;
-            }
         }
         return undefined;
     }
@@ -459,6 +462,10 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
         const t0 = this.options?.telemetry ? performance.now() : undefined;
         return this.buildMapDataActive(input, t0);
+    }
+
+    getCppWasmRuntimeHandle(): MapRenderRuntimeHandle | undefined {
+        return this.runtimeHandle;
     }
 
     reset(): void {

@@ -134,10 +134,10 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
     cacheClearAllBlobs(runtimeHandle: MapRenderRuntimeHandle): Promise<number>;
     debugGetLastBuildFailure?(
         runtimeHandle: MapRenderRuntimeHandle,
-    ): Promise<Readonly<{ stage: number; status: number; detail0: number; detail1: number }> | undefined>;
-    debugGetLastCollectMapInput?(
-        runtimeHandle: MapRenderRuntimeHandle,
     ): Promise<
+        Readonly<{ stage: number; status: number; detail0: number; detail1: number }> | undefined
+    >;
+    debugGetLastCollectMapInput?(runtimeHandle: MapRenderRuntimeHandle): Promise<
         | Readonly<{
               status: number;
               reason: number;
@@ -189,7 +189,19 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         request: MapRenderRuntimeBuildRequest,
     ): Promise<MapRenderRuntimePacket | undefined>;
     setTickState(runtimeHandle: MapRenderRuntimeHandle, stateKey: number, input: unknown): boolean;
+    setTickStatePacked?(
+        runtimeHandle: MapRenderRuntimeHandle,
+        stateKey: number,
+        packed: Int32Array,
+    ): boolean;
     clearTickState(runtimeHandle: MapRenderRuntimeHandle, stateKey: number): void;
+    hasTickState?(runtimeHandle: MapRenderRuntimeHandle, stateKey: number): boolean;
+    tickMapsEmitPatchStreams?(
+        runtimeHandle: MapRenderRuntimeHandle,
+        stateKeys: Int32Array,
+        cycleNowFixed: number,
+        clientTickCount: number,
+    ): Readonly<{ tickPatchCountsByMapId: Int32Array; tickPatchPacked: Int32Array }> | undefined;
     tickAdvanceAndEmitBasePatchesForState(
         runtimeHandle: MapRenderRuntimeHandle,
         stateKey: number,
@@ -206,7 +218,7 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         requiredLoginScreenPropsMask?: number,
     ): Promise<NpcSpawn[] | undefined>;
     reset(): void;
-}>; 
+}>;
 
 export type MapRenderRuntimeMissingBlobEntries = Readonly<{
     domains: Int32Array;

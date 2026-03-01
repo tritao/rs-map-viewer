@@ -90,45 +90,174 @@ if (cacheSeedStatus == RS_MAP_RENDER_STATUS_OK) {
     runtime->debugLastMapInputHashCache = cacheSeedHash;
 }
 
-MapRenderCachedCommandStream commandStream{};
-rs::Status commandStreamStatus = rs::Status::Ok;
-const RuntimeCommandStreamBuildResult nativeBuildResult =
-    tryBuildRuntimeCommandStreamFromBytes(
-        runtime,
-        baseX,
-        baseY,
-        sizeX,
-        sizeY,
-        smoothTerrain,
-        locLoadType,
-        minimizeDrawCalls,
-        loadLocs,
-        loadObjs,
-        mapSquareIds,
-        terrainOffsets,
-        terrainLengths,
-        terrainBytes,
-        locOffsets,
-        locLengths,
-        locBytes,
-        !buildPayload,
-        &commandStream,
-        &commandStreamStatus);
-if (nativeBuildResult != RuntimeCommandStreamBuildResult::Built || !commandStream.loaded) {
-    runtime->lastBuiltCommandStream.clear();
-    return recordBuildFailure(
-        runtime,
+	MapRenderCachedCommandStream commandStream{};
+	rs::SceneLocAnimatedTickInit locTickInit{};
+	rs::Status commandStreamStatus = rs::Status::Ok;
+	const RuntimeCommandStreamBuildResult nativeBuildResult =
+	    tryBuildRuntimeCommandStreamFromBytes(
+	        runtime,
+	        baseX,
+	        baseY,
+	        sizeX,
+	        sizeY,
+	        smoothTerrain,
+	        locLoadType,
+	        minimizeDrawCalls,
+	        loadLocs,
+	        loadObjs,
+	        mapSquareIds,
+	        terrainOffsets,
+	        terrainLengths,
+	        terrainBytes,
+	        locOffsets,
+	        locLengths,
+	        locBytes,
+	        !buildPayload,
+	        &commandStream,
+	        &commandStreamStatus,
+	        buildPayload ? &locTickInit : nullptr);
+	if (nativeBuildResult != RuntimeCommandStreamBuildResult::Built || !commandStream.loaded) {
+	    runtime->lastBuiltCommandStream.clear();
+	    return recordBuildFailure(
+	        runtime,
         kBuildFailCommandStream,
         RS_MAP_RENDER_STATUS_STATE,
         static_cast<rs::i32>(commandStreamStatus),
         static_cast<rs::i32>(nativeBuildResult));
-}
-runtime->lastBuiltCommandStream = commandStream;
+	}
+	runtime->lastBuiltCommandStream = commandStream;
 
-if (!buildPayload) {
-    runtime->mapPayload.clear();
-    runtime->payloadGeneration++;
-    clearPacketHandlesForRuntime(runtimeHandle);
+	// If loc-animation tick init data was captured, register per-map tick state directly in the
+	// runtime so TS does not need to pre-pack tick state fields.
+	{
+	    const rs::i32 mapId = (((mapX | 0) & 0xff) << 8) | ((mapY | 0) & 0xff);
+	    const std::size_t locCount = locTickInit.locSeqIds.size();
+	    MapRenderTickState tickState{};
+	    tickState.locCount = static_cast<rs::i32>(locCount);
+	    tickState.npcCount = 0;
+	    tickState.npcNullAlphaFrameOffset = 0;
+
+	    // Copy loc seq ids into a compact std::vector for metadata derivation.
+	    std::vector<rs::i32> locSeqIds{};
+	    locSeqIds.reserve(locCount);
+	    for (std::size_t i = 0; i < locCount; i++) {
+	        locSeqIds.push_back(locTickInit.locSeqIds[i]);
+	    }
+
+	    std::vector<rs::i32> locFrameSteps{};
+	    std::vector<rs::i32> locHasAnimMaya{};
+	    std::vector<rs::i32> locAnimMayaDurations{};
+	    std::vector<rs::i32> locFrameLengthOffsets{};
+	    std::vector<rs::i32> locFrameLengthCounts{};
+	    std::vector<rs::i32> locFrameLengthsPacked{};
+	    const rs::i32 metaStatus = deriveLocSeqMetadataFromCompactIds(
+	        runtime,
+	        locSeqIds,
+	        &locFrameSteps,
+	        &locHasAnimMaya,
+	        &locAnimMayaDurations,
+	        &locFrameLengthOffsets,
+	        &locFrameLengthCounts,
+	        &locFrameLengthsPacked);
+	    if (metaStatus < 0) {
+	        // Defensive: keep the map renderable even if tick metadata can't be derived.
+	        locFrameSteps.assign(locCount, 0);
+	        locHasAnimMaya.assign(locCount, 0);
+	        locAnimMayaDurations.assign(locCount, 0);
+	        locFrameLengthOffsets.assign(locCount, -1);
+	        locFrameLengthCounts.assign(locCount, 0);
+	        locFrameLengthsPacked.clear();
+	    }
+
+	    std::vector<rs::i32> locFrameIds(locCount, 0);
+	    std::vector<rs::i32> locCycleStartsFixed(locCount, -RS_LOC_CYCLE_SCALE);
+	    for (std::size_t i = 0; i < locCount; i++) {
+	        const rs::i32 frameStep = i < locFrameSteps.size() ? locFrameSteps[i] : -1;
+	        const bool randomStart = i < locTickInit.locRandomStart.size() && locTickInit.locRandomStart[i] != 0;
+	        const rs::i32 sortKey = i < locTickInit.locSortKeys.size() ? locTickInit.locSortKeys[i] : static_cast<rs::i32>(i);
+
+	        rs::u32 h0 = 2166136261u;
+	        h0 = fnv1a32UpdateI32(h0, mapId);
+	        h0 = fnv1a32UpdateI32(h0, locSeqIds.size() > i ? locSeqIds[i] : -1);
+	        h0 = fnv1a32UpdateI32(h0, sortKey);
+	        const rs::u32 h1 = fnv1a32UpdateI32(h0, 0x9e3779b9u);
+
+	        rs::i32 frame = 0;
+	        rs::i32 cycleStartFixed = -RS_LOC_CYCLE_SCALE;
+	        if (randomStart && frameStep != -1) {
+	            const bool isMaya = i < locHasAnimMaya.size() && locHasAnimMaya[i] != 0;
+	            if (isMaya) {
+	                const rs::i32 duration = i < locAnimMayaDurations.size() ? locAnimMayaDurations[i] : 0;
+	                if (duration > 0) {
+	                    frame = static_cast<rs::i32>(h0 % static_cast<rs::u32>(duration));
+	                }
+	            } else {
+	                const rs::i32 frameCount =
+	                    (i < locTickInit.locAnimFrameCountsBase.size()) ? locTickInit.locAnimFrameCountsBase[i] : 0;
+	                if (frameCount > 0) {
+	                    frame = static_cast<rs::i32>(h0 % static_cast<rs::u32>(frameCount));
+	                    // Randomize initial cycle start within the frame length (TS LocAnimated constructor).
+	                    rs::i32 frameLen = 1;
+	                    const rs::i32 off = i < locFrameLengthOffsets.size() ? locFrameLengthOffsets[i] : -1;
+	                    const rs::i32 cnt = i < locFrameLengthCounts.size() ? locFrameLengthCounts[i] : 0;
+	                    if (off >= 0 && cnt > 0 && frame >= 0 && frame < cnt) {
+	                        const std::size_t at = static_cast<std::size_t>(off + frame);
+	                        if (at < locFrameLengthsPacked.size()) {
+	                            const rs::i32 v = locFrameLengthsPacked[at];
+	                            frameLen = v > 0 ? v : 1;
+	                        }
+	                    }
+	                    const rs::i32 jitter = frameLen > 0 ? static_cast<rs::i32>(h1 % static_cast<rs::u32>(frameLen)) : 0;
+	                    cycleStartFixed -= jitter * RS_LOC_CYCLE_SCALE;
+	                }
+	            }
+	        }
+	        locFrameIds[i] = frame;
+	        locCycleStartsFixed[i] = cycleStartFixed;
+	    }
+
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_FRAME_IDS)] = std::move(locFrameIds);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_CYCLE_STARTS_FIXED)] = std::move(locCycleStartsFixed);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_FRAME_STEPS)] = std::move(locFrameSteps);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_HAS_ANIM_MAYA)] = std::move(locHasAnimMaya);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_MAYA_DURATIONS)] = std::move(locAnimMayaDurations);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_FRAME_LENGTH_OFFSETS)] = std::move(locFrameLengthOffsets);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_FRAME_LENGTH_COUNTS)] = std::move(locFrameLengthCounts);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_FRAME_LENGTHS_PACKED)] = std::move(locFrameLengthsPacked);
+
+	    auto copyRsVec = [](const rs::Vec<rs::i32>& src) -> std::vector<rs::i32> {
+	        std::vector<rs::i32> out{};
+	        out.reserve(src.size());
+	        for (std::size_t i = 0; i < src.size(); i++) {
+	            out.push_back(src[i]);
+	        }
+	        return out;
+	    };
+
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_BASE)] = copyRsVec(locTickInit.locDrawRangeIndicesBase);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAME_OFFSETS_BASE)] = copyRsVec(locTickInit.locAnimFrameOffsetsBase);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAME_COUNTS_BASE)] = copyRsVec(locTickInit.locAnimFrameCountsBase);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAMES_BASE_PACKED)] = copyRsVec(locTickInit.locAnimFramesBasePacked);
+
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_ALPHA)] = copyRsVec(locTickInit.locDrawRangeIndicesAlpha);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_LOD)] = copyRsVec(locTickInit.locDrawRangeIndicesLod);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_LOD_ALPHA)] = copyRsVec(locTickInit.locDrawRangeIndicesLodAlpha);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT)] = copyRsVec(locTickInit.locDrawRangeIndicesInteract);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT_ALPHA)] = copyRsVec(locTickInit.locDrawRangeIndicesInteractAlpha);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT_LOD)] = copyRsVec(locTickInit.locDrawRangeIndicesInteractLod);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT_LOD_ALPHA)] = copyRsVec(locTickInit.locDrawRangeIndicesInteractLodAlpha);
+
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAME_OFFSETS_ALPHA)] = copyRsVec(locTickInit.locAnimFrameOffsetsAlpha);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAME_COUNTS_ALPHA)] = copyRsVec(locTickInit.locAnimFrameCountsAlpha);
+	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAMES_ALPHA_PACKED)] = copyRsVec(locTickInit.locAnimFramesAlphaPacked);
+
+	    runtime->tickStates[mapId] = std::move(tickState);
+	}
+
+	if (!buildPayload) {
+	    runtime->mapPayload.clear();
+	    runtime->payloadGeneration++;
+	    clearPacketHandlesForRuntime(runtimeHandle);
     runtime->debugLastBuildFailureStage = kBuildFailNone;
     return RS_MAP_RENDER_STATUS_OK;
 }

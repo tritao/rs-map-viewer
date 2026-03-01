@@ -23,6 +23,11 @@ struct ModelData final {
     i32 faceCount = 0;
     i32 textureFaceCount = 0;
     i32 priority = 0;
+    // TS parity: ModelData.merge allocates vertex arrays to the *sum* of input verticesCount,
+    // then increments verticesCount only for unique vertices (dedupe). Trailing entries remain 0.
+    // TS hashing/grouping (ModelHashBuffer) uses the full array length, so we track that length
+    // here to allow padding with zeros during hashing without inflating vertex iteration elsewhere.
+    i32 tsVerticesAllocCount = 0;
 
     Vec<i32> verticesX{};
     Vec<i32> verticesY{};
@@ -205,6 +210,44 @@ struct ModelData final {
                 static_cast<i32>((static_cast<i64>(verticesY[i]) * resizeY) / 128);
             verticesZ[i] =
                 static_cast<i32>((static_cast<i64>(verticesZ[i]) * resizeZ) / 128);
+        }
+    }
+
+    // TS parity: ModelData.decodeV1 calls scaleDown(2) for version >= 13.
+    // This shifts decoded vertex coordinates and (some) texture scale params by 4.
+    void scaleDown(i32 n) noexcept {
+        if (n <= 0) return;
+
+        std::size_t vCount = static_cast<std::size_t>(verticesCount < 0 ? 0 : verticesCount);
+        if (verticesX.size() < vCount) vCount = verticesX.size();
+        if (verticesY.size() < vCount) vCount = verticesY.size();
+        if (verticesZ.size() < vCount) vCount = verticesZ.size();
+        for (std::size_t i = 0; i < vCount; i++) {
+            verticesX[i] >>= n;
+            verticesY[i] >>= n;
+            verticesZ[i] >>= n;
+        }
+
+        if (textureFaceCount <= 0) return;
+        if (textureScaleX.empty() || textureScaleY.empty()) return;
+
+        std::size_t tCount = static_cast<std::size_t>(textureFaceCount);
+        if (textureScaleX.size() < tCount) tCount = textureScaleX.size();
+        if (textureScaleY.size() < tCount) tCount = textureScaleY.size();
+        for (std::size_t i = 0; i < tCount; i++) {
+            textureScaleX[i] >>= n;
+            textureScaleY[i] >>= n;
+
+            // TS parity: only shift Z when renderType != 1.
+            if (!textureScaleZ.empty() && i < textureScaleZ.size()) {
+                i8 type = 0;
+                if (!textureRenderTypes.empty() && i < textureRenderTypes.size()) {
+                    type = textureRenderTypes[i];
+                }
+                if (type != 1) {
+                    textureScaleZ[i] >>= n;
+                }
+            }
         }
     }
 };
@@ -497,10 +540,9 @@ inline Status decodeTextureMappingV3(
     s = translation.seek(complexTextureTranslationOffset);
     if (!ok(s)) return s;
 
-    i32 complexIndex = 0;
-    i32 cubeIndex = 0;
     for (i32 i = 0; i < out->textureFaceCount; i++) {
-        const u8 type = static_cast<u8>(out->textureRenderTypes[static_cast<std::size_t>(i)]);
+        const std::size_t ti = static_cast<std::size_t>(i);
+        const u8 type = static_cast<u8>(out->textureRenderTypes[ti]);
         if (type == 0) {
             u16 p = 0, m = 0, n = 0;
             s = simple.readUnsignedShort(&p);
@@ -509,18 +551,14 @@ inline Status decodeTextureMappingV3(
             if (!ok(s)) return s;
             s = simple.readUnsignedShort(&n);
             if (!ok(s)) return s;
-            out->textureMappingP[static_cast<std::size_t>(i)] = static_cast<i16>(p);
-            out->textureMappingM[static_cast<std::size_t>(i)] = static_cast<i16>(m);
-            out->textureMappingN[static_cast<std::size_t>(i)] = static_cast<i16>(n);
+            out->textureMappingP[ti] = static_cast<i16>(p);
+            out->textureMappingM[ti] = static_cast<i16>(m);
+            out->textureMappingN[ti] = static_cast<i16>(n);
             continue;
         }
 
         if (type < 1 || type > 3) {
             continue;
-        }
-
-        if (complexIndex < 0 || static_cast<std::size_t>(complexIndex) >= out->textureScaleX.size()) {
-            return Status::BadFormat;
         }
 
         u16 p = 0, m = 0, n = 0;
@@ -530,9 +568,9 @@ inline Status decodeTextureMappingV3(
         if (!ok(s)) return s;
         s = complex.readUnsignedShort(&n);
         if (!ok(s)) return s;
-        out->textureMappingP[static_cast<std::size_t>(i)] = static_cast<i16>(p);
-        out->textureMappingM[static_cast<std::size_t>(i)] = static_cast<i16>(m);
-        out->textureMappingN[static_cast<std::size_t>(i)] = static_cast<i16>(n);
+        out->textureMappingP[ti] = static_cast<i16>(p);
+        out->textureMappingM[ti] = static_cast<i16>(m);
+        out->textureMappingN[ti] = static_cast<i16>(n);
 
         u16 sx = 0, sy = 0, sz = 0;
         s = scale.readUnsignedShort(&sx);
@@ -543,38 +581,33 @@ inline Status decodeTextureMappingV3(
         if (!ok(s)) return s;
         i8 rot = 0;
         i8 dir = 0;
-        u8 speed = 0;
+        i8 speed = 0;
         s = rotation.readByte(&rot);
         if (!ok(s)) return s;
         s = direction.readByte(&dir);
         if (!ok(s)) return s;
-        s = translation.readUnsignedByte(&speed);
+        // TS parity: textureSpeed is a signed byte.
+        s = translation.readByte(&speed);
         if (!ok(s)) return s;
 
-        const std::size_t ci = static_cast<std::size_t>(complexIndex);
-        out->textureScaleX[ci] = static_cast<i32>(sx);
-        out->textureScaleY[ci] = static_cast<i32>(sy);
-        out->textureScaleZ[ci] = static_cast<i32>(sz);
-        out->textureRotation[ci] = rot;
-        out->textureDirection[ci] = dir;
-        out->textureSpeed[ci] = static_cast<i32>(speed);
+        // TS parity: these arrays are indexed by texture-face index (same index as textureRenderTypes).
+        out->textureScaleX[ti] = static_cast<i32>(sx);
+        out->textureScaleY[ti] = static_cast<i32>(sy);
+        out->textureScaleZ[ti] = static_cast<i32>(sz);
+        out->textureRotation[ti] = rot;
+        out->textureDirection[ti] = dir;
+        out->textureSpeed[ti] = static_cast<i32>(speed);
 
         if (type == 2) {
-            if (cubeIndex < 0 || static_cast<std::size_t>(cubeIndex) >= out->textureTransU.size()) {
-                return Status::BadFormat;
-            }
-            u8 u = 0;
-            u8 v = 0;
-            s = translation.readUnsignedByte(&u);
+            i8 u = 0;
+            i8 v = 0;
+            s = translation.readByte(&u);
             if (!ok(s)) return s;
-            s = translation.readUnsignedByte(&v);
+            s = translation.readByte(&v);
             if (!ok(s)) return s;
-            out->textureTransU[static_cast<std::size_t>(cubeIndex)] = static_cast<i32>(u);
-            out->textureTransV[static_cast<std::size_t>(cubeIndex)] = static_cast<i32>(v);
-            cubeIndex++;
+            out->textureTransU[ti] = static_cast<i32>(u);
+            out->textureTransV[ti] = static_cast<i32>(v);
         }
-
-        complexIndex++;
     }
     return Status::Ok;
 }
@@ -611,10 +644,9 @@ inline Status decodeTextureMappingV1(
     s = translation.seek(texturesTranslationOffset);
     if (!ok(s)) return s;
 
-    i32 complexIndex = 0;
-    i32 cubeIndex = 0;
     for (i32 i = 0; i < out->textureFaceCount; i++) {
-        const u8 type = static_cast<u8>(out->textureRenderTypes[static_cast<std::size_t>(i)]);
+        const std::size_t ti = static_cast<std::size_t>(i);
+        const u8 type = static_cast<u8>(out->textureRenderTypes[ti]);
         if (type == 0) {
             u16 p = 0, m = 0, n = 0;
             s = simple.readUnsignedShort(&p);
@@ -623,18 +655,14 @@ inline Status decodeTextureMappingV1(
             if (!ok(s)) return s;
             s = simple.readUnsignedShort(&n);
             if (!ok(s)) return s;
-            out->textureMappingP[static_cast<std::size_t>(i)] = static_cast<i16>(p);
-            out->textureMappingM[static_cast<std::size_t>(i)] = static_cast<i16>(m);
-            out->textureMappingN[static_cast<std::size_t>(i)] = static_cast<i16>(n);
+            out->textureMappingP[ti] = static_cast<i16>(p);
+            out->textureMappingM[ti] = static_cast<i16>(m);
+            out->textureMappingN[ti] = static_cast<i16>(n);
             continue;
         }
 
         if (type < 1 || type > 3) {
             continue;
-        }
-
-        if (complexIndex < 0 || static_cast<std::size_t>(complexIndex) >= out->textureScaleX.size()) {
-            return Status::BadFormat;
         }
 
         u16 p = 0, m = 0, n = 0;
@@ -644,9 +672,9 @@ inline Status decodeTextureMappingV1(
         if (!ok(s)) return s;
         s = complex.readUnsignedShort(&n);
         if (!ok(s)) return s;
-        out->textureMappingP[static_cast<std::size_t>(i)] = static_cast<i16>(p);
-        out->textureMappingM[static_cast<std::size_t>(i)] = static_cast<i16>(m);
-        out->textureMappingN[static_cast<std::size_t>(i)] = static_cast<i16>(n);
+        out->textureMappingP[ti] = static_cast<i16>(p);
+        out->textureMappingM[ti] = static_cast<i16>(m);
+        out->textureMappingN[ti] = static_cast<i16>(n);
 
         i32 sx = 0;
         i32 sy = 0;
@@ -696,30 +724,24 @@ inline Status decodeTextureMappingV1(
         s = translation.readByte(&speed);
         if (!ok(s)) return s;
 
-        const std::size_t ci = static_cast<std::size_t>(complexIndex);
-        out->textureScaleX[ci] = sx;
-        out->textureScaleY[ci] = sy;
-        out->textureScaleZ[ci] = sz;
-        out->textureRotation[ci] = rot;
-        out->textureDirection[ci] = dir;
-        out->textureSpeed[ci] = static_cast<i32>(speed);
+        // TS parity: per-texture-face indexing (same index as textureRenderTypes).
+        out->textureScaleX[ti] = sx;
+        out->textureScaleY[ti] = sy;
+        out->textureScaleZ[ti] = sz;
+        out->textureRotation[ti] = rot;
+        out->textureDirection[ti] = dir;
+        out->textureSpeed[ti] = static_cast<i32>(speed);
 
         if (type == 2) {
-            if (cubeIndex < 0 || static_cast<std::size_t>(cubeIndex) >= out->textureTransU.size()) {
-                return Status::BadFormat;
-            }
             i8 u = 0;
             i8 v = 0;
             s = translation.readByte(&u);
             if (!ok(s)) return s;
             s = translation.readByte(&v);
             if (!ok(s)) return s;
-            out->textureTransU[static_cast<std::size_t>(cubeIndex)] = static_cast<i32>(u);
-            out->textureTransV[static_cast<std::size_t>(cubeIndex)] = static_cast<i32>(v);
-            cubeIndex++;
+            out->textureTransU[ti] = static_cast<i32>(u);
+            out->textureTransV[ti] = static_cast<i32>(v);
         }
-
-        complexIndex++;
     }
     return Status::Ok;
 }
@@ -788,6 +810,9 @@ inline Status decodeModelData(Span<const u8> data, ModelData* out, Allocator& al
     if (!ok(s)) {
         return s;
     }
+
+    // Decoded models have no TS merge padding; array length matches verticesCount.
+    decoded.tsVerticesAllocCount = decoded.verticesCount;
 
     *out = rs::move(decoded);
     return Status::Ok;
@@ -1245,6 +1270,8 @@ inline Status mergeModelDataTS(
 
     // TS: usedVertexCount follows the final deduped vertex count.
     out->usedVertexCount = out->verticesCount;
+    // TS: vertex arrays were allocated to the sum of input verticesCount, and trailing entries are 0.
+    out->tsVerticesAllocCount = totalVertices;
     (void)alloc;
     return Status::Ok;
 }

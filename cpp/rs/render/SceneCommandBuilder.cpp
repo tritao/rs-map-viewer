@@ -1057,6 +1057,479 @@ static void computeModelFaceUvType0(
     *outU2 = static_cast<float>(u2);
     *outV2 = static_cast<float>(v2);
 }
+
+static void computeCylindricalUv(
+    i32 vx,
+    i32 vy,
+    i32 vz,
+    i32 centerX,
+    i32 centerY,
+    i32 centerZ,
+    const float* transform9,
+    float scaleZ,
+    i32 direction,
+    float speed,
+    float* outU,
+    float* outV) noexcept {
+    if (!transform9 || !outU || !outV) {
+        return;
+    }
+    // TS parity: do math in double (JS numbers are 64-bit floats, even when sourced from Float32Array).
+    const double x = static_cast<double>(vx - centerX);
+    const double y = static_cast<double>(vy - centerY);
+    const double z = static_cast<double>(vz - centerZ);
+    const double localX =
+        x * static_cast<double>(transform9[0]) +
+        y * static_cast<double>(transform9[1]) +
+        z * static_cast<double>(transform9[2]);
+    const double localY =
+        x * static_cast<double>(transform9[3]) +
+        y * static_cast<double>(transform9[4]) +
+        z * static_cast<double>(transform9[5]);
+    const double localZ =
+        x * static_cast<double>(transform9[6]) +
+        y * static_cast<double>(transform9[7]) +
+        z * static_cast<double>(transform9[8]);
+    double u = std::atan2(localX, localZ) / 6.2831855 + 0.5;
+    if (scaleZ != 1.0f) {
+        u *= static_cast<double>(scaleZ);
+    }
+    double v = localY + 0.5 + static_cast<double>(speed);
+    if (direction == 1) {
+        const double uPrev = u;
+        u = -v;
+        v = uPrev;
+    } else if (direction == 2) {
+        u = -u;
+        v = -v;
+    } else if (direction == 3) {
+        const double uPrev = u;
+        u = v;
+        v = -uPrev;
+    }
+    *outU = static_cast<float>(u);
+    *outV = static_cast<float>(v);
+}
+
+static i32 getDominantAxisFace(double x, double y, double z) noexcept {
+    const double absX = x < 0.0 ? -x : x;
+    const double absY = y < 0.0 ? -y : y;
+    const double absZ = z < 0.0 ? -z : z;
+    if (absY > absX && absY > absZ) {
+        return y > 0.0 ? 0 : 1;
+    }
+    if (absZ > absX && absZ > absY) {
+        return z > 0.0 ? 2 : 3;
+    }
+    return x > 0.0 ? 4 : 5;
+}
+
+static void computeBoxProjectedUv(
+    i32 vx,
+    i32 vy,
+    i32 vz,
+    i32 centerX,
+    i32 centerY,
+    i32 centerZ,
+    i32 cubeFace,
+    const float* transform9,
+    i32 direction,
+    float speed,
+    float uOffset,
+    float vOffset,
+    float* outU,
+    float* outV) noexcept {
+    if (!transform9 || !outU || !outV) {
+        return;
+    }
+    const double x = static_cast<double>(vx - centerX);
+    const double y = static_cast<double>(vy - centerY);
+    const double z = static_cast<double>(vz - centerZ);
+    const double localX =
+        x * static_cast<double>(transform9[0]) +
+        y * static_cast<double>(transform9[1]) +
+        z * static_cast<double>(transform9[2]);
+    const double localY =
+        x * static_cast<double>(transform9[3]) +
+        y * static_cast<double>(transform9[4]) +
+        z * static_cast<double>(transform9[5]);
+    const double localZ =
+        x * static_cast<double>(transform9[6]) +
+        y * static_cast<double>(transform9[7]) +
+        z * static_cast<double>(transform9[8]);
+    double u = 0.0;
+    double v = 0.0;
+    const double speedD = static_cast<double>(speed);
+    const double uOffsetD = static_cast<double>(uOffset);
+    const double vOffsetD = static_cast<double>(vOffset);
+    if (cubeFace == 0) {
+        u = localX + speedD + 0.5;
+        v = -localZ + vOffsetD + 0.5;
+    } else if (cubeFace == 1) {
+        u = localX + speedD + 0.5;
+        v = localZ + vOffsetD + 0.5;
+    } else if (cubeFace == 2) {
+        u = -localX + speedD + 0.5;
+        v = -localY + uOffsetD + 0.5;
+    } else if (cubeFace == 3) {
+        u = localX + speedD + 0.5;
+        v = -localY + uOffsetD + 0.5;
+    } else if (cubeFace == 4) {
+        u = localZ + vOffsetD + 0.5;
+        v = -localY + uOffsetD + 0.5;
+    } else {
+        u = -localZ + vOffsetD + 0.5;
+        v = -localY + uOffsetD + 0.5;
+    }
+    if (direction == 1) {
+        const double uPrev = u;
+        u = -v;
+        v = uPrev;
+    } else if (direction == 2) {
+        u = -u;
+        v = -v;
+    } else if (direction == 3) {
+        const double uPrev = u;
+        u = v;
+        v = -uPrev;
+    }
+    *outU = static_cast<float>(u);
+    *outV = static_cast<float>(v);
+}
+
+static void computeSphericalUv(
+    i32 vx,
+    i32 vy,
+    i32 vz,
+    i32 centerX,
+    i32 centerY,
+    i32 centerZ,
+    const float* transform9,
+    i32 direction,
+    float speed,
+    float* outU,
+    float* outV) noexcept {
+    if (!transform9 || !outU || !outV) {
+        return;
+    }
+    const double x = static_cast<double>(vx - centerX);
+    const double y = static_cast<double>(vy - centerY);
+    const double z = static_cast<double>(vz - centerZ);
+    const double localX =
+        x * static_cast<double>(transform9[0]) +
+        y * static_cast<double>(transform9[1]) +
+        z * static_cast<double>(transform9[2]);
+    const double localY =
+        x * static_cast<double>(transform9[3]) +
+        y * static_cast<double>(transform9[4]) +
+        z * static_cast<double>(transform9[5]);
+    const double localZ =
+        x * static_cast<double>(transform9[6]) +
+        y * static_cast<double>(transform9[7]) +
+        z * static_cast<double>(transform9[8]);
+    const double localLen = std::sqrt(localX * localX + localY * localY + localZ * localZ);
+    double u = std::atan2(localX, localZ) / 6.2831855 + 0.5;
+    double v = 0.0;
+    if (localLen != 0.0) {
+        v = std::asin(localY / localLen) / 3.1415927 + 0.5 + static_cast<double>(speed);
+    } else {
+        v = 0.5 + static_cast<double>(speed);
+    }
+    if (direction == 1) {
+        const double uPrev = u;
+        u = -v;
+        v = uPrev;
+    } else if (direction == 2) {
+        u = -u;
+        v = -v;
+    } else if (direction == 3) {
+        const double uPrev = u;
+        u = v;
+        v = -uPrev;
+    }
+    *outU = static_cast<float>(u);
+    *outV = static_cast<float>(v);
+}
+
+static void buildTextureTransformMatrix(
+    i32 p,
+    i32 m,
+    i32 n,
+    i32 rotation,
+    float scaleX,
+    float scaleY,
+    float scaleZ,
+    float* out9) noexcept {
+    if (!out9) {
+        return;
+    }
+    // TS parity: replicate Float32Array round-trips by computing in double and then storing to float.
+    double axisX = 1.0;
+    double axisZ = 0.0;
+    double cosAngle = static_cast<double>(m) / 32767.0;
+    double sinAngle = -std::sqrt(1.0 - cosAngle * cosAngle);
+    double oneMinusCosAngle = 1.0 - cosAngle;
+    const double axisLenXZ =
+        std::sqrt(static_cast<double>(p) * static_cast<double>(p) +
+                  static_cast<double>(n) * static_cast<double>(n));
+    if (axisLenXZ != 0.0) {
+        axisX = -static_cast<double>(n) / axisLenXZ;
+        axisZ = static_cast<double>(p) / axisLenXZ;
+    }
+
+    // Base matrix is stored into a Float32Array in TS, so each element is rounded to float32.
+    const float baseF[9] = {
+        static_cast<float>(cosAngle + axisX * axisX * oneMinusCosAngle),
+        static_cast<float>(axisZ * sinAngle),
+        static_cast<float>(axisZ * axisX * oneMinusCosAngle),
+        static_cast<float>(-axisZ * sinAngle),
+        static_cast<float>(cosAngle),
+        static_cast<float>(axisX * sinAngle),
+        static_cast<float>(axisX * axisZ * oneMinusCosAngle),
+        static_cast<float>(-axisX * sinAngle),
+        static_cast<float>(cosAngle + axisZ * axisZ * oneMinusCosAngle),
+    };
+
+    const double angle = static_cast<double>(rotation) * 0.024543693;
+    cosAngle = std::cos(angle);
+    sinAngle = std::sin(angle);
+
+    // yRotationMatrix is also a Float32Array in TS.
+    const float yRotF[9] = {
+        static_cast<float>(cosAngle), 0.0f, static_cast<float>(sinAngle),
+        0.0f, 1.0f, 0.0f,
+        static_cast<float>(-sinAngle), 0.0f, static_cast<float>(cosAngle),
+    };
+
+    // Combined matrix multiplies float32 values, but JS does the arithmetic in double.
+    const double b0 = static_cast<double>(baseF[0]);
+    const double b1 = static_cast<double>(baseF[1]);
+    const double b2 = static_cast<double>(baseF[2]);
+    const double b3 = static_cast<double>(baseF[3]);
+    const double b4 = static_cast<double>(baseF[4]);
+    const double b5 = static_cast<double>(baseF[5]);
+    const double b6 = static_cast<double>(baseF[6]);
+    const double b7 = static_cast<double>(baseF[7]);
+    const double b8 = static_cast<double>(baseF[8]);
+
+    const double y0 = static_cast<double>(yRotF[0]);
+    const double y1 = static_cast<double>(yRotF[1]);
+    const double y2 = static_cast<double>(yRotF[2]);
+    const double y3 = static_cast<double>(yRotF[3]);
+    const double y4 = static_cast<double>(yRotF[4]);
+    const double y5 = static_cast<double>(yRotF[5]);
+    const double y6 = static_cast<double>(yRotF[6]);
+    const double y7 = static_cast<double>(yRotF[7]);
+    const double y8 = static_cast<double>(yRotF[8]);
+
+    double combined[9]{};
+    combined[0] = y0 * b0 + y1 * b3 + y2 * b6;
+    combined[1] = y0 * b1 + y1 * b4 + y2 * b7;
+    combined[2] = y0 * b2 + y1 * b5 + y2 * b8;
+    combined[3] = y3 * b0 + y4 * b3 + y5 * b6;
+    combined[4] = y3 * b1 + y4 * b4 + y5 * b7;
+    combined[5] = y3 * b2 + y4 * b5 + y5 * b8;
+    combined[6] = y6 * b0 + y7 * b3 + y8 * b6;
+    combined[7] = y6 * b1 + y7 * b4 + y8 * b7;
+    combined[8] = y6 * b2 + y7 * b5 + y8 * b8;
+
+    combined[0] *= static_cast<double>(scaleX);
+    combined[1] *= static_cast<double>(scaleX);
+    combined[2] *= static_cast<double>(scaleX);
+    combined[3] *= static_cast<double>(scaleY);
+    combined[4] *= static_cast<double>(scaleY);
+    combined[5] *= static_cast<double>(scaleY);
+    combined[6] *= static_cast<double>(scaleZ);
+    combined[7] *= static_cast<double>(scaleZ);
+    combined[8] *= static_cast<double>(scaleZ);
+
+    for (int i = 0; i < 9; i++) {
+        out9[i] = static_cast<float>(combined[i]);
+    }
+}
+
+struct ModelTextureScales final {
+    Vec<i32> centerX;
+    Vec<i32> centerY;
+    Vec<i32> centerZ;
+    Vec<float> matrices9; // flat: texCoord * 9 + col
+    bool ready = false;
+    explicit ModelTextureScales(Allocator& alloc) noexcept
+        : centerX(alloc), centerY(alloc), centerZ(alloc), matrices9(alloc) {}
+};
+
+static Status computeModelTextureScales(
+    const ModelData& model,
+    ModelTextureScales* out,
+    Allocator& alloc) noexcept {
+    if (!out) {
+        return Status::InvalidArgument;
+    }
+    out->ready = false;
+    if (!model.hasTextureCoords || model.textureFaceCount <= 0) {
+        return Status::Ok;
+    }
+    const i32 texFaceCount = model.textureFaceCount;
+    if (texFaceCount <= 0) {
+        return Status::Ok;
+    }
+    const std::size_t tN = static_cast<std::size_t>(texFaceCount);
+    if (model.textureRenderTypes.size() < tN ||
+        model.textureMappingP.size() < tN ||
+        model.textureMappingM.size() < tN ||
+        model.textureMappingN.size() < tN ||
+        model.textureScaleX.size() < tN ||
+        model.textureScaleY.size() < tN ||
+        model.textureScaleZ.size() < tN ||
+        model.textureRotation.size() < tN ||
+        model.textureDirection.size() < tN ||
+        model.textureSpeed.size() < tN) {
+        return Status::OutOfRange;
+    }
+
+    Vec<i32> minX(alloc);
+    Vec<i32> maxX(alloc);
+    Vec<i32> minY(alloc);
+    Vec<i32> maxY(alloc);
+    Vec<i32> minZ(alloc);
+    Vec<i32> maxZ(alloc);
+    auto rr = minX.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = maxX.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = minY.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = maxY.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = minZ.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = maxZ.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    for (std::size_t i = 0; i < tN; i++) {
+        minX[i] = 2147483647;
+        maxX[i] = -2147483647;
+        minY[i] = 2147483647;
+        maxY[i] = -2147483647;
+        minZ[i] = 2147483647;
+        maxZ[i] = -2147483647;
+    }
+
+    // Compute bounds for each texCoord referenced by any face.
+    for (i32 fi = 0; fi < model.faceCount; fi++) {
+        if (fi < 0 || fi >= static_cast<i32>(model.textureCoords.size())) {
+            continue;
+        }
+        const i8 raw = model.textureCoords[static_cast<std::size_t>(fi)];
+        if (raw == static_cast<i8>(-1)) {
+            continue;
+        }
+        const i32 tc = static_cast<i32>(raw) & 0xff;
+        if (tc < 0 || tc >= texFaceCount) {
+            continue;
+        }
+        if (fi >= static_cast<i32>(model.indices1.size()) ||
+            fi >= static_cast<i32>(model.indices2.size()) ||
+            fi >= static_cast<i32>(model.indices3.size())) {
+            continue;
+        }
+        const i32 idxs[3] = {
+            model.indices1[static_cast<std::size_t>(fi)],
+            model.indices2[static_cast<std::size_t>(fi)],
+            model.indices3[static_cast<std::size_t>(fi)],
+        };
+        for (int v = 0; v < 3; v++) {
+            const i32 vi = idxs[v];
+            if (vi < 0 ||
+                static_cast<std::size_t>(vi) >= model.verticesX.size() ||
+                static_cast<std::size_t>(vi) >= model.verticesY.size() ||
+                static_cast<std::size_t>(vi) >= model.verticesZ.size()) {
+                continue;
+            }
+            const i32 vx = model.verticesX[static_cast<std::size_t>(vi)];
+            const i32 vy = model.verticesY[static_cast<std::size_t>(vi)];
+            const i32 vz = model.verticesZ[static_cast<std::size_t>(vi)];
+            const std::size_t sti = static_cast<std::size_t>(tc);
+            if (minX[sti] > vx) minX[sti] = vx;
+            if (vx > maxX[sti]) maxX[sti] = vx;
+            if (minY[sti] > vy) minY[sti] = vy;
+            if (vy > maxY[sti]) maxY[sti] = vy;
+            if (minZ[sti] > vz) minZ[sti] = vz;
+            if (vz > maxZ[sti]) maxZ[sti] = vz;
+        }
+    }
+
+    rr = out->centerX.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = out->centerY.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = out->centerZ.resize(tN);
+    if (!rr.isOk()) return rr.status();
+    rr = out->matrices9.resize(tN * 9);
+    if (!rr.isOk()) return rr.status();
+    // Default to identity.
+    for (std::size_t i = 0; i < tN; i++) {
+        const std::size_t base = i * 9;
+        out->matrices9[base + 0] = 1.0f;
+        out->matrices9[base + 1] = 0.0f;
+        out->matrices9[base + 2] = 0.0f;
+        out->matrices9[base + 3] = 0.0f;
+        out->matrices9[base + 4] = 1.0f;
+        out->matrices9[base + 5] = 0.0f;
+        out->matrices9[base + 6] = 0.0f;
+        out->matrices9[base + 7] = 0.0f;
+        out->matrices9[base + 8] = 1.0f;
+    }
+
+    for (std::size_t i = 0; i < tN; i++) {
+        const i32 type = static_cast<i32>(model.textureRenderTypes[i]) & 0xff;
+        if (type <= 0) {
+            out->centerX[i] = 0;
+            out->centerY[i] = 0;
+            out->centerZ[i] = 0;
+            continue;
+        }
+        out->centerX[i] = (minX[i] + maxX[i]) / 2;
+        out->centerY[i] = (minY[i] + maxY[i]) / 2;
+        out->centerZ[i] = (minZ[i] + maxZ[i]) / 2;
+
+        float scaleX = 1.0f;
+        float scaleY = 1.0f;
+        float scaleZ = 1.0f;
+        if (type == 1) {
+            const i32 scaleX0 = model.textureScaleX[i];
+            // TS parity: allow division by zero to yield +/-inf (JS semantics).
+            scaleY = 64.0f / static_cast<float>(model.textureScaleY[i]);
+            if (scaleX0 == 0) {
+                scaleZ = 1.0f;
+                scaleX = 1.0f;
+            } else if (scaleX0 <= 0) {
+                scaleZ = 1.0f;
+                scaleX = static_cast<float>(-scaleX0) / 1024.0f;
+            } else {
+                scaleX = 1.0f;
+                scaleZ = static_cast<float>(scaleX0) / 1024.0f;
+            }
+        } else if (type == 2) {
+            // TS parity: allow division by zero to yield +/-inf (JS semantics).
+            scaleX = 64.0f / static_cast<float>(model.textureScaleX[i]);
+            scaleY = 64.0f / static_cast<float>(model.textureScaleY[i]);
+            scaleZ = 64.0f / static_cast<float>(model.textureScaleZ[i]);
+        } else {
+            scaleX = static_cast<float>(model.textureScaleX[i]) / 1024.0f;
+            scaleY = static_cast<float>(model.textureScaleY[i]) / 1024.0f;
+            scaleZ = static_cast<float>(model.textureScaleZ[i]) / 1024.0f;
+        }
+        const i32 p = static_cast<i32>(model.textureMappingP[i]);
+        const i32 m = static_cast<i32>(model.textureMappingM[i]);
+        const i32 n = static_cast<i32>(model.textureMappingN[i]);
+        const i32 rot = static_cast<i32>(model.textureRotation[i]) & 0xff;
+        buildTextureTransformMatrix(p, m, n, rot, scaleX, scaleY, scaleZ, &out->matrices9[i * 9]);
+    }
+
+    out->ready = true;
+    (void)alloc;
+    return Status::Ok;
+}
 // Terrain emission is implemented in TerrainEmit.cpp.
 static Status hasInBoundsLocPlacements(
     const SceneCommandBuildInput& input,
@@ -1233,6 +1706,17 @@ static bool isTextureTransparent(
     return findTypeBlobIndex(textureTransparentIds, textureId) >= 0;
 }
 
+static constexpr i32 RS_SD_TEXTURE_PACK_LIMIT = 2047;
+
+static bool isTextureSd(
+    Span<const i32> textureSdIds,
+    i32 textureId) noexcept {
+    if (textureId < 0) {
+        return false;
+    }
+    return findTypeBlobIndex(textureSdIds, textureId) >= 0;
+}
+
 i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcept {
     if (textureId < 0) {
         return -1;
@@ -1241,8 +1725,9 @@ i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcep
     if (index < 0) {
         return -1;
     }
-    // Packed texture indices match TS: 0-based index into the runtime `textureIds` list.
-    return index;
+    // Packed texture indices match TS: 0-based index into the *truncated* SD texture list (<= 2047 ids).
+    // Texture ids beyond the pack limit still count as "textured" for transparency decisions, but pack as -1.
+    return index < RS_SD_TEXTURE_PACK_LIMIT ? index : -1;
 }
 
 Status tryDecodeUnderlayTypeFromBlob(
@@ -2173,6 +2658,44 @@ static void xxh32UpdateI32Span(XXH32_state_t* state, Span<const i32> values) noe
     XXH32_update(state, values.data(), bytes);
 }
 
+// TS parity: ModelData.merge allocates vertex arrays to a fixed length (sum of input vertex counts),
+// then dedupes by writing only the first verticesCount entries and leaving the rest as 0. TS model
+// hashing includes the full array length, so for merged models we must pad with zeros for hashing.
+static void xxh32UpdateI32VecWithTsPadding(
+    XXH32_state_t* state,
+    const Vec<i32>& values,
+    i32 tsAllocCount) noexcept {
+    if (!state) {
+        return;
+    }
+    const std::size_t n = values.size();
+    std::size_t target = n;
+    if (tsAllocCount > 0) {
+        const std::size_t t = static_cast<std::size_t>(tsAllocCount);
+        if (t > target) {
+            target = t;
+        }
+    }
+    if (target == 0) {
+        return;
+    }
+    const std::size_t use = target < n ? target : n;
+    if (use > 0) {
+        XXH32_update(state, values.data(), use * sizeof(i32));
+    }
+    if (target > n) {
+        std::size_t remaining = target - n;
+        // Chunked zero padding to avoid large stack buffers.
+        static constexpr std::size_t kChunkI32 = 64;
+        i32 zeros[kChunkI32]{};
+        while (remaining > 0) {
+            const std::size_t chunk = remaining < kChunkI32 ? remaining : kChunkI32;
+            XXH32_update(state, zeros, chunk * sizeof(i32));
+            remaining -= chunk;
+        }
+    }
+}
+
 // TS parity: ModelData.light() filters faceTextures to "SD-only" before lighting and before model hashing.
 // In TS this is `textureId !== -1 && textureLoader.isSd(textureId)` else texture=-1.
 // Here, `input.textureIds` is the runtime SD texture id list; anything not present must be treated as -1.
@@ -2180,7 +2703,9 @@ static inline i32 filterSdTextureId(const SceneCommandBuildInput& input, i32 tex
     if (textureId < 0) {
         return -1;
     }
-    return mapTextureIdToPackedIndex(input.textureIds, textureId) >= 0 ? textureId : -1;
+    // TS parity: SD filtering is independent of packed index truncation; textures beyond the pack
+    // limit still remain "textured" (textureId != -1) but pack as -1 later.
+    return isTextureSd(input.textureIds, textureId) ? textureId : -1;
 }
 
 static Status computeLitModelHashForGrouping(
@@ -2249,7 +2774,7 @@ static Status computeLitModelHashForGrouping(
 
         // TS parity: "textured" depends on SD-availability filtering (see filterSdTextureId()).
         const i32 textureId = filterSdTextureId(input, rawTextureId);
-        const bool hasTexture = textureId != -1;
+        const bool hasTexture = isTextureSd(input.textureIds, textureId);
 
         const bool hasIndices =
             fi >= 0 &&
@@ -2325,9 +2850,9 @@ static Status computeLitModelHashForGrouping(
     xxh32UpdateI32Span(state, Span<const i32>(faceColors1.data(), faceColors1.size()));
     xxh32UpdateI32Span(state, Span<const i32>(faceColors2.data(), faceColors2.size()));
     xxh32UpdateI32Span(state, Span<const i32>(faceColors3.data(), faceColors3.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(model.verticesX.data(), model.verticesX.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(model.verticesY.data(), model.verticesY.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(model.verticesZ.data(), model.verticesZ.size()));
+    xxh32UpdateI32VecWithTsPadding(state, model.verticesX, model.tsVerticesAllocCount);
+    xxh32UpdateI32VecWithTsPadding(state, model.verticesY, model.tsVerticesAllocCount);
+    xxh32UpdateI32VecWithTsPadding(state, model.verticesZ, model.tsVerticesAllocCount);
     xxh32UpdateI32Span(state, Span<const i32>(textureIds.data(), textureIds.size()));
 
     *outHash = static_cast<i32>(XXH32_digest(state));
@@ -2388,7 +2913,7 @@ Status computeLitModelHashForGroupingWithLightingState(
         }
 
         const i32 textureId = filterSdTextureId(input, rawTextureId);
-        const bool hasTexture = textureId != -1;
+        const bool hasTexture = isTextureSd(input.textureIds, textureId);
 
         const bool hasIndices =
             fi >= 0 &&
@@ -2463,9 +2988,9 @@ Status computeLitModelHashForGroupingWithLightingState(
     xxh32UpdateI32Span(state, Span<const i32>(faceColors1.data(), faceColors1.size()));
     xxh32UpdateI32Span(state, Span<const i32>(faceColors2.data(), faceColors2.size()));
     xxh32UpdateI32Span(state, Span<const i32>(faceColors3.data(), faceColors3.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(model.verticesX.data(), model.verticesX.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(model.verticesY.data(), model.verticesY.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(model.verticesZ.data(), model.verticesZ.size()));
+    xxh32UpdateI32VecWithTsPadding(state, model.verticesX, model.tsVerticesAllocCount);
+    xxh32UpdateI32VecWithTsPadding(state, model.verticesY, model.tsVerticesAllocCount);
+    xxh32UpdateI32VecWithTsPadding(state, model.verticesZ, model.tsVerticesAllocCount);
     xxh32UpdateI32Span(state, Span<const i32>(textureIds.data(), textureIds.size()));
     *outHash = static_cast<i32>(XXH32_digest(state));
     XXH32_freeState(state);
@@ -2490,181 +3015,65 @@ Status computeLocVariantModelHashForGroupingFromBlob(
 
     const i32 ambient = locType.ambient + 64;
     const i32 contrast = locType.contrast + 768;
-    const i32 lightIntensity = modelLightIntensity(contrast);
 
-    Vec<i32> mergedFaceColors1(alloc);
-    Vec<i32> mergedFaceColors2(alloc);
-    Vec<i32> mergedFaceColors3(alloc);
-    Vec<i32> mergedVerticesX(alloc);
-    Vec<i32> mergedVerticesY(alloc);
-    Vec<i32> mergedVerticesZ(alloc);
-    Vec<i32> mergedTextureIds(alloc);
-
+    // TS parity: merge all model IDs for this loc variant before applying post-merge mutations and
+    // lighting/hash. This matches LocModelLoader.getLocModelData + ModelData.light + getModelHash.
+    Vec<ModelData> decodedModels(alloc);
+    auto rrReserve = decodedModels.reserve(modelIds.size());
+    if (!rrReserve.isOk()) {
+        return rrReserve.status();
+    }
     for (std::size_t mi = 0; mi < modelIds.size(); mi++) {
-        const i32 modelId = modelIds[mi];
         ModelData model(alloc);
-        const Status ds = tryDecodeModelDataById(input, modelId, &model, alloc);
+        const Status ds = tryDecodeModelDataById(input, modelIds[mi], &model, alloc);
         if (!ok(ds)) {
             return ds;
         }
-        applyLocModelMutationsForPlacement(
-            &model,
-            locType,
-            placementType,
-            rotation,
-            /*applyDiagonalNormalVariantRotation=*/true);
-
-        const std::size_t faceCount = static_cast<std::size_t>(model.faceCount < 0 ? 0 : model.faceCount);
-        Vec<i32> faceColors1(alloc);
-        Vec<i32> faceColors2(alloc);
-        Vec<i32> faceColors3(alloc);
-        Vec<i32> textureIds(alloc);
-
-        auto rr = faceColors1.resize(faceCount);
-        if (!rr.isOk()) return rr.status();
-        rr = faceColors2.resize(faceCount);
-        if (!rr.isOk()) return rr.status();
-        rr = faceColors3.resize(faceCount);
-        if (!rr.isOk()) return rr.status();
-        if (model.hasFaceTextures) {
-            rr = textureIds.resize(model.faceTextures.size());
-            if (!rr.isOk()) return rr.status();
-            for (std::size_t ti = 0; ti < model.faceTextures.size(); ti++) {
-                const i32 rawTextureId = static_cast<i32>(model.faceTextures[ti]);
-                textureIds[ti] = filterSdTextureId(input, rawTextureId);
-            }
+        applyLocModelMirrorForPlacement(&model, locType, placementType, rotation);
+        auto rrPush = decodedModels.pushBack(rs::move(model));
+        if (!rrPush.isOk()) {
+            return rrPush.status();
         }
+    }
+    if (decodedModels.empty()) {
+        return Status::NotFound;
+    }
 
-        ModelFaceLightingState lighting(alloc);
-        const Status ls = initModelFaceLightingState(model, &lighting, alloc);
-        if (!ok(ls)) {
-            return ls;
+    if (decodedModels.size() > 1) {
+        ModelData merged(alloc);
+        const Status ms = mergeModelDataTS(
+            Span<const ModelData>(decodedModels.data(), decodedModels.size()),
+            static_cast<i32>(decodedModels.size()),
+            &merged,
+            alloc);
+        if (!ok(ms)) {
+            return ms;
         }
-
-    for (i32 fi = 0; fi < model.faceCount; fi++) {
-        i32 faceType = modelFaceRenderType(model, fi);
-        const i32 rawTextureId = modelFaceRawTextureId(model, fi);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-            if (rawAlphaSigned == -2) {
-                faceType = 3;
-            } else if (rawAlphaSigned == -1) {
-                faceType = 2;
-            }
-
-            const i32 textureId = filterSdTextureId(input, rawTextureId);
-            const bool hasTexture = textureId != -1;
-
-            const bool hasIndices =
-                fi >= 0 &&
-                fi < static_cast<i32>(model.indices1.size()) &&
-                fi < static_cast<i32>(model.indices2.size()) &&
-                fi < static_cast<i32>(model.indices3.size());
-
-            const i32 baseColor =
-                (fi >= 0 && fi < static_cast<i32>(model.faceColors.size()))
-                    ? static_cast<i32>(model.faceColors[static_cast<std::size_t>(fi)] & 0xffffu)
-                    : 0;
-
-            i32 c1 = 0;
-            i32 c2 = 0;
-            i32 c3 = 0;
-
-            if (!hasTexture) {
-                if (faceType == 0 && hasIndices) {
-                    const i32 ia = model.indices1[static_cast<std::size_t>(fi)];
-                    const i32 ib = model.indices2[static_cast<std::size_t>(fi)];
-                    const i32 ic = model.indices3[static_cast<std::size_t>(fi)];
-                    const i32 shadeA = modelVertexShade(lighting, ia, ambient, lightIntensity);
-                    const i32 shadeB = modelVertexShade(lighting, ib, ambient, lightIntensity);
-                    const i32 shadeC = modelVertexShade(lighting, ic, ambient, lightIntensity);
-                    const i32 shadeA17 = static_cast<i32>(static_cast<u32>(shadeA) << 17);
-                    const i32 shadeB17 = static_cast<i32>(static_cast<u32>(shadeB) << 17);
-                    const i32 shadeC17 = static_cast<i32>(static_cast<u32>(shadeC) << 17);
-                    c1 = static_cast<i32>(static_cast<u32>(shadeA17) |
-                                          static_cast<u32>(modelAdjustLightness(baseColor, shadeA)));
-                    c2 = static_cast<i32>(static_cast<u32>(shadeB17) |
-                                          static_cast<u32>(modelAdjustLightness(baseColor, shadeB)));
-                    c3 = static_cast<i32>(static_cast<u32>(shadeC17) |
-                                          static_cast<u32>(modelAdjustLightness(baseColor, shadeC)));
-                } else if (faceType == 1 && hasIndices) {
-                    const i32 shade = modelFaceShade(lighting, fi, ambient, lightIntensity);
-                    const i32 shade17 = static_cast<i32>(static_cast<u32>(shade) << 17);
-                    c1 = static_cast<i32>(static_cast<u32>(shade17) |
-                                          static_cast<u32>(modelAdjustLightness(baseColor, shade)));
-                    c3 = -1;
-                } else if (faceType == 3) {
-                    c1 = 128;
-                    c3 = -1;
-                } else {
-                    c3 = -2;
-                }
-            } else {
-                if (faceType == 0 && hasIndices) {
-                    const i32 ia = model.indices1[static_cast<std::size_t>(fi)];
-                    const i32 ib = model.indices2[static_cast<std::size_t>(fi)];
-                    const i32 ic = model.indices3[static_cast<std::size_t>(fi)];
-                    c1 = modelVertexLightnessTextured(lighting, ia, ambient, lightIntensity);
-                    c2 = modelVertexLightnessTextured(lighting, ib, ambient, lightIntensity);
-                    c3 = modelVertexLightnessTextured(lighting, ic, ambient, lightIntensity);
-                } else if (faceType == 1 && hasIndices) {
-                    c1 = modelFaceLightnessTextured(lighting, fi, ambient, lightIntensity);
-                    c3 = -1;
-                } else {
-                    c3 = -2;
-                }
-            }
-
-            faceColors1[static_cast<std::size_t>(fi)] = c1;
-            faceColors2[static_cast<std::size_t>(fi)] = c2;
-            faceColors3[static_cast<std::size_t>(fi)] = c3;
-        }
-
-        // Append in TS getModelHash field order (field-major concatenation).
-        for (std::size_t i = 0; i < faceColors1.size(); i++) {
-            auto rrPush = mergedFaceColors1.pushBack(faceColors1[i]);
-            if (!rrPush.isOk()) return rrPush.status();
-        }
-        for (std::size_t i = 0; i < faceColors2.size(); i++) {
-            auto rrPush = mergedFaceColors2.pushBack(faceColors2[i]);
-            if (!rrPush.isOk()) return rrPush.status();
-        }
-        for (std::size_t i = 0; i < faceColors3.size(); i++) {
-            auto rrPush = mergedFaceColors3.pushBack(faceColors3[i]);
-            if (!rrPush.isOk()) return rrPush.status();
-        }
-        for (std::size_t i = 0; i < model.verticesX.size(); i++) {
-            auto rrPush = mergedVerticesX.pushBack(model.verticesX[i]);
-            if (!rrPush.isOk()) return rrPush.status();
-        }
-        for (std::size_t i = 0; i < model.verticesY.size(); i++) {
-            auto rrPush = mergedVerticesY.pushBack(model.verticesY[i]);
-            if (!rrPush.isOk()) return rrPush.status();
-        }
-        for (std::size_t i = 0; i < model.verticesZ.size(); i++) {
-            auto rrPush = mergedVerticesZ.pushBack(model.verticesZ[i]);
-            if (!rrPush.isOk()) return rrPush.status();
-        }
-        for (std::size_t i = 0; i < textureIds.size(); i++) {
-            auto rrPush = mergedTextureIds.pushBack(textureIds[i]);
-            if (!rrPush.isOk()) return rrPush.status();
+        decodedModels.clear();
+        auto rrMerged = decodedModels.pushBack(rs::move(merged));
+        if (!rrMerged.isOk()) {
+            return rrMerged.status();
         }
     }
 
-    XXH32_state_t* state = XXH32_createState();
-    if (!state) {
-        return Status::OutOfMemory;
-    }
-    XXH32_reset(state, 0);
-    xxh32UpdateI32Span(state, Span<const i32>(mergedFaceColors1.data(), mergedFaceColors1.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(mergedFaceColors2.data(), mergedFaceColors2.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(mergedFaceColors3.data(), mergedFaceColors3.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(mergedVerticesX.data(), mergedVerticesX.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(mergedVerticesY.data(), mergedVerticesY.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(mergedVerticesZ.data(), mergedVerticesZ.size()));
-    xxh32UpdateI32Span(state, Span<const i32>(mergedTextureIds.data(), mergedTextureIds.size()));
-    *outHash = static_cast<i32>(XXH32_digest(state));
-    XXH32_freeState(state);
-    return Status::Ok;
+    applyLocModelPostMergeMutationsForPlacement(
+        &decodedModels[0],
+        locType,
+        placementType,
+        rotation,
+        /*applyDiagonalNormalVariantRotation=*/true);
+
+    return computeLitModelHashForGrouping(
+        input,
+        decodedModels[0],
+        ambient,
+        contrast,
+        placementType,
+        rotation,
+        &locType,
+        nullptr,
+        outHash,
+        alloc);
 }
 
 Status tryDecodeModelFaceStatsFromBlob(
@@ -2740,11 +3149,7 @@ Status tryDecodeModelFaceStatsFromBlob(
             faceType = 2;
         }
 
-        const i32 packedTextureId = mapTextureIdToPackedIndex(input.textureIds, textureId);
-        if (packedTextureId < 0) {
-            textureId = -1;
-        }
-        const bool hasTexture = textureId != -1;
+        const bool hasTexture = isTextureSd(input.textureIds, textureId);
         const bool textureAlpha =
             hasTexture &&
             isTextureTransparent(input.textureTransparentIds, textureId);
@@ -2851,11 +3256,7 @@ Status tryDecodeObjModelFaceStatsFromBlob(
             renderType = 2;
         }
 
-        const i32 packedTextureId = mapTextureIdToPackedIndex(input.textureIds, textureId);
-        if (packedTextureId < 0) {
-            textureId = -1;
-        }
-        const bool hasTexture = textureId != -1;
+        const bool hasTexture = isTextureSd(input.textureIds, textureId);
 
         i32 alpha = 0xff;
         if (model.hasFaceAlphas &&
@@ -3341,6 +3742,11 @@ Status appendLocPlacementGeometry(
             continue;
         }
         const i32 lightIntensity = modelLightIntensity(contrast);
+        ModelTextureScales texScales(alloc);
+        const Status tss = computeModelTextureScales(model, &texScales, alloc);
+        if (!ok(tss)) {
+            continue;
+        }
 
         for (i32 fi = 0; fi < model.faceCount; fi++) {
             i32 faceType = modelFaceRenderType(model, fi);
@@ -3352,11 +3758,8 @@ Status appendLocPlacementGeometry(
             faceType = 2;
         }
 
-            const i32 packedTextureId = mapTextureIdToPackedIndex(input.textureIds, textureId);
-            if (packedTextureId < 0) {
-                textureId = -1;
-            }
-            const bool hasTexture = textureId != -1;
+            const bool hasTexture = isTextureSd(input.textureIds, textureId);
+            i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
             const bool textureAlpha =
                 hasTexture &&
                 isTextureTransparent(input.textureTransparentIds, textureId);
@@ -3479,6 +3882,230 @@ Status appendLocPlacementGeometry(
                         &v1,
                         &u2,
                         &v2);
+                } else if (texScales.ready && texCoord != -1) {
+                    const i32 tc = texCoord & 0xff;
+                    if (tc >= 0 && tc < model.textureFaceCount) {
+                        const std::size_t sti = static_cast<std::size_t>(tc);
+                        const i32 centerX = texScales.centerX[sti];
+                        const i32 centerY = texScales.centerY[sti];
+                        const i32 centerZ = texScales.centerZ[sti];
+                        const float* transform = &texScales.matrices9[sti * 9];
+                        const i32 direction = static_cast<i32>(model.textureDirection[sti]);
+                        const float speed = static_cast<float>(model.textureSpeed[sti]) / 256.0f;
+                        if (textureRenderType == 1) {
+                            const float scaleZ =
+                                static_cast<float>(model.textureScaleZ[sti]) / 1024.0f;
+                            computeCylindricalUv(
+                                model.verticesX[static_cast<std::size_t>(ia)],
+                                model.verticesY[static_cast<std::size_t>(ia)],
+                                model.verticesZ[static_cast<std::size_t>(ia)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                transform,
+                                scaleZ,
+                                direction,
+                                speed,
+                                &u0,
+                                &v0);
+                            computeCylindricalUv(
+                                model.verticesX[static_cast<std::size_t>(ib)],
+                                model.verticesY[static_cast<std::size_t>(ib)],
+                                model.verticesZ[static_cast<std::size_t>(ib)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                transform,
+                                scaleZ,
+                                direction,
+                                speed,
+                                &u1,
+                                &v1);
+                            computeCylindricalUv(
+                                model.verticesX[static_cast<std::size_t>(ic)],
+                                model.verticesY[static_cast<std::size_t>(ic)],
+                                model.verticesZ[static_cast<std::size_t>(ic)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                transform,
+                                scaleZ,
+                                direction,
+                                speed,
+                                &u2,
+                                &v2);
+                            const float scaleZHalf = scaleZ / 2.0f;
+                            if ((direction & 0x1) == 0) {
+                                if (u1 - u0 > scaleZHalf) u1 -= scaleZ;
+                                else if (u0 - u1 > scaleZHalf) u1 += scaleZ;
+                                if (u2 - u0 > scaleZHalf) u2 -= scaleZ;
+                                else if (u0 - u2 > scaleZHalf) u2 += scaleZ;
+                            } else {
+                                if (v1 - v0 > scaleZHalf) v1 -= scaleZ;
+                                else if (v0 - v1 > scaleZHalf) v1 += scaleZ;
+                                if (v2 - v0 > scaleZHalf) v2 -= scaleZ;
+                                else if (v0 - v2 > scaleZHalf) v2 += scaleZ;
+                            }
+                        } else if (textureRenderType == 2) {
+                            const double uOffset =
+                                model.textureTransU.size() > sti
+                                    ? static_cast<double>(model.textureTransU[sti]) / 256.0
+                                    : 0.0;
+                            const double vOffset =
+                                model.textureTransV.size() > sti
+                                    ? static_cast<double>(model.textureTransV[sti]) / 256.0
+                                    : 0.0;
+                            const i32 dx1 =
+                                model.verticesX[static_cast<std::size_t>(ib)] -
+                                model.verticesX[static_cast<std::size_t>(ia)];
+                            const i32 dy1 =
+                                model.verticesY[static_cast<std::size_t>(ib)] -
+                                model.verticesY[static_cast<std::size_t>(ia)];
+                            const i32 dz1 =
+                                model.verticesZ[static_cast<std::size_t>(ib)] -
+                                model.verticesZ[static_cast<std::size_t>(ia)];
+                            const i32 dx2 =
+                                model.verticesX[static_cast<std::size_t>(ic)] -
+                                model.verticesX[static_cast<std::size_t>(ia)];
+                            const i32 dy2 =
+                                model.verticesY[static_cast<std::size_t>(ic)] -
+                                model.verticesY[static_cast<std::size_t>(ia)];
+                            const i32 dz2 =
+                                model.verticesZ[static_cast<std::size_t>(ic)] -
+                                model.verticesZ[static_cast<std::size_t>(ia)];
+                            // TS parity: do these products in 64-bit (JS doesn't overflow i32 here).
+                            const i64 vx64 =
+                                static_cast<i64>(dy1) * static_cast<i64>(dz2) -
+                                static_cast<i64>(dy2) * static_cast<i64>(dz1);
+                            const i64 vy64 =
+                                static_cast<i64>(dz1) * static_cast<i64>(dx2) -
+                                static_cast<i64>(dz2) * static_cast<i64>(dx1);
+                            const i64 vz64 =
+                                static_cast<i64>(dx1) * static_cast<i64>(dy2) -
+                                static_cast<i64>(dx2) * static_cast<i64>(dy1);
+                            const double vx = static_cast<double>(vx64);
+                            const double vy = static_cast<double>(vy64);
+                            const double vz = static_cast<double>(vz64);
+                            const double scaleX =
+                                64.0 / static_cast<double>(model.textureScaleX[sti]);
+                            const double scaleY =
+                                64.0 / static_cast<double>(model.textureScaleY[sti]);
+                            const double scaleZ =
+                                64.0 / static_cast<double>(model.textureScaleZ[sti]);
+                            const double t0 = static_cast<double>(transform[0]);
+                            const double t1 = static_cast<double>(transform[1]);
+                            const double t2 = static_cast<double>(transform[2]);
+                            const double t3 = static_cast<double>(transform[3]);
+                            const double t4 = static_cast<double>(transform[4]);
+                            const double t5 = static_cast<double>(transform[5]);
+                            const double t6 = static_cast<double>(transform[6]);
+                            const double t7 = static_cast<double>(transform[7]);
+                            const double t8 = static_cast<double>(transform[8]);
+                            const double scaledNormalX =
+                                (vx * t0 + vy * t1 + vz * t2) / scaleX;
+                            const double scaledNormalY =
+                                (vx * t3 + vy * t4 + vz * t5) / scaleY;
+                            const double scaledNormalZ =
+                                (vx * t6 + vy * t7 + vz * t8) / scaleZ;
+                            const i32 cubeFace = getDominantAxisFace(
+                                scaledNormalX,
+                                scaledNormalY,
+                                scaledNormalZ);
+                            computeBoxProjectedUv(
+                                model.verticesX[static_cast<std::size_t>(ia)],
+                                model.verticesY[static_cast<std::size_t>(ia)],
+                                model.verticesZ[static_cast<std::size_t>(ia)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                cubeFace,
+                                transform,
+                                direction,
+                                speed,
+                                static_cast<float>(uOffset),
+                                static_cast<float>(vOffset),
+                                &u0,
+                                &v0);
+                            computeBoxProjectedUv(
+                                model.verticesX[static_cast<std::size_t>(ib)],
+                                model.verticesY[static_cast<std::size_t>(ib)],
+                                model.verticesZ[static_cast<std::size_t>(ib)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                cubeFace,
+                                transform,
+                                direction,
+                                speed,
+                                static_cast<float>(uOffset),
+                                static_cast<float>(vOffset),
+                                &u1,
+                                &v1);
+                            computeBoxProjectedUv(
+                                model.verticesX[static_cast<std::size_t>(ic)],
+                                model.verticesY[static_cast<std::size_t>(ic)],
+                                model.verticesZ[static_cast<std::size_t>(ic)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                cubeFace,
+                                transform,
+                                direction,
+                                speed,
+                                static_cast<float>(uOffset),
+                                static_cast<float>(vOffset),
+                                &u2,
+                                &v2);
+                        } else if (textureRenderType == 3) {
+                            computeSphericalUv(
+                                model.verticesX[static_cast<std::size_t>(ia)],
+                                model.verticesY[static_cast<std::size_t>(ia)],
+                                model.verticesZ[static_cast<std::size_t>(ia)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                transform,
+                                direction,
+                                speed,
+                                &u0,
+                                &v0);
+                            computeSphericalUv(
+                                model.verticesX[static_cast<std::size_t>(ib)],
+                                model.verticesY[static_cast<std::size_t>(ib)],
+                                model.verticesZ[static_cast<std::size_t>(ib)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                transform,
+                                direction,
+                                speed,
+                                &u1,
+                                &v1);
+                            computeSphericalUv(
+                                model.verticesX[static_cast<std::size_t>(ic)],
+                                model.verticesY[static_cast<std::size_t>(ic)],
+                                model.verticesZ[static_cast<std::size_t>(ic)],
+                                centerX,
+                                centerY,
+                                centerZ,
+                                transform,
+                                direction,
+                                speed,
+                                &u2,
+                                &v2);
+                            if ((direction & 0x1) == 0) {
+                                if (u1 - u0 > 0.5f) u1 -= 1.0f;
+                                else if (u0 - u1 > 0.0f) u1 += 1.0f;
+                                if (u2 - u0 > 0.5f) u2 -= 1.0f;
+                                else if (u0 - u2 > 0.5f) u2 += 1.0f;
+                            } else {
+                                if (v1 - v0 > 0.5f) v1 -= 1.0f;
+                                else if (v0 - v1 > 0.5f) v1 += 1.0f;
+                                if (v2 - v0 > 0.5f) v2 -= 1.0f;
+                                else if (v0 - v2 > 0.5f) v2 += 1.0f;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -3813,11 +4440,8 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
             faceType = 2;
         }
 
-        i32 packedTextureId = mapTextureIdToPackedIndex(input.textureIds, textureId);
-        if (packedTextureId < 0) {
-            textureId = -1;
-        }
-        const bool hasTexture = textureId != -1;
+        const bool hasTexture = isTextureSd(input.textureIds, textureId);
+        i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
         const bool textureAlpha =
             hasTexture &&
             isTextureTransparent(input.textureTransparentIds, textureId);
@@ -4034,8 +4658,8 @@ Status appendObjPlacementGeometry(
             renderType = 2;
         }
 
-        const i32 packedTextureId = mapTextureIdToPackedIndex(input.textureIds, textureId);
-        const bool hasTexture = textureId != -1;
+        const bool hasTexture = isTextureSd(input.textureIds, textureId);
+        i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
 
         i32 alpha = 0xff;
         if (model.hasFaceAlphas &&
@@ -4708,10 +5332,14 @@ static Status appendSceneCommandPlanDebugDigest(
 static Status buildSceneCommandStreamFromBytesNoSeed(
     const SceneCommandBuildInput& input,
     SceneCommandStream* out,
+    SceneLocAnimatedTickInit* outTickInit,
     SceneCommandBuildMode mode,
     Allocator& alloc) noexcept {
     if (!out) {
         return Status::InvalidArgument;
+    }
+    if (outTickInit) {
+        outTickInit->clear();
     }
     // `out` is allocated+cleared in buildSceneCommandStream(); keep this function phase-focused.
     const bool emitGeometry = mode == SceneCommandBuildMode::FullStream;
@@ -4723,8 +5351,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             return hs;
         }
         if (hasLocPlacements &&
-            (input.tryGetTypeEntryBytes == nullptr ||
-             (input.tryLoadModelData == nullptr))) {
+            (input.tryGetTypeEntryBytes == nullptr)) {
             return Status::NotFound;
         }
     } else if (input.locLoadType != 1) {
@@ -4777,6 +5404,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
 
         static i32 computeModelXzRadius(const ModelData& model) noexcept {
             i64 maxRadiusSq = 0;
+            // TS Model.calculateBoundsCylinder() iterates `usedVertexCount`.
             const i32 vertexCount =
                 model.usedVertexCount > 0 ? model.usedVertexCount : model.verticesCount;
             std::size_t count = 0;
@@ -4861,30 +5489,58 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
                 return Status::NotFound;
             }
 
-            i32 maxRadius = -1;
+            // TS parity: LocModelLoader merges all model IDs for a loc variant before applying
+            // post-merge mutations (rotate/resize/translate). This matters for XZ radius because
+            // locType offsets can expand the final bounds relative to any single source model.
+            Vec<ModelData> decodedModels(*alloc);
+            auto rrReserve = decodedModels.reserve(refs.size());
+            if (!rrReserve.isOk()) {
+                return rrReserve.status();
+            }
             for (std::size_t i = 0; i < refs.size(); i++) {
                 ModelData model(*alloc);
-                const Status s = tryDecodeLocModelFromBlob(
-                    *input,
-                    locType,
-                    refs[i].placementType,
-                    refs[i].rotation,
-                    refs[i].modelId,
-                    &model,
-                    /*applyDiagonalNormalVariantRotation=*/true,
-                    *alloc);
+                const Status s = tryDecodeModelDataById(*input, refs[i].modelId, &model, *alloc);
                 if (!ok(s)) {
                     return s;
                 }
-                if (!locType.mergeNormals) {
-                    const i32 radius = computeModelXzRadius(model);
-                    if (radius > maxRadius) {
-                        maxRadius = radius;
-                    }
+                // Mirror per source model before merge (TS LocModelLoader.getLocModelData).
+                applyLocModelMirrorForPlacement(&model, locType, refs[i].placementType, refs[i].rotation);
+                auto rrPush = decodedModels.pushBack(rs::move(model));
+                if (!rrPush.isOk()) {
+                    return rrPush.status();
                 }
             }
 
-            *outRadius = maxRadius;
+            if (decodedModels.empty()) {
+                return Status::NotFound;
+            }
+
+            // Merge before applying placement-level mutations (TS parity).
+            if (decodedModels.size() > 1) {
+                ModelData merged(*alloc);
+                const Status ms = mergeModelDataTS(
+                    Span<const ModelData>(decodedModels.data(), decodedModels.size()),
+                    static_cast<i32>(decodedModels.size()),
+                    &merged,
+                    *alloc);
+                if (!ok(ms)) {
+                    return ms;
+                }
+                decodedModels.clear();
+                auto rrMerged = decodedModels.pushBack(rs::move(merged));
+                if (!rrMerged.isOk()) {
+                    return rrMerged.status();
+                }
+            }
+
+            applyLocModelPostMergeMutationsForPlacement(
+                &decodedModels[0],
+                locType,
+                variants[0].placementType,
+                variants[0].rotation,
+                /*applyDiagonalNormalVariantRotation=*/true);
+
+            *outRadius = computeModelXzRadius(decodedModels[0]);
             return Status::Ok;
         }
     };
@@ -5270,8 +5926,8 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         }
     }
 
-    // Obj-spawn bytes are optional (runtime kind=13). If absent, obj commands are skipped.
-    {
+    if (input.loadObjs) {
+        // Obj-spawn bytes are optional (runtime kind=13). If absent, obj commands are skipped.
         DecodedObjTypeCache objTypeCache(cacheInfo, alloc);
         DecodedModelFaceStatsCache objModelCache(alloc);
         Status os = Status::Ok;
@@ -5313,6 +5969,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             &indexCount,
             &locTypeCache,
             &seqTypeCache,
+            outTickInit,
             alloc);
         if (!ok(as)) {
             return as;
@@ -5568,7 +6225,7 @@ static Status buildSceneCommandStreamByMode(
     out->debugWorldHeightProbeLevel = input.debugWorldHeightProbeLevel;
     out->debugWorldHeightProbeWorldX = input.debugWorldHeightProbeWorldX;
     out->debugWorldHeightProbeWorldZ = input.debugWorldHeightProbeWorldZ;
-    return scb::buildSceneCommandStreamFromBytesNoSeed(input, out, mode, alloc);
+    return scb::buildSceneCommandStreamFromBytesNoSeed(input, out, nullptr, mode, alloc);
 }
 
 Status buildSceneCommandStream(
@@ -5578,6 +6235,44 @@ Status buildSceneCommandStream(
     return buildSceneCommandStreamByMode(
         input,
         out,
+        scb::SceneCommandBuildMode::FullStream,
+        alloc);
+}
+
+Status buildSceneCommandStreamWithLocAnimatedTickInit(
+    const SceneCommandBuildInput& input,
+    SceneCommandStream* out,
+    SceneLocAnimatedTickInit* outTickInit,
+    Allocator& alloc) noexcept {
+    if (!out || !outTickInit) {
+        return Status::InvalidArgument;
+    }
+    const Status vs = validateSceneCommandBuildInput(input);
+    if (!ok(vs)) {
+        return vs;
+    }
+    auto rr = out->init(alloc);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    rr = outTickInit->init(alloc);
+    if (!rr.isOk()) {
+        return rr.status();
+    }
+    out->clear();
+    outTickInit->clear();
+    out->debugTerrainDigestSampleStartVertex =
+        input.debugTerrainDigestSampleStartVertex > 0 ? input.debugTerrainDigestSampleStartVertex : 0;
+    out->debugTerrainProbeLevel = input.debugTerrainProbeLevel;
+    out->debugTerrainProbeTileX = input.debugTerrainProbeTileX;
+    out->debugTerrainProbeTileY = input.debugTerrainProbeTileY;
+    out->debugWorldHeightProbeLevel = input.debugWorldHeightProbeLevel;
+    out->debugWorldHeightProbeWorldX = input.debugWorldHeightProbeWorldX;
+    out->debugWorldHeightProbeWorldZ = input.debugWorldHeightProbeWorldZ;
+    return scb::buildSceneCommandStreamFromBytesNoSeed(
+        input,
+        out,
+        outTickInit,
         scb::SceneCommandBuildMode::FullStream,
         alloc);
 }

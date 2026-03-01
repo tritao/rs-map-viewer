@@ -714,3 +714,263 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_tick_advance_and_emit_base_patch
     return cursor == requiredLength ? cursor : -2;
 }
 
+// Tick multiple registered states and emit a FramePacket-compatible patch stream.
+//
+// Inputs:
+// - stateKeys: list of runtime tick-state keys to advance (we use mapId as the key on TS side).
+//
+// Output (written into outMeta[0..3]):
+// - outMeta[0] = countsPtr (i32*)
+// - outMeta[1] = countsLen (i32 count)
+// - outMeta[2] = patchesPtr (i32*)
+// - outMeta[3] = patchesLen (i32 count)
+//
+// The returned pointers refer to runtime-owned scratch buffers and are valid until the next call.
+static constexpr rs::i32 RS_FRAME_TICK_STREAM_COUNT = 10;
+static constexpr rs::i32 RS_FRAME_TICK_COUNTS_STRIDE = 1 + RS_FRAME_TICK_STREAM_COUNT; // [mapId, 10 counts]
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_tick_maps_emit_patch_streams_meta(
+    const rs::i32 runtimeHandle,
+    const rs::i32* stateKeys,
+    const rs::i32 stateKeyCount,
+    const rs::i32 cycleNowFixed,
+    const rs::i32 clientTickCount,
+    rs::i32* outMeta,
+    const rs::i32 outMetaLength) {
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime || stateKeyCount < 0 || clientTickCount < 0 || outMetaLength < 4 || !outMeta) {
+        return -1;
+    }
+    if (stateKeyCount > 0 && !stateKeys) {
+        return -1;
+    }
+
+    auto& outCounts = runtime->tickPatchCountsByMapIdScratch;
+    auto& outPacked = runtime->tickPatchPackedScratch;
+    outCounts.clear();
+    outPacked.clear();
+
+    // Reserve pessimistically: each map writes a fixed counts tuple and up to (locCount+npcCount) patches
+    // per stream, but we don't know locCount ahead of time. Reserve counts only.
+    outCounts.reserve(static_cast<std::size_t>(stateKeyCount) * static_cast<std::size_t>(RS_FRAME_TICK_COUNTS_STRIDE));
+
+    for (rs::i32 i = 0; i < stateKeyCount; i++) {
+        const rs::i32 key = stateKeys[i];
+
+        // Always write a counts entry for each requested key to keep ordering stable for JS.
+        outCounts.push_back(key);
+        for (rs::i32 s = 0; s < RS_FRAME_TICK_STREAM_COUNT; s++) {
+            outCounts.push_back(0);
+        }
+        const std::size_t countsBase = outCounts.size() - static_cast<std::size_t>(RS_FRAME_TICK_STREAM_COUNT);
+
+        auto it = runtime->tickStates.find(key);
+        if (it == runtime->tickStates.end()) {
+            continue;
+        }
+        MapRenderTickState& tickState = it->second;
+        const rs::i32 locCount = tickState.locCount;
+        const rs::i32 npcCount = tickState.npcCount;
+        if (locCount < 0 || npcCount < 0) {
+            continue;
+        }
+
+        auto getConst = [&](const TickStateFieldIndex index) -> const rs::i32* {
+            const auto& v = tickState.fields[static_cast<std::size_t>(index)];
+            return v.empty() ? nullptr : v.data();
+        };
+        auto getMut = [&](const TickStateFieldIndex index) -> rs::i32* {
+            auto& v = tickState.fields[static_cast<std::size_t>(index)];
+            return v.empty() ? nullptr : v.data();
+        };
+        auto getLen = [&](const TickStateFieldIndex index) -> rs::i32 {
+            return static_cast<rs::i32>(tickState.fields[static_cast<std::size_t>(index)].size());
+        };
+
+        std::vector<rs::i32> locActiveFlags(static_cast<std::size_t>(locCount));
+        std::vector<rs::i32> locPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locAlphaPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locLodPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locLodAlphaPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locInteractPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locInteractAlphaPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locInteractLodPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> locInteractLodAlphaPatches(static_cast<std::size_t>(locCount) * 4u);
+        std::vector<rs::i32> npcPatches(static_cast<std::size_t>(npcCount) * 4u);
+        std::vector<rs::i32> npcAlphaPatches(static_cast<std::size_t>(npcCount) * 4u);
+
+        rs::i32 locBasePatchCount = 0;
+        rs::i32 locAlphaPatchCount = 0;
+        rs::i32 locLodPatchCount = 0;
+        rs::i32 locLodAlphaPatchCount = 0;
+        rs::i32 locInteractPatchCount = 0;
+        rs::i32 locInteractAlphaPatchCount = 0;
+        rs::i32 locInteractLodPatchCount = 0;
+        rs::i32 locInteractLodAlphaPatchCount = 0;
+        rs::i32 npcBasePatchCount = 0;
+        rs::i32 npcAlphaPatchCount = 0;
+
+        const rs::i32 status = rs_tick_advance_and_emit_base_patches(
+            getMut(TICK_FIELD_LOC_FRAME_IDS),
+            getMut(TICK_FIELD_LOC_CYCLE_STARTS_FIXED),
+            getConst(TICK_FIELD_LOC_FRAME_STEPS),
+            getConst(TICK_FIELD_LOC_HAS_ANIM_MAYA),
+            getConst(TICK_FIELD_LOC_ANIM_MAYA_DURATIONS),
+            getConst(TICK_FIELD_LOC_FRAME_LENGTH_OFFSETS),
+            getConst(TICK_FIELD_LOC_FRAME_LENGTH_COUNTS),
+            locCount,
+            cycleNowFixed,
+            getConst(TICK_FIELD_LOC_FRAME_LENGTHS_PACKED),
+            getLen(TICK_FIELD_LOC_FRAME_LENGTHS_PACKED),
+            locActiveFlags.empty() ? nullptr : locActiveFlags.data(),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_BASE),
+            getConst(TICK_FIELD_LOC_ANIM_FRAME_OFFSETS_BASE),
+            getConst(TICK_FIELD_LOC_ANIM_FRAME_COUNTS_BASE),
+            getConst(TICK_FIELD_LOC_ANIM_FRAMES_BASE_PACKED),
+            getLen(TICK_FIELD_LOC_ANIM_FRAMES_BASE_PACKED),
+            locPatches.empty() ? nullptr : locPatches.data(),
+            static_cast<rs::i32>(locPatches.size()),
+            &locBasePatchCount,
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_ALPHA),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_LOD),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_LOD_ALPHA),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT_ALPHA),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT_LOD),
+            getConst(TICK_FIELD_LOC_DRAW_RANGE_INDICES_INTERACT_LOD_ALPHA),
+            getConst(TICK_FIELD_LOC_ANIM_FRAME_OFFSETS_ALPHA),
+            getConst(TICK_FIELD_LOC_ANIM_FRAME_COUNTS_ALPHA),
+            getConst(TICK_FIELD_LOC_ANIM_FRAMES_ALPHA_PACKED),
+            getLen(TICK_FIELD_LOC_ANIM_FRAMES_ALPHA_PACKED),
+            locAlphaPatches.empty() ? nullptr : locAlphaPatches.data(),
+            static_cast<rs::i32>(locAlphaPatches.size()),
+            &locAlphaPatchCount,
+            locLodPatches.empty() ? nullptr : locLodPatches.data(),
+            static_cast<rs::i32>(locLodPatches.size()),
+            &locLodPatchCount,
+            locLodAlphaPatches.empty() ? nullptr : locLodAlphaPatches.data(),
+            static_cast<rs::i32>(locLodAlphaPatches.size()),
+            &locLodAlphaPatchCount,
+            locInteractPatches.empty() ? nullptr : locInteractPatches.data(),
+            static_cast<rs::i32>(locInteractPatches.size()),
+            &locInteractPatchCount,
+            locInteractAlphaPatches.empty() ? nullptr : locInteractAlphaPatches.data(),
+            static_cast<rs::i32>(locInteractAlphaPatches.size()),
+            &locInteractAlphaPatchCount,
+            locInteractLodPatches.empty() ? nullptr : locInteractLodPatches.data(),
+            static_cast<rs::i32>(locInteractLodPatches.size()),
+            &locInteractLodPatchCount,
+            locInteractLodAlphaPatches.empty() ? nullptr : locInteractLodAlphaPatches.data(),
+            static_cast<rs::i32>(locInteractLodAlphaPatches.size()),
+            &locInteractLodAlphaPatchCount,
+
+            getMut(TICK_FIELD_NPC_X),
+            getMut(TICK_FIELD_NPC_Y),
+            getMut(TICK_FIELD_NPC_ORIENTATION),
+            getMut(TICK_FIELD_NPC_ROTATION),
+            getMut(TICK_FIELD_NPC_PATH_LENGTH),
+            getMut(TICK_FIELD_NPC_MOVEMENT_SEQ_ID),
+            getConst(TICK_FIELD_NPC_PATH_X_PACKED),
+            getLen(TICK_FIELD_NPC_PATH_X_PACKED),
+            getConst(TICK_FIELD_NPC_PATH_Y_PACKED),
+            getLen(TICK_FIELD_NPC_PATH_Y_PACKED),
+            getConst(TICK_FIELD_NPC_PATH_MOVEMENT_TYPE_PACKED),
+            getLen(TICK_FIELD_NPC_PATH_MOVEMENT_TYPE_PACKED),
+            getConst(TICK_FIELD_NPC_SIZE),
+            getConst(TICK_FIELD_NPC_IS_CLICKABLE),
+            getConst(TICK_FIELD_NPC_ROTATION_SPEED),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_ID),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_ID),
+            getConst(TICK_FIELD_NPC_HAS_WALK_ANIM),
+            getMut(TICK_FIELD_NPC_FRAME_IDS),
+            getMut(TICK_FIELD_NPC_FRAME_TICKS),
+            getMut(TICK_FIELD_NPC_MOVEMENT_LOOPS),
+            npcCount,
+            clientTickCount,
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_VALID),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_HAS_ANIM_MAYA),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_ANIM_MAYA_DURATIONS),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_FRAME_STEPS),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_LOOPING),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_MAX_LOOPS),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_FRAME_ID_COUNTS),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_FRAME_LENGTH_OFFSETS),
+            getConst(TICK_FIELD_NPC_IDLE_SEQ_FRAME_LENGTH_COUNTS),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_VALID),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_HAS_ANIM_MAYA),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_ANIM_MAYA_DURATIONS),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_FRAME_STEPS),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_LOOPING),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_MAX_LOOPS),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_FRAME_ID_COUNTS),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_FRAME_LENGTH_OFFSETS),
+            getConst(TICK_FIELD_NPC_WALK_SEQ_FRAME_LENGTH_COUNTS),
+            getConst(TICK_FIELD_NPC_SEQ_FRAME_LENGTHS_PACKED),
+            getLen(TICK_FIELD_NPC_SEQ_FRAME_LENGTHS_PACKED),
+            getConst(TICK_FIELD_NPC_DRAW_RANGE_INDICES),
+            getConst(TICK_FIELD_NPC_IDLE_ANIM_FRAME_OFFSETS_BASE),
+            getConst(TICK_FIELD_NPC_IDLE_ANIM_FRAME_COUNTS_BASE),
+            getConst(TICK_FIELD_NPC_WALK_ANIM_FRAME_OFFSETS_BASE),
+            getConst(TICK_FIELD_NPC_WALK_ANIM_FRAME_COUNTS_BASE),
+            getConst(TICK_FIELD_NPC_ANIM_FRAMES_BASE_PACKED),
+            getLen(TICK_FIELD_NPC_ANIM_FRAMES_BASE_PACKED),
+            npcPatches.empty() ? nullptr : npcPatches.data(),
+            static_cast<rs::i32>(npcPatches.size()),
+            &npcBasePatchCount,
+            getConst(TICK_FIELD_NPC_IDLE_ANIM_FRAME_OFFSETS_ALPHA),
+            getConst(TICK_FIELD_NPC_IDLE_ANIM_FRAME_COUNTS_ALPHA),
+            getConst(TICK_FIELD_NPC_WALK_ANIM_FRAME_OFFSETS_ALPHA),
+            getConst(TICK_FIELD_NPC_WALK_ANIM_FRAME_COUNTS_ALPHA),
+            getConst(TICK_FIELD_NPC_ANIM_FRAMES_ALPHA_PACKED),
+            getLen(TICK_FIELD_NPC_ANIM_FRAMES_ALPHA_PACKED),
+            tickState.npcNullAlphaFrameOffset,
+            npcAlphaPatches.empty() ? nullptr : npcAlphaPatches.data(),
+            static_cast<rs::i32>(npcAlphaPatches.size()),
+            &npcAlphaPatchCount);
+
+        if (status != 1) {
+            // Keep the counts tuple as zeros; skip emitting any patches.
+            continue;
+        }
+
+        // Write stream counts for this map, in the standard order.
+        outCounts[countsBase + 0] = locBasePatchCount;
+        outCounts[countsBase + 1] = locAlphaPatchCount;
+        outCounts[countsBase + 2] = locLodPatchCount;
+        outCounts[countsBase + 3] = locLodAlphaPatchCount;
+        outCounts[countsBase + 4] = locInteractPatchCount;
+        outCounts[countsBase + 5] = locInteractAlphaPatchCount;
+        outCounts[countsBase + 6] = locInteractLodPatchCount;
+        outCounts[countsBase + 7] = locInteractLodAlphaPatchCount;
+        outCounts[countsBase + 8] = npcBasePatchCount;
+        outCounts[countsBase + 9] = npcAlphaPatchCount;
+
+        auto appendPatchPrefix = [&](const std::vector<rs::i32>& src, rs::i32 patchCount) {
+            if (patchCount <= 0) return;
+            const std::size_t n = static_cast<std::size_t>(patchCount) * 4u;
+            if (n > src.size()) return;
+            outPacked.insert(outPacked.end(), src.begin(), src.begin() + static_cast<std::ptrdiff_t>(n));
+        };
+
+        appendPatchPrefix(locPatches, locBasePatchCount);
+        appendPatchPrefix(locAlphaPatches, locAlphaPatchCount);
+        appendPatchPrefix(locLodPatches, locLodPatchCount);
+        appendPatchPrefix(locLodAlphaPatches, locLodAlphaPatchCount);
+        appendPatchPrefix(locInteractPatches, locInteractPatchCount);
+        appendPatchPrefix(locInteractAlphaPatches, locInteractAlphaPatchCount);
+        appendPatchPrefix(locInteractLodPatches, locInteractLodPatchCount);
+        appendPatchPrefix(locInteractLodAlphaPatches, locInteractLodAlphaPatchCount);
+        appendPatchPrefix(npcPatches, npcBasePatchCount);
+        appendPatchPrefix(npcAlphaPatches, npcAlphaPatchCount);
+    }
+
+    outMeta[0] = outCounts.empty()
+        ? 0
+        : static_cast<rs::i32>(reinterpret_cast<std::uintptr_t>(outCounts.data()));
+    outMeta[1] = static_cast<rs::i32>(outCounts.size());
+    outMeta[2] = outPacked.empty()
+        ? 0
+        : static_cast<rs::i32>(reinterpret_cast<std::uintptr_t>(outPacked.data()));
+    outMeta[3] = static_cast<rs::i32>(outPacked.size());
+    return 1;
+}

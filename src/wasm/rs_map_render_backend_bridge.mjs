@@ -27,20 +27,43 @@ function createWasmModuleLocator(path) {
     return new URL(path, import.meta.url).href;
 }
 
+function createWasmModuleLocatorDebug(path) {
+    // Emscripten backend always asks for `rs_map_render_backend.wasm`. For debug builds we output
+    // `rs_map_render_backend_debug.wasm`, so remap here.
+    if (typeof path === "string" && path.endsWith(".wasm")) {
+        return new URL("./rs_map_render_backend_debug.wasm", import.meta.url).href;
+    }
+    return createWasmModuleLocator(path);
+}
+
+function wantDebugBackendModule() {
+    // Node/parity scripts: controlled by env var.
+    // Browser/app: `process` is typically undefined, so this will be false.
+    return (
+        typeof process !== "undefined" &&
+        process &&
+        process.env &&
+        process.env.RS_MAP_RENDER_WASM_EXPORT_PROFILE === "debug"
+    );
+}
+
 export async function tryLoadBackendModule() {
     if (backendModulePromise) {
         return backendModulePromise;
     }
     backendModulePromise = (async () => {
         try {
-            const mod = await import("./rs_map_render_backend.js");
+            const wantDebug = wantDebugBackendModule();
+            const mod = wantDebug
+                ? await import("./rs_map_render_backend_debug.js")
+                : await import("./rs_map_render_backend.js");
             const createModule = mod.default;
             if (typeof createModule !== "function") {
                 console.warn("[map-render-backend] wasm module factory export missing");
                 return undefined;
             }
             const backendModule = await createModule({
-                locateFile: createWasmModuleLocator,
+                locateFile: wantDebug ? createWasmModuleLocatorDebug : createWasmModuleLocator,
             });
             if (
                 typeof backendModule._rs_map_render_bridge_abi_version !== "function" ||
@@ -64,6 +87,7 @@ export async function tryLoadBackendModule() {
                 getRuntimeClearTickStateExport(backendModule),
                 getRuntimeSetTickStatePackedExport(backendModule),
                 getRuntimeTickForStatePackedExport(backendModule),
+                getRuntimeTickMapsEmitPatchStreamsExport(backendModule),
                 getRuntimeGetLastMissingBlobEntriesPackedExport(backendModule),
                 getRuntimeCacheSetBuildConfigExport(backendModule),
                 getRuntimeCacheSetVarpsExport(backendModule),
@@ -117,6 +141,10 @@ function getRuntimeIsValidExport(backendModule) {
     return backendModule._rs_map_render_runtime_is_valid;
 }
 
+function getRuntimeHasTickStateExport(backendModule) {
+    return backendModule._rs_map_render_runtime_has_tick_state;
+}
+
 function getRuntimeClearTickStateExport(backendModule) {
     return backendModule._rs_map_render_runtime_clear_tick_state;
 }
@@ -127,6 +155,10 @@ function getRuntimeSetTickStatePackedExport(backendModule) {
 
 function getRuntimeTickForStatePackedExport(backendModule) {
     return backendModule._rs_map_render_runtime_tick_advance_and_emit_base_patches_for_state_packed;
+}
+
+function getRuntimeTickMapsEmitPatchStreamsExport(backendModule) {
+    return backendModule._rs_map_render_runtime_tick_maps_emit_patch_streams_meta;
 }
 
 function getRuntimeGetLastMissingBlobEntriesPackedExport(backendModule) {
@@ -758,6 +790,31 @@ function setRuntimeTickStateWithWasm(backendModule, runtimeHandle, stateKey, inp
     return true;
 }
 
+function setRuntimeTickStatePackedWithWasm(backendModule, runtimeHandle, stateKey, packed) {
+    const key = normalizeTickStateKey(stateKey);
+    if (key === undefined) {
+        return false;
+    }
+    if (!(packed instanceof Int32Array) || (packed.length | 0) <= 0) {
+        return false;
+    }
+    const setTickStatePacked = getRuntimeSetTickStatePackedExport(backendModule);
+    if (typeof setTickStatePacked !== "function") {
+        return false;
+    }
+    const packedPtr = mallocI32AndCopy(backendModule, packed);
+    if (!packedPtr) {
+        return false;
+    }
+    try {
+        return (
+            (setTickStatePacked(runtimeHandle | 0, key, packedPtr, packed.length | 0) | 0) === 1
+        );
+    } finally {
+        backendModule._free(packedPtr);
+    }
+}
+
 function clearRuntimeTickStateWithWasm(backendModule, runtimeHandle, stateKey) {
     const key = normalizeTickStateKey(stateKey);
     if (key === undefined) {
@@ -769,6 +826,77 @@ function clearRuntimeTickStateWithWasm(backendModule, runtimeHandle, stateKey) {
     }
     const byHandle = getRuntimeTickOutputsForHandle(runtimeHandle | 0, false);
     byHandle?.delete(key);
+}
+
+function runtimeHasTickStateWithWasm(backendModule, runtimeHandle, stateKey) {
+    const key = normalizeTickStateKey(stateKey);
+    if (key === undefined) {
+        return false;
+    }
+    const fn = getRuntimeHasTickStateExport(backendModule);
+    if (typeof fn !== "function") {
+        return false;
+    }
+    return (fn(runtimeHandle | 0, key) | 0) === 1;
+}
+
+function tickRuntimeMapsEmitPatchStreamsWithWasm(
+    backendModule,
+    runtimeHandle,
+    stateKeys,
+    cycleNowFixed,
+    clientTickCount,
+) {
+    const fn = getRuntimeTickMapsEmitPatchStreamsExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    if (!(stateKeys instanceof Int32Array)) {
+        return undefined;
+    }
+    const keysPtr = mallocI32AndCopy(backendModule, stateKeys);
+    if ((stateKeys.length | 0) > 0 && !keysPtr) {
+        return undefined;
+    }
+    const metaPtr = mallocI32(backendModule, 4);
+    if (!metaPtr) {
+        if (keysPtr) backendModule._free(keysPtr);
+        return undefined;
+    }
+    try {
+        const raw = fn(
+            runtimeHandle | 0,
+            keysPtr,
+            stateKeys.length | 0,
+            cycleNowFixed | 0,
+            clientTickCount | 0,
+            metaPtr,
+            4,
+        ) | 0;
+        if (raw !== 1) {
+            return undefined;
+        }
+        const meta = backendModule.HEAP32.subarray(metaPtr >> 2, (metaPtr >> 2) + 4);
+        const countsPtr = meta[0] | 0;
+        const countsLen = meta[1] | 0;
+        const patchesPtr = meta[2] | 0;
+        const patchesLen = meta[3] | 0;
+        if (countsLen < 0 || patchesLen < 0) {
+            return undefined;
+        }
+        const counts =
+            countsLen > 0
+                ? backendModule.HEAP32.slice(countsPtr >> 2, (countsPtr >> 2) + countsLen)
+                : new Int32Array(0);
+        const patches =
+            patchesLen > 0
+                ? backendModule.HEAP32.slice(patchesPtr >> 2, (patchesPtr >> 2) + patchesLen)
+                : new Int32Array(0);
+        return { tickPatchCountsByMapId: counts, tickPatchPacked: patches };
+    } finally {
+        backendModule._free(metaPtr);
+        if (keysPtr) backendModule._free(keysPtr);
+    }
 }
 
 function tickRuntimeStateForOutputRefsWithWasm(
@@ -1806,11 +1934,40 @@ export const mapRenderRuntimeBridge = {
         }
         return setRuntimeTickStateWithWasm(backendModuleInstance, runtimeHandle, stateKey, input);
     },
+    setTickStatePacked(runtimeHandle, stateKey, packed) {
+        if (!backendModuleInstance) {
+            return false;
+        }
+        return setRuntimeTickStatePackedWithWasm(
+            backendModuleInstance,
+            runtimeHandle,
+            stateKey,
+            packed,
+        );
+    },
     clearTickState(runtimeHandle, stateKey) {
         if (!backendModuleInstance) {
             return;
         }
         clearRuntimeTickStateWithWasm(backendModuleInstance, runtimeHandle, stateKey);
+    },
+    hasTickState(runtimeHandle, stateKey) {
+        if (!backendModuleInstance) {
+            return false;
+        }
+        return runtimeHasTickStateWithWasm(backendModuleInstance, runtimeHandle, stateKey);
+    },
+    tickMapsEmitPatchStreams(runtimeHandle, stateKeys, cycleNowFixed, clientTickCount) {
+        if (!backendModuleInstance) {
+            return undefined;
+        }
+        return tickRuntimeMapsEmitPatchStreamsWithWasm(
+            backendModuleInstance,
+            runtimeHandle | 0,
+            stateKeys,
+            cycleNowFixed | 0,
+            clientTickCount | 0,
+        );
     },
     tickAdvanceAndEmitBasePatchesForState(
         runtimeHandle,
