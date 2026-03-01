@@ -697,8 +697,7 @@ export class WebGLMapRenderer
         isInteract: boolean,
         isLod: boolean,
     ): Readonly<{ drawCall: DrawCall; drawRangesPacked: Int32Array }> {
-        const drawCallKey = map.getDrawCallKey(isAlpha, isInteract, isLod);
-        return map.getDrawCallByKey(drawCallKey);
+        return map.getDrawCall(isAlpha, isInteract, isLod);
     }
 
     private getNpcMapDrawCall(

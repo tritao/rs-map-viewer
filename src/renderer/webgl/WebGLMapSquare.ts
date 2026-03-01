@@ -9,7 +9,6 @@ import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
 import type { NpcGpuDataTarget } from "../npc/NpcGpuData";
-import { RenderableType } from "../Renderer";
 import { SdMapData } from "../loader/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
@@ -118,7 +117,6 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         readonly frameLoaded: number,
     ) {
         super(
-            RenderableType.Map,
             getMapSquareId(mapX, mapY),
             borderSize,
             tileRenderFlags,

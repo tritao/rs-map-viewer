@@ -1,10 +1,8 @@
-import { vec2 } from "gl-matrix";
 import PicoGL, {
     DrawCall,
     App as PicoApp,
     Program,
     Texture,
-    UniformBuffer,
     VertexArray,
     VertexBuffer,
 } from "picogl";
@@ -14,8 +12,6 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { Scene } from "../../rs/scene/Scene";
-import { DrawRange, NULL_DRAW_RANGE } from "../DrawRange";
-import { RenderableType } from "../Renderer";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { LocAnimated } from "../loc/LocAnimated";
 import { Npc } from "../npc/Npc";
@@ -32,11 +28,6 @@ import {
 } from "./WebGLRenderableBuild";
 
 const FRAME_RENDER_DELAY = 3;
-
-const DRAW_RANGE_STRIDE = 3;
-const DRAW_RANGE_OFFSET_INDEX = 0;
-const DRAW_RANGE_ELEMENTS_INDEX = 1;
-const DRAW_RANGE_INSTANCES_INDEX = 2;
 
 function createIntegerVertexAttributeOptions(
     type: number,
@@ -97,106 +88,12 @@ export class WebGLRenderable implements TickCapability {
     drawCallNpc!: DrawCallRange;
 
     private readonly tickState: WebGLMapSquareTickState;
+    private disposed = false;
 
     // Actual cache texture IDs used by this renderable (optional; used for texture residency).
     usedTextureIds?: Int32Array;
 
-    static load(
-        seqTypeLoader: SeqTypeLoader,
-        seqFrameLoader: SeqFrameLoader,
-        npcTypeLoader: NpcTypeLoader,
-        basTypeLoader: BasTypeLoader,
-        app: PicoApp,
-        mainProgram: Program,
-        mainAlphaProgram: Program,
-        npcProgram: Program,
-        textureArray: Texture,
-        textureMaterials: Texture,
-        textureSlotLut: Texture,
-        sceneUniformBuffer: UniformBuffer,
-        data: SdRenderableData,
-        time: number,
-        frame: number,
-    ): WebGLRenderable {
-        const { ids, type } = data;
-
-        const mapPos = vec2.fromValues(0, 0);
-        const heightMapSize = 0;
-
-        // const time = performance.now() * 0.001;
-
-        const createDrawCall: CreateDrawCallFunction = (
-            program: Program,
-            modelInfoTexture: Texture | undefined,
-            drawRangesPacked: Int32Array,
-            useNpcGeometry?: boolean,
-        ): DrawCallRange => {
-            const drawRangeCount = (drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0;
-            const drawRangeArgs = new Array<DrawRange>(drawRangeCount);
-            for (let i = 0; i < drawRangeCount; i++) {
-                const off = i * DRAW_RANGE_STRIDE;
-                drawRangeArgs[i] = [
-                    drawRangesPacked[off + DRAW_RANGE_OFFSET_INDEX] | 0,
-                    drawRangesPacked[off + DRAW_RANGE_ELEMENTS_INDEX] | 0,
-                    drawRangesPacked[off + DRAW_RANGE_INSTANCES_INDEX] | 0,
-                ];
-            }
-            const drawCall = app
-                .createDrawCall(
-                    program,
-                    useNpcGeometry && renderable.npcVertexArray
-                        ? renderable.npcVertexArray
-                        : renderable.vertexArray,
-                )
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", time)
-                .uniform("u_mapPos", mapPos)
-                // .uniform("u_drawIdOffset", drawIdOffset)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_textureSlotLut", textureSlotLut)
-                .texture("u_heightMap", renderable.heightMapTexture)
-                .drawRanges(...drawRangeArgs);
-
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-
-            return {
-                drawCall,
-                drawRangesPacked,
-            };
-        };
-
-        const renderable = new WebGLRenderable(
-            type,
-            ids,
-            data.borderSize,
-            data.tileRenderFlags,
-            time,
-            frame,
-        );
-        renderable.createBuffers(app, data);
-        renderable.createNpcGeometryBuffers(app, data);
-        renderable.createHeightMapTexture(app, new Int16Array(), heightMapSize);
-        renderable.createModelInfoTextures(app, data);
-        renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
-        renderable.createAnimatedLocs(time, data, seqTypeLoader, seqFrameLoader);
-        renderable.createNpcs(
-            data,
-            npcTypeLoader,
-            basTypeLoader,
-            seqTypeLoader,
-            seqFrameLoader,
-            createDrawCall,
-            npcProgram,
-        );
-
-        return renderable;
-    }
-
     constructor(
-        readonly type: RenderableType,
         readonly id: number,
 
         readonly borderSize: number,
@@ -483,28 +380,26 @@ export class WebGLRenderable implements TickCapability {
         return frameCount - this.frameLoaded > FRAME_RENDER_DELAY;
     }
 
-    getDrawCallKey(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallKey {
+    getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
+        let key = DrawCallKey.Base;
         if (isInteract) {
-            if (isLod) {
-                return isAlpha ? DrawCallKey.InteractLodAlpha : DrawCallKey.InteractLod;
-            }
-            return isAlpha ? DrawCallKey.InteractAlpha : DrawCallKey.Interact;
+            key = isLod
+                ? (isAlpha ? DrawCallKey.InteractLodAlpha : DrawCallKey.InteractLod)
+                : (isAlpha ? DrawCallKey.InteractAlpha : DrawCallKey.Interact);
+        } else if (isLod) {
+            key = isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
+        } else if (isAlpha) {
+            key = DrawCallKey.Alpha;
         }
-        if (isLod) {
-            return isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
-        }
-        return isAlpha ? DrawCallKey.Alpha : DrawCallKey.Base;
-    }
-
-    getDrawCallByKey(key: DrawCallKey): DrawCallRange {
         return this.drawCallsByKey[key as number] ?? this.drawCallsByKey[DrawCallKey.Base];
     }
 
-    getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
-        return this.getDrawCallByKey(this.getDrawCallKey(isAlpha, isInteract, isLod));
-    }
-
     delete() {
+        if (this.disposed) {
+            return;
+        }
+        this.disposed = true;
+
         this.vertexArray.delete();
         this.interleavedBuffer.delete();
         this.indexBuffer.delete();
@@ -516,5 +411,12 @@ export class WebGLRenderable implements TickCapability {
         for (const texture of this.modelInfoTexturesByKey ?? []) {
             texture.delete();
         }
+
+        this.modelInfoTexturesByKey = [];
+        this.drawCallsByKey = [];
+        this.npcVertexArray = undefined;
+        this.npcInterleavedBuffer = undefined;
+        this.npcIndexBuffer = undefined;
+        this.usedTextureIds = undefined;
     }
 }
