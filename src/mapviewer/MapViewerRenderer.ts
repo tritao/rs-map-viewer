@@ -20,7 +20,7 @@ import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
-import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
+import { FramePacketSource } from "./MapRenderFramePacketSource";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -34,7 +34,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly tickCoordinator = new MapRenderTickCoordinator();
-    private readonly workerFramePacketSource: WorkerFramePacketSource;
+    private readonly workerFramePacketSource: FramePacketSource;
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
@@ -54,7 +54,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.workerFramePacketSource = new WorkerFramePacketSource({
+        this.workerFramePacketSource = new FramePacketSource({
             workerPool: this.workerPool,
             getRenderer: () => this.renderer,
             getMapManager: () => this.mapManager,

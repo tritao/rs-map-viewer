@@ -45,24 +45,42 @@ function testReadWasmPatchStreamsForMap(): void {
 }
 
 function makeTestState(): WorkerNpcSimMapState {
-    let serverMoves = 0;
+    let serverPathChecks = 0;
     let transformMoves = 0;
     let seqMoves = 0;
     let flagsSet = 0;
+    let queuedPaths = 0;
 
     const npc = {
+        orderKey: 0,
         level: 0,
+        spawnX: 3,
+        spawnY: 4,
+        x: 3 * 128,
+        y: 4 * 128,
+        orientation: 0,
+        rotation: 0,
         pathX: [3],
         pathY: [4],
+        pathLength: 0,
+        pathMovementType: [0],
+        serverPathX: new Array<number>(25).fill(0),
+        serverPathY: new Array<number>(25).fill(0),
+        serverPathMovementType: new Array<number>(25).fill(0),
+        serverPathLength: 0,
+        canWalk: () => {
+            serverPathChecks++;
+            return false;
+        },
+        queuePath: () => {
+            queuedPaths++;
+        },
         getSize: () => 1,
         movementFrame: 0,
         getAnimationFrames: () => ({
             frames: [[30, 31, 1]],
             framesAlpha: [[40, 41, 1]],
         }),
-        updateServerMovement: () => {
-            serverMoves++;
-        },
         updateMovementTransformOnly: () => {
             transformMoves++;
         },
@@ -70,10 +88,11 @@ function makeTestState(): WorkerNpcSimMapState {
             seqMoves++;
         },
         debugCounts: () => ({
-            serverMoves,
+            serverPathChecks,
             transformMoves,
             seqMoves,
             flagsSet,
+            queuedPaths,
         }),
     };
 
@@ -108,6 +127,7 @@ function makeTestState(): WorkerNpcSimMapState {
         ],
         seededNpcFlags: false,
         npcs: [npc as any],
+        npcIndexByOrderKey: new Map(),
         locsAnimated: [loc as any],
         locTickPatchesByVariant: Array.from({ length: 8 }, () => new Int32Array(4)),
         locTickPatchCountsByVariant: new Int32Array(8),
@@ -124,16 +144,18 @@ function testApplyNpcMovementStep(): void {
     let counts = (state.npcs[0] as any).debugCounts();
     assert.equal(state.seededNpcFlags, true);
     assert.equal(counts.flagsSet, 1);
-    assert.equal(counts.serverMoves, 2);
+    assert.equal(counts.serverPathChecks, 2);
     assert.equal(counts.transformMoves, 3);
     assert.equal(counts.seqMoves, 3);
+    assert.equal(counts.queuedPaths, 0);
 
     applyNpcMovementStep(state, pathfinder, 1, 1, {} as any, {} as any);
     counts = (state.npcs[0] as any).debugCounts();
     assert.equal(counts.flagsSet, 1, "collision flags should seed only once");
-    assert.equal(counts.serverMoves, 3);
+    assert.equal(counts.serverPathChecks, 3);
     assert.equal(counts.transformMoves, 4);
     assert.equal(counts.seqMoves, 4);
+    assert.equal(counts.queuedPaths, 0);
 }
 
 function testBuildTickPatchStreamsForMap(): void {

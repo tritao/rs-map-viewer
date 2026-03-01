@@ -38,10 +38,7 @@ function parseBackendKind(value: string | null): BackendKind {
 
 function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntimeOptions {
     const mapRenderBackendParam = searchParams.get("mrb");
-    const mapRenderTickBackendParam = searchParams.get("mrbtick");
-    const mapRenderBackend = parseBackendKind(
-        mapRenderBackendParam !== null ? mapRenderBackendParam : mapRenderTickBackendParam,
-    );
+    const mapRenderBackend = parseBackendKind(mapRenderBackendParam);
     const mapRenderTelemetry = searchParams.get("mrt") === "1";
     return {
         mapRenderBackend,
