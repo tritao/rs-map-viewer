@@ -71,6 +71,7 @@ export const enum DrawCallKey {
     InteractLod = 6,
     InteractLodAlpha = 7,
 }
+const DRAW_CALL_KEY_COUNT = 8;
 
 export type CreateDrawCallFunction = (
     program: Program,
@@ -87,31 +88,11 @@ export class WebGLRenderable implements TickCapability {
     npcIndexBuffer?: VertexBuffer;
     npcVertexArray?: VertexArray;
 
-    modelInfoTexture!: Texture;
-    modelInfoTextureAlpha!: Texture;
-
-    modelInfoTextureLod!: Texture;
-    modelInfoTextureLodAlpha!: Texture;
-
-    modelInfoTextureInteract!: Texture;
-    modelInfoTextureInteractAlpha!: Texture;
-
-    modelInfoTextureInteractLod!: Texture;
-    modelInfoTextureInteractLodAlpha!: Texture;
+    private modelInfoTexturesByKey!: Texture[];
 
     heightMapTexture!: Texture;
 
-    drawCall!: DrawCallRange;
-    drawCallAlpha!: DrawCallRange;
-
-    drawCallLod!: DrawCallRange;
-    drawCallLodAlpha!: DrawCallRange;
-
-    drawCallInteract!: DrawCallRange;
-    drawCallInteractAlpha!: DrawCallRange;
-
-    drawCallInteractLod!: DrawCallRange;
-    drawCallInteractLodAlpha!: DrawCallRange;
+    private drawCallsByKey!: DrawCallRange[];
 
     drawCallNpc!: DrawCallRange;
 
@@ -409,33 +390,75 @@ export class WebGLRenderable implements TickCapability {
         this.tickState.applyWasmTickResult(_result);
     }
 
+    private static isAlphaKey(key: DrawCallKey): boolean {
+        return (
+            key === DrawCallKey.Alpha ||
+            key === DrawCallKey.LodAlpha ||
+            key === DrawCallKey.InteractAlpha ||
+            key === DrawCallKey.InteractLodAlpha
+        );
+    }
+
+    private static getModelInfoBucketByKey(
+        modelInfoTextures: SdRenderableData["modelInfoTextures"],
+        key: DrawCallKey,
+    ): Uint16Array {
+        switch (key) {
+            case DrawCallKey.Base:
+                return modelInfoTextures.base;
+            case DrawCallKey.Alpha:
+                return modelInfoTextures.alpha;
+            case DrawCallKey.Lod:
+                return modelInfoTextures.lod;
+            case DrawCallKey.LodAlpha:
+                return modelInfoTextures.lodAlpha;
+            case DrawCallKey.Interact:
+                return modelInfoTextures.interact;
+            case DrawCallKey.InteractAlpha:
+                return modelInfoTextures.interactAlpha;
+            case DrawCallKey.InteractLod:
+                return modelInfoTextures.interactLod;
+            case DrawCallKey.InteractLodAlpha:
+                return modelInfoTextures.interactLodAlpha;
+        }
+        return modelInfoTextures.base;
+    }
+
+    private static getDrawRangesByKey(
+        drawRanges: SdRenderableData["drawRanges"],
+        key: DrawCallKey,
+    ): Int32Array {
+        switch (key) {
+            case DrawCallKey.Base:
+                return drawRanges.base;
+            case DrawCallKey.Alpha:
+                return drawRanges.alpha;
+            case DrawCallKey.Lod:
+                return drawRanges.lod;
+            case DrawCallKey.LodAlpha:
+                return drawRanges.lodAlpha;
+            case DrawCallKey.Interact:
+                return drawRanges.interact;
+            case DrawCallKey.InteractAlpha:
+                return drawRanges.interactAlpha;
+            case DrawCallKey.InteractLod:
+                return drawRanges.interactLod;
+            case DrawCallKey.InteractLodAlpha:
+                return drawRanges.interactLodAlpha;
+        }
+        return drawRanges.base;
+    }
+
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {
-        this.modelInfoTexture = createModelInfoTexture(app, data.modelInfoTextures.base);
-        this.modelInfoTextureAlpha = createModelInfoTexture(app, data.modelInfoTextures.alpha);
-
-        this.modelInfoTextureLod = createModelInfoTexture(app, data.modelInfoTextures.lod);
-        this.modelInfoTextureLodAlpha = createModelInfoTexture(
-            app,
-            data.modelInfoTextures.lodAlpha,
-        );
-
-        this.modelInfoTextureInteract = createModelInfoTexture(
-            app,
-            data.modelInfoTextures.interact,
-        );
-        this.modelInfoTextureInteractAlpha = createModelInfoTexture(
-            app,
-            data.modelInfoTextures.interactAlpha,
-        );
-
-        this.modelInfoTextureInteractLod = createModelInfoTexture(
-            app,
-            data.modelInfoTextures.interactLod,
-        );
-        this.modelInfoTextureInteractLodAlpha = createModelInfoTexture(
-            app,
-            data.modelInfoTextures.interactLodAlpha,
-        );
+        const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
+        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
+            const key = i as DrawCallKey;
+            textures[i] = createModelInfoTexture(
+                app,
+                WebGLRenderable.getModelInfoBucketByKey(data.modelInfoTextures, key),
+            );
+        }
+        this.modelInfoTexturesByKey = textures;
     }
 
     createDrawCalls(
@@ -444,45 +467,16 @@ export class WebGLRenderable implements TickCapability {
         mainProgram: Program,
         mainAlphaProgram: Program,
     ) {
-        this.drawCall = createDrawCall(mainProgram, this.modelInfoTexture, data.drawRanges.base);
-        this.drawCallAlpha = createDrawCall(
-            mainAlphaProgram,
-            this.modelInfoTextureAlpha,
-            data.drawRanges.alpha,
-        );
-
-        this.drawCallLod = createDrawCall(
-            mainProgram,
-            this.modelInfoTextureLod,
-            data.drawRanges.lod,
-        );
-        this.drawCallLodAlpha = createDrawCall(
-            mainAlphaProgram,
-            this.modelInfoTextureLodAlpha,
-            data.drawRanges.lodAlpha,
-        );
-
-        this.drawCallInteract = createDrawCall(
-            mainProgram,
-            this.modelInfoTextureInteract,
-            data.drawRanges.interact,
-        );
-        this.drawCallInteractAlpha = createDrawCall(
-            mainAlphaProgram,
-            this.modelInfoTextureInteractAlpha,
-            data.drawRanges.interactAlpha,
-        );
-
-        this.drawCallInteractLod = createDrawCall(
-            mainProgram,
-            this.modelInfoTextureInteractLod,
-            data.drawRanges.interactLod,
-        );
-        this.drawCallInteractLodAlpha = createDrawCall(
-            mainAlphaProgram,
-            this.modelInfoTextureInteractLodAlpha,
-            data.drawRanges.interactLodAlpha,
-        );
+        const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
+        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
+            const key = i as DrawCallKey;
+            drawCalls[i] = createDrawCall(
+                WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
+                this.modelInfoTexturesByKey[i],
+                WebGLRenderable.getDrawRangesByKey(data.drawRanges, key),
+            );
+        }
+        this.drawCallsByKey = drawCalls;
     }
 
     canRender(frameCount: number): boolean {
@@ -503,25 +497,7 @@ export class WebGLRenderable implements TickCapability {
     }
 
     getDrawCallByKey(key: DrawCallKey): DrawCallRange {
-        switch (key) {
-            case DrawCallKey.Base:
-                return this.drawCall;
-            case DrawCallKey.Alpha:
-                return this.drawCallAlpha;
-            case DrawCallKey.Lod:
-                return this.drawCallLod;
-            case DrawCallKey.LodAlpha:
-                return this.drawCallLodAlpha;
-            case DrawCallKey.Interact:
-                return this.drawCallInteract;
-            case DrawCallKey.InteractAlpha:
-                return this.drawCallInteractAlpha;
-            case DrawCallKey.InteractLod:
-                return this.drawCallInteractLod;
-            case DrawCallKey.InteractLodAlpha:
-                return this.drawCallInteractLodAlpha;
-        }
-        return this.drawCall;
+        return this.drawCallsByKey[key as number] ?? this.drawCallsByKey[DrawCallKey.Base];
     }
 
     getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
@@ -532,20 +508,13 @@ export class WebGLRenderable implements TickCapability {
         this.vertexArray.delete();
         this.interleavedBuffer.delete();
         this.indexBuffer.delete();
+        this.npcVertexArray?.delete();
+        this.npcInterleavedBuffer?.delete();
+        this.npcIndexBuffer?.delete();
 
         this.heightMapTexture.delete();
-
-        // Model info
-        this.modelInfoTexture.delete();
-        this.modelInfoTextureAlpha.delete();
-
-        this.modelInfoTextureLod.delete();
-        this.modelInfoTextureLodAlpha.delete();
-
-        this.modelInfoTextureInteract.delete();
-        this.modelInfoTextureInteractAlpha.delete();
-
-        this.modelInfoTextureInteractLod.delete();
-        this.modelInfoTextureInteractLodAlpha.delete();
+        for (const texture of this.modelInfoTexturesByKey ?? []) {
+            texture.delete();
+        }
     }
 }
