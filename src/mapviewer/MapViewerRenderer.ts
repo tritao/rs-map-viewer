@@ -277,6 +277,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             return;
         }
         this.running = true;
+        this.tickCoordinator.requestClockResync();
         this.animationId = requestAnimationFrame(this.frameCallback);
     }
 
