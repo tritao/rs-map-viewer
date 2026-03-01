@@ -20,8 +20,10 @@ import {
     type FramePacket,
 } from "../renderer/packet/FramePacket";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/npc/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../renderer/npc/NpcGpuData";
 import { LocTickPatchVariant, NpcTickPatchVariant } from "../renderer/patch/TickPatchStreams";
+import { MapSquareTickState } from "../sim/tick/MapSquareTickState";
+import { buildMapSquareTickState } from "../sim/tick/MapSquareTickStateBuilder";
 import { TickController, type TickPatchSink } from "../sim/tick/TickController";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
@@ -56,6 +58,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly simWorld = new SimWorld();
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly npcGpuDataBuilder = new NpcGpuDataBuilder();
+    private readonly mapTickStates = new Map<number, MapSquareTickState>();
     private lastNpcSimInWorker: boolean = false;
 
     // State
@@ -183,6 +186,18 @@ export class MapViewerRenderer extends RendererMainLoop {
                     // Store raw collision data; instantiate CollisionMap lazily only when sim needs it.
                     this.simWorld.onMapLoaded(mapId, sdMapData.collisionDatas);
                 }
+                this.mapTickStates.set(
+                    mapId,
+                    buildMapSquareTickState(
+                        mapId,
+                        sdMapData,
+                        this.mapViewer.session.getSeqTypeLoader(),
+                        this.mapViewer.session.getSeqFrameLoader(),
+                        this.mapViewer.session.getNpcTypeLoader(),
+                        this.mapViewer.session.getBasTypeLoader(),
+                        performance.now() / 1000,
+                    ).tickState,
+                );
 
                 this.mapManager.addMap(mapX, mapY);
                 this.renderer.addMap(mapData);
@@ -226,6 +241,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.tickController.onRenderableRemoved(mapInfo.mapId);
+        this.mapTickStates.delete(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         if (runtimeOptions.mapRenderNpcSimInWorker) {
@@ -290,6 +306,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.lastNpcSimInWorker = false;
             this.mapManager.cleanUp();
             this.tickController.reset();
+            this.mapTickStates.clear();
 
             this.renderer = new WebGLMapRenderer(
                 this.mapViewer.session,
@@ -326,6 +343,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
         this.tickController.reset();
+        this.mapTickStates.clear();
     }
 
     override update(time: number, deltaTime: number) {
@@ -501,7 +519,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 renderListPacked[renderOff + 1] = renderFlags | 0;
                 continue;
             }
-            const tickState = map.getMapTickState?.();
+            const tickState = this.mapTickStates.get(mapId);
             const mapNpcs = tickState?.getNpcs() ?? [];
             if ((mapNpcs.length | 0) > 0) {
                 renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
@@ -580,8 +598,13 @@ export class MapViewerRenderer extends RendererMainLoop {
             // Build per-frame NPC GPU instance data outside the WebGL renderer. This relies on
             // the map-square implementation exposing the scheduling offsets + tile flags.
             if (this.renderer.loadNpcs) {
-                const target = map.getNpcGpuDataTarget?.();
-                if (target) {
+                if (tickState) {
+                    const target: NpcGpuDataTarget = {
+                        id: mapId,
+                        getNpcs: () => tickState.getNpcs(),
+                        getTileRenderFlag: (level: number, tileX: number, tileY: number): number =>
+                            map.getTileRenderFlag(level, tileX, tileY),
+                    };
                     npcOffsetsByMapIdPairs[pairOff + 1] = this.npcGpuDataBuilder.addRenderable(
                         target,
                     );

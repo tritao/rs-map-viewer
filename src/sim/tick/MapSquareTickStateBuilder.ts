@@ -8,11 +8,6 @@ import { Npc } from "../../renderer/npc/Npc";
 import { orderByPacketKeys } from "../../renderer/npc/orderByPacketKeys";
 import { MapSquareTickState } from "./MapSquareTickState";
 
-const DRAW_RANGE_STRIDE = 3;
-const DRAW_RANGE_OFFSET_INDEX = 0;
-const DRAW_RANGE_ELEMENTS_INDEX = 1;
-const DRAW_RANGE_INSTANCES_INDEX = 2;
-
 export function buildLocsAnimated(
     data: SdMapData,
     seqTypeLoader: SeqTypeLoader,
@@ -80,31 +75,8 @@ export function buildNpcs(
     return npcs;
 }
 
-export function buildNpcDrawRanges(
-    npcs: ReadonlyArray<Npc>,
-    packetDrawRangesBase: Int32Array | undefined,
-): Int32Array {
-    const hasPacketNpcDrawRanges =
-        packetDrawRangesBase instanceof Int32Array &&
-        packetDrawRangesBase.length === npcs.length * DRAW_RANGE_STRIDE;
-
-    const drawRangesNpc = hasPacketNpcDrawRanges
-        ? new Int32Array(packetDrawRangesBase)
-        : new Int32Array(npcs.length * DRAW_RANGE_STRIDE);
-    if (!hasPacketNpcDrawRanges) {
-        for (let i = 0; i < npcs.length; i++) {
-            const off = i * DRAW_RANGE_STRIDE;
-            drawRangesNpc[off + DRAW_RANGE_OFFSET_INDEX] = 0;
-            drawRangesNpc[off + DRAW_RANGE_ELEMENTS_INDEX] = 0;
-            drawRangesNpc[off + DRAW_RANGE_INSTANCES_INDEX] = 1;
-        }
-    }
-    return drawRangesNpc;
-}
-
 export type MapSquareTickStateBuildResult = Readonly<{
     tickState: MapSquareTickState;
-    npcDrawRanges: Int32Array;
 }>;
 
 export function buildMapSquareTickState(
@@ -131,6 +103,5 @@ export function buildMapSquareTickState(
         data.npcDrawRangesAlpha,
     );
 
-    const npcDrawRanges = buildNpcDrawRanges(npcs, data.npcDrawRangesBase);
-    return { tickState, npcDrawRanges };
+    return { tickState };
 }

@@ -10,8 +10,7 @@ import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
 } from "./interaction/InteractionState";
-import type { TickCapability, TickControllerRenderer } from "./patch/TickCapability";
-import type { NpcGpuDataTarget } from "./npc/NpcGpuData";
+import type { TickControllerRenderer } from "./patch/TickCapability";
 import type { FramePacket } from "./packet/FramePacket";
 
 export enum TextureFilterMode {
@@ -46,10 +45,7 @@ export interface MapSquareRenderable {
     readonly mapY: number;
     readonly borderSize: number;
 
-    // Optional capability: map runtime tick state owned outside renderable draw resources.
-    getMapTickState?(): TickCapability | undefined;
-    // Optional capability: renderer map can be consumed by NPC GPU packing.
-    getNpcGpuDataTarget?(): NpcGpuDataTarget | undefined;
+    getTileRenderFlag(level: number, tileX: number, tileY: number): number;
 
     canRender(frameCount: number): boolean;
     delete(): void;

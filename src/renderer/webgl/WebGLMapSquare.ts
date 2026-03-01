@@ -1,33 +1,30 @@
 import { vec2 } from "gl-matrix";
 import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 
-import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
-import type { NpcGpuDataTarget } from "../npc/NpcGpuData";
 import { SdMapData } from "../loader/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
-import type { TickCapability } from "../patch/TickCapability";
-import { MapSquareTickState } from "../../sim/tick/MapSquareTickState";
-import { buildMapSquareTickState } from "../../sim/tick/MapSquareTickStateBuilder";
 
 export class WebGLMapSquare
     extends WebGLRenderable
     implements MapSquareRenderable
 {
     drawCallNpc!: DrawCallRange;
-    private readonly tickState: MapSquareTickState;
-    private readonly npcGpuDataTarget: NpcGpuDataTarget;
+
+    private static buildDefaultNpcDrawRanges(npcCount: number): Int32Array {
+        const drawRangesNpc = new Int32Array((npcCount | 0) * 3);
+        for (let i = 0; i < npcCount; i++) {
+            const off = i * 3;
+            drawRangesNpc[off + 0] = 0;
+            drawRangesNpc[off + 1] = 0;
+            drawRangesNpc[off + 2] = 1;
+        }
+        return drawRangesNpc;
+    }
 
     static load(
-        seqTypeLoader: SeqTypeLoader,
-        seqFrameLoader: SeqFrameLoader,
-        npcTypeLoader: NpcTypeLoader,
-        basTypeLoader: BasTypeLoader,
         app: PicoApp,
         mainProgram: Program,
         mainAlphaProgram: Program,
@@ -41,19 +38,9 @@ export class WebGLMapSquare
         frame: number,
     ): WebGLMapSquare {
         const { mapX, mapY, borderSize } = data;
-        const mapId = getMapSquareId(mapX, mapY);
 
         const mapPos = vec2.fromValues(mapX, mapY);
         const heightMapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
-        const tickStateBuild = buildMapSquareTickState(
-            mapId,
-            data,
-            seqTypeLoader,
-            seqFrameLoader,
-            npcTypeLoader,
-            basTypeLoader,
-            time,
-        );
 
         const createDrawCall: CreateDrawCallFunction = (
             program: Program,
@@ -105,17 +92,19 @@ export class WebGLMapSquare
             data.tileRenderFlags,
             time,
             frame,
-            tickStateBuild.tickState,
         );
         renderable.createBuffers(app, data);
         renderable.createNpcGeometryBuffers(app, data);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
+        const npcDrawRanges = data.npcDrawRangesBase
+            ? data.npcDrawRangesBase
+            : WebGLMapSquare.buildDefaultNpcDrawRanges(data.npcs.length | 0);
         renderable.drawCallNpc = createDrawCall(
             npcProgram,
             undefined,
-            tickStateBuild.npcDrawRanges,
+            npcDrawRanges,
             renderable.npcVertexArray !== undefined,
         );
         renderable.usedTextureIds = data.usedTextureIds;
@@ -132,7 +121,6 @@ export class WebGLMapSquare
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
-        tickState: MapSquareTickState,
     ) {
         const mapId = getMapSquareId(mapX, mapY);
         super(
@@ -142,24 +130,9 @@ export class WebGLMapSquare
             timeLoaded,
             frameLoaded,
         );
-        this.tickState = tickState;
-        this.npcGpuDataTarget = {
-            id: mapId,
-            getNpcs: () => this.tickState.getNpcs(),
-            getTileRenderFlag: (level: number, tileX: number, tileY: number): number =>
-                this.getTileRenderFlag(level, tileX, tileY),
-        };
     }
 
     getMapDistance(mapX: number, mapY: number): number {
         return Math.max(Math.abs(mapX - this.mapX), Math.abs(mapY - this.mapY));
-    }
-
-    getNpcGpuDataTarget(): NpcGpuDataTarget | undefined {
-        return this.npcGpuDataTarget;
-    }
-
-    getMapTickState(): TickCapability | undefined {
-        return this.tickState;
     }
 }

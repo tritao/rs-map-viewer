@@ -250,7 +250,6 @@ export class WebGLMapRenderer
         this.loadedMaps.set(
             getMapSquareId(mapX, mapY),
             this.loadMapSquareRenderable(
-                this.session,
                 this.app,
                 this.programs,
                 textureArray,
@@ -661,7 +660,6 @@ export class WebGLMapRenderer
     }
 
     private loadMapSquareRenderable(
-        session: CacheSession,
         app: PicoApp,
         programs: WebGLPrograms,
         textureArray: Texture,
@@ -673,10 +671,6 @@ export class WebGLMapRenderer
         frameCount: number,
     ): WebGLMapSquare {
         return WebGLMapSquare.load(
-            session.getSeqTypeLoader(),
-            session.getSeqFrameLoader(),
-            session.getNpcTypeLoader(),
-            session.getBasTypeLoader(),
             app,
             programs.mainProgram!,
             programs.mainAlphaProgram!,
