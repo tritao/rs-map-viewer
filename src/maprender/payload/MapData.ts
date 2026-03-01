@@ -7,6 +7,7 @@ export interface MapData {
     maxLevel: number;
     loadObjs: boolean;
     loadNpcs: boolean;
+    loadLocs: boolean;
 
     smoothTerrain: boolean;
 

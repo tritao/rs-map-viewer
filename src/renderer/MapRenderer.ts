@@ -162,6 +162,7 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
             mapData.maxLevel === this.maxLevel &&
             mapData.loadObjs === this.loadObjs &&
             mapData.loadNpcs === this.loadNpcs &&
+            mapData.loadLocs === this.loadLocs &&
             mapData.smoothTerrain === this.smoothTerrain
         );
     }
