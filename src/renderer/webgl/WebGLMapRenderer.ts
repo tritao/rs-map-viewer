@@ -62,13 +62,13 @@ const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
 
-type FrameRenderMap = Readonly<{
+type FrameRenderMap = {
     mapId: number;
     map: WebGLMapSquare;
     hasNpcs: boolean;
     isInteract: boolean;
     isLod: boolean;
-}>;
+};
 
 export class WebGLMapRenderer
     extends MapRenderer<WebGLMapSquare, SdMapData>
@@ -93,6 +93,8 @@ export class WebGLMapRenderer
         | ParsedFrameTickPatches
         | undefined;
     private frameRenderListPacked: Int32Array | undefined;
+    private readonly frameRenderMapsScratch: FrameRenderMap[] = [];
+    private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -625,12 +627,14 @@ export class WebGLMapRenderer
     }
 
     private collectFrameRenderMaps(): FrameRenderMap[] {
-        const out: FrameRenderMap[] = [];
+        const out = this.frameRenderMapsScratch;
         const packed = this.frameRenderListPacked;
         if (packed === undefined) {
+            out.length = 0;
             return out;
         }
 
+        let write = 0;
         const entryCount = (packed.length / FRAME_RENDER_LIST_STRIDE) | 0;
         for (let i = 0; i < entryCount; i++) {
             const off = (i * FRAME_RENDER_LIST_STRIDE) | 0;
@@ -640,26 +644,41 @@ export class WebGLMapRenderer
             if (!map || !map.canRender(this.stats.frameCount)) {
                 continue;
             }
-            out.push({
-                mapId,
-                map,
-                hasNpcs: (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0,
-                isInteract: (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0,
-                isLod: (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0,
-            });
+            let item = out[write];
+            if (!item) {
+                item = {
+                    mapId,
+                    map,
+                    hasNpcs: (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0,
+                    isInteract: (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0,
+                    isLod: (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0,
+                };
+                out[write] = item;
+            } else {
+                item.mapId = mapId;
+                item.map = map;
+                item.hasNpcs = (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0;
+                item.isInteract = (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0;
+                item.isLod = (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0;
+            }
+            write = (write + 1) | 0;
         }
+        out.length = write;
         return out;
     }
 
     private collectVisibleUsedTextureIds(frameRenderMaps: ReadonlyArray<FrameRenderMap>): Int32Array[] {
-        const out: Int32Array[] = [];
+        const out = this.visibleUsedTextureIdsScratch;
+        let write = 0;
         for (let i = 0; i < frameRenderMaps.length; i++) {
             const map = frameRenderMaps[i]!.map;
             const used = map.usedTextureIds;
             if (used instanceof Int32Array && used.length > 0) {
-                out.push(used);
+                out[write] = used;
+                write = (write + 1) | 0;
             }
         }
+        out.length = write;
         return out;
     }
 
