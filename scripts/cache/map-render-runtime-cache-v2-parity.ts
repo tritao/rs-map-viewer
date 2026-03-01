@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "path";
 import { pathToFileURL } from "url";
 
@@ -10,25 +11,31 @@ import {
     getModelFaces,
     isModelFaceTransparent,
     splitModelFacesByTransparency,
+    summarizeModelFaces,
     summarizeTerrainGeometry,
 } from "../../src/renderer/buffer/SceneBuffer";
 import { collectRuntimeDrawCommandBuckets } from "../../src/renderer/buffer/SceneCommandBuilder";
 import type { SceneCommandPlanDigest } from "../../src/renderer/buffer/SceneCommandPlan";
 import { emitSceneModelsToSceneBuffer } from "../../src/renderer/buffer/SceneCommandPlan";
+import type { SdMapData } from "../../src/renderer/loader/SdMapData";
 import { SdMapLoaderInput } from "../../src/renderer/loader/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../../src/renderer/loader/SdMapRenderDataTsBackend";
 import type { SdMapRenderDataTsBackendDeps } from "../../src/renderer/loader/SdMapRenderDataTsBackend";
 import { createSdTexturePacking } from "../../src/renderer/loader/SdTexturePacking";
 import { isLowDetail } from "../../src/renderer/loc/SceneLocs";
 import { getSceneLocs } from "../../src/renderer/loc/SceneLocs";
-import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
+import {
+    createLocAnimatedGroupKey,
+    resolveLocRenderPlacement,
+} from "../../src/renderer/loc/LocRenderPlacementResolver";
+import { CacheInfo, GameType, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { ModelData } from "../../src/rs/model/ModelData";
 import { MapImageRenderer } from "../../src/rs/render/minimap/MapImageRenderer";
-import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { getLocPlacementRotation, getLocPlacementType } from "../../src/rs/scene/LocPlacementFlag";
 import {
     expandLocPlacementModelVariants,
@@ -50,7 +57,6 @@ import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../src/rs/scene/model/ObjModelLoader";
 import type { MapRenderRuntimeBridgeV2 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
-    tryLoadBackendModule,
     runtimeDebugBuildMapPlanFromCacheWithWasm,
     runtimeDebugCollectMapInputDigestWithWasm,
     runtimeDebugDecodeCachedTerrainCellWithWasm,
@@ -59,6 +65,7 @@ import {
     runtimeDebugGetCacheConfigWithWasm,
     runtimeDebugGetCachedCommandStreamArraysWithWasm,
     runtimeDebugGetCachedCommandStreamDigestWithWasm,
+    runtimeDebugGetLastBuildStatsWithWasm,
     runtimeDebugGetLastCommandProvenancePackedWithWasm,
     runtimeDebugGetLastLocMergeDecisionEntriesPackedWithWasm,
     runtimeDebugGetLastLocMergeEmitEntriesPackedWithWasm,
@@ -77,24 +84,29 @@ import {
     runtimeDebugGetLastTerrainProbeWithWasm,
     runtimeDebugGetLastTerrainTileFaceCountsWithWasm,
     runtimeDebugGetLastWorldHeightProbeWithWasm,
-    runtimeDebugGetLastBuildStatsWithWasm,
     runtimeDebugGetLoadedHeightHashWithWasm,
+    runtimeDebugGetLocClassicAnimFrameFacesDigestWithWasm,
     runtimeDebugGetLocModelVerticesSampleWithWasm,
+    runtimeDebugGetLocVariantModelVerticesDigestWithWasm,
     runtimeDebugGetModelFacesDigestWithWasm,
+    runtimeDebugGetModelTextureFaceParamsWithWasm,
     runtimeDebugGetModelVerticesDigestWithWasm,
     runtimeDebugGetModelVerticesSampleRangeWithWasm,
     runtimeDebugGetModelVerticesSampleWithWasm,
     runtimeDebugSetTerrainDigestSampleStartVertexWithWasm,
     runtimeDebugSetTerrainProbeWithWasm,
     runtimeDebugSetWorldHeightProbeWithWasm,
+    tryLoadBackendModule,
 } from "../../src/wasm/rs_map_render_backend_debug.mjs";
 import {
-    createByteDrivenSceneBuildInput,
-    MapRenderRuntimeCacheV2Uploader,
-} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
-import { runtimePacketToPayloadOverlay } from "../../src/worker/MapRenderDataContract";
-import type { SdMapData } from "../../src/renderer/loader/SdMapData";
+    runtimePacketToPayloadOverlay,
+    runtimePacketToPayloadOverlayDiagnostic,
+} from "../../src/worker/MapRenderDataContract";
 import type { MapRenderRuntimePacket } from "../../src/worker/MapRenderDataContract";
+import {
+    MapRenderRuntimeCacheV2Uploader,
+    createByteDrivenSceneBuildInput,
+} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
@@ -360,22 +372,32 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
             );
         },
         async getRuntimeCachedCommandStreamDigest(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetCachedCommandStreamDigestWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetCachedCommandStreamDigestWithWasm(m, runtimeHandle),
+            );
         },
         async getRuntimeCachedCommandStreamArrays(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetCachedCommandStreamArraysWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetCachedCommandStreamArraysWithWasm(m, runtimeHandle),
+            );
         },
         async debugGetRuntimeLastBuildStats(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLastBuildStatsWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLastBuildStatsWithWasm(m, runtimeHandle),
+            );
         },
         async debugGetRuntimeCacheConfig(runtimeHandle: number) {
             return withBackendModule((m) => runtimeDebugGetCacheConfigWithWasm(m, runtimeHandle));
         },
         async debugGetRuntimeLoadedHeightHash(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLoadedHeightHashWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLoadedHeightHashWithWasm(m, runtimeHandle),
+            );
         },
         async debugGetRuntimeMapInputHashes(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLastMapInputHashesWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLastMapInputHashesWithWasm(m, runtimeHandle),
+            );
         },
         async debugDecodeCachedTerrainCell(
             runtimeHandle: number,
@@ -403,7 +425,9 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
             );
         },
         async debugGetRuntimeLastTerrainDigest(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLastTerrainDigestWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLastTerrainDigestWithWasm(m, runtimeHandle),
+            );
         },
         async debugSetTerrainDigestSampleStartVertex(runtimeHandle: number, startVertex: number) {
             return (
@@ -416,7 +440,12 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
                 )) ?? false
             );
         },
-        async debugSetTerrainProbe(runtimeHandle: number, level: number, tileX: number, tileY: number) {
+        async debugSetTerrainProbe(
+            runtimeHandle: number,
+            level: number,
+            tileX: number,
+            tileY: number,
+        ) {
             return (
                 (await withBackendModule((m) =>
                     runtimeDebugSetTerrainProbeWithWasm(m, runtimeHandle, level, tileX, tileY),
@@ -424,17 +453,32 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
             );
         },
         async debugGetRuntimeLastTerrainProbe(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLastTerrainProbeWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLastTerrainProbeWithWasm(m, runtimeHandle),
+            );
         },
-        async debugSetWorldHeightProbe(runtimeHandle: number, level: number, worldX: number, worldZ: number) {
+        async debugSetWorldHeightProbe(
+            runtimeHandle: number,
+            level: number,
+            worldX: number,
+            worldZ: number,
+        ) {
             return (
                 (await withBackendModule((m) =>
-                    runtimeDebugSetWorldHeightProbeWithWasm(m, runtimeHandle, level, worldX, worldZ),
+                    runtimeDebugSetWorldHeightProbeWithWasm(
+                        m,
+                        runtimeHandle,
+                        level,
+                        worldX,
+                        worldZ,
+                    ),
                 )) ?? false
             );
         },
         async debugGetRuntimeLastWorldHeightProbe(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLastWorldHeightProbeWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLastWorldHeightProbeWithWasm(m, runtimeHandle),
+            );
         },
         async debugGetRuntimeLastTerrainDigestSamplesPacked(runtimeHandle: number) {
             return withBackendModule((m) =>
@@ -457,7 +501,9 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
             );
         },
         async debugGetRuntimeLastSceneBucketsDigest(runtimeHandle: number) {
-            return withBackendModule((m) => runtimeDebugGetLastSceneBucketsDigestWithWasm(m, runtimeHandle));
+            return withBackendModule((m) =>
+                runtimeDebugGetLastSceneBucketsDigestWithWasm(m, runtimeHandle),
+            );
         },
         async debugGetRuntimeLastLocRenderPlacementDigest(runtimeHandle: number) {
             return withBackendModule((m) =>
@@ -470,12 +516,20 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
             );
         },
         async debugGetRuntimeModelFacesDigest(runtimeHandle: number, modelId: number) {
-            return withBackendModule((m) => runtimeDebugGetModelFacesDigestWithWasm(m, runtimeHandle, modelId));
+            return withBackendModule((m) =>
+                runtimeDebugGetModelFacesDigestWithWasm(m, runtimeHandle, modelId),
+            );
         },
         async debugGetRuntimeModelVerticesDigest(runtimeHandle: number, modelId: number) {
-            return withBackendModule((m) => runtimeDebugGetModelVerticesDigestWithWasm(m, runtimeHandle, modelId));
+            return withBackendModule((m) =>
+                runtimeDebugGetModelVerticesDigestWithWasm(m, runtimeHandle, modelId),
+            );
         },
-        async debugGetRuntimeModelVerticesSample(runtimeHandle: number, modelId: number, maxVertices: number) {
+        async debugGetRuntimeModelVerticesSample(
+            runtimeHandle: number,
+            modelId: number,
+            maxVertices: number,
+        ) {
             void maxVertices;
             return withBackendModule((m) =>
                 runtimeDebugGetModelVerticesSampleWithWasm(m, runtimeHandle, modelId),
@@ -489,10 +543,21 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
         ) {
             void maxVertices;
             return withBackendModule((m) =>
-                runtimeDebugGetModelVerticesSampleRangeWithWasm(m, runtimeHandle, modelId, startVertex),
+                runtimeDebugGetModelVerticesSampleRangeWithWasm(
+                    m,
+                    runtimeHandle,
+                    modelId,
+                    startVertex,
+                ),
             );
         },
-        async debugGetRuntimeLocModelVerticesSample(runtimeHandle: number, locTypeId: number, placementType: number, rotation: number, modelId: number) {
+        async debugGetRuntimeLocModelVerticesSample(
+            runtimeHandle: number,
+            locTypeId: number,
+            placementType: number,
+            rotation: number,
+            modelId: number,
+        ) {
             return withBackendModule((m) =>
                 runtimeDebugGetLocModelVerticesSampleWithWasm(
                     m,
@@ -501,6 +566,22 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
                     placementType,
                     rotation,
                     modelId,
+                ),
+            );
+        },
+        async debugGetRuntimeLocVariantModelVerticesDigest(
+            runtimeHandle: number,
+            locTypeId: number,
+            placementType: number,
+            rotation: number,
+        ) {
+            return withBackendModule((m) =>
+                runtimeDebugGetLocVariantModelVerticesDigestWithWasm(
+                    m,
+                    runtimeHandle,
+                    locTypeId,
+                    placementType,
+                    rotation,
                 ),
             );
         },
@@ -547,7 +628,9 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
             );
         },
         async debugDecodeRuntimeLocType(runtimeHandle: number, locTypeId: number) {
-            return withBackendModule((m) => runtimeDebugDecodeLocTypeWithWasm(m, runtimeHandle, locTypeId));
+            return withBackendModule((m) =>
+                runtimeDebugDecodeLocTypeWithWasm(m, runtimeHandle, locTypeId),
+            );
         },
     };
 }
@@ -1881,7 +1964,10 @@ async function compareModelFacesStage(
         return {
             key: "modelFacesStage",
             ok: true,
-            detail: `checked=${Math.min(limit, modelIds.length)} skippedMissingCacheDigest=${skippedMissingCacheDigest}`,
+            detail: `checked=${Math.min(
+                limit,
+                modelIds.length,
+            )} skippedMissingCacheDigest=${skippedMissingCacheDigest}`,
         };
     }
     return {
@@ -2417,6 +2503,225 @@ function summarizeRuntimeCommandProvenanceEntriesAtIndices(
         return ["  cmd-provenance: no-indices"];
     }
     return lines;
+}
+
+async function debugDumpTsLocModelUvForPackedVertex(opts: {
+    sceneBuilder: SceneBuilder;
+    locTypeId: number;
+    placementType: number;
+    placementRotation: number;
+    // Packed vertices store SD texture *indices*; provide the index->id table to resolve faceTextures.
+    sdTextureIds?: ReadonlyArray<number>;
+    // When provided, we resolve scene-space positions by applying (sceneX,sceneZ,sceneHeight+heightOffset).
+    // This matches how SceneBuffer writes vertices.
+    scene?: Scene;
+    borderTiles?: number;
+    instances?: ReadonlyArray<{
+        sceneX: number;
+        sceneZ: number;
+        heightOffset: number;
+        level: number;
+    }>;
+    vertex: ReturnType<typeof decodePackedVertexDebug>;
+    limit?: number;
+}): Promise<
+    ReadonlyArray<{
+        faceIndex: number;
+        vertexCorner: number;
+        texId: number;
+        texCoord: number;
+        texType: number;
+        dir: number;
+        speed: number;
+        transU: number;
+        transV: number;
+        uv: Readonly<{ u: number; v: number }>;
+    }>
+> {
+    const limit = Math.max(1, Math.min(10, opts.limit ?? 5)) | 0;
+    const locTypeResult = opts.sceneBuilder.services.locTypeLoader.tryLoad(opts.locTypeId | 0);
+    if (!locTypeResult.ok) {
+        console.error(`  ts-loc-uv: failed to load locType ${opts.locTypeId | 0}`);
+        return [];
+    }
+    const locType = locTypeResult.value;
+    const type = (opts.placementType | 0) as unknown as LocModelType;
+    const rotation = opts.placementRotation | 0;
+
+    const md = opts.sceneBuilder.services.locModelLoader.getLocModelData(locType, type, rotation);
+    if (!md) {
+        console.error(
+            `  ts-loc-uv: no locModelData loc=${opts.locTypeId | 0} type=${
+                opts.placementType | 0
+            } rot=${rotation}`,
+        );
+        return [];
+    }
+    // Force lighting to populate `uvs` and SD texture filtering (matches scene render path).
+    const model = md.light(
+        opts.sceneBuilder.services.textureLoader,
+        (locType.ambient | 0) + 64,
+        (locType.contrast | 0) + 768,
+        -50,
+        -10,
+        -50,
+    );
+    if (!model.uvs || !model.faceTextures) {
+        console.error("  ts-loc-uv: model missing uvs or faceTextures");
+        return [];
+    }
+
+    const x = opts.vertex.x | 0;
+    const y = opts.vertex.y | 0;
+    const z = opts.vertex.z | 0;
+    const packedTexIndex = opts.vertex.textureId | 0;
+    const texId =
+        opts.sdTextureIds && packedTexIndex >= 0 && packedTexIndex < opts.sdTextureIds.length
+            ? opts.sdTextureIds[packedTexIndex] | 0
+            : packedTexIndex;
+
+    const instances =
+        opts.instances && opts.instances.length > 0
+            ? opts.instances
+            : [{ sceneX: 0, sceneZ: 0, heightOffset: 0, level: 0 }];
+
+    const verticesX = model.verticesX;
+    const verticesZ = model.verticesZ;
+    const verticesY = model.contourVerticesY ?? model.verticesY;
+
+    const findVertexIndices = (offX: number, offY: number, offZ: number): number[] => {
+        const out: number[] = [];
+        for (let vi = 0; vi < verticesX.length; vi++) {
+            if ((offX | 0) + (verticesX[vi] | 0) !== x) continue;
+            if ((offY | 0) + (verticesY[vi] | 0) !== y) continue;
+            if ((offZ | 0) + (verticesZ[vi] | 0) !== z) continue;
+            out.push(vi | 0);
+            if (out.length >= 16) break;
+        }
+        return out;
+    };
+
+    // TS instanced geometry is written in model space (no scene translation baked into vertices).
+    // Try raw match first, then fall back to per-instance scene offsets (merged-group style).
+    let bestInstance: { sceneX: number; sceneZ: number; heightOffset: number } | undefined;
+    let vIndices: number[] = findVertexIndices(0, 0, 0);
+    if (vIndices.length <= 0) {
+        for (let instIdx = 0; instIdx < instances.length; instIdx++) {
+            const inst = instances[instIdx]!;
+            let sceneHeight = 0;
+            if (opts.scene && typeof opts.borderTiles === "number") {
+                const localTileX = ((inst.sceneX | 0) - 64) / 128;
+                const localTileY = ((inst.sceneZ | 0) - 64) / 128;
+                // Use integer division semantics (sceneX is always centered on tiles in TS).
+                const tileX = ((localTileX | 0) + (opts.borderTiles | 0)) | 0;
+                const tileY = ((localTileY | 0) + (opts.borderTiles | 0)) | 0;
+                const lvl = inst.level | 0;
+                if (
+                    lvl >= 0 &&
+                    lvl < opts.scene.levels &&
+                    tileX >= 0 &&
+                    tileY >= 0 &&
+                    tileX < opts.scene.sizeX &&
+                    tileY < opts.scene.sizeY
+                ) {
+                    sceneHeight = opts.scene.getCenterHeight(lvl, tileX, tileY) | 0;
+                }
+            }
+            const effectiveYOff = (sceneHeight + (inst.heightOffset | 0)) | 0;
+            const cand = findVertexIndices(inst.sceneX | 0, effectiveYOff, inst.sceneZ | 0);
+            if (cand.length > 0) {
+                bestInstance = inst;
+                vIndices = cand;
+                break;
+            }
+        }
+    }
+    if (vIndices.length <= 0) {
+        console.error(`  ts-loc-uv: no vertex match xyz=${x},${y},${z} tex=${texId}`);
+        return [];
+    }
+
+    const matches: Array<{
+        faceIndex: number;
+        vertexCorner: number;
+        texId: number;
+        texCoord: number;
+        texType: number;
+        dir: number;
+        speed: number;
+        transU: number;
+        transV: number;
+        uv: Readonly<{ u: number; v: number }>;
+    }> = [];
+    let printed = 0;
+    for (let fi = 0; fi < md.faceCount; fi++) {
+        if ((model.faceTextures[fi] | 0) !== (texId | 0)) continue;
+        const ia = md.indices1[fi] | 0;
+        const ib = md.indices2[fi] | 0;
+        const ic = md.indices3[fi] | 0;
+        let corner = -1;
+        if (vIndices.includes(ia)) corner = 0;
+        else if (vIndices.includes(ib)) corner = 1;
+        else if (vIndices.includes(ic)) corner = 2;
+        if (corner < 0) continue;
+
+        const uvBase = (fi * 6) | 0;
+        const u = model.uvs[uvBase + corner * 2] ?? 0;
+        const v = model.uvs[uvBase + corner * 2 + 1] ?? 0;
+
+        let texCoordRaw = -1;
+        let texCoord = -1;
+        let texType = 0;
+        let speed = 0;
+        let dir = 0;
+        let transU = 0;
+        let transV = 0;
+        if (md.textureCoords) {
+            texCoordRaw = md.textureCoords[fi] | 0;
+            if (texCoordRaw !== -1) {
+                texCoord = texCoordRaw & 0xff;
+                texType = (md.textureRenderTypes[texCoord] | 0) & 0xff;
+                speed = (md.textureSpeed[texCoord] | 0) / 256;
+                dir = md.textureDirection[texCoord] | 0;
+                transU = (md.textureTransU[texCoord] | 0) / 256;
+                transV = (md.textureTransV[texCoord] | 0) / 256;
+            }
+        }
+
+        matches.push({
+            faceIndex: fi | 0,
+            vertexCorner: corner | 0,
+            texId: texId | 0,
+            texCoord: texCoord | 0,
+            texType: texType | 0,
+            dir: dir | 0,
+            speed: Number(speed),
+            transU: Number(transU),
+            transV: Number(transV),
+            uv: { u, v },
+        });
+        console.error(
+            `  ts-loc-uv: face=${fi} vCorner=${corner} vIdx=${
+                corner === 0 ? ia : corner === 1 ? ib : ic
+            }` +
+                ` inst{sceneX=${bestInstance?.sceneX ?? 0} sceneZ=${
+                    bestInstance?.sceneZ ?? 0
+                } hOff=${bestInstance?.heightOffset ?? 0}}` +
+                ` packedTexIndex=${packedTexIndex} texId=${texId}` +
+                ` texCoordRaw=${texCoordRaw} texCoord=${texCoord} type=${texType} dir=${dir} speed=${speed}` +
+                ` transU=${transU} transV=${transV} uv=${u},${v}`,
+        );
+        printed++;
+        if (printed >= limit) break;
+    }
+    if (printed <= 0) {
+        console.error(
+            `  ts-loc-uv: no face matched vertex xyz=${x},${y},${z} tex=${texId} (vertexIndices=${JSON.stringify(
+                vIndices.slice(0, 8),
+            )})`,
+        );
+    }
+    return matches;
 }
 
 function summarizeRuntimeLocMergeDecisionEntries(
@@ -7233,8 +7538,8 @@ function decodePackedVertexDebug(bytes: Uint8Array, vertexIndex: number): Packed
         z: (((v2 >>> 17) & 0x7fff) - 0x4000) | 0,
         hsl,
         isTextured,
-        textureId: isTextured ? (textureIdBits + 1) | 0 : -1,
-        textureId1: hasBlend ? (textureId1Bits + 1) | 0 : -1,
+        textureId: isTextured ? textureIdBits | 0 : -1,
+        textureId1: hasBlend ? textureId1Bits | 0 : -1,
         hasBlend,
         blend,
         alpha,
@@ -7330,6 +7635,20 @@ async function main(): Promise<void> {
     const cacheInfo = pickCache(loadCacheInfos(), args.cacheName);
     const loadedCache = loadCache(cacheInfo);
 
+    // Parity runs in Node, so load the same obj/npc spawn fixtures the app uses (instead of fetch()).
+    const objSpawns: ObjSpawn[] = JSON.parse(
+        await readFile(path.resolve(process.cwd(), "src/data/obj/obj-spawns.json"), "utf8"),
+    ) as ObjSpawn[];
+    const npcSpawnsFilename =
+        cacheInfo.game === GameType.Oldschool
+            ? "npc-spawns-osrs.json"
+            : cacheInfo.revision > 474
+            ? "npc-spawns-2009.json"
+            : "npc-spawns-2004.json";
+    const npcSpawns: NpcSpawn[] = JSON.parse(
+        await readFile(path.resolve(process.cwd(), "src/data/npc", npcSpawnsFilename), "utf8"),
+    ) as NpcSpawn[];
+
     const sessionResult = tryCreateCacheSession(loadedCache as any, new JSCompressionHandler());
     if (!sessionResult.ok) throw new Error(`Failed to create session for ${cacheInfo.name}`);
     const session = sessionResult.value;
@@ -7386,8 +7705,8 @@ async function main(): Promise<void> {
         npcModelLoader,
         mapImageRenderer,
         varProvider,
-        objSpawns: [] as ObjSpawn[],
-        npcSpawns: [] as NpcSpawn[],
+        objSpawns,
+        npcSpawns,
     };
     const tsBackend = new SdMapRenderDataTsBackend(deps);
 
@@ -7468,7 +7787,9 @@ async function main(): Promise<void> {
         let mismatches = 0;
         const stageFailures = createStageFailureCounter();
         const stageFailuresGating = createStageFailureCounter();
-        const stageFailureSquares = args.listFailingSquares ? createStageFailureSquareList() : undefined;
+        const stageFailureSquares = args.listFailingSquares
+            ? createStageFailureSquareList()
+            : undefined;
         const mismatchSquares: string[] | undefined = args.listFailingSquares ? [] : undefined;
         for (const square of squares) {
             const input: SdMapLoaderInput = {
@@ -7482,6 +7803,15 @@ async function main(): Promise<void> {
                 minimizeDrawCalls: false,
                 loadedTextureIds: new Set<number>(),
             };
+            const debugTransparencyTexIds =
+                args.debugStage === "commandStream" ? ([239, 407, 235] as const) : undefined;
+            const debugTransparencyBefore =
+                debugTransparencyTexIds && loaders.textureLoader
+                    ? debugTransparencyTexIds.map((id) => [
+                          id,
+                          loaders.textureLoader.isTransparent(id),
+                      ])
+                    : undefined;
             const tsBridgeInput = await tsBackend.buildMapDataBridgeInput(input, {
                 includeMinimapBlob: false,
                 includeRuntimeCommandStreamInput: true,
@@ -7489,6 +7819,19 @@ async function main(): Promise<void> {
                 debugIncludeSceneCommandPlanDigest: args.stages === true,
                 debugIncludeSceneCommandPlanOpsPacked: args.stages === true,
             });
+            if (debugTransparencyBefore && debugTransparencyTexIds) {
+                const after = debugTransparencyTexIds.map((id) => [
+                    id,
+                    loaders.textureLoader.isTransparent(id),
+                ]);
+                if (String(debugTransparencyBefore) !== String(after)) {
+                    console.error(
+                        `textureLoader.isTransparent changed during build square=${square.mapX}:${square.mapY} before=${JSON.stringify(
+                            debugTransparencyBefore,
+                        )} after=${JSON.stringify(after)}`,
+                    );
+                }
+            }
             const tsData = tsBridgeInput.data;
             if (!tsData) {
                 mismatches++;
@@ -7530,10 +7873,7 @@ async function main(): Promise<void> {
                 await bridge.getRuntimeCachedCommandStreamDigest(runtimeHandle);
             const tsCmdDigest =
                 tsBridgeInput.runtimeCommandStreamInput && tsData
-                    ? digestTsRuntimeCommandStream(
-                          tsBridgeInput.runtimeCommandStreamInput,
-                          tsData,
-                      )
+                    ? digestTsRuntimeCommandStream(tsBridgeInput.runtimeCommandStreamInput, tsData)
                     : undefined;
             const tsPlanDigest =
                 args.stages === true ? tsBridgeInput.debugSceneCommandPlanDigest : undefined;
@@ -7566,10 +7906,9 @@ async function main(): Promise<void> {
                 // Mirror the worker behavior: build once, and if C++ reports missing blobs (or
                 // returned an incomplete packet), upload the missing blobs and retry.
                 for (let pass = 0; pass < 12; pass++) {
-                    const raw = (await bridge.buildMapPacketFromCache(
-                        runtimeHandle,
-                        request,
-                    )) as MapRenderRuntimePacket | undefined;
+                    const raw = (await bridge.buildMapPacketFromCache(runtimeHandle, request)) as
+                        | MapRenderRuntimePacket
+                        | undefined;
                     const overlay = raw ? runtimePacketToPayloadOverlay(raw) : undefined;
                     const hasGeometry =
                         overlay &&
@@ -7578,15 +7917,14 @@ async function main(): Promise<void> {
                         raw?.indices instanceof Int32Array &&
                         raw.indices.length > 0 &&
                         raw?.usedTextureIds instanceof Int32Array;
-                    if (hasGeometry) {
-                        packetRaw = raw;
-                        packet = cloneRuntimePacketGeometry(raw);
-                        cache = overlay;
-                        break;
-                    }
-
                     const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
                     if (!missing || (missing.domains.length | 0) <= 0) {
+                        if (hasGeometry) {
+                            packetRaw = raw;
+                            packet = cloneRuntimePacketGeometry(raw);
+                            cache = overlay;
+                            break;
+                        }
                         packetRaw = raw;
                         packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
                         cache = overlay;
@@ -7678,6 +8016,57 @@ async function main(): Promise<void> {
             const tsLocPreMergeGroupKeyDigest = tsLocStageDigests?.preMergeGroupKey;
             const tsLocPreMergeSignatureEntries = tsLocStageDigests?.preMergeSignatureEntries;
             if (!cache || !packet) {
+                console.warn("[map-render-backend] runtime request", request);
+                if (packetRaw) {
+                    const diag = runtimePacketToPayloadOverlayDiagnostic(packetRaw);
+                    if (!diag.overlay) {
+                        console.warn("[map-render-backend] overlay-parse-failed", diag.failure);
+                        console.warn("[map-render-backend] overlay-parse-packet-meta", {
+                            packetVersion: packetRaw.packetVersion | 0,
+                            levels: packetRaw.levels | 0,
+                            sizeX: packetRaw.sizeX | 0,
+                            sizeY: packetRaw.sizeY | 0,
+                            totalModelInfoLength: packetRaw.totalModelInfoLength | 0,
+                            bucketCmdCounts: Array.from(packetRaw.bucketCmdCounts ?? []),
+                            bucketModelInfoLengths: Array.from(
+                                packetRaw.bucketModelInfoLengths ?? [],
+                            ),
+                            drawRangesPackedLen: (packetRaw.drawRangesPacked?.length ?? -1) | 0,
+                            modelInfoBucketLens: Array.isArray(packetRaw.modelInfoTextureBuckets)
+                                ? packetRaw.modelInfoTextureBuckets.map(
+                                      (b) => (b?.length ?? -1) | 0,
+                                  )
+                                : [],
+                        });
+                    }
+                }
+                const missingBlobs =
+                    typeof bridge.getLastMissingBlobEntries === "function"
+                        ? await bridge.getLastMissingBlobEntries(runtimeHandle)
+                        : undefined;
+                if (missingBlobs && (missingBlobs.domains.length | 0) > 0) {
+                    const n = missingBlobs.domains.length | 0;
+                    const sampleN = Math.min(12, n) | 0;
+                    const sample: Array<[number, number, number]> = [];
+                    for (let i = 0; i < sampleN; i++) {
+                        sample.push([
+                            missingBlobs.domains[i] | 0,
+                            missingBlobs.groups[i] | 0,
+                            missingBlobs.files[i] | 0,
+                        ]);
+                    }
+                    console.warn("[map-render-backend] lastMissingBlobEntries", {
+                        count: n,
+                        sample,
+                    });
+                }
+                const cacheConfig =
+                    typeof (bridge as any).debugGetRuntimeCacheConfig === "function"
+                        ? await (bridge as any).debugGetRuntimeCacheConfig(runtimeHandle)
+                        : undefined;
+                if (cacheConfig) {
+                    console.warn("[map-render-backend] runtime cache-config", cacheConfig);
+                }
                 const failure =
                     typeof (bridge as any).debugGetLastBuildFailure === "function"
                         ? await (bridge as any).debugGetLastBuildFailure(runtimeHandle)
@@ -7731,20 +8120,18 @@ async function main(): Promise<void> {
             const packetStageResultBaseline = comparePacketDigests(tsData, cache, packet);
 
             const verticesDiffDetail = mismatchKeys.includes("vertices")
-                ? tsData.vertices instanceof Uint8Array &&
-                  packet.vertices instanceof Uint8Array
+                ? tsData.vertices instanceof Uint8Array && packet.vertices instanceof Uint8Array
                     ? describeFirstByteMismatch(tsData.vertices, packet.vertices)
                     : `type ts=${String(
                           (tsData.vertices as any)?.constructor?.name,
                       )} cache=${String((packet.vertices as any)?.constructor?.name)}`
                 : undefined;
             const indicesDiffDetail = mismatchKeys.includes("indices")
-                ? tsData.indices instanceof Int32Array &&
-                  packet.indices instanceof Int32Array
+                ? tsData.indices instanceof Int32Array && packet.indices instanceof Int32Array
                     ? describeFirstI32Mismatch(tsData.indices, packet.indices)
-                    : `type ts=${String(
-                          (tsData.indices as any)?.constructor?.name,
-                      )} cache=${String((packet.indices as any)?.constructor?.name)}`
+                    : `type ts=${String((tsData.indices as any)?.constructor?.name)} cache=${String(
+                          (packet.indices as any)?.constructor?.name,
+                      )}`
                 : undefined;
 
             let tsTerrainDigestStage: ReturnType<typeof summarizeTerrainGeometry> | undefined;
@@ -7926,6 +8313,122 @@ async function main(): Promise<void> {
                             ok: false,
                             detail: "exception: " + String(e),
                         };
+                    }
+                    if (
+                        args.debugStage === "modelFacesStage" &&
+                        !modelFacesStageResult.ok &&
+                        typeof modelFacesStageResult.detail === "string"
+                    ) {
+                        const m = /id=(\d+)/.exec(modelFacesStageResult.detail);
+                        const modelId = m ? Number(m[1]) | 0 : -1;
+                        if (modelId >= 0) {
+                            let tsModel: unknown;
+                            try {
+                                tsModel = loaders.modelLoader.tryGet(modelId);
+                            } catch {
+                                tsModel = undefined;
+                            }
+                            if (tsModel instanceof ModelData) {
+                                const tsVertices = digestTsModelVerticesFromModelData(tsModel);
+                                const tsFaces = digestTsModelFacesFromModelData(
+                                    tsModel,
+                                    transparentTextureIds,
+                                );
+                                const n = Math.min(
+                                    tsModel.usedVertexCount | 0,
+                                    tsModel.verticesX.length | 0,
+                                    tsModel.verticesY.length | 0,
+                                    tsModel.verticesZ.length | 0,
+                                    8,
+                                );
+                                const tsHead: number[] = [];
+                                for (let vi = 0; vi < n; vi++) {
+                                    tsHead.push(
+                                        tsModel.verticesX[vi] | 0,
+                                        tsModel.verticesY[vi] | 0,
+                                        tsModel.verticesZ[vi] | 0,
+                                    );
+                                }
+                                console.log(
+                                    `[modelFacesStage][debug] id=${modelId} tsVertices=${JSON.stringify(
+                                        tsVertices,
+                                    )} tsFaces=${JSON.stringify(tsFaces)}`,
+                                );
+                                console.log(
+                                    `[modelFacesStage][debug] id=${modelId} tsModel version=${
+                                        tsModel.version | 0
+                                    } textureFaceCount=${tsModel.textureFaceCount | 0} priority=${
+                                        tsModel.priority | 0
+                                    } hasFaceTextures=${
+                                        tsModel.faceTextures ? 1 : 0
+                                    } hasFaceAlphas=${
+                                        tsModel.faceAlphas ? 1 : 0
+                                    } hasFaceRenderTypes=${
+                                        tsModel.faceRenderTypes ? 1 : 0
+                                    } tsVertexHead=${tsHead.join(",")}`,
+                                );
+                            } else {
+                                console.log(
+                                    `[modelFacesStage][debug] id=${modelId} missing-ts-model`,
+                                );
+                            }
+
+                            try {
+                                const cacheFaces =
+                                    typeof (bridge as any).debugGetRuntimeModelFacesDigest ===
+                                    "function"
+                                        ? await (bridge as any).debugGetRuntimeModelFacesDigest(
+                                              runtimeHandle,
+                                              modelId,
+                                          )
+                                        : undefined;
+                                const cacheVertices =
+                                    typeof (bridge as any).debugGetRuntimeModelVerticesDigest ===
+                                    "function"
+                                        ? await (bridge as any).debugGetRuntimeModelVerticesDigest(
+                                              runtimeHandle,
+                                              modelId,
+                                          )
+                                        : undefined;
+                                console.log(
+                                    `[modelFacesStage][debug] id=${modelId} cacheVertices=${JSON.stringify(
+                                        cacheVertices ?? null,
+                                    )} cacheFaces=${JSON.stringify(cacheFaces ?? null)}`,
+                                );
+
+                                const cacheSample =
+                                    typeof (bridge as any)
+                                        .debugGetRuntimeModelVerticesSampleRange === "function"
+                                        ? await (
+                                              bridge as any
+                                          ).debugGetRuntimeModelVerticesSampleRange(
+                                              runtimeHandle,
+                                              modelId,
+                                              0,
+                                              0,
+                                          )
+                                        : undefined;
+                                if (
+                                    cacheSample &&
+                                    typeof cacheSample === "object" &&
+                                    (cacheSample as any).xyz instanceof Int32Array
+                                ) {
+                                    const xyz = (cacheSample as any).xyz as Int32Array;
+                                    const head = Array.from(xyz.slice(0, Math.min(24, xyz.length)));
+                                    console.log(
+                                        `[modelFacesStage][debug] id=${modelId} cacheSample written=${String(
+                                            (cacheSample as any).written ?? "?",
+                                        )} xyzHead=${head.join(",")}`,
+                                    );
+                                }
+                            } catch (e) {
+                                console.log(
+                                    `[modelFacesStage][debug] id=${modelId} cache-debug-failed: ${String(
+                                        e,
+                                    )}`,
+                                );
+                            }
+                        }
                     }
                 }
                 if (profile.loadLocs) {
@@ -8534,56 +9037,100 @@ async function main(): Promise<void> {
                                                                         // If these disagree, the underlying terrain bytes mapping or scene build bounds
                                                                         // are off (not just lighting/material logic).
                                                                         const tsUnderlayRaw =
-                                                                            (tsTerrainScene.tileUnderlays?.[lvl]?.[
-                                                                                tx
-                                                                            ]?.[ty] ?? -999) | 0;
+                                                                            (tsTerrainScene
+                                                                                .tileUnderlays?.[
+                                                                                lvl
+                                                                            ]?.[tx]?.[ty] ?? -999) |
+                                                                            0;
                                                                         const tsOverlayRaw =
-                                                                            (tsTerrainScene.tileOverlays?.[lvl]?.[
-                                                                                tx
-                                                                            ]?.[ty] ?? -999) | 0;
+                                                                            (tsTerrainScene
+                                                                                .tileOverlays?.[
+                                                                                lvl
+                                                                            ]?.[tx]?.[ty] ?? -999) |
+                                                                            0;
                                                                         const tsShapeRaw =
-                                                                            (tsTerrainScene.tileShapes?.[lvl]?.[
-                                                                                tx
-                                                                            ]?.[ty] ?? -999) | 0;
+                                                                            (tsTerrainScene
+                                                                                .tileShapes?.[
+                                                                                lvl
+                                                                            ]?.[tx]?.[ty] ?? -999) |
+                                                                            0;
                                                                         const tsRotRaw =
-                                                                            (tsTerrainScene.tileRotations?.[lvl]?.[
-                                                                                tx
-                                                                            ]?.[ty] ?? -999) | 0;
+                                                                            (tsTerrainScene
+                                                                                .tileRotations?.[
+                                                                                lvl
+                                                                            ]?.[tx]?.[ty] ?? -999) |
+                                                                            0;
                                                                         const worldTileX =
-                                                                            (((sceneBuildInput.baseX as number) | 0) +
+                                                                            (((sceneBuildInput.baseX as number) |
+                                                                                0) +
                                                                                 (tx | 0)) |
                                                                             0;
                                                                         const worldTileY =
-                                                                            (((sceneBuildInput.baseY as number) | 0) +
+                                                                            (((sceneBuildInput.baseY as number) |
+                                                                                0) +
                                                                                 (ty | 0)) |
                                                                             0;
                                                                         const worldMapX =
-                                                                            Math.floor(worldTileX / 64) | 0;
+                                                                            Math.floor(
+                                                                                worldTileX / 64,
+                                                                            ) | 0;
                                                                         const worldMapY =
-                                                                            Math.floor(worldTileY / 64) | 0;
+                                                                            Math.floor(
+                                                                                worldTileY / 64,
+                                                                            ) | 0;
                                                                         const localX =
-                                                                            (worldTileX - worldMapX * 64) | 0;
+                                                                            (worldTileX -
+                                                                                worldMapX * 64) |
+                                                                            0;
                                                                         const localY =
-                                                                            (worldTileY - worldMapY * 64) | 0;
+                                                                            (worldTileY -
+                                                                                worldMapY * 64) |
+                                                                            0;
                                                                         console.log(
                                                                             `[terrainDigestStage][probe-ts-raw] lvl=${lvl} tile=${tx},${ty} world=${worldTileX},${worldTileY} map=${worldMapX},${worldMapY} local=${localX},${localY} underlayRaw=${tsUnderlayRaw} overlayRaw=${tsOverlayRaw} shape=${tsShapeRaw} rot=${tsRotRaw}`,
                                                                         );
 
                                                                         try {
-                                                                            const decode =
-                                                                                (bridge as any)
-                                                                                    .debugDecodeCachedTerrainCell;
-                                                                            if (typeof decode === "function") {
-                                                                                const cell = (await decode(
-                                                                                    runtimeHandle,
-                                                                                    worldMapX,
-                                                                                    worldMapY,
-                                                                                    lvl,
-                                                                                    localX,
-                                                                                    localY,
-                                                                                )) as any;
+                                                                            const decode = (
+                                                                                bridge as any
+                                                                            )
+                                                                                .debugDecodeCachedTerrainCell;
+                                                                            if (
+                                                                                typeof decode ===
+                                                                                "function"
+                                                                            ) {
+                                                                                const cell =
+                                                                                    (await decode(
+                                                                                        runtimeHandle,
+                                                                                        worldMapX,
+                                                                                        worldMapY,
+                                                                                        lvl,
+                                                                                        localX,
+                                                                                        localY,
+                                                                                    )) as any;
                                                                                 console.log(
-                                                                                    `[terrainDigestStage][probe-cache-cell] map=${worldMapX},${worldMapY} local=${localX},${localY} lvl=${lvl} ok=${!!cell?.ok} newFormat=${!!cell?.newFormat} bytesLen=${cell?.terrainBytesLength | 0} underlayRaw=${cell?.underlayRaw | 0} overlayRaw=${cell?.overlayRaw | 0} shape=${cell?.shape | 0} rot=${cell?.rotation | 0} flags=${cell?.renderFlags | 0} height=${cell?.height | 0}`,
+                                                                                    `[terrainDigestStage][probe-cache-cell] map=${worldMapX},${worldMapY} local=${localX},${localY} lvl=${lvl} ok=${!!cell?.ok} newFormat=${!!cell?.newFormat} bytesLen=${
+                                                                                        cell?.terrainBytesLength |
+                                                                                        0
+                                                                                    } underlayRaw=${
+                                                                                        cell?.underlayRaw |
+                                                                                        0
+                                                                                    } overlayRaw=${
+                                                                                        cell?.overlayRaw |
+                                                                                        0
+                                                                                    } shape=${
+                                                                                        cell?.shape |
+                                                                                        0
+                                                                                    } rot=${
+                                                                                        cell?.rotation |
+                                                                                        0
+                                                                                    } flags=${
+                                                                                        cell?.renderFlags |
+                                                                                        0
+                                                                                    } height=${
+                                                                                        cell?.height |
+                                                                                        0
+                                                                                    }`,
                                                                                 );
                                                                             }
                                                                         } catch (e) {
@@ -9009,6 +9556,141 @@ async function main(): Promise<void> {
                                                                                                 cpp,
                                                                                             )}`,
                                                                                         );
+                                                                                        const modelId =
+                                                                                            Number(
+                                                                                                (
+                                                                                                    cpp as any
+                                                                                                )
+                                                                                                    .resolvedFirstModelId ??
+                                                                                                    (
+                                                                                                        cpp as any
+                                                                                                    )
+                                                                                                        .firstModelId ??
+                                                                                                    -1,
+                                                                                            ) | 0 ??
+                                                                                            -1;
+                                                                                        if (
+                                                                                            modelId >=
+                                                                                            0
+                                                                                        ) {
+                                                                                            let tsModel: unknown;
+                                                                                            try {
+                                                                                                tsModel =
+                                                                                                    loaders.modelLoader.tryGet(
+                                                                                                        modelId,
+                                                                                                    );
+                                                                                            } catch {
+                                                                                                tsModel =
+                                                                                                    undefined;
+                                                                                            }
+                                                                                            if (
+                                                                                                tsModel instanceof
+                                                                                                ModelData
+                                                                                            ) {
+                                                                                                const tsVertices =
+                                                                                                    digestTsModelVerticesFromModelData(
+                                                                                                        tsModel,
+                                                                                                    );
+                                                                                                let tsXzRadiusSq = 0;
+                                                                                                const used =
+                                                                                                    Math.min(
+                                                                                                        tsModel.usedVertexCount |
+                                                                                                            0,
+                                                                                                        tsModel
+                                                                                                            .verticesX
+                                                                                                            .length |
+                                                                                                            0,
+                                                                                                        tsModel
+                                                                                                            .verticesZ
+                                                                                                            .length |
+                                                                                                            0,
+                                                                                                    ) |
+                                                                                                    0;
+                                                                                                for (
+                                                                                                    let vi = 0;
+                                                                                                    vi <
+                                                                                                    used;
+                                                                                                    vi++
+                                                                                                ) {
+                                                                                                    const x =
+                                                                                                        tsModel
+                                                                                                            .verticesX[
+                                                                                                            vi
+                                                                                                        ] |
+                                                                                                        0;
+                                                                                                    const z =
+                                                                                                        tsModel
+                                                                                                            .verticesZ[
+                                                                                                            vi
+                                                                                                        ] |
+                                                                                                        0;
+                                                                                                    const r =
+                                                                                                        (x *
+                                                                                                            x +
+                                                                                                            z *
+                                                                                                                z) |
+                                                                                                        0;
+                                                                                                    if (
+                                                                                                        r >
+                                                                                                        tsXzRadiusSq
+                                                                                                    ) {
+                                                                                                        tsXzRadiusSq =
+                                                                                                            r;
+                                                                                                    }
+                                                                                                }
+                                                                                                const tsXzRadius =
+                                                                                                    Math.floor(
+                                                                                                        Math.sqrt(
+                                                                                                            tsXzRadiusSq,
+                                                                                                        ) +
+                                                                                                            0.99,
+                                                                                                    ) |
+                                                                                                    0;
+                                                                                                console.log(
+                                                                                                    `[terrainDigestStage][probe-ts-model] modelId=${modelId} version=${
+                                                                                                        tsModel.version |
+                                                                                                        0
+                                                                                                    } verticesCount=${
+                                                                                                        tsModel.verticesCount |
+                                                                                                        0
+                                                                                                    } usedVertexCount=${
+                                                                                                        tsModel.usedVertexCount |
+                                                                                                        0
+                                                                                                    } tsXzRadius=${tsXzRadius} tsVerticesDigest=${JSON.stringify(
+                                                                                                        tsVertices,
+                                                                                                    )}`,
+                                                                                                );
+                                                                                            } else {
+                                                                                                console.log(
+                                                                                                    `[terrainDigestStage][probe-ts-model] modelId=${modelId} missing-ts-model`,
+                                                                                                );
+                                                                                            }
+                                                                                            if (
+                                                                                                typeof (
+                                                                                                    bridge as any
+                                                                                                )
+                                                                                                    .debugGetRuntimeModelVerticesDigest ===
+                                                                                                "function"
+                                                                                            ) {
+                                                                                                try {
+                                                                                                    const cacheVertices =
+                                                                                                        await (
+                                                                                                            bridge as any
+                                                                                                        ).debugGetRuntimeModelVerticesDigest(
+                                                                                                            runtimeHandle,
+                                                                                                            modelId,
+                                                                                                        );
+                                                                                                    console.log(
+                                                                                                        `[terrainDigestStage][probe-cache-model] modelId=${modelId} cacheVerticesDigest=${JSON.stringify(
+                                                                                                            cacheVertices ??
+                                                                                                                null,
+                                                                                                        )}`,
+                                                                                                    );
+                                                                                                } catch {
+                                                                                                    // ignore
+                                                                                                }
+                                                                                            }
+                                                                                        }
                                                                                     }
                                                                                 }
                                                                             } catch {
@@ -9134,8 +9816,14 @@ async function main(): Promise<void> {
                                     planOnlyOps && typeof planOnlyOps === "object"
                                         ? (planOnlyOps as any).packed
                                         : undefined;
-                                if (fullPacked instanceof Int32Array && planPacked instanceof Int32Array) {
-                                    const mismatch = describeFirstI32Mismatch(fullPacked, planPacked);
+                                if (
+                                    fullPacked instanceof Int32Array &&
+                                    planPacked instanceof Int32Array
+                                ) {
+                                    const mismatch = describeFirstI32Mismatch(
+                                        fullPacked,
+                                        planPacked,
+                                    );
                                     console.log(
                                         `[planOnlySelfCheckStage][debug] opsPackedDiff: ${mismatch}`,
                                     );
@@ -9236,7 +9924,9 @@ async function main(): Promise<void> {
                         stageFailuresGating[r.key] = (stageFailuresGating[r.key] | 0) + 1;
                     }
                     if (stageFailureSquares) {
-                        stageFailureSquares[r.key].push(`${square.mapX}:${square.mapY}(${profile.name})`);
+                        stageFailureSquares[r.key].push(
+                            `${square.mapX}:${square.mapY}(${profile.name})`,
+                        );
                     }
                 }
             }
@@ -9285,12 +9975,16 @@ async function main(): Promise<void> {
                 );
                 if (cacheBlobStatsAfterUpload) {
                     console.error(
-                        `  runtime blob-stats after upload: ${JSON.stringify(cacheBlobStatsAfterUpload)}`,
+                        `  runtime blob-stats after upload: ${JSON.stringify(
+                            cacheBlobStatsAfterUpload,
+                        )}`,
                     );
                 }
                 if (cacheLastCollectMapInputAfterBuild) {
                     console.error(
-                        `  runtime last-collect-map-input: ${JSON.stringify(cacheLastCollectMapInputAfterBuild)}`,
+                        `  runtime last-collect-map-input: ${JSON.stringify(
+                            cacheLastCollectMapInputAfterBuild,
+                        )}`,
                     );
                 }
                 if (cacheConfig) {
@@ -9327,10 +10021,107 @@ async function main(): Promise<void> {
                                 console.error(
                                     `  first runtime command-stream array diff: ${firstArrayDiff}`,
                                 );
+                                try {
+                                    const countBuckets = (bucketIndices: Int32Array): number[] => {
+                                        const out = new Array<number>(DRAW_BUCKET_KEYS.length).fill(
+                                            0,
+                                        );
+                                        for (let i = 0; i < bucketIndices.length; i++) {
+                                            const b = bucketIndices[i] | 0;
+                                            if (b >= 0 && b < out.length) out[b] = (out[b] | 0) + 1;
+                                        }
+                                        return out;
+                                    };
+                                    const tsCounts = countBuckets(tsCmdInput.cmdBucketIndices);
+                                    const caCounts = countBuckets(cacheCmdArrays.cmdBucketIndices);
+                                    const fmt = (counts: number[]) =>
+                                        DRAW_BUCKET_KEYS.map(
+                                            (k, i) => `${k}:${(counts[i] ?? 0) | 0}`,
+                                        ).join(" ");
+                                    console.error(
+                                        `  cmdBucketCounts ts(${
+                                            tsCmdInput.cmdBucketIndices.length | 0
+                                        }) ${fmt(tsCounts)}`,
+                                    );
+                                    console.error(
+                                        `  cmdBucketCounts cache(${
+                                            cacheCmdArrays.cmdBucketIndices.length | 0
+                                        }) ${fmt(caCounts)}`,
+                                    );
+                                } catch (e) {
+                                    console.error(
+                                        "  quiet cmdBucketCounts debug failed: " + String(e),
+                                    );
+                                }
                                 // In --quiet mode we normally stop after emitting a single pointer to the
                                 // first divergent array entry. For vertex/element diffs, print a compact
                                 // decoded view so we can map the byte mismatch back to a concrete field.
                                 try {
+                                    // For command-array diffs, also print a small window around the
+                                    // divergent command and its provenance so we can chase the first
+                                    // wrong draw-category/command split.
+                                    const m = /^\w+\[(\d+)\]/.exec(firstArrayDiff);
+                                    if (m) {
+                                        const cmdIndex = Number(m[1]) | 0;
+                                        if (
+                                            cmdIndex >= 0 &&
+                                            (firstArrayDiff.startsWith("cmdBucketIndices[") ||
+                                                firstArrayDiff.startsWith("cmdOffsets[") ||
+                                                firstArrayDiff.startsWith("cmdElements[") ||
+                                                firstArrayDiff.startsWith("cmdInstanceCounts["))
+                                        ) {
+                                            const window = [
+                                                cmdIndex - 1,
+                                                cmdIndex,
+                                                cmdIndex + 1,
+                                                cmdIndex + 2,
+                                            ].filter(
+                                                (v) =>
+                                                    v >= 0 &&
+                                                    v <
+                                                        (tsCmdInput.cmdOffsets
+                                                            ? tsCmdInput.cmdOffsets.length | 0
+                                                            : 0),
+                                            );
+                                            for (const i of window) {
+                                                console.error(
+                                                    "  " +
+                                                        describeCommandAtIndex(
+                                                            "ts",
+                                                            tsCmdInput.cmdBucketIndices,
+                                                            tsCmdInput.cmdOffsets,
+                                                            tsCmdInput.cmdElements,
+                                                            tsCmdInput.cmdInstanceCounts,
+                                                            tsCmdInput.cmdPackedInstances,
+                                                            i,
+                                                        ),
+                                                );
+                                            }
+                                            for (const i of window) {
+                                                console.error(
+                                                    "  " +
+                                                        describeCommandAtIndex(
+                                                            "cache",
+                                                            cacheCmdArrays.cmdBucketIndices,
+                                                            cacheCmdArrays.cmdOffsets,
+                                                            cacheCmdArrays.cmdElements,
+                                                            cacheCmdArrays.cmdInstanceCounts,
+                                                            cacheCmdArrays.cmdPackedInstances,
+                                                            i,
+                                                        ),
+                                                );
+                                            }
+                                            const provLines =
+                                                summarizeRuntimeCommandProvenanceEntriesAtIndices(
+                                                    runtimeCommandProvenanceEntries,
+                                                    window,
+                                                );
+                                            for (let pi = 0; pi < provLines.length; pi++) {
+                                                console.error(provLines[pi]);
+                                            }
+                                        }
+                                    }
+
                                     if (
                                         firstArrayDiff.startsWith("vertices[") &&
                                         tsData.vertices instanceof Uint8Array &&
@@ -9339,10 +10130,10 @@ async function main(): Promise<void> {
                                         cacheCmdArrays.indices instanceof Int32Array
                                     ) {
                                         const m = /^vertices\[(\d+)\]/.exec(firstArrayDiff);
-                                        const mismatchByteIndex = m ? (Number(m[1]) | 0) : -1;
+                                        const mismatchByteIndex = m ? Number(m[1]) | 0 : -1;
                                         const vertexIndex =
                                             mismatchByteIndex >= 0
-                                                ? (Math.floor(mismatchByteIndex / 16) | 0)
+                                                ? Math.floor(mismatchByteIndex / 16) | 0
                                                 : -1;
                                         if (
                                             vertexIndex >= 0 &&
@@ -9420,11 +10211,7 @@ async function main(): Promise<void> {
                                                             ` vC=${JSON.stringify(decode(ic))}`,
                                                     );
                                                 };
-                                                dumpTri(
-                                                    "ts",
-                                                    tsData.vertices,
-                                                    tsData.indices,
-                                                );
+                                                dumpTri("ts", tsData.vertices, tsData.indices);
                                                 dumpTri(
                                                     "cache",
                                                     cacheCmdArrays.vertices,
@@ -9435,9 +10222,15 @@ async function main(): Promise<void> {
                                                 const findCmdForElement = (
                                                     arr: typeof cacheCmdArrays,
                                                     elementIndex: number,
-                                                ): { cmdIndex: number; bucket: number } | undefined => {
+                                                ):
+                                                    | { cmdIndex: number; bucket: number }
+                                                    | undefined => {
                                                     const ei = elementIndex | 0;
-                                                    for (let ci = 0; ci < arr.cmdOffsets.length; ci++) {
+                                                    for (
+                                                        let ci = 0;
+                                                        ci < arr.cmdOffsets.length;
+                                                        ci++
+                                                    ) {
                                                         const start = (arr.cmdOffsets[ci] | 0) >> 2;
                                                         const count = arr.cmdElements[ci] | 0;
                                                         if (count <= 0) continue;
@@ -9445,7 +10238,8 @@ async function main(): Promise<void> {
                                                         if (ei >= start && ei < end) {
                                                             return {
                                                                 cmdIndex: ci | 0,
-                                                                bucket: arr.cmdBucketIndices[ci] | 0,
+                                                                bucket:
+                                                                    arr.cmdBucketIndices[ci] | 0,
                                                             };
                                                         }
                                                     }
@@ -9505,16 +10299,19 @@ async function main(): Promise<void> {
                                                             request &&
                                                             tsCmdInput
                                                         ) {
-                                                            const cacheInsts = collectCommandInstances(
-                                                                cmdHit.cmdIndex,
-                                                                cacheCmdArrays.cmdInstanceCounts,
-                                                                cacheCmdArrays.cmdPackedInstances,
-                                                            );
+                                                            const cacheInsts =
+                                                                collectCommandInstances(
+                                                                    cmdHit.cmdIndex,
+                                                                    cacheCmdArrays.cmdInstanceCounts,
+                                                                    cacheCmdArrays.cmdPackedInstances,
+                                                                );
                                                             const level =
                                                                 (cacheInsts?.[0]?.level ?? 0) | 0;
                                                             const probeX = tsVertex.x | 0;
                                                             const probeZ = tsVertex.z | 0;
-                                                            await (bridge as any).debugSetWorldHeightProbe(
+                                                            await (
+                                                                bridge as any
+                                                            ).debugSetWorldHeightProbe(
                                                                 runtimeHandle,
                                                                 level,
                                                                 probeX,
@@ -9549,16 +10346,17 @@ async function main(): Promise<void> {
                                                                 0;
                                                             const smoothUnderlays =
                                                                 !!sceneBuildInput.smoothTerrain;
-                                                            const tsScene = buildSceneFromMapBytesProvider(
-                                                                sceneBuilder,
-                                                                mapBytesProvider,
-                                                                baseX,
-                                                                baseY,
-                                                                sizeX,
-                                                                sizeY,
-                                                                smoothUnderlays,
-                                                                LocLoadType.NO_MODELS,
-                                                            );
+                                                            const tsScene =
+                                                                buildSceneFromMapBytesProvider(
+                                                                    sceneBuilder,
+                                                                    mapBytesProvider,
+                                                                    baseX,
+                                                                    baseY,
+                                                                    sizeX,
+                                                                    sizeY,
+                                                                    smoothUnderlays,
+                                                                    LocLoadType.NO_MODELS,
+                                                                );
                                                             const hTs =
                                                                 tsScene.getHeightInterpolated(
                                                                     level,
@@ -9568,7 +10366,9 @@ async function main(): Promise<void> {
                                                             console.error(
                                                                 `  ts world-height level=${level} world=(${probeX},${probeZ}) -> ${hTs}`,
                                                             );
-                                                            if (probe?.packed instanceof Int32Array) {
+                                                            if (
+                                                                probe?.packed instanceof Int32Array
+                                                            ) {
                                                                 const p = probe.packed;
                                                                 const tx = p[1] | 0;
                                                                 const tz = p[2] | 0;
@@ -9578,17 +10378,17 @@ async function main(): Promise<void> {
                                                                 const h11 = p[8] | 0;
                                                                 const hCpp = p[14] | 0;
                                                                 const ts00 =
-                                                                    tsScene.tileHeights[level]?.[tx]?.[
-                                                                        tz
-                                                                    ] ?? 0;
+                                                                    tsScene.tileHeights[level]?.[
+                                                                        tx
+                                                                    ]?.[tz] ?? 0;
                                                                 const ts10 =
                                                                     tsScene.tileHeights[level]?.[
                                                                         tx + 1
                                                                     ]?.[tz] ?? 0;
                                                                 const ts01 =
-                                                                    tsScene.tileHeights[level]?.[tx]?.[
-                                                                        tz + 1
-                                                                    ] ?? 0;
+                                                                    tsScene.tileHeights[level]?.[
+                                                                        tx
+                                                                    ]?.[tz + 1] ?? 0;
                                                                 const ts11 =
                                                                     tsScene.tileHeights[level]?.[
                                                                         tx + 1
@@ -9645,7 +10445,10 @@ async function main(): Promise<void> {
                                                                     }
                                                                 }
                                                                 const group = (models as any)[idx];
-                                                                if (Array.isArray(group) && group.length > 0) {
+                                                                if (
+                                                                    Array.isArray(group) &&
+                                                                    group.length > 0
+                                                                ) {
                                                                     modelId = (group[0] ?? -1) | 0;
                                                                 }
                                                             }
@@ -9708,7 +10511,10 @@ async function main(): Promise<void> {
                                                                 };
                                                                 const tsSample = (() => {
                                                                     if (
-                                                                        !(tsModel instanceof ModelData)
+                                                                        !(
+                                                                            tsModel instanceof
+                                                                            ModelData
+                                                                        )
                                                                     ) {
                                                                         return undefined;
                                                                     }
@@ -9734,8 +10540,8 @@ async function main(): Promise<void> {
                                                                     }
                                                                     return {
                                                                         version:
-                                                                            (tsModel as any).version |
-                                                                            0,
+                                                                            (tsModel as any)
+                                                                                .version | 0,
                                                                         verticesCount:
                                                                             tsModel.verticesCount |
                                                                             0,
@@ -9745,7 +10551,8 @@ async function main(): Promise<void> {
                                                                         faceCount:
                                                                             tsModel.faceCount | 0,
                                                                         written: n | 0,
-                                                                        xyzTriplets: toTriplets(xyz),
+                                                                        xyzTriplets:
+                                                                            toTriplets(xyz),
                                                                     };
                                                                 })();
                                                                 const cppSampleSummary = cppSample
@@ -9759,7 +10566,8 @@ async function main(): Promise<void> {
                                                                               cppSample.usedVertexCount |
                                                                               0,
                                                                           faceCount:
-                                                                              cppSample.faceCount | 0,
+                                                                              cppSample.faceCount |
+                                                                              0,
                                                                           written:
                                                                               cppSample.written | 0,
                                                                           xyzTriplets: toTriplets(
@@ -9814,7 +10622,10 @@ async function main(): Promise<void> {
                                                                             );
                                                                             if (
                                                                                 !range ||
-                                                                                !(range.xyz instanceof Int32Array)
+                                                                                !(
+                                                                                    range.xyz instanceof
+                                                                                    Int32Array
+                                                                                )
                                                                             ) {
                                                                                 break;
                                                                             }
@@ -9826,8 +10637,7 @@ async function main(): Promise<void> {
                                                                                 i++
                                                                             ) {
                                                                                 const idx =
-                                                                                    (start + i) |
-                                                                                    0;
+                                                                                    (start + i) | 0;
                                                                                 if (idx >= total) {
                                                                                     break;
                                                                                 }
@@ -9892,7 +10702,7 @@ async function main(): Promise<void> {
                                         cacheCmdArrays.indices instanceof Int32Array
                                     ) {
                                         const m = /^indices\[(\d+)\]/.exec(firstArrayDiff);
-                                        const elementIndex = m ? (Number(m[1]) | 0) : -1;
+                                        const elementIndex = m ? Number(m[1]) | 0 : -1;
                                         if (elementIndex >= 0) {
                                             const ts = tsData.indices[elementIndex] | 0;
                                             const cache = cacheCmdArrays.indices[elementIndex] | 0;
@@ -10053,6 +10863,164 @@ async function main(): Promise<void> {
                                 console.error(
                                     `  cache plan-op provenance opIndex=${opIndex} src=${srcKind} typeId=${typeId} placementType=${placementType} rot=${rotation} modelId=${modelId} modelIdsHash=${modelIdsHash} levelHint=${levelHint} priHint=${priHint}`,
                                 );
+                                try {
+                                    const ltRes = loaders.locTypeLoader.tryLoad(typeId | 0);
+                                    if (ltRes?.ok) {
+                                        const lt: any = ltRes.value as any;
+                                        console.error(
+                                            `  ts locType=${typeId | 0} mergeNormals=${
+                                                lt.mergeNormals ? 1 : 0
+                                            } contourGroundType=${
+                                                lt.contourGroundType ?? -1
+                                            } ambient=${lt.ambient ?? -1} contrast=${
+                                                lt.contrast ?? -1
+                                            }`,
+                                        );
+
+                                        try {
+                                            const md = locModelLoader.getLocModelData(
+                                                ltRes.value as any,
+                                                (placementType | 0) as any,
+                                                rotation | 0,
+                                            );
+                                            const tsVariantDigest = md
+                                                ? digestTsModelVerticesFromModelData(md)
+                                                : undefined;
+                                            const tsLens =
+                                                md && md.verticesX && md.verticesY && md.verticesZ
+                                                    ? {
+                                                          x: md.verticesX.length | 0,
+                                                          y: md.verticesY.length | 0,
+                                                          z: md.verticesZ.length | 0,
+                                                      }
+                                                    : undefined;
+                                            const cacheVariantDigest =
+                                                typeof (bridge as any)
+                                                    .debugGetRuntimeLocVariantModelVerticesDigest ===
+                                                "function"
+                                                    ? await (
+                                                          bridge as any
+                                                      ).debugGetRuntimeLocVariantModelVerticesDigest(
+                                                          runtimeHandle,
+                                                          typeId | 0,
+                                                          placementType | 0,
+                                                          rotation | 0,
+                                                      )
+                                                    : undefined;
+                                            console.error(
+                                                `  loc-variant-model-vertices-digest typeId=${
+                                                    typeId | 0
+                                                } type=${placementType | 0} rot=${
+                                                    rotation | 0
+                                                } ts=${
+                                                    tsVariantDigest
+                                                        ? JSON.stringify(tsVariantDigest)
+                                                        : "<missing>"
+                                                } tsLens=${
+                                                    tsLens ? JSON.stringify(tsLens) : "<missing>"
+                                                } cache=${
+                                                    cacheVariantDigest
+                                                        ? JSON.stringify(cacheVariantDigest)
+                                                        : "<missing>"
+                                                }`,
+                                            );
+                                        } catch (e) {
+                                            console.error(
+                                                `  loc-variant-model-vertices-digest failed: ${String(
+                                                    e,
+                                                )}`,
+                                            );
+                                        }
+                                    }
+                                } catch {
+                                    // ignore
+                                }
+                                if (modelId >= 0) {
+                                    try {
+                                        const base = loaders.modelLoader.tryGet(modelId | 0);
+                                        const tsBaseDigest = base
+                                            ? digestTsModelVerticesFromModelData(base)
+                                            : undefined;
+                                        const cacheBaseDigest =
+                                            typeof bridge.debugGetRuntimeModelVerticesDigest ===
+                                            "function"
+                                                ? await bridge.debugGetRuntimeModelVerticesDigest(
+                                                      runtimeHandle,
+                                                      modelId | 0,
+                                                  )
+                                                : undefined;
+                                        console.error(
+                                            `  plan-op base-model-vertices-digest modelId=${
+                                                modelId | 0
+                                            } ts=${
+                                                tsBaseDigest
+                                                    ? JSON.stringify(tsBaseDigest)
+                                                    : "<missing>"
+                                            } cache=${
+                                                cacheBaseDigest
+                                                    ? JSON.stringify(cacheBaseDigest)
+                                                    : "<missing>"
+                                            }`,
+                                        );
+                                        if (
+                                            base &&
+                                            tsBaseDigest &&
+                                            cacheBaseDigest &&
+                                            typeof (cacheBaseDigest as any).hash === "number" &&
+                                            (tsBaseDigest.hash | 0) !==
+                                                ((cacheBaseDigest as any).hash | 0)
+                                        ) {
+                                            const tsHead: number[] = [];
+                                            const n = Math.min(
+                                                base.verticesX.length | 0,
+                                                base.verticesY.length | 0,
+                                                base.verticesZ.length | 0,
+                                                6,
+                                            );
+                                            for (let vi = 0; vi < n; vi++) {
+                                                tsHead.push(
+                                                    base.verticesX[vi] | 0,
+                                                    base.verticesY[vi] | 0,
+                                                    base.verticesZ[vi] | 0,
+                                                );
+                                            }
+                                            const cacheSample =
+                                                typeof (bridge as any)
+                                                    .debugGetRuntimeModelVerticesSampleRange ===
+                                                "function"
+                                                    ? await (
+                                                          bridge as any
+                                                      ).debugGetRuntimeModelVerticesSampleRange(
+                                                          runtimeHandle,
+                                                          modelId | 0,
+                                                          0,
+                                                          32,
+                                                      )
+                                                    : undefined;
+                                            const cacheHead =
+                                                cacheSample && cacheSample.xyz instanceof Int32Array
+                                                    ? Array.from(cacheSample.xyz.slice(0, n * 3))
+                                                    : [];
+                                            console.error(
+                                                `  base-model-vertices-sample modelId=${
+                                                    modelId | 0
+                                                } tsVersion=${
+                                                    (base as any).version ?? -1
+                                                } cacheVersion=${
+                                                    cacheSample ? cacheSample.version | 0 : -1
+                                                } tsHead=${JSON.stringify(
+                                                    tsHead,
+                                                )} cacheHead=${JSON.stringify(cacheHead)}`,
+                                            );
+                                        }
+                                    } catch (e) {
+                                        console.error(
+                                            `  plan-op base-model-vertices-digest failed: ${String(
+                                                e,
+                                            )}`,
+                                        );
+                                    }
+                                }
                                 if (
                                     srcKind === 1 &&
                                     typeId >= 0 &&
@@ -10128,6 +11096,47 @@ async function main(): Promise<void> {
                                                         `  ts mergeNormals solo-lit hash failed: ${e}`,
                                                     );
                                                 }
+                                                if (modelId >= 0) {
+                                                    try {
+                                                        const base = loaders.modelLoader.tryGet(
+                                                            modelId | 0,
+                                                        );
+                                                        const tsBaseDigest = base
+                                                            ? digestTsModelVerticesFromModelData(
+                                                                  base,
+                                                              )
+                                                            : undefined;
+                                                        const cacheBaseDigest =
+                                                            typeof bridge.debugGetRuntimeModelVerticesDigest ===
+                                                            "function"
+                                                                ? await bridge.debugGetRuntimeModelVerticesDigest(
+                                                                      runtimeHandle,
+                                                                      modelId | 0,
+                                                                  )
+                                                                : undefined;
+                                                        console.error(
+                                                            `  base model-vertices-digest modelId=${
+                                                                modelId | 0
+                                                            } ts=${
+                                                                tsBaseDigest
+                                                                    ? JSON.stringify(tsBaseDigest)
+                                                                    : "<missing>"
+                                                            } cache=${
+                                                                cacheBaseDigest
+                                                                    ? JSON.stringify(
+                                                                          cacheBaseDigest,
+                                                                      )
+                                                                    : "<missing>"
+                                                            }`,
+                                                        );
+                                                    } catch (e) {
+                                                        console.error(
+                                                            `  base model-vertices-digest failed: ${String(
+                                                                e,
+                                                            )}`,
+                                                        );
+                                                    }
+                                                }
                                                 try {
                                                     const runtimeTrace =
                                                         parseRuntimeLocMergeNormalsTraceEntriesPacked(
@@ -10155,6 +11164,495 @@ async function main(): Promise<void> {
                                                     );
                                                 }
                                             } else if (modelId >= 0) {
+                                                // For non-mergeNormals locs, TS groups by the lit merged variant model hash.
+                                                try {
+                                                    // Dump the raw loc variant model id group + per-model vertex digests to
+                                                    // isolate whether the merge mismatch is caused by a single model decode
+                                                    // divergence or by merge semantics.
+                                                    try {
+                                                        const lt: any = locType as any;
+                                                        let modelIds: number[] | undefined;
+                                                        if (!Array.isArray(lt.types)) {
+                                                            if (
+                                                                placementType ===
+                                                                    LocModelType.NORMAL &&
+                                                                Array.isArray(lt.models) &&
+                                                                Array.isArray(lt.models[0])
+                                                            ) {
+                                                                modelIds = lt.models[0] as number[];
+                                                            }
+                                                        } else if (
+                                                            Array.isArray(lt.models) &&
+                                                            Array.isArray(lt.types)
+                                                        ) {
+                                                            const idx = (
+                                                                lt.types as number[]
+                                                            ).findIndex(
+                                                                (t) =>
+                                                                    (t | 0) === (placementType | 0),
+                                                            );
+                                                            if (
+                                                                idx >= 0 &&
+                                                                Array.isArray(lt.models[idx])
+                                                            ) {
+                                                                modelIds = lt.models[
+                                                                    idx
+                                                                ] as number[];
+                                                            }
+                                                        }
+                                                        if (
+                                                            Array.isArray(modelIds) &&
+                                                            modelIds.length > 0
+                                                        ) {
+                                                            console.error(
+                                                                `  ts loc variant modelIds(count=${
+                                                                    modelIds.length
+                                                                }): [${modelIds
+                                                                    .slice(0, 32)
+                                                                    .map((x) => String(x | 0))
+                                                                    .join(",")}${
+                                                                    modelIds.length > 32 ? ",…" : ""
+                                                                }]`,
+                                                            );
+                                                            const isMirrored =
+                                                                !!lt.isRotated ||
+                                                                (placementType ===
+                                                                    LocModelType.WALL_CORNER &&
+                                                                    rotation > 3);
+                                                            for (
+                                                                let mi = 0;
+                                                                mi < Math.min(modelIds.length, 8);
+                                                                mi++
+                                                            ) {
+                                                                const mid = modelIds[mi] | 0;
+                                                                const base =
+                                                                    loaders.modelLoader.tryGet(mid);
+                                                                const tsBase = base
+                                                                    ? digestTsModelVerticesFromModelData(
+                                                                          base,
+                                                                      )
+                                                                    : undefined;
+                                                                const tsBaseVersion =
+                                                                    base &&
+                                                                    typeof (base as any).version ===
+                                                                        "number"
+                                                                        ? (base as any).version | 0
+                                                                        : undefined;
+                                                                const tsTexFaceCount =
+                                                                    base &&
+                                                                    typeof (base as any)
+                                                                        .textureFaceCount ===
+                                                                        "number"
+                                                                        ? (base as any)
+                                                                              .textureFaceCount | 0
+                                                                        : undefined;
+                                                                let tsBaseHead:
+                                                                    | number[]
+                                                                    | undefined;
+                                                                if (base) {
+                                                                    try {
+                                                                        const n = Math.min(
+                                                                            base.verticesX.length |
+                                                                                0,
+                                                                            base.verticesY.length |
+                                                                                0,
+                                                                            base.verticesZ.length |
+                                                                                0,
+                                                                            4,
+                                                                        );
+                                                                        const head: number[] = [];
+                                                                        for (
+                                                                            let vi = 0;
+                                                                            vi < n;
+                                                                            vi++
+                                                                        ) {
+                                                                            head.push(
+                                                                                base.verticesX[vi] |
+                                                                                    0,
+                                                                                base.verticesY[vi] |
+                                                                                    0,
+                                                                                base.verticesZ[vi] |
+                                                                                    0,
+                                                                            );
+                                                                        }
+                                                                        tsBaseHead = head;
+                                                                    } catch {
+                                                                        // ignore
+                                                                    }
+                                                                }
+                                                                let tsPart:
+                                                                    | TsModelVerticesDigest
+                                                                    | undefined;
+                                                                if (base) {
+                                                                    const tmp = ModelData.copyFrom(
+                                                                        base,
+                                                                        true,
+                                                                        true,
+                                                                        true,
+                                                                        true,
+                                                                    );
+                                                                    if (isMirrored) {
+                                                                        tmp.mirror();
+                                                                    }
+                                                                    tsPart =
+                                                                        digestTsModelVerticesFromModelData(
+                                                                            tmp,
+                                                                        );
+                                                                }
+                                                                const cacheSample =
+                                                                    typeof (bridge as any)
+                                                                        .debugGetRuntimeModelVerticesSample ===
+                                                                    "function"
+                                                                        ? await (
+                                                                              bridge as any
+                                                                          ).debugGetRuntimeModelVerticesSample(
+                                                                              runtimeHandle,
+                                                                              mid,
+                                                                              32,
+                                                                          )
+                                                                        : undefined;
+                                                                if (
+                                                                    base &&
+                                                                    mid === (modelId | 0) &&
+                                                                    typeof (bridge as any)
+                                                                        .debugGetRuntimeModelVerticesSampleRange ===
+                                                                        "function"
+                                                                ) {
+                                                                    try {
+                                                                        for (const start of [
+                                                                            0, 32, 64, 96,
+                                                                        ]) {
+                                                                            const range = await (
+                                                                                bridge as any
+                                                                            ).debugGetRuntimeModelVerticesSampleRange(
+                                                                                runtimeHandle,
+                                                                                mid,
+                                                                                start,
+                                                                                32,
+                                                                            );
+                                                                            const xyz =
+                                                                                range &&
+                                                                                (range as any)
+                                                                                    .xyz instanceof
+                                                                                    Int32Array
+                                                                                    ? ((
+                                                                                          range as any
+                                                                                      )
+                                                                                          .xyz as Int32Array)
+                                                                                    : undefined;
+                                                                            if (
+                                                                                !xyz ||
+                                                                                xyz.length <= 0
+                                                                            ) {
+                                                                                console.error(
+                                                                                    `  modelId=${mid} cacheRange(start=${start}) <missing>`,
+                                                                                );
+                                                                                continue;
+                                                                            }
+                                                                            const tsHead: number[] =
+                                                                                [];
+                                                                            const written =
+                                                                                typeof (
+                                                                                    range as any
+                                                                                ).written ===
+                                                                                "number"
+                                                                                    ? Math.min(
+                                                                                          (
+                                                                                              range as any
+                                                                                          )
+                                                                                              .written |
+                                                                                              0,
+                                                                                          32,
+                                                                                      )
+                                                                                    : Math.min(
+                                                                                          xyz.length /
+                                                                                              3,
+                                                                                          32,
+                                                                                      );
+                                                                            const clampWritten =
+                                                                                written >= 0
+                                                                                    ? written | 0
+                                                                                    : 0;
+                                                                            for (
+                                                                                let vi = 0;
+                                                                                vi < clampWritten;
+                                                                                vi++
+                                                                            ) {
+                                                                                const idx =
+                                                                                    (start | 0) +
+                                                                                    vi;
+                                                                                if (
+                                                                                    idx < 0 ||
+                                                                                    idx >=
+                                                                                        (base
+                                                                                            .verticesX
+                                                                                            .length |
+                                                                                            0) ||
+                                                                                    idx >=
+                                                                                        (base
+                                                                                            .verticesY
+                                                                                            .length |
+                                                                                            0) ||
+                                                                                    idx >=
+                                                                                        (base
+                                                                                            .verticesZ
+                                                                                            .length |
+                                                                                            0)
+                                                                                ) {
+                                                                                    break;
+                                                                                }
+                                                                                tsHead.push(
+                                                                                    base.verticesX[
+                                                                                        idx
+                                                                                    ] | 0,
+                                                                                    base.verticesY[
+                                                                                        idx
+                                                                                    ] | 0,
+                                                                                    base.verticesZ[
+                                                                                        idx
+                                                                                    ] | 0,
+                                                                                );
+                                                                            }
+                                                                            let mismatch = -1;
+                                                                            const n = Math.min(
+                                                                                tsHead.length | 0,
+                                                                                xyz.length | 0,
+                                                                            );
+                                                                            for (
+                                                                                let i = 0;
+                                                                                i < n;
+                                                                                i++
+                                                                            ) {
+                                                                                if (
+                                                                                    (tsHead[i] |
+                                                                                        0) !==
+                                                                                    (xyz[i] | 0)
+                                                                                ) {
+                                                                                    mismatch = i;
+                                                                                    break;
+                                                                                }
+                                                                            }
+                                                                            console.error(
+                                                                                `  modelId=${mid} range(start=${start}) mismatchIndex=${mismatch} tsHead=${tsHead
+                                                                                    .slice(0, 24)
+                                                                                    .join(
+                                                                                        ",",
+                                                                                    )} cacheHead=${Array.from(
+                                                                                    xyz.slice(
+                                                                                        0,
+                                                                                        24,
+                                                                                    ),
+                                                                                ).join(",")}`,
+                                                                            );
+                                                                        }
+                                                                    } catch (e) {
+                                                                        console.error(
+                                                                            `  modelId=${mid} cacheRange compare failed: ${e}`,
+                                                                        );
+                                                                    }
+                                                                }
+                                                                const cacheBase =
+                                                                    typeof (bridge as any)
+                                                                        .debugGetRuntimeModelVerticesDigest ===
+                                                                    "function"
+                                                                        ? await (
+                                                                              bridge as any
+                                                                          ).debugGetRuntimeModelVerticesDigest(
+                                                                              runtimeHandle,
+                                                                              mid,
+                                                                          )
+                                                                        : undefined;
+                                                                const tsFaces = base
+                                                                    ? digestTsModelFacesFromModelData(
+                                                                          base,
+                                                                          transparentTextureIds,
+                                                                      )
+                                                                    : undefined;
+                                                                const cacheFaces =
+                                                                    typeof (bridge as any)
+                                                                        .debugGetRuntimeModelFacesDigest ===
+                                                                    "function"
+                                                                        ? await (
+                                                                              bridge as any
+                                                                          ).debugGetRuntimeModelFacesDigest(
+                                                                              runtimeHandle,
+                                                                              mid,
+                                                                          )
+                                                                        : undefined;
+                                                                let tsAdjusted:
+                                                                    | TsModelVerticesDigest
+                                                                    | undefined;
+                                                                try {
+                                                                    const v =
+                                                                        cacheSample &&
+                                                                        typeof (cacheSample as any)
+                                                                            .version === "number" &&
+                                                                        base
+                                                                            ? (cacheSample as any)
+                                                                                  .version | 0
+                                                                            : undefined;
+                                                                    if (
+                                                                        base &&
+                                                                        typeof v === "number"
+                                                                    ) {
+                                                                        const tmp =
+                                                                            ModelData.copyFrom(
+                                                                                base,
+                                                                                true,
+                                                                                true,
+                                                                                true,
+                                                                                true,
+                                                                            );
+                                                                        (tmp as any).version =
+                                                                            v | 0;
+                                                                        tsAdjusted =
+                                                                            digestTsModelVerticesFromModelData(
+                                                                                tmp,
+                                                                            );
+                                                                    }
+                                                                } catch {
+                                                                    // ignore
+                                                                }
+                                                                console.error(
+                                                                    `  modelId=${mid} tsBase(v=${String(
+                                                                        tsBaseVersion,
+                                                                    )} texFaces=${String(
+                                                                        tsTexFaceCount,
+                                                                    )} head=${
+                                                                        tsBaseHead?.join(",") ?? ""
+                                                                    })=${JSON.stringify(
+                                                                        tsBase,
+                                                                    )} tsAdj=${JSON.stringify(
+                                                                        tsAdjusted,
+                                                                    )} tsPart=${JSON.stringify(
+                                                                        tsPart,
+                                                                    )} cacheBase=${JSON.stringify(
+                                                                        cacheBase,
+                                                                    )} tsFaces=${JSON.stringify(
+                                                                        tsFaces,
+                                                                    )} cacheFaces=${JSON.stringify(
+                                                                        cacheFaces,
+                                                                    )} cacheSample=${JSON.stringify(
+                                                                        cacheSample,
+                                                                    )}`,
+                                                                );
+                                                            }
+                                                        }
+                                                    } catch (e) {
+                                                        console.error(
+                                                            `  ts/runtime loc-variant modelId digests failed: ${e}`,
+                                                        );
+                                                    }
+                                                    const merged = (
+                                                        locModelLoader as any
+                                                    ).getLocModelData?.(
+                                                        locType as any,
+                                                        placementType,
+                                                        rotation,
+                                                    );
+                                                    if (merged instanceof ModelData) {
+                                                        try {
+                                                            const tsPreLightDigest =
+                                                                digestTsModelVerticesFromModelData(
+                                                                    merged,
+                                                                );
+                                                            const rtPreLightDigest =
+                                                                typeof (bridge as any)
+                                                                    .debugGetRuntimeLocVariantModelVerticesDigest ===
+                                                                "function"
+                                                                    ? await (
+                                                                          bridge as any
+                                                                      ).debugGetRuntimeLocVariantModelVerticesDigest(
+                                                                          runtimeHandle,
+                                                                          typeId | 0,
+                                                                          placementType | 0,
+                                                                          rotation | 0,
+                                                                      )
+                                                                    : undefined;
+                                                            console.error(
+                                                                `  ts merged preLight verticesDigest=${JSON.stringify(
+                                                                    tsPreLightDigest,
+                                                                )}`,
+                                                            );
+                                                            console.error(
+                                                                `  cache merged preLight verticesDigest=${JSON.stringify(
+                                                                    rtPreLightDigest,
+                                                                )}`,
+                                                            );
+                                                        } catch (e) {
+                                                            console.error(
+                                                                `  ts/runtime merged preLight digest failed: ${e}`,
+                                                            );
+                                                        }
+                                                        const mergedLit = merged.light(
+                                                            sceneBuilder.services.textureLoader,
+                                                            ((locType as any).ambient | 0) + 64,
+                                                            ((locType as any).contrast | 0) + 768,
+                                                            -50,
+                                                            -10,
+                                                            -50,
+                                                        );
+                                                        const modelHashBuf = new ModelHashBuffer(
+                                                            5000,
+                                                        );
+                                                        const mergedHash =
+                                                            getModelHash(modelHashBuf, mergedLit) |
+                                                            0;
+                                                        console.error(
+                                                            `  ts locModelLoader.getLocModelData merged faces=${
+                                                                merged.faceCount | 0
+                                                            } verts=${
+                                                                merged.verticesCount | 0
+                                                            } used=${
+                                                                merged.usedVertexCount | 0
+                                                            } modelHash=${mergedHash}`,
+                                                        );
+                                                        try {
+                                                            const { transparentFaces } =
+                                                                splitModelFacesByTransparency(
+                                                                    sceneBuilder.services
+                                                                        .textureLoader,
+                                                                    mergedLit,
+                                                                );
+                                                            const texCounts = new Map<
+                                                                number,
+                                                                number
+                                                            >();
+                                                            for (
+                                                                let i = 0;
+                                                                i < transparentFaces.length;
+                                                                i++
+                                                            ) {
+                                                                const t =
+                                                                    transparentFaces[i].textureId |
+                                                                    0;
+                                                                if (t !== -1) {
+                                                                    texCounts.set(
+                                                                        t,
+                                                                        (texCounts.get(t) ?? 0) + 1,
+                                                                    );
+                                                                }
+                                                            }
+                                                            const topTex = [...texCounts.entries()]
+                                                                .sort(
+                                                                    (a, b) =>
+                                                                        (b[1] | 0) - (a[1] | 0),
+                                                                )
+                                                                .slice(0, 6)
+                                                                .map(([t, c]) => `${t}:${c}`)
+                                                                .join(",");
+                                                            console.error(
+                                                                `  ts mergedLit transparentFaces=${
+                                                                    transparentFaces.length | 0
+                                                                } topTransparentTex=[${topTex}]`,
+                                                            );
+                                                        } catch {
+                                                            // ignore
+                                                        }
+                                                    }
+                                                } catch {
+                                                    // ignore
+                                                }
                                                 const baseModelData =
                                                     loaders.modelLoader.tryGet(modelId);
                                                 if (baseModelData) {
@@ -10258,6 +11756,99 @@ async function main(): Promise<void> {
                                                         md.rotate(256);
                                                     }
 
+                                                    // Compare TS-vs-runtime loc-model vertex mutations (pre-light).
+                                                    try {
+                                                        const n = Math.min(
+                                                            md.usedVertexCount | 0,
+                                                            md.verticesX.length | 0,
+                                                            md.verticesY.length | 0,
+                                                            md.verticesZ.length | 0,
+                                                            8,
+                                                        );
+                                                        const head: number[] = [];
+                                                        for (let vi = 0; vi < n; vi++) {
+                                                            head.push(
+                                                                md.verticesX[vi] | 0,
+                                                                md.verticesY[vi] | 0,
+                                                                md.verticesZ[vi] | 0,
+                                                            );
+                                                        }
+                                                        console.error(
+                                                            `  ts locModelData preLight modelId=${modelId} version=${
+                                                                md.version | 0
+                                                            } verts=${md.verticesCount | 0} used=${
+                                                                md.usedVertexCount | 0
+                                                            } faces=${
+                                                                md.faceCount | 0
+                                                            } headXYZ=${head.join(",")}`,
+                                                        );
+                                                    } catch {
+                                                        // ignore
+                                                    }
+                                                    try {
+                                                        if (
+                                                            typeof (bridge as any)
+                                                                .debugGetRuntimeLocModelVerticesSample ===
+                                                            "function"
+                                                        ) {
+                                                            const sample = await (
+                                                                bridge as any
+                                                            ).debugGetRuntimeLocModelVerticesSample(
+                                                                runtimeHandle,
+                                                                typeId | 0,
+                                                                placementType | 0,
+                                                                rotation | 0,
+                                                                modelId | 0,
+                                                            );
+                                                            if (
+                                                                sample &&
+                                                                typeof sample === "object"
+                                                            ) {
+                                                                const xyz = (sample as any).xyz;
+                                                                const head =
+                                                                    xyz instanceof Int32Array
+                                                                        ? Array.from(
+                                                                              xyz.slice(
+                                                                                  0,
+                                                                                  Math.min(
+                                                                                      24,
+                                                                                      xyz.length,
+                                                                                  ),
+                                                                              ),
+                                                                          )
+                                                                        : [];
+                                                                console.error(
+                                                                    `  cache locModelData preLight modelId=${modelId} meta=version=${String(
+                                                                        (sample as any).version ??
+                                                                            "?",
+                                                                    )} verts=${String(
+                                                                        (sample as any)
+                                                                            .verticesCount ?? "?",
+                                                                    )} used=${String(
+                                                                        (sample as any)
+                                                                            .usedVertexCount ?? "?",
+                                                                    )} faces=${String(
+                                                                        (sample as any).faceCount ??
+                                                                            "?",
+                                                                    )} written=${String(
+                                                                        (sample as any).written ??
+                                                                            "?",
+                                                                    )} headXYZ=${head.join(",")}`,
+                                                                );
+                                                            } else {
+                                                                console.error(
+                                                                    `  cache locModelData preLight modelId=${modelId} <missing sample>`,
+                                                                );
+                                                            }
+                                                        }
+                                                    } catch (e) {
+                                                        console.error(
+                                                            `  cache locModelData sample failed: ${String(
+                                                                e,
+                                                            )}`,
+                                                        );
+                                                    }
+
                                                     const model = md.light(
                                                         sceneBuilder.services.textureLoader,
                                                         ((locType as any).ambient | 0) + 64,
@@ -10299,6 +11890,18 @@ async function main(): Promise<void> {
                                                             transparentFaces.length | 0
                                                         } topTransparentTex=[${topTex}]`,
                                                     );
+                                                    try {
+                                                        const modelHashBuf = new ModelHashBuffer(
+                                                            5000,
+                                                        );
+                                                        const tsLitHash =
+                                                            getModelHash(modelHashBuf, model) | 0;
+                                                        console.error(
+                                                            `  ts lit modelHash=${tsLitHash}`,
+                                                        );
+                                                    } catch {
+                                                        // ignore
+                                                    }
                                                 }
                                             }
                                         }
@@ -10658,9 +12261,7 @@ async function main(): Promise<void> {
                                 );
                             }
 
-                            const firstTerrainMismatch = mismatches.find(
-                                (m) => (m.ts | 0) > 0,
-                            );
+                            const firstTerrainMismatch = mismatches.find((m) => (m.ts | 0) > 0);
                             if (
                                 firstTerrainMismatch &&
                                 typeof bridge.debugSetTerrainProbe === "function" &&
@@ -10684,11 +12285,11 @@ async function main(): Promise<void> {
                                         const p = probe.packed;
                                         const read = (idx: number): number => p[idx] | 0;
                                         const worldTileX =
-                                            ((sceneBuildInput.baseX as number) |
-                                                0) + (firstTerrainMismatch.x | 0);
+                                            ((sceneBuildInput.baseX as number) | 0) +
+                                            (firstTerrainMismatch.x | 0);
                                         const worldTileY =
-                                            ((sceneBuildInput.baseY as number) |
-                                                0) + (firstTerrainMismatch.y | 0);
+                                            ((sceneBuildInput.baseY as number) | 0) +
+                                            (firstTerrainMismatch.y | 0);
                                         const worldMapX = Math.floor(worldTileX / 64) | 0;
                                         const worldMapY = Math.floor(worldTileY / 64) | 0;
                                         const localX = (worldTileX - worldMapX * 64) | 0;
@@ -10718,13 +12319,17 @@ async function main(): Promise<void> {
                                             "  terrain-probe cpp underlayBlend=" +
                                                 `[${read(7)},${read(8)},${read(9)},${read(10)}]` +
                                                 " light=" +
-                                                `[${read(11)},${read(12)},${read(13)},${read(14)}]` +
+                                                `[${read(11)},${read(12)},${read(13)},${read(
+                                                    14,
+                                                )}]` +
                                                 " underlayHsl=" +
                                                 `[${read(15)},${read(16)},${read(17)},${read(18)}]`,
                                         );
                                         console.error(
                                             "  terrain-probe cpp overlayBase corner=" +
-                                                `[${read(24)},${read(25)},${read(26)},${read(27)}]` +
+                                                `[${read(24)},${read(25)},${read(26)},${read(
+                                                    27,
+                                                )}]` +
                                                 " edge=" +
                                                 `[${read(28)},${read(29)},${read(30)},${read(31)}]`,
                                         );
@@ -10808,9 +12413,7 @@ async function main(): Promise<void> {
                                         );
                                     }
                                 } catch (e) {
-                                    console.error(
-                                        "  terrain-probe cpp debug failed: " + String(e),
-                                    );
+                                    console.error("  terrain-probe cpp debug failed: " + String(e));
                                 }
                             }
                         }
@@ -10844,10 +12447,7 @@ async function main(): Promise<void> {
                             vertexIndex * 16 + 15 < tsData.vertices.length &&
                             vertexIndex * 16 + 15 < packet.vertices.length
                         ) {
-                            const tsVertex = decodePackedVertexDebug(
-                                tsData.vertices,
-                                vertexIndex,
-                            );
+                            const tsVertex = decodePackedVertexDebug(tsData.vertices, vertexIndex);
                             const cacheVertex = decodePackedVertexDebug(
                                 packet.vertices,
                                 vertexIndex,
@@ -11931,8 +13531,7 @@ async function main(): Promise<void> {
                                                                     startEl >= 0 &&
                                                                     elCount > 0 &&
                                                                     startEl + elCount <=
-                                                                        tsData.indices
-                                                                            .length &&
+                                                                        tsData.indices.length &&
                                                                     startEl + elCount <=
                                                                         packet.indices.length
                                                                 )
@@ -12437,6 +14036,200 @@ async function main(): Promise<void> {
                                     for (let pi = 0; pi < vertexProvLines.length; pi++) {
                                         console.error(vertexProvLines[pi]);
                                     }
+                                    const prov =
+                                        cacheCmdIndex >= 0
+                                            ? runtimeCommandProvenanceEntries?.[cacheCmdIndex]
+                                            : tsCmdIndex >= 0
+                                            ? runtimeCommandProvenanceEntries?.[tsCmdIndex]
+                                            : undefined;
+                                    if (
+                                        prov &&
+                                        (prov.locTypeId | 0) >= 0 &&
+                                        typeof tsVertex === "object" &&
+                                        (tsVertex.textureId | 0) >= 0 &&
+                                        (tsVertex.isTextured | 0) === 1
+                                    ) {
+                                        const tsInstances =
+                                            tsCmdIndex >= 0 &&
+                                            tsBridgeInput.runtimeCommandStreamInput
+                                                .cmdPackedInstances
+                                                ? collectCommandInstances(
+                                                      tsCmdIndex,
+                                                      tsBridgeInput.runtimeCommandStreamInput
+                                                          .cmdInstanceCounts,
+                                                      tsBridgeInput.runtimeCommandStreamInput
+                                                          .cmdPackedInstances,
+                                                  )
+                                                : undefined;
+                                        const borderTiles =
+                                            (((sceneBuildInput.sizeX as number) - 64) / 2) | 0;
+                                        const tsSceneForUv =
+                                            borderTiles >= 0
+                                                ? buildSceneFromMapBytesProvider(
+                                                      sceneBuilder,
+                                                      mapBytesProvider,
+                                                      (sceneBuildInput.baseX as number) | 0,
+                                                      (sceneBuildInput.baseY as number) | 0,
+                                                      (sceneBuildInput.sizeX as number) | 0,
+                                                      (sceneBuildInput.sizeY as number) | 0,
+                                                      !!sceneBuildInput.smoothTerrain,
+                                                      LocLoadType.NO_MODELS,
+                                                  )
+                                                : undefined;
+                                        const { textureIds: sdTextureIds } = createSdTexturePacking(
+                                            sceneBuilder.services.textureLoader,
+                                        );
+                                        const tsUvMatches =
+                                            await debugDumpTsLocModelUvForPackedVertex({
+                                                sceneBuilder,
+                                                locTypeId: prov.locTypeId | 0,
+                                                placementType: prov.placementType | 0,
+                                                placementRotation: prov.placementRotation | 0,
+                                                sdTextureIds,
+                                                scene: tsSceneForUv,
+                                                borderTiles,
+                                                instances: tsInstances,
+                                                vertex: tsVertex,
+                                                limit: 6,
+                                            });
+                                        const tsTexCoords = Array.from(
+                                            new Set<number>(
+                                                tsUvMatches
+                                                    .map((m) => m.texCoord | 0)
+                                                    .filter((v) => (v | 0) >= 0),
+                                            ),
+                                        )
+                                            .sort((a, b) => a - b)
+                                            .slice(0, 4);
+                                        const cacheUvMatches =
+                                            typeof cacheVertex === "object" &&
+                                            (cacheVertex.textureId | 0) >= 0 &&
+                                            (cacheVertex.isTextured | 0) === 1
+                                                ? await debugDumpTsLocModelUvForPackedVertex({
+                                                      sceneBuilder,
+                                                      locTypeId: prov.locTypeId | 0,
+                                                      placementType: prov.placementType | 0,
+                                                      placementRotation: prov.placementRotation | 0,
+                                                      sdTextureIds,
+                                                      scene: tsSceneForUv,
+                                                      borderTiles,
+                                                      instances: tsInstances,
+                                                      vertex: cacheVertex,
+                                                      limit: 6,
+                                                  })
+                                                : [];
+                                        try {
+                                            const locTypeResult =
+                                                sceneBuilder.services.locTypeLoader.tryLoad(
+                                                    prov.locTypeId | 0,
+                                                );
+                                            if (locTypeResult.ok) {
+                                                const locType = locTypeResult.value;
+                                                const wantType = (prov.placementType |
+                                                    0) as unknown as LocModelType;
+                                                let modelIds: number[] = [];
+                                                if (locType.types) {
+                                                    let typeIndex = -1;
+                                                    for (let i = 0; i < locType.types.length; i++) {
+                                                        if (locType.types[i] === wantType) {
+                                                            typeIndex = i | 0;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if (typeIndex >= 0) {
+                                                        modelIds =
+                                                            locType.models?.[typeIndex] ?? [];
+                                                    }
+                                                } else if (
+                                                    (wantType as any) === LocModelType.NORMAL
+                                                ) {
+                                                    modelIds = locType.models?.[0] ?? [];
+                                                }
+                                                if (modelIds.length > 0) {
+                                                    const head = modelIds
+                                                        .slice(0, 8)
+                                                        .map((v) => v | 0);
+                                                    console.error(
+                                                        `  ts locType-modelIds loc=${
+                                                            prov.locTypeId | 0
+                                                        } type=${
+                                                            prov.placementType | 0
+                                                        } ids(count=${
+                                                            modelIds.length | 0
+                                                        })=${JSON.stringify(head)}`,
+                                                    );
+                                                    const texFaces =
+                                                        tsTexCoords.length > 0
+                                                            ? tsTexCoords
+                                                            : // Fallback if TS couldn't resolve texCoord for this vertex.
+                                                              [0];
+                                                    if (tsTexCoords.length > 0) {
+                                                        console.error(
+                                                            `  ts locType-texCoords candidates=${JSON.stringify(
+                                                                texFaces,
+                                                            )}`,
+                                                        );
+                                                    }
+                                                    for (let i = 0; i < head.length; i++) {
+                                                        const modelId = head[i] | 0;
+                                                        for (
+                                                            let ti = 0;
+                                                            ti < texFaces.length;
+                                                            ti++
+                                                        ) {
+                                                            const texFaceIndex = texFaces[ti] | 0;
+                                                            const params = await withBackendModule(
+                                                                (m) =>
+                                                                    runtimeDebugGetModelTextureFaceParamsWithWasm(
+                                                                        m,
+                                                                        runtimeHandle,
+                                                                        modelId,
+                                                                        texFaceIndex,
+                                                                    ),
+                                                            );
+                                                            if (
+                                                                params instanceof Int32Array &&
+                                                                params.length >= 15
+                                                            ) {
+                                                                console.error(
+                                                                    `  cpp model-texFace modelId=${modelId} texFace=${texFaceIndex} ` +
+                                                                        `v=${params[0] | 0} tfc=${
+                                                                            params[1] | 0
+                                                                        } ` +
+                                                                        `rt=${params[3] | 0} map=[${
+                                                                            params[4] | 0
+                                                                        },${params[5] | 0},${
+                                                                            params[6] | 0
+                                                                        }] ` +
+                                                                        `scale=[${params[7] | 0},${
+                                                                            params[8] | 0
+                                                                        },${params[9] | 0}] rot=${
+                                                                            params[10] | 0
+                                                                        } dir=${
+                                                                            params[11] | 0
+                                                                        } speed=${
+                                                                            params[12] | 0
+                                                                        } ` +
+                                                                        `trans=[${params[13] | 0},${
+                                                                            params[14] | 0
+                                                                        }]`,
+                                                                );
+                                                            } else {
+                                                                console.error(
+                                                                    `  cpp model-texFace modelId=${modelId} texFace=${texFaceIndex} <unavailable>`,
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.error(
+                                                `  cpp model-texFace debug failed: ${String(e)}`,
+                                            );
+                                        }
+                                        void cacheUvMatches;
+                                    }
                                     if (tsCmdIndex >= 0 && cacheCmdIndex >= 0) {
                                         const tsStart =
                                             ((tsBridgeInput.runtimeCommandStreamInput.cmdOffsets[
@@ -12470,15 +14263,13 @@ async function main(): Promise<void> {
                                             ) {
                                                 continue;
                                             }
-                                            const tsVertexIndex =
-                                                tsData.indices[tsElement] | 0;
+                                            const tsVertexIndex = tsData.indices[tsElement] | 0;
                                             const cacheVertexIndex =
                                                 packet.indices[cacheElement] | 0;
                                             if (
                                                 tsVertexIndex < 0 ||
                                                 cacheVertexIndex < 0 ||
-                                                tsVertexIndex * 16 + 15 >=
-                                                    tsData.vertices.length ||
+                                                tsVertexIndex * 16 + 15 >= tsData.vertices.length ||
                                                 cacheVertexIndex * 16 + 15 >= packet.vertices.length
                                             ) {
                                                 continue;
@@ -12801,6 +14592,16 @@ async function main(): Promise<void> {
                                                     adjustOverlayLightLocal(edgeBase[2], lightN),
                                                     adjustOverlayLightLocal(edgeBase[3], lightW),
                                                 ];
+                                                console.error(
+                                                    `  runtime terrain-probe light corner=${JSON.stringify(
+                                                        [lightSw, lightSe, lightNe, lightNw],
+                                                    )} edgeAvg=${JSON.stringify([
+                                                        lightS,
+                                                        lightE,
+                                                        lightN,
+                                                        lightW,
+                                                    ])} useOverlayEdgeHsls=${p[4] | 0}`,
+                                                );
                                                 console.error(
                                                     `  runtime terrain-probe overlayBase corner=${JSON.stringify(
                                                         cornerBase,
@@ -13228,9 +15029,7 @@ async function main(): Promise<void> {
                     console.error(
                         `  terrain-only drawRanges base=${JSON.stringify(
                             Array.from(tsData.drawRanges.base),
-                        )} interact=${JSON.stringify(
-                            Array.from(tsData.drawRanges.interact),
-                        )}`,
+                        )} interact=${JSON.stringify(Array.from(tsData.drawRanges.interact))}`,
                     );
                     if (cacheIndexStats.degenerateTriangleCount > 0) {
                         try {
@@ -14221,6 +16020,211 @@ async function main(): Promise<void> {
                                                     ).slice(0, 10),
                                                 )}`,
                                             );
+
+                                            // If TS doesn't show a "placeholder key" for this alpha bucket entry,
+                                            // it might still have a matching loc command but with non-zero offset/elements,
+                                            // or it might be landing in a different alpha-capable bucket.
+                                            const dumpLocCommandsAtKey = (
+                                                label: string,
+                                                cmdBucketIndices: Int32Array,
+                                                cmdOffsets: Int32Array,
+                                                cmdElements: Int32Array,
+                                                cmdInstanceCounts: Int32Array,
+                                                cmdPackedInstances: Int32Array,
+                                                buckets: readonly number[],
+                                            ) => {
+                                                for (let bi = 0; bi < buckets.length; bi++) {
+                                                    const bucketIndex = buckets[bi] | 0;
+                                                    let instanceBase = 0;
+                                                    let total = 0;
+                                                    let zero = 0;
+                                                    let nonZero = 0;
+                                                    const sample: string[] = [];
+                                                    for (
+                                                        let ci = 0;
+                                                        ci < cmdBucketIndices.length;
+                                                        ci++
+                                                    ) {
+                                                        const b = cmdBucketIndices[ci] | 0;
+                                                        const ic =
+                                                            ci < cmdInstanceCounts.length
+                                                                ? cmdInstanceCounts[ci] | 0
+                                                                : 0;
+                                                        if (b !== bucketIndex || ic !== 1) {
+                                                            instanceBase += ic;
+                                                            continue;
+                                                        }
+                                                        const off = (instanceBase * 8) | 0;
+                                                        instanceBase += ic;
+                                                        if (off + 7 >= cmdPackedInstances.length)
+                                                            continue;
+                                                        const sceneX =
+                                                            cmdPackedInstances[off + 0] | 0;
+                                                        const sceneZ =
+                                                            cmdPackedInstances[off + 1] | 0;
+                                                        const level =
+                                                            cmdPackedInstances[off + 3] | 0;
+                                                        const contour =
+                                                            cmdPackedInstances[off + 4] | 0;
+                                                        const pri =
+                                                            cmdPackedInstances[off + 5] | 0;
+                                                        const interactType =
+                                                            cmdPackedInstances[off + 6] | 0;
+                                                        const interactId =
+                                                            cmdPackedInstances[off + 7] >>> 0;
+                                                        if (
+                                                            interactType !== 1 /*LOC*/ ||
+                                                            (interactId >>> 0) !==
+                                                                (wantInteractId >>> 0) ||
+                                                            (sceneX | 0) !== (wantSceneX | 0) ||
+                                                            (sceneZ | 0) !== (wantSceneZ | 0) ||
+                                                            (level | 0) !== (wantLevel | 0) ||
+                                                            (pri | 0) !== (wantPri | 0) ||
+                                                            (contour | 0) !== (wantContour | 0)
+                                                        ) {
+                                                            continue;
+                                                        }
+                                                        const o =
+                                                            ci < cmdOffsets.length
+                                                                ? cmdOffsets[ci] | 0
+                                                                : 0;
+                                                        const e =
+                                                            ci < cmdElements.length
+                                                                ? cmdElements[ci] | 0
+                                                                : 0;
+                                                        total++;
+                                                        if ((o | 0) === 0 && (e | 0) === 0) zero++;
+                                                        else nonZero++;
+                                                        if (sample.length < 3) {
+                                                            sample.push(
+                                                                `cmd=${ci} o=${o} e=${e} ic=${ic}`,
+                                                            );
+                                                        }
+                                                    }
+                                                    console.error(
+                                                        `  animated-placeholder probe ${label} locCmds bucket=${bucketIndex} total=${total} zero=${zero} nonZero=${nonZero} sample=${JSON.stringify(
+                                                            sample,
+                                                        )}`,
+                                                    );
+                                                }
+                                            };
+                                            dumpLocCommandsAtKey(
+                                                "ts",
+                                                tsBridgeInput.runtimeCommandStreamInput
+                                                    .cmdBucketIndices,
+                                                tsBridgeInput.runtimeCommandStreamInput.cmdOffsets,
+                                                tsBridgeInput.runtimeCommandStreamInput.cmdElements,
+                                                tsBridgeInput.runtimeCommandStreamInput
+                                                    .cmdInstanceCounts,
+                                                tsBridgeInput.runtimeCommandStreamInput
+                                                    .cmdPackedInstances,
+                                                // base + alpha-capable buckets: base/lod/interact/interactLod + alpha variants
+                                                [0, 2, 4, 6, 1, 3, 5, 7],
+                                            );
+                                            dumpLocCommandsAtKey(
+                                                "cache",
+                                                cacheCmdArraysAfter.cmdBucketIndices,
+                                                cacheCmdArraysAfter.cmdOffsets,
+                                                cacheCmdArraysAfter.cmdElements,
+                                                cacheCmdArraysAfter.cmdInstanceCounts,
+                                                cacheCmdArraysAfter.cmdPackedInstances,
+                                                [0, 2, 4, 6, 1, 3, 5, 7],
+                                            );
+
+                                            // Cross-check TS SdMapData.locsAnimated against the base placeholder command index.
+                                            // For bucket=0, runtime cmd index == base bucket index, so this should locate the
+                                            // exact LocAnimatedData for this placement.
+                                            const findFirstLocCmdIndexAtKey = (
+                                                cmdBucketIndices: Int32Array,
+                                                cmdInstanceCounts: Int32Array,
+                                                cmdPackedInstances: Int32Array,
+                                                bucketIndex: number,
+                                            ): number => {
+                                                let instanceBase = 0;
+                                                for (let ci = 0; ci < cmdBucketIndices.length; ci++) {
+                                                    const b = cmdBucketIndices[ci] | 0;
+                                                    const ic =
+                                                        ci < cmdInstanceCounts.length
+                                                            ? cmdInstanceCounts[ci] | 0
+                                                            : 0;
+                                                    if (b !== (bucketIndex | 0) || ic !== 1) {
+                                                        instanceBase += ic;
+                                                        continue;
+                                                    }
+                                                    const off = (instanceBase * 8) | 0;
+                                                    instanceBase += ic;
+                                                    if (off + 7 >= cmdPackedInstances.length) {
+                                                        continue;
+                                                    }
+                                                    const sceneX = cmdPackedInstances[off + 0] | 0;
+                                                    const sceneZ = cmdPackedInstances[off + 1] | 0;
+                                                    const level = cmdPackedInstances[off + 3] | 0;
+                                                    const contour = cmdPackedInstances[off + 4] | 0;
+                                                    const pri = cmdPackedInstances[off + 5] | 0;
+                                                    const interactType =
+                                                        cmdPackedInstances[off + 6] | 0;
+                                                    const interactId =
+                                                        cmdPackedInstances[off + 7] >>> 0;
+                                                    if (
+                                                        interactType === 1 /*LOC*/ &&
+                                                        (interactId >>> 0) ===
+                                                            (wantInteractId >>> 0) &&
+                                                        (sceneX | 0) === (wantSceneX | 0) &&
+                                                        (sceneZ | 0) === (wantSceneZ | 0) &&
+                                                        (level | 0) === (wantLevel | 0) &&
+                                                        (pri | 0) === (wantPri | 0) &&
+                                                        (contour | 0) === (wantContour | 0)
+                                                    ) {
+                                                        return ci | 0;
+                                                    }
+                                                }
+                                                return -1;
+                                            };
+                                            try {
+                                                const tsBaseCmdIndex =
+                                                    findFirstLocCmdIndexAtKey(
+                                                        tsBridgeInput.runtimeCommandStreamInput
+                                                            .cmdBucketIndices,
+                                                        tsBridgeInput.runtimeCommandStreamInput
+                                                            .cmdInstanceCounts,
+                                                        tsBridgeInput.runtimeCommandStreamInput
+                                                            .cmdPackedInstances,
+                                                        0,
+                                                    ) | 0;
+                                                if (tsBaseCmdIndex >= 0) {
+                                                    const locsAnimated: any[] =
+                                                        ((tsData as any).locsAnimated as any[]) ??
+                                                        [];
+                                                    const la = locsAnimated.find(
+                                                        (v) =>
+                                                            (v?.drawRangeIndex | 0) ===
+                                                            (tsBaseCmdIndex | 0),
+                                                    );
+                                                    const hasAlpha =
+                                                        !!(la as any)?.anim?.framesAlpha;
+                                                    const alpha0 =
+                                                        (la as any)?.anim?.framesAlpha?.[0];
+                                                    const base0 = (la as any)?.anim?.frames?.[0];
+                                                    console.error(
+                                                        `  animated-placeholder probe tsLocsAnimatedAtBaseCmd cmd=${tsBaseCmdIndex} found=${
+                                                            la ? 1 : 0
+                                                        } seqId=${(la as any)?.seqId ?? "<none>"} hasAlpha=${
+                                                            hasAlpha ? 1 : 0
+                                                        } base0=${base0 ? JSON.stringify(base0) : "<none>"} alpha0=${
+                                                            alpha0 ? JSON.stringify(alpha0) : "<none>"
+                                                        }`,
+                                                    );
+                                                } else {
+                                                    console.error(
+                                                        "  animated-placeholder probe tsLocsAnimatedAtBaseCmd: no base cmd index found",
+                                                    );
+                                                }
+                                            } catch (e) {
+                                                console.error(
+                                                    "  animated-placeholder probe tsLocsAnimatedAtBaseCmd failed: " +
+                                                        String(e),
+                                                );
+                                            }
                                             const tsInteractAny = findFirstCommandsWithInteractKey(
                                                 tsBridgeInput.runtimeCommandStreamInput
                                                     .cmdBucketIndices,
@@ -14261,6 +16265,450 @@ async function main(): Promise<void> {
                                                         rec ? JSON.stringify(rec) : "<none>"
                                                     }`,
                                                 );
+                                                // Reconstruct TS's LocAnimated grouping key (rotation,type,locTypeId) and see
+                                                // what seqId(s) exist for the key that contains this placement.
+                                                try {
+                                                    if (rec && tsSceneForLocProbe) {
+                                                        const borderSize =
+                                                            ((((sceneBuildInput.sizeX as number) |
+                                                                0) -
+                                                                64) /
+                                                                2) |
+                                                            0;
+                                                        const sceneLocs = getSceneLocs(
+                                                            loaders.locTypeLoader,
+                                                            tsSceneForLocProbe,
+                                                            borderSize,
+                                                            input.maxLevel | 0,
+                                                        );
+                                                        const keyFirstSeq = new Map<number, number>();
+                                                        const keySeqCounts = new Map<
+                                                            number,
+                                                            Map<number, number>
+                                                        >();
+                                                        let targetKey: number | undefined = undefined;
+                                                        let targetResolvedLocType: any | undefined = undefined;
+                                                        let targetSeqId: number = -1;
+                                                        let targetPt: number = -1;
+                                                        let targetRot: number = -1;
+                                                        for (
+                                                            let i = 0;
+                                                            i < sceneLocs.locEntities.length;
+                                                            i++
+                                                        ) {
+                                                            const le: any = sceneLocs.locEntities[i];
+                                                            const ent: any = le?.entity;
+                                                            const entSeqId =
+                                                                ent && typeof ent.seqId === "number"
+                                                                    ? (ent.seqId | 0)
+                                                                    : -1;
+                                                            if (entSeqId === -1) {
+                                                                continue;
+                                                            }
+                                                            const resolved: any =
+                                                                resolveLocRenderPlacement(
+                                                                    tsSceneForLocProbe as any,
+                                                                    le,
+                                                                    loaders.locTypeLoader as any,
+                                                                    varProvider as any,
+                                                                    /*idIsResolved=*/ false,
+                                                                );
+                                                            if (!resolved) continue;
+                                                            const key = createLocAnimatedGroupKey(
+                                                                (resolved.rotation as number) | 0,
+                                                                (resolved.type as number) as any,
+                                                                (resolved.locType?.id as number) | 0,
+                                                            );
+                                                            if (!keyFirstSeq.has(key)) {
+                                                                keyFirstSeq.set(key, entSeqId);
+                                                            }
+                                                            const m =
+                                                                keySeqCounts.get(key) ??
+                                                                new Map<number, number>();
+                                                            m.set(entSeqId, (m.get(entSeqId) ?? 0) + 1);
+                                                            keySeqCounts.set(key, m);
+                                                            if (
+                                                                (resolved.locType?.id >>> 0) ===
+                                                                    (wantInteractId >>> 0) &&
+                                                                ((resolved.type | 0) ===
+                                                                    ((rec.placementType | 0) as number)) &&
+                                                                ((resolved.rotation | 0) ===
+                                                                    ((rec.placementRotation | 0) as number)) &&
+                                                                ((resolved.level | 0) ===
+                                                                    (rec.level | 0)) &&
+                                                                ((resolved.tileX | 0) ===
+                                                                    (rec.tileX | 0)) &&
+                                                                ((resolved.tileY | 0) ===
+                                                                    (rec.tileY | 0)) &&
+                                                                ((le.priority | 0) ===
+                                                                    (rec.priority | 0))
+                                                            ) {
+                                                                targetKey = key;
+                                                                targetResolvedLocType = resolved.locType;
+                                                                targetSeqId = entSeqId | 0;
+                                                                targetPt = (resolved.type as number) | 0;
+                                                                targetRot = (resolved.rotation as number) | 0;
+                                                            }
+                                                        }
+                                                        if (targetKey !== undefined) {
+                                                            const seqCounts = keySeqCounts.get(targetKey);
+                                                            const seqCountsSorted = seqCounts
+                                                                ? Array.from(seqCounts.entries()).sort(
+                                                                      (a, b) => (b[1] | 0) - (a[1] | 0),
+                                                                  )
+                                                                : [];
+                                                            console.error(
+                                                                `  animated-placeholder probe tsLocAnimGroup key=${targetKey} firstSeqId=${
+                                                                    keyFirstSeq.get(targetKey) ?? -1
+                                                                } distinctSeqCounts=${JSON.stringify(
+                                                                    seqCountsSorted,
+                                                                )}`,
+                                                            );
+                                                            // Recompute the alphaFramesNonEmpty probe using the exact resolved locType
+                                                            // instance from TS placement resolution (to rule out locType instance drift).
+                                                            try {
+                                                                if (
+                                                                    targetResolvedLocType &&
+                                                                    targetSeqId >= 0 &&
+                                                                    targetPt >= 0 &&
+                                                                    targetRot >= 0
+                                                                ) {
+                                                                    const seqRes =
+                                                                        loaders.seqTypeLoader.tryLoad(
+                                                                            targetSeqId | 0,
+                                                                        );
+                                                                    const frameCount =
+                                                                        seqRes.ok &&
+                                                                        Array.isArray(
+                                                                            (seqRes.value as any)
+                                                                                .frameIds,
+                                                                        )
+                                                                            ? (((seqRes.value as any)
+                                                                                  .frameIds as any[])
+                                                                                  .length | 0)
+                                                                            : 0;
+                                                                    let alphaFramesNonEmpty = 0;
+                                                                    let framesMissingModel = 0;
+                                                                    for (
+                                                                        let fi = 0;
+                                                                        fi < frameCount;
+                                                                        fi++
+                                                                    ) {
+                                                                        const m =
+                                                                            locModelLoader.getModelAnimated(
+                                                                                targetResolvedLocType,
+                                                                                targetPt as any,
+                                                                                targetRot | 0,
+                                                                                targetSeqId | 0,
+                                                                                fi | 0,
+                                                                            );
+                                                                        if (!m) {
+                                                                            framesMissingModel++;
+                                                                            continue;
+                                                                        }
+                                                                        const split =
+                                                                            splitModelFacesByTransparency(
+                                                                                loaders.textureLoader,
+                                                                                m,
+                                                                            );
+                                                                        if (
+                                                                            split.transparentFaces
+                                                                                .length > 0
+                                                                        ) {
+                                                                            alphaFramesNonEmpty++;
+                                                                        }
+                                                                    }
+                                                                    console.error(
+                                                                        `  animated-placeholder probe tsLocAnimGroup alphaFramesNonEmpty frameCount=${frameCount} alphaFramesNonEmpty=${alphaFramesNonEmpty} framesMissingModel=${framesMissingModel}`,
+                                                                    );
+
+                                                                    // Breakdown: are "transparent faces" driven by per-face alpha or by
+                                                                    // texture-level transparency?
+                                                                    try {
+                                                                        const m0 =
+                                                                            locModelLoader.getModelAnimated(
+                                                                                targetResolvedLocType,
+                                                                                targetPt as any,
+                                                                                targetRot | 0,
+                                                                                targetSeqId | 0,
+                                                                                0,
+                                                                            );
+                                                                        if (m0) {
+                                                                            const faces =
+                                                                                getModelFaces(m0);
+                                                                            let alphaTrans = 0;
+                                                                            let texTrans = 0;
+                                                                            let both = 0;
+                                                                            const texCounts =
+                                                                                new Map<number, number>();
+                                                                            for (
+                                                                                let fi = 0;
+                                                                                fi < faces.length;
+                                                                                fi++
+                                                                            ) {
+                                                                                const f = faces[fi];
+                                                                                const a =
+                                                                                    (f.alpha | 0) <
+                                                                                    0xff
+                                                                                        ? 1
+                                                                                        : 0;
+                                                                                const t =
+                                                                                    (f.textureId |
+                                                                                        0) !== -1 &&
+                                                                                    loaders.textureLoader.isTransparent(
+                                                                                        f.textureId |
+                                                                                            0,
+                                                                                    )
+                                                                                        ? 1
+                                                                                        : 0;
+                                                                                if (a) alphaTrans++;
+                                                                                if (t) {
+                                                                                    texTrans++;
+                                                                                    const id =
+                                                                                        f.textureId |
+                                                                                        0;
+                                                                                    texCounts.set(
+                                                                                        id,
+                                                                                        (texCounts.get(
+                                                                                            id,
+                                                                                        ) ?? 0) + 1,
+                                                                                    );
+                                                                                }
+                                                                                if (a && t) both++;
+                                                                            }
+                                                                            const topTex = Array.from(
+                                                                                texCounts.entries(),
+                                                                            )
+                                                                                .sort(
+                                                                                    (x, y) =>
+                                                                                        (y[1] | 0) -
+                                                                                        (x[1] | 0),
+                                                                                )
+                                                                                .slice(0, 5)
+                                                                                .map(
+                                                                                    ([id, c]) =>
+                                                                                        `${id}:${c}`,
+                                                                                );
+                                                                            console.error(
+                                                                                `  animated-placeholder probe tsLocAnimGroup frame0 transBreakdown alphaTrans=${alphaTrans} texTrans=${texTrans} both=${both} topTex=${JSON.stringify(
+                                                                                    topTex,
+                                                                                )}`,
+                                                                            );
+                                                                        }
+                                                                    } catch {
+                                                                        // ignore
+                                                                    }
+
+                                                                    // Sanity: run the same probe through a fresh LocModelLoader instance
+                                                                    // (in case the shared loader mutates cached Models in-place).
+                                                                    try {
+                                                                        const freshLocModelLoader =
+                                                                            new LocModelLoader(
+                                                                                loaders.locTypeLoader,
+                                                                                loaders.modelLoader,
+                                                                                loaders.textureLoader,
+                                                                                loaders.seqTypeLoader,
+                                                                                loaders.seqFrameLoader,
+                                                                                session.getSkeletalSeqLoader(),
+                                                                            );
+                                                                        let freshAlphaFramesNonEmpty = 0;
+                                                                        let freshFramesMissingModel = 0;
+                                                                        for (
+                                                                            let fi = 0;
+                                                                            fi < frameCount;
+                                                                            fi++
+                                                                        ) {
+                                                                            const m =
+                                                                                freshLocModelLoader.getModelAnimated(
+                                                                                    targetResolvedLocType,
+                                                                                    targetPt as any,
+                                                                                    targetRot | 0,
+                                                                                    targetSeqId | 0,
+                                                                                    fi | 0,
+                                                                                );
+                                                                            if (!m) {
+                                                                                freshFramesMissingModel++;
+                                                                                continue;
+                                                                            }
+                                                                            const split =
+                                                                                splitModelFacesByTransparency(
+                                                                                    loaders.textureLoader,
+                                                                                    m,
+                                                                                );
+                                                                            if (
+                                                                                split.transparentFaces
+                                                                                    .length > 0
+                                                                            ) {
+                                                                                freshAlphaFramesNonEmpty++;
+                                                                            }
+                                                                        }
+                                                                        console.error(
+                                                                            `  animated-placeholder probe tsLocAnimGroup alphaFramesNonEmpty(freshLocModelLoader) frameCount=${frameCount} alphaFramesNonEmpty=${freshAlphaFramesNonEmpty} framesMissingModel=${freshFramesMissingModel}`,
+                                                                        );
+
+                                                                        // Measure whether running the full TS build mutates the transparency
+                                                                        // classification for this animated-loc.
+                                                                        try {
+                                                                            const probeOnce = () => {
+                                                                                const model0 =
+                                                                                    freshLocModelLoader.getModelAnimated(
+                                                                                        targetResolvedLocType,
+                                                                                        targetPt as any,
+                                                                                        targetRot | 0,
+                                                                                        targetSeqId | 0,
+                                                                                        0,
+                                                                                    );
+                                                                                const split0 = model0
+                                                                                    ? splitModelFacesByTransparency(
+                                                                                          loaders.textureLoader,
+                                                                                          model0,
+                                                                                      )
+                                                                                    : undefined;
+                                                                                let alphaFramesNonEmpty2 = 0;
+                                                                                let framesMissingModel2 = 0;
+                                                                                for (
+                                                                                    let fi = 0;
+                                                                                    fi < frameCount;
+                                                                                    fi++
+                                                                                ) {
+                                                                                    const m =
+                                                                                        freshLocModelLoader.getModelAnimated(
+                                                                                            targetResolvedLocType,
+                                                                                            targetPt as any,
+                                                                                            targetRot | 0,
+                                                                                            targetSeqId | 0,
+                                                                                            fi | 0,
+                                                                                        );
+                                                                                    if (!m) {
+                                                                                        framesMissingModel2++;
+                                                                                        continue;
+                                                                                    }
+                                                                                    const split =
+                                                                                        splitModelFacesByTransparency(
+                                                                                            loaders.textureLoader,
+                                                                                            m,
+                                                                                        );
+                                                                                    if (
+                                                                                        split
+                                                                                            .transparentFaces
+                                                                                            .length > 0
+                                                                                    ) {
+                                                                                        alphaFramesNonEmpty2++;
+                                                                                    }
+                                                                                }
+                                                                                return {
+                                                                                    frameCount:
+                                                                                        frameCount | 0,
+                                                                                    frame0OpaqueFaces:
+                                                                                        split0
+                                                                                            ? (split0
+                                                                                                  .opaqueFaces
+                                                                                                  .length | 0)
+                                                                                            : -1,
+                                                                                    frame0TransparentFaces:
+                                                                                        split0
+                                                                                            ? (split0
+                                                                                                  .transparentFaces
+                                                                                                  .length | 0)
+                                                                                            : -1,
+                                                                                    alphaFramesNonEmpty:
+                                                                                        alphaFramesNonEmpty2 |
+                                                                                        0,
+                                                                                    framesMissingModel:
+                                                                                        framesMissingModel2 |
+                                                                                        0,
+                                                                                } as const;
+                                                                            };
+                                                                            const before = probeOnce();
+                                                                            const sceneBuilderProbe =
+                                                                                new SceneBuilder(
+                                                                                    cacheInfo,
+                                                                                    {
+                                                                                        underlayTypeLoader:
+                                                                                            loaders.underlayTypeLoader,
+                                                                                        overlayTypeLoader:
+                                                                                            loaders.overlayTypeLoader,
+                                                                                        locTypeLoader:
+                                                                                            loaders.locTypeLoader,
+                                                                                        textureLoader:
+                                                                                            loaders.textureLoader,
+                                                                                        locModelLoader:
+                                                                                            freshLocModelLoader,
+                                                                                        varProvider,
+                                                                                    },
+                                                                                );
+                                                                            const depsProbe: SdMapRenderDataTsBackendDeps =
+                                                                                {
+                                                                                    ...deps,
+                                                                                    sceneBuilder:
+                                                                                        sceneBuilderProbe,
+                                                                                    locModelLoader:
+                                                                                        freshLocModelLoader,
+                                                                                };
+                                                                            const tsBackendProbe =
+                                                                                new SdMapRenderDataTsBackend(
+                                                                                    depsProbe,
+                                                                                );
+                                                                            await tsBackendProbe.buildMapDataBridgeInput(
+                                                                                input,
+                                                                                {
+                                                                                    includeMinimapBlob:
+                                                                                        false,
+                                                                                    includeLoadedTextures:
+                                                                                        false,
+                                                                                    includeNpcAnimationFrames:
+                                                                                        false,
+                                                                                    includeRuntimeCommandStreamInput:
+                                                                                        false,
+                                                                                    includeRuntimeSceneTileHeights:
+                                                                                        false,
+                                                                                    debugIncludeSceneCommandPlanDigest:
+                                                                                        false,
+                                                                                    debugIncludeSceneCommandPlanOpsPacked:
+                                                                                        false,
+                                                                                    preferWasmPacking:
+                                                                                        false,
+                                                                                },
+                                                                            );
+                                                                            const after = probeOnce();
+                                                                            console.error(
+                                                                                `  animated-placeholder probe tsAlphaMutationProbe before=${JSON.stringify(
+                                                                                    before,
+                                                                                )} after=${JSON.stringify(
+                                                                                    after,
+                                                                                )}`,
+                                                                            );
+                                                                        } catch (e) {
+                                                                            console.error(
+                                                                                "  animated-placeholder probe tsAlphaMutationProbe failed: " +
+                                                                                    String(e),
+                                                                            );
+                                                                        }
+                                                                    } catch (e) {
+                                                                        console.error(
+                                                                            "  animated-placeholder probe tsLocAnimGroup alphaFramesNonEmpty(freshLocModelLoader) failed: " +
+                                                                                String(e),
+                                                                        );
+                                                                    }
+                                                                }
+                                                            } catch (e) {
+                                                                console.error(
+                                                                    "  animated-placeholder probe tsLocAnimGroup alphaFramesNonEmpty failed: " +
+                                                                        String(e),
+                                                                );
+                                                            }
+                                                        } else {
+                                                            console.error(
+                                                                "  animated-placeholder probe tsLocAnimGroup: targetKey not found",
+                                                            );
+                                                        }
+                                                    }
+                                                } catch (e) {
+                                                    console.error(
+                                                        "  animated-placeholder probe tsLocAnimGroup failed: " +
+                                                            String(e),
+                                                    );
+                                                }
                                                 if (rec) {
                                                     try {
                                                         const borderSize =
@@ -14345,6 +16793,254 @@ async function main(): Promise<void> {
                                                                 entType ?? "<none>"
                                                             } entityRot=${entRot ?? "<none>"}`,
                                                         );
+                                                        try {
+                                                            const seqId = entSeq ?? -1;
+                                                            const locsAnimated: any =
+                                                                (tsData as any)?.locsAnimated;
+                                                            if (
+                                                                seqId >= 0 &&
+                                                                Array.isArray(locsAnimated)
+                                                            ) {
+                                                                let match = 0;
+                                                                let matchHasAlpha = 0;
+                                                                for (
+                                                                    let i = 0;
+                                                                    i < locsAnimated.length;
+                                                                    i++
+                                                                ) {
+                                                                    const la = locsAnimated[i] as any;
+                                                                    if (
+                                                                        (la?.seqId | 0) !==
+                                                                        (seqId | 0)
+                                                                    ) {
+                                                                        continue;
+                                                                    }
+                                                                    match++;
+                                                                    if (la?.anim?.framesAlpha) {
+                                                                        matchHasAlpha++;
+                                                                    }
+                                                                }
+                                                                console.error(
+                                                                    `  animated-placeholder probe tsLocsAnimated seqId=${seqId} match=${match} matchHasAlpha=${matchHasAlpha}`,
+                                                                );
+                                                            }
+                                                        } catch (e) {
+                                                            console.error(
+                                                                "  animated-placeholder probe tsLocsAnimated failed: " +
+                                                                    String(e),
+                                                            );
+                                                        }
+
+                                                        // Compare TS vs C++ transparent-face classification for frame 0 of this
+                                                        // animated-loc model. This directly controls whether `framesAlpha` exists in TS,
+                                                        // and thus whether TS emits alpha placeholder commands for this loc.
+                                                        try {
+                                                            const seqId = entSeq ?? -1;
+                                                            const pt = entType ?? -1;
+                                                            const rot = entRot ?? -1;
+                                                            if (
+                                                                seqId >= 0 &&
+                                                                pt >= 0 &&
+                                                                rot >= 0 &&
+                                                                sceneBuildInput &&
+                                                                (sceneBuildInput as any)
+                                                                    .locModelLoader &&
+                                                                (sceneBuildInput as any)
+                                                                    .seqTypeLoader &&
+                                                                (sceneBuildInput as any)
+                                                                    .textureLoader &&
+                                                                wantInteractId >= 0
+                                                            ) {
+                                                                const seqRes = (
+                                                                    sceneBuildInput as any
+                                                                ).seqTypeLoader.tryLoad(seqId);
+                                                                const seqType: any =
+                                                                    seqRes && seqRes.ok
+                                                                        ? seqRes.value
+                                                                        : undefined;
+                                                                const frameIds: any =
+                                                                    seqType && (seqType as any).frameIds;
+                                                                const frameId0 =
+                                                                    Array.isArray(frameIds) &&
+                                                                    frameIds.length > 0
+                                                                        ? (frameIds[0] | 0)
+                                                                        : -1;
+                                                                if (frameId0 >= 0) {
+                                                                    const baseLocRes =
+                                                                        sceneBuilder.services.locTypeLoader.tryLoad(
+                                                                            wantInteractId | 0,
+                                                                        );
+                                                                    const baseLoc: any =
+                                                                        baseLocRes && baseLocRes.ok
+                                                                            ? baseLocRes.value
+                                                                            : undefined;
+                                                                    const resolvedLoc: any = baseLoc;
+                                                                    const model0 =
+                                                                        (sceneBuildInput as any).locModelLoader.getModelAnimated?.(
+                                                                            resolvedLoc,
+                                                                            pt,
+                                                                            rot,
+                                                                            seqId,
+                                                                            0,
+                                                                        );
+                                                                    const tsDigest = model0
+                                                                        ? summarizeModelFaces(
+                                                                              (sceneBuildInput as any)
+                                                                                  .textureLoader,
+                                                                              model0,
+                                                                          )
+                                                                        : undefined;
+                                                                    if (model0) {
+                                                                        try {
+                                                                            const faces =
+                                                                                getModelFaces(model0);
+                                                                            let alphaTrans = 0;
+                                                                            let texTrans = 0;
+                                                                            let both = 0;
+                                                                            const texCounts =
+                                                                                new Map<number, number>();
+                                                                            for (
+                                                                                let fi = 0;
+                                                                                fi < faces.length;
+                                                                                fi++
+                                                                            ) {
+                                                                                const f = faces[fi];
+                                                                                const a =
+                                                                                    (f.alpha | 0) <
+                                                                                    0xff
+                                                                                        ? 1
+                                                                                        : 0;
+                                                                                const t =
+                                                                                    (f.textureId |
+                                                                                        0) !== -1 &&
+                                                                                    (sceneBuildInput as any).textureLoader.isTransparent(
+                                                                                        f.textureId |
+                                                                                            0,
+                                                                                    )
+                                                                                        ? 1
+                                                                                        : 0;
+                                                                                if (a) alphaTrans++;
+                                                                                if (t) {
+                                                                                    texTrans++;
+                                                                                    const id =
+                                                                                        f.textureId |
+                                                                                        0;
+                                                                                    texCounts.set(
+                                                                                        id,
+                                                                                        (texCounts.get(
+                                                                                            id,
+                                                                                        ) ?? 0) + 1,
+                                                                                    );
+                                                                                }
+                                                                                if (a && t) both++;
+                                                                            }
+                                                                            const topTex = Array.from(
+                                                                                texCounts.entries(),
+                                                                            )
+                                                                                .sort(
+                                                                                    (x, y) =>
+                                                                                        (y[1] | 0) -
+                                                                                        (x[1] | 0),
+                                                                                )
+                                                                                .slice(0, 5)
+                                                                                .map(
+                                                                                    ([id, c]) =>
+                                                                                        `${id}:${c}`,
+                                                                                );
+                                                                            console.log(
+                                                                                `  animated-placeholder frame0 transBreakdown locType=${
+                                                                                    wantInteractId |
+                                                                                    0
+                                                                                } alphaTrans=${alphaTrans} texTrans=${texTrans} both=${both} topTex=${JSON.stringify(
+                                                                                    topTex,
+                                                                                )}`,
+                                                                            );
+                                                                        } catch {
+                                                                            // ignore
+                                                                        }
+                                                                    }
+                                                                    const frameCount = Array.isArray(frameIds)
+                                                                        ? (frameIds.length | 0)
+                                                                        : 0;
+                                                                    let alphaFramesNonEmpty = 0;
+                                                                    let framesMissingModel = 0;
+                                                                    if (frameCount > 0) {
+                                                                        for (
+                                                                            let fi = 0;
+                                                                            fi < frameCount;
+                                                                            fi++
+                                                                        ) {
+                                                                            const m =
+                                                                                (sceneBuildInput as any).locModelLoader.getModelAnimated?.(
+                                                                                    resolvedLoc,
+                                                                                    pt,
+                                                                                    rot,
+                                                                                    seqId,
+                                                                                    fi,
+                                                                                );
+                                                                            if (!m) {
+                                                                                framesMissingModel++;
+                                                                                continue;
+                                                                            }
+                                                                            const split =
+                                                                                splitModelFacesByTransparency(
+                                                                                    (sceneBuildInput as any)
+                                                                                        .textureLoader,
+                                                                                    m,
+                                                                                );
+                                                                            if (
+                                                                                split.transparentFaces.length > 0
+                                                                            ) {
+                                                                                alphaFramesNonEmpty++;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    const bm =
+                                                                        await tryLoadBackendModule();
+                                                                    const cppDigest = bm
+                                                                        ? runtimeDebugGetLocClassicAnimFrameFacesDigestWithWasm(
+                                                                              bm,
+                                                                              runtimeHandle,
+                                                                              wantInteractId | 0,
+                                                                              pt,
+                                                                              rot,
+                                                                              frameId0,
+                                                                          )
+                                                                        : undefined;
+                                                                    console.log(
+                                                                        `  animated-placeholder frame0 facesDigest locType=${
+                                                                            wantInteractId | 0
+                                                                        } pt=${pt} rot=${rot} seqId=${seqId} frameId0=${frameId0} ts=${
+                                                                            tsDigest
+                                                                                ? JSON.stringify(
+                                                                                      tsDigest,
+                                                                                  )
+                                                                                : "<none>"
+                                                                        } cpp=${
+                                                                            cppDigest
+                                                                                ? JSON.stringify(
+                                                                                      cppDigest,
+                                                                                  )
+                                                                                : "<none>"
+                                                                        }`,
+                                                                    );
+                                                                    console.log(
+                                                                        `  animated-placeholder frame0 alphaFramesProbe locType=${
+                                                                            wantInteractId | 0
+                                                                        } frameCount=${frameCount} alphaFramesNonEmpty=${alphaFramesNonEmpty} framesMissingModel=${framesMissingModel}`,
+                                                                    );
+                                                                } else {
+                                                                    console.log(
+                                                                        "  animated-placeholder facesDigest skipped: non-classic seq (no frameIds)",
+                                                                    );
+                                                                }
+                                                            }
+                                                        } catch (e) {
+                                                            console.log(
+                                                                "  animated-placeholder facesDigest probe failed: " +
+                                                                    String(e),
+                                                            );
+                                                        }
                                                     } catch (e) {
                                                         console.error(
                                                             "  animated-placeholder probe tsScene entity inspect failed: " +
@@ -14468,14 +17164,29 @@ async function main(): Promise<void> {
                                                                           .animMayaStart as number) |
                                                                           0);
                                                             let seqFrameAlphaCount = -1;
-                                                            if (!hasMaya && Array.isArray((seq as any).frameIds)) {
+                                                            if (
+                                                                !hasMaya &&
+                                                                Array.isArray((seq as any).frameIds)
+                                                            ) {
                                                                 seqFrameAlphaCount = 0;
-                                                                const frameIds = (seq as any).frameIds as number[];
-                                                                for (let fi = 0; fi < frameIds.length; fi++) {
-                                                                    const frameId = frameIds[fi] | 0;
+                                                                const frameIds = (seq as any)
+                                                                    .frameIds as number[];
+                                                                for (
+                                                                    let fi = 0;
+                                                                    fi < frameIds.length;
+                                                                    fi++
+                                                                ) {
+                                                                    const frameId =
+                                                                        frameIds[fi] | 0;
                                                                     const frame =
-                                                                        loaders.seqFrameLoader.tryGet(frameId);
-                                                                    if ((frame as any)?.hasAlphaTransform === true) {
+                                                                        loaders.seqFrameLoader.tryGet(
+                                                                            frameId,
+                                                                        );
+                                                                    if (
+                                                                        (frame as any)
+                                                                            ?.hasAlphaTransform ===
+                                                                        true
+                                                                    ) {
                                                                         seqFrameAlphaCount++;
                                                                     }
                                                                 }
@@ -14485,6 +17196,152 @@ async function main(): Promise<void> {
                                                                     hasMaya ? 1 : 0
                                                                 } frameIdsLen=${frameIdsLen} mayaDur=${mayaDur} frameAlphaCount=${seqFrameAlphaCount}`,
                                                             );
+
+                                                            // Compare TS vs C++ for the first classic frame's transparent-face digest.
+                                                            // This is the exact predicate TS uses to decide whether `framesAlpha` exists.
+                                                            try {
+                                                                if (
+                                                                    !hasMaya &&
+                                                                    Array.isArray((seq as any).frameIds) &&
+                                                                    (seq as any).frameIds.length > 0
+                                                                ) {
+                                                                    const frameId0 = ((seq as any)
+                                                                        .frameIds[0] as number) | 0;
+                                                                    // Re-find the TS loc-record at this placeholder position so we can
+                                                                    // pass the exact placementType/rotation into getModelAnimated.
+                                                                    let pt = -1;
+                                                                    let rot = -1;
+                                                                    try {
+                                                                        const recs =
+                                                                            ensureTsSceneLocRecords() ??
+                                                                            [];
+                                                                        for (let ri = 0; ri < recs.length; ri++) {
+                                                                            const r = recs[ri] as any;
+                                                                            if (
+                                                                                (r.id >>> 0) ===
+                                                                                    (wantInteractId >>>
+                                                                                        0) &&
+                                                                                (r.level | 0) ===
+                                                                                    (wantLevel | 0) &&
+                                                                                (r.sceneX | 0) ===
+                                                                                    (wantSceneX | 0) &&
+                                                                                (r.sceneZ | 0) ===
+                                                                                    (wantSceneZ | 0) &&
+                                                                                (r.priority | 0) ===
+                                                                                    (wantPri | 0)
+                                                                            ) {
+                                                                                pt =
+                                                                                    (r.placementType |
+                                                                                        0) as number;
+                                                                                rot =
+                                                                                    (r.placementRotation |
+                                                                                        0) as number;
+                                                                                break;
+                                                                            }
+                                                                        }
+                                                                    } catch {
+                                                                        // ignore
+                                                                    }
+                                                                    if (pt >= 0 && rot >= 0) {
+                                                                        const model0 =
+                                                                            (sceneBuildInput as any)
+                                                                                ?.locModelLoader?.getModelAnimated?.(
+                                                                                resolvedLoc,
+                                                                                pt | 0,
+                                                                                rot | 0,
+                                                                                seqId | 0,
+                                                                                0,
+                                                                            );
+                                                                        const tsDigest = model0
+                                                                            ? summarizeModelFaces(
+                                                                                  loaders.textureLoader,
+                                                                                  model0,
+                                                                              )
+                                                                            : undefined;
+                                                                        const frameIds = (seq as any)
+                                                                            .frameIds as number[];
+                                                                        const frameCount = Array.isArray(frameIds)
+                                                                            ? (frameIds.length | 0)
+                                                                            : 0;
+                                                                        let alphaFramesNonEmpty = 0;
+                                                                        let framesMissingModel = 0;
+                                                                        if (frameCount > 0) {
+                                                                            for (
+                                                                                let fi = 0;
+                                                                                fi < frameCount;
+                                                                                fi++
+                                                                            ) {
+                                                                                const m =
+                                                                                    (sceneBuildInput as any)
+                                                                                        ?.locModelLoader?.getModelAnimated?.(
+                                                                                        resolvedLoc,
+                                                                                        pt | 0,
+                                                                                        rot | 0,
+                                                                                        seqId | 0,
+                                                                                        fi,
+                                                                                    );
+                                                                                if (!m) {
+                                                                                    framesMissingModel++;
+                                                                                    continue;
+                                                                                }
+                                                                                const split =
+                                                                                    splitModelFacesByTransparency(
+                                                                                        loaders.textureLoader,
+                                                                                        m,
+                                                                                    );
+                                                                                if (
+                                                                                    split
+                                                                                        .transparentFaces
+                                                                                        .length > 0
+                                                                                ) {
+                                                                                    alphaFramesNonEmpty++;
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        const bm =
+                                                                            await tryLoadBackendModule();
+                                                                        const cppDigest = bm
+                                                                            ? runtimeDebugGetLocClassicAnimFrameFacesDigestWithWasm(
+                                                                                  bm,
+                                                                                  runtimeHandle,
+                                                                                  resolvedLoc.id | 0,
+                                                                                  pt | 0,
+                                                                                  rot | 0,
+                                                                                  frameId0,
+                                                                              )
+                                                                            : undefined;
+                                                                        console.error(
+                                                                            `  animated-placeholder frame0 facesDigest locType=${
+                                                                                resolvedLoc.id | 0
+                                                                            } pt=${pt | 0} rot=${
+                                                                                rot | 0
+                                                                            } seqId=${seqId | 0} frameId0=${frameId0} ts=${
+                                                                                tsDigest
+                                                                                    ? JSON.stringify(
+                                                                                          tsDigest,
+                                                                                      )
+                                                                                    : "<none>"
+                                                                            } cpp=${
+                                                                                cppDigest
+                                                                                    ? JSON.stringify(
+                                                                                          cppDigest,
+                                                                                      )
+                                                                                    : "<none>"
+                                                                            }`,
+                                                                        );
+                                                                        console.error(
+                                                                            `  animated-placeholder frame0 alphaFramesProbe locType=${
+                                                                                resolvedLoc.id | 0
+                                                                            } frameCount=${frameCount} alphaFramesNonEmpty=${alphaFramesNonEmpty} framesMissingModel=${framesMissingModel}`,
+                                                                        );
+                                                                    }
+                                                                }
+                                                            } catch (e) {
+                                                                console.error(
+                                                                    "  animated-placeholder facesDigest(frame0) failed: " +
+                                                                        String(e),
+                                                                );
+                                                            }
                                                         } else {
                                                             console.error(
                                                                 `  animated-placeholder probe tsSeqType id=${seqId} load failed`,
@@ -15048,7 +17905,9 @@ async function main(): Promise<void> {
         if (mismatchSquares && mismatchSquares.length > 0) {
             const preview = mismatchSquares.slice(0, 50);
             logSummary(
-                `map-render-runtime-cache-v2-parity: profile=${profile.name} mismatch-squares count=${mismatchSquares.length} sample=${preview.join(",")}`,
+                `map-render-runtime-cache-v2-parity: profile=${
+                    profile.name
+                } mismatch-squares count=${mismatchSquares.length} sample=${preview.join(",")}`,
             );
         }
         if (args.stages) {
@@ -15071,7 +17930,9 @@ async function main(): Promise<void> {
                     if (list.length <= 0) continue;
                     const preview = list.slice(0, 20);
                     logSummary(
-                        `map-render-runtime-cache-v2-parity: profile=${profile.name} failing-squares ${key} count=${list.length} sample=${preview.join(",")}`,
+                        `map-render-runtime-cache-v2-parity: profile=${
+                            profile.name
+                        } failing-squares ${key} count=${list.length} sample=${preview.join(",")}`,
                     );
                 }
             }
