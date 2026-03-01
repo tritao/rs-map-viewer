@@ -15,18 +15,21 @@ export type TickPatchBackendResult = Readonly<{
     npcAlphaPatchCount: number;
 }>;
 
-export type TickCapability = Readonly<{
+export type TickCommonCapability = Readonly<{
     id: number;
+    getNpcs(): ReadonlyArray<Npc>;
+}>;
 
+export type TsTickCapability = TickCommonCapability & Readonly<{
     // TS tick path hooks
     resetCppTickStateLifecycle(): void;
     syncLocAnimationFrameIds(): void;
     getLocsAnimated(): ReadonlyArray<LocAnimated>;
     getLocFrameId(locIndex: number): number;
     setLocFrameId(locIndex: number, frameId: number): void;
+}>;
 
-    getNpcs(): ReadonlyArray<Npc>;
-
+export type WasmTickCapability = TickCommonCapability & Readonly<{
     // wasm tick path hooks
     ensureCppTickStateInitializedFromObjects(): boolean;
     syncNpcMovementStateFromObjects(): void;
@@ -34,3 +37,6 @@ export type TickCapability = Readonly<{
     getWasmTickStateInput(): DrawRangeTickStateInput;
     applyWasmTickResult(result: TickPatchBackendResult): void;
 }>;
+
+// Transitional compatibility alias for call sites that still require both capabilities.
+export type TickCapability = TsTickCapability & WasmTickCapability;

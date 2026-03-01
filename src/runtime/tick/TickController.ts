@@ -9,7 +9,7 @@ import {
     unregisterDrawRangeTickState,
 } from "../../wasm/DrawRangePatchBackend";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickCapability } from "../contracts/TickCapability";
+import type { TsTickCapability, WasmTickCapability } from "../contracts/TickCapability";
 import { LocTickPatchVariant, NpcTickPatchVariant } from "../contracts/TickPatchStreams";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 
@@ -135,7 +135,7 @@ export class TickController {
     }
 
     private tickWithTs(
-        renderable: TickCapability,
+        renderable: TsTickCapability,
         cycle: number,
         clientTicksElapsed: number,
         seqTypeLoader: SeqTypeLoader,
@@ -262,7 +262,7 @@ export class TickController {
     }
 
     private tickWithWasm(
-        renderable: TickCapability,
+        renderable: WasmTickCapability,
         cycleNowFixed: number,
         clientTicksElapsed: number,
         sink?: TickPatchSink,
@@ -322,7 +322,7 @@ export class TickController {
     }
 
     tickRenderable(
-        renderable: TickCapability,
+        renderable: TsTickCapability & WasmTickCapability,
         cycle: number,
         clientTicksElapsed: number,
         seqTypeLoader: SeqTypeLoader,
