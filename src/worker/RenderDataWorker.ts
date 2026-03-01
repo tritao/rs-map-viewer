@@ -5,7 +5,6 @@ import { Transfer, expose } from "threads/worker";
 
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
-import { type DrawRange, NULL_DRAW_RANGE } from "../renderer/DrawRange";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { NpcData } from "../runtime/entities/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
@@ -23,7 +22,6 @@ import {
     type FramePacketMapEntry,
 } from "../runtime/tick/MainThreadFramePacketBuilder";
 import { CacheType } from "../rs/cache/CacheType";
-import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
 import { EnumeratingArchiveBytesProvider } from "../rs/io/BytesProvider";
@@ -31,9 +29,7 @@ import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession"
 import { initErrorToString } from "../rs/loaders/InitError";
 import { MapBytesProvider, MapFileBytesProvider } from "../rs/map/MapBytesProvider";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
-import type { SeqFrameLoader } from "../rs/model/seq/SeqFrameLoader";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { CollisionFlag } from "../rs/pathfinder/flag/CollisionFlag";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import { type CollisionData } from "../rs/scene/CollisionMap";
 import { Scene } from "../rs/scene/Scene";
@@ -58,7 +54,12 @@ import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
-import { WorkerNpcSimStateStore, type WorkerNpcSimMapState } from "./runtime/WorkerNpcSimStateStore";
+import {
+    applyNpcMovementStep,
+    buildTickPatchStreamsForMap,
+    readWasmPatchStreamsForMap,
+} from "./runtime/tickFrameHelpers";
+import { WorkerNpcSimStateStore } from "./runtime/WorkerNpcSimStateStore";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -110,312 +111,6 @@ function shouldUseWasmTickInWorker(): boolean {
         workerRuntimeOptions.mapRenderTickBackend ?? workerRuntimeOptions.mapRenderBackend;
     // Runtime-owned tick state requires that map builds also happen in the same C++ wasm runtime.
     return tickBackend === "cpp-wasm" && workerRuntimeOptions.mapRenderBackend === "cpp-wasm";
-}
-
-function emitTickPatch(
-    outPacked: Int32Array,
-    count: number,
-    drawRangeIndex: number,
-    frame: DrawRange,
-): number {
-    if ((drawRangeIndex | 0) < 0) {
-        return count | 0;
-    }
-    const off = ((count | 0) * TICK_PATCH_ENTRY_STRIDE) | 0;
-    if (off + 3 >= outPacked.length) {
-        return count | 0;
-    }
-    outPacked[off + 0] = drawRangeIndex | 0;
-    outPacked[off + 1] = frame[0] | 0;
-    outPacked[off + 2] = frame[1] | 0;
-    outPacked[off + 3] = frame[2] | 0;
-    return (count + 1) | 0;
-}
-
-function emitLocPatchesForChangedFrame(
-    state: WorkerNpcSimMapState,
-    locIndex: number,
-    newFrameId: number,
-) {
-    const loc = state.locsAnimated[locIndex];
-    const baseFrame = (loc.anim.frames?.[newFrameId] ?? undefined) as DrawRange | undefined;
-    if (!baseFrame) {
-        return;
-    }
-    const alphaFrame = (loc.anim.framesAlpha?.[newFrameId] ?? undefined) as DrawRange | undefined;
-
-    // Loc streams: 0..7 match LocTickPatchVariant ordering.
-    state.locTickPatchCountsByVariant[0] = emitTickPatch(
-        state.locTickPatchesByVariant[0]!,
-        state.locTickPatchCountsByVariant[0] | 0,
-        loc.drawRangeIndex | 0,
-        baseFrame,
-    );
-    state.locTickPatchCountsByVariant[2] = emitTickPatch(
-        state.locTickPatchesByVariant[2]!,
-        state.locTickPatchCountsByVariant[2] | 0,
-        loc.drawRangeLodIndex | 0,
-        baseFrame,
-    );
-    state.locTickPatchCountsByVariant[4] = emitTickPatch(
-        state.locTickPatchesByVariant[4]!,
-        state.locTickPatchCountsByVariant[4] | 0,
-        loc.drawRangeInteractIndex | 0,
-        baseFrame,
-    );
-    state.locTickPatchCountsByVariant[6] = emitTickPatch(
-        state.locTickPatchesByVariant[6]!,
-        state.locTickPatchCountsByVariant[6] | 0,
-        loc.drawRangeInteractLodIndex | 0,
-        baseFrame,
-    );
-
-    if (!alphaFrame) {
-        return;
-    }
-    state.locTickPatchCountsByVariant[1] = emitTickPatch(
-        state.locTickPatchesByVariant[1]!,
-        state.locTickPatchCountsByVariant[1] | 0,
-        loc.drawRangeAlphaIndex | 0,
-        alphaFrame,
-    );
-    state.locTickPatchCountsByVariant[3] = emitTickPatch(
-        state.locTickPatchesByVariant[3]!,
-        state.locTickPatchCountsByVariant[3] | 0,
-        loc.drawRangeLodAlphaIndex | 0,
-        alphaFrame,
-    );
-    state.locTickPatchCountsByVariant[5] = emitTickPatch(
-        state.locTickPatchesByVariant[5]!,
-        state.locTickPatchCountsByVariant[5] | 0,
-        loc.drawRangeInteractAlphaIndex | 0,
-        alphaFrame,
-    );
-    state.locTickPatchCountsByVariant[7] = emitTickPatch(
-        state.locTickPatchesByVariant[7]!,
-        state.locTickPatchCountsByVariant[7] | 0,
-        loc.drawRangeInteractLodAlphaIndex | 0,
-        alphaFrame,
-    );
-}
-
-type WasmMapPatchStreamReadResult = Readonly<{
-    hasWasmCountsForMap: boolean;
-    useWasmLocStreams: boolean;
-    streamsForMap: (Int32Array | undefined)[];
-    nextReadOff: number;
-}>;
-
-function readWasmPatchStreamsForMap(
-    mapId: number,
-    mapEntryIndex: number,
-    readOff: number,
-    wasmCountsByMapId: Int32Array | undefined,
-    wasmPatchesPacked: Int32Array | undefined,
-): WasmMapPatchStreamReadResult {
-    const streamsForMap = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
-    const metaOff = (mapEntryIndex | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
-    if (
-        !(wasmPatchesPacked instanceof Int32Array) ||
-        !(wasmCountsByMapId instanceof Int32Array) ||
-        metaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE > wasmCountsByMapId.length
-    ) {
-        return {
-            hasWasmCountsForMap: false,
-            useWasmLocStreams: false,
-            streamsForMap,
-            nextReadOff: readOff | 0,
-        };
-    }
-
-    let nextReadOff = readOff | 0;
-    const useWasmLocStreams = (wasmCountsByMapId[metaOff + 0] | 0) === (mapId | 0);
-    for (let streamIndex = 0; streamIndex < TICK_PATCH_STREAM_COUNT; streamIndex++) {
-        const wasmCount = wasmCountsByMapId[metaOff + 1 + streamIndex] | 0;
-        const wasmLen = (wasmCount * TICK_PATCH_ENTRY_STRIDE) | 0;
-        if (wasmLen <= 0) {
-            continue;
-        }
-        const end = (nextReadOff + wasmLen) | 0;
-        if (end > (wasmPatchesPacked.length | 0)) {
-            throw new Error(
-                `[map-render][tick][cpp-wasm] wasm patch stream OOB ` +
-                    `mapId=${mapId | 0} stream=${streamIndex | 0} readOff=${nextReadOff | 0} ` +
-                    `len=${wasmLen | 0} packedLen=${wasmPatchesPacked.length | 0}`,
-            );
-        }
-        if (useWasmLocStreams) {
-            streamsForMap[streamIndex] = wasmPatchesPacked.subarray(nextReadOff, end);
-        }
-        nextReadOff = end;
-    }
-
-    return {
-        hasWasmCountsForMap: true,
-        useWasmLocStreams,
-        streamsForMap,
-        nextReadOff,
-    };
-}
-
-function applyNpcMovementStep(
-    state: WorkerNpcSimMapState,
-    safeTicksElapsed: number,
-    safeClientTicks: number,
-    seqTypeLoader: SeqTypeLoader,
-    seqFrameLoader: SeqFrameLoader,
-): void {
-    // Seed NPC collision flags once per map so pathfinding avoids NPC overlaps.
-    if (!state.seededNpcFlags) {
-        for (const npc of state.npcs) {
-            const level = npc.level | 0;
-            const collisionMap = state.collisionMaps[level];
-            if (!collisionMap) {
-                continue;
-            }
-            const currentX = npc.pathX[0] | 0;
-            const currentY = npc.pathY[0] | 0;
-            const size = npc.getSize() | 0;
-            for (let fx = currentX; fx < currentX + size; fx++) {
-                for (let fy = currentY; fy < currentY + size; fy++) {
-                    collisionMap.flag(
-                        (fx + state.borderSize) | 0,
-                        (fy + state.borderSize) | 0,
-                        CollisionFlag.BLOCK_NPCS,
-                    );
-                }
-            }
-        }
-        state.seededNpcFlags = true;
-    }
-
-    // Server movement: update paths with collision constraints.
-    for (let t = 0; t < safeTicksElapsed; t++) {
-        for (const npc of state.npcs) {
-            npc.updateServerMovement(
-                npcSimPathfinder,
-                state.borderSize,
-                state.collisionMaps,
-            );
-        }
-    }
-
-    // Client movement transforms: advance along the server-selected path.
-    for (let t = 0; t < safeClientTicks; t++) {
-        for (const npc of state.npcs) {
-            npc.updateMovementTransformOnly();
-        }
-    }
-
-    // Client movement seq: advance animation frames without changing transforms.
-    for (let t = 0; t < safeClientTicks; t++) {
-        for (const npc of state.npcs) {
-            npc.updateMovementSeq(seqTypeLoader, seqFrameLoader);
-        }
-    }
-}
-
-type BuildTickPatchStreamsForMapInput = Readonly<{
-    mapId: number;
-    mapEntryIndex: number;
-    cycleNow: number;
-    state: WorkerNpcSimMapState;
-    seqFrameLoader: SeqFrameLoader;
-    includeTsLocTickPatches: boolean;
-    useWasmLocStreams: boolean;
-    hasWasmCountsForMap: boolean;
-    wasmLocStreamsForMap: readonly (Int32Array | undefined)[];
-    wasmCountsByMapId: Int32Array | undefined;
-}>;
-
-type BuiltTickPatchStreamsForMap = Readonly<{
-    streamCounts: Int32Array;
-    streamsForMap: (Int32Array | undefined)[];
-}>;
-
-function buildTickPatchStreamsForMap(
-    input: BuildTickPatchStreamsForMapInput,
-): BuiltTickPatchStreamsForMap {
-    const streamsForMap = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
-    const streamCounts = new Int32Array(TICK_PATCH_STREAM_COUNT);
-    const state = input.state;
-
-    // Build draw-range tick patches (locs: changed frames only; npcs: emit per npc).
-    state.locTickPatchCountsByVariant.fill(0);
-    state.npcTickPatchCountsByVariant[0] = 0;
-    state.npcTickPatchCountsByVariant[1] = 0;
-
-    if (input.includeTsLocTickPatches) {
-        for (let li = 0; li < state.locsAnimated.length; li++) {
-            const loc = state.locsAnimated[li];
-            loc.update(input.seqFrameLoader, input.cycleNow);
-            const newFrameId = loc.frame | 0;
-            // Always emit a patch for the current frame. Some map packets may have placeholder
-            // draw ranges for animated locs until the first tick patch is applied.
-            emitLocPatchesForChangedFrame(state, li, newFrameId);
-        }
-    }
-
-    for (let ni = 0; ni < state.npcs.length; ni++) {
-        const npc = state.npcs[ni]!;
-        const newFrameId = npc.movementFrame | 0;
-        const anim = npc.getAnimationFrames();
-        const baseFrame = (anim?.frames?.[newFrameId] ?? NULL_DRAW_RANGE) as DrawRange;
-        const alphaFrame = (anim?.framesAlpha?.[newFrameId] ?? NULL_DRAW_RANGE) as DrawRange;
-        state.npcTickPatchCountsByVariant[0] = emitTickPatch(
-            state.npcTickPatchesByVariant[0]!,
-            state.npcTickPatchCountsByVariant[0] | 0,
-            ni | 0,
-            baseFrame,
-        );
-        state.npcTickPatchCountsByVariant[1] = emitTickPatch(
-            state.npcTickPatchesByVariant[1]!,
-            state.npcTickPatchCountsByVariant[1] | 0,
-            ni | 0,
-            alphaFrame,
-        );
-    }
-
-    // Write per-map patch counts meta in stream order.
-    if (input.wasmCountsByMapId instanceof Int32Array) {
-        const wasmMetaOff = (input.mapEntryIndex | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
-        if (wasmMetaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE <= input.wasmCountsByMapId.length) {
-            const wasmMapId = input.wasmCountsByMapId[wasmMetaOff + 0] | 0;
-            if (wasmMapId === (input.mapId | 0)) {
-                for (let v = 0; v < 8; v++) {
-                    streamCounts[v] = input.wasmCountsByMapId[wasmMetaOff + 1 + v] | 0;
-                }
-            } else {
-                for (let v = 0; v < 8; v++) {
-                    streamCounts[v] = state.locTickPatchCountsByVariant[v] | 0;
-                }
-            }
-        } else {
-            for (let v = 0; v < 8; v++) {
-                streamCounts[v] = state.locTickPatchCountsByVariant[v] | 0;
-            }
-        }
-    } else {
-        for (let v = 0; v < 8; v++) {
-            streamCounts[v] = state.locTickPatchCountsByVariant[v] | 0;
-        }
-    }
-    streamCounts[8] = state.npcTickPatchCountsByVariant[0] | 0;
-    streamCounts[9] = state.npcTickPatchCountsByVariant[1] | 0;
-
-    for (let v = 0; v < 8; v++) {
-        streamsForMap[v] =
-            input.useWasmLocStreams && input.hasWasmCountsForMap
-                ? input.wasmLocStreamsForMap[v]
-                : state.locTickPatchesByVariant[v];
-    }
-    streamsForMap[8] = state.npcTickPatchesByVariant[0];
-    streamsForMap[9] = state.npcTickPatchesByVariant[1];
-
-    return {
-        streamCounts,
-        streamsForMap,
-    };
 }
 
 async function requireWorkerState(): Promise<WorkerState> {
@@ -754,6 +449,7 @@ const worker = {
 
             applyNpcMovementStep(
                 state,
+                npcSimPathfinder,
                 safeTicksElapsed,
                 safeClientTicks,
                 seqTypeLoader,

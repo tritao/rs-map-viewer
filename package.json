@@ -94,6 +94,7 @@
     "rs:scene-command-emitter-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/scene-command-emitter-regression.ts",
     "rs:scene-light-delegation-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/scene-light-delegation-regression.ts",
     "rs:map-render-wasm-surface-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-wasm-surface-regression.ts",
+    "rs:worker-tick-frame-helpers-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-tick-frame-helpers-regression.ts",
     "rs:map-render-runtime-cache-v2-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-runtime-cache-v2-parity.ts",
     "rs:map-render-runtime-cache-v2-models-parity": "npm run -s rs:map-render-runtime-cache-v2-parity -- --mode models-targeted --limit 4",
     "rs:map-render-backend-bench": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-backend-bench.ts",
