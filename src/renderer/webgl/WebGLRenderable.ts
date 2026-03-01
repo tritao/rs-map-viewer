@@ -19,13 +19,17 @@ import { RenderableType } from "../Renderer";
 import { SdRenderableData } from "../loader/SdRenderableData";
 import { LocAnimated } from "../loc/LocAnimated";
 import { Npc } from "../npc/Npc";
-import { orderByPacketKeys } from "../npc/orderByPacketKeys";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
 import type {
     TickCapability,
     TickPatchBackendResult,
 } from "../patch/TickCapability";
 import { WebGLMapSquareTickState } from "./WebGLMapSquareTickState";
+import {
+    buildLocsAnimated,
+    buildNpcDrawRanges,
+    buildNpcs,
+} from "./WebGLRenderableBuild";
 
 const FRAME_RENDER_DELAY = 3;
 
@@ -33,6 +37,16 @@ const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
+
+function createIntegerVertexAttributeOptions(
+    type: number,
+    size: number,
+    stride: number,
+): Parameters<VertexArray["vertexAttributeBuffer"]>[2] {
+    return { type, size, stride, integer: true } as unknown as Parameters<
+        VertexArray["vertexAttributeBuffer"]
+    >[2];
+}
 
 function createModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
     return app.createTexture2D(data, 16, Math.max(Math.ceil(data.length / 16 / 4), 1), {
@@ -241,12 +255,11 @@ export class WebGLRenderable implements TickCapability {
         this.vertexArray = app
             .createVertexArray()
             // v0, v1, v2, v3
-            .vertexAttributeBuffer(0, this.interleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 4,
-                stride: 16,
-                integer: true as any,
-            })
+            .vertexAttributeBuffer(
+                0,
+                this.interleavedBuffer,
+                createIntegerVertexAttributeOptions(PicoGL.UNSIGNED_INT, 4, 16),
+            )
             .indexBuffer(this.indexBuffer);
     }
 
@@ -267,12 +280,11 @@ export class WebGLRenderable implements TickCapability {
 
         this.npcVertexArray = app
             .createVertexArray()
-            .vertexAttributeBuffer(0, this.npcInterleavedBuffer, {
-                type: PicoGL.UNSIGNED_INT,
-                size: 4,
-                stride: 16,
-                integer: true as any,
-            })
+            .vertexAttributeBuffer(
+                0,
+                this.npcInterleavedBuffer,
+                createIntegerVertexAttributeOptions(PicoGL.UNSIGNED_INT, 4, 16),
+            )
             .indexBuffer(this.npcIndexBuffer);
     }
 
@@ -282,39 +294,7 @@ export class WebGLRenderable implements TickCapability {
         seqTypeLoader: SeqTypeLoader,
         seqFrameLoader: SeqFrameLoader,
     ) {
-        const cycle = time / 0.02;
-        const seqIds: number[] = [];
-        const locsAnimated: LocAnimated[] = [];
-
-        for (const loc of data.locsAnimated) {
-            const seqResult = seqTypeLoader.tryLoad(loc.seqId);
-            if (!seqResult.ok) {
-                continue;
-            }
-            const seqType = seqResult.value;
-            seqIds.push(loc.seqId | 0);
-            locsAnimated.push(
-                new LocAnimated(
-                    loc.drawRangeIndex,
-                    loc.drawRangeAlphaIndex,
-
-                    loc.drawRangeLodIndex,
-                    loc.drawRangeLodAlphaIndex,
-
-                    loc.drawRangeInteractIndex,
-                    loc.drawRangeInteractAlphaIndex,
-
-                    loc.drawRangeInteractLodIndex,
-                    loc.drawRangeInteractLodAlphaIndex,
-
-                    loc.anim,
-                    seqType,
-                    cycle,
-                    loc.randomStart,
-                ),
-            );
-        }
-
+        const { locsAnimated, seqIds } = buildLocsAnimated(data, seqTypeLoader, time);
         this.tickState.setLocsAnimated(locsAnimated);
         this.initLocAnimationPatchData(seqFrameLoader, seqIds);
     }
@@ -352,45 +332,10 @@ export class WebGLRenderable implements TickCapability {
         createDrawCall: CreateDrawCallFunction,
         npcProgram: Program,
     ) {
-        const npcs: Npc[] = [];
-        const npcInput = orderByPacketKeys(data.npcs, data.npcOrderKeys);
-        for (const npc of npcInput) {
-            const npcResult = npcTypeLoader.tryLoad(npc.id);
-            if (!npcResult.ok) {
-                continue;
-            }
-            const npcType = npcResult.value;
-
-            npcs.push(
-                new Npc(
-                    npc.tileX,
-                    npc.tileY,
-                    npc.level,
-                    npc.idleAnim,
-                    npc.walkAnim,
-                    npcType,
-                    npcType.getIdleSeqId(basTypeLoader),
-                    npcType.getWalkSeqId(basTypeLoader),
-                ),
-            );
-        }
+        const npcs = buildNpcs(data, npcTypeLoader, basTypeLoader);
         this.tickState.setNpcs(npcs);
 
-        const hasPacketNpcDrawRanges =
-            data.npcDrawRangesBase instanceof Int32Array &&
-            data.npcDrawRangesBase.length === npcs.length * DRAW_RANGE_STRIDE;
-
-        const drawRangesNpc = hasPacketNpcDrawRanges
-            ? new Int32Array(data.npcDrawRangesBase!)
-            : new Int32Array(npcs.length * DRAW_RANGE_STRIDE);
-        if (!hasPacketNpcDrawRanges) {
-            for (let i = 0; i < npcs.length; i++) {
-                const off = i * DRAW_RANGE_STRIDE;
-                drawRangesNpc[off + DRAW_RANGE_OFFSET_INDEX] = 0;
-                drawRangesNpc[off + DRAW_RANGE_ELEMENTS_INDEX] = 0;
-                drawRangesNpc[off + DRAW_RANGE_INSTANCES_INDEX] = 1;
-            }
-        }
+        const drawRangesNpc = buildNpcDrawRanges(npcs, data.npcDrawRangesBase);
         this.drawCallNpc = createDrawCall(
             npcProgram,
             undefined,
