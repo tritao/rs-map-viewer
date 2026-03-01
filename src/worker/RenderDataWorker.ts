@@ -15,18 +15,16 @@ import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import { orderByPacketKeys } from "../runtime/entities/orderByPacketKeys";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import {
-    buildFramePacket,
-    createTickPatchStreamsByMap,
-    FRAME_RENDER_LIST_FLAG_HAS_NPCS,
-    FRAME_RENDER_LIST_FLAG_IS_INTERACT,
-    FRAME_RENDER_LIST_FLAG_IS_LOD,
-    FRAME_RENDER_LIST_STRIDE,
-    NPC_OFFSETS_BY_MAP_ID_STRIDE,
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     framePacketTransferables,
 } from "../runtime/contracts/FramePacket";
+import {
+    buildFramePacketFromMapEntries,
+    computeFrameRenderFlags,
+    type FramePacketMapEntry,
+} from "../runtime/tick/MainThreadFramePacketBuilder";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
@@ -545,12 +543,7 @@ const worker = {
 
         npcGpuDataBuilder.beginFrame();
 
-        const offsetsPairs = new Int32Array((mapIds.length | 0) * NPC_OFFSETS_BY_MAP_ID_STRIDE);
-        const renderListPacked = new Int32Array((mapIds.length | 0) * FRAME_RENDER_LIST_STRIDE);
-        const tickPatchCountsByMapId = new Int32Array(
-            (mapIds.length | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
-        );
-        const tickPatchStreamsByMap = createTickPatchStreamsByMap(mapIds.length | 0);
+        const entries = new Array<FramePacketMapEntry>(mapIds.length | 0);
 
         const safeTicksElapsed = Math.max(0, Math.min(ticksElapsed | 0, 4));
         const safeClientTicks = Math.max(0, Math.min(clientTicksElapsed | 0, 50));
@@ -595,8 +588,8 @@ const worker = {
             const mapId = mapIds[mi] | 0;
             const state = npcSimByMapId.get(mapId);
             const metaOff = (mi | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
-            const renderOff = (mi | 0) * FRAME_RENDER_LIST_STRIDE;
-            const streamsForMap = tickPatchStreamsByMap[mi]!;
+            const streamsForMap = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
+            const streamCounts = new Int32Array(TICK_PATCH_STREAM_COUNT);
             const wasmStreamsForMap = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
             let hasWasmCountsForMap = false;
             let useWasmLocStreams = false;
@@ -631,33 +624,24 @@ const worker = {
                     }
                 }
             }
-            const mapX = mapId >> 8;
-            const mapY = mapId & 0xff;
-            const mapDistance = Math.max(
-                Math.abs((cameraMapX | 0) - (mapX | 0)),
-                Math.abs((cameraMapY | 0) - (mapY | 0)),
-            );
-            let renderFlags =
-                mapDistance >= safeLodDistance ? FRAME_RENDER_LIST_FLAG_IS_LOD : 0;
-            if (hoveredMapIds.has(mapId | 0)) {
-                renderFlags |= FRAME_RENDER_LIST_FLAG_IS_INTERACT;
-            }
-            tickPatchCountsByMapId[metaOff + 0] = mapId | 0;
-            renderListPacked[renderOff + 0] = mapId | 0;
             if (!state) {
-                renderListPacked[renderOff + 1] = renderFlags | 0;
-                offsetsPairs[mi * 2 + 0] = mapId;
-                offsetsPairs[mi * 2 + 1] = -1;
-                for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
-                    tickPatchCountsByMapId[metaOff + 1 + s] = 0;
-                    streamsForMap[s] = undefined;
-                }
+                entries[mi] = {
+                    mapId,
+                    renderFlags: computeFrameRenderFlags(
+                        mapId,
+                        cameraMapX,
+                        cameraMapY,
+                        safeLodDistance,
+                        hoveredMapIds,
+                        false,
+                    ),
+                    npcOffset: -1,
+                    tickPatchCounts: streamCounts,
+                    tickPatchStreams: streamsForMap,
+                };
                 continue;
             }
-            if ((state.npcs.length | 0) > 0) {
-                renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
-            }
-            renderListPacked[renderOff + 1] = renderFlags | 0;
+            const hasNpcs = (state.npcs.length | 0) > 0;
 
             // Seed NPC collision flags once per map so pathfinding avoids NPC overlaps.
             if (!state.seededNpcFlags) {
@@ -721,9 +705,6 @@ const worker = {
             };
             const npcOffset = npcGpuDataBuilder.addRenderable(target);
 
-            offsetsPairs[mi * 2 + 0] = mapId;
-            offsetsPairs[mi * 2 + 1] = npcOffset | 0;
-
             // Build draw-range tick patches (locs: changed frames only; npcs: emit per npc).
             state.locTickPatchCountsByVariant.fill(0);
             state.npcTickPatchCountsByVariant[0] = 0;
@@ -768,29 +749,29 @@ const worker = {
                     const wasmMapId = wasmCountsByMapId[wasmMetaOff + 0] | 0;
                     if (wasmMapId === (mapId | 0)) {
                         for (let v = 0; v < 8; v++) {
-                            tickPatchCountsByMapId[metaOff + 1 + v] =
+                            streamCounts[v] =
                                 wasmCountsByMapId[wasmMetaOff + 1 + v] | 0;
                         }
                     } else {
                         for (let v = 0; v < 8; v++) {
-                            tickPatchCountsByMapId[metaOff + 1 + v] =
+                            streamCounts[v] =
                                 state.locTickPatchCountsByVariant[v] | 0;
                         }
                     }
                 } else {
                     for (let v = 0; v < 8; v++) {
-                        tickPatchCountsByMapId[metaOff + 1 + v] =
+                        streamCounts[v] =
                             state.locTickPatchCountsByVariant[v] | 0;
                     }
                 }
             } else {
                 for (let v = 0; v < 8; v++) {
-                    tickPatchCountsByMapId[metaOff + 1 + v] =
+                    streamCounts[v] =
                         state.locTickPatchCountsByVariant[v] | 0;
                 }
             }
-            tickPatchCountsByMapId[metaOff + 1 + 8] = state.npcTickPatchCountsByVariant[0] | 0;
-            tickPatchCountsByMapId[metaOff + 1 + 9] = state.npcTickPatchCountsByVariant[1] | 0;
+            streamCounts[8] = state.npcTickPatchCountsByVariant[0] | 0;
+            streamCounts[9] = state.npcTickPatchCountsByVariant[1] | 0;
 
             for (let v = 0; v < 8; v++) {
                 streamsForMap[v] =
@@ -800,6 +781,20 @@ const worker = {
             }
             streamsForMap[8] = state.npcTickPatchesByVariant[0];
             streamsForMap[9] = state.npcTickPatchesByVariant[1];
+            entries[mi] = {
+                mapId,
+                renderFlags: computeFrameRenderFlags(
+                    mapId,
+                    cameraMapX,
+                    cameraMapY,
+                    safeLodDistance,
+                    hoveredMapIds,
+                    hasNpcs,
+                ),
+                npcOffset: npcOffset | 0,
+                tickPatchCounts: streamCounts,
+                tickPatchStreams: streamsForMap,
+            };
 
         }
 
@@ -815,14 +810,11 @@ const worker = {
         }
 
         const npcGpuFrameData = npcGpuDataBuilder.flushPacked();
-        const packet: FramePacket = buildFramePacket({
+        const packet: FramePacket = buildFramePacketFromMapEntries({
             frameCount: frameCount | 0,
             npcRingWriteIndex: newIndexMod | 0,
             npcGpuFrameData,
-            npcOffsetsByMapIdPairs: offsetsPairs,
-            renderListPacked,
-            tickPatchCountsByMapId,
-            tickPatchStreamsByMap,
+            entries,
         });
         return Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet));
     },

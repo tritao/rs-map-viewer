@@ -12,6 +12,7 @@ export type MapRuntimeStateStoreDeps = Readonly<{
     seqFrameLoader: SeqFrameLoader;
     npcTypeLoader: NpcTypeLoader;
     basTypeLoader: BasTypeLoader;
+    onMapRemoved?: (mapId: number) => void;
 }>;
 
 export class MapRuntimeStateStore {
@@ -20,11 +21,19 @@ export class MapRuntimeStateStore {
     constructor(private readonly deps: MapRuntimeStateStoreDeps) {}
 
     clear(): void {
+        if (this.deps.onMapRemoved) {
+            for (const mapId of this.tickStates.keys()) {
+                this.deps.onMapRemoved(mapId | 0);
+            }
+        }
         this.tickStates.clear();
     }
 
     removeMap(mapId: number): void {
-        this.tickStates.delete(mapId | 0);
+        const id = mapId | 0;
+        if (this.tickStates.delete(id) && this.deps.onMapRemoved) {
+            this.deps.onMapRemoved(id);
+        }
     }
 
     buildAndStoreMap(mapId: number, data: SdMapData, timeSec: number): void {
@@ -59,4 +68,3 @@ export class MapRuntimeStateStore {
         };
     }
 }
-

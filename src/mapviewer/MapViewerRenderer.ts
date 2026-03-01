@@ -8,14 +8,6 @@ import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { SdMapData } from "../renderer/loader/SdMapData";
 import {
-    buildFramePacket,
-    createTickPatchStreamsByMap,
-    FRAME_RENDER_LIST_FLAG_HAS_NPCS,
-    FRAME_RENDER_LIST_FLAG_IS_INTERACT,
-    FRAME_RENDER_LIST_FLAG_IS_LOD,
-    FRAME_RENDER_LIST_STRIDE,
-    NPC_OFFSETS_BY_MAP_ID_STRIDE,
-    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     type FramePacket,
 } from "../runtime/contracts/FramePacket";
@@ -23,6 +15,11 @@ import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/entities/NpcGpuData";
 import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/contracts/TickPatchStreams";
 import { TickController, type TickPatchSink } from "../runtime/tick/TickController";
+import {
+    buildFramePacketFromMapEntries,
+    computeFrameRenderFlags,
+    type FramePacketMapEntry,
+} from "../runtime/tick/MainThreadFramePacketBuilder";
 import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
@@ -121,6 +118,9 @@ export class MapViewerRenderer extends RendererMainLoop {
             seqFrameLoader: this.mapViewer.session.getSeqFrameLoader(),
             npcTypeLoader: this.mapViewer.session.getNpcTypeLoader(),
             basTypeLoader: this.mapViewer.session.getBasTypeLoader(),
+            onMapRemoved: (mapId: number): void => {
+                this.tickController.onRenderableRemoved(mapId);
+            },
         });
     }
 
@@ -240,7 +240,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
-        this.tickController.onRenderableRemoved(mapInfo.mapId);
         this.runtimeStateStore.removeMap(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
         const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
@@ -305,8 +304,8 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.latestFramePacketFrameCount = -1;
             this.lastNpcSimInWorker = false;
             this.mapManager.cleanUp();
-            this.tickController.reset();
             this.runtimeStateStore.clear();
+            this.tickController.reset();
 
             this.renderer = new WebGLMapRenderer(
                 this.mapViewer.session,
@@ -341,8 +340,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         await super.cleanUp();
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
-        this.tickController.reset();
         this.runtimeStateStore.clear();
+        this.tickController.reset();
     }
 
     override update(time: number, deltaTime: number) {
@@ -438,7 +437,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
 
         // Kick an async tick request if one isn't already in flight.
-        if (!this.pendingFramePacket && (ticksElapsed > 0 || clientTicksElapsed > 0)) {
+        if (
+            !this.pendingFramePacket &&
+            (ticksElapsed > 0 || clientTicksElapsed > 0 || !this.latestFramePacket)
+        ) {
             const n = this.mapManager.visibleMapCount | 0;
             const mapIds = new Int32Array(n);
             for (let i = 0; i < n; i++) {
@@ -487,15 +489,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const cameraMapX = this.camera.getMapX();
         const cameraMapY = this.camera.getMapY();
         const visibleCount = this.mapManager.visibleMapCount | 0;
-        const npcOffsetsByMapIdPairs = new Int32Array(
-            (visibleCount | 0) * NPC_OFFSETS_BY_MAP_ID_STRIDE,
-        );
-        const renderListPacked = new Int32Array((visibleCount | 0) * FRAME_RENDER_LIST_STRIDE);
-        const tickPatchCountsByMapId = new Int32Array(
-            (visibleCount | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
-        );
-        const tickPatchStreamsByMap = createTickPatchStreamsByMap(visibleCount | 0);
-        const tickPatchStreamAccumByMap: (number[] | undefined)[][] = new Array(visibleCount);
+        const entries = new Array<FramePacketMapEntry>(visibleCount | 0);
         const hoveredMapIds = this.getHoveredMapIds();
 
         const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
@@ -504,102 +498,82 @@ export class MapViewerRenderer extends RendererMainLoop {
         for (let i = 0; i < visibleCount; i++) {
             const mapInfo = this.mapManager.visibleMaps[i];
             const mapId = mapInfo.mapId | 0;
-            const pairOff = i * NPC_OFFSETS_BY_MAP_ID_STRIDE;
-            const renderOff = i * FRAME_RENDER_LIST_STRIDE;
-            const metaOff = i * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
             const streamsForMap = new Array<number[] | undefined>(TICK_PATCH_STREAM_COUNT);
-            tickPatchStreamAccumByMap[i] = streamsForMap;
-            let renderFlags = 0;
-            if (hoveredMapIds.has(mapId)) {
-                renderFlags |= FRAME_RENDER_LIST_FLAG_IS_INTERACT;
-            }
-            const mapDistance = Math.max(
-                Math.abs((mapInfo.mapX | 0) - cameraMapX),
-                Math.abs((mapInfo.mapY | 0) - cameraMapY),
-            );
-            if (mapDistance >= (this.renderer.lodDistance | 0)) {
-                renderFlags |= FRAME_RENDER_LIST_FLAG_IS_LOD;
-            }
-            npcOffsetsByMapIdPairs[pairOff + 0] = mapId;
-            npcOffsetsByMapIdPairs[pairOff + 1] = -1;
-            renderListPacked[renderOff + 0] = mapId;
-            tickPatchCountsByMapId[metaOff + 0] = mapId;
-            for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
-                tickPatchCountsByMapId[metaOff + 1 + s] = 0;
-            }
+            const streamCounts = new Int32Array(TICK_PATCH_STREAM_COUNT);
+            let hasNpcs = false;
+            let npcOffset = -1;
             const map = this.renderer.getMap(mapInfo.mapId)!;
-            if (!map || !map.canRender(this.renderer.stats.frameCount)) {
-                renderListPacked[renderOff + 1] = renderFlags | 0;
-                continue;
-            }
-            const tickState = this.runtimeStateStore.getTickState(mapId);
-            const mapNpcs = tickState?.getNpcs() ?? [];
-            if ((mapNpcs.length | 0) > 0) {
-                renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
-            }
-            this.simWorld.tickNpcMovement(
-                mapInfo.mapId,
-                this.pathfinder,
-                map.borderSize,
-                mapNpcs,
-                ticksElapsed,
-            );
-            if (tickState) {
-                this.tickController.tickRenderable(
-                    tickState,
-                    cycle,
-                    clientTicksElapsed,
-                    seqTypeLoader,
-                    seqFrameLoader,
-                    this.createTickPatchSink(
-                        tickPatchCountsByMapId,
-                        metaOff,
-                        streamsForMap,
-                    ),
+            if (map && map.canRender(this.renderer.stats.frameCount)) {
+                const tickState = this.runtimeStateStore.getTickState(mapId);
+                const mapNpcs = tickState?.getNpcs() ?? [];
+                if ((mapNpcs.length | 0) > 0) {
+                    hasNpcs = true;
+                }
+                this.simWorld.tickNpcMovement(
+                    mapInfo.mapId,
+                    this.pathfinder,
+                    map.borderSize,
+                    mapNpcs,
+                    ticksElapsed,
                 );
-            }
-
-            // Build per-frame NPC GPU instance data outside the WebGL renderer. This relies on
-            // the map-square implementation exposing the scheduling offsets + tile flags.
-            if (this.renderer.loadNpcs) {
-                const target = this.runtimeStateStore.createNpcGpuDataTarget(
-                    mapId,
-                    (level: number, tileX: number, tileY: number): number =>
-                        map.getTileRenderFlag(level, tileX, tileY),
-                );
-                if (target) {
-                    npcOffsetsByMapIdPairs[pairOff + 1] = this.npcGpuDataBuilder.addRenderable(
-                        target,
+                if (tickState) {
+                    this.tickController.tickRenderable(
+                        tickState,
+                        cycle,
+                        clientTicksElapsed,
+                        seqTypeLoader,
+                        seqFrameLoader,
+                        this.createTickPatchSink(streamCounts, streamsForMap),
                     );
                 }
+
+                // Build per-frame NPC GPU instance data outside the WebGL renderer. This relies on
+                // the map-square implementation exposing the scheduling offsets + tile flags.
+                if (this.renderer.loadNpcs) {
+                    const target = this.runtimeStateStore.createNpcGpuDataTarget(
+                        mapId,
+                        (level: number, tileX: number, tileY: number): number =>
+                            map.getTileRenderFlag(level, tileX, tileY),
+                    );
+                    if (target) {
+                        npcOffset = this.npcGpuDataBuilder.addRenderable(target);
+                    }
+                }
             }
-            renderListPacked[renderOff + 1] = renderFlags | 0;
+
+            const renderFlags = computeFrameRenderFlags(
+                mapId,
+                cameraMapX,
+                cameraMapY,
+                this.renderer.lodDistance,
+                hoveredMapIds,
+                hasNpcs,
+            );
+            const streams = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
+            for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
+                const src = streamsForMap[s];
+                if (src && (src.length | 0) > 0) {
+                    streams[s] = Int32Array.from(src);
+                }
+            }
+            entries[i] = {
+                mapId,
+                renderFlags,
+                npcOffset,
+                tickPatchCounts: streamCounts,
+                tickPatchStreams: streams,
+            };
         }
 
         const npcGpuFrameData = this.renderer.loadNpcs
             ? this.npcGpuDataBuilder.flushPacked()
             : { width: 16, height: 1, data: new Uint16Array(16 * 4) };
-        for (let i = 0; i < visibleCount; i++) {
-            const srcStreams = tickPatchStreamAccumByMap[i];
-            if (!srcStreams) {
-                continue;
-            }
-            for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
-                const src = srcStreams[s];
-                if (src && (src.length | 0) > 0) {
-                    tickPatchStreamsByMap[i]![s] = Int32Array.from(src);
-                }
-            }
-        }
         const frameCount = this.renderer.stats.frameCount | 0;
-        return buildFramePacket({
+        return buildFramePacketFromMapEntries({
             frameCount,
             npcRingWriteIndex: frameCount % NPC_DATA_TEXTURE_RING_SIZE,
             npcGpuFrameData,
-            npcOffsetsByMapIdPairs,
-            renderListPacked,
-            tickPatchCountsByMapId,
-            tickPatchStreamsByMap,
+            entries,
         });
     }
 
@@ -616,8 +590,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private createTickPatchSink(
-        tickPatchCountsByMapId: Int32Array,
-        metaOff: number,
+        streamCounts: Int32Array,
         streamsForMap: (number[] | undefined)[],
     ): TickPatchSink {
         return {
@@ -632,8 +605,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     return;
                 }
                 const streamIndex = variant as number;
-                const countOff = (metaOff + 1 + streamIndex) | 0;
-                tickPatchCountsByMapId[countOff] = (tickPatchCountsByMapId[countOff] + 1) | 0;
+                streamCounts[streamIndex] = (streamCounts[streamIndex] + 1) | 0;
                 let stream = streamsForMap[streamIndex];
                 if (!stream) {
                     stream = [];
@@ -652,8 +624,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     return;
                 }
                 const streamIndex = (8 + (variant as number)) | 0;
-                const countOff = (metaOff + 1 + streamIndex) | 0;
-                tickPatchCountsByMapId[countOff] = (tickPatchCountsByMapId[countOff] + 1) | 0;
+                streamCounts[streamIndex] = (streamCounts[streamIndex] + 1) | 0;
                 let stream = streamsForMap[streamIndex];
                 if (!stream) {
                     stream = [];
