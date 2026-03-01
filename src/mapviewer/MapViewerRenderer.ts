@@ -20,7 +20,7 @@ import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
-import { FramePacketSource } from "./MapRenderFramePacketSource";
+import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -34,7 +34,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly tickCoordinator = new MapRenderTickCoordinator();
-    private readonly workerFramePacketSource: FramePacketSource;
+    private readonly framePacketSource: WorkerFramePacketSource;
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
@@ -54,7 +54,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.workerFramePacketSource = new FramePacketSource({
+        this.framePacketSource = new WorkerFramePacketSource({
             workerPool: this.workerPool,
             getRenderer: () => this.renderer,
             getMapManager: () => this.mapManager,
@@ -288,7 +288,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
-            this.tickCoordinator.resetForCacheContext(this.workerFramePacketSource);
+            this.tickCoordinator.resetForCacheContext(this.framePacketSource);
             this.mapManager.cleanUp();
 
             this.renderer = new WebGLMapRenderer(
@@ -320,7 +320,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         await super.cleanUp();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapSimTokenByMapId.clear();
-        this.tickCoordinator.resetForShutdown(this.workerFramePacketSource);
+        this.tickCoordinator.resetForShutdown(this.framePacketSource);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
     }
@@ -365,7 +365,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 ticksElapsed,
                 clientTicksElapsed,
             },
-            workerSource: this.workerFramePacketSource,
+            packetSource: this.framePacketSource,
             applyFramePacket: (packet) => this.renderer.applyFramePacket(packet),
         });
     }

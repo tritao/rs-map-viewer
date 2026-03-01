@@ -19,19 +19,19 @@ export interface MapRenderFramePacketSource {
     reset(): void;
 }
 
-type FramePacketSourceDeps = Readonly<{
+type WorkerFramePacketSourceDeps = Readonly<{
     workerPool: RenderDataWorkerPool;
     getRenderer(): MapRenderer<MapSquareRenderable, MapData>;
     getMapManager(): MapManager;
     getCamera(): Camera;
 }>;
 
-export class FramePacketSource implements MapRenderFramePacketSource {
+export class WorkerFramePacketSource implements MapRenderFramePacketSource {
     private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;
 
-    constructor(private readonly deps: FramePacketSourceDeps) {}
+    constructor(private readonly deps: WorkerFramePacketSourceDeps) {}
 
     nextPacket(input: TickFrameInput): FramePacket | undefined {
         const packet = this.latestFramePacket;

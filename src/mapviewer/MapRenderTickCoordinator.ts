@@ -14,7 +14,7 @@ export type TickClockState = Readonly<{
 
 type TickPassInput = Readonly<{
     frameInput: TickFrameInput;
-    workerSource: MapRenderFramePacketSource;
+    packetSource: MapRenderFramePacketSource;
     applyFramePacket(packet: FramePacket | undefined): void;
 }>;
 
@@ -62,7 +62,7 @@ export class MapRenderTickCoordinator {
     }
 
     applyTick(input: TickPassInput): void {
-        const packet = input.workerSource.nextPacket(input.frameInput);
+        const packet = input.packetSource.nextPacket(input.frameInput);
         input.applyFramePacket(packet);
     }
 
@@ -70,13 +70,13 @@ export class MapRenderTickCoordinator {
         this.needsClockResync = true;
     }
 
-    resetForCacheContext(workerSource: MapRenderFramePacketSource): void {
-        workerSource.reset();
+    resetForCacheContext(packetSource: MapRenderFramePacketSource): void {
+        packetSource.reset();
         this.requestClockResync();
     }
 
-    resetForShutdown(workerSource: MapRenderFramePacketSource): void {
-        this.resetForCacheContext(workerSource);
+    resetForShutdown(packetSource: MapRenderFramePacketSource): void {
+        this.resetForCacheContext(packetSource);
         this.lastTick = 0;
         this.lastClientTick = 0;
         this.needsClockResync = true;
