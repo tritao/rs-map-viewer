@@ -17,7 +17,3 @@ export type NpcGpuDataTarget = Readonly<{
 // - per-map offset rings
 // - worker-side NPC sim state
 export const NPC_DATA_TEXTURE_RING_SIZE = 5;
-
-export type NpcGpuDataConsumer = Readonly<{
-    setNpcGpuFrameData(data: NpcGpuFrameData): void;
-}>;

@@ -32,7 +32,7 @@ import {
 } from "../interaction/InteractionState";
 import type { TickControllerRenderer } from "../patch/TickCapability";
 import { NpcDataTextureRing } from "./texture/NpcDataTextureRing";
-import type { NpcGpuDataConsumer, NpcGpuFrameData } from "../npc/NpcGpuData";
+import type { NpcGpuFrameData } from "../npc/NpcGpuData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
 import {
     chooseLocTickPatchVariant,
@@ -72,7 +72,6 @@ type FrameRenderMap = Readonly<{
 
 export class WebGLMapRenderer
     extends MapRenderer<WebGLMapSquare, SdMapData>
-    implements NpcGpuDataConsumer
 {
     protected readonly textures: WebGLTextureSystem;
     private readonly interactions: WebGLInteractionSystem;
@@ -152,10 +151,6 @@ export class WebGLMapRenderer
     }
 
     override getInteractionSnapshotRenderer(): InteractionSnapshotRenderer | undefined {
-        return this;
-    }
-
-    override getNpcGpuDataConsumerRenderer(): NpcGpuDataConsumer | undefined {
         return this;
     }
 
@@ -555,10 +550,6 @@ export class WebGLMapRenderer
         return isDrawRangePatchBackendReady();
     }
 
-    setNpcGpuFrameData(data: NpcGpuFrameData): void {
-        this.npcGpuFrameData = data;
-    }
-
     applyLocAnimationPatchesForPass(
         renderable: WebGLMapSquare,
         isAlpha: boolean,
@@ -638,45 +629,27 @@ export class WebGLMapRenderer
     }
 
     private collectFrameRenderMaps(): FrameRenderMap[] {
-        const cameraMapX = this.camera.getMapX();
-        const cameraMapY = this.camera.getMapY();
         const out: FrameRenderMap[] = [];
         const packed = this.frameRenderListPacked;
-        if (packed !== undefined) {
-            const entryCount = (packed.length / FRAME_RENDER_LIST_STRIDE) | 0;
-            for (let i = 0; i < entryCount; i++) {
-                const off = (i * FRAME_RENDER_LIST_STRIDE) | 0;
-                const mapId = packed[off + 0] | 0;
-                const flags = packed[off + 1] | 0;
-                const map = this.loadedMaps.get(mapId);
-                if (!map || !map.canRender(this.stats.frameCount)) {
-                    continue;
-                }
-                out.push({
-                    mapId,
-                    map,
-                    hasNpcs: (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0,
-                    isInteract: (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0,
-                    isLod: (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0,
-                });
-            }
+        if (packed === undefined) {
             return out;
         }
-        const hoveredMapIds = this.interactions.getHoveredMapIds();
 
-        for (let i = 0; i < this.visibleMapCount; i++) {
-            const mapInfo = this.visibleMaps[i];
-            const map = this.loadedMaps.get(mapInfo.mapId);
+        const entryCount = (packed.length / FRAME_RENDER_LIST_STRIDE) | 0;
+        for (let i = 0; i < entryCount; i++) {
+            const off = (i * FRAME_RENDER_LIST_STRIDE) | 0;
+            const mapId = packed[off + 0] | 0;
+            const flags = packed[off + 1] | 0;
+            const map = this.loadedMaps.get(mapId);
             if (!map || !map.canRender(this.stats.frameCount)) {
                 continue;
             }
-            const isLod = map.getMapDistance(cameraMapX, cameraMapY) >= this.lodDistance;
             out.push({
-                mapId: mapInfo.mapId | 0,
+                mapId,
                 map,
-                hasNpcs: (map.npcs.length | 0) > 0,
-                isInteract: hoveredMapIds.has(map.id),
-                isLod,
+                hasNpcs: (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0,
+                isInteract: (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0,
+                isLod: (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0,
             });
         }
         return out;

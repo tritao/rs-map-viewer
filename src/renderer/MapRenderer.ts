@@ -13,7 +13,7 @@ import type {
     InteractionSnapshotRenderer,
 } from "./interaction/InteractionState";
 import type { TickCapability, TickControllerRenderer } from "./patch/TickCapability";
-import type { NpcGpuDataConsumer, NpcGpuDataTarget } from "./npc/NpcGpuData";
+import type { NpcGpuDataTarget } from "./npc/NpcGpuData";
 import type { FramePacket } from "./packet/FramePacket";
 
 export enum TextureFilterMode {
@@ -151,11 +151,6 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     // Optional capability: renderer can expose interaction snapshot data for worker-side planning.
     getInteractionSnapshotRenderer(): InteractionSnapshotRenderer | undefined {
-        return undefined;
-    }
-
-    // Optional capability: renderer instance can accept packed NPC GPU instance data.
-    getNpcGpuDataConsumerRenderer(): NpcGpuDataConsumer | undefined {
         return undefined;
     }
 

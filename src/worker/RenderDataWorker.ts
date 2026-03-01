@@ -15,7 +15,7 @@ import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
 import { orderByPacketKeys } from "../renderer/npc/orderByPacketKeys";
 import type { FramePacket } from "../renderer/packet/FramePacket";
 import {
-    buildTickPatchPackedFromCountsAndStreams,
+    buildFramePacket,
     createTickPatchStreamsByMap,
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
@@ -814,21 +814,16 @@ const worker = {
             );
         }
 
-        const tickPatchPacked = buildTickPatchPackedFromCountsAndStreams(
-            tickPatchCountsByMapId,
-            tickPatchStreamsByMap,
-        );
-
         const npcGpuFrameData = npcGpuDataBuilder.flushPacked();
-        const packet: FramePacket = {
+        const packet: FramePacket = buildFramePacket({
             frameCount: frameCount | 0,
             npcRingWriteIndex: newIndexMod | 0,
             npcGpuFrameData,
             npcOffsetsByMapIdPairs: offsetsPairs,
             renderListPacked,
             tickPatchCountsByMapId,
-            tickPatchPacked,
-        };
+            tickPatchStreamsByMap,
+        });
         return Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet));
     },
     async setVars(values: Int32Array): Promise<void> {

@@ -1,4 +1,4 @@
-import type { NpcGpuFrameData } from "../npc/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../npc/NpcGpuData";
 
 // Meta pairs: [mapId, npcDataOffset]
 export const NPC_OFFSETS_BY_MAP_ID_STRIDE = 2;
@@ -6,6 +6,10 @@ export const FRAME_RENDER_LIST_STRIDE = 2;
 export const FRAME_RENDER_LIST_FLAG_HAS_NPCS = 1 << 0;
 export const FRAME_RENDER_LIST_FLAG_IS_LOD = 1 << 1;
 export const FRAME_RENDER_LIST_FLAG_IS_INTERACT = 1 << 2;
+const FRAME_RENDER_LIST_FLAGS_MASK =
+    FRAME_RENDER_LIST_FLAG_HAS_NPCS |
+    FRAME_RENDER_LIST_FLAG_IS_LOD |
+    FRAME_RENDER_LIST_FLAG_IS_INTERACT;
 
 // Per-map tick patch counts cover:
 // 8 loc variants (base/alpha/lod/lodAlpha/interact/interactAlpha/interactLod/interactLodAlpha)
@@ -71,6 +75,15 @@ export type TickPatchStreamSource = (
 ) => Int32Array | undefined;
 
 export type TickPatchStreamsByMap = (Int32Array | undefined)[][];
+export type BuildFramePacketInput = Readonly<{
+    frameCount: number;
+    npcRingWriteIndex: number;
+    npcGpuFrameData: NpcGpuFrameData;
+    npcOffsetsByMapIdPairs: Int32Array;
+    renderListPacked: Int32Array;
+    tickPatchCountsByMapId: Int32Array;
+    tickPatchStreamsByMap: TickPatchStreamsByMap;
+}>;
 
 export function createTickPatchStreamsByMap(mapEntryCount: number): TickPatchStreamsByMap {
     const out: TickPatchStreamsByMap = new Array(mapEntryCount | 0);
@@ -141,6 +154,113 @@ export function buildTickPatchPackedFromCountsAndStreams(
             return patchCount > 0 ? undefined : new Int32Array(0);
         },
     );
+}
+
+function validateFramePacketStrict(packet: FramePacket): void {
+    const frameCount = packet.frameCount | 0;
+    if (frameCount < 0) {
+        throw new Error(`[map-render][frame-packet] frameCount invalid: ${frameCount}`);
+    }
+
+    const ring = packet.npcRingWriteIndex | 0;
+    if (ring < 0 || ring >= NPC_DATA_TEXTURE_RING_SIZE) {
+        throw new Error(
+            `[map-render][frame-packet] npcRingWriteIndex out of range: ` +
+                `value=${ring} size=${NPC_DATA_TEXTURE_RING_SIZE}`,
+        );
+    }
+
+    const gpu = packet.npcGpuFrameData;
+    if (
+        !(gpu.data instanceof Uint16Array) ||
+        (gpu.width | 0) <= 0 ||
+        (gpu.height | 0) <= 0
+    ) {
+        throw new Error(
+            `[map-render][frame-packet] npcGpuFrameData invalid: ` +
+                `width=${gpu.width} height=${gpu.height} data=${gpu.data?.constructor?.name ?? "null"}`,
+        );
+    }
+    const expectedGpuLen = ((gpu.width | 0) * (gpu.height | 0) * 4) | 0;
+    if ((gpu.data.length | 0) !== (expectedGpuLen | 0)) {
+        throw new Error(
+            `[map-render][frame-packet] npcGpuFrameData.data length mismatch: ` +
+                `expected=${expectedGpuLen} actual=${gpu.data.length | 0}`,
+        );
+    }
+
+    const renderInts = packet.renderListPacked.length | 0;
+    if ((renderInts % FRAME_RENDER_LIST_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] renderListPacked length misaligned: ` +
+                `len=${renderInts} stride=${FRAME_RENDER_LIST_STRIDE}`,
+        );
+    }
+
+    const offsetInts = packet.npcOffsetsByMapIdPairs.length | 0;
+    if ((offsetInts % NPC_OFFSETS_BY_MAP_ID_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] npcOffsetsByMapIdPairs length misaligned: ` +
+                `len=${offsetInts} stride=${NPC_OFFSETS_BY_MAP_ID_STRIDE}`,
+        );
+    }
+
+    const tickMetaInts = packet.tickPatchCountsByMapId.length | 0;
+    if ((tickMetaInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
+                `len=${tickMetaInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
+        );
+    }
+
+    const renderCount = Math.floor(renderInts / FRAME_RENDER_LIST_STRIDE);
+    const offsetCount = Math.floor(offsetInts / NPC_OFFSETS_BY_MAP_ID_STRIDE);
+    const tickCount = Math.floor(tickMetaInts / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE);
+    if (renderCount !== offsetCount || renderCount !== tickCount) {
+        throw new Error(
+            `[map-render][frame-packet] entry count mismatch: ` +
+                `render=${renderCount} offsets=${offsetCount} tick=${tickCount}`,
+        );
+    }
+
+    for (let i = 0; i < renderCount; i++) {
+        const renderOff = (i | 0) * FRAME_RENDER_LIST_STRIDE;
+        const offsetOff = (i | 0) * NPC_OFFSETS_BY_MAP_ID_STRIDE;
+        const tickOff = (i | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+        const renderMapId = packet.renderListPacked[renderOff + 0] | 0;
+        const renderFlags = packet.renderListPacked[renderOff + 1] | 0;
+        const offsetsMapId = packet.npcOffsetsByMapIdPairs[offsetOff + 0] | 0;
+        const tickMapId = packet.tickPatchCountsByMapId[tickOff + 0] | 0;
+        if ((renderFlags & ~FRAME_RENDER_LIST_FLAGS_MASK) !== 0) {
+            throw new Error(
+                `[map-render][frame-packet] render flags invalid: ` +
+                    `entry=${i | 0} mapId=${renderMapId} flags=${renderFlags}`,
+            );
+        }
+        if ((renderMapId | 0) !== (offsetsMapId | 0) || (renderMapId | 0) !== (tickMapId | 0)) {
+            throw new Error(
+                `[map-render][frame-packet] mapId order mismatch: ` +
+                    `entry=${i | 0} render=${renderMapId} offsets=${offsetsMapId} tick=${tickMapId}`,
+            );
+        }
+    }
+}
+
+export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
+    const packet: FramePacket = {
+        frameCount: input.frameCount | 0,
+        npcRingWriteIndex: input.npcRingWriteIndex | 0,
+        npcGpuFrameData: input.npcGpuFrameData,
+        npcOffsetsByMapIdPairs: input.npcOffsetsByMapIdPairs,
+        renderListPacked: input.renderListPacked,
+        tickPatchCountsByMapId: input.tickPatchCountsByMapId,
+        tickPatchPacked: buildTickPatchPackedFromCountsAndStreams(
+            input.tickPatchCountsByMapId,
+            input.tickPatchStreamsByMap,
+        ),
+    };
+    validateFramePacketStrict(packet);
+    return packet;
 }
 
 export function parseFramePacketRenderList(
@@ -242,12 +362,8 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
     if (!packet) {
         return undefined;
     }
+    validateFramePacketStrict(packet);
     const npcRingWriteIndex = packet.npcRingWriteIndex | 0;
-    if (npcRingWriteIndex < 0) {
-        throw new Error(
-            `[map-render][frame-packet] npcRingWriteIndex invalid: ${npcRingWriteIndex}`,
-        );
-    }
 
     return {
         frameCount: packet.frameCount | 0,

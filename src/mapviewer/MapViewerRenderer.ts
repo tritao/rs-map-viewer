@@ -8,7 +8,7 @@ import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../renderer/loader/MapData";
 import { SdMapData } from "../renderer/loader/SdMapData";
 import {
-    buildTickPatchPackedFromCountsAndStreams,
+    buildFramePacket,
     createTickPatchStreamsByMap,
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
@@ -607,20 +607,17 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
             }
         }
-        const tickPatchPacked = buildTickPatchPackedFromCountsAndStreams(
-            tickPatchCountsByMapId,
-            tickPatchStreamsByMap,
-        );
         const frameCount = this.renderer.stats.frameCount | 0;
-        this.renderer.applyFramePacket({
+        const packet = buildFramePacket({
             frameCount,
             npcRingWriteIndex: frameCount % NPC_DATA_TEXTURE_RING_SIZE,
             npcGpuFrameData,
             npcOffsetsByMapIdPairs,
             renderListPacked,
             tickPatchCountsByMapId,
-            tickPatchPacked,
+            tickPatchStreamsByMap,
         });
+        this.renderer.applyFramePacket(packet);
     }
 
     override render(time: number, deltaTime: number, resized: boolean) {
