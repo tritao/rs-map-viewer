@@ -42,7 +42,6 @@ export type MapViewerRuntimeOptions = Readonly<{
     mapRenderTickBackend?: BackendKind;
     mapRenderTelemetry: boolean;
     mapRenderNpcSimInWorker?: boolean;
-    mapRenderDebugTickSquare?: string;
 }>;
 
 const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
@@ -57,7 +56,6 @@ function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRunti
         mapRenderTelemetry:
             options?.mapRenderTelemetry ?? DEFAULT_RUNTIME_OPTIONS.mapRenderTelemetry,
         mapRenderNpcSimInWorker: options?.mapRenderNpcSimInWorker,
-        mapRenderDebugTickSquare: options?.mapRenderDebugTickSquare,
     };
 }
 
@@ -66,8 +64,7 @@ function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOpti
         a.mapRenderBackend === b.mapRenderBackend &&
         a.mapRenderTickBackend === b.mapRenderTickBackend &&
         a.mapRenderTelemetry === b.mapRenderTelemetry &&
-        a.mapRenderNpcSimInWorker === b.mapRenderNpcSimInWorker &&
-        a.mapRenderDebugTickSquare === b.mapRenderDebugTickSquare
+        a.mapRenderNpcSimInWorker === b.mapRenderNpcSimInWorker
     );
 }
 
@@ -270,9 +267,6 @@ export class MapViewer {
         }
         if (this.runtimeOptions.mapRenderNpcSimInWorker) {
             params["mrnpcw"] = "1";
-        }
-        if (this.runtimeOptions.mapRenderDebugTickSquare) {
-            params["mrdtick"] = this.runtimeOptions.mapRenderDebugTickSquare;
         }
         if (this.devFixedMapSquare) {
             params["devsq"] = `${this.devFixedMapSquare.mapX}:${this.devFixedMapSquare.mapY}`;

@@ -10,11 +10,17 @@ import { LocAnimated } from "../renderer/loc/LocAnimated";
 import type { LocAnimatedData } from "../renderer/loc/LocAnimatedData";
 import { Npc } from "../renderer/npc/Npc";
 import type { NpcData } from "../renderer/npc/NpcData";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/npc/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../renderer/npc/NpcGpuData";
 import { NpcGpuDataBuilder } from "../renderer/npc/NpcGpuDataBuilder";
 import { orderByPacketKeys } from "../renderer/npc/orderByPacketKeys";
 import type { FramePacket } from "../renderer/packet/FramePacket";
 import {
+    buildTickPatchPackedFromCountsAndStreams,
+    createTickPatchStreamsByMap,
+    FRAME_RENDER_LIST_FLAG_HAS_NPCS,
+    FRAME_RENDER_LIST_FLAG_IS_INTERACT,
+    FRAME_RENDER_LIST_FLAG_IS_LOD,
+    FRAME_RENDER_LIST_STRIDE,
     NPC_OFFSETS_BY_MAP_ID_STRIDE,
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -89,8 +95,6 @@ export type WorkerRuntimeOptions = Readonly<{
     mapRenderTelemetry?: boolean;
     // Experimental: run NPC movement sim + GPU packing in the worker, emitting per-frame packets.
     mapRenderNpcSimInWorker?: boolean;
-    // Debug-only: "mapX:mapY" to enable verbose tick/patch logging/validation for a single square.
-    mapRenderDebugTickSquare?: string;
 }>;
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
@@ -101,7 +105,6 @@ type MapNpcSimState = {
     collisionMaps: CollisionMap[];
     seededNpcFlags: boolean;
     npcs: Npc[];
-    npcDataTextureOffsets: number[];
     locsAnimated: LocAnimated[];
 
     // Tick patch scratch buffers (per-map) to avoid per-frame allocations.
@@ -114,7 +117,6 @@ type MapNpcSimState = {
 const npcSimByMapId = new Map<number, MapNpcSimState>();
 const npcSimPathfinder = new Pathfinder();
 const npcGpuDataBuilder = new NpcGpuDataBuilder();
-
 const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBridgeV2;
 let workerRuntimeOptions: WorkerRuntimeOptions | undefined;
 
@@ -511,7 +513,6 @@ const worker = {
             collisionMaps,
             seededNpcFlags: false,
             npcs,
-            npcDataTextureOffsets: new Array(NPC_DATA_TEXTURE_RING_SIZE).fill(-1),
             locsAnimated: locs,
             locTickPatchesByVariant,
             locTickPatchCountsByVariant: new Int32Array(8),
@@ -529,6 +530,10 @@ const worker = {
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
+        cameraMapX: number,
+        cameraMapY: number,
+        lodDistance: number,
+        hoveredMapIdsPacked: Int32Array,
     ): Promise<TransferDescriptor<FramePacket | undefined>> {
         if (!(mapIds instanceof Int32Array) || mapIds.length === 0) {
             return Transfer<FramePacket | undefined>(undefined, []);
@@ -541,9 +546,11 @@ const worker = {
         npcGpuDataBuilder.beginFrame();
 
         const offsetsPairs = new Int32Array((mapIds.length | 0) * NPC_OFFSETS_BY_MAP_ID_STRIDE);
+        const renderListPacked = new Int32Array((mapIds.length | 0) * FRAME_RENDER_LIST_STRIDE);
         const tickPatchCountsByMapId = new Int32Array(
             (mapIds.length | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
         );
+        const tickPatchStreamsByMap = createTickPatchStreamsByMap(mapIds.length | 0);
 
         const safeTicksElapsed = Math.max(0, Math.min(ticksElapsed | 0, 4));
         const safeClientTicks = Math.max(0, Math.min(clientTicksElapsed | 0, 50));
@@ -575,21 +582,82 @@ const worker = {
 
         const ringSize = NPC_DATA_TEXTURE_RING_SIZE;
         const newIndexMod = (frameCount | 0) % ringSize;
+        const safeLodDistance = Math.max(0, lodDistance | 0);
+        const hoveredMapIds = new Set<number>();
+        if (hoveredMapIdsPacked instanceof Int32Array) {
+            for (let i = 0; i < hoveredMapIdsPacked.length; i++) {
+                hoveredMapIds.add(hoveredMapIdsPacked[i] | 0);
+            }
+        }
+        let wasmReadOff = 0;
 
-        let totalTickPatchCount = 0;
         for (let mi = 0; mi < mapIds.length; mi++) {
             const mapId = mapIds[mi] | 0;
             const state = npcSimByMapId.get(mapId);
             const metaOff = (mi | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+            const renderOff = (mi | 0) * FRAME_RENDER_LIST_STRIDE;
+            const streamsForMap = tickPatchStreamsByMap[mi]!;
+            const wasmStreamsForMap = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
+            let hasWasmCountsForMap = false;
+            let useWasmLocStreams = false;
+            if (
+                wasmPatchesPacked instanceof Int32Array &&
+                wasmCountsByMapId instanceof Int32Array &&
+                metaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE <= wasmCountsByMapId.length
+            ) {
+                hasWasmCountsForMap = true;
+                useWasmLocStreams = (wasmCountsByMapId[metaOff + 0] | 0) === (mapId | 0);
+                for (let streamIndex = 0; streamIndex < TICK_PATCH_STREAM_COUNT; streamIndex++) {
+                    const wasmCount = wasmCountsByMapId[metaOff + 1 + streamIndex] | 0;
+                    const wasmLen = (wasmCount * TICK_PATCH_ENTRY_STRIDE) | 0;
+                    if (wasmLen > 0) {
+                        const end = (wasmReadOff + wasmLen) | 0;
+                        if (end > (wasmPatchesPacked.length | 0)) {
+                            throw new Error(
+                                `[map-render][tick][cpp-wasm] wasm patch stream OOB ` +
+                                    `mapId=${mapId | 0} stream=${streamIndex | 0} readOff=${
+                                        wasmReadOff | 0
+                                    } len=${wasmLen | 0} ` +
+                                    `packedLen=${wasmPatchesPacked.length | 0}`,
+                            );
+                        }
+                        if (useWasmLocStreams) {
+                            wasmStreamsForMap[streamIndex] = wasmPatchesPacked.subarray(
+                                wasmReadOff,
+                                end,
+                            );
+                        }
+                        wasmReadOff = end;
+                    }
+                }
+            }
+            const mapX = mapId >> 8;
+            const mapY = mapId & 0xff;
+            const mapDistance = Math.max(
+                Math.abs((cameraMapX | 0) - (mapX | 0)),
+                Math.abs((cameraMapY | 0) - (mapY | 0)),
+            );
+            let renderFlags =
+                mapDistance >= safeLodDistance ? FRAME_RENDER_LIST_FLAG_IS_LOD : 0;
+            if (hoveredMapIds.has(mapId | 0)) {
+                renderFlags |= FRAME_RENDER_LIST_FLAG_IS_INTERACT;
+            }
             tickPatchCountsByMapId[metaOff + 0] = mapId | 0;
+            renderListPacked[renderOff + 0] = mapId | 0;
             if (!state) {
+                renderListPacked[renderOff + 1] = renderFlags | 0;
                 offsetsPairs[mi * 2 + 0] = mapId;
                 offsetsPairs[mi * 2 + 1] = -1;
                 for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
                     tickPatchCountsByMapId[metaOff + 1 + s] = 0;
+                    streamsForMap[s] = undefined;
                 }
                 continue;
             }
+            if ((state.npcs.length | 0) > 0) {
+                renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
+            }
+            renderListPacked[renderOff + 1] = renderFlags | 0;
 
             // Seed NPC collision flags once per map so pathfinding avoids NPC overlaps.
             if (!state.seededNpcFlags) {
@@ -643,18 +711,18 @@ const worker = {
             const npcCount = state.npcs.length | 0;
 
             // Build packed NPC gpu info (x,y,rotationAndPlane,typeId) and per-map offset.
-            const target = {
+            const target: NpcGpuDataTarget = {
+                id: mapId | 0,
                 npcs: state.npcs,
-                npcDataTextureOffsets: state.npcDataTextureOffsets,
                 getTileRenderFlag: (_level: number, tileX: number, tileY: number): number => {
                     const col = state.tileRenderFlagsLevel1[(tileX + state.borderSize) | 0];
                     return col ? col[(tileY + state.borderSize) | 0] | 0 : 0;
                 },
             };
-            npcGpuDataBuilder.addRenderable(target as any, frameCount | 0);
+            const npcOffset = npcGpuDataBuilder.addRenderable(target);
 
             offsetsPairs[mi * 2 + 0] = mapId;
-            offsetsPairs[mi * 2 + 1] = state.npcDataTextureOffsets[newIndexMod] | 0;
+            offsetsPairs[mi * 2 + 1] = npcOffset | 0;
 
             // Build draw-range tick patches (locs: changed frames only; npcs: emit per npc).
             state.locTickPatchCountsByVariant.fill(0);
@@ -724,94 +792,40 @@ const worker = {
             tickPatchCountsByMapId[metaOff + 1 + 8] = state.npcTickPatchCountsByVariant[0] | 0;
             tickPatchCountsByMapId[metaOff + 1 + 9] = state.npcTickPatchCountsByVariant[1] | 0;
 
-            // Accumulate total patch tuple count for packed output sizing.
-            for (let s = 0; s < 8; s++) {
-                totalTickPatchCount += tickPatchCountsByMapId[metaOff + 1 + s] | 0;
+            for (let v = 0; v < 8; v++) {
+                streamsForMap[v] =
+                    useWasmLocStreams && hasWasmCountsForMap
+                        ? wasmStreamsForMap[v]
+                        : state.locTickPatchesByVariant[v];
             }
-            totalTickPatchCount += state.npcTickPatchCountsByVariant[0] | 0;
-            totalTickPatchCount += state.npcTickPatchCountsByVariant[1] | 0;
+            streamsForMap[8] = state.npcTickPatchesByVariant[0];
+            streamsForMap[9] = state.npcTickPatchesByVariant[1];
+
         }
 
-        const tickPatchPacked = new Int32Array(
-            Math.max(0, totalTickPatchCount | 0) * TICK_PATCH_ENTRY_STRIDE,
-        );
-        let writeOff = 0;
-        let wasmReadOff = 0;
-        for (let mi = 0; mi < mapIds.length; mi++) {
-            const mapId = mapIds[mi] | 0;
-            const state = npcSimByMapId.get(mapId);
-            if (!state) {
-                continue;
-            }
-            const metaOff = (mi | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
-            if (
-                wasmPatchesPacked instanceof Int32Array &&
-                wasmCountsByMapId instanceof Int32Array
-            ) {
-                // Copy loc streams [0..7] from wasm tick output when available, otherwise skip
-                // them and use TS patches (keeping wasmReadOff aligned).
-                if (metaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE <= wasmCountsByMapId.length) {
-                    for (let v = 0; v < 8; v++) {
-                        const wasmCount = wasmCountsByMapId[metaOff + 1 + v] | 0;
-                        const len = (wasmCount * TICK_PATCH_ENTRY_STRIDE) | 0;
-                        if (len > 0) {
-                            const end = (wasmReadOff + len) | 0;
-                            if (end > (wasmPatchesPacked.length | 0)) {
-                                throw new Error(
-                                    `[map-render][tick][cpp-wasm] wasm patch stream OOB ` +
-                                        `mapId=${mapId | 0} stream=${v} readOff=${
-                                            wasmReadOff | 0
-                                        } len=${len | 0} ` +
-                                        `packedLen=${wasmPatchesPacked.length | 0}`,
-                                );
-                            }
-                            tickPatchPacked.set(
-                                wasmPatchesPacked.subarray(wasmReadOff, end),
-                                writeOff,
-                            );
-                            writeOff = (writeOff + len) | 0;
-                        }
-                        wasmReadOff = (wasmReadOff + len) | 0;
-                    }
-                    // Skip wasm npc streams (must be zero in loc-only tick-state).
-                    for (let v = 8; v < 10; v++) {
-                        const count = wasmCountsByMapId[metaOff + 1 + v] | 0;
-                        const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
-                        wasmReadOff = (wasmReadOff + len) | 0;
-                    }
-                }
-            } else {
-                // TS loc streams.
-                for (let v = 0; v < 8; v++) {
-                    const count = state.locTickPatchCountsByVariant[v] | 0;
-                    const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
-                    if (len > 0) {
-                        tickPatchPacked.set(
-                            state.locTickPatchesByVariant[v]!.subarray(0, len),
-                            writeOff,
-                        );
-                        writeOff = (writeOff + len) | 0;
-                    }
-                }
-            }
-            for (let v = 0; v < 2; v++) {
-                const count = state.npcTickPatchCountsByVariant[v] | 0;
-                const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
-                if (len > 0) {
-                    tickPatchPacked.set(
-                        state.npcTickPatchesByVariant[v]!.subarray(0, len),
-                        writeOff,
-                    );
-                    writeOff = (writeOff + len) | 0;
-                }
-            }
+        if (
+            wasmPatchesPacked instanceof Int32Array &&
+            wasmCountsByMapId instanceof Int32Array &&
+            wasmReadOff !== (wasmPatchesPacked.length | 0)
+        ) {
+            throw new Error(
+                `[map-render][tick][cpp-wasm] wasm patch read mismatch ` +
+                    `readOff=${wasmReadOff | 0} packedLen=${wasmPatchesPacked.length | 0}`,
+            );
         }
+
+        const tickPatchPacked = buildTickPatchPackedFromCountsAndStreams(
+            tickPatchCountsByMapId,
+            tickPatchStreamsByMap,
+        );
 
         const npcGpuFrameData = npcGpuDataBuilder.flushPacked();
         const packet: FramePacket = {
             frameCount: frameCount | 0,
+            npcRingWriteIndex: newIndexMod | 0,
             npcGpuFrameData,
             npcOffsetsByMapIdPairs: offsetsPairs,
+            renderListPacked,
             tickPatchCountsByMapId,
             tickPatchPacked,
         };

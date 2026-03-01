@@ -16,16 +16,6 @@ export const enum NpcTickPatchVariant {
     Alpha = 1,
 }
 
-export type LocTickPatchProvider = Readonly<{
-    getLocTickPatchCount(variant: LocTickPatchVariant): number;
-    getLocTickPatches(variant: LocTickPatchVariant): Int32Array;
-}>;
-
-export type NpcTickPatchProvider = Readonly<{
-    getNpcTickPatchCount(variant: NpcTickPatchVariant): number;
-    getNpcTickPatches(variant: NpcTickPatchVariant): Int32Array;
-}>;
-
 export function chooseLocTickPatchVariant(
     isAlpha: boolean,
     isInteract: boolean,
@@ -46,30 +36,3 @@ export function chooseLocTickPatchVariant(
 export function chooseNpcTickPatchVariant(isAlpha: boolean): NpcTickPatchVariant {
     return isAlpha ? NpcTickPatchVariant.Alpha : NpcTickPatchVariant.Base;
 }
-
-export function selectLocTickPatchStream(
-    provider: LocTickPatchProvider,
-    isAlpha: boolean,
-    isInteract: boolean,
-    isLod: boolean,
-): TickPatchStream | undefined {
-    const variant = chooseLocTickPatchVariant(isAlpha, isInteract, isLod);
-    const count = provider.getLocTickPatchCount(variant) | 0;
-    if (count < 0) {
-        return undefined;
-    }
-    return { patches: provider.getLocTickPatches(variant), count };
-}
-
-export function selectNpcTickPatchStream(
-    provider: NpcTickPatchProvider,
-    isAlpha: boolean,
-): TickPatchStream | undefined {
-    const variant = chooseNpcTickPatchVariant(isAlpha);
-    const count = provider.getNpcTickPatchCount(variant) | 0;
-    if (count < 0) {
-        return undefined;
-    }
-    return { patches: provider.getNpcTickPatches(variant), count };
-}
-

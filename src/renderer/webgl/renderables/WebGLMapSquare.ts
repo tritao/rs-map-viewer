@@ -8,6 +8,7 @@ import { getMapSquareId } from "../../../rs/map/MapFileIndex";
 import { SeqFrameLoader } from "../../../rs/model/seq/SeqFrameLoader";
 import { Scene } from "../../../rs/scene/Scene";
 import { MapSquareRenderable } from "../../MapRenderer";
+import type { NpcGpuDataTarget } from "../../npc/NpcGpuData";
 import { RenderableType } from "../../Renderer";
 import { SdMapData } from "../../loader/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
@@ -128,5 +129,9 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
     getMapDistance(mapX: number, mapY: number): number {
         return Math.max(Math.abs(mapX - this.mapX), Math.abs(mapY - this.mapY));
+    }
+
+    getNpcGpuDataTarget(): NpcGpuDataTarget | undefined {
+        return this;
     }
 }

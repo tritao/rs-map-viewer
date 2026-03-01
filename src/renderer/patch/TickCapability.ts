@@ -19,27 +19,17 @@ export type TickPatchBackendResult = Readonly<{
     npcAlphaPatchCount: number;
 }>;
 
-export type TickPatchStream = Readonly<{ patches: Int32Array; count: number }>;
-
 export type TickCapability = Readonly<{
     id: number;
 
     // TS tick path hooks
     resetCppTickStateLifecycle(): void;
-    resetTickPatchCountsToZero(): void;
     syncLocAnimationFrameIds(): void;
     getLocsAnimated(): ReadonlyArray<LocAnimated>;
     getLocFrameId(locIndex: number): number;
     setLocFrameId(locIndex: number, frameId: number): void;
-    emitLocPatchesForChangedFrame(locIndex: number, newFrameId: number): void;
 
     getNpcs(): ReadonlyArray<Npc>;
-    emitNpcPatchesForNpcIndex(
-        npcIndex: number,
-        newFrameId: number,
-        baseFrame: readonly [number, number, number],
-        alphaFrame: readonly [number, number, number],
-    ): void;
 
     // wasm tick path hooks
     ensureCppTickStateInitializedFromObjects(): boolean;
@@ -47,9 +37,4 @@ export type TickCapability = Readonly<{
     syncNpcPathStateFromObjects(): void;
     getWasmTickStateInput(): DrawRangeTickStateInput;
     applyWasmTickResult(result: TickPatchBackendResult): void;
-
-    // debug access
-    copyLocFrameIds(): Int32Array | undefined;
-    getLocBasePatchStreamDebug(): TickPatchStream;
 }>;
-

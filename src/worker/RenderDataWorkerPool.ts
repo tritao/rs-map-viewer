@@ -150,9 +150,23 @@ export class RenderDataWorkerPool {
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
+        cameraMapX: number,
+        cameraMapY: number,
+        lodDistance: number,
+        hoveredMapIdsPacked: Int32Array,
     ): Promise<FramePacket | undefined> {
         return this.getTickWorker().then((w) =>
-            w.tickFrame(frameCount, mapIds, ticksElapsed, clientTicksElapsed, cycleNow) as any,
+            w.tickFrame(
+                frameCount,
+                mapIds,
+                ticksElapsed,
+                clientTicksElapsed,
+                cycleNow,
+                cameraMapX,
+                cameraMapY,
+                lodDistance,
+                hoveredMapIdsPacked,
+            ) as any,
         );
     }
 

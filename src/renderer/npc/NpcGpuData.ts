@@ -1,7 +1,15 @@
+import type { Npc } from "./Npc";
+
 export type NpcGpuFrameData = Readonly<{
     width: number;
     height: number;
     data: Uint16Array;
+}>;
+
+export type NpcGpuDataTarget = Readonly<{
+    id: number;
+    npcs: ReadonlyArray<Npc>;
+    getTileRenderFlag(level: number, tileX: number, tileY: number): number;
 }>;
 
 // Ring size shared across:

@@ -26,18 +26,7 @@ import type { DrawRangeTickStateInput } from "../../../wasm/DrawRangeTickState";
 import type {
     TickCapability,
     TickPatchBackendResult,
-    TickPatchStream as TickPatchStreamApi,
 } from "../../patch/TickCapability";
-import {
-    LocTickPatchVariant,
-    NpcTickPatchVariant,
-    selectLocTickPatchStream,
-    selectNpcTickPatchStream,
-    type LocTickPatchProvider,
-    type NpcTickPatchProvider,
-    type TickPatchStream,
-} from "../../patch/TickPatchStreams";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../npc/NpcGpuData";
 
 const FRAME_RENDER_DELAY = 3;
 
@@ -77,7 +66,7 @@ export type CreateDrawCallFunction = (
     useNpcGeometry?: boolean,
 ) => DrawCallRange;
 
-export class WebGLRenderable implements TickCapability, LocTickPatchProvider, NpcTickPatchProvider {
+export class WebGLRenderable implements TickCapability {
     interleavedBuffer!: VertexBuffer;
     indexBuffer!: VertexBuffer;
     vertexArray!: VertexArray;
@@ -118,7 +107,6 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
 
     // Npcs
     npcs!: Npc[];
-    npcDataTextureOffsets!: number[];
 
     // Loc animation patch data (packed draw ranges)
     locFrameIds!: Int32Array;
@@ -145,22 +133,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
     locSeqFrameLengthsPacked!: Int32Array;
     locSeqIds!: Int32Array;
     locSeqActiveFlags!: Int32Array;
-    locTickBasePatches!: Int32Array;
-    locTickBasePatchCount: number = -1;
-    locTickAlphaPatches!: Int32Array;
-    locTickAlphaPatchCount: number = -1;
-    locTickLodPatches!: Int32Array;
-    locTickLodPatchCount: number = -1;
-    locTickLodAlphaPatches!: Int32Array;
-    locTickLodAlphaPatchCount: number = -1;
-    locTickInteractPatches!: Int32Array;
-    locTickInteractPatchCount: number = -1;
-    locTickInteractAlphaPatches!: Int32Array;
-    locTickInteractAlphaPatchCount: number = -1;
-    locTickInteractLodPatches!: Int32Array;
-    locTickInteractLodPatchCount: number = -1;
-    locTickInteractLodAlphaPatches!: Int32Array;
-    locTickInteractLodAlphaPatchCount: number = -1;
+    locTickPatchesByVariant!: Int32Array[]; // 8 loc variants in stream order
 
     // NPC animation patch data (packed draw ranges)
     npcDrawRangeIndices!: Int32Array;
@@ -223,10 +196,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
     npcSelectedSeqFrameLengthOffsets!: Int32Array;
     npcSelectedSeqFrameLengthCounts!: Int32Array;
     npcSeqFrameLengthsPacked!: Int32Array;
-    npcTickBasePatches!: Int32Array;
-    npcTickBasePatchCount: number = -1;
-    npcTickAlphaPatches!: Int32Array;
-    npcTickAlphaPatchCount: number = -1;
+    npcTickPatchesByVariant!: Int32Array[]; // 2 npc variants [base, alpha]
     private cppTickStateInitialized = false;
 
     // Actual cache texture IDs used by this renderable (optional; used for texture residency).
@@ -335,9 +305,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
-    ) {
-        this.npcDataTextureOffsets = new Array(NPC_DATA_TEXTURE_RING_SIZE).fill(-1);
-    }
+    ) {}
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
         return this.tileRenderFlags[level][tileX + this.borderSize][tileY + this.borderSize];
@@ -565,22 +533,10 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         this.locSeqFrameLengthsPacked = Int32Array.from(seqFrameLengthsPacked);
         this.locAnimFramesBasePacked = Int32Array.from(basePacked);
         this.locAnimFramesAlphaPacked = Int32Array.from(alphaPacked);
-        this.locTickBasePatches = new Int32Array(count * 4);
-        this.locTickAlphaPatches = new Int32Array(count * 4);
-        this.locTickLodPatches = new Int32Array(count * 4);
-        this.locTickLodAlphaPatches = new Int32Array(count * 4);
-        this.locTickInteractPatches = new Int32Array(count * 4);
-        this.locTickInteractAlphaPatches = new Int32Array(count * 4);
-        this.locTickInteractLodPatches = new Int32Array(count * 4);
-        this.locTickInteractLodAlphaPatches = new Int32Array(count * 4);
-        this.locTickBasePatchCount = -1;
-        this.locTickAlphaPatchCount = -1;
-        this.locTickLodPatchCount = -1;
-        this.locTickLodAlphaPatchCount = -1;
-        this.locTickInteractPatchCount = -1;
-        this.locTickInteractAlphaPatchCount = -1;
-        this.locTickInteractLodPatchCount = -1;
-        this.locTickInteractLodAlphaPatchCount = -1;
+        this.locTickPatchesByVariant = new Array<Int32Array>(8);
+        for (let i = 0; i < 8; i++) {
+            this.locTickPatchesByVariant[i] = new Int32Array(count * 4);
+        }
     }
 
     syncLocAnimationFrameIds(): void {
@@ -906,10 +862,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         this.npcAnimFramesBasePacked = Int32Array.from(basePacked);
         this.npcAnimFramesAlphaPacked = Int32Array.from(alphaPacked);
         this.npcSeqFrameLengthsPacked = Int32Array.from(seqFrameLengthsPacked);
-        this.npcTickBasePatches = new Int32Array(count * 4);
-        this.npcTickAlphaPatches = new Int32Array(count * 4);
-        this.npcTickBasePatchCount = -1;
-        this.npcTickAlphaPatchCount = -1;
+        this.npcTickPatchesByVariant = [new Int32Array(count * 4), new Int32Array(count * 4)];
     }
 
     syncNpcAnimationSelection(isAlpha: boolean): void {
@@ -1028,19 +981,6 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         }
     }
 
-    clearTickPatchStreams(): void {
-        this.locTickBasePatchCount = -1;
-        this.locTickAlphaPatchCount = -1;
-        this.locTickLodPatchCount = -1;
-        this.locTickLodAlphaPatchCount = -1;
-        this.locTickInteractPatchCount = -1;
-        this.locTickInteractAlphaPatchCount = -1;
-        this.locTickInteractLodPatchCount = -1;
-        this.locTickInteractLodAlphaPatchCount = -1;
-        this.npcTickBasePatchCount = -1;
-        this.npcTickAlphaPatchCount = -1;
-    }
-
     getTickCapability(): TickCapability | undefined {
         return this;
     }
@@ -1057,128 +997,8 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
         this.locFrameIds[locIndex] = frameId | 0;
     }
 
-    private static emitTickPatch(
-        outPacked: Int32Array,
-        count: number,
-        drawRangeIndex: number,
-        frame: readonly [number, number, number],
-    ): number {
-        if ((drawRangeIndex | 0) < 0) {
-            return count | 0;
-        }
-        const off = ((count | 0) * 4) | 0;
-        if (off + 3 >= outPacked.length) {
-            return count | 0;
-        }
-        outPacked[off + 0] = drawRangeIndex | 0;
-        outPacked[off + 1] = frame[0] | 0;
-        outPacked[off + 2] = frame[1] | 0;
-        outPacked[off + 3] = frame[2] | 0;
-        return (count + 1) | 0;
-    }
-
-    emitLocPatchesForChangedFrame(locIndex: number, newFrameId: number): void {
-        const loc = this.locsAnimated[locIndex];
-        const baseFrame = loc.anim.frames?.[newFrameId] as [number, number, number] | undefined;
-        if (!baseFrame) {
-            return;
-        }
-        const alphaFrame = (loc.anim.framesAlpha?.[newFrameId] ??
-            undefined) as [number, number, number] | undefined;
-
-        const baseIndex = this.locDrawRangeIndicesBase[locIndex] | 0;
-        this.locTickBasePatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickBasePatches,
-            this.locTickBasePatchCount,
-            baseIndex,
-            baseFrame,
-        );
-
-        const lodIndex = this.locDrawRangeIndicesLod[locIndex] | 0;
-        this.locTickLodPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickLodPatches,
-            this.locTickLodPatchCount,
-            lodIndex,
-            baseFrame,
-        );
-
-        const interactIndex = this.locDrawRangeIndicesInteract[locIndex] | 0;
-        this.locTickInteractPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickInteractPatches,
-            this.locTickInteractPatchCount,
-            interactIndex,
-            baseFrame,
-        );
-
-        const interactLodIndex = this.locDrawRangeIndicesInteractLod[locIndex] | 0;
-        this.locTickInteractLodPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickInteractLodPatches,
-            this.locTickInteractLodPatchCount,
-            interactLodIndex,
-            baseFrame,
-        );
-
-        if (!alphaFrame) {
-            return;
-        }
-
-        const alphaIndex = this.locDrawRangeIndicesAlpha[locIndex] | 0;
-        this.locTickAlphaPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickAlphaPatches,
-            this.locTickAlphaPatchCount,
-            alphaIndex,
-            alphaFrame,
-        );
-
-        const lodAlphaIndex = this.locDrawRangeIndicesLodAlpha[locIndex] | 0;
-        this.locTickLodAlphaPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickLodAlphaPatches,
-            this.locTickLodAlphaPatchCount,
-            lodAlphaIndex,
-            alphaFrame,
-        );
-
-        const interactAlphaIndex = this.locDrawRangeIndicesInteractAlpha[locIndex] | 0;
-        this.locTickInteractAlphaPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickInteractAlphaPatches,
-            this.locTickInteractAlphaPatchCount,
-            interactAlphaIndex,
-            alphaFrame,
-        );
-
-        const interactLodAlphaIndex = this.locDrawRangeIndicesInteractLodAlpha[locIndex] | 0;
-        this.locTickInteractLodAlphaPatchCount = WebGLRenderable.emitTickPatch(
-            this.locTickInteractLodAlphaPatches,
-            this.locTickInteractLodAlphaPatchCount,
-            interactLodAlphaIndex,
-            alphaFrame,
-        );
-    }
-
     getNpcs(): ReadonlyArray<Npc> {
         return this.npcs;
-    }
-
-    emitNpcPatchesForNpcIndex(
-        npcIndex: number,
-        newFrameId: number,
-        baseFrame: readonly [number, number, number],
-        alphaFrame: readonly [number, number, number],
-    ): void {
-        this.npcFrameIds[npcIndex] = newFrameId | 0;
-        const drawRangeIndex = this.npcDrawRangeIndices[npcIndex] | 0;
-        this.npcTickBasePatchCount = WebGLRenderable.emitTickPatch(
-            this.npcTickBasePatches,
-            this.npcTickBasePatchCount,
-            drawRangeIndex,
-            baseFrame,
-        );
-        this.npcTickAlphaPatchCount = WebGLRenderable.emitTickPatch(
-            this.npcTickAlphaPatches,
-            this.npcTickAlphaPatchCount,
-            drawRangeIndex,
-            alphaFrame,
-        );
     }
 
     getWasmTickStateInput(): DrawRangeTickStateInput {
@@ -1197,7 +1017,7 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
             locAnimFrameOffsetsBase: this.locAnimFrameOffsetsBase,
             locAnimFrameCountsBase: this.locAnimFrameCountsBase,
             locAnimFramesBasePacked: this.locAnimFramesBasePacked,
-            outLocPatchesPacked: this.locTickBasePatches,
+            outLocPatchesPacked: this.locTickPatchesByVariant[0]!,
             locDrawRangeIndicesAlpha: this.locDrawRangeIndicesAlpha,
             locDrawRangeIndicesLod: this.locDrawRangeIndicesLod,
             locDrawRangeIndicesLodAlpha: this.locDrawRangeIndicesLodAlpha,
@@ -1208,13 +1028,13 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
             locAnimFrameOffsetsAlpha: this.locAnimFrameOffsetsAlpha,
             locAnimFrameCountsAlpha: this.locAnimFrameCountsAlpha,
             locAnimFramesAlphaPacked: this.locAnimFramesAlphaPacked,
-            outLocAlphaPatchesPacked: this.locTickAlphaPatches,
-            outLocLodPatchesPacked: this.locTickLodPatches,
-            outLocLodAlphaPatchesPacked: this.locTickLodAlphaPatches,
-            outLocInteractPatchesPacked: this.locTickInteractPatches,
-            outLocInteractAlphaPatchesPacked: this.locTickInteractAlphaPatches,
-            outLocInteractLodPatchesPacked: this.locTickInteractLodPatches,
-            outLocInteractLodAlphaPatchesPacked: this.locTickInteractLodAlphaPatches,
+            outLocAlphaPatchesPacked: this.locTickPatchesByVariant[1]!,
+            outLocLodPatchesPacked: this.locTickPatchesByVariant[2]!,
+            outLocLodAlphaPatchesPacked: this.locTickPatchesByVariant[3]!,
+            outLocInteractPatchesPacked: this.locTickPatchesByVariant[4]!,
+            outLocInteractAlphaPatchesPacked: this.locTickPatchesByVariant[5]!,
+            outLocInteractLodPatchesPacked: this.locTickPatchesByVariant[6]!,
+            outLocInteractLodAlphaPatchesPacked: this.locTickPatchesByVariant[7]!,
 
             npcX: this.npcX,
             npcY: this.npcY,
@@ -1259,200 +1079,20 @@ export class WebGLRenderable implements TickCapability, LocTickPatchProvider, Np
             npcWalkAnimFrameOffsetsBase: this.npcWalkFrameOffsetsBase,
             npcWalkAnimFrameCountsBase: this.npcWalkFrameCountsBase,
             npcAnimFramesBasePacked: this.npcAnimFramesBasePacked,
-            outNpcPatchesPacked: this.npcTickBasePatches,
+            outNpcPatchesPacked: this.npcTickPatchesByVariant[0]!,
             npcIdleAnimFrameOffsetsAlpha: this.npcIdleFrameOffsetsAlpha,
             npcIdleAnimFrameCountsAlpha: this.npcIdleFrameCountsAlpha,
             npcWalkAnimFrameOffsetsAlpha: this.npcWalkFrameOffsetsAlpha,
             npcWalkAnimFrameCountsAlpha: this.npcWalkFrameCountsAlpha,
             npcAnimFramesAlphaPacked: this.npcAnimFramesAlphaPacked,
             npcNullAlphaFrameOffset: this.npcNullAlphaFrameOffset,
-            outNpcAlphaPatchesPacked: this.npcTickAlphaPatches,
+            outNpcAlphaPatchesPacked: this.npcTickPatchesByVariant[1]!,
         };
     }
 
-    applyWasmTickResult(result: TickPatchBackendResult): void {
+    applyWasmTickResult(_result: TickPatchBackendResult): void {
         this.applyLocAnimationStateToObjects();
         this.applyNpcFrameStateToObjects();
-
-        this.locTickBasePatchCount = result.locBasePatchCount | 0;
-        this.locTickAlphaPatchCount = result.locAlphaPatchCount | 0;
-        this.locTickLodPatchCount = result.locLodPatchCount | 0;
-        this.locTickLodAlphaPatchCount = result.locLodAlphaPatchCount | 0;
-        this.locTickInteractPatchCount = result.locInteractPatchCount | 0;
-        this.locTickInteractAlphaPatchCount = result.locInteractAlphaPatchCount | 0;
-        this.locTickInteractLodPatchCount = result.locInteractLodPatchCount | 0;
-        this.locTickInteractLodAlphaPatchCount = result.locInteractLodAlphaPatchCount | 0;
-        this.npcTickBasePatchCount = result.npcBasePatchCount | 0;
-        this.npcTickAlphaPatchCount = result.npcAlphaPatchCount | 0;
-    }
-
-    copyLocFrameIds(): Int32Array | undefined {
-        return this.locFrameIds instanceof Int32Array ? new Int32Array(this.locFrameIds) : undefined;
-    }
-
-    getLocBasePatchStreamDebug(): TickPatchStreamApi {
-        return { patches: this.locTickBasePatches, count: this.locTickBasePatchCount | 0 };
-    }
-
-    getLocTickPatchStream(
-        isAlpha: boolean,
-        isInteract: boolean,
-        isLod: boolean,
-    ): TickPatchStream | undefined {
-        return selectLocTickPatchStream(this, isAlpha, isInteract, isLod);
-    }
-
-    getNpcTickPatchStream(
-        isAlpha: boolean,
-    ): TickPatchStream | undefined {
-        return selectNpcTickPatchStream(this, isAlpha);
-    }
-
-    getLocTickPatchCount(variant: LocTickPatchVariant): number {
-        switch (variant) {
-            case LocTickPatchVariant.Base:
-                return this.locTickBasePatchCount;
-            case LocTickPatchVariant.Alpha:
-                return this.locTickAlphaPatchCount;
-            case LocTickPatchVariant.Lod:
-                return this.locTickLodPatchCount;
-            case LocTickPatchVariant.LodAlpha:
-                return this.locTickLodAlphaPatchCount;
-            case LocTickPatchVariant.Interact:
-                return this.locTickInteractPatchCount;
-            case LocTickPatchVariant.InteractAlpha:
-                return this.locTickInteractAlphaPatchCount;
-            case LocTickPatchVariant.InteractLod:
-                return this.locTickInteractLodPatchCount;
-            case LocTickPatchVariant.InteractLodAlpha:
-                return this.locTickInteractLodAlphaPatchCount;
-        }
-        return -1;
-    }
-
-    getLocTickPatches(variant: LocTickPatchVariant): Int32Array {
-        switch (variant) {
-            case LocTickPatchVariant.Base:
-                return this.locTickBasePatches;
-            case LocTickPatchVariant.Alpha:
-                return this.locTickAlphaPatches;
-            case LocTickPatchVariant.Lod:
-                return this.locTickLodPatches;
-            case LocTickPatchVariant.LodAlpha:
-                return this.locTickLodAlphaPatches;
-            case LocTickPatchVariant.Interact:
-                return this.locTickInteractPatches;
-            case LocTickPatchVariant.InteractAlpha:
-                return this.locTickInteractAlphaPatches;
-            case LocTickPatchVariant.InteractLod:
-                return this.locTickInteractLodPatches;
-            case LocTickPatchVariant.InteractLodAlpha:
-                return this.locTickInteractLodAlphaPatches;
-        }
-        return this.locTickBasePatches;
-    }
-
-    getNpcTickPatchCount(variant: NpcTickPatchVariant): number {
-        switch (variant) {
-            case NpcTickPatchVariant.Base:
-                return this.npcTickBasePatchCount;
-            case NpcTickPatchVariant.Alpha:
-                return this.npcTickAlphaPatchCount;
-        }
-        return -1;
-    }
-
-    getNpcTickPatches(variant: NpcTickPatchVariant): Int32Array {
-        switch (variant) {
-            case NpcTickPatchVariant.Base:
-                return this.npcTickBasePatches;
-            case NpcTickPatchVariant.Alpha:
-                return this.npcTickAlphaPatches;
-        }
-        return this.npcTickBasePatches;
-    }
-
-    resetTickPatchCountsToZero(): void {
-        this.locTickBasePatchCount = 0;
-        this.locTickAlphaPatchCount = 0;
-        this.locTickLodPatchCount = 0;
-        this.locTickLodAlphaPatchCount = 0;
-        this.locTickInteractPatchCount = 0;
-        this.locTickInteractAlphaPatchCount = 0;
-        this.locTickInteractLodPatchCount = 0;
-        this.locTickInteractLodAlphaPatchCount = 0;
-        this.npcTickBasePatchCount = 0;
-        this.npcTickAlphaPatchCount = 0;
-    }
-
-    setLocTickPatchStreamFromPacket(
-        variant: LocTickPatchVariant,
-        patchesPacked: Int32Array,
-        patchCount: number,
-    ): void {
-        const count = Math.max(0, patchCount | 0);
-        const dst = this.getLocTickPatches(variant);
-        const copyLen = Math.min(dst.length | 0, (count * 4) | 0);
-        if (copyLen > 0) {
-            dst.set(patchesPacked.subarray(0, copyLen));
-        }
-        this.setLocTickPatchCountInternal(variant, count);
-    }
-
-    setNpcTickPatchStreamFromPacket(
-        variant: NpcTickPatchVariant,
-        patchesPacked: Int32Array,
-        patchCount: number,
-    ): void {
-        const count = Math.max(0, patchCount | 0);
-        const dst = this.getNpcTickPatches(variant);
-        const copyLen = Math.min(dst.length | 0, (count * 4) | 0);
-        if (copyLen > 0) {
-            dst.set(patchesPacked.subarray(0, copyLen));
-        }
-        this.setNpcTickPatchCountInternal(variant, count);
-    }
-
-    private setLocTickPatchCountInternal(variant: LocTickPatchVariant, count: number): void {
-        const v = variant as number;
-        switch (v) {
-            case LocTickPatchVariant.Base:
-                this.locTickBasePatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.Alpha:
-                this.locTickAlphaPatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.Lod:
-                this.locTickLodPatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.LodAlpha:
-                this.locTickLodAlphaPatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.Interact:
-                this.locTickInteractPatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.InteractAlpha:
-                this.locTickInteractAlphaPatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.InteractLod:
-                this.locTickInteractLodPatchCount = count | 0;
-                return;
-            case LocTickPatchVariant.InteractLodAlpha:
-                this.locTickInteractLodAlphaPatchCount = count | 0;
-                return;
-        }
-    }
-
-    private setNpcTickPatchCountInternal(variant: NpcTickPatchVariant, count: number): void {
-        const v = variant as number;
-        switch (v) {
-            case NpcTickPatchVariant.Base:
-                this.npcTickBasePatchCount = count | 0;
-                return;
-            case NpcTickPatchVariant.Alpha:
-                this.npcTickAlphaPatchCount = count | 0;
-                return;
-        }
     }
 
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {

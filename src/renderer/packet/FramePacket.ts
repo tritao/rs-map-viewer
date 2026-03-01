@@ -2,6 +2,10 @@ import type { NpcGpuFrameData } from "../npc/NpcGpuData";
 
 // Meta pairs: [mapId, npcDataOffset]
 export const NPC_OFFSETS_BY_MAP_ID_STRIDE = 2;
+export const FRAME_RENDER_LIST_STRIDE = 2;
+export const FRAME_RENDER_LIST_FLAG_HAS_NPCS = 1 << 0;
+export const FRAME_RENDER_LIST_FLAG_IS_LOD = 1 << 1;
+export const FRAME_RENDER_LIST_FLAG_IS_INTERACT = 1 << 2;
 
 // Per-map tick patch counts cover:
 // 8 loc variants (base/alpha/lod/lodAlpha/interact/interactAlpha/interactLod/interactLodAlpha)
@@ -14,14 +18,35 @@ export const TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE = 1 + TICK_PATCH_STREAM_COUNT;
 // Patch tuples are packed as: [drawRangeIndex, offset, elements, instances]
 export const TICK_PATCH_ENTRY_STRIDE = 4;
 
+export type ParsedFrameTickPatches = Readonly<{
+    patchesPacked: Int32Array;
+    mapIdToIndex: Map<number, number>;
+    streamOffsets: Int32Array;
+    streamCounts: Int32Array;
+}>;
+
+export type ParsedFrameNpcOffsetsByMapId = ReadonlyMap<number, number>;
+
+export type ParsedFramePacket = Readonly<{
+    frameCount: number;
+    npcRingWriteIndex: number;
+    npcGpuFrameData: NpcGpuFrameData;
+    npcOffsetsByMapId: ParsedFrameNpcOffsetsByMapId;
+    tickPatches: ParsedFrameTickPatches | undefined;
+    renderListPacked: Int32Array;
+}>;
+
 export type FramePacket = Readonly<{
     frameCount: number;
+    npcRingWriteIndex: number;
 
     // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,typeId).
     npcGpuFrameData: NpcGpuFrameData;
 
     // Pairs of [mapId, offset] for the current frame's NPC upload (offset is npc index into the gpu data).
     npcOffsetsByMapIdPairs: Int32Array;
+    // Tuples of [mapId, flags] for frame render ordering.
+    renderListPacked: Int32Array;
 
     // Draw-range tick patches for animated locs + NPCs.
     // Patches are concatenated by map, and within each map by stream index [0..9].
@@ -33,7 +58,203 @@ export function framePacketTransferables(packet: FramePacket): Transferable[] {
     const out: Transferable[] = [];
     out.push(packet.npcGpuFrameData.data.buffer as Transferable);
     out.push(packet.npcOffsetsByMapIdPairs.buffer as Transferable);
+    out.push(packet.renderListPacked.buffer as Transferable);
     out.push(packet.tickPatchCountsByMapId.buffer as Transferable);
     out.push(packet.tickPatchPacked.buffer as Transferable);
     return out;
+}
+
+export type TickPatchStreamSource = (
+    mapEntryIndex: number,
+    streamIndex: number,
+    patchCount: number,
+) => Int32Array | undefined;
+
+export type TickPatchStreamsByMap = (Int32Array | undefined)[][];
+
+export function createTickPatchStreamsByMap(mapEntryCount: number): TickPatchStreamsByMap {
+    const out: TickPatchStreamsByMap = new Array(mapEntryCount | 0);
+    for (let i = 0; i < (mapEntryCount | 0); i++) {
+        out[i] = new Array(TICK_PATCH_STREAM_COUNT);
+    }
+    return out;
+}
+
+export function buildTickPatchPackedFromCounts(
+    countsByMapId: Int32Array,
+    getStreamPatches: TickPatchStreamSource,
+): Int32Array {
+    const totalInts = countsByMapId.length | 0;
+    if ((totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
+                `len=${totalInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
+        );
+    }
+
+    const entryCount = Math.floor(totalInts / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE);
+    let totalPatches = 0;
+    for (let e = 0; e < entryCount; e++) {
+        const baseOff = (e | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+        for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
+            totalPatches = (totalPatches + (countsByMapId[baseOff + 1 + s] | 0)) | 0;
+        }
+    }
+
+    const out = new Int32Array(Math.max(0, totalPatches | 0) * TICK_PATCH_ENTRY_STRIDE);
+    let writeOff = 0;
+    for (let e = 0; e < entryCount; e++) {
+        const baseOff = (e | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+        for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
+            const count = countsByMapId[baseOff + 1 + s] | 0;
+            const len = (count * TICK_PATCH_ENTRY_STRIDE) | 0;
+            if (len <= 0) {
+                continue;
+            }
+            const patches = getStreamPatches(e | 0, s | 0, count | 0);
+            if (!(patches instanceof Int32Array) || (patches.length | 0) < (len | 0)) {
+                throw new Error(
+                    `[map-render][frame-packet] missing/short stream source: ` +
+                        `entry=${e | 0} stream=${s | 0} count=${count | 0} ` +
+                        `neededInts=${len | 0} got=${patches?.length ?? -1}`,
+                );
+            }
+            out.set(patches.subarray(0, len), writeOff);
+            writeOff = (writeOff + len) | 0;
+        }
+    }
+
+    return out;
+}
+
+export function buildTickPatchPackedFromCountsAndStreams(
+    countsByMapId: Int32Array,
+    streamsByMap: TickPatchStreamsByMap,
+): Int32Array {
+    return buildTickPatchPackedFromCounts(
+        countsByMapId,
+        (mapEntryIndex, streamIndex, patchCount) => {
+            const stream = streamsByMap[mapEntryIndex]?.[streamIndex];
+            if (stream instanceof Int32Array) {
+                return stream;
+            }
+            return patchCount > 0 ? undefined : new Int32Array(0);
+        },
+    );
+}
+
+export function parseFramePacketRenderList(
+    packed: Int32Array,
+): Int32Array {
+    const totalInts = packed.length | 0;
+    if ((totalInts % FRAME_RENDER_LIST_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] renderListPacked length misaligned: ` +
+                `len=${totalInts} stride=${FRAME_RENDER_LIST_STRIDE}`,
+        );
+    }
+    return packed;
+}
+
+export function parseFramePacketTickPatches(
+    countsByMapId: Int32Array,
+    patchesPacked: Int32Array,
+): ParsedFrameTickPatches | undefined {
+    const totalInts = countsByMapId.length | 0;
+    if ((totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
+                `len=${totalInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
+        );
+    }
+    const entryCount = Math.floor((countsByMapId.length | 0) / TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE);
+    if (entryCount <= 0 || !(patchesPacked instanceof Int32Array)) {
+        return undefined;
+    }
+
+    const streamOffsets = new Int32Array((entryCount | 0) * TICK_PATCH_STREAM_COUNT);
+    const streamCounts = new Int32Array((entryCount | 0) * TICK_PATCH_STREAM_COUNT);
+    const mapIdToIndex = new Map<number, number>();
+
+    let readOff = 0;
+    for (let e = 0; e < entryCount; e++) {
+        const baseOff = (e | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
+        const mapId = countsByMapId[baseOff + 0] | 0;
+        mapIdToIndex.set(mapId, e | 0);
+        for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
+            const count = countsByMapId[baseOff + 1 + s] | 0;
+            const idx = (e * TICK_PATCH_STREAM_COUNT + s) | 0;
+            streamCounts[idx] = count;
+            streamOffsets[idx] = readOff | 0;
+            readOff = (readOff + ((count * TICK_PATCH_ENTRY_STRIDE) | 0)) | 0;
+        }
+    }
+
+    const expected = readOff | 0;
+    const actual = patchesPacked.length | 0;
+    if (expected !== actual) {
+        throw new Error(
+            `[map-render][frame-packet] tickPatchPacked length mismatch: ` +
+                `expected=${expected} actual=${actual}`,
+        );
+    }
+
+    return {
+        patchesPacked,
+        mapIdToIndex,
+        streamOffsets,
+        streamCounts,
+    };
+}
+
+export function parseFramePacketTickPatchesFromPacket(
+    packet: FramePacket | undefined,
+): ParsedFrameTickPatches | undefined {
+    if (!packet) {
+        return undefined;
+    }
+    return parseFramePacketTickPatches(packet.tickPatchCountsByMapId, packet.tickPatchPacked);
+}
+
+export function parseFramePacketNpcOffsetsByMapId(
+    pairs: Int32Array,
+): ParsedFrameNpcOffsetsByMapId {
+    const totalInts = pairs.length | 0;
+    if ((totalInts % NPC_OFFSETS_BY_MAP_ID_STRIDE) !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] npcOffsetsByMapIdPairs length misaligned: ` +
+                `len=${totalInts} stride=${NPC_OFFSETS_BY_MAP_ID_STRIDE}`,
+        );
+    }
+
+    const out = new Map<number, number>();
+    const pairCount = Math.floor((pairs.length | 0) / NPC_OFFSETS_BY_MAP_ID_STRIDE);
+    for (let i = 0; i < pairCount; i++) {
+        const off = (i * NPC_OFFSETS_BY_MAP_ID_STRIDE) | 0;
+        const mapId = pairs[off + 0] | 0;
+        const dataOffset = pairs[off + 1] | 0;
+        out.set(mapId, dataOffset);
+    }
+    return out;
+}
+
+export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePacket | undefined {
+    if (!packet) {
+        return undefined;
+    }
+    const npcRingWriteIndex = packet.npcRingWriteIndex | 0;
+    if (npcRingWriteIndex < 0) {
+        throw new Error(
+            `[map-render][frame-packet] npcRingWriteIndex invalid: ${npcRingWriteIndex}`,
+        );
+    }
+
+    return {
+        frameCount: packet.frameCount | 0,
+        npcRingWriteIndex,
+        npcGpuFrameData: packet.npcGpuFrameData,
+        npcOffsetsByMapId: parseFramePacketNpcOffsetsByMapId(packet.npcOffsetsByMapIdPairs),
+        tickPatches: parseFramePacketTickPatchesFromPacket(packet),
+        renderListPacked: parseFramePacketRenderList(packet.renderListPacked),
+    };
 }

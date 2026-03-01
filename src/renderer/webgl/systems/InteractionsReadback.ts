@@ -1,4 +1,4 @@
-import type { InteractionState } from "../../interaction/InteractionState";
+import { applyInteractionReadbackToState, type InteractionState } from "../../interaction/InteractionState";
 
 export class InteractionsReadback {
     interactSize: number;
@@ -66,36 +66,16 @@ export class InteractionsReadback {
 
         gl.deleteBuffer(this.pixelBuf);
 
-        state.hoveredMapIds.clear();
-        state.closestInteractIndices.clear();
-
-        for (let y = 0; y < this.readHeight; y++) {
-            for (let x = 0; x < this.readWidth; x++) {
-                const index = (y * this.readWidth + x) * 4;
-
-                const mapId = this.interactBuffer[index + 1];
-                if (mapId !== 0) {
-                    state.hoveredMapIds.add(mapId);
-                }
-
-                const interactType = this.interactBuffer[index + 2];
-                if (interactType !== 0) {
-                    const dist = Math.max(
-                        Math.abs(x + this.offsetX - this.interactRadius),
-                        Math.abs(y + this.offsetY - this.interactRadius),
-                    );
-
-                    const indices = state.closestInteractIndices.get(dist);
-                    if (indices) {
-                        indices.push(index);
-                    } else {
-                        state.closestInteractIndices.set(dist, [index]);
-                    }
-                }
-            }
-        }
+        applyInteractionReadbackToState(
+            state,
+            this.interactBuffer,
+            this.readWidth,
+            this.readHeight,
+            this.offsetX,
+            this.offsetY,
+            this.interactRadius,
+        );
 
         return true;
     }
 }
-

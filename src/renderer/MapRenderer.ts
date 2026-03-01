@@ -8,9 +8,12 @@ import { FrameStats, Renderer, RendererStats } from "./Renderer";
 import { MapData } from "./loader/MapData";
 import { LocAnimated } from "./loc/LocAnimated";
 import { Npc } from "./npc/Npc";
-import type { InteractionControllerRenderer } from "./interaction/InteractionState";
+import type {
+    InteractionControllerRenderer,
+    InteractionSnapshotRenderer,
+} from "./interaction/InteractionState";
 import type { TickCapability, TickControllerRenderer } from "./patch/TickCapability";
-import type { NpcGpuDataConsumer } from "./npc/NpcGpuData";
+import type { NpcGpuDataConsumer, NpcGpuDataTarget } from "./npc/NpcGpuData";
 import type { FramePacket } from "./packet/FramePacket";
 
 export enum TextureFilterMode {
@@ -53,6 +56,8 @@ export interface MapSquareRenderable {
 
     // Optional capability: tick backend can drive animation patches for this renderable.
     getTickCapability?(): TickCapability | undefined;
+    // Optional capability: renderer map can be consumed by NPC GPU packing.
+    getNpcGpuDataTarget?(): NpcGpuDataTarget | undefined;
 
     canRender(frameCount: number): boolean;
     delete(): void;
@@ -141,6 +146,11 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     // Optional capability: renderer instance can accept interaction input events.
     getInteractionControllerRenderer(): InteractionControllerRenderer | undefined {
+        return undefined;
+    }
+
+    // Optional capability: renderer can expose interaction snapshot data for worker-side planning.
+    getInteractionSnapshotRenderer(): InteractionSnapshotRenderer | undefined {
         return undefined;
     }
 

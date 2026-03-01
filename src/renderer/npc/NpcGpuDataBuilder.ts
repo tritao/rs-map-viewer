@@ -1,12 +1,5 @@
 import { TileRenderFlag } from "../../rs/scene/Scene";
-import type { Npc } from "./Npc";
-import type { NpcGpuFrameData } from "./NpcGpuData";
-
-type NpcGpuDataTarget = Readonly<{
-    npcs: ReadonlyArray<Npc>;
-    npcDataTextureOffsets: number[];
-    getTileRenderFlag(level: number, tileX: number, tileY: number): number;
-}>;
+import type { NpcGpuDataTarget, NpcGpuFrameData } from "./NpcGpuData";
 
 export class NpcGpuDataBuilder {
     private count = 0;
@@ -16,18 +9,13 @@ export class NpcGpuDataBuilder {
         this.count = 0;
     }
 
-    addRenderable(renderable: NpcGpuDataTarget, frameCount: number): void {
+    addRenderable(renderable: NpcGpuDataTarget): number {
         const npcs = renderable.npcs;
         if (npcs.length === 0) {
-            return;
+            return -1;
         }
 
-        const offsets = renderable.npcDataTextureOffsets;
-        if (!Array.isArray(offsets) || offsets.length === 0) {
-            return;
-        }
-
-        offsets[(frameCount | 0) % offsets.length] = this.count;
+        const offset = this.count | 0;
 
         for (const npc of npcs) {
             const tileX = npc.x >> 7;
@@ -43,6 +31,7 @@ export class NpcGpuDataBuilder {
 
             this.pushNpc(npc.x, npc.y, (npc.rotation << 2) | renderPlane, npc.npcType.id);
         }
+        return offset;
     }
 
     flushPacked(): NpcGpuFrameData {
