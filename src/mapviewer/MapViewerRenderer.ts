@@ -501,14 +501,15 @@ export class MapViewerRenderer extends RendererMainLoop {
                 renderListPacked[renderOff + 1] = renderFlags | 0;
                 continue;
             }
-            if ((map.npcs.length | 0) > 0) {
+            const mapNpcs = map.getNpcs();
+            if ((mapNpcs.length | 0) > 0) {
                 renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
             }
             this.simWorld.tickNpcMovement(
                 mapInfo.mapId,
                 this.pathfinder,
                 map.borderSize,
-                map.npcs,
+                mapNpcs,
                 ticksElapsed,
             );
             const tickCap = map.getTickCapability?.();

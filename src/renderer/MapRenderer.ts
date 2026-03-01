@@ -49,10 +49,10 @@ export interface MapSquareRenderable {
     readonly borderSize: number;
 
     // Animated locs
-    readonly locsAnimated: LocAnimated[];
+    getLocsAnimated(): ReadonlyArray<LocAnimated>;
 
     // Npcs
-    readonly npcs: Npc[];
+    getNpcs(): ReadonlyArray<Npc>;
 
     // Optional capability: tick backend can drive animation patches for this renderable.
     getTickCapability?(): TickCapability | undefined;

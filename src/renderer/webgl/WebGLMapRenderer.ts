@@ -32,7 +32,6 @@ import {
 } from "../interaction/InteractionState";
 import type { TickControllerRenderer } from "../patch/TickCapability";
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
-import type { NpcGpuFrameData } from "../npc/NpcGpuData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
 import {
     chooseLocTickPatchVariant,
@@ -43,9 +42,6 @@ import {
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     FRAME_RENDER_LIST_STRIDE,
-    parseFramePacket,
-    type ParsedFramePacket,
-    type ParsedFrameTickPatches,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
 } from "../packet/FramePacket";
@@ -56,6 +52,7 @@ import {
     isDrawRangePatchBackendReady,
     resetDrawRangePatchBackend,
 } from "../../wasm/DrawRangePatchBackend";
+import { WebGLFramePacketState } from "./WebGLFramePacketState";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
@@ -79,20 +76,9 @@ export class WebGLMapRenderer
     private readonly renderTargets = new RenderTargets();
     private readonly postProcessPass = new PostProcessPass();
     private readonly npcDataTextureRing = new NpcDataTextureRing(NPC_DATA_TEXTURE_RING_SIZE);
-    private npcGpuFrameData: NpcGpuFrameData | undefined;
-    private readonly npcDataOffsetsByMapIdByRing: Map<number, number>[] = Array.from(
-        { length: NPC_DATA_TEXTURE_RING_SIZE },
-        () => new Map<number, number>(),
-    );
-    private npcDataRingIndex: number = 0;
+    private readonly framePacketState = new WebGLFramePacketState();
     private npcDataTexture: Texture | undefined;
-    private npcDataTextureDirty: boolean = false;
     private hoveredMapIdsPackedScratch = new Int32Array(0);
-    private lastAppliedFramePacketFrameCount: number = -1;
-    private frameTickPatches:
-        | ParsedFrameTickPatches
-        | undefined;
-    private frameRenderListPacked: Int32Array | undefined;
     private readonly frameRenderMapsScratch: FrameRenderMap[] = [];
     private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
 
@@ -157,29 +143,10 @@ export class WebGLMapRenderer
     }
 
     override applyFramePacket(packet: FramePacket | undefined): void {
+        this.framePacketState.apply(packet);
         if (!packet) {
-            this.lastAppliedFramePacketFrameCount = -1;
-            this.clearNpcOffsetRing();
-            this.frameTickPatches = undefined;
-            this.frameRenderListPacked = undefined;
-            this.npcGpuFrameData = undefined;
             this.npcDataTexture = undefined;
-            this.npcDataTextureDirty = false;
-            return;
         }
-
-        // Avoid re-parsing the packet when the worker output lags by a frame; we still need to
-        // keep per-map offset rings in sync (write index changes every frame), so callers may
-        // invoke this repeatedly with the same packet.
-        if ((packet.frameCount | 0) !== (this.lastAppliedFramePacketFrameCount | 0)) {
-            this.lastAppliedFramePacketFrameCount = packet.frameCount | 0;
-
-            const parsed = parseFramePacket(packet);
-            if (parsed) {
-                this.applyParsedFramePacket(parsed);
-            }
-        }
-
     }
 
     setInteractionInput(input: InteractionInput): void {
@@ -197,23 +164,6 @@ export class WebGLMapRenderer
             this.hoveredMapIdsPackedScratch[write++] = mapId | 0;
         }
         return this.hoveredMapIdsPackedScratch;
-    }
-
-    private applyParsedFramePacket(packet: ParsedFramePacket): void {
-        this.npcGpuFrameData = packet.npcGpuFrameData;
-        this.frameTickPatches = packet.tickPatches;
-        this.frameRenderListPacked = packet.renderListPacked;
-        this.npcDataRingIndex =
-            (((packet.npcRingWriteIndex | 0) % NPC_DATA_TEXTURE_RING_SIZE) +
-                NPC_DATA_TEXTURE_RING_SIZE) %
-            NPC_DATA_TEXTURE_RING_SIZE;
-
-        const ringOffsets = this.npcDataOffsetsByMapIdByRing[this.npcDataRingIndex]!;
-        ringOffsets.clear();
-        for (const [mapId, dataOffset] of packet.npcOffsetsByMapId.entries()) {
-            ringOffsets.set(mapId, dataOffset);
-        }
-        this.npcDataTextureDirty = true;
     }
 
     getViewportDimensions(): { width: number; height: number } {
@@ -360,19 +310,21 @@ export class WebGLMapRenderer
         );
 
         this.renderSceneToFramebuffer();
-        if (this.npcDataTextureDirty) {
-            const packedNpcData = this.npcGpuFrameData ?? {
+        if (this.framePacketState.isNpcDataTextureDirty()) {
+            const packedNpcData = this.framePacketState.getNpcGpuFrameData() ?? {
                 width: 16,
                 height: 1,
                 data: new Uint16Array(16 * 4),
             };
-            this.npcDataRingIndex = this.npcDataTextureRing.write(
+            const ringIndex = this.framePacketState.getNpcDataRingIndex();
+            const writtenIndex = this.npcDataTextureRing.write(
                 this.app,
-                this.npcDataRingIndex,
+                ringIndex,
                 packedNpcData,
             );
-            this.npcDataTexture = this.npcDataTextureRing.get(this.npcDataRingIndex);
-            this.npcDataTextureDirty = false;
+            this.framePacketState.setNpcDataRingIndex(writtenIndex);
+            this.npcDataTexture = this.npcDataTextureRing.get(writtenIndex);
+            this.framePacketState.markNpcDataTextureClean();
         }
         this.renderPasses(frameRenderMaps, this.npcDataTexture);
         this.postProcessPass.blitSceneToTexture(this.app, this.gl, this.renderTargets);
@@ -556,7 +508,7 @@ export class WebGLMapRenderer
         drawCall: DrawCall,
         drawRangesPacked: Int32Array,
     ): void {
-        const frame = this.frameTickPatches;
+        const frame = this.framePacketState.getTickPatches();
         if (!frame) {
             return;
         }
@@ -583,7 +535,7 @@ export class WebGLMapRenderer
         drawCall: DrawCall,
         drawRangesPacked: Int32Array,
     ): void {
-        const frame = this.frameTickPatches;
+        const frame = this.framePacketState.getTickPatches();
         if (!frame) {
             return;
         }
@@ -628,7 +580,7 @@ export class WebGLMapRenderer
 
     private collectFrameRenderMaps(): FrameRenderMap[] {
         const out = this.frameRenderMapsScratch;
-        const packed = this.frameRenderListPacked;
+        const packed = this.framePacketState.getRenderListPacked();
         if (packed === undefined) {
             out.length = 0;
             return out;
@@ -702,7 +654,8 @@ export class WebGLMapRenderer
 
         this.textures.dispose();
 
-        this.clearNpcOffsetRing();
+        this.framePacketState.reset();
+        this.npcDataTexture = undefined;
         this.clearMaps();
         console.log("Renderer cleaned up");
     }
@@ -756,8 +709,7 @@ export class WebGLMapRenderer
         if (!npcDataTexture) {
             return undefined;
         }
-        const ringOffsets = this.npcDataOffsetsByMapIdByRing[this.npcDataRingIndex | 0];
-        const packetOffset = ringOffsets?.get(mapId | 0);
+        const packetOffset = this.framePacketState.getNpcDataOffsetForCurrentRing(mapId);
         const dataOffset = packetOffset !== undefined ? packetOffset | 0 : -1;
         if (dataOffset === -1) {
             return undefined;
@@ -766,12 +718,5 @@ export class WebGLMapRenderer
         drawCall.uniform("u_npcDataOffset", dataOffset);
         drawCall.texture("u_npcDataTexture", npcDataTexture);
         return { drawCall, drawRangesPacked };
-    }
-
-    private clearNpcOffsetRing(): void {
-        this.npcDataRingIndex = 0;
-        for (let i = 0; i < this.npcDataOffsetsByMapIdByRing.length; i++) {
-            this.npcDataOffsetsByMapIdByRing[i]!.clear();
-        }
     }
 }

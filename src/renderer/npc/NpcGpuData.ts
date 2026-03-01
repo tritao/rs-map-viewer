@@ -8,7 +8,7 @@ export type NpcGpuFrameData = Readonly<{
 
 export type NpcGpuDataTarget = Readonly<{
     id: number;
-    npcs: ReadonlyArray<Npc>;
+    getNpcs(): ReadonlyArray<Npc>;
     getTileRenderFlag(level: number, tileX: number, tileY: number): number;
 }>;
 

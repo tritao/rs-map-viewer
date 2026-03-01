@@ -10,7 +10,7 @@ export class NpcGpuDataBuilder {
     }
 
     addRenderable(renderable: NpcGpuDataTarget): number {
-        const npcs = renderable.npcs;
+        const npcs = renderable.getNpcs();
         if (npcs.length === 0) {
             return -1;
         }

@@ -713,7 +713,7 @@ const worker = {
             // Build packed NPC gpu info (x,y,rotationAndPlane,typeId) and per-map offset.
             const target: NpcGpuDataTarget = {
                 id: mapId | 0,
-                npcs: state.npcs,
+                getNpcs: (): ReadonlyArray<Npc> => state.npcs,
                 getTileRenderFlag: (_level: number, tileX: number, tileY: number): number => {
                     const col = state.tileRenderFlagsLevel1[(tileX + state.borderSize) | 0];
                     return col ? col[(tileY + state.borderSize) | 0] | 0 : 0;
