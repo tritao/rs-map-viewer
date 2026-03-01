@@ -1,10 +1,12 @@
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import { SdRenderableData } from "../loader/SdRenderableData";
-import { LocAnimated } from "../loc/LocAnimated";
-import { Npc } from "../npc/Npc";
-import { orderByPacketKeys } from "../npc/orderByPacketKeys";
+import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
+import { SdMapData } from "../../renderer/loader/SdMapData";
+import { LocAnimated } from "../../renderer/loc/LocAnimated";
+import { Npc } from "../../renderer/npc/Npc";
+import { orderByPacketKeys } from "../../renderer/npc/orderByPacketKeys";
+import { MapSquareTickState } from "./MapSquareTickState";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
@@ -12,7 +14,7 @@ const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
 
 export function buildLocsAnimated(
-    data: SdRenderableData,
+    data: SdMapData,
     seqTypeLoader: SeqTypeLoader,
     time: number,
 ): { locsAnimated: LocAnimated[]; seqIds: number[] } {
@@ -49,7 +51,7 @@ export function buildLocsAnimated(
 }
 
 export function buildNpcs(
-    data: SdRenderableData,
+    data: SdMapData,
     npcTypeLoader: NpcTypeLoader,
     basTypeLoader: BasTypeLoader,
 ): Npc[] {
@@ -98,4 +100,37 @@ export function buildNpcDrawRanges(
         }
     }
     return drawRangesNpc;
+}
+
+export type MapSquareTickStateBuildResult = Readonly<{
+    tickState: MapSquareTickState;
+    npcDrawRanges: Int32Array;
+}>;
+
+export function buildMapSquareTickState(
+    mapId: number,
+    data: SdMapData,
+    seqTypeLoader: SeqTypeLoader,
+    seqFrameLoader: SeqFrameLoader,
+    npcTypeLoader: NpcTypeLoader,
+    basTypeLoader: BasTypeLoader,
+    time: number,
+): MapSquareTickStateBuildResult {
+    const tickState = new MapSquareTickState(mapId);
+
+    const { locsAnimated, seqIds } = buildLocsAnimated(data, seqTypeLoader, time);
+    tickState.setLocsAnimated(locsAnimated);
+    tickState.initLocAnimationPatchData(seqFrameLoader, seqIds);
+
+    const npcs = buildNpcs(data, npcTypeLoader, basTypeLoader);
+    tickState.setNpcs(npcs);
+    tickState.initNpcAnimationPatchData(
+        seqTypeLoader,
+        seqFrameLoader,
+        data.npcDrawRangesBase,
+        data.npcDrawRangesAlpha,
+    );
+
+    const npcDrawRanges = buildNpcDrawRanges(npcs, data.npcDrawRangesBase);
+    return { tickState, npcDrawRanges };
 }

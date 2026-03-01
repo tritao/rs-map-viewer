@@ -6,8 +6,6 @@ import { LoadedCache } from "../util/Caches";
 import { MapSquareInfo } from "./MapManager";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 import { MapData } from "./loader/MapData";
-import { LocAnimated } from "./loc/LocAnimated";
-import { Npc } from "./npc/Npc";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
@@ -48,14 +46,8 @@ export interface MapSquareRenderable {
     readonly mapY: number;
     readonly borderSize: number;
 
-    // Animated locs
-    getLocsAnimated(): ReadonlyArray<LocAnimated>;
-
-    // Npcs
-    getNpcs(): ReadonlyArray<Npc>;
-
-    // Optional capability: tick backend can drive animation patches for this renderable.
-    getTickCapability?(): TickCapability | undefined;
+    // Optional capability: map runtime tick state owned outside renderable draw resources.
+    getMapTickState?(): TickCapability | undefined;
     // Optional capability: renderer map can be consumed by NPC GPU packing.
     getNpcGpuDataTarget?(): NpcGpuDataTarget | undefined;
 

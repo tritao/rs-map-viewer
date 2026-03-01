@@ -1,19 +1,21 @@
 import type { SeqType } from "../../rs/config/seqtype/SeqType";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import type { DrawRange } from "../DrawRange";
-import type { LocAnimated } from "../loc/LocAnimated";
-import type { Npc } from "../npc/Npc";
+import type { DrawRange } from "../../renderer/DrawRange";
+import type { LocAnimated } from "../../renderer/loc/LocAnimated";
+import type { Npc } from "../../renderer/npc/Npc";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickPatchBackendResult } from "../patch/TickCapability";
+import type { TickCapability, TickPatchBackendResult } from "../../renderer/patch/TickCapability";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
 const DRAW_RANGE_ELEMENTS_INDEX = 1;
 const DRAW_RANGE_INSTANCES_INDEX = 2;
 
-export class WebGLMapSquareTickState {
+export class MapSquareTickState implements TickCapability {
+    constructor(readonly id: number) {}
+
     private locsAnimated: LocAnimated[] = [];
     private npcs: Npc[] = [];
     locFrameIds = new Int32Array(0);
@@ -199,7 +201,7 @@ export class WebGLMapSquareTickState {
             this.locSeqAnimMayaDurations[i] =
                 ((loc.seqType?.animMayaEnd ?? 0) - (loc.seqType?.animMayaStart ?? 0)) | 0;
 
-            const frameLengthMeta = WebGLMapSquareTickState.appendSeqFrameLengthsPacked(
+            const frameLengthMeta = MapSquareTickState.appendSeqFrameLengthsPacked(
                 seqFrameLengthsPacked,
                 loc.seqType,
                 seqFrameLoader,
@@ -216,14 +218,14 @@ export class WebGLMapSquareTickState {
             this.locDrawRangeIndicesInteractLod[i] = loc.drawRangeInteractLodIndex | 0;
             this.locDrawRangeIndicesInteractLodAlpha[i] = loc.drawRangeInteractLodAlphaIndex | 0;
 
-            const baseMeta = WebGLMapSquareTickState.appendAnimationFramesPacked(
+            const baseMeta = MapSquareTickState.appendAnimationFramesPacked(
                 basePacked,
                 loc.anim.frames,
             );
             this.locAnimFrameOffsetsBase[i] = baseMeta.offset | 0;
             this.locAnimFrameCountsBase[i] = baseMeta.count | 0;
 
-            const alphaMeta = WebGLMapSquareTickState.appendAnimationFramesPacked(
+            const alphaMeta = MapSquareTickState.appendAnimationFramesPacked(
                 alphaPacked,
                 loc.anim.framesAlpha,
             );
@@ -434,28 +436,28 @@ export class WebGLMapSquareTickState {
                     this.npcWalkFrameCountsAlpha[i] = 1;
                 }
             } else {
-                const idleBase = WebGLMapSquareTickState.appendAnimationFramesPacked(
+                const idleBase = MapSquareTickState.appendAnimationFramesPacked(
                     basePacked,
                     npc.idleAnim?.frames,
                 );
                 this.npcIdleFrameOffsetsBase[i] = idleBase.offset | 0;
                 this.npcIdleFrameCountsBase[i] = idleBase.count | 0;
 
-                const walkBase = WebGLMapSquareTickState.appendAnimationFramesPacked(
+                const walkBase = MapSquareTickState.appendAnimationFramesPacked(
                     basePacked,
                     npc.walkAnim?.frames,
                 );
                 this.npcWalkFrameOffsetsBase[i] = walkBase.offset | 0;
                 this.npcWalkFrameCountsBase[i] = walkBase.count | 0;
 
-                const idleAlpha = WebGLMapSquareTickState.appendAnimationFramesPacked(
+                const idleAlpha = MapSquareTickState.appendAnimationFramesPacked(
                     alphaPacked,
                     npc.idleAnim?.framesAlpha,
                 );
                 this.npcIdleFrameOffsetsAlpha[i] = idleAlpha.offset | 0;
                 this.npcIdleFrameCountsAlpha[i] = idleAlpha.count | 0;
 
-                const walkAlpha = WebGLMapSquareTickState.appendAnimationFramesPacked(
+                const walkAlpha = MapSquareTickState.appendAnimationFramesPacked(
                     alphaPacked,
                     npc.walkAnim?.framesAlpha,
                 );
@@ -472,7 +474,7 @@ export class WebGLMapSquareTickState {
             this.npcIdleSeqLooping[i] = idleSeqType?.looping ? 1 : 0;
             this.npcIdleSeqMaxLoops[i] = idleSeqType?.maxLoops ?? 0;
             this.npcIdleSeqFrameIdCounts[i] = idleSeqType?.frameIds?.length ?? 0;
-            const idleSeqFramesMeta = WebGLMapSquareTickState.appendSeqFrameLengthsPacked(
+            const idleSeqFramesMeta = MapSquareTickState.appendSeqFrameLengthsPacked(
                 seqFrameLengthsPacked,
                 idleSeqType,
                 seqFrameLoader,
@@ -489,7 +491,7 @@ export class WebGLMapSquareTickState {
             this.npcWalkSeqLooping[i] = walkSeqType?.looping ? 1 : 0;
             this.npcWalkSeqMaxLoops[i] = walkSeqType?.maxLoops ?? 0;
             this.npcWalkSeqFrameIdCounts[i] = walkSeqType?.frameIds?.length ?? 0;
-            const walkSeqFramesMeta = WebGLMapSquareTickState.appendSeqFrameLengthsPacked(
+            const walkSeqFramesMeta = MapSquareTickState.appendSeqFrameLengthsPacked(
                 seqFrameLengthsPacked,
                 walkSeqType,
                 seqFrameLoader,

@@ -7,25 +7,8 @@ import PicoGL, {
     VertexBuffer,
 } from "picogl";
 
-import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { Scene } from "../../rs/scene/Scene";
 import { SdRenderableData } from "../loader/SdRenderableData";
-import { LocAnimated } from "../loc/LocAnimated";
-import { Npc } from "../npc/Npc";
-import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type {
-    TickCapability,
-    TickPatchBackendResult,
-} from "../patch/TickCapability";
-import { WebGLMapSquareTickState } from "./WebGLMapSquareTickState";
-import {
-    buildLocsAnimated,
-    buildNpcDrawRanges,
-    buildNpcs,
-} from "./WebGLRenderableBuild";
 
 const FRAME_RENDER_DELAY = 3;
 
@@ -71,7 +54,7 @@ export type CreateDrawCallFunction = (
     useNpcGeometry?: boolean,
 ) => DrawCallRange;
 
-export class WebGLRenderable implements TickCapability {
+export class WebGLRenderable {
     interleavedBuffer!: VertexBuffer;
     indexBuffer!: VertexBuffer;
     vertexArray!: VertexArray;
@@ -85,9 +68,6 @@ export class WebGLRenderable implements TickCapability {
 
     private drawCallsByKey!: DrawCallRange[];
 
-    drawCallNpc!: DrawCallRange;
-
-    private readonly tickState: WebGLMapSquareTickState;
     private disposed = false;
 
     // Actual cache texture IDs used by this renderable (optional; used for texture residency).
@@ -101,9 +81,7 @@ export class WebGLRenderable implements TickCapability {
 
         readonly timeLoaded: number,
         readonly frameLoaded: number,
-    ) {
-        this.tickState = new WebGLMapSquareTickState();
-    }
+    ) {}
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
         return this.tileRenderFlags[level][tileX + this.borderSize][tileY + this.borderSize];
@@ -166,127 +144,6 @@ export class WebGLRenderable implements TickCapability {
             .indexBuffer(this.npcIndexBuffer);
     }
 
-    createAnimatedLocs(
-        time: number,
-        data: SdRenderableData,
-        seqTypeLoader: SeqTypeLoader,
-        seqFrameLoader: SeqFrameLoader,
-    ) {
-        const { locsAnimated, seqIds } = buildLocsAnimated(data, seqTypeLoader, time);
-        this.tickState.setLocsAnimated(locsAnimated);
-        this.initLocAnimationPatchData(seqFrameLoader, seqIds);
-    }
-
-    private initLocAnimationPatchData(seqFrameLoader: SeqFrameLoader, seqIds: number[]): void {
-        this.tickState.initLocAnimationPatchData(seqFrameLoader, seqIds);
-    }
-
-    syncLocAnimationFrameIds(): void {
-        this.tickState.syncLocAnimationFrameIds();
-    }
-
-    ensureCppTickStateInitializedFromObjects(): boolean {
-        return this.tickState.ensureCppTickStateInitializedFromObjects();
-    }
-
-    resetCppTickStateLifecycle(): void {
-        this.tickState.resetCppTickStateLifecycle();
-    }
-
-    getLocDrawRangeIndicesForPass(
-        isAlpha: boolean,
-        isInteract: boolean,
-        isLod: boolean,
-    ): Int32Array {
-        return this.tickState.getLocDrawRangeIndicesForPass(isAlpha, isInteract, isLod);
-    }
-
-    createNpcs(
-        data: SdRenderableData,
-        npcTypeLoader: NpcTypeLoader,
-        basTypeLoader: BasTypeLoader,
-        seqTypeLoader: SeqTypeLoader,
-        seqFrameLoader: SeqFrameLoader,
-        createDrawCall: CreateDrawCallFunction,
-        npcProgram: Program,
-    ) {
-        const npcs = buildNpcs(data, npcTypeLoader, basTypeLoader);
-        this.tickState.setNpcs(npcs);
-
-        const drawRangesNpc = buildNpcDrawRanges(npcs, data.npcDrawRangesBase);
-        this.drawCallNpc = createDrawCall(
-            npcProgram,
-            undefined,
-            drawRangesNpc,
-            this.npcVertexArray !== undefined,
-        );
-
-        this.initNpcAnimationPatchData(
-            seqTypeLoader,
-            seqFrameLoader,
-            data.npcDrawRangesBase,
-            data.npcDrawRangesAlpha,
-        );
-    }
-
-    private initNpcAnimationPatchData(
-        seqTypeLoader: SeqTypeLoader,
-        seqFrameLoader: SeqFrameLoader,
-        packetDrawRangesBase?: Int32Array,
-        packetDrawRangesAlpha?: Int32Array,
-    ): void {
-        this.tickState.initNpcAnimationPatchData(
-            seqTypeLoader,
-            seqFrameLoader,
-            packetDrawRangesBase,
-            packetDrawRangesAlpha,
-        );
-    }
-
-    syncNpcAnimationSelection(isAlpha: boolean): void {
-        this.tickState.syncNpcAnimationSelection(isAlpha);
-    }
-
-    syncNpcMovementStateFromObjects(): void {
-        this.tickState.syncNpcMovementStateFromObjects();
-    }
-
-    syncNpcPathStateFromObjects(): void {
-        this.tickState.syncNpcPathStateFromObjects();
-    }
-
-    syncNpcSequenceSelectionForUpdate(): void {
-        this.tickState.syncNpcSequenceSelectionForUpdate();
-    }
-
-    getTickCapability(): TickCapability | undefined {
-        return this;
-    }
-
-    getLocsAnimated(): ReadonlyArray<LocAnimated> {
-        return this.tickState.getLocsAnimated();
-    }
-
-    getLocFrameId(locIndex: number): number {
-        return this.tickState.getLocFrameId(locIndex);
-    }
-
-    setLocFrameId(locIndex: number, frameId: number): void {
-        this.tickState.setLocFrameId(locIndex, frameId);
-    }
-
-    getNpcs(): ReadonlyArray<Npc> {
-        return this.tickState.getNpcs();
-    }
-
-    getWasmTickStateInput(): DrawRangeTickStateInput {
-        return this.tickState.getWasmTickStateInput();
-    }
-
-    applyWasmTickResult(_result: TickPatchBackendResult): void {
-        this.tickState.applyWasmTickResult(_result);
-    }
-
     private static isAlphaKey(key: DrawCallKey): boolean {
         return (
             key === DrawCallKey.Alpha ||
@@ -296,64 +153,41 @@ export class WebGLRenderable implements TickCapability {
         );
     }
 
-    private static getModelInfoBucketByKey(
+    private static getModelInfoBuckets(
         modelInfoTextures: SdRenderableData["modelInfoTextures"],
-        key: DrawCallKey,
-    ): Uint16Array {
-        switch (key) {
-            case DrawCallKey.Base:
-                return modelInfoTextures.base;
-            case DrawCallKey.Alpha:
-                return modelInfoTextures.alpha;
-            case DrawCallKey.Lod:
-                return modelInfoTextures.lod;
-            case DrawCallKey.LodAlpha:
-                return modelInfoTextures.lodAlpha;
-            case DrawCallKey.Interact:
-                return modelInfoTextures.interact;
-            case DrawCallKey.InteractAlpha:
-                return modelInfoTextures.interactAlpha;
-            case DrawCallKey.InteractLod:
-                return modelInfoTextures.interactLod;
-            case DrawCallKey.InteractLodAlpha:
-                return modelInfoTextures.interactLodAlpha;
-        }
-        return modelInfoTextures.base;
+    ): ReadonlyArray<Uint16Array> {
+        return [
+            modelInfoTextures.base,
+            modelInfoTextures.alpha,
+            modelInfoTextures.lod,
+            modelInfoTextures.lodAlpha,
+            modelInfoTextures.interact,
+            modelInfoTextures.interactAlpha,
+            modelInfoTextures.interactLod,
+            modelInfoTextures.interactLodAlpha,
+        ];
     }
 
-    private static getDrawRangesByKey(
+    private static getDrawRangeBuckets(
         drawRanges: SdRenderableData["drawRanges"],
-        key: DrawCallKey,
-    ): Int32Array {
-        switch (key) {
-            case DrawCallKey.Base:
-                return drawRanges.base;
-            case DrawCallKey.Alpha:
-                return drawRanges.alpha;
-            case DrawCallKey.Lod:
-                return drawRanges.lod;
-            case DrawCallKey.LodAlpha:
-                return drawRanges.lodAlpha;
-            case DrawCallKey.Interact:
-                return drawRanges.interact;
-            case DrawCallKey.InteractAlpha:
-                return drawRanges.interactAlpha;
-            case DrawCallKey.InteractLod:
-                return drawRanges.interactLod;
-            case DrawCallKey.InteractLodAlpha:
-                return drawRanges.interactLodAlpha;
-        }
-        return drawRanges.base;
+    ): ReadonlyArray<Int32Array> {
+        return [
+            drawRanges.base,
+            drawRanges.alpha,
+            drawRanges.lod,
+            drawRanges.lodAlpha,
+            drawRanges.interact,
+            drawRanges.interactAlpha,
+            drawRanges.interactLod,
+            drawRanges.interactLodAlpha,
+        ];
     }
 
     createModelInfoTextures(app: PicoApp, data: SdRenderableData) {
+        const modelInfoBuckets = WebGLRenderable.getModelInfoBuckets(data.modelInfoTextures);
         const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
-            const key = i as DrawCallKey;
-            textures[i] = createModelInfoTexture(
-                app,
-                WebGLRenderable.getModelInfoBucketByKey(data.modelInfoTextures, key),
-            );
+            textures[i] = createModelInfoTexture(app, modelInfoBuckets[i]!);
         }
         this.modelInfoTexturesByKey = textures;
     }
@@ -364,13 +198,14 @@ export class WebGLRenderable implements TickCapability {
         mainProgram: Program,
         mainAlphaProgram: Program,
     ) {
+        const drawRangeBuckets = WebGLRenderable.getDrawRangeBuckets(data.drawRanges);
         const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
             const key = i as DrawCallKey;
             drawCalls[i] = createDrawCall(
                 WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
                 this.modelInfoTexturesByKey[i],
-                WebGLRenderable.getDrawRangesByKey(data.drawRanges, key),
+                drawRangeBuckets[i]!,
             );
         }
         this.drawCallsByKey = drawCalls;

@@ -501,7 +501,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                 renderListPacked[renderOff + 1] = renderFlags | 0;
                 continue;
             }
-            const mapNpcs = map.getNpcs();
+            const tickState = map.getMapTickState?.();
+            const mapNpcs = tickState?.getNpcs() ?? [];
             if ((mapNpcs.length | 0) > 0) {
                 renderFlags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
             }
@@ -512,8 +513,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 mapNpcs,
                 ticksElapsed,
             );
-            const tickCap = map.getTickCapability?.();
-            if (tickCap) {
+            if (tickState) {
                 const sink: TickPatchSink = {
                     emitLocPatch: (
                         variant: LocTickPatchVariant,
@@ -567,7 +567,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     },
                 };
                 this.tickController.tickRenderable(
-                    tickCap,
+                    tickState,
                     mapInfo,
                     cycle,
                     clientTicksElapsed,
