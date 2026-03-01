@@ -261,14 +261,35 @@ export class ProceduralTextureLoader implements TextureLoader {
     }
 
     isTransparent(id: number): boolean {
-        if (!this.transparentTextureMap.has(id)) {
-            if (!this.getTexture(id)) {
-                this.transparentTextureMap.set(id, false);
-            } else if (!this.tryGetPixelsArgb(id, 128, false, 1.0)) {
-                this.transparentTextureMap.set(id, false);
-            }
+        // Important: this must be stable within a single build. Some caches (notably 667) cannot be
+        // classified correctly via material metadata; we must use pixel decode.
+        const cached = this.transparentTextureMap.get(id);
+        if (cached !== undefined) {
+            return cached;
         }
+
+        // If we don't even have a texture definition, treat as opaque and avoid repeated decode work.
+        if (!this.textureIdSet.has(id)) {
+            return false;
+        }
+
+        // Populate transparentTextureMap via textureGenerator.isTransparent. Use ARGB so alpha-operation
+        // based transparency is observable; RGB-only generation can cache false and later "flip" to true.
+        this.tryGetPixelsArgb(id, 128, false, 1.0);
+
         return this.transparentTextureMap.get(id) ?? false;
+    }
+
+    private recordTransparencyFromGenerator(id: number, allowFalse: boolean): void {
+        // For caches that support alpha operations, RGB pixel generation cannot observe alpha-op
+        // transparency, so we must not cache a false classification from the RGB path.
+        if (allowFalse) {
+            this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
+            return;
+        }
+        if (this.textureGenerator.isTransparent) {
+            this.transparentTextureMap.set(id, true);
+        }
     }
 
     getAverageHsl(id: number): number {
@@ -365,7 +386,7 @@ export class ProceduralTextureLoader implements TextureLoader {
                 brightness,
             );
 
-            this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
+            this.recordTransparencyFromGenerator(id, !this.hasAlphaOperation);
 
             return ok(pixels);
         } catch (cause) {
@@ -407,7 +428,8 @@ export class ProceduralTextureLoader implements TextureLoader {
                 brightness,
             );
 
-            this.transparentTextureMap.set(id, this.textureGenerator.isTransparent);
+            // ARGB generation is authoritative (it observes computed alpha, not just RGB=0).
+            this.recordTransparencyFromGenerator(id, true);
 
             return ok(pixels);
         } catch (cause) {
