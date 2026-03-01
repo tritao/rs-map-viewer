@@ -135,8 +135,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 const level1 = sdMapData.tileRenderFlags[1] ?? [];
-                void this.workerPool
-                    .registerMapNpcSimState(
+                try {
+                    await this.workerPool.registerMapNpcSimState(
                         mapId,
                         sdMapData.borderSize,
                         level1,
@@ -144,10 +144,15 @@ export class MapViewerRenderer extends RendererMainLoop {
                         sdMapData.locsAnimated,
                         sdMapData.npcs,
                         sdMapData.npcOrderKeys,
-                    )
-                    .catch(() => {
-                        // Avoid unhandled promise rejections; registration is best-effort.
-                    });
+                    );
+                } catch (e) {
+                    console.warn(
+                        `[map-render] failed to register worker sim state for ${sdMapData.mapX},${sdMapData.mapY}`,
+                        e,
+                    );
+                    this.mapManager.addInvalidMap(sdMapData.mapX, sdMapData.mapY);
+                    return;
+                }
 
                 this.mapManager.addMap(mapX, mapY);
                 this.renderer.addMap(mapData);

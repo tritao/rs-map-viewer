@@ -7,6 +7,7 @@ import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { NpcData } from "../runtime/entities/NpcData";
+import { createNpcDatasFromSpawns } from "../runtime/entities/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
@@ -36,6 +37,7 @@ import { type CollisionData } from "../rs/scene/CollisionMap";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import { decodeNpcSpawnsFromBytes } from "../rs/scene/decodeNpcSpawns";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
@@ -100,6 +102,49 @@ let workerRuntimeOptions: WorkerRuntimeOptions | undefined;
 
 function shouldUseWasmTickInWorker(): boolean {
     return workerRuntimeOptions?.mapRenderBackend === "cpp-wasm";
+}
+
+function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
+    return {
+        mapX: (mapId >> 8) & 0xff,
+        mapY: mapId & 0xff,
+    };
+}
+
+function maybeHydrateNpcSimDatasFromMapBytes(
+    workerState: WorkerState,
+    mapId: number,
+    borderSize: number,
+    tileRenderFlagsLevel1: Uint8Array[],
+    npcsIn: NpcData[],
+): NpcData[] {
+    if ((npcsIn.length | 0) > 0) {
+        return npcsIn;
+    }
+    const { mapX, mapY } = decodeMapSquareFromId(mapId);
+    const npcSpawnBytes = workerState.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
+    if (!(npcSpawnBytes instanceof Uint8Array) || npcSpawnBytes.length === 0) {
+        return npcsIn;
+    }
+    const decodedSpawns = decodeNpcSpawnsFromBytes(
+        tileRenderFlagsLevel1,
+        borderSize,
+        mapX,
+        mapY,
+        npcSpawnBytes,
+    );
+    if (!decodedSpawns || (decodedSpawns.length | 0) <= 0) {
+        return npcsIn;
+    }
+    const npcTypeLoader = workerState.session.loaders.npcTypeLoader;
+    const filteredSpawns = decodedSpawns.filter((spawn) => {
+        const npcResult = npcTypeLoader.tryLoad(spawn.id);
+        return npcResult.ok && (npcResult.value.loginScreenProps & 0x1) > 0;
+    });
+    if ((filteredSpawns.length | 0) <= 0) {
+        return npcsIn;
+    }
+    return createNpcDatasFromSpawns(filteredSpawns);
 }
 
 async function requireWorkerState(): Promise<WorkerState> {
@@ -325,6 +370,13 @@ const worker = {
         npcOrderKeys?: Int32Array,
     ): Promise<void> {
         const workerState = await requireWorkerState();
+        const hydratedNpcs = maybeHydrateNpcSimDatasFromMapBytes(
+            workerState,
+            mapId,
+            borderSize,
+            tileRenderFlagsLevel1,
+            npcsIn,
+        );
         npcSimStateStore.registerMap(
             {
                 mapId,
@@ -332,8 +384,8 @@ const worker = {
                 tileRenderFlagsLevel1,
                 collisionDatas,
                 locsAnimated,
-                npcsIn,
-                npcOrderKeys,
+                npcsIn: hydratedNpcs,
+                npcOrderKeys: hydratedNpcs === npcsIn ? npcOrderKeys : undefined,
             },
             {
                 npcTypeLoader: workerState.session.loaders.npcTypeLoader,
