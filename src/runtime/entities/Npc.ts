@@ -1,11 +1,6 @@
 import { NpcType } from "../../rs/config/npctype/NpcType";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import { BLOCKED_STATEGY, NORMAL_STRATEGY } from "../../rs/pathfinder/CollisionStrategy";
-import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
-import { ExactRouteStrategy } from "../../rs/pathfinder/RouteStrategy";
-import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
-import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { clamp } from "../../util/MathUtil";
 import { AnimationFrames } from "../../renderer/AnimationFrames";
 
@@ -14,8 +9,6 @@ export enum MovementType {
     WALK = 1,
     RUN = 2,
 }
-
-const routeStrategy = new ExactRouteStrategy();
 
 const DIRECTION_ROTATIONS = [768, 1024, 1280, 512, 1536, 256, 0, 1792];
 
@@ -334,133 +327,6 @@ export class Npc {
                 }
             } else {
                 this.movementSeqId = -1;
-            }
-        }
-    }
-
-    updateServerMovement(
-        pathfinder: Pathfinder,
-        borderSize: number,
-        collisionMaps: CollisionMap[],
-    ) {
-        const size = this.getSize();
-
-        const collisionMap = collisionMaps[this.level];
-
-        if (this.canWalk() && Math.random() < 0.1) {
-            const deltaX = Math.round(Math.random() * 10.0 - 5.0);
-            const deltaY = Math.round(Math.random() * 10.0 - 5.0);
-
-            const srcX = this.pathX[0];
-            const srcY = this.pathY[0];
-
-            const spawnX = this.spawnX;
-            const spawnY = this.spawnY;
-
-            const targetX = clamp(spawnX + deltaX, 0, 64 - size - 1);
-            const targetY = clamp(spawnY + deltaY, 0, 64 - size - 1);
-
-            routeStrategy.approxDestX = targetX;
-            routeStrategy.approxDestY = targetY;
-            routeStrategy.destSizeX = 1;
-            routeStrategy.destSizeY = 1;
-
-            pathfinder.setNpcFlags(srcX, srcY, spawnX, spawnY, 5, borderSize, collisionMap);
-
-            let collisionStrategy = NORMAL_STRATEGY;
-            if (
-                collisionMap.hasFlag(spawnX + borderSize, spawnY + borderSize, CollisionFlag.FLOOR)
-            ) {
-                collisionStrategy = BLOCKED_STATEGY;
-            }
-
-            let steps = pathfinder.findPath(
-                srcX,
-                srcY,
-                size,
-                this.level,
-                routeStrategy,
-                collisionStrategy,
-                CollisionFlag.BLOCK_NPCS,
-                true,
-            );
-            if (steps > 0) {
-                if (steps > 24) {
-                    steps = 24;
-                }
-                for (let s = 0; s < steps; s++) {
-                    this.serverPathX[s] = pathfinder.bufferX[s];
-                    this.serverPathY[s] = pathfinder.bufferY[s];
-                    this.serverPathMovementType[s] = MovementType.WALK;
-                }
-                this.serverPathLength = steps;
-            }
-        }
-
-        if (this.serverPathLength > 0) {
-            const currX = this.pathX[0];
-            const currY = this.pathY[0];
-            const targetX = this.serverPathX[this.serverPathLength - 1];
-            const targetY = this.serverPathY[this.serverPathLength - 1];
-            const deltaX = clamp(targetX - currX, -1, 1);
-            const deltaY = clamp(targetY - currY, -1, 1);
-            // const deltaX = 0;
-            // const deltaY = 0;
-            const nextX = currX + deltaX;
-            const nextY = currY + deltaY;
-
-            for (let flagX = currX; flagX < currX + size; flagX++) {
-                for (let flagY = currY; flagY < currY + size; flagY++) {
-                    collisionMap.unflag(
-                        flagX + borderSize,
-                        flagY + borderSize,
-                        CollisionFlag.BLOCK_NPCS,
-                    );
-                }
-            }
-
-            let canMove = true;
-            exit: for (let flagX = nextX; flagX < nextX + size; flagX++) {
-                for (let flagY = nextY; flagY < nextY + size; flagY++) {
-                    if (
-                        collisionMap.hasFlag(
-                            flagX + borderSize,
-                            flagY + borderSize,
-                            CollisionFlag.BLOCK_NPCS,
-                        )
-                    ) {
-                        canMove = false;
-                        break exit;
-                    }
-                }
-            }
-
-            if (canMove) {
-                for (let flagX = nextX; flagX < nextX + size; flagX++) {
-                    for (let flagY = nextY; flagY < nextY + size; flagY++) {
-                        collisionMap.flag(
-                            flagX + borderSize,
-                            flagY + borderSize,
-                            CollisionFlag.BLOCK_NPCS,
-                        );
-                    }
-                }
-
-                this.queuePath(nextX, nextY, MovementType.WALK);
-            } else {
-                for (let flagX = currX; flagX < currX + size; flagX++) {
-                    for (let flagY = currY; flagY < currY + size; flagY++) {
-                        collisionMap.flag(
-                            flagX + borderSize,
-                            flagY + borderSize,
-                            CollisionFlag.BLOCK_NPCS,
-                        );
-                    }
-                }
-            }
-
-            if (nextX === targetX && nextY === targetY) {
-                this.serverPathLength--;
             }
         }
     }

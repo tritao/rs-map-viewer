@@ -4,6 +4,7 @@ import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import type { DrawRange } from "../../renderer/DrawRange";
 import { NULL_DRAW_RANGE } from "../../renderer/DrawRange";
+import { stepNpcSimulatedServerMovement } from "../../mapviewer/sim/NpcSimMovement";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -189,7 +190,7 @@ export function applyNpcMovementStep(
 
     for (let t = 0; t < safeTicksElapsed; t++) {
         for (const npc of state.npcs) {
-            npc.updateServerMovement(pathfinder, state.borderSize, state.collisionMaps);
+            stepNpcSimulatedServerMovement(npc, pathfinder, state.borderSize, state.collisionMaps);
         }
     }
 

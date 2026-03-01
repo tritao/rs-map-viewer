@@ -2,14 +2,12 @@ import { CollisionFlag } from "../rs/pathfinder/flag/CollisionFlag";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import { CollisionMap } from "../rs/scene/CollisionMap";
+import {
+    stepNpcSimulatedServerMovement,
+    type NpcServerMovementLike,
+} from "./sim/NpcSimMovement";
 
-export type SimNpcLike = Readonly<{
-    level: number;
-    pathX: ArrayLike<number>;
-    pathY: ArrayLike<number>;
-    getSize(): number;
-    updateServerMovement(pathfinder: Pathfinder, borderSize: number, collisionMaps: CollisionMap[]): void;
-}>;
+export type SimNpcLike = NpcServerMovementLike;
 
 export class SimWorld {
     private readonly collisionByMapId: Map<number, CollisionMap[] | CollisionData[]> = new Map();
@@ -59,7 +57,7 @@ export class SimWorld {
         }
         for (let t = 0; t < ticksElapsed; t++) {
             for (const npc of npcs) {
-                npc.updateServerMovement(pathfinder, borderSize, collisionMaps);
+                stepNpcSimulatedServerMovement(npc, pathfinder, borderSize, collisionMaps);
             }
         }
     }
@@ -89,4 +87,3 @@ export class SimWorld {
         }
     }
 }
-
