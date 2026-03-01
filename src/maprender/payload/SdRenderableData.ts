@@ -1,4 +1,4 @@
-import { RenderableType } from "../Renderer";
+import { RenderableType } from "../../renderer/Renderer";
 import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NpcData } from "../../runtime/entities/NpcData";
 

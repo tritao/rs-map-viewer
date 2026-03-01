@@ -4,7 +4,7 @@ import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
-import { SdMapData } from "../loader/SdMapData";
+import { SdMapData } from "../../maprender/payload/SdMapData";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
 export class WebGLMapSquare

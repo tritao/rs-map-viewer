@@ -1,8 +1,8 @@
-import { SdMapData } from "../renderer/loader/SdMapData";
+import { SdMapData } from "../maprender/payload/SdMapData";
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
-} from "../renderer/loader/SdRenderableData";
+} from "../maprender/payload/SdRenderableData";
 
 export type MapRenderCommandStreamRuntimeInput = Readonly<{
     sceneTileHeights: Int32Array;

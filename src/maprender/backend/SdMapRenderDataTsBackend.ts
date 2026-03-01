@@ -25,9 +25,9 @@ import { TextureLoader } from "../../rs/texture/TextureLoader";
 import type { BackendKind } from "../../util/BackendKind";
 import { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderDataContract";
 import { loadMinimapBlob } from "../../worker/MinimapData";
-import { AnimationFrames } from "../AnimationFrames";
-import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../DrawRange";
-import { InteractType } from "../InteractType";
+import { AnimationFrames } from "../../renderer/AnimationFrames";
+import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../renderer/DrawRange";
+import { InteractType } from "../../renderer/InteractType";
 import {
     ContourGroundType,
     createLocAnimatedGroupKey,
@@ -51,10 +51,10 @@ import {
     type SceneCommandPlan,
     type SceneCommandPlanDigest,
 } from "../../runtime/build";
-import { SdMapData } from "./SdMapData";
-import { SdMapLoaderInput } from "./SdMapLoaderInput";
-import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "./SdRenderableData";
-import { createSdTexturePacking } from "./SdTexturePacking";
+import { SdMapData } from "../payload/SdMapData";
+import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
+import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
+import { createSdTexturePacking } from "../payload/SdTexturePacking";
 
 function addNpcAnimationFrames(
     npcModelLoader: NpcModelLoader,
@@ -608,7 +608,7 @@ export class SdMapRenderDataTsBackend {
             loadLocs,
             smoothTerrain,
             minimizeDrawCalls,
-            loadedTextureIds,
+            loadedTextureIdsPacked,
         }: SdMapLoaderInput,
         options?: BuildMapDataOptions,
     ): Promise<BuildMapDataBridgeInputResult> {
@@ -891,11 +891,12 @@ export class SdMapRenderDataTsBackend {
 
         const includeLoadedTextures = options?.includeLoadedTextures !== false;
         const loadedTextures = new Map<number, Int32Array>();
+        const loadedTextureIdSet = new Set<number>(loadedTextureIdsPacked);
         if (includeLoadedTextures) {
             const loadTexturesStart = performance.now();
             let missingTextureCount = 0;
             for (const textureId of sceneBuf.usedTextureIds) {
-                if (!loadedTextureIds.has(textureId)) {
+                if (!loadedTextureIdSet.has(textureId)) {
                     const pixels = textureLoader.tryGetPixelsArgb(textureId, 128, true, 1.0);
                     if (pixels) {
                         loadedTextures.set(textureId, pixels);

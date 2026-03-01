@@ -3,8 +3,8 @@ import { pathToFileURL } from "url";
 
 import type { NpcSpawn } from "../../src/data/npc/NpcSpawn";
 import type { ObjSpawn } from "../../src/data/obj/ObjSpawn";
-import { SdMapLoaderInput } from "../../src/renderer/loader/SdMapLoaderInput";
-import { SdMapRenderDataTsBackend } from "../../src/renderer/loader/SdMapRenderDataTsBackend";
+import { SdMapLoaderInput } from "../../src/maprender/payload/SdMapLoaderInput";
+import { SdMapRenderDataTsBackend } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
         loadLocs: true,
         smoothTerrain: false,
         minimizeDrawCalls: false,
-        loadedTextureIds: new Set<number>(),
+        loadedTextureIdsPacked: new Int32Array(0),
     }));
 
     async function runTs(): Promise<void> {

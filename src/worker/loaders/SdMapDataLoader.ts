@@ -1,7 +1,7 @@
-import type { RenderDataLoader, RenderDataResult } from "../../worker/RenderDataLoader";
-import type { WorkerState } from "../../worker/RenderDataWorker";
-import { SdMapData } from "./SdMapData";
-import { SdMapLoaderInput } from "./SdMapLoaderInput";
+import type { RenderDataLoader, RenderDataResult } from "../RenderDataLoader";
+import type { WorkerState } from "../RenderDataWorker";
+import { SdMapData } from "../../maprender/payload/SdMapData";
+import { SdMapLoaderInput } from "../../maprender/payload/SdMapLoaderInput";
 
 export class SdMapDataLoader implements RenderDataLoader<SdMapLoaderInput, SdMapData | undefined> {
     __type = "sdMapDataLoader" as const;

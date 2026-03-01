@@ -4,7 +4,7 @@ import { vec4 } from "gl-matrix";
 import { Scene } from "../rs/scene/Scene";
 import { LoadedCache } from "../util/Caches";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
-import { MapData } from "./loader/MapData";
+import { MapData } from "../maprender/payload/MapData";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,

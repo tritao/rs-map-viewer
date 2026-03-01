@@ -1,8 +1,8 @@
 import type { ObjSpawn } from "../data/obj/ObjSpawn";
-import { SdMapData } from "../renderer/loader/SdMapData";
-import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
-import { SdMapRenderDataTsBackend } from "../renderer/loader/SdMapRenderDataTsBackend";
-import type { SdMapRenderDataTsBackendDeps } from "../renderer/loader/SdMapRenderDataTsBackend";
+import { SdMapData } from "../maprender/payload/SdMapData";
+import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
+import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
+import type { SdMapRenderDataTsBackendDeps } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { BackendKind } from "../util/BackendKind";

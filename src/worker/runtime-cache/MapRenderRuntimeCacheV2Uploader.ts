@@ -1,5 +1,5 @@
 import type { ObjSpawn } from "../../data/obj/ObjSpawn";
-import { SdMapLoaderInput } from "../../renderer/loader/SdMapLoaderInput";
+import { SdMapLoaderInput } from "../../maprender/payload/SdMapLoaderInput";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Scene } from "../../rs/scene/Scene";
 import type {

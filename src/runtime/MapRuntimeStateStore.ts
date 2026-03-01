@@ -2,7 +2,7 @@ import { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../rs/model/seq/SeqFrameLoader";
-import { SdMapData } from "../renderer/loader/SdMapData";
+import { SdMapData } from "../maprender/payload/SdMapData";
 import type { NpcGpuDataTarget } from "./entities/NpcGpuData";
 import { applyNpcServerDeltas, type NpcServerDelta } from "./sim/NpcSimMovement";
 import { MapSquareTickState } from "./tick/MapSquareTickState";

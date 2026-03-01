@@ -130,7 +130,7 @@ async function buildRuntimeLifecycleFixture(): Promise<
             loadLocs: true,
             smoothTerrain: false,
             minimizeDrawCalls: false,
-            loadedTextureIds: new Set<number>(),
+            loadedTextureIdsPacked: new Int32Array(0),
         },
         {
             mapBytesProvider,

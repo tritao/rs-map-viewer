@@ -17,11 +17,11 @@ import {
 import { collectRuntimeDrawCommandBuckets } from "../../src/renderer/buffer/SceneCommandBuilder";
 import type { SceneCommandPlanDigest } from "../../src/renderer/buffer/SceneCommandPlan";
 import { emitSceneModelsToSceneBuffer } from "../../src/renderer/buffer/SceneCommandPlan";
-import type { SdMapData } from "../../src/renderer/loader/SdMapData";
-import { SdMapLoaderInput } from "../../src/renderer/loader/SdMapLoaderInput";
-import { SdMapRenderDataTsBackend } from "../../src/renderer/loader/SdMapRenderDataTsBackend";
-import type { SdMapRenderDataTsBackendDeps } from "../../src/renderer/loader/SdMapRenderDataTsBackend";
-import { createSdTexturePacking } from "../../src/renderer/loader/SdTexturePacking";
+import type { SdMapData } from "../../src/maprender/payload/SdMapData";
+import { SdMapLoaderInput } from "../../src/maprender/payload/SdMapLoaderInput";
+import { SdMapRenderDataTsBackend } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
+import type { SdMapRenderDataTsBackendDeps } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
+import { createSdTexturePacking } from "../../src/maprender/payload/SdTexturePacking";
 import { isLowDetail } from "../../src/renderer/loc/SceneLocs";
 import { getSceneLocs } from "../../src/renderer/loc/SceneLocs";
 import {
@@ -7801,7 +7801,7 @@ async function main(): Promise<void> {
                 loadLocs: profile.loadLocs,
                 smoothTerrain: false,
                 minimizeDrawCalls: false,
-                loadedTextureIds: new Set<number>(),
+                loadedTextureIdsPacked: new Int32Array(0),
             };
             const debugTransparencyTexIds =
                 args.debugStage === "commandStream" ? ([239, 407, 235] as const) : undefined;

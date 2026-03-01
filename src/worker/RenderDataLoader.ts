@@ -1,6 +1,6 @@
 import { SerializerImplementation } from "threads";
 
-import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
+import { SdMapDataLoader } from "./loaders/SdMapDataLoader";
 import { WorkerState } from "./RenderDataWorker";
 
 export type RenderDataResult<T> = {

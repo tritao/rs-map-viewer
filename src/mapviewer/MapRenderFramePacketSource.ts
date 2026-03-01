@@ -1,7 +1,7 @@
 import type { CacheSession } from "../rs/loaders/CacheSession";
 import type { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { MapRenderer, type MapSquareRenderable } from "../renderer/MapRenderer";
-import type { MapData } from "../renderer/loader/MapData";
+import type { MapData } from "../maprender/payload/MapData";
 import {
     TICK_PATCH_STREAM_COUNT,
     type FramePacket,

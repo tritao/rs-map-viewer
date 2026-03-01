@@ -11,5 +11,5 @@ export type SdMapLoaderInput = {
 
     minimizeDrawCalls: boolean;
 
-    loadedTextureIds: Set<number>;
+    loadedTextureIdsPacked: Int32Array;
 };

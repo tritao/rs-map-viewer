@@ -5,15 +5,15 @@ import { InteractType } from "../renderer/InteractType";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
-import { MapData } from "../renderer/loader/MapData";
-import { SdMapData } from "../renderer/loader/SdMapData";
+import { MapData } from "../maprender/payload/MapData";
+import { SdMapData } from "../maprender/payload/SdMapData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import { TickController } from "../runtime/tick/TickController";
 import { MapRuntimeStateStore } from "../runtime/MapRuntimeStateStore";
 import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
-import { SdMapDataLoader } from "../renderer/loader/SdMapDataLoader";
-import { SdMapLoaderInput } from "../renderer/loader/SdMapLoaderInput";
+import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
+import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
@@ -107,7 +107,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             loadLocs: r.loadLocs,
             smoothTerrain: r.smoothTerrain,
             minimizeDrawCalls: !r.hasMultiDraw,
-            loadedTextureIds: r.loadedTextureIds,
+            loadedTextureIdsPacked: Int32Array.from(r.loadedTextureIds),
         };
         return await this.workerPool.queueLoad<
             SdMapLoaderInput,
