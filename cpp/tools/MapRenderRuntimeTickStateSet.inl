@@ -213,3 +213,57 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_set_tick_state_packed(
     return 1;
 }
 
+// Update only the NPC path-decision inputs for an existing tick state.
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_update_tick_state_npc_path_packed(
+    const rs::i32 runtimeHandle,
+    const rs::i32 stateKey,
+    const rs::i32* packed,
+    const rs::i32 packedLength) {
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime || stateKey < 0 || !packed || packedLength < 2) {
+        return 0;
+    }
+
+    static constexpr rs::i32 RS_NPC_PATH_PACKED_VERSION = 1;
+    const rs::i32 version = packed[0] | 0;
+    const rs::i32 npcCount = packed[1] | 0;
+    if (version != RS_NPC_PATH_PACKED_VERSION || npcCount < 0) {
+        return 0;
+    }
+
+    auto it = runtime->tickStates.find(stateKey);
+    if (it == runtime->tickStates.end()) {
+        return 0;
+    }
+    MapRenderTickState& tickState = it->second;
+    if (tickState.npcCount != npcCount) {
+        return 0;
+    }
+
+    const rs::i32 expectedPathPacked = npcCount * RS_NPC_PATH_QUEUE_LEN;
+
+    auto copyIntoField = [&](const TickStateFieldIndex index, const rs::i32 len, rs::i32& cursor) {
+        auto& dst = tickState.fields[static_cast<std::size_t>(index)];
+        if (static_cast<rs::i32>(dst.size()) != len) {
+            return false;
+        }
+        if (len > 0) {
+            std::memcpy(dst.data(), packed + cursor, static_cast<std::size_t>(len) * sizeof(rs::i32));
+        }
+        cursor += len;
+        return true;
+    };
+
+    rs::i32 cursor = 2;
+    const rs::i32 expectedLength = 2 + npcCount + expectedPathPacked * 3;
+    if (packedLength != expectedLength) {
+        return 0;
+    }
+    if (!copyIntoField(TICK_FIELD_NPC_PATH_LENGTH, npcCount, cursor) ||
+        !copyIntoField(TICK_FIELD_NPC_PATH_X_PACKED, expectedPathPacked, cursor) ||
+        !copyIntoField(TICK_FIELD_NPC_PATH_Y_PACKED, expectedPathPacked, cursor) ||
+        !copyIntoField(TICK_FIELD_NPC_PATH_MOVEMENT_TYPE_PACKED, expectedPathPacked, cursor)) {
+        return 0;
+    }
+    return cursor == packedLength ? 1 : 0;
+}

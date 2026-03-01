@@ -555,21 +555,10 @@ export class MapSquareTickState implements TsTickCapability, WasmTickCapability 
         }
     }
 
-    syncNpcMovementStateFromObjects(): void {
+    syncNpcPathDecisionStateFromObjects(): void {
         for (let i = 0; i < this.npcs.length; i++) {
             const npc = this.npcs[i];
-            this.npcX[i] = npc.x | 0;
-            this.npcY[i] = npc.y | 0;
-            this.npcOrientation[i] = npc.orientation | 0;
-            this.npcRotation[i] = npc.rotation | 0;
             this.npcPathLength[i] = npc.pathLength | 0;
-            this.npcMovementSeqId[i] = npc.movementSeqId | 0;
-        }
-    }
-
-    syncNpcPathStateFromObjects(): void {
-        for (let i = 0; i < this.npcs.length; i++) {
-            const npc = this.npcs[i];
             const pathBase = i * 10;
             for (let p = 0; p < 10; p++) {
                 this.npcPathXPacked[pathBase + p] = npc.pathX[p] | 0;

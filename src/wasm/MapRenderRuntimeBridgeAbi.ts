@@ -194,6 +194,11 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         stateKey: number,
         packed: Int32Array,
     ): boolean;
+    updateTickStateNpcPathPacked?(
+        runtimeHandle: MapRenderRuntimeHandle,
+        stateKey: number,
+        packed: Int32Array,
+    ): boolean;
     clearTickState(runtimeHandle: MapRenderRuntimeHandle, stateKey: number): void;
     hasTickState?(runtimeHandle: MapRenderRuntimeHandle, stateKey: number): boolean;
     tickMapsEmitPatchStreams?(

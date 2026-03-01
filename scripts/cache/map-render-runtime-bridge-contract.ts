@@ -204,6 +204,7 @@ async function main(): Promise<void> {
     assertFn(runtimeBridge, "buildMapPacketFromCache");
     // Packets are deep-copied out of wasm and released before returning.
     assertFn(runtimeBridge, "setTickState");
+    assertFn(runtimeBridge, "updateTickStateNpcPathPacked");
     assertFn(runtimeBridge, "clearTickState");
     assertFn(runtimeBridge, "tickAdvanceAndEmitBasePatchesForState");
     assertFn(runtimeBridge, "decodeNpcSpawnsFromBytes");

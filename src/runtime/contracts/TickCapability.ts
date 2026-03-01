@@ -32,8 +32,7 @@ export type TsTickCapability = TickCommonCapability & Readonly<{
 export type WasmTickCapability = TickCommonCapability & Readonly<{
     // wasm tick path hooks
     ensureCppTickStateInitializedFromObjects(): boolean;
-    syncNpcMovementStateFromObjects(): void;
-    syncNpcPathStateFromObjects(): void;
+    syncNpcPathDecisionStateFromObjects(): void;
     getWasmTickStateInput(): DrawRangeTickStateInput;
     applyWasmTickResult(result: TickPatchBackendResult): void;
 }>;

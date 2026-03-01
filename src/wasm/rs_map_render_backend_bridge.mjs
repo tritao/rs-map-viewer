@@ -153,6 +153,10 @@ function getRuntimeSetTickStatePackedExport(backendModule) {
     return backendModule._rs_map_render_runtime_set_tick_state_packed;
 }
 
+function getRuntimeUpdateTickStateNpcPathPackedExport(backendModule) {
+    return backendModule._rs_map_render_runtime_update_tick_state_npc_path_packed;
+}
+
 function getRuntimeTickForStatePackedExport(backendModule) {
     return backendModule._rs_map_render_runtime_tick_advance_and_emit_base_patches_for_state_packed;
 }
@@ -810,6 +814,34 @@ function setRuntimeTickStatePackedWithWasm(backendModule, runtimeHandle, stateKe
         return (
             (setTickStatePacked(runtimeHandle | 0, key, packedPtr, packed.length | 0) | 0) === 1
         );
+    } finally {
+        backendModule._free(packedPtr);
+    }
+}
+
+function updateRuntimeTickStateNpcPathPackedWithWasm(
+    backendModule,
+    runtimeHandle,
+    stateKey,
+    packed,
+) {
+    const key = normalizeTickStateKey(stateKey);
+    if (key === undefined) {
+        return false;
+    }
+    if (!(packed instanceof Int32Array) || (packed.length | 0) <= 0) {
+        return false;
+    }
+    const fn = getRuntimeUpdateTickStateNpcPathPackedExport(backendModule);
+    if (typeof fn !== "function") {
+        return false;
+    }
+    const packedPtr = mallocI32AndCopy(backendModule, packed);
+    if (!packedPtr) {
+        return false;
+    }
+    try {
+        return (fn(runtimeHandle | 0, key, packedPtr, packed.length | 0) | 0) === 1;
     } finally {
         backendModule._free(packedPtr);
     }
@@ -1939,6 +1971,17 @@ export const mapRenderRuntimeBridge = {
             return false;
         }
         return setRuntimeTickStatePackedWithWasm(
+            backendModuleInstance,
+            runtimeHandle,
+            stateKey,
+            packed,
+        );
+    },
+    updateTickStateNpcPathPacked(runtimeHandle, stateKey, packed) {
+        if (!backendModuleInstance) {
+            return false;
+        }
+        return updateRuntimeTickStateNpcPathPackedWithWasm(
             backendModuleInstance,
             runtimeHandle,
             stateKey,

@@ -3,6 +3,7 @@ import {
     registerDrawRangeTickState,
     tickAdvanceAndEmitBasePatchesForState,
     unregisterDrawRangeTickState,
+    updateDrawRangeTickStateNpcPathPacked,
 } from "../../wasm/DrawRangePatchBackend";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
 import type { WasmTickCapability } from "../contracts/TickCapability";
@@ -16,6 +17,7 @@ type WasmTickOutputs = Readonly<{
 
 export class WasmTickBackend {
     private readonly outputsByRenderableId = new Map<number, WasmTickOutputs>();
+    private readonly npcPathPackedByRenderableId = new Map<number, Int32Array>();
 
     isReady(): boolean {
         return isDrawRangePatchBackendReady();
@@ -24,10 +26,12 @@ export class WasmTickBackend {
     onRenderableRemoved(renderableId: number): void {
         unregisterDrawRangeTickState(renderableId);
         this.outputsByRenderableId.delete(renderableId | 0);
+        this.npcPathPackedByRenderableId.delete(renderableId | 0);
     }
 
     reset(): void {
         this.outputsByRenderableId.clear();
+        this.npcPathPackedByRenderableId.clear();
     }
 
     private toWasmTickOutputs(input: DrawRangeTickStateInput): WasmTickOutputs {
@@ -85,6 +89,32 @@ export class WasmTickBackend {
         }
     }
 
+    private getNpcPathPackedScratch(renderableId: number, npcCount: number): Int32Array {
+        const expectedLength = 2 + npcCount * 31;
+        const key = renderableId | 0;
+        const existing = this.npcPathPackedByRenderableId.get(key);
+        if (existing && (existing.length | 0) === expectedLength) {
+            return existing;
+        }
+        const next = new Int32Array(expectedLength);
+        this.npcPathPackedByRenderableId.set(key, next);
+        return next;
+    }
+
+    private fillNpcPathPacked(packed: Int32Array, input: DrawRangeTickStateInput): void {
+        const npcCount = input.npcPathLength.length | 0;
+        packed[0] = 1;
+        packed[1] = npcCount;
+        let cursor = 2;
+        packed.set(input.npcPathLength, cursor);
+        cursor += npcCount;
+        packed.set(input.npcPathXPacked, cursor);
+        cursor += input.npcPathXPacked.length | 0;
+        packed.set(input.npcPathYPacked, cursor);
+        cursor += input.npcPathYPacked.length | 0;
+        packed.set(input.npcPathMovementTypePacked, cursor);
+    }
+
     tick(
         renderable: WasmTickCapability,
         cycleNowFixed: number,
@@ -92,27 +122,31 @@ export class WasmTickBackend {
         sink?: TickPatchSink,
     ): boolean {
         const stateWasInitialized = renderable.ensureCppTickStateInitializedFromObjects();
-        renderable.syncNpcMovementStateFromObjects();
-        renderable.syncNpcPathStateFromObjects();
+        renderable.syncNpcPathDecisionStateFromObjects();
 
         let stateInput: DrawRangeTickStateInput | undefined;
-        if (stateWasInitialized || !this.outputsByRenderableId.has(renderable.id | 0)) {
+        const renderableId = renderable.id | 0;
+        const hadOutputs = this.outputsByRenderableId.has(renderableId);
+        if (stateWasInitialized || !hadOutputs) {
             stateInput = renderable.getWasmTickStateInput();
-            this.outputsByRenderableId.set(
-                renderable.id | 0,
-                this.toWasmTickOutputs(stateInput),
-            );
-        }
-
-        if (stateWasInitialized) {
-            const registered = registerDrawRangeTickState(renderable.id, stateInput!);
+            this.outputsByRenderableId.set(renderableId, this.toWasmTickOutputs(stateInput));
+            const registered = registerDrawRangeTickState(renderableId, stateInput);
             if (!registered) {
+                return false;
+            }
+        } else {
+            // TS decides only path queues; wasm remains authoritative for NPC transform/frame state.
+            stateInput = renderable.getWasmTickStateInput();
+            const npcCount = stateInput.npcPathLength.length | 0;
+            const packed = this.getNpcPathPackedScratch(renderableId, npcCount);
+            this.fillNpcPathPacked(packed, stateInput);
+            if (!updateDrawRangeTickStateNpcPathPacked(renderableId, packed)) {
                 return false;
             }
         }
 
         const tickResult = tickAdvanceAndEmitBasePatchesForState(
-            renderable.id,
+            renderableId,
             cycleNowFixed,
             clientTicksElapsed,
         );
@@ -122,7 +156,7 @@ export class WasmTickBackend {
 
         renderable.applyWasmTickResult(tickResult);
         if (sink) {
-            const outputs = this.outputsByRenderableId.get(renderable.id | 0);
+            const outputs = this.outputsByRenderableId.get(renderableId);
             if (outputs) {
                 this.emitWasmStreamsToSink(sink, outputs, [
                     tickResult.locBasePatchCount | 0,

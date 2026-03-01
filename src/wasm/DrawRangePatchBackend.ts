@@ -16,6 +16,11 @@ type DrawRangePatchBridge = Readonly<{
     destroyRuntime(runtimeHandle: number): void;
     resetRuntime(runtimeHandle: number): void;
     setTickState(runtimeHandle: number, stateKey: number, input: DrawRangeTickStateInput): boolean;
+    updateTickStateNpcPathPacked?(
+        runtimeHandle: number,
+        stateKey: number,
+        packed: Int32Array,
+    ): boolean;
     clearTickState(runtimeHandle: number, stateKey: number): void;
     tickAdvanceAndEmitBasePatchesForState(
         runtimeHandle: number,
@@ -220,6 +225,20 @@ export function tickAdvanceAndEmitBasePatchesForState(
         cycleNowFixed | 0,
         clientTickCount | 0,
     );
+}
+
+export function updateDrawRangeTickStateNpcPathPacked(
+    stateKey: number,
+    packed: Int32Array,
+): boolean {
+    if (
+        !runtimeReady ||
+        runtimeHandle === undefined ||
+        typeof bridge.updateTickStateNpcPathPacked !== "function"
+    ) {
+        return false;
+    }
+    return bridge.updateTickStateNpcPathPacked(runtimeHandle, stateKey | 0, packed);
 }
 
 export function resetDrawRangePatchBackend(): void {
