@@ -106,9 +106,6 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     unloadDistance: number;
     lodDistance: number;
 
-    visibleMapCount: number = 0;
-    visibleMaps: MapSquareInfo[] = [];
-
     constructor(
         readonly cache: LoadedCache,
         renderDistance: number,

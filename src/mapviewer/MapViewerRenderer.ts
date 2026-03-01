@@ -346,9 +346,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
         this.mapManagerTime = performance.now() - mapManagerStart;
 
-        this.renderer.visibleMapCount = this.mapManager.visibleMapCount;
-        this.renderer.visibleMaps = this.mapManager.visibleMaps;
-
         this.renderer.getInteractionControllerRenderer()?.setInteractionInput({
                 pointerLocked: this.inputManager.isPointerLock(),
                 mouseX: this.inputManager.mouseX,
@@ -409,10 +406,10 @@ export class MapViewerRenderer extends RendererMainLoop {
 
             // Kick an async tick request if one isn't already in flight.
             if (!this.pendingFramePacket && (ticksElapsed > 0 || clientTicksElapsed > 0)) {
-                const n = this.renderer.visibleMapCount | 0;
+                const n = this.mapManager.visibleMapCount | 0;
                 const mapIds = new Int32Array(n);
                 for (let i = 0; i < n; i++) {
-                    mapIds[i] = this.renderer.visibleMaps[i]!.mapId | 0;
+                    mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
                 }
                 const interactionSnapshotRenderer = this.renderer.getInteractionSnapshotRenderer?.();
                 const hoveredMapIdsPacked =
@@ -451,7 +448,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         const cameraMapX = this.camera.getMapX();
         const cameraMapY = this.camera.getMapY();
-        const visibleCount = this.renderer.visibleMapCount | 0;
+        const visibleCount = this.mapManager.visibleMapCount | 0;
         const npcOffsetsByMapIdPairs = new Int32Array(
             (visibleCount | 0) * NPC_OFFSETS_BY_MAP_ID_STRIDE,
         );
@@ -473,8 +470,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         const seqFrameLoader = this.mapViewer.session.getSeqFrameLoader();
         const seqTypeLoader = this.mapViewer.session.getSeqTypeLoader();
 
-        for (let i = 0; i < this.renderer.visibleMapCount; i++) {
-            const mapInfo = this.renderer.visibleMaps[i];
+        for (let i = 0; i < visibleCount; i++) {
+            const mapInfo = this.mapManager.visibleMaps[i];
             const mapId = mapInfo.mapId | 0;
             const pairOff = i * NPC_OFFSETS_BY_MAP_ID_STRIDE;
             const renderOff = i * FRAME_RENDER_LIST_STRIDE;
