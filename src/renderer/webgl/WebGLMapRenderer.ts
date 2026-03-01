@@ -30,7 +30,6 @@ import {
     type InteractionInput,
     type InteractionSnapshotRenderer,
 } from "../interaction/InteractionState";
-import type { TickControllerRenderer } from "../patch/TickCapability";
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../npc/NpcGpuData";
 import {
@@ -49,7 +48,6 @@ import type { FramePacket } from "../packet/FramePacket";
 import { applyDrawRangePatches } from "./applyDrawRangePatches";
 import {
     ensureDrawRangePatchBackendInit,
-    isDrawRangePatchBackendReady,
     resetDrawRangePatchBackend,
 } from "../../wasm/DrawRangePatchBackend";
 import { WebGLFramePacketState } from "./WebGLFramePacketState";
@@ -128,10 +126,6 @@ export class WebGLMapRenderer
 
     static isSupported(): boolean {
         return isWebGL2Supported;
-    }
-
-    override getTickControllerRenderer(): TickControllerRenderer | undefined {
-        return this;
     }
 
     override getInteractionControllerRenderer(): InteractionControllerRenderer | undefined {
@@ -493,10 +487,6 @@ export class WebGLMapRenderer
 
     onFrameEnd(): void {
         this.stats.onFrameEnd();
-    }
-
-    isDrawRangePatchWasmReady(): boolean {
-        return isDrawRangePatchBackendReady();
     }
 
     applyLocAnimationPatchesForPass(

@@ -10,7 +10,6 @@ import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
 } from "./interaction/InteractionState";
-import type { TickControllerRenderer } from "./patch/TickCapability";
 import type { FramePacket } from "./packet/FramePacket";
 
 export enum TextureFilterMode {
@@ -122,11 +121,6 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     // Maps
     getMap(mapId: number): MapSquareRenderable | undefined {
         return this.loadedMaps.get(mapId);
-    }
-
-    // Optional capability: renderer instance can be used as the tick backend readiness source.
-    getTickControllerRenderer(): TickControllerRenderer | undefined {
-        return undefined;
     }
 
     // Optional capability: renderer instance can accept interaction input events.

@@ -84,9 +84,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.tickController = new TickController(
-            this.renderer.getTickControllerRenderer(),
-        );
+        this.tickController = new TickController();
         this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
         this.lastNpcSimInWorker = !!this.lastRuntimeOptions?.mapRenderNpcSimInWorker;
         this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
@@ -316,9 +314,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.camera,
                 this.checkInteractions.bind(this),
             );
-            this.tickController = new TickController(
-                this.renderer.getTickControllerRenderer(),
-            );
+            this.tickController = new TickController();
             this.lastRuntimeOptions = this.mapViewer.getWorkerRuntimeOptions();
             this.tickController.setRuntimeOptions(this.lastRuntimeOptions);
             this.mapManager = new MapManager(

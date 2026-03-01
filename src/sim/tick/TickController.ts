@@ -4,12 +4,13 @@ import type { BackendKind } from "../../util/BackendKind";
 import type { MapSquareInfo } from "../../renderer/MapManager";
 import { NULL_DRAW_RANGE } from "../../renderer/DrawRange";
 import {
+    isDrawRangePatchBackendReady,
     registerDrawRangeTickState,
     tickAdvanceAndEmitBasePatchesForState,
     unregisterDrawRangeTickState,
 } from "../../wasm/DrawRangePatchBackend";
 import type { DrawRangeTickStateInput } from "../../wasm/DrawRangeTickState";
-import type { TickCapability, TickControllerRenderer } from "../../renderer/patch/TickCapability";
+import type { TickCapability } from "../../renderer/patch/TickCapability";
 import { LocTickPatchVariant, NpcTickPatchVariant } from "../../renderer/patch/TickPatchStreams";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 
@@ -50,8 +51,6 @@ function defaultRuntimeOptions(): RuntimeOptionsLike {
 export class TickController {
     private runtimeOptions: RuntimeOptionsLike = defaultRuntimeOptions();
     private readonly wasmTickOutputsByRenderableId = new Map<number, WasmTickOutputs>();
-
-    constructor(private readonly renderer: TickControllerRenderer | undefined) {}
 
     setRuntimeOptions(options: RuntimeOptionsLike): void {
         this.runtimeOptions = options ?? defaultRuntimeOptions();
@@ -132,7 +131,7 @@ export class TickController {
         const tickBackend =
             this.runtimeOptions.mapRenderTickBackend ?? this.runtimeOptions.mapRenderBackend;
 
-        const ready = this.renderer?.isDrawRangePatchWasmReady() ?? false;
+        const ready = isDrawRangePatchBackendReady();
         return tickBackend === "cpp-wasm" && ready;
     }
 
