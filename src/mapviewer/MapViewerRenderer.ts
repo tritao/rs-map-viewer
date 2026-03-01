@@ -17,6 +17,7 @@ import { LocTickPatchVariant, NpcTickPatchVariant } from "../runtime/contracts/T
 import { TickController, type TickPatchSink } from "../runtime/tick/TickController";
 import {
     buildFramePacketFromMapEntries,
+    createFramePacketMapEntry,
     computeFrameRenderFlags,
     type FramePacketMapEntry,
 } from "../runtime/tick/MainThreadFramePacketBuilder";
@@ -549,20 +550,13 @@ export class MapViewerRenderer extends RendererMainLoop {
                 hoveredMapIds,
                 hasNpcs,
             );
-            const streams = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
-            for (let s = 0; s < TICK_PATCH_STREAM_COUNT; s++) {
-                const src = streamsForMap[s];
-                if (src && (src.length | 0) > 0) {
-                    streams[s] = Int32Array.from(src);
-                }
-            }
-            entries[i] = {
+            entries[i] = createFramePacketMapEntry({
                 mapId,
                 renderFlags,
                 npcOffset,
                 tickPatchCounts: streamCounts,
-                tickPatchStreams: streams,
-            };
+                tickPatchStreams: streamsForMap,
+            });
         }
 
         const npcGpuFrameData = this.renderer.loadNpcs

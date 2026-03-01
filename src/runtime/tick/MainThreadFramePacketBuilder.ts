@@ -17,12 +17,59 @@ export type FramePacketMapEntry = Readonly<{
     tickPatchStreams: readonly (Int32Array | undefined)[];
 }>;
 
+export type FramePacketMapEntryStreamSource = Int32Array | ReadonlyArray<number> | undefined;
+
+export type CreateFramePacketMapEntryInput = Readonly<{
+    mapId: number;
+    renderFlags: number;
+    npcOffset: number;
+    tickPatchCounts: Int32Array | ReadonlyArray<number>;
+    tickPatchStreams: readonly FramePacketMapEntryStreamSource[];
+}>;
+
 export type BuildFramePacketFromMapEntriesInput = Readonly<{
     frameCount: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     entries: readonly FramePacketMapEntry[];
 }>;
+
+export function createFramePacketMapEntry(
+    input: CreateFramePacketMapEntryInput,
+): FramePacketMapEntry {
+    const streamCount = TICK_PATCH_STREAM_COUNT | 0;
+    const counts = new Int32Array(streamCount);
+    for (let i = 0; i < streamCount; i++) {
+        counts[i] = input.tickPatchCounts[i] | 0;
+    }
+
+    const streams = new Array<Int32Array | undefined>(streamCount);
+    for (let i = 0; i < streamCount; i++) {
+        const count = counts[i] | 0;
+        if (count <= 0) {
+            streams[i] = undefined;
+            continue;
+        }
+        const stream = input.tickPatchStreams[i];
+        if (stream instanceof Int32Array) {
+            streams[i] = stream;
+            continue;
+        }
+        if (stream && stream.length > 0) {
+            streams[i] = Int32Array.from(stream);
+            continue;
+        }
+        streams[i] = undefined;
+    }
+
+    return {
+        mapId: input.mapId | 0,
+        renderFlags: input.renderFlags | 0,
+        npcOffset: input.npcOffset | 0,
+        tickPatchCounts: counts,
+        tickPatchStreams: streams,
+    };
+}
 
 export function computeFrameRenderFlags(
     mapId: number,

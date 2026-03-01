@@ -6,13 +6,10 @@ import { Transfer, expose } from "threads/worker";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { type DrawRange, NULL_DRAW_RANGE } from "../renderer/DrawRange";
-import { LocAnimated } from "../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import { Npc } from "../runtime/entities/Npc";
 import type { NpcData } from "../runtime/entities/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
-import { orderByPacketKeys } from "../runtime/entities/orderByPacketKeys";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
@@ -22,6 +19,7 @@ import {
 } from "../runtime/contracts/FramePacket";
 import {
     buildFramePacketFromMapEntries,
+    createFramePacketMapEntry,
     computeFrameRenderFlags,
     type FramePacketMapEntry,
 } from "../runtime/tick/MainThreadFramePacketBuilder";
@@ -36,7 +34,7 @@ import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { CollisionFlag } from "../rs/pathfinder/flag/CollisionFlag";
 import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
-import { type CollisionData, CollisionMap } from "../rs/scene/CollisionMap";
+import { type CollisionData } from "../rs/scene/CollisionMap";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
@@ -59,6 +57,7 @@ import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "./MinimapData";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
+import { WorkerNpcSimStateStore, type WorkerNpcSimMapState } from "./runtime/WorkerNpcSimStateStore";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -96,23 +95,7 @@ export type WorkerRuntimeOptions = Readonly<{
 }>;
 
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
-
-type MapNpcSimState = {
-    borderSize: number;
-    tileRenderFlagsLevel1: Uint8Array[];
-    collisionMaps: CollisionMap[];
-    seededNpcFlags: boolean;
-    npcs: Npc[];
-    locsAnimated: LocAnimated[];
-
-    // Tick patch scratch buffers (per-map) to avoid per-frame allocations.
-    locTickPatchesByVariant: Int32Array[]; // 8 variants
-    locTickPatchCountsByVariant: Int32Array; // length 8
-    npcTickPatchesByVariant: Int32Array[]; // 2 variants (base/alpha)
-    npcTickPatchCountsByVariant: Int32Array; // length 2
-};
-
-const npcSimByMapId = new Map<number, MapNpcSimState>();
+const npcSimStateStore = new WorkerNpcSimStateStore();
 const npcSimPathfinder = new Pathfinder();
 const npcGpuDataBuilder = new NpcGpuDataBuilder();
 const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBridgeV2;
@@ -149,7 +132,7 @@ function emitTickPatch(
 }
 
 function emitLocPatchesForChangedFrame(
-    state: MapNpcSimState,
+    state: WorkerNpcSimMapState,
     locIndex: number,
     newFrameId: number,
 ) {
@@ -347,7 +330,7 @@ const worker = {
         workerStatePromise = initWorker(cache, objSpawns, npcSpawns, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
-        npcSimByMapId.clear();
+        npcSimStateStore.clear();
         // Make initCache awaitable so callers can block until the worker is fully ready.
         await requireWorkerState();
     },
@@ -356,6 +339,7 @@ const worker = {
     },
     async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         dataLoader.reset();
+        npcSimStateStore.clear();
         const workerState = await requireWorkerState();
         workerState.mapRenderDataBackend.reset();
     },
@@ -437,89 +421,26 @@ const worker = {
         npcOrderKeys?: Int32Array,
     ): Promise<void> {
         const workerState = await requireWorkerState();
-        const npcTypeLoader = workerState.session.loaders.npcTypeLoader;
-        const basTypeLoader = workerState.session.loaders.basTypeLoader;
-        const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
-        const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
-
-        const collisionMaps = collisionDatas.map(CollisionMap.fromData);
-
-        const ordered = orderByPacketKeys(npcsIn, npcOrderKeys);
-        const npcs: Npc[] = [];
-        for (const init of ordered) {
-            const npcTypeResult = npcTypeLoader.tryLoad(init.id);
-            if (!npcTypeResult.ok) {
-                continue;
-            }
-            const npcType = npcTypeResult.value;
-            const idleSeqId = npcType.getIdleSeqId(basTypeLoader);
-            const walkSeqId = npcType.getWalkSeqId(basTypeLoader);
-            npcs.push(
-                new Npc(
-                    init.tileX | 0,
-                    init.tileY | 0,
-                    init.level | 0,
-                    init.idleAnim,
-                    init.walkAnim,
-                    npcType,
-                    idleSeqId | 0,
-                    walkSeqId | 0,
-                ),
-            );
-        }
-
-        const cycleNow = 0;
-        const locs: LocAnimated[] = [];
-        for (const loc of locsAnimated) {
-            const seqResult = seqTypeLoader.tryLoad(loc.seqId);
-            if (!seqResult.ok) {
-                continue;
-            }
-            const seqType = seqResult.value;
-            locs.push(
-                new LocAnimated(
-                    loc.drawRangeIndex | 0,
-                    loc.drawRangeAlphaIndex | 0,
-                    loc.drawRangeLodIndex | 0,
-                    loc.drawRangeLodAlphaIndex | 0,
-                    loc.drawRangeInteractIndex | 0,
-                    loc.drawRangeInteractAlphaIndex | 0,
-                    loc.drawRangeInteractLodIndex | 0,
-                    loc.drawRangeInteractLodAlphaIndex | 0,
-                    loc.anim,
-                    seqType,
-                    cycleNow,
-                    !!loc.randomStart,
-                ),
-            );
-        }
-
-        const locCount = locs.length | 0;
-        const locTickPatchesByVariant: Int32Array[] = [];
-        for (let i = 0; i < 8; i++) {
-            locTickPatchesByVariant.push(new Int32Array(locCount * TICK_PATCH_ENTRY_STRIDE));
-        }
-        const npcCount = npcs.length | 0;
-        const npcTickPatchesByVariant: Int32Array[] = [
-            new Int32Array(npcCount * TICK_PATCH_ENTRY_STRIDE),
-            new Int32Array(npcCount * TICK_PATCH_ENTRY_STRIDE),
-        ];
-
-        npcSimByMapId.set(mapId | 0, {
-            borderSize: borderSize | 0,
-            tileRenderFlagsLevel1,
-            collisionMaps,
-            seededNpcFlags: false,
-            npcs,
-            locsAnimated: locs,
-            locTickPatchesByVariant,
-            locTickPatchCountsByVariant: new Int32Array(8),
-            npcTickPatchesByVariant,
-            npcTickPatchCountsByVariant: new Int32Array(2),
-        });
+        npcSimStateStore.registerMap(
+            {
+                mapId,
+                borderSize,
+                tileRenderFlagsLevel1,
+                collisionDatas,
+                locsAnimated,
+                npcsIn,
+                npcOrderKeys,
+            },
+            {
+                npcTypeLoader: workerState.session.loaders.npcTypeLoader,
+                basTypeLoader: workerState.session.loaders.basTypeLoader,
+                seqTypeLoader: workerState.session.loaders.seqTypeLoader,
+                tickPatchEntryStride: TICK_PATCH_ENTRY_STRIDE,
+            },
+        );
     },
     unregisterMapNpcSimState(mapId: number): void {
-        npcSimByMapId.delete(mapId | 0);
+        npcSimStateStore.unregisterMap(mapId);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
     },
     async tickFrame(
@@ -586,7 +507,7 @@ const worker = {
 
         for (let mi = 0; mi < mapIds.length; mi++) {
             const mapId = mapIds[mi] | 0;
-            const state = npcSimByMapId.get(mapId);
+            const state = npcSimStateStore.getMap(mapId);
             const metaOff = (mi | 0) * TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE;
             const streamsForMap = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
             const streamCounts = new Int32Array(TICK_PATCH_STREAM_COUNT);
@@ -625,7 +546,7 @@ const worker = {
                 }
             }
             if (!state) {
-                entries[mi] = {
+                entries[mi] = createFramePacketMapEntry({
                     mapId,
                     renderFlags: computeFrameRenderFlags(
                         mapId,
@@ -638,7 +559,7 @@ const worker = {
                     npcOffset: -1,
                     tickPatchCounts: streamCounts,
                     tickPatchStreams: streamsForMap,
-                };
+                });
                 continue;
             }
             const hasNpcs = (state.npcs.length | 0) > 0;
@@ -697,7 +618,7 @@ const worker = {
             // Build packed NPC gpu info (x,y,rotationAndPlane,typeId) and per-map offset.
             const target: NpcGpuDataTarget = {
                 id: mapId | 0,
-                getNpcs: (): ReadonlyArray<Npc> => state.npcs,
+                getNpcs: () => state.npcs,
                 getTileRenderFlag: (_level: number, tileX: number, tileY: number): number => {
                     const col = state.tileRenderFlagsLevel1[(tileX + state.borderSize) | 0];
                     return col ? col[(tileY + state.borderSize) | 0] | 0 : 0;
@@ -781,7 +702,7 @@ const worker = {
             }
             streamsForMap[8] = state.npcTickPatchesByVariant[0];
             streamsForMap[9] = state.npcTickPatchesByVariant[1];
-            entries[mi] = {
+            entries[mi] = createFramePacketMapEntry({
                 mapId,
                 renderFlags: computeFrameRenderFlags(
                     mapId,
@@ -794,7 +715,7 @@ const worker = {
                 npcOffset: npcOffset | 0,
                 tickPatchCounts: streamCounts,
                 tickPatchStreams: streamsForMap,
-            };
+            });
 
         }
 
