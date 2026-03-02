@@ -3,7 +3,7 @@ import PicoGL, { App as PicoApp, Texture } from "picogl";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
 import { TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
-import { TextureResidencyPolicy } from "../texture/TextureResidencyPolicy";
+import { TextureResidencyPolicy } from "./texture/TextureResidencyPolicy";
 import { createTextureArray } from "./PicoTexture";
 
 const MAX_TEXTURES = 2048;

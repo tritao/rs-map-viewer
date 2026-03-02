@@ -1,4 +1,4 @@
-import type { TextureMaterial } from "../../rs/texture/TextureMaterial";
+import type { TextureMaterial } from "../../../rs/texture/TextureMaterial";
 
 export type TextureMaterialProvider = Readonly<{
     tryGetMaterial(id: number): TextureMaterial | undefined;
@@ -28,4 +28,3 @@ export function buildTextureMaterialsTable(
 
     return { width: textureCount, height: 1, data };
 }
-

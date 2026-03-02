@@ -1,5 +1,5 @@
-import type { CacheInfo } from "../../rs/cache/CacheInfo";
-import { GameType } from "../../rs/cache/CacheInfo";
+import type { CacheInfo } from "../../../rs/cache/CacheInfo";
+import { GameType } from "../../../rs/cache/CacheInfo";
 
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
 const MAX_TEXTURE_PIXEL_CACHE = 512;
@@ -278,4 +278,3 @@ export class TextureResidencyPolicy {
         return slot;
     }
 }
-

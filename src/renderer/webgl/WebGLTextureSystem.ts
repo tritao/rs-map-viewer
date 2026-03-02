@@ -3,7 +3,7 @@ import PicoGL, { type App as PicoApp, type Texture } from "picogl";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import type { TextureFilterMode } from "../MapRenderer";
-import { buildTextureMaterialsTable } from "../texture/TextureMaterialsTable";
+import { buildTextureMaterialsTable } from "./texture/TextureMaterialsTable";
 import { WebGLTextureResidency } from "./WebGLTextureResidency";
 
 export class WebGLTextureSystem {
