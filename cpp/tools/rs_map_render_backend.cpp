@@ -564,6 +564,19 @@ struct MapRenderRuntimeState {
     rs::i32 debugLastCollectMapInputSquaresWithLoc = 0;
     rs::i32 debugLastCollectMapInputFirstPresentMapSquareId = -1;
     rs::i32 debugLastCollectMapInputFirstMissingMapSquareId = -1;
+    // Debug-only: last NPC build attempt counters.
+    rs::i32 debugLastNpcBuildStatus = 0;
+    rs::i32 debugLastNpcSpawnBytesLength = 0;
+    rs::i32 debugLastNpcSpawnsDecoded = 0;
+    rs::i32 debugLastNpcSpawnsInBounds = 0;
+    rs::i32 debugLastNpcResolvedType = 0;
+    rs::i32 debugLastNpcLoginPropRenderable = 0;
+    rs::i32 debugLastNpcModelDecodeOk = 0;
+    rs::i32 debugLastNpcModelDecodeFailed = 0;
+    rs::i32 debugLastNpcSpawnsWithGeometry = 0;
+    rs::i32 debugLastNpcDrawRangeCount = 0;
+    rs::i32 debugLastNpcVertexBytes = 0;
+    rs::i32 debugLastNpcIndexCount = 0;
 };
 
 struct MapRenderPacketHandleState final {
@@ -661,6 +674,7 @@ static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_LOC_MERGE_EMIT_ENTRIES_META_LENGT
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_LOC_MERGE_NORMALS_TRACE_ENTRIES_META_LENGTH = 2;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_COMMAND_PROVENANCE_META_LENGTH = 2;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_COLLECT_MAP_INPUT_DEBUG_LENGTH = 12;
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_NPC_BUILD_DEBUG_LENGTH = 12;
 // Type-entry blobs are stored as (domain, group, file) where:
 // - domain is a stable "kind domain" in [101..116]
 // - group is the type id

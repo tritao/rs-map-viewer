@@ -165,6 +165,29 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_missing_type(
     return RS_MAP_RENDER_STATUS_OK;
 }
 
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_npc_build_stats(
+    const rs::i32 runtimeHandle,
+    rs::i32* outState,
+    const rs::i32 outStateLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outState || outStateLength < RS_MAP_RENDER_RUNTIME_NPC_BUILD_DEBUG_LENGTH) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    outState[0] = runtime->debugLastNpcBuildStatus;
+    outState[1] = runtime->debugLastNpcSpawnBytesLength;
+    outState[2] = runtime->debugLastNpcSpawnsDecoded;
+    outState[3] = runtime->debugLastNpcSpawnsInBounds;
+    outState[4] = runtime->debugLastNpcResolvedType;
+    outState[5] = runtime->debugLastNpcLoginPropRenderable;
+    outState[6] = runtime->debugLastNpcModelDecodeOk;
+    outState[7] = runtime->debugLastNpcModelDecodeFailed;
+    outState[8] = runtime->debugLastNpcSpawnsWithGeometry;
+    outState[9] = runtime->debugLastNpcDrawRangeCount;
+    outState[10] = runtime->debugLastNpcVertexBytes;
+    outState[11] = runtime->debugLastNpcIndexCount;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_cached_command_stream_digest(
     const rs::i32 runtimeHandle,
     rs::i32* outDigest,

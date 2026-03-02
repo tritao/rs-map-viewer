@@ -164,9 +164,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
-    private readonly fallback: TsMapRenderDataBackend;
     private readonly outcomeStats: CppWasmBuildOutcomeStats = createCppWasmBuildOutcomeStats();
-    private readonly requirePacketGeometry = true;
     private readonly mapBytesProvider: MapBytesProvider;
     private readonly cacheName: string;
     private readonly cacheGame: number;
@@ -208,37 +206,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         this.overlayTypeLoader = deps.session.loaders.overlayTypeLoader;
         this.varProvider = deps.varProvider;
         this.objSpawns = deps.objSpawns;
-        this.fallback = new TsMapRenderDataBackend({
-            ...deps,
-            telemetry: options?.telemetry,
-            npcSpawnDecodeBackend: {
-                name: "cpp-wasm",
-                filtersLoginScreenProps: true,
-                decodeNpcSpawnsFromBytes: async (
-                    tileRenderFlagsLevel1: Uint8Array[],
-                    borderSize: number,
-                    mapX: number,
-                    mapY: number,
-                    data: Uint8Array,
-                    npcLoginScreenPropsById?: Uint8Array,
-                    requiredLoginScreenPropsMask?: number,
-                ) => {
-                    if (!this.bridge.decodeNpcSpawnsFromBytes) {
-                        return undefined;
-                    }
-                    const decoded = await this.bridge.decodeNpcSpawnsFromBytes(
-                        tileRenderFlagsLevel1,
-                        borderSize,
-                        mapX,
-                        mapY,
-                        data,
-                        npcLoginScreenPropsById,
-                        requiredLoginScreenPropsMask,
-                    );
-                    return decoded;
-                },
-            },
-        });
     }
 
     private async ensureRuntimeInitialized(bridge: CppWasmMapRenderDataBridge): Promise<boolean> {
@@ -311,6 +278,33 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         for (let pass = 0; pass < 12; pass++) {
             const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
             const overlay = runtimePacketToPayloadOverlay(packet);
+            if (this.options?.telemetry) {
+                const npcVerticesLen =
+                    packet?.npcVertices instanceof Uint8Array ? packet.npcVertices.length | 0 : -1;
+                const npcIndicesLen =
+                    packet?.npcIndices instanceof Int32Array ? packet.npcIndices.length | 0 : -1;
+                const npcDrawRangesBaseLen =
+                    packet?.npcDrawRangesBase instanceof Int32Array
+                        ? packet.npcDrawRangesBase.length | 0
+                        : -1;
+                const npcDrawRangesAlphaLen =
+                    packet?.npcDrawRangesAlpha instanceof Int32Array
+                        ? packet.npcDrawRangesAlpha.length | 0
+                        : -1;
+                const npcOrderKeysLen =
+                    packet?.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys.length | 0 : -1;
+                console.log("[map-render][telemetry][cpp-wasm] buildMapPacket npc payload", {
+                    square: `${input.mapX}:${input.mapY}`,
+                    pass: pass | 0,
+                    loadNpcs: request.loadNpcs === true,
+                    hasPacket: packet !== undefined,
+                    npcVerticesLen,
+                    npcIndicesLen,
+                    npcDrawRangesBaseLen,
+                    npcDrawRangesAlphaLen,
+                    npcOrderKeysLen,
+                });
+            }
             const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
             if (missing && (missing.domains.length | 0) > 0) {
                 // Even if we got *some* geometry back (e.g. terrain-only), treat any missing
@@ -341,6 +335,42 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             const levels = packet.levels | 0;
             const sizeX = packet.sizeX | 0;
             const sizeY = packet.sizeY | 0;
+            const npcDrawRangesBase =
+                packet.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase : undefined;
+            const npcDrawRangesAlpha =
+                packet.npcDrawRangesAlpha instanceof Int32Array ? packet.npcDrawRangesAlpha : undefined;
+            const npcVertices = packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
+            const npcIndices = packet.npcIndices instanceof Int32Array ? packet.npcIndices : undefined;
+            const npcOrderKeys = packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
+            const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
+            const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
+            const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
+            const hasNpcRanges = npcRangesLen > 0;
+            const hasNpcGeometry = npcVerticesLen > 0 && npcIndicesLen > 0;
+            const keepNpcPayload = hasNpcRanges && hasNpcGeometry;
+            if (hasNpcRanges !== hasNpcGeometry) {
+                console.warn(
+                    `[map-render][cpp-wasm] dropping inconsistent npc payload for ${input.mapX},${input.mapY} ` +
+                        `(ranges=${npcRangesLen} verts=${npcVerticesLen} indices=${npcIndicesLen})`,
+                );
+            }
+            if (this.options?.telemetry && request.loadNpcs === true && !keepNpcPayload) {
+                const [npcBuildStats, missingType, legacyModelLoad] = await Promise.all([
+                    bridge.debugGetLastNpcBuildStats?.(runtimeHandle),
+                    bridge.debugGetLastMissingType?.(runtimeHandle),
+                    bridge.debugGetLastLegacyModelLoad?.(runtimeHandle),
+                ]);
+                console.warn("[map-render][telemetry][cpp-wasm] npc payload empty diagnostics", {
+                    square: `${input.mapX}:${input.mapY}`,
+                    pass: pass | 0,
+                    npcRangesLen,
+                    npcVerticesLen,
+                    npcIndicesLen,
+                    npcBuildStats,
+                    missingType,
+                    legacyModelLoad,
+                });
+            }
 
             return {
                 type: RenderableType.Map,
@@ -365,11 +395,11 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 npcs: [],
                 usedTextureIds: packet.usedTextureIds,
                 loadedTextures: new Map(),
-                npcDrawRangesBase: packet.npcDrawRangesBase,
-                npcDrawRangesAlpha: packet.npcDrawRangesAlpha,
-                npcVertices: packet.npcVertices,
-                npcIndices: packet.npcIndices,
-                npcOrderKeys: packet.npcOrderKeys,
+                npcDrawRangesBase: keepNpcPayload ? npcDrawRangesBase : undefined,
+                npcDrawRangesAlpha: keepNpcPayload ? npcDrawRangesAlpha : undefined,
+                npcVertices: keepNpcPayload ? npcVertices : undefined,
+                npcIndices: keepNpcPayload ? npcIndices : undefined,
+                npcOrderKeys: keepNpcPayload ? npcOrderKeys : undefined,
             };
         }
         return undefined;
@@ -411,7 +441,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 t0 !== undefined ? performance.now() - t0 : undefined,
                 "runtimeInitFailed",
             );
-            return this.fallback.buildMapData(input);
+            return { data: undefined, transferables: [] };
         }
         const runtimeHandle = await this.ensureRuntimeHandle(bridge);
         if (runtimeHandle === undefined) {
@@ -421,7 +451,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 t0 !== undefined ? performance.now() - t0 : undefined,
                 "runtimeHandleMissing",
             );
-            return this.fallback.buildMapData(input);
+            return { data: undefined, transferables: [] };
         }
         const byteDrivenSceneBuildInput = this.createByteDrivenSceneBuildInput(input);
         try {
@@ -438,7 +468,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                     t0 !== undefined ? performance.now() - t0 : undefined,
                     "runtimePacketMissingOrIncompleteGeometry_or_build_failed=true",
                 );
-                return this.fallback.buildMapData(input);
+                return { data: undefined, transferables: [] };
             }
             this.trackOutcome(
                 "success",
@@ -457,7 +487,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 t0 !== undefined ? performance.now() - t0 : undefined,
                 errorToString(e),
             );
-            return this.fallback.buildMapData(input);
+            return { data: undefined, transferables: [] };
         }
     }
 
@@ -471,7 +501,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     }
 
     reset(): void {
-        this.fallback.reset();
         this.cacheUploader.reset();
         this.runtimeInitPromise = undefined;
         const runtimeHandle = this.runtimeHandle;

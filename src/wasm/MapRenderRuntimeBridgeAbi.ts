@@ -163,6 +163,25 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
     debugGetLastMissingType?(
         runtimeHandle: MapRenderRuntimeHandle,
     ): Promise<Readonly<{ kind: number; id: number }> | undefined>;
+    debugGetLastNpcBuildStats?(
+        runtimeHandle: MapRenderRuntimeHandle,
+    ): Promise<
+        | Readonly<{
+              status: number;
+              spawnBytesLen: number;
+              spawnsDecoded: number;
+              spawnsInBounds: number;
+              resolvedType: number;
+              loginPropRenderable: number;
+              modelDecodeOk: number;
+              modelDecodeFailed: number;
+              spawnsWithGeometry: number;
+              drawRangeCount: number;
+              vertexBytes: number;
+              indexCount: number;
+          }>
+        | undefined
+    >;
     cacheSetVarps(runtimeHandle: MapRenderRuntimeHandle, varps: Int32Array): Promise<number>;
     cacheSetBuildConfig(
         runtimeHandle: MapRenderRuntimeHandle,

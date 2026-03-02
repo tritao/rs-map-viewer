@@ -39,6 +39,13 @@ static rs::Status tryDecodeNpcTypeFromBlobCached(
         npcId,
         &bytes);
     if (!rs::ok(ss)) {
+        if (ss == rs::Status::NotFound && runtime) {
+            runtimeRecordMissingBlobKey(
+                const_cast<MapRenderRuntimeState*>(runtime),
+                RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_NPC,
+                0,
+                npcId);
+        }
         return ss;
     }
 
@@ -83,6 +90,13 @@ static rs::Status tryDecodeVarBitTypeFromBlobCached(
         varbitId,
         &bytes);
     if (!rs::ok(ss)) {
+        if (ss == rs::Status::NotFound && runtime) {
+            runtimeRecordMissingBlobKey(
+                const_cast<MapRenderRuntimeState*>(runtime),
+                RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT,
+                0,
+                varbitId);
+        }
         return ss;
     }
 
@@ -126,6 +140,13 @@ static rs::Status tryDecodeBasTypeFromBlobCached(
         basId,
         &bytes);
     if (!rs::ok(ss)) {
+        if (ss == rs::Status::NotFound && runtime) {
+            runtimeRecordMissingBlobKey(
+                const_cast<MapRenderRuntimeState*>(runtime),
+                RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_BAS,
+                0,
+                basId);
+        }
         return ss;
     }
 
@@ -298,6 +319,11 @@ static rs::Status tryDecodeModelDataFromRuntime(
                 *outModel = rs::move(legacy);
                 return rs::Status::Ok;
             }
+            runtimeRecordMissingBlobKey(
+                const_cast<MapRenderRuntimeState*>(runtime),
+                RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL,
+                0,
+                modelId);
         }
         return ss;
     }
@@ -327,8 +353,13 @@ static rs::Status appendNpcModelGeometry(
     }
     *outIndexCount = 0;
 
-    const rs::i32 locX = sceneTileX * 128 + 64;
-    const rs::i32 locZ = sceneTileY * 128 + 64;
+    // Important: NPC vertex geometry must be in model-local coordinates. The shader applies
+    // per-NPC translation from the NPC data texture (`npcInfo.tilePos`). If we bake tile
+    // translation here, NPCs get translated twice and end up off-map.
+    (void)sceneTileX;
+    (void)sceneTileY;
+    const rs::i32 locX = 0;
+    const rs::i32 locZ = 0;
     const rs::i32 tileHeight = 0;
 
     for (rs::i32 fi = 0; fi < model.faceCount; fi++) {
@@ -454,6 +485,28 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
     if (!runtime || !payload) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
+    rs::i32 debugSpawnsDecoded = 0;
+    rs::i32 debugSpawnsInBounds = 0;
+    rs::i32 debugResolvedType = 0;
+    rs::i32 debugLoginPropRenderable = 0;
+    rs::i32 debugModelDecodeOk = 0;
+    rs::i32 debugModelDecodeFailed = 0;
+    rs::i32 debugSpawnsWithGeometry = 0;
+    const auto finalize = [&](const rs::i32 status) noexcept -> rs::i32 {
+        runtime->debugLastNpcBuildStatus = status;
+        runtime->debugLastNpcSpawnsDecoded = debugSpawnsDecoded;
+        runtime->debugLastNpcSpawnsInBounds = debugSpawnsInBounds;
+        runtime->debugLastNpcResolvedType = debugResolvedType;
+        runtime->debugLastNpcLoginPropRenderable = debugLoginPropRenderable;
+        runtime->debugLastNpcModelDecodeOk = debugModelDecodeOk;
+        runtime->debugLastNpcModelDecodeFailed = debugModelDecodeFailed;
+        runtime->debugLastNpcSpawnsWithGeometry = debugSpawnsWithGeometry;
+        runtime->debugLastNpcDrawRangeCount =
+            static_cast<rs::i32>(payload->npcDrawRangesBase.size() / 3U);
+        runtime->debugLastNpcVertexBytes = static_cast<rs::i32>(payload->npcVertices.size());
+        runtime->debugLastNpcIndexCount = static_cast<rs::i32>(payload->npcIndices.size());
+        return status;
+    };
     payload->npcDrawRangesBase.clear();
     payload->npcDrawRangesAlpha.clear();
     payload->npcVertices.clear();
@@ -461,8 +514,10 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
     payload->npcOrderKeys.clear();
 
     const std::vector<rs::u8>* npcBytes = tryGetRuntimeCachedMapSquareNpcBytes(*runtime, mapX, mapY);
+    runtime->debugLastNpcSpawnBytesLength =
+        npcBytes ? static_cast<rs::i32>(npcBytes->size()) : 0;
     if (!npcBytes || npcBytes->empty()) {
-        return RS_MAP_RENDER_STATUS_OK;
+        return finalize(RS_MAP_RENDER_STATUS_OK);
     }
 
     std::vector<rs::u8> tileFlags;
@@ -480,8 +535,9 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
         &spawns,
         alloc);
     if (!rs::ok(ds)) {
-        return mapRenderStatusFromCoreStatus(ds);
+        return finalize(mapRenderStatusFromCoreStatus(ds));
     }
+    debugSpawnsDecoded = static_cast<rs::i32>(spawns.size());
 
     rs::StringArena strings(alloc);
     std::vector<DecodedNpcTypeCacheEntry> npcCache{};
@@ -503,6 +559,7 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
         if (sceneTileX < 0 || sceneTileY < 0 || sceneTileX >= sizeX || sceneTileY >= sizeY) {
             continue;
         }
+        debugSpawnsInBounds++;
 
         const rs::NpcType* npcType = resolveNpcTypeForSpawn(
             runtime,
@@ -515,9 +572,11 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
         if (!npcType) {
             continue;
         }
+        debugResolvedType++;
         if ((npcType->loginScreenProps & 0x1) == 0) {
             continue;
         }
+        debugLoginPropRenderable++;
 
         const rs::BasType* basType = nullptr;
         if (npcType->basTypeId >= 0) {
@@ -549,8 +608,10 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
                 alloc,
                 &model);
             if (!rs::ok(ms)) {
+                debugModelDecodeFailed++;
                 continue;
             }
+            debugModelDecodeOk++;
 
             applyNpcModelMutations(&model, *npcType);
 
@@ -564,15 +625,15 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
                 &payload->npcIndices,
                 &modelIndexCount);
             if (!rs::ok(gs)) {
-                return mapRenderStatusFromCoreStatus(gs);
+                return finalize(mapRenderStatusFromCoreStatus(gs));
             }
+        }
 
-            const rs::i32 indexCount =
-                static_cast<rs::i32>(payload->npcIndices.size()) - indexStart;
-            if (indexCount <= 0) {
-                continue;
-            }
-
+        // Emit exactly one draw-range entry per NPC spawn. The range spans all models that
+        // successfully decoded for the NPC type.
+        const rs::i32 indexCount = static_cast<rs::i32>(payload->npcIndices.size()) - indexStart;
+        if (indexCount > 0) {
+            debugSpawnsWithGeometry++;
             const std::uint64_t tupleKey =
                 (static_cast<std::uint64_t>(static_cast<rs::u16>(spawn.level & 0xffff)) << 48) |
                 (static_cast<std::uint64_t>(static_cast<rs::u16>(spawn.id & 0xffff)) << 32) |
@@ -586,5 +647,5 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
         }
     }
 
-    return RS_MAP_RENDER_STATUS_OK;
+    return finalize(RS_MAP_RENDER_STATUS_OK);
 }

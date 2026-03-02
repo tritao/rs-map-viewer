@@ -386,6 +386,18 @@ if (storeStatus != 1) {
     return recordBuildFailure(runtime, kBuildFailStorePayload, RS_MAP_RENDER_STATUS_STATE, storeStatus, 0);
 }
 
+runtime->debugLastNpcBuildStatus = 0;
+runtime->debugLastNpcSpawnBytesLength = 0;
+runtime->debugLastNpcSpawnsDecoded = 0;
+runtime->debugLastNpcSpawnsInBounds = 0;
+runtime->debugLastNpcResolvedType = 0;
+runtime->debugLastNpcLoginPropRenderable = 0;
+runtime->debugLastNpcModelDecodeOk = 0;
+runtime->debugLastNpcModelDecodeFailed = 0;
+runtime->debugLastNpcSpawnsWithGeometry = 0;
+runtime->debugLastNpcDrawRangeCount = 0;
+runtime->debugLastNpcVertexBytes = 0;
+runtime->debugLastNpcIndexCount = 0;
 if ((loadNpcs | 0) != 0) {
     rs::CacheInfo cacheInfo{};
     cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);

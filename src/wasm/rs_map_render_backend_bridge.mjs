@@ -209,6 +209,10 @@ function getRuntimeDebugGetLastMissingTypeExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_last_missing_type;
 }
 
+function getRuntimeDebugGetLastNpcBuildStatsExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_npc_build_stats;
+}
+
 function getRuntimeDebugBuildMapPlanFromCacheExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_build_map_plan_from_cache;
 }
@@ -1583,6 +1587,40 @@ function runtimeDebugGetLastMissingTypeWithWasm(backendModule, runtimeHandle) {
     }
 }
 
+function runtimeDebugGetLastNpcBuildStatsWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastNpcBuildStatsExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 12);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = fn(runtimeHandle | 0, outPtr, 12) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 12);
+        return {
+            status: out[0] | 0,
+            spawnBytesLen: out[1] | 0,
+            spawnsDecoded: out[2] | 0,
+            spawnsInBounds: out[3] | 0,
+            resolvedType: out[4] | 0,
+            loginPropRenderable: out[5] | 0,
+            modelDecodeOk: out[6] | 0,
+            modelDecodeFailed: out[7] | 0,
+            spawnsWithGeometry: out[8] | 0,
+            drawRangeCount: out[9] | 0,
+            vertexBytes: out[10] | 0,
+            indexCount: out[11] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
 function runtimeCacheSetBuildConfigWithWasm(
     backendModule,
     runtimeHandle,
@@ -1931,6 +1969,13 @@ export const mapRenderRuntimeBridge = {
             return undefined;
         }
         return runtimeDebugGetLastMissingTypeWithWasm(backendModule, runtimeHandle);
+    },
+    async debugGetLastNpcBuildStats(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeDebugGetLastNpcBuildStatsWithWasm(backendModule, runtimeHandle);
     },
     async cacheSetBuildConfig(runtimeHandle, request) {
         const backendModule = await tryLoadBackendModule();

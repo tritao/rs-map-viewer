@@ -79,6 +79,8 @@ export class WebGLMapRenderer
     private hoveredMapIdsPackedScratch = new Int32Array(0);
     private readonly frameRenderMapsScratch: FrameRenderMap[] = [];
     private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
+    private readonly warnedNpcMissingPacketOffsetMapIds = new Set<number>();
+    private readonly warnedNpcMissingGeometryOrRangesMapIds = new Set<number>();
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -206,6 +208,8 @@ export class WebGLMapRenderer
         const cache = this.session.cache;
         this.isNewTextureAnim =
             cache.info.game === GameType.Runescape && cache.info.revision >= 681;
+        this.warnedNpcMissingPacketOffsetMapIds.clear();
+        this.warnedNpcMissingGeometryOrRangesMapIds.clear();
 
         if (this.app) {
             this.initTextures();
@@ -645,6 +649,8 @@ export class WebGLMapRenderer
 
         this.framePacketState.reset();
         this.npcDataTexture = undefined;
+        this.warnedNpcMissingPacketOffsetMapIds.clear();
+        this.warnedNpcMissingGeometryOrRangesMapIds.clear();
         this.clearMaps();
         console.log("Renderer cleaned up");
     }
@@ -692,12 +698,40 @@ export class WebGLMapRenderer
         if (!npcDataTexture) {
             return undefined;
         }
+        const { drawCall, drawRangesPacked } = map.drawCallNpc;
+        const hasNpcDrawRanges = (drawRangesPacked.length | 0) > 0;
+        const hasNpcGeometry = map.npcVertexArray !== undefined;
         const packetOffset = this.framePacketState.getNpcDataOffsetForCurrentRing(mapId);
         const dataOffset = packetOffset !== undefined ? packetOffset | 0 : -1;
         if (dataOffset === -1) {
+            if (
+                hasNpcDrawRanges &&
+                hasNpcGeometry &&
+                !this.warnedNpcMissingPacketOffsetMapIds.has(mapId | 0)
+            ) {
+                this.warnedNpcMissingPacketOffsetMapIds.add(mapId | 0);
+                console.warn(
+                    `[map-render][npc] missing frame packet offset for mapId=${mapId | 0} ` +
+                        `(drawRanges=${(drawRangesPacked.length / 3) | 0})`,
+                );
+            }
             return undefined;
         }
-        const { drawCall, drawRangesPacked } = map.drawCallNpc;
+        if (
+            (!hasNpcDrawRanges || !hasNpcGeometry) &&
+            !this.warnedNpcMissingGeometryOrRangesMapIds.has(mapId | 0)
+        ) {
+            this.warnedNpcMissingGeometryOrRangesMapIds.add(mapId | 0);
+            console.warn(
+                `[map-render][npc] frame packet has offset but map has no npc geometry/ranges ` +
+                    `(mapId=${mapId | 0} drawRangesInts=${drawRangesPacked.length | 0} hasNpcGeometry=${
+                        hasNpcGeometry ? 1 : 0
+                    })`,
+            );
+        }
+        if (!hasNpcDrawRanges || !hasNpcGeometry) {
+            return undefined;
+        }
         drawCall.uniform("u_npcDataOffset", dataOffset);
         drawCall.texture("u_npcDataTexture", npcDataTexture);
         return { drawCall, drawRangesPacked };

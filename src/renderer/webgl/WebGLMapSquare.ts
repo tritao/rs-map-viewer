@@ -98,9 +98,12 @@ export class WebGLMapSquare
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
-        const npcDrawRanges = data.npcDrawRangesBase
-            ? data.npcDrawRangesBase
-            : WebGLMapSquare.buildDefaultNpcDrawRanges(data.npcs.length | 0);
+        const npcDrawRanges =
+            renderable.npcVertexArray !== undefined
+                ? data.npcDrawRangesBase
+                    ? data.npcDrawRangesBase
+                    : WebGLMapSquare.buildDefaultNpcDrawRanges(data.npcs.length | 0)
+                : new Int32Array(0);
         renderable.drawCallNpc = createDrawCall(
             npcProgram,
             undefined,
