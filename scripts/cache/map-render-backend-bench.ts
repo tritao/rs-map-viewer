@@ -1,7 +1,6 @@
 import path from "path";
 import { pathToFileURL } from "url";
 
-import type { NpcSpawn } from "../../src/data/npc/NpcSpawn";
 import type { ObjSpawn } from "../../src/data/obj/ObjSpawn";
 import { SdMapLoaderInput } from "../../src/maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
@@ -24,10 +23,10 @@ import {
     createByteDrivenSceneBuildInput,
     uploadRuntimeCacheForBuildRequest,
 } from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
-import type { MapRenderRuntimePacket } from "../../src/worker/MapRenderDataContract";
+import type { MapRenderRuntimePacket } from "../../src/maprender/MapRenderDataContract";
 import {
     runtimePacketToPayloadOverlay,
-} from "../../src/worker/MapRenderDataContract";
+} from "../../src/maprender/MapRenderDataContract";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
@@ -271,7 +270,6 @@ async function main(): Promise<void> {
 
     const wasmBridge = await loadWasmBridge();
     const objSpawns: ObjSpawn[] = [];
-    const npcSpawns: NpcSpawn[] = [];
 
     const tsBackend = new SdMapRenderDataTsBackend({
         session,
@@ -283,7 +281,6 @@ async function main(): Promise<void> {
         mapImageRenderer,
         varProvider,
         objSpawns,
-        npcSpawns,
     });
 
     const squares = pickSquares(loaders.mapFileLoader.mapFileIndex, args.limit);

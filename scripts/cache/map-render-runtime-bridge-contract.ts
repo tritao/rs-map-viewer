@@ -12,12 +12,13 @@ import type {
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     createByteDrivenSceneBuildInput,
+    MapRenderRuntimeCacheV2Uploader,
     uploadRuntimeCacheForBuildRequest,
 } from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import {
     MapRenderRuntimePacket,
     runtimePacketToPayloadOverlay,
-} from "../../src/worker/MapRenderDataContract";
+} from "../../src/maprender/MapRenderDataContract";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type RuntimeBridge = MapRenderRuntimeBridgeV2;
@@ -163,6 +164,61 @@ function assertFn(target: Record<string, unknown>, key: string): void {
         "function",
         `expected function export "${key}" in runtime bridge`,
     );
+}
+
+function assertNpcSlotMetadataContract(
+    packet: MapRenderRuntimePacket,
+    label: string,
+): void {
+    const ranges = packet.npcDrawRangesBase;
+    if (!(ranges instanceof Int32Array) || (ranges.length | 0) <= 0) {
+        return;
+    }
+    assert.equal(
+        (ranges.length % 3) | 0,
+        0,
+        `${label}: npcDrawRangesBase length must be a multiple of 3`,
+    );
+    const slotCount = (ranges.length / 3) | 0;
+    assert.ok(packet.npcOrderKeys instanceof Int32Array, `${label}: missing npcOrderKeys`);
+    assert.equal(
+        (packet.npcOrderKeys as Int32Array).length | 0,
+        slotCount,
+        `${label}: npcOrderKeys length must match npc draw-range slot count`,
+    );
+}
+
+async function buildMapPacketWithMissingBlobRetries(
+    bridge: RuntimeBridge,
+    cacheUploader: MapRenderRuntimeCacheV2Uploader,
+    runtimeHandle: number,
+    request: MapRenderRuntimeBuildRequest,
+    sceneBuildInput: ReturnType<typeof createByteDrivenSceneBuildInput>,
+    label: string,
+): Promise<MapRenderRuntimePacket | undefined> {
+    for (let pass = 0; pass < 12; pass++) {
+        const packet = (await bridge.buildMapPacketFromCache(
+            runtimeHandle,
+            request,
+        )) as MapRenderRuntimePacket | undefined;
+        const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+        if (missing && (missing.domains.length | 0) > 0) {
+            const uploadedMissing = await cacheUploader.uploadMissingBlobEntriesForBuildRequest(
+                bridge,
+                runtimeHandle,
+                missing,
+                sceneBuildInput,
+            );
+            assert.equal(
+                uploadedMissing,
+                true,
+                `${label}: expected missing-blob upload to succeed on pass ${pass + 1}`,
+            );
+            continue;
+        }
+        return packet;
+    }
+    return undefined;
 }
 
 async function main(): Promise<void> {
@@ -432,18 +488,19 @@ async function main(): Promise<void> {
     const setBuildConfigAfterDestroy = await bridge.cacheSetBuildConfig(handle, {} as any);
     assert.notEqual(setBuildConfigAfterDestroy, 1, "build-config should fail after destroy");
 
+    const lifecycleFixture = await buildRuntimeLifecycleFixture();
     const lifecycleRuntimeHandle = await bridge.createRuntimeWithConfig({
-        cacheGame: 0,
-        cacheRevision: 0,
+        cacheGame: lifecycleFixture.sceneBuildInput.cacheGame | 0,
+        cacheRevision: lifecycleFixture.sceneBuildInput.cacheRevision | 0,
         sceneLevels: 4,
-        unitsTileHeightBasis: 8,
+        unitsTileHeightBasis: lifecycleFixture.sceneBuildInput.unitsTileHeightBasis | 0,
     });
     assert.ok(
         Number.isInteger(lifecycleRuntimeHandle) && (lifecycleRuntimeHandle as number) > 0,
         "lifecycle createRuntime did not return a valid runtime handle",
     );
     const lifecycleHandle = lifecycleRuntimeHandle as number;
-    const lifecycleFixture = await buildRuntimeLifecycleFixture();
+    const lifecycleCacheUploader = new MapRenderRuntimeCacheV2Uploader();
     const uploadedLifecycle = await uploadRuntimeCacheForBuildRequest(
         bridge,
         lifecycleHandle,
@@ -452,29 +509,49 @@ async function main(): Promise<void> {
     );
     assert.equal(uploadedLifecycle, true, "expected lifecycle cache upload to succeed");
 
-    const packetA = (await bridge.buildMapPacketFromCache(
+    const packetA = await buildMapPacketWithMissingBlobRetries(
+        bridge,
+        lifecycleCacheUploader,
         lifecycleHandle,
         lifecycleFixture.request,
-    )) as MapRenderRuntimePacket | undefined;
+        lifecycleFixture.sceneBuildInput,
+        "packetA",
+    );
     assert.ok(packetA, "expected first lifecycle packet");
+    assertNpcSlotMetadataContract(packetA as MapRenderRuntimePacket, "packetA");
 
-    const packetB = (await bridge.buildMapPacketFromCache(
+    const packetB = await buildMapPacketWithMissingBlobRetries(
+        bridge,
+        lifecycleCacheUploader,
         lifecycleHandle,
         lifecycleFixture.request,
-    )) as MapRenderRuntimePacket | undefined;
+        lifecycleFixture.sceneBuildInput,
+        "packetB",
+    );
     assert.ok(packetB, "expected second lifecycle packet");
+    assertNpcSlotMetadataContract(packetB as MapRenderRuntimePacket, "packetB");
 
-    const packetC = (await bridge.buildMapPacketFromCache(
+    const packetC = await buildMapPacketWithMissingBlobRetries(
+        bridge,
+        lifecycleCacheUploader,
         lifecycleHandle,
         lifecycleFixture.request,
-    )) as MapRenderRuntimePacket | undefined;
+        lifecycleFixture.sceneBuildInput,
+        "packetC",
+    );
     assert.ok(packetC, "expected third lifecycle packet");
+    assertNpcSlotMetadataContract(packetC as MapRenderRuntimePacket, "packetC");
 
-    const packetD = (await bridge.buildMapPacketFromCache(
+    const packetD = await buildMapPacketWithMissingBlobRetries(
+        bridge,
+        lifecycleCacheUploader,
         lifecycleHandle,
         lifecycleFixture.request,
-    )) as MapRenderRuntimePacket | undefined;
+        lifecycleFixture.sceneBuildInput,
+        "packetD",
+    );
     assert.ok(packetD, "expected packet before reset");
+    assertNpcSlotMetadataContract(packetD as MapRenderRuntimePacket, "packetD");
     bridge.resetRuntime(lifecycleHandle);
     const uploadedAfterReset = await uploadRuntimeCacheForBuildRequest(
         bridge,
@@ -483,11 +560,16 @@ async function main(): Promise<void> {
         lifecycleFixture.sceneBuildInput,
     );
     assert.equal(uploadedAfterReset, true, "expected cache upload to succeed after reset");
-    const packetE = (await bridge.buildMapPacketFromCache(
+    const packetE = await buildMapPacketWithMissingBlobRetries(
+        bridge,
+        lifecycleCacheUploader,
         lifecycleHandle,
         lifecycleFixture.request,
-    )) as MapRenderRuntimePacket | undefined;
+        lifecycleFixture.sceneBuildInput,
+        "packetE",
+    );
     assert.ok(packetE, "expected packet after reset");
+    assertNpcSlotMetadataContract(packetE as MapRenderRuntimePacket, "packetE");
     bridge.destroyRuntime(lifecycleHandle);
     const packetAfterDestroy = await bridge.buildMapPacketFromCache(
         lifecycleHandle,

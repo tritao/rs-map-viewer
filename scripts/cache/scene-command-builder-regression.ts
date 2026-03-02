@@ -5,7 +5,7 @@ import {
     buildRuntimeCommandStreamInputFromBuckets,
     buildRuntimeCommandStreamFromBuckets,
     collectRuntimeDrawCommandBuckets,
-} from "../../src/renderer/buffer/SceneCommandBuilder";
+} from "../../src/runtime/build/SceneCommandBuilder";
 
 function assertI32ArrayEquals(actual: Int32Array, expected: number[], label: string): void {
     assert.equal(actual.length, expected.length, `${label} length mismatch`);

@@ -4,7 +4,7 @@ import { pathToFileURL } from "url";
 
 import type { NpcSpawn } from "../../src/data/npc/NpcSpawn";
 import type { ObjSpawn } from "../../src/data/obj/ObjSpawn";
-import { ModelHashBuffer, getModelHash } from "../../src/renderer/buffer/ModelHashBuffer";
+import { ModelHashBuffer, getModelHash } from "../../src/runtime/build/ModelHashBuffer";
 import {
     SceneBuffer,
     collectTerrainTileVertexRecords,
@@ -13,21 +13,21 @@ import {
     splitModelFacesByTransparency,
     summarizeModelFaces,
     summarizeTerrainGeometry,
-} from "../../src/renderer/buffer/SceneBuffer";
-import { collectRuntimeDrawCommandBuckets } from "../../src/renderer/buffer/SceneCommandBuilder";
-import type { SceneCommandPlanDigest } from "../../src/renderer/buffer/SceneCommandPlan";
-import { emitSceneModelsToSceneBuffer } from "../../src/renderer/buffer/SceneCommandPlan";
+} from "../../src/runtime/build/SceneBuffer";
+import { collectRuntimeDrawCommandBuckets } from "../../src/runtime/build/SceneCommandBuilder";
+import type { SceneCommandPlanDigest } from "../../src/runtime/build/SceneCommandPlan";
+import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
 import type { SdMapData } from "../../src/maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../../src/maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
 import type { SdMapRenderDataTsBackendDeps } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
 import { createSdTexturePacking } from "../../src/maprender/payload/SdTexturePacking";
-import { isLowDetail } from "../../src/renderer/loc/SceneLocs";
-import { getSceneLocs } from "../../src/renderer/loc/SceneLocs";
+import { isLowDetail } from "../../src/runtime/build/SceneLocs";
+import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import {
     createLocAnimatedGroupKey,
     resolveLocRenderPlacement,
-} from "../../src/renderer/loc/LocRenderPlacementResolver";
+} from "../../src/runtime/build/LocRenderPlacementResolver";
 import { CacheInfo, GameType, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
@@ -62,11 +62,13 @@ import {
     runtimeDebugDecodeCachedTerrainCellWithWasm,
     runtimeDebugDecodeLocTypeWithWasm,
     runtimeDebugDecodeOverlayTypeWithWasm,
+    runtimeDebugDecodeSeqTypeWithWasm,
     runtimeDebugGetCacheConfigWithWasm,
     runtimeDebugGetCachedCommandStreamArraysWithWasm,
     runtimeDebugGetCachedCommandStreamDigestWithWasm,
     runtimeDebugGetLastBuildStatsWithWasm,
     runtimeDebugGetLastCommandProvenancePackedWithWasm,
+    runtimeDebugGetLastLegacyModelLoadWithWasm,
     runtimeDebugGetLastLocMergeDecisionEntriesPackedWithWasm,
     runtimeDebugGetLastLocMergeEmitEntriesPackedWithWasm,
     runtimeDebugGetLastLocMergeNormalsTraceEntriesPackedWithWasm,
@@ -101,8 +103,8 @@ import {
 import {
     runtimePacketToPayloadOverlay,
     runtimePacketToPayloadOverlayDiagnostic,
-} from "../../src/worker/MapRenderDataContract";
-import type { MapRenderRuntimePacket } from "../../src/worker/MapRenderDataContract";
+} from "../../src/maprender/MapRenderDataContract";
+import type { MapRenderRuntimePacket } from "../../src/maprender/MapRenderDataContract";
 import {
     MapRenderRuntimeCacheV2Uploader,
     createByteDrivenSceneBuildInput,
@@ -360,6 +362,16 @@ async function withBackendModule<T>(fn: (backendModule: any) => T): Promise<T | 
 
 function createScriptDebugWrappers(): Partial<RuntimeBridge> {
     return {
+        async debugDecodeLocType(runtimeHandle: number, locTypeId: number) {
+            return withBackendModule((m) =>
+                runtimeDebugDecodeLocTypeWithWasm(m, runtimeHandle, locTypeId),
+            );
+        },
+        async debugDecodeSeqType(runtimeHandle: number, seqTypeId: number) {
+            return withBackendModule((m) =>
+                runtimeDebugDecodeSeqTypeWithWasm(m, runtimeHandle, seqTypeId),
+            );
+        },
         async debugCollectCachedMapInputDigest(runtimeHandle: number, sceneBuildInput: unknown) {
             const backendModule = await tryLoadBackendModule();
             if (!backendModule) {
@@ -814,6 +826,8 @@ type StageKey =
     | "locVariantDropStage"
     | "locPreMergeGroupKeyStage"
     | "locPreMergeSignatureStage"
+    // Debug-only: expensive to compute TS trace; only enabled via --debug-stage.
+    | "locMergeNormalsTraceStage"
     | "locMergeDummyStage"
     | "planOnlySelfCheckStage";
 
@@ -838,6 +852,7 @@ const STAGE_KEYS: ReadonlyArray<StageKey> = [
     "locVariantDropStage",
     "locPreMergeGroupKeyStage",
     "locPreMergeSignatureStage",
+    "locMergeNormalsTraceStage",
     "locMergeDummyStage",
     "planOnlySelfCheckStage",
 ];
@@ -861,6 +876,7 @@ function createStageFailureCounter(): Record<StageKey, number> {
         locVariantDropStage: 0,
         locPreMergeGroupKeyStage: 0,
         locPreMergeSignatureStage: 0,
+        locMergeNormalsTraceStage: 0,
         locMergeDummyStage: 0,
         planOnlySelfCheckStage: 0,
     };
@@ -937,6 +953,65 @@ function comparePacketDigests(
 ): StageResult {
     if (!cacheOverlay) return { key: "packet", ok: false, detail: "missing-cache-overlay" };
     if (!cachePacket) return { key: "packet", ok: false, detail: "missing-cache-packet" };
+    const tsNpcRanges = tsPayload.npcDrawRangesBase;
+    const tsNpcOrderKeys = tsPayload.npcOrderKeys;
+    if (tsNpcRanges instanceof Int32Array && (tsNpcRanges.length | 0) > 0) {
+        if ((tsNpcRanges.length % 3) !== 0) {
+            return {
+                key: "packet",
+                ok: false,
+                detail: `ts npcDrawRangesBase length invalid: ${tsNpcRanges.length | 0}`,
+            };
+        }
+        const tsNpcSlotCount = ((tsNpcRanges.length / 3) | 0) as number;
+        if (!(tsNpcOrderKeys instanceof Int32Array)) {
+            return { key: "packet", ok: false, detail: "ts missing npcOrderKeys" };
+        }
+        if ((tsNpcOrderKeys.length | 0) !== (tsNpcSlotCount | 0)) {
+            return {
+                key: "packet",
+                ok: false,
+                detail:
+                    `ts npc slot/order mismatch: slots=${tsNpcSlotCount | 0} ` +
+                    `orderKeys=${tsNpcOrderKeys.length | 0}`,
+            };
+        }
+    }
+    const cacheNpcRanges = cachePacket.npcDrawRangesBase;
+    const cacheNpcOrderKeys = cachePacket.npcOrderKeys;
+    if (cacheNpcRanges instanceof Int32Array && (cacheNpcRanges.length | 0) > 0) {
+        if ((cacheNpcRanges.length % 3) !== 0) {
+            return {
+                key: "packet",
+                ok: false,
+                detail: `cache npcDrawRangesBase length invalid: ${cacheNpcRanges.length | 0}`,
+            };
+        }
+        const cacheNpcSlotCount = ((cacheNpcRanges.length / 3) | 0) as number;
+        if (!(cacheNpcOrderKeys instanceof Int32Array)) {
+            return { key: "packet", ok: false, detail: "cache missing npcOrderKeys" };
+        }
+        if ((cacheNpcOrderKeys.length | 0) !== (cacheNpcSlotCount | 0)) {
+            return {
+                key: "packet",
+                ok: false,
+                detail:
+                    `cache npc slot/order mismatch: slots=${cacheNpcSlotCount | 0} ` +
+                    `orderKeys=${cacheNpcOrderKeys.length | 0}`,
+            };
+        }
+        if (tsNpcOrderKeys instanceof Int32Array && (tsNpcOrderKeys.length | 0) > 0) {
+            const tsHash = hashArray(tsNpcOrderKeys, 2166136261 >>> 0);
+            const cacheHash = hashArray(cacheNpcOrderKeys, 2166136261 >>> 0);
+            if ((tsHash | 0) !== (cacheHash | 0)) {
+                return {
+                    key: "packet",
+                    ok: false,
+                    detail: `npcOrderKeysHash: ts=${tsHash | 0} cache=${cacheHash | 0}`,
+                };
+            }
+        }
+    }
     const expected = digestPacketPayload(tsPayload);
     const actual = digestRuntimePacket(cacheOverlay, cachePacket);
     const mismatchKeys = (Object.keys(expected) as Array<keyof PacketDigest>).filter(
@@ -1124,7 +1199,8 @@ function compareSceneCommandPlanStageDigests(
         };
     }
     const cache = cacheDigest as Record<string, unknown>;
-    const fields: Array<keyof SceneCommandPlanDigest> = [
+    type PlanKey = Extract<keyof SceneCommandPlanDigest, string>;
+    const fields: ReadonlyArray<PlanKey> = [
         "opCount",
         "mergedGroupOpCount",
         "instancedOpCount",
@@ -3497,6 +3573,48 @@ function compareLocMergeDummyDigests(
         }
     }
     return { key: "locMergeDummyStage", ok: true };
+}
+
+function compareLocMergeNormalsTraceStage(
+    tsEntries: readonly TsMergeNormalsTraceEntry[],
+    runtimeEntries: readonly RuntimeLocMergeNormalsTraceEntry[] | undefined,
+): StageResult {
+    if (!runtimeEntries) {
+        return {
+            key: "locMergeNormalsTraceStage",
+            ok: false,
+            detail: "missing-runtime-trace",
+        };
+    }
+    const toKeyTs = (e: TsMergeNormalsTraceEntry): string =>
+        `${e.aLocTypeId}|${e.aLevel},${e.aTileX},${e.aTileY},${e.aSizeX}x${e.aSizeY}` +
+        `->${e.bLocTypeId}|${e.bLevel},${e.bTileX},${e.bTileY},${e.bSizeX}x${e.bSizeY}` +
+        ` off=${e.offX},${e.offY},${e.offZ} hide=${e.hideOccluded}`;
+    const toKeyRuntime = (e: RuntimeLocMergeNormalsTraceEntry): string =>
+        `${e.aLocTypeId}|${e.aLevel},${e.aTileX},${e.aTileY},${e.aSizeX}x${e.aSizeY}` +
+        `->${e.bLocTypeId}|${e.bLevel},${e.bTileX},${e.bTileY},${e.bSizeX}x${e.bSizeY}` +
+        ` off=${e.offX},${e.offY},${e.offZ} hide=${e.hideOccluded}`;
+
+    const minLen = Math.min(tsEntries.length, runtimeEntries.length);
+    for (let i = 0; i < minLen; i++) {
+        const tsKey = toKeyTs(tsEntries[i]);
+        const rtKey = toKeyRuntime(runtimeEntries[i]);
+        if (tsKey !== rtKey) {
+            return {
+                key: "locMergeNormalsTraceStage",
+                ok: false,
+                detail: `firstDiff idx=${i} ts=${tsKey} rt=${rtKey}`,
+            };
+        }
+    }
+    if (tsEntries.length !== runtimeEntries.length) {
+        return {
+            key: "locMergeNormalsTraceStage",
+            ok: false,
+            detail: `length ts=${tsEntries.length | 0} cache=${runtimeEntries.length | 0}`,
+        };
+    }
+    return { key: "locMergeNormalsTraceStage", ok: true };
 }
 function pickCache(caches: CacheInfo[], cacheName?: string): CacheInfo {
     const latest = getLatestCache(caches);
@@ -7706,7 +7824,6 @@ async function main(): Promise<void> {
         mapImageRenderer,
         varProvider,
         objSpawns,
-        npcSpawns,
     };
     const tsBackend = new SdMapRenderDataTsBackend(deps);
 
@@ -7735,11 +7852,11 @@ async function main(): Promise<void> {
     const runtimeHandle =
         (typeof bridge.createRuntimeWithConfig === "function"
             ? await bridge.createRuntimeWithConfig({
-                  cacheGame: cacheInfo.game,
-                  cacheRevision: cacheInfo.revision,
-                  sceneLevels: 4,
-                  unitsTileHeightBasis: 128,
-              })
+	          cacheGame: cacheInfo.game,
+	          cacheRevision: cacheInfo.revision,
+	          sceneLevels: 4,
+	          unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
+	      })
             : typeof bridge.createRuntime === "function"
             ? await bridge.createRuntime()
             : undefined) ?? 0;
@@ -7844,14 +7961,18 @@ async function main(): Promise<void> {
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
                 mapBytesProvider,
                 locTypeLoader: loaders.locTypeLoader,
+                objTypeLoader: loaders.objTypeLoader,
                 locModelLoader,
                 seqTypeLoader: loaders.seqTypeLoader,
                 seqFrameLoader: loaders.seqFrameLoader,
                 skeletalSeqLoader: loaders.skeletalSeqLoader,
                 textureLoader: loaders.textureLoader,
+                npcTypeLoader: loaders.npcTypeLoader,
+                basTypeLoader: loaders.basTypeLoader,
                 underlayTypeLoader: loaders.underlayTypeLoader,
                 overlayTypeLoader: loaders.overlayTypeLoader,
                 varProvider,
+                objSpawns,
                 cacheGame: cacheInfo.game,
                 cacheRevision: cacheInfo.revision,
             });
@@ -7918,6 +8039,28 @@ async function main(): Promise<void> {
                         raw.indices.length > 0 &&
                         raw?.usedTextureIds instanceof Int32Array;
                     const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                    if (
+                        process.env.RS_DEBUG_RUNTIME_MISSING_BLOBS === "1" &&
+                        missing &&
+                        (missing.domains.length | 0) > 0 &&
+                        !args.quiet
+                    ) {
+                        const n = missing.domains.length | 0;
+                        const sampleN = Math.min(8, n) | 0;
+                        const sample: Array<[number, number, number]> = [];
+                        for (let i = 0; i < sampleN; i++) {
+                            sample.push([
+                                missing.domains[i] | 0,
+                                missing.groups[i] | 0,
+                                missing.files[i] | 0,
+                            ]);
+                        }
+                        console.warn("[parity][missing-blobs]", {
+                            pass: pass | 0,
+                            count: n,
+                            sample,
+                        });
+                    }
                     if (!missing || (missing.domains.length | 0) <= 0) {
                         if (hasGeometry) {
                             packetRaw = raw;
@@ -7936,6 +8079,17 @@ async function main(): Promise<void> {
                         missing,
                         sceneBuildInput,
                     );
+                    if (
+                        process.env.RS_DEBUG_RUNTIME_MISSING_BLOBS === "1" &&
+                        !args.quiet &&
+                        missing &&
+                        (missing.domains.length | 0) > 0
+                    ) {
+                        console.warn("[parity][missing-blobs-upload]", {
+                            pass: pass | 0,
+                            okMissing: !!okMissing,
+                        });
+                    }
                     if (!okMissing) {
                         packetRaw = raw;
                         packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
@@ -8034,7 +8188,7 @@ async function main(): Promise<void> {
                             drawRangesPackedLen: (packetRaw.drawRangesPacked?.length ?? -1) | 0,
                             modelInfoBucketLens: Array.isArray(packetRaw.modelInfoTextureBuckets)
                                 ? packetRaw.modelInfoTextureBuckets.map(
-                                      (b) => (b?.length ?? -1) | 0,
+                                      (b: any) => (b?.length ?? -1) | 0,
                                   )
                                 : [],
                         });
@@ -8701,6 +8855,56 @@ async function main(): Promise<void> {
                                                                                 `[terrainDigestStage][probe-cpp-occE-writer] originalId=${writerOriginalId} resolvedId=${writerResolvedId} type=${writerType} rot=${writerRot} tile=${writerTileX},${writerTileY} size=${writerSizeX},${writerSizeY} isEntity=${writerIsEntity} staticXzRadius=${writerStaticXzRadius} lightOccl=${writerLightOccl} level=${writerLevel}`,
                                                                             );
 
+                                                                            // Compare the TS-resolved loc type for the C++ writer id (quick sanity check).
+                                                                            try {
+                                                                                const lr = (sceneBuildInput
+                                                                                    .locTypeLoader as any)?.tryLoad?.(
+                                                                                    writerOriginalId,
+                                                                                );
+                                                                                const lt =
+                                                                                    lr && typeof lr === "object" && (lr as any).ok
+                                                                                        ? (lr as any).value
+                                                                                        : undefined;
+                                                                                console.log(
+                                                                                    `[terrainDigestStage][probe-ts-writer-loctype] id=${writerOriginalId} ok=${!!lt} clipped=${
+                                                                                        lt?.clipped ?? -1
+                                                                                    } mergeNormals=${
+                                                                                        lt?.mergeNormals ?? -1
+                                                                                    } lightOcclusion=${
+                                                                                        lt?.lightOcclusion ?? -1
+                                                                                    } seqId=${
+                                                                                        lt?.seqId ?? -1
+                                                                                    } transformsLen=${
+                                                                                        Array.isArray(
+                                                                                            lt?.transforms,
+                                                                                        )
+                                                                                            ? lt.transforms.length | 0
+                                                                                            : -1
+                                                                                    }`,
+                                                                                );
+                                                                            } catch {
+                                                                                // ignore
+                                                                            }
+                                                                            // Compare C++ decoded loc type (from wasm debug export).
+                                                                            try {
+                                                                                const m =
+                                                                                    await tryLoadBackendModule();
+                                                                                const decoded = m
+                                                                                    ? runtimeDebugDecodeLocTypeWithWasm(
+                                                                                          m,
+                                                                                          runtimeHandle,
+                                                                                          writerOriginalId,
+                                                                                      )
+                                                                                    : undefined;
+                                                                                console.log(
+                                                                                    `[terrainDigestStage][probe-cpp-writer-loctype] id=${writerOriginalId} ${JSON.stringify(
+                                                                                        decoded ?? null,
+                                                                                    )}`,
+                                                                                );
+                                                                            } catch {
+                                                                                // ignore
+                                                                            }
+
                                                                             // Check whether TS scene actually added this loc to its tile set (best-effort).
                                                                             try {
                                                                                 const tile = (
@@ -8720,6 +8924,12 @@ async function main(): Promise<void> {
                                                                                 let matches = 0;
                                                                                 let ctor =
                                                                                     "unknown";
+                                                                                let matchXz: number | null =
+                                                                                    null;
+                                                                                let matchType: number | null =
+                                                                                    null;
+                                                                                let matchRot: number | null =
+                                                                                    null;
                                                                                 for (
                                                                                     let i = 0;
                                                                                     i < locs.length;
@@ -8755,6 +8965,39 @@ async function main(): Promise<void> {
                                                                                                     | string
                                                                                                     | undefined) ??
                                                                                                 "unknown";
+                                                                                            try {
+                                                                                                const flags =
+                                                                                                    (loc as any)
+                                                                                                        ?.flags ??
+                                                                                                    0;
+                                                                                                matchType =
+                                                                                                    getLocPlacementType(
+                                                                                                        flags | 0,
+                                                                                                    );
+                                                                                                matchRot =
+                                                                                                    getLocPlacementRotation(
+                                                                                                        flags | 0,
+                                                                                                    );
+                                                                                            } catch {
+                                                                                                matchType =
+                                                                                                    null;
+                                                                                                matchRot =
+                                                                                                    null;
+                                                                                            }
+                                                                                            try {
+                                                                                                const e =
+                                                                                                    loc
+                                                                                                        .entity;
+                                                                                                matchXz =
+                                                                                                    e &&
+                                                                                                    typeof e.tryGetXZRadius ===
+                                                                                                        "function"
+                                                                                                        ? (e.tryGetXZRadius() as number)
+                                                                                                        : null;
+                                                                                            } catch {
+                                                                                                matchXz =
+                                                                                                    null;
+                                                                                            }
                                                                                         }
                                                                                     } catch {}
                                                                                 }
@@ -8764,7 +9007,7 @@ async function main(): Promise<void> {
                                                                                         0
                                                                                     } idMatches=${
                                                                                         matches | 0
-                                                                                    } entityCtor=${ctor}`,
+                                                                                    } entityCtor=${ctor} entityXzRadius=${matchXz} flagsType=${matchType} flagsRot=${matchRot}`,
                                                                                 );
                                                                                 if (
                                                                                     (matches |
@@ -9624,12 +9867,10 @@ async function main(): Promise<void> {
                                                                                                             vi
                                                                                                         ] |
                                                                                                         0;
+                                                                                                    // Important: don't force i32 here. TS bounds math is done in JS Numbers.
                                                                                                     const r =
-                                                                                                        (x *
-                                                                                                            x +
-                                                                                                            z *
-                                                                                                                z) |
-                                                                                                        0;
+                                                                                                        x * x +
+                                                                                                        z * z;
                                                                                                     if (
                                                                                                         r >
                                                                                                         tsXzRadiusSq
@@ -9686,6 +9927,30 @@ async function main(): Promise<void> {
                                                                                                                 null,
                                                                                                         )}`,
                                                                                                     );
+                                                                                                    if (
+                                                                                                        cacheVertices ==
+                                                                                                        null
+                                                                                                    ) {
+                                                                                                        try {
+                                                                                                            const m =
+                                                                                                                await tryLoadBackendModule();
+                                                                                                            const last =
+                                                                                                                m
+                                                                                                                    ? runtimeDebugGetLastLegacyModelLoadWithWasm(
+                                                                                                                          m,
+                                                                                                                          runtimeHandle,
+                                                                                                                      )
+                                                                                                                    : undefined;
+                                                                                                            console.log(
+                                                                                                                `[terrainDigestStage][probe-cache-model-last] modelId=${modelId} lastLegacyModel=${JSON.stringify(
+                                                                                                                    last ??
+                                                                                                                        null,
+                                                                                                                )}`,
+                                                                                                            );
+                                                                                                        } catch {
+                                                                                                            // ignore
+                                                                                                        }
+                                                                                                    }
                                                                                                 } catch {
                                                                                                     // ignore
                                                                                                 }
@@ -9856,6 +10121,149 @@ async function main(): Promise<void> {
                 }
             }
 
+            let locMergeNormalsTraceStageResult: StageResult = {
+                key: "locMergeNormalsTraceStage",
+                ok: true,
+            };
+	            if (
+	                args.debugStage === "locMergeNormalsTraceStage" &&
+	                profile.loadLocs &&
+	                cacheLocMergeNormalsTraceEntriesPacked instanceof Int32Array
+	            ) {
+	                try {
+	                    const runtimeTrace = parseRuntimeLocMergeNormalsTraceEntriesPacked(
+	                        cacheLocMergeNormalsTraceEntriesPacked,
+	                    );
+	                    if (!runtimeTrace) {
+	                        locMergeNormalsTraceStageResult = {
+	                            key: "locMergeNormalsTraceStage",
+	                            ok: false,
+	                            detail: "runtimeTrace=<missing/invalid>",
+	                        };
+	                        throw new Error("runtimeTrace missing/invalid (packed stride mismatch?)");
+	                    }
+	                    const tsTrace = captureTsMergeNormalsTraceForSquare(
+	                        sceneBuilder,
+	                        mapBytesProvider,
+	                        sceneBuildInput,
+	                        [],
+	                    );
+                    locMergeNormalsTraceStageResult = compareLocMergeNormalsTraceStage(
+                        tsTrace,
+                        runtimeTrace,
+                    );
+                    if (!locMergeNormalsTraceStageResult.ok) {
+                        // Quick sanity: prove both sides even see the same early floor-decoration anchor.
+                        const ts754 = tsTrace.filter(
+                            (e) => (e.aLocTypeId | 0) === 754 && (e.aTileX | 0) === 12 && (e.aTileY | 0) === 6,
+                        ).length;
+                        const rt754 = (runtimeTrace ?? []).filter(
+                            (e) =>
+                                (e.aLocTypeId | 0) === 754 &&
+                                (e.aTileX | 0) === 12 &&
+                                (e.aTileY | 0) === 6,
+                        ).length;
+                        console.error(
+                            `  mergeNormals-trace anchor aLoc=754 tile=12,6 counts: ts=${ts754 | 0} rt=${rt754 | 0}`,
+                        );
+                        if (runtimeTrace && runtimeTrace.length > 0) {
+                            const sample = runtimeTrace
+                                .filter(
+                                    (e) =>
+                                        (e.aLocTypeId | 0) === 754 &&
+                                        (e.aTileX | 0) === 12 &&
+                                        (e.aTileY | 0) === 6,
+                                )
+                                .slice(0, 3);
+                            const anchorIdx = runtimeTrace.findIndex(
+                                (e) =>
+                                    (e.aLocTypeId | 0) === 754 &&
+                                    (e.aTileX | 0) === 12 &&
+                                    (e.aTileY | 0) === 6,
+                            );
+                            console.error(
+                                `  mergeNormals-trace anchor firstIndex aLoc=754 tile=12,6 idx=${
+                                    anchorIdx | 0
+                                }`,
+                            );
+                            for (let i = 0; i < sample.length; i++) {
+                                const e = sample[i];
+                                console.error(
+                                    `  mergeNormals-trace anchor sample[${i}] aType=${
+                                        e.aPlacementType | 0
+                                    } aRot=${e.aRotation | 0} bLoc=${e.bLocTypeId | 0} bType=${
+                                        e.bPlacementType | 0
+                                    } bRot=${e.bRotation | 0} hide=${e.hideOccluded | 0} kind=${
+                                        e.callKind | 0
+                                    } merged=${e.mergedCount | 0}`,
+                                );
+                            }
+                        }
+
+                        // Check whether it's only an ordering difference (multiset match) or true missing/extra merges.
+                        const toKeyTs = (e: TsMergeNormalsTraceEntry): string =>
+                            `${e.aLocTypeId}|${e.aLevel},${e.aTileX},${e.aTileY},${e.aSizeX}x${e.aSizeY}` +
+                            `->${e.bLocTypeId}|${e.bLevel},${e.bTileX},${e.bTileY},${e.bSizeX}x${e.bSizeY}` +
+                            ` off=${e.offX},${e.offY},${e.offZ} hide=${e.hideOccluded}`;
+                        const toKeyRt = (e: RuntimeLocMergeNormalsTraceEntry): string =>
+                            `${e.aLocTypeId}|${e.aLevel},${e.aTileX},${e.aTileY},${e.aSizeX}x${e.aSizeY}` +
+                            `->${e.bLocTypeId}|${e.bLevel},${e.bTileX},${e.bTileY},${e.bSizeX}x${e.bSizeY}` +
+                            ` off=${e.offX},${e.offY},${e.offZ} hide=${e.hideOccluded}`;
+                        const tsCounts = new Map<string, number>();
+                        for (let i = 0; i < tsTrace.length; i++) {
+                            const k = toKeyTs(tsTrace[i]);
+                            tsCounts.set(k, ((tsCounts.get(k) ?? 0) + 1) | 0);
+                        }
+	                        const rtCounts = new Map<string, number>();
+	                        for (let i = 0; i < runtimeTrace.length; i++) {
+	                            const k = toKeyRt(runtimeTrace[i]);
+	                            rtCounts.set(k, ((rtCounts.get(k) ?? 0) + 1) | 0);
+	                        }
+                        let diffKeys = 0;
+                        const examples: string[] = [];
+                        for (const [k, tsN] of tsCounts.entries()) {
+                            const rtN = rtCounts.get(k) ?? 0;
+                            if ((tsN | 0) !== (rtN | 0)) {
+                                diffKeys++;
+                                if (examples.length < 8) {
+                                    examples.push(`${k} ts=${tsN | 0} rt=${rtN | 0}`);
+                                }
+                            }
+                        }
+                        for (const [k, rtN] of rtCounts.entries()) {
+                            if (tsCounts.has(k)) continue;
+                            diffKeys++;
+                            if (examples.length < 8) {
+                                examples.push(`${k} ts=0 rt=${rtN | 0}`);
+                            }
+                        }
+                        console.error(
+                            `  mergeNormals-trace multiset diffs keys=${diffKeys | 0} tsUnique=${
+                                tsCounts.size | 0
+                            } rtUnique=${rtCounts.size | 0}`,
+                        );
+                        for (let i = 0; i < examples.length; i++) {
+                            console.error(`    multiset-diff[${i}]=${examples[i]}`);
+                        }
+
+                        const lines = summarizeTsVsRuntimeMergeNormalsTrace(
+                            tsTrace,
+                            runtimeTrace,
+                            [],
+                        );
+                        for (let i = 0; i < lines.length; i++) {
+                            console.error(lines[i]);
+                        }
+                    }
+                } catch (e) {
+                    locMergeNormalsTraceStageResult = {
+                        key: "locMergeNormalsTraceStage",
+                        ok: false,
+                        detail: "exception: " + String(e),
+                    };
+                }
+            }
+
             const stageResults: StageResult[] = [
                 compareInputDigests(jsInputDigest, cacheInputDigest),
                 compareCommandDigests(tsCmdDigest, cacheCmdDigestAfter),
@@ -9903,6 +10311,9 @@ async function main(): Promise<void> {
                           cacheLocPreMergeEntriesPacked,
                       )
                     : { key: "locPreMergeSignatureStage", ok: true },
+                args.debugStage === "locMergeNormalsTraceStage"
+                    ? locMergeNormalsTraceStageResult
+                    : { key: "locMergeNormalsTraceStage", ok: true },
                 profile.loadLocs
                     ? compareLocMergeDummyDigests(
                           tsLocMergedDummyDigest,
@@ -9989,6 +10400,64 @@ async function main(): Promise<void> {
                 }
                 if (cacheConfig) {
                     console.error(`  runtime cache-config: ${JSON.stringify(cacheConfig)}`);
+                }
+                {
+                    const debugLocTypeId = Number(process.env.RS_DEBUG_LOC_TYPE_ID ?? 0) | 0;
+                    if (
+                        debugLocTypeId > 0 &&
+                        typeof (bridge as any).debugDecodeLocType === "function"
+                    ) {
+                        try {
+                            const decoded = await (bridge as any).debugDecodeLocType(
+                                runtimeHandle,
+                                debugLocTypeId,
+                            );
+                            if (decoded) {
+                                console.error(
+                                    `  runtime debug loc-type ${debugLocTypeId}: ${JSON.stringify(
+                                        decoded,
+                                    )}`,
+                                );
+                            } else {
+                                console.error(
+                                    `  runtime debug loc-type ${debugLocTypeId}: <undefined>`,
+                                );
+                            }
+                        } catch (e) {
+                            console.error(
+                                `  runtime debug loc-type ${debugLocTypeId} failed: ${String(e)}`,
+                            );
+                        }
+                    }
+                }
+                {
+                    const debugSeqTypeId = Number(process.env.RS_DEBUG_SEQ_TYPE_ID ?? 0) | 0;
+                    if (
+                        debugSeqTypeId > 0 &&
+                        typeof (bridge as any).debugDecodeSeqType === "function"
+                    ) {
+                        try {
+                            const decoded = await (bridge as any).debugDecodeSeqType(
+                                runtimeHandle,
+                                debugSeqTypeId,
+                            );
+                            if (decoded) {
+                                console.error(
+                                    `  runtime debug seq-type ${debugSeqTypeId}: ${JSON.stringify(
+                                        decoded,
+                                    )}`,
+                                );
+                            } else {
+                                console.error(
+                                    `  runtime debug seq-type ${debugSeqTypeId}: <undefined>`,
+                                );
+                            }
+                        } catch (e) {
+                            console.error(
+                                `  runtime debug seq-type ${debugSeqTypeId} failed: ${String(e)}`,
+                            );
+                        }
+                    }
                 }
                 if (tsPlanDigest) {
                     console.error(
@@ -10286,6 +10755,8 @@ async function main(): Promise<void> {
                                                     }
 
                                                     // Compare bilinear height sampling (TS vs C++) at the mismatched vertex coordinate.
+                                                    // Vertex positions are often emitted in "border-subtracted" space; heightmaps/contour
+                                                    // sampling may be in "scene" space (including the border). Probe both.
                                                     try {
                                                         if (
                                                             typeof (bridge as any)
@@ -10344,6 +10815,11 @@ async function main(): Promise<void> {
                                                             const sizeY =
                                                                 (sceneBuildInput.sizeY as number) |
                                                                 0;
+                                                            const borderSize =
+                                                                ((Math.min(sizeX, sizeY) - 64) >>
+                                                                    1) | 0;
+                                                            const borderPx =
+                                                                (borderSize * 128) | 0;
                                                             const smoothUnderlays =
                                                                 !!sceneBuildInput.smoothTerrain;
                                                             const tsScene =
@@ -10366,14 +10842,124 @@ async function main(): Promise<void> {
                                                             console.error(
                                                                 `  ts world-height level=${level} world=(${probeX},${probeZ}) -> ${hTs}`,
                                                             );
+
+                                                            if (borderSize > 0) {
+                                                                const probeXScene =
+                                                                    (probeX + borderPx) | 0;
+                                                                const probeZScene =
+                                                                    (probeZ + borderPx) | 0;
+                                                                await (
+                                                                    bridge as any
+                                                                ).debugSetWorldHeightProbe(
+                                                                    runtimeHandle,
+                                                                    level,
+                                                                    probeXScene,
+                                                                    probeZScene,
+                                                                );
+                                                                await bridge.buildMapPacketFromCache(
+                                                                    runtimeHandle,
+                                                                    request,
+                                                                );
+                                                                const probeScene = await (
+                                                                    bridge as any
+                                                                ).debugGetRuntimeLastWorldHeightProbe(
+                                                                    runtimeHandle,
+                                                                );
+                                                                const hTsScene =
+                                                                    tsScene.getHeightInterpolated(
+                                                                        level,
+                                                                        probeXScene,
+                                                                        probeZScene,
+                                                                    ) | 0;
+                                                                console.error(
+                                                                    `  cpp world-height-probe(scene border=${borderSize}) level=${level} world=(${probeXScene},${probeZScene}) -> ${JSON.stringify(
+                                                                        probeScene,
+                                                                    )}`,
+                                                                );
+                                                                console.error(
+                                                                    `  ts world-height(scene border=${borderSize}) level=${level} world=(${probeXScene},${probeZScene}) -> ${hTsScene}`,
+                                                                );
+                                                            }
                                                             if (
                                                                 probe?.packed instanceof Int32Array
                                                             ) {
                                                                 const p = probe.packed;
-                                                                const tx = p[1] | 0;
-                                                                const tz = p[2] | 0;
-                                                                const h00 = p[5] | 0;
-                                                                const h10 = p[6] | 0;
+                                                                const marker = p[0] | 0;
+                                                                if (marker === 2) {
+                                                                    console.error(
+                                                                        `  cpp vertex-probe packed=${JSON.stringify(
+                                                                            {
+                                                                                marker,
+                                                                                vertexIndex:
+                                                                                    p[1] | 0,
+                                                                                modelVx: p[2] | 0,
+                                                                                modelVyBase:
+                                                                                    p[3] | 0,
+                                                                                modelVz: p[4] | 0,
+                                                                                modelVyUsed:
+                                                                                    p[5] | 0,
+                                                                                sceneHeight:
+                                                                                    p[6] | 0,
+                                                                                outY: p[7] | 0,
+                                                                                contourX:
+                                                                                    p[8] | 0,
+                                                                                contourZ:
+                                                                                    p[9] | 0,
+                                                                                sampleX:
+                                                                                    p[10] | 0,
+                                                                                sampleZ:
+                                                                                    p[11] | 0,
+                                                                                sampledOk:
+                                                                                    (p[12] |
+                                                                                        0) !==
+                                                                                    0,
+                                                                                sampledH:
+                                                                                    p[13] | 0,
+                                                                                modelId:
+                                                                                    p[14] | 0,
+                                                                                contouredY:
+                                                                                    (p[15] |
+                                                                                        0) !==
+                                                                                    0,
+                                                                            },
+                                                                        )}`,
+                                                                    );
+                                                                    // Skip the standard height-corners printout (different packed format).
+                                                                } else if (marker === 3) {
+                                                                    console.error(
+                                                                        `  cpp terrain-vertex-probe packed=${JSON.stringify(
+                                                                            {
+                                                                                marker,
+                                                                                tileX: p[1] | 0,
+                                                                                tileY: p[2] | 0,
+                                                                                shapeId: p[3] | 0,
+                                                                                rotation: p[4] | 0,
+                                                                                x: p[5] | 0,
+                                                                                y: p[6] | 0,
+                                                                                z: p[7] | 0,
+                                                                                hsl: p[8] | 0,
+                                                                                alpha: p[9] | 0,
+                                                                                priority: p[10] | 0,
+                                                                                textureId:
+                                                                                    p[11] | 0,
+                                                                                textureId1:
+                                                                                    p[12] | 0,
+                                                                                hasOverlay:
+                                                                                    (p[13] |
+                                                                                        0) !==
+                                                                                    0,
+                                                                                hasUnderlay:
+                                                                                    (p[14] |
+                                                                                        0) !==
+                                                                                    0,
+                                                                            },
+                                                                        )}`,
+                                                                    );
+                                                                } else {
+                                                                    const tx = p[1] | 0;
+                                                                    const tz = p[2] | 0;
+                                                                    const h00 = p[5] | 0;
+                                                                    const h10 = p[6] | 0;
                                                                 const h01 = p[7] | 0;
                                                                 const h11 = p[8] | 0;
                                                                 const hCpp = p[14] | 0;
@@ -10396,6 +10982,7 @@ async function main(): Promise<void> {
                                                                 console.error(
                                                                     `  height-corners tx=${tx} tz=${tz} ts=[${ts00},${ts10},${ts01},${ts11}] cpp=[${h00},${h10},${h01},${h11}] hTs=${hTs} hCpp=${hCpp}`,
                                                                 );
+                                                                }
                                                             }
                                                         }
                                                     } catch (e) {
@@ -11924,6 +12511,147 @@ async function main(): Promise<void> {
                             }): ${JSON.stringify(multisetDiff)}`,
                         );
                     }
+
+                    // When instanced ops are missing (present in TS but absent in C++), summarize the
+                    // runtime loc merge-decision entries for those model hashes so we can see whether
+                    // C++ computed different face counts, forceMerge flags, or instance totals.
+                    //
+                    // This is intentionally debug-only output (only printed when --debug-stage is used).
+                    try {
+                        const missingInst = multisetDiff
+                            .map((s) => String(s))
+                            .map((s) => {
+                                // Example:
+                                // "inst|t=0|h=-1046058061|f=66|i=2|lod=2: ts=1 cache=0 delta=-1"
+                                const m = /^inst\\|t=(\\d+)\\|h=(-?\\d+)\\|f=(\\d+)\\|i=(\\d+)\\|lod=(\\d+):\\s*ts=(\\d+)\\s*cache=(\\d+)\\s*delta=(-?\\d+)\\s*$/.exec(
+                                    s,
+                                );
+                                if (!m) return undefined;
+                                return {
+                                    transparent: (Number(m[1]) | 0) === 1,
+                                    modelHash: Number(m[2]) | 0,
+                                    faceCount: Number(m[3]) | 0,
+                                    instanceCount: Number(m[4]) | 0,
+                                    lodInstanceCount: Number(m[5]) | 0,
+                                    tsCount: Number(m[6]) | 0,
+                                    cacheCount: Number(m[7]) | 0,
+                                    delta: Number(m[8]) | 0,
+                                };
+                            })
+                            .filter(
+                                (v): v is NonNullable<typeof v> =>
+                                    !!v && (v.delta | 0) < 0 && (v.tsCount | 0) > 0,
+                            );
+                        const packedMergeDecisions =
+                            ((): Int32Array | undefined => {
+                                const raw: any = cacheLocMergeDecisionEntriesPacked as any;
+                                if (raw instanceof Int32Array) {
+                                    return raw;
+                                }
+                                if (raw instanceof Uint32Array) {
+                                    return new Int32Array(
+                                        raw.buffer,
+                                        raw.byteOffset,
+                                        (raw.byteLength / 4) | 0,
+                                    );
+                                }
+                                return undefined;
+                            })();
+                        if (missingInst.length > 0 && packedMergeDecisions) {
+                            const runtimeMergeEntries =
+                                parseRuntimeLocMergeDecisionEntriesPacked(
+                                    packedMergeDecisions,
+                                ) ?? [];
+                            const seen = new Set<number>();
+                            for (let mi = 0; mi < missingInst.length; mi++) {
+                                const miss = missingInst[mi];
+                                const h = miss.modelHash | 0;
+                                if (seen.has(h)) continue;
+                                seen.add(h);
+                                const relevant = runtimeMergeEntries.filter(
+                                    (e) => (e.modelSignature | 0) === h,
+                                );
+                                if (relevant.length <= 0) {
+                                    console.error(
+                                        `  runtime loc-merge entries for modelHash=${h}: <none>`,
+                                    );
+                                    continue;
+                                }
+                                const uniqueLocs = new Set<number>();
+                                const uniqueTypes = new Set<number>();
+                                const uniqueRot = new Set<number>();
+                                const uniqueLevel = new Set<number>();
+                                const uniquePri = new Set<number>();
+                                let total = 0;
+                                let nonForce = 0;
+                                const elemsOpaque = new Map<number, number>();
+                                const elemsAlpha = new Map<number, number>();
+                                for (let ei = 0; ei < relevant.length; ei++) {
+                                    const e = relevant[ei];
+                                    total++;
+                                    if (!e.forceMerge) nonForce++;
+                                    uniqueLocs.add(e.locTypeId | 0);
+                                    uniqueTypes.add(e.variantType | 0);
+                                    uniqueRot.add(e.variantRotation | 0);
+                                    uniqueLevel.add(e.level | 0);
+                                    uniquePri.add(e.priority | 0);
+                                    elemsOpaque.set(
+                                        e.opaqueElementsPerInstance | 0,
+                                        ((elemsOpaque.get(e.opaqueElementsPerInstance | 0) ?? 0) +
+                                            1) |
+                                            0,
+                                    );
+                                    elemsAlpha.set(
+                                        e.alphaElementsPerInstance | 0,
+                                        ((elemsAlpha.get(e.alphaElementsPerInstance | 0) ?? 0) +
+                                            1) |
+                                            0,
+                                    );
+                                }
+                                const missOpaque = missingInst.find(
+                                    (x) => (x.modelHash | 0) === h && !x.transparent,
+                                );
+                                const missAlpha = missingInst.find(
+                                    (x) => (x.modelHash | 0) === h && x.transparent,
+                                );
+                                const fmtElems = (m: Map<number, number>): string =>
+                                    JSON.stringify(
+                                        Array.from(m.entries())
+                                            .sort((a, b) => (b[1] | 0) - (a[1] | 0))
+                                            .slice(0, 6),
+                                    );
+                                console.error(
+                                    `  runtime loc-merge entries for modelHash=${h}: total=${total} nonForce=${nonForce} uniqueLocTypeIds=${uniqueLocs.size} uniqueVariantType=${uniqueTypes.size} uniqueRot=${uniqueRot.size} uniqueLevel=${uniqueLevel.size} uniquePri=${uniquePri.size}`,
+                                );
+                                if (missOpaque) {
+                                    console.error(
+                                        `    missing-inst opaque tsFaceCount=${missOpaque.faceCount} tsElements=${(missOpaque.faceCount * 3) | 0} (op.instances=${missOpaque.instanceCount}, lod=${missOpaque.lodInstanceCount}) runtimeOpaqueElementsPerInstanceCounts=${fmtElems(
+                                            elemsOpaque,
+                                        )}`,
+                                    );
+                                }
+                                if (missAlpha) {
+                                    console.error(
+                                        `    missing-inst alpha tsFaceCount=${missAlpha.faceCount} tsElements=${(missAlpha.faceCount * 3) | 0} (op.instances=${missAlpha.instanceCount}, lod=${missAlpha.lodInstanceCount}) runtimeAlphaElementsPerInstanceCounts=${fmtElems(
+                                            elemsAlpha,
+                                        )}`,
+                                    );
+                                }
+                                console.error(
+                                    `    sampleLocTypeIds=${JSON.stringify(
+                                        Array.from(uniqueLocs.values()).slice(0, 12),
+                                    )} sampleVariantTypes=${JSON.stringify(
+                                        Array.from(uniqueTypes.values()).slice(0, 12),
+                                    )} sampleRot=${JSON.stringify(
+                                        Array.from(uniqueRot.values()).slice(0, 12),
+                                    )}`,
+                                );
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`  missing-inst runtime merge-entry debug failed: ${String(e)}`);
+                    }
+
                     const shapeMultisetDiff = diffSceneCommandPlanOpsPackedShapeMultiset(
                         tsPlanOpsPacked,
                         cacheSceneCommandPlanOpsPackedStage,
@@ -12065,6 +12793,39 @@ async function main(): Promise<void> {
                                     runtimeCommandProvenanceEntries,
                                     12,
                                 );
+
+                                // Extra debug when chasing merged-dummy drift: show which locs actually
+                                // emitted geometry into the merge path (per-instance element counts).
+                                if (
+                                    args.debugStage === "locMergeDummyStage" &&
+                                    typeof bridge.debugGetRuntimeLastLocMergeEmitEntriesPacked ===
+                                        "function"
+                                ) {
+                                    const packed =
+                                        await bridge.debugGetRuntimeLastLocMergeEmitEntriesPacked(
+                                            runtimeHandle,
+                                        );
+                                    const entries = parseRuntimeLocMergeEmitEntriesPacked(packed);
+                                    if (entries) {
+                                        console.error(
+                                            `  runtime loc-merge-emit entries total=${entries.length}`,
+                                        );
+                                        const focusLocs = new Set<number>([238, 2165]);
+                                        const focus = entries.filter((e) =>
+                                            focusLocs.has(e.locTypeId | 0),
+                                        );
+                                        console.error(
+                                            `  runtime loc-merge-emit entries (focus) n=${focus.length}`,
+                                        );
+                                        for (let i = 0; i < focus.length && i < 50; i++) {
+                                            console.error(
+                                                `    ${summarizeRuntimeLocMergeEmitEntry(
+                                                    focus[i],
+                                                )}`,
+                                            );
+                                        }
+                                    }
+                                }
                             } catch (e) {
                                 console.error(
                                     "  cache loc-merge-dummy-stage (from arrays) compute failed: " +

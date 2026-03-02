@@ -6,7 +6,7 @@ import {
     SceneBuffer,
     getInteractCommandBucketKeys,
     getMergedCommandBucketKeys,
-} from "../../src/renderer/buffer/SceneBuffer";
+} from "../../src/runtime/build/SceneBuffer";
 
 function makeCommand(offset: number, elements: number, level: number) {
     return {
@@ -54,7 +54,7 @@ function runRegression(): void {
     const stream = sceneBuf.getCommandStream();
     assert.equal(stream.length, 6);
     assert.deepEqual(
-        stream.map((entry) => entry.bucketIndex),
+        stream.map((entry: { bucketIndex: number }) => entry.bucketIndex),
         [0, 1, 2, 4, 5, 6],
     );
 }

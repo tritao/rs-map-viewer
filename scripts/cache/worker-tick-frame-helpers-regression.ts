@@ -5,7 +5,7 @@ import {
     applyNpcMovementStep,
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "../../src/worker/runtime/tickFrameHelpers";
+} from "../../src/worker/runtime/WorkerTickPatchPipeline";
 import type { WorkerNpcSimMapState } from "../../src/worker/runtime/WorkerNpcSimStateStore";
 
 function makeCountsForOneMap(mapId: number): Int32Array {
@@ -127,12 +127,16 @@ function makeTestState(): WorkerNpcSimMapState {
         ],
         seededNpcFlags: false,
         npcs: [npc as any],
+        npcIndexByInstanceId: new Map<number, number>(),
         npcIndexByOrderKey: new Map(),
+        lastSeqByInstanceId: new Map<number, number>(),
+        npcTypeAnimationByNpcTypeId: new Map<number, any>(),
         locsAnimated: [loc as any],
         locTickPatchesByVariant: Array.from({ length: 8 }, () => new Int32Array(4)),
         locTickPatchCountsByVariant: new Int32Array(8),
         npcTickPatchesByVariant: [new Int32Array(4), new Int32Array(4)],
         npcTickPatchCountsByVariant: new Int32Array(2),
+        nextSyntheticOrderKey: -1,
     };
 }
 

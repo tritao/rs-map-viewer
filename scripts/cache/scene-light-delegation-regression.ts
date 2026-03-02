@@ -1,12 +1,12 @@
-import { ModelHashBuffer } from "../../src/renderer/buffer/ModelHashBuffer";
-import { SceneBuffer } from "../../src/renderer/buffer/SceneBuffer";
+import { ModelHashBuffer } from "../../src/runtime/build/ModelHashBuffer";
+import { SceneBuffer } from "../../src/runtime/build/SceneBuffer";
 import {
     DRAW_BUCKET_KEYS,
     collectRuntimeDrawCommandBuckets,
-} from "../../src/renderer/buffer/SceneCommandBuilder";
-import { emitSceneModelsToSceneBuffer } from "../../src/renderer/buffer/SceneCommandPlan";
+} from "../../src/runtime/build/SceneCommandBuilder";
+import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
 import { createSdTexturePacking } from "../../src/maprender/payload/SdTexturePacking";
-import { getSceneLocs } from "../../src/renderer/loc/SceneLocs";
+import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";

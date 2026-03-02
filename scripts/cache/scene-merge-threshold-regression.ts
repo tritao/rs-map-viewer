@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { decideSceneModelMergeStrategy } from "../../src/renderer/buffer/SceneBuffer";
+import { decideSceneModelMergeStrategy } from "../../src/runtime/build/SceneBuffer";
 
 function runRegression(): void {
     assert.deepEqual(

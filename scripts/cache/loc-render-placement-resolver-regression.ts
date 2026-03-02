@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { resolveLocRenderPlacement } from "../../src/renderer/loc/LocRenderPlacementResolver";
-import type { SceneLocEntity } from "../../src/renderer/loc/SceneLocEntity";
+import { resolveLocRenderPlacement } from "../../src/runtime/build";
+import type { SceneLocEntity } from "../../src/runtime/build";
 import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
 import { LocEntity } from "../../src/rs/scene/entity/LocEntity";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { collectTerrainTileVertexRecords } from "../../src/renderer/buffer/SceneBuffer";
+import { collectTerrainTileVertexRecords } from "../../src/runtime/build/SceneBuffer";
 
 function runRegression(): void {
     const empty = collectTerrainTileVertexRecords({ tileModel: undefined } as any, 10, 20);
