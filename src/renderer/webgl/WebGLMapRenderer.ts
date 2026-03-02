@@ -33,18 +33,14 @@ import {
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/entities/NpcGpuData";
 import {
-    chooseLocTickPatchVariant,
-    chooseNpcTickPatchVariant,
-    getLocTickPatchStreamIndex,
-    getNpcTickPatchStreamIndex,
-} from "../../runtime/contracts/TickPatchVariants";
-import {
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     FRAME_RENDER_LIST_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
+    getLocTickPatchStreamIndex,
+    getNpcTickPatchStreamIndex,
 } from "../../runtime/contracts/FramePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import { applyDrawRangePatches } from "./applyDrawRangePatches";
@@ -507,11 +503,10 @@ export class WebGLMapRenderer
         if (!frame) {
             return;
         }
-        const variant = chooseLocTickPatchVariant(isAlpha, isInteract, isLod);
         const mapId = renderable.id | 0;
         const entryIndex = frame.mapIdToIndex.get(mapId);
         if (entryIndex !== undefined) {
-            const streamIndex = getLocTickPatchStreamIndex(variant);
+            const streamIndex = getLocTickPatchStreamIndex(isAlpha, isInteract, isLod);
             const idx = (entryIndex * TICK_PATCH_STREAM_COUNT + streamIndex) | 0;
             const count = frame.streamCounts[idx] | 0;
             if (count > 0) {
@@ -537,8 +532,7 @@ export class WebGLMapRenderer
         const mapId = renderable.id | 0;
         const entryIndex = frame.mapIdToIndex.get(mapId);
         if (entryIndex !== undefined) {
-            const npcVariant = chooseNpcTickPatchVariant(isAlpha);
-            const streamIndex = getNpcTickPatchStreamIndex(npcVariant);
+            const streamIndex = getNpcTickPatchStreamIndex(isAlpha);
             const idx = (entryIndex * TICK_PATCH_STREAM_COUNT + streamIndex) | 0;
             const count = frame.streamCounts[idx] | 0;
             if (count > 0) {
