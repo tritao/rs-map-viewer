@@ -60,7 +60,11 @@ import {
 } from "./runtime/tickFrameHelpers";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./runtime/NpcGpuFrameBuilder";
 import type { NpcSpawnEvent } from "../runtime/sim/NpcSpawnEvent";
-import { createNpcBootstrapSpawnEventsFromSpawns } from "./runtime/NpcBootstrapEventAdapters";
+import type { NpcTypeAnimationEntry } from "../runtime/sim/NpcTypeAnimationTable";
+import {
+    createNpcBootstrapDataFromSpawns,
+    type NpcBootstrapData,
+} from "./runtime/NpcBootstrapEventAdapters";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
 import { WorkerNpcSimStateStore } from "./runtime/WorkerNpcSimStateStore";
 
@@ -118,15 +122,24 @@ function maybeHydrateNpcBootstrapEventsFromMapBytes(
     mapId: number,
     borderSize: number,
     tileRenderFlagsLevel1: Uint8Array[],
-    npcEventsIn: ReadonlyArray<NpcSpawnEvent>,
-): NpcSpawnEvent[] {
-    if ((npcEventsIn.length | 0) > 0) {
-        return Array.from(npcEventsIn);
+    npcBootstrapDataIn: Readonly<{
+        spawnEvents: ReadonlyArray<NpcSpawnEvent>;
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
+    }>,
+): NpcBootstrapData {
+    if ((npcBootstrapDataIn.spawnEvents.length | 0) > 0) {
+        return {
+            spawnEvents: Array.from(npcBootstrapDataIn.spawnEvents),
+            npcTypeAnimationTable: Array.from(npcBootstrapDataIn.npcTypeAnimationTable),
+        };
     }
     const { mapX, mapY } = decodeMapSquareFromId(mapId);
     const npcSpawnBytes = workerState.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
     if (!(npcSpawnBytes instanceof Uint8Array) || npcSpawnBytes.length === 0) {
-        return [];
+        return {
+            spawnEvents: [],
+            npcTypeAnimationTable: [],
+        };
     }
     const decodedSpawns = decodeNpcSpawnsFromBytes(
         tileRenderFlagsLevel1,
@@ -136,7 +149,10 @@ function maybeHydrateNpcBootstrapEventsFromMapBytes(
         npcSpawnBytes,
     );
     if (!decodedSpawns || (decodedSpawns.length | 0) <= 0) {
-        return [];
+        return {
+            spawnEvents: [],
+            npcTypeAnimationTable: [],
+        };
     }
     const npcTypeLoader = workerState.session.loaders.npcTypeLoader;
     const filteredSpawns = decodedSpawns.filter((spawn) => {
@@ -144,9 +160,12 @@ function maybeHydrateNpcBootstrapEventsFromMapBytes(
         return npcResult.ok && (npcResult.value.loginScreenProps & 0x1) > 0;
     });
     if ((filteredSpawns.length | 0) <= 0) {
-        return [];
+        return {
+            spawnEvents: [],
+            npcTypeAnimationTable: [],
+        };
     }
-    return createNpcBootstrapSpawnEventsFromSpawns(mapId | 0, filteredSpawns);
+    return createNpcBootstrapDataFromSpawns(mapId | 0, filteredSpawns);
 }
 
 async function requireWorkerState(): Promise<WorkerState> {
@@ -380,18 +399,22 @@ const worker = {
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
         npcEventsIn: NpcSpawnEvent[],
+        npcTypeAnimationTableIn: NpcTypeAnimationEntry[],
         mapSimToken?: number,
     ): Promise<void> {
         if (!workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         const workerState = await requireWorkerState();
-        const npcEvents = maybeHydrateNpcBootstrapEventsFromMapBytes(
+        const npcBootstrapData = maybeHydrateNpcBootstrapEventsFromMapBytes(
             workerState,
             mapId,
             borderSize,
             tileRenderFlagsLevel1,
-            npcEventsIn,
+            {
+                spawnEvents: npcEventsIn,
+                npcTypeAnimationTable: npcTypeAnimationTableIn,
+            },
         );
         const deps = createNpcSimStateStoreDeps(workerState);
         npcSimStateStore.registerMap(
@@ -401,12 +424,13 @@ const worker = {
                 tileRenderFlagsLevel1,
                 collisionDatas,
                 locsAnimated,
+                npcTypeAnimationTable: npcBootstrapData.npcTypeAnimationTable,
             },
             deps,
         );
         npcSimStateStore.applyMapNpcLifecycleEvents(
             mapId | 0,
-            npcEvents,
+            npcBootstrapData.spawnEvents,
             deps,
             true,
         );

@@ -17,7 +17,7 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import { createNpcBootstrapSpawnEvents } from "../worker/runtime/NpcBootstrapEventAdapters";
+import { createNpcBootstrapData } from "../worker/runtime/NpcBootstrapEventAdapters";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
@@ -158,7 +158,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 const level1 = sdMapData.tileRenderFlags[1] ?? [];
-                const npcEvents = createNpcBootstrapSpawnEvents({
+                const npcBootstrapData = createNpcBootstrapData({
                     mapId,
                     npcsIn: sdMapData.npcs,
                     npcOrderKeys: sdMapData.npcOrderKeys,
@@ -170,7 +170,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                         level1,
                         sdMapData.collisionDatas,
                         sdMapData.locsAnimated,
-                        npcEvents,
+                        npcBootstrapData.spawnEvents,
+                        npcBootstrapData.npcTypeAnimationTable,
                         mapSimToken,
                     );
                 } catch (e) {

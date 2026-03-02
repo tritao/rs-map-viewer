@@ -1,5 +1,3 @@
-import type { AnimationFrames } from "../contracts/AnimationFrames";
-
 export type NpcSpawnEvent = Readonly<{
     kind: "spawn";
     mapId: number;
@@ -8,6 +6,4 @@ export type NpcSpawnEvent = Readonly<{
     tileY: number;
     level: number;
     orderKey?: number;
-    idleAnim?: AnimationFrames;
-    walkAnim?: AnimationFrames;
 }>;

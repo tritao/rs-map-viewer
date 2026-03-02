@@ -13,6 +13,7 @@ import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { NpcSpawnEvent } from "../runtime/sim/NpcSpawnEvent";
+import type { NpcTypeAnimationEntry } from "../runtime/sim/NpcTypeAnimationTable";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -125,6 +126,7 @@ export class RenderDataWorkerPool {
         collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcEvents: ReadonlyArray<NpcSpawnEvent>,
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
         return this.getTickWorker().then((w) =>
@@ -135,6 +137,7 @@ export class RenderDataWorkerPool {
                 collisionDatas,
                 locsAnimated as any,
                 npcEvents as any,
+                npcTypeAnimationTable as any,
                 mapSimToken,
             ),
         );

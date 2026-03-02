@@ -5,6 +5,7 @@ import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import { applyNpcUpdateDeltas } from "../../runtime/sim/NpcSimMovement";
 import type { NpcEvent } from "../../runtime/sim/NpcEvent";
 import type { NpcSpawnEvent } from "../../runtime/sim/NpcSpawnEvent";
+import type { NpcTypeAnimationEntry } from "../../runtime/sim/NpcTypeAnimationTable";
 import type { NpcUpdateEvent } from "../../runtime/sim/NpcUpdateEvent";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
@@ -17,6 +18,7 @@ export type WorkerNpcSimMapState = {
     seededNpcFlags: boolean;
     npcs: Npc[];
     npcIndexByOrderKey: Map<number, number>;
+    npcTypeAnimationByNpcTypeId: Map<number, NpcTypeAnimationEntry>;
     locsAnimated: LocAnimated[];
 
     // Tick patch scratch buffers (per-map) to avoid per-frame allocations.
@@ -33,6 +35,7 @@ export type RegisterWorkerNpcSimMapInput = Readonly<{
     tileRenderFlagsLevel1: Uint8Array[];
     collisionDatas: CollisionData[];
     locsAnimated: LocAnimatedData[];
+    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 
 export type WorkerNpcSimStateStoreDeps = Readonly<{
@@ -104,6 +107,9 @@ export class WorkerNpcSimStateStore {
             seededNpcFlags: false,
             npcs: [],
             npcIndexByOrderKey: new Map<number, number>(),
+            npcTypeAnimationByNpcTypeId: this.buildNpcTypeAnimationByNpcTypeId(
+                input.npcTypeAnimationTable,
+            ),
             locsAnimated,
             locTickPatchesByVariant: this.createLocTickPatchBuffers(
                 locsAnimated.length | 0,
@@ -135,12 +141,46 @@ export class WorkerNpcSimStateStore {
         state.tileRenderFlagsLevel1 = input.tileRenderFlagsLevel1;
         state.collisionMaps = input.collisionDatas.map(CollisionMap.fromData);
         state.locsAnimated = this.buildLocsAnimated(input.locsAnimated, deps.seqTypeLoader);
+        state.npcTypeAnimationByNpcTypeId = this.buildNpcTypeAnimationByNpcTypeId(
+            input.npcTypeAnimationTable,
+        );
         state.locTickPatchesByVariant = this.createLocTickPatchBuffers(
             state.locsAnimated.length | 0,
             deps.tickPatchEntryStride,
         );
         state.locTickPatchCountsByVariant = new Int32Array(8);
         state.seededNpcFlags = false;
+    }
+
+    private buildNpcTypeAnimationByNpcTypeId(
+        entries: ReadonlyArray<NpcTypeAnimationEntry>,
+    ): Map<number, NpcTypeAnimationEntry> {
+        const out = new Map<number, NpcTypeAnimationEntry>();
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i]!;
+            const npcTypeId = entry.npcTypeId | 0;
+            const existing = out.get(npcTypeId);
+            if (!existing) {
+                out.set(npcTypeId, entry);
+                continue;
+            }
+            if (!existing.idleAnim && entry.idleAnim) {
+                out.set(npcTypeId, {
+                    npcTypeId,
+                    idleAnim: entry.idleAnim,
+                    walkAnim: existing.walkAnim ?? entry.walkAnim,
+                });
+                continue;
+            }
+            if (!existing.walkAnim && entry.walkAnim) {
+                out.set(npcTypeId, {
+                    npcTypeId,
+                    idleAnim: existing.idleAnim,
+                    walkAnim: entry.walkAnim,
+                });
+            }
+        }
+        return out;
     }
 
     private allocateSyntheticOrderKey(state: WorkerNpcSimMapState): number {
@@ -154,20 +194,22 @@ export class WorkerNpcSimStateStore {
         state: WorkerNpcSimMapState,
         deps: WorkerNpcSimStateStoreDeps,
     ): Npc | undefined {
-        const npcTypeResult = deps.npcTypeLoader.tryLoad(event.npcTypeId | 0);
+        const npcTypeId = event.npcTypeId | 0;
+        const npcTypeResult = deps.npcTypeLoader.tryLoad(npcTypeId);
         if (!npcTypeResult.ok) {
             return undefined;
         }
         const npcType = npcTypeResult.value;
         const idleSeqId = npcType.getIdleSeqId(deps.basTypeLoader);
         const walkSeqId = npcType.getWalkSeqId(deps.basTypeLoader);
+        const anim = state.npcTypeAnimationByNpcTypeId.get(npcTypeId);
         const orderKey = event.orderKey ?? this.allocateSyntheticOrderKey(state);
         return new Npc(
             event.tileX | 0,
             event.tileY | 0,
             event.level | 0,
-            event.idleAnim,
-            event.walkAnim,
+            anim?.idleAnim,
+            anim?.walkAnim,
             npcType,
             idleSeqId | 0,
             walkSeqId | 0,
