@@ -24,7 +24,8 @@ import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "../maprender/MinimapData";
-import { RenderDataLoader } from "./RenderDataLoader";
+import type { SdMapData } from "../maprender/payload/SdMapData";
+import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
@@ -267,26 +268,14 @@ export class RenderDataWorkerBuild {
         await this.requireWorkerState();
     }
 
-    initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>): void {
-        dataLoader.init();
-    }
-
-    async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>): Promise<void> {
-        dataLoader.reset();
+    async loadSdMapData(
+        input: SdMapLoaderInput,
+    ): Promise<TransferDescriptor<SdMapData | undefined>> {
         const workerState = await this.requireWorkerState();
-        workerState.mapRenderDataBackend.reset();
-    }
-
-    async load<I, D>(
-        dataLoader: RenderDataLoader<I, D>,
-        input: I,
-    ): Promise<TransferDescriptor<D> | undefined> {
-        const workerState = await this.requireWorkerState();
-        const { data, transferables } = await dataLoader.load(workerState, input);
-        if (!data) {
-            return undefined;
-        }
-        return Transfer<D>(data, transferables);
+        const { data, transferables } = await workerState.mapRenderDataBackend.buildMapData(input);
+        return data
+            ? Transfer<SdMapData | undefined>(data, transferables)
+            : Transfer<SdMapData | undefined>(undefined, []);
     }
 
     async loadTexture(

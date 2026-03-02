@@ -2,12 +2,6 @@ import { TileRenderFlag } from "../../rs/scene/Scene";
 import type { Npc } from "../../runtime/entities/Npc";
 import type { NpcGpuFrameData } from "../../runtime/contracts/NpcGpuFrame";
 
-export type NpcGpuFrameSource = Readonly<{
-    id: number;
-    getNpcs(): ReadonlyArray<Npc>;
-    getTileRenderFlag(level: number, tileX: number, tileY: number): number;
-}>;
-
 export class NpcGpuFrameBuilder {
     private count = 0;
     private data: Uint16Array = new Uint16Array(16 * 4);
@@ -16,22 +10,28 @@ export class NpcGpuFrameBuilder {
         this.count = 0;
     }
 
-    addRenderable(renderable: NpcGpuFrameSource): number {
-        const npcs = renderable.getNpcs();
+    addMapNpcs(
+        npcs: ReadonlyArray<Npc>,
+        borderSize: number,
+        tileRenderFlagsLevel1: Uint8Array[],
+    ): number {
         if (npcs.length === 0) {
             return -1;
         }
 
         const offset = this.count | 0;
+        const border = borderSize | 0;
 
         for (const npc of npcs) {
             const tileX = npc.x >> 7;
             const tileY = npc.y >> 7;
 
             let renderPlane = npc.level;
+            const col = tileRenderFlagsLevel1[(tileX + border) | 0];
+            const flag = col ? (col[(tileY + border) | 0] | 0) : 0;
             if (
                 renderPlane < 3 &&
-                (renderable.getTileRenderFlag(1, tileX, tileY) & TileRenderFlag.Bridge) !== 0
+                (flag & TileRenderFlag.Bridge) !== 0
             ) {
                 renderPlane++;
             }

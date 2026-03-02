@@ -8,7 +8,6 @@ import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
 import { SdMapData } from "../maprender/payload/SdMapData";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
-import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
@@ -38,7 +37,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManagerTime: number = 0;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
-    private readonly sdMapDataLoader = new SdMapDataLoader();
     private readonly tickCoordinator = new MapRenderTickCoordinator();
     private readonly framePacketSource: WorkerFramePacketSource;
     private readonly mapSimTokenByMapId = new Map<number, number>();
@@ -86,11 +84,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             minimizeDrawCalls: !r.hasMultiDraw,
             loadedTextureIdsPacked: Int32Array.from(r.loadedTextureIds),
         };
-        return await this.workerPool.queueLoad<
-            SdMapLoaderInput,
-            SdMapData | undefined,
-            SdMapDataLoader
-        >(this.sdMapDataLoader, input);
+        return await this.workerPool.queueSdMapData(input);
     }
 
     private reserveMapSimToken(mapId: number): number {

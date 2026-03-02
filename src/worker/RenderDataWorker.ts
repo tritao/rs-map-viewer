@@ -1,5 +1,4 @@
 import { TransferDescriptor } from "threads";
-import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
@@ -8,13 +7,12 @@ import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LoadedCache } from "../util/Caches";
-import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./runtime/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
+import type { SdMapData } from "../maprender/payload/SdMapData";
+import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
-
-registerSerializer(renderDataLoaderSerializer);
 
 const buildService = new RenderDataWorkerBuild();
 const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
@@ -25,22 +23,13 @@ const worker = {
         spawnBootstrap: WorkerSpawnBootstrap,
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
-        tickRuntime.setRuntimeOptions(options);
         tickRuntime.resetForCache();
         await buildService.initCache(cache, spawnBootstrap, options);
     },
-    initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
-        buildService.initDataLoader(dataLoader);
-    },
-    async resetDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
-        tickRuntime.resetForLoaderReset();
-        await buildService.resetDataLoader(dataLoader);
-    },
-    async load<I, D>(
-        dataLoader: RenderDataLoader<I, D>,
-        input: I,
-    ): Promise<TransferDescriptor<D> | undefined> {
-        return buildService.load(dataLoader, input);
+    async loadSdMapData(
+        input: SdMapLoaderInput,
+    ): Promise<TransferDescriptor<SdMapData | undefined>> {
+        return buildService.loadSdMapData(input);
     },
     async loadTexture(
         id: number,

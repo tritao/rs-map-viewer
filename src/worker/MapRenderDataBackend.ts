@@ -20,12 +20,16 @@ import {
     runtimePacketToPayloadOverlay,
     sdMapDataTransferables,
 } from "../maprender/MapRenderDataContract";
-import type { RenderDataResult } from "./RenderDataLoader";
 import {
     MapRenderByteDrivenSceneBuildInput,
     MapRenderRuntimeCacheV2Uploader,
     createByteDrivenSceneBuildInput,
 } from "./runtime-cache/MapRenderRuntimeCacheV2Uploader";
+
+export type RenderDataResult<T> = Readonly<{
+    data: T;
+    transferables: Transferable[];
+}>;
 
 export type MapRenderDataBackendKind = BackendKind;
 
