@@ -1,8 +1,8 @@
-import { SdMapData } from "../maprender/payload/SdMapData";
+import { SdMapData } from "./payload/SdMapData";
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
-} from "../maprender/payload/SdRenderableData";
+} from "./payload/SdRenderableData";
 
 export type MapRenderCommandStreamRuntimeInput = Readonly<{
     sceneTileHeights: Int32Array;
@@ -29,6 +29,9 @@ export const MAP_RENDER_DRAW_BUCKET_KEYS = [
 ] as const;
 
 export type MapRenderDrawBucketKey = (typeof MAP_RENDER_DRAW_BUCKET_KEYS)[number];
+const MAP_RENDER_DRAW_BUCKET_COUNT = MAP_RENDER_DRAW_BUCKET_KEYS.length;
+const EMPTY_I32_ARRAY = new Int32Array(0);
+const EMPTY_U16_ARRAY = new Uint16Array(0);
 
 export type MapRenderPayloadOverlay = Readonly<
     Pick<SdMapData, "heightMapTextureData" | "drawRanges" | "modelInfoTextures">
@@ -61,14 +64,22 @@ type RuntimePacketOverlayFailure = Readonly<{
     detail?: Readonly<Record<string, unknown>>;
 }>;
 
+type ValidatedRuntimePacketOverlayInput = Readonly<{
+    bucketCmdCounts: Int32Array;
+    bucketModelInfoLengths: Int32Array;
+    drawRangesPacked: Int32Array;
+    modelInfoTextureBuckets: ReadonlyArray<Uint16Array>;
+    heightMapTextureData: Int16Array;
+}>;
+
 function valueTypeTag(value: unknown): string {
     return Object.prototype.toString.call(value);
 }
 
-function buildOverlayFromRuntimePacket(
+function validateRuntimePacketForOverlay(
     packet: MapRenderRuntimePacket,
     failureOut?: { value?: RuntimePacketOverlayFailure },
-): MapRenderPayloadOverlay | undefined {
+): ValidatedRuntimePacketOverlayInput | undefined {
     const fail = (reason: string, detail?: Readonly<Record<string, unknown>>) => {
         if (failureOut) {
             failureOut.value = { reason, detail };
@@ -86,19 +97,19 @@ function buildOverlayFromRuntimePacket(
     const heightMapTextureData = packet.heightMapTextureData;
 
     if (
-        bucketCmdCounts.length !== MAP_RENDER_DRAW_BUCKET_KEYS.length ||
-        bucketModelInfoLengths.length !== MAP_RENDER_DRAW_BUCKET_KEYS.length
+        bucketCmdCounts.length !== MAP_RENDER_DRAW_BUCKET_COUNT ||
+        bucketModelInfoLengths.length !== MAP_RENDER_DRAW_BUCKET_COUNT
     ) {
         return fail("bucket_lengths_invalid", {
             bucketCmdCountsLength: bucketCmdCounts.length | 0,
             bucketModelInfoLengthsLength: bucketModelInfoLengths.length | 0,
-            expected: MAP_RENDER_DRAW_BUCKET_KEYS.length | 0,
+            expected: MAP_RENDER_DRAW_BUCKET_COUNT | 0,
         });
     }
 
     let totalCmdCount = 0;
     let totalModelInfoLength = 0;
-    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_KEYS.length; i++) {
+    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
         const cmdCount = bucketCmdCounts[i] | 0;
         const modelInfoLength = bucketModelInfoLengths[i] | 0;
         if (cmdCount < 0 || modelInfoLength < 0) {
@@ -131,50 +142,19 @@ function buildOverlayFromRuntimePacket(
     }
     if (
         !Array.isArray(modelInfoTextureBuckets) ||
-        modelInfoTextureBuckets.length !== MAP_RENDER_DRAW_BUCKET_KEYS.length
+        modelInfoTextureBuckets.length !== MAP_RENDER_DRAW_BUCKET_COUNT
     ) {
         return fail("model_info_buckets_shape_invalid", {
             modelInfoTextureBucketsType: valueTypeTag(modelInfoTextureBuckets),
             modelInfoTextureBucketsLength: Array.isArray(modelInfoTextureBuckets)
                 ? modelInfoTextureBuckets.length | 0
                 : -1,
-            expected: MAP_RENDER_DRAW_BUCKET_KEYS.length | 0,
+            expected: MAP_RENDER_DRAW_BUCKET_COUNT | 0,
         });
     }
 
-    const drawRanges: Record<MapRenderDrawBucketKey, Int32Array> = {
-        base: new Int32Array(0),
-        alpha: new Int32Array(0),
-        lod: new Int32Array(0),
-        lodAlpha: new Int32Array(0),
-        interact: new Int32Array(0),
-        interactAlpha: new Int32Array(0),
-        interactLod: new Int32Array(0),
-        interactLodAlpha: new Int32Array(0),
-    };
-
-    const modelInfoTextures: Record<MapRenderDrawBucketKey, Uint16Array> = {
-        base: new Uint16Array(0),
-        alpha: new Uint16Array(0),
-        lod: new Uint16Array(0),
-        lodAlpha: new Uint16Array(0),
-        interact: new Uint16Array(0),
-        interactAlpha: new Uint16Array(0),
-        interactLod: new Uint16Array(0),
-        interactLodAlpha: new Uint16Array(0),
-    };
-
-    let drawRangeCursor = 0;
-    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_KEYS.length; i++) {
+    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
         const key = MAP_RENDER_DRAW_BUCKET_KEYS[i];
-        const cmdCount = bucketCmdCounts[i] | 0;
-        const bucketRangeLen = cmdCount * 3;
-        drawRanges[key] =
-            bucketRangeLen > 0
-                ? drawRangesPacked.slice(drawRangeCursor, drawRangeCursor + bucketRangeLen)
-                : new Int32Array(0);
-        drawRangeCursor += bucketRangeLen;
-
         const modelInfoLength = bucketModelInfoLengths[i] | 0;
         const packetBucketModelInfo = modelInfoTextureBuckets[i];
         if (
@@ -192,11 +172,40 @@ function buildOverlayFromRuntimePacket(
                         : -1,
             });
         }
-        modelInfoTextures[key] = packetBucketModelInfo;
+    }
+    return {
+        bucketCmdCounts,
+        bucketModelInfoLengths,
+        drawRangesPacked,
+        modelInfoTextureBuckets,
+        heightMapTextureData,
+    };
+}
+
+function buildOverlayFromValidatedRuntimePacket(
+    input: ValidatedRuntimePacketOverlayInput,
+): MapRenderPayloadOverlay {
+    const drawRanges = {} as Record<MapRenderDrawBucketKey, Int32Array>;
+    const modelInfoTextures = {} as Record<MapRenderDrawBucketKey, Uint16Array>;
+
+    let drawRangeCursor = 0;
+    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
+        const key = MAP_RENDER_DRAW_BUCKET_KEYS[i];
+        const cmdCount = input.bucketCmdCounts[i] | 0;
+        const bucketRangeLen = cmdCount * 3;
+        drawRanges[key] =
+            bucketRangeLen > 0
+                ? input.drawRangesPacked.slice(drawRangeCursor, drawRangeCursor + bucketRangeLen)
+                : EMPTY_I32_ARRAY;
+        drawRangeCursor += bucketRangeLen;
+
+        const modelInfoLength = input.bucketModelInfoLengths[i] | 0;
+        const packetBucketModelInfo = input.modelInfoTextureBuckets[i];
+        modelInfoTextures[key] = modelInfoLength > 0 ? packetBucketModelInfo : EMPTY_U16_ARRAY;
     }
 
     return {
-        heightMapTextureData,
+        heightMapTextureData: input.heightMapTextureData,
         drawRanges: drawRanges as SdRenderableDrawRanges,
         modelInfoTextures: modelInfoTextures as SdRenderableModelInfoTextures,
     };
@@ -208,7 +217,8 @@ export function runtimePacketToPayloadOverlay(
     if (!packet) {
         return undefined;
     }
-    return buildOverlayFromRuntimePacket(packet);
+    const validated = validateRuntimePacketForOverlay(packet);
+    return validated ? buildOverlayFromValidatedRuntimePacket(validated) : undefined;
 }
 
 export function runtimePacketToPayloadOverlayDiagnostic(
@@ -218,7 +228,8 @@ export function runtimePacketToPayloadOverlayDiagnostic(
         return { overlay: undefined, failure: { reason: "packet_missing" } };
     }
     const out: { value?: RuntimePacketOverlayFailure } = {};
-    const overlay = buildOverlayFromRuntimePacket(packet, out);
+    const validated = validateRuntimePacketForOverlay(packet, out);
+    const overlay = validated ? buildOverlayFromValidatedRuntimePacket(validated) : undefined;
     return { overlay, failure: out.value };
 }
 
@@ -226,7 +237,7 @@ export function sdMapDataTransferables(data: SdMapData): Transferable[] {
     const loadedTextureBuffers = Array.from(data.loadedTextures.values()).map(
         (pixels) => pixels.buffer as Transferable,
     );
-    return [
+    const transferables: Transferable[] = [
         ...data.tileRenderFlags.flat().map((buf) => buf.buffer as Transferable),
         ...data.collisionDatas.map((collision) => collision.flags.buffer as Transferable),
         ...loadedTextureBuffers,
@@ -234,34 +245,29 @@ export function sdMapDataTransferables(data: SdMapData): Transferable[] {
         data.indices.buffer as Transferable,
         data.heightMapTextureData.buffer as Transferable,
         data.usedTextureIds.buffer as Transferable,
-        data.modelInfoTextures.base.buffer as Transferable,
-        data.modelInfoTextures.alpha.buffer as Transferable,
-        data.modelInfoTextures.lod.buffer as Transferable,
-        data.modelInfoTextures.lodAlpha.buffer as Transferable,
-        data.modelInfoTextures.interact.buffer as Transferable,
-        data.modelInfoTextures.interactAlpha.buffer as Transferable,
-        data.modelInfoTextures.interactLod.buffer as Transferable,
-        data.modelInfoTextures.interactLodAlpha.buffer as Transferable,
-        data.drawRanges.base.buffer as Transferable,
-        data.drawRanges.alpha.buffer as Transferable,
-        data.drawRanges.lod.buffer as Transferable,
-        data.drawRanges.lodAlpha.buffer as Transferable,
-        data.drawRanges.interact.buffer as Transferable,
-        data.drawRanges.interactAlpha.buffer as Transferable,
-        data.drawRanges.interactLod.buffer as Transferable,
-        data.drawRanges.interactLodAlpha.buffer as Transferable,
-        ...(data.npcVertices instanceof Uint8Array &&
+    ];
+    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
+        transferables.push(data.modelInfoTextures[key].buffer as Transferable);
+    }
+    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
+        transferables.push(data.drawRanges[key].buffer as Transferable);
+    }
+    if (
+        data.npcVertices instanceof Uint8Array &&
         data.npcIndices instanceof Int32Array &&
         data.npcDrawRangesBase instanceof Int32Array
-            ? [
-                  data.npcVertices.buffer as Transferable,
-                  data.npcIndices.buffer as Transferable,
-                  data.npcDrawRangesBase.buffer as Transferable,
-                  ...(data.npcDrawRangesAlpha
-                      ? [data.npcDrawRangesAlpha.buffer as Transferable]
-                      : []),
-                  ...(data.npcOrderKeys ? [data.npcOrderKeys.buffer as Transferable] : []),
-              ]
-            : []),
-    ];
+    ) {
+        transferables.push(
+            data.npcVertices.buffer as Transferable,
+            data.npcIndices.buffer as Transferable,
+            data.npcDrawRangesBase.buffer as Transferable,
+        );
+        if (data.npcDrawRangesAlpha) {
+            transferables.push(data.npcDrawRangesAlpha.buffer as Transferable);
+        }
+        if (data.npcOrderKeys) {
+            transferables.push(data.npcOrderKeys.buffer as Transferable);
+        }
+    }
+    return transferables;
 }

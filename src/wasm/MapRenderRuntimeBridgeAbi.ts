@@ -1,5 +1,5 @@
 import type { NpcSpawn } from "../data/npc/NpcSpawn";
-import type { MapRenderRuntimePacket } from "../worker/MapRenderDataContract";
+import type { MapRenderRuntimePacket } from "../maprender/MapRenderDataContract";
 
 export type MapRenderRuntimeHandle = number;
 

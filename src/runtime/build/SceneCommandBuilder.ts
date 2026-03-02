@@ -1,4 +1,4 @@
-import type { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderDataContract";
+import type { MapRenderCommandStreamRuntimeInput } from "../../maprender/MapRenderDataContract";
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
