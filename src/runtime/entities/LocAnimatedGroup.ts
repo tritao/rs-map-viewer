@@ -1,4 +1,4 @@
-import { AnimationFrames } from "../../renderer/AnimationFrames";
+import { AnimationFrames } from "../contracts/AnimationFrames";
 import { SceneLocEntity } from "../build/SceneLocEntity";
 
 export type LocAnimatedGroup = {

@@ -2,7 +2,7 @@ import { NpcType } from "../../rs/config/npctype/NpcType";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { clamp } from "../../util/MathUtil";
-import { AnimationFrames } from "../../renderer/AnimationFrames";
+import { AnimationFrames } from "../contracts/AnimationFrames";
 
 export enum MovementType {
     CRAWL = 0,

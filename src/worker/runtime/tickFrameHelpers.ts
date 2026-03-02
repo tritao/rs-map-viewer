@@ -2,8 +2,8 @@ import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
-import type { DrawRange } from "../../renderer/DrawRange";
-import { NULL_DRAW_RANGE } from "../../renderer/DrawRange";
+import type { DrawRange } from "../../runtime/contracts/DrawRange";
+import { NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
 import { stepNpcSimulatedServerMovement } from "../../runtime/sim/NpcSimMovement";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,

@@ -1,5 +1,5 @@
 import { NpcSpawn } from "../../data/npc/NpcSpawn";
-import { AnimationFrames } from "../../renderer/AnimationFrames";
+import { AnimationFrames } from "../contracts/AnimationFrames";
 
 export type NpcSpawnGroup = {
     idleAnim: AnimationFrames;

@@ -1,4 +1,4 @@
-import type { AnimationFrames } from "../../renderer/AnimationFrames";
+import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import type { NpcRuntimeEvent } from "../../runtime/sim/NpcUpdateEvent";
 
 export type NpcBootstrapSpawnEvent = Readonly<{
