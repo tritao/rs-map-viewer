@@ -4,7 +4,7 @@ import { orderByPacketKeys } from "../../runtime/entities/orderByPacketKeys";
 import type { NpcSpawnEvent } from "../../runtime/sim/NpcSpawnEvent";
 import type { NpcTypeAnimationEntry } from "../../runtime/sim/NpcTypeAnimationTable";
 
-export type NpcBootstrapSpawnEventsInput = Readonly<{
+export type NpcBootstrapInput = Readonly<{
     mapId: number;
     npcsIn: ReadonlyArray<NpcData>;
     npcOrderKeys?: Int32Array;
@@ -51,7 +51,7 @@ function createNpcTypeAnimationTable(ordered: ReadonlyArray<NpcData>): NpcTypeAn
     return Array.from(byTypeId.values());
 }
 
-export function createNpcBootstrapData(input: NpcBootstrapSpawnEventsInput): NpcBootstrapData {
+export function createNpcBootstrapData(input: NpcBootstrapInput): NpcBootstrapData {
     const ordered = orderByPacketKeys(input.npcsIn, input.npcOrderKeys);
     const spawnEvents = new Array<NpcSpawnEvent>(ordered.length | 0);
     for (let i = 0; i < ordered.length; i++) {
