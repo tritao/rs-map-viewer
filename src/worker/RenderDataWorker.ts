@@ -63,7 +63,6 @@ import {
 } from "./runtime/tickFrameHelpers";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
 import {
-    type ApplyNpcLifecycleEventsOptions,
     WorkerNpcSimStateStore,
 } from "./runtime/WorkerNpcSimStateStore";
 
@@ -422,20 +421,6 @@ const worker = {
         npcSimStateStore.unregisterMap(mapId);
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
-    },
-    async applyMapNpcLifecycleEvents(
-        mapId: number,
-        events: NpcLifecycleEvent[],
-        options?: ApplyNpcLifecycleEventsOptions,
-    ): Promise<number> {
-        const workerState = await requireWorkerState();
-        const deps = createNpcSimStateStoreDeps(workerState);
-        return npcSimStateStore.applyMapNpcLifecycleEvents(
-            mapId | 0,
-            events,
-            deps,
-            options,
-        );
     },
     async applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         const decoded = decodeNpcServerDeltaPacket(packet);

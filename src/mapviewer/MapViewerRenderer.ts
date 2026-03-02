@@ -7,7 +7,6 @@ import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
 import { SdMapData } from "../maprender/payload/SdMapData";
-import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 import { createNpcBootstrapEvents } from "../runtime/sim/NpcLifecycleEventAdapters";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
@@ -230,15 +229,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderer.removeMap(mapInfo);
         const mapSimToken = this.invalidateMapSimToken(mapInfo.mapId);
         void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
-    }
-
-    applyMapNpcLifecycleEvents(mapId: number, events: NpcLifecycleEvent[]): void {
-        if ((events.length | 0) <= 0) {
-            return;
-        }
-        void this.workerPool.applyMapNpcLifecycleEvents(mapId | 0, events).catch(() => {
-            return;
-        });
     }
 
     async applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {

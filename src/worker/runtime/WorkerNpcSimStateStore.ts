@@ -3,6 +3,7 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import { applyNpcServerDeltas } from "../../runtime/sim/NpcSimMovement";
+import type { ApplyNpcLifecycleEventsOptions } from "../../runtime/sim/NpcLifecycleApplyOptions";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { Npc } from "../../runtime/entities/Npc";
@@ -35,10 +36,6 @@ export type RegisterWorkerNpcSimMapInput = Readonly<{
     tileRenderFlagsLevel1: Uint8Array[];
     collisionDatas: CollisionData[];
     locsAnimated: LocAnimatedData[];
-}>;
-
-export type ApplyNpcLifecycleEventsOptions = Readonly<{
-    replaceSnapshot?: boolean;
 }>;
 
 export type WorkerNpcSimStateStoreDeps = Readonly<{

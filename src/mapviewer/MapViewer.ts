@@ -24,7 +24,6 @@ import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
 import { MapViewerRenderer } from "./MapViewerRenderer";
-import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -283,10 +282,6 @@ export class MapViewer {
 
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
         return this.runtimeOptions;
-    }
-
-    applyMapNpcLifecycleEvents(mapId: number, events: NpcLifecycleEvent[]): void {
-        this.renderer.applyMapNpcLifecycleEvents(mapId | 0, events);
     }
 
     applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {

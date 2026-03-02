@@ -11,7 +11,6 @@ import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
-import type { ApplyNpcLifecycleEventsOptions } from "./runtime/WorkerNpcSimStateStore";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 
@@ -143,14 +142,6 @@ export class RenderDataWorkerPool {
 
     unregisterMapNpcSimState(mapId: number, mapSimToken?: number): Promise<void> {
         return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
-    }
-
-    applyMapNpcLifecycleEvents(
-        mapId: number,
-        events: NpcLifecycleEvent[],
-        options?: ApplyNpcLifecycleEventsOptions,
-    ): Promise<number> {
-        return this.getTickWorker().then((w) => w.applyMapNpcLifecycleEvents(mapId, events, options));
     }
 
     applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
