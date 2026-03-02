@@ -19,7 +19,7 @@ import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { createNpcBootstrapData } from "../runtime/sim/NpcBootstrapData";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
-import { encodeNpcLifecyclePacketFromEvents } from "../runtime/sim/NpcUpdatePacket";
+import { encodeNpcLifecyclePacketFromEvents } from "../runtime/sim/NpcLifecyclePacket";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
@@ -242,7 +242,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         return this.applyNpcLifecyclePacketBytes(packet);
     }
 
-    async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+    private async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
         const bytes =
             packet instanceof Uint8Array
                 ? packet

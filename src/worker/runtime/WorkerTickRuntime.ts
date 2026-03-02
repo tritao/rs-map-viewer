@@ -8,7 +8,7 @@ import {
     createNpcBootstrapDataFromSpawns,
     type NpcBootstrapData,
 } from "../../runtime/sim/NpcBootstrapData";
-import { decodeNpcLifecyclePacket } from "../../runtime/sim/NpcUpdatePacket";
+import { decodeNpcLifecyclePacket } from "../../runtime/sim/NpcLifecyclePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,

@@ -274,10 +274,6 @@ export class MapViewer {
         return this.renderer.applyNpcLifecycleEvents(events);
     }
 
-    applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
-        return this.renderer.applyNpcLifecyclePacketBytes(packet);
-    }
-
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
         const normalized = normalizeRuntimeOptions(options);
         if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {

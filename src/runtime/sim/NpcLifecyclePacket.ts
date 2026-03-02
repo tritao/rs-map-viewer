@@ -87,7 +87,7 @@ function readMovementType(value: number): MovementType {
     if (value === MovementType.CRAWL || value === MovementType.WALK || value === MovementType.RUN) {
         return value;
     }
-    throw new Error(`[map-viewer][npc-update-packet] invalid movement type: ${value | 0}`);
+    throw new Error(`[map-viewer][npc-lifecycle-packet] invalid movement type: ${value | 0}`);
 }
 
 function readPathDelta(
@@ -98,7 +98,7 @@ function readPathDelta(
     const pathLength = reader.readUnsignedByte() | 0;
     if (pathLength < 0 || pathLength > MAX_PATH_LENGTH) {
         throw new Error(
-            `[map-viewer][npc-update-packet] invalid path length: ` +
+            `[map-viewer][npc-lifecycle-packet] invalid path length: ` +
                 `mapId=${mapId | 0} index=${index | 0} len=${pathLength | 0}`,
         );
     }
@@ -224,7 +224,7 @@ export function encodeNpcLifecyclePacket(
             const event = events[i]!;
             if ((event.mapId | 0) !== mapId) {
                 throw new Error(
-                    `[map-viewer][npc-update-packet] mapId mismatch in event batch: ` +
+                    `[map-viewer][npc-lifecycle-packet] mapId mismatch in event batch: ` +
                         `entry=${mapId | 0} event=${event.mapId | 0}`,
                 );
             }
@@ -296,7 +296,7 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
     const version = reader.readUnsignedShort() | 0;
     if ((version | 0) !== LIFECYCLE_PACKET_VERSION) {
         throw new Error(
-            `[map-viewer][npc-update-packet] unsupported version: ` +
+            `[map-viewer][npc-lifecycle-packet] unsupported version: ` +
                 `got=${version | 0} expected=${LIFECYCLE_PACKET_VERSION}`,
         );
     }
@@ -366,7 +366,9 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
     }
 
     if ((reader.remaining | 0) !== 0) {
-        throw new Error(`[map-viewer][npc-update-packet] trailing bytes: ${reader.remaining | 0}`);
+        throw new Error(
+            `[map-viewer][npc-lifecycle-packet] trailing bytes: ${reader.remaining | 0}`,
+        );
     }
 
     return {
