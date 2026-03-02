@@ -9,6 +9,7 @@ import type { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import type { VarProvider } from "../rs/config/vartype/VarProvider";
 import type { BackendKind } from "../util/BackendKind";
+import type { MapRenderSceneBuildLoaders } from "./MapRenderSceneBuildLoaders";
 
 export type NpcSpawnDecodeBackend = Readonly<{
     name: BackendKind;
@@ -34,6 +35,7 @@ export type MapRenderBuildDeps = Readonly<{
     mapImageRenderer: MapImageRenderer;
     varProvider: VarProvider;
     objSpawns: ObjSpawn[];
+    sceneBuildLoaders?: MapRenderSceneBuildLoaders;
     npcSpawnDecodeBackend?: NpcSpawnDecodeBackend;
     telemetry?: boolean;
 }>;

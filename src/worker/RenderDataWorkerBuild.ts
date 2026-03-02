@@ -24,6 +24,7 @@ import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "../maprender/MinimapData";
+import type { MapRenderSceneBuildLoaders } from "../maprender/MapRenderSceneBuildLoaders";
 import type { SdMapData } from "../maprender/payload/SdMapData";
 import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import type {
@@ -36,6 +37,40 @@ type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: st
 
 const compressionHandler = new JSCompressionHandler();
 const hasherPromise = Hasher.init();
+
+function createMapRenderSceneBuildLoaders(
+    session: CacheSession,
+    varProvider: VarManagerProvider,
+): MapRenderSceneBuildLoaders {
+    const loaders = session.loaders;
+    return {
+        locTypeLoader: loaders.locTypeLoader,
+        objTypeLoader: loaders.objTypeLoader,
+        locModelLoader: {
+            modelLoader: loaders.modelLoader,
+            textureLoader: loaders.textureLoader,
+            seqTypeLoader: loaders.seqTypeLoader,
+            seqFrameLoader: loaders.seqFrameLoader,
+            skeletalSeqLoader: loaders.skeletalSeqLoader,
+        },
+        seqTypeLoader: loaders.seqTypeLoader,
+        seqFrameLoader: loaders.seqFrameLoader,
+        skeletalSeqLoader: loaders.skeletalSeqLoader,
+        textureLoader: loaders.textureLoader,
+        npcTypeLoader: loaders.npcTypeLoader,
+        basTypeLoader: loaders.basTypeLoader,
+        underlayTypeLoader: loaders.underlayTypeLoader,
+        overlayTypeLoader: loaders.overlayTypeLoader,
+        varProvider: {
+            varManager: {
+                values: varProvider.varManager.values,
+                varbitLoader: varProvider.varManager.varbitLoader,
+            },
+            values: varProvider.varManager.values,
+            varbitLoader: varProvider.varManager.varbitLoader,
+        },
+    };
+}
 
 async function initWorker(
     cache: LoadedCache,
@@ -100,6 +135,7 @@ async function initWorker(
         mapScenes,
         mapFunctions,
     );
+    const mapRenderSceneBuildLoaders = createMapRenderSceneBuildLoaders(session, varProvider);
     const mapRenderDataBackend = createMapRenderDataBackend(
         mapRenderBackendKind,
         {
@@ -112,6 +148,7 @@ async function initWorker(
             mapImageRenderer,
             varProvider,
             objSpawns: spawnBootstrap.objSpawns,
+            sceneBuildLoaders: mapRenderSceneBuildLoaders,
         },
         {
             telemetry: options?.mapRenderTelemetry,

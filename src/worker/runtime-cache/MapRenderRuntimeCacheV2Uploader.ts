@@ -9,6 +9,16 @@ import type {
     MapRenderRuntimeMapSquareEntry,
     MapRenderRuntimeMissingBlobEntries,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
+import type {
+    LocModelLoaderLike,
+    MapRenderSceneBuildInputDeps,
+    ModelLoaderLike,
+    SeqFrameLoaderLike,
+    SkeletalSeqLoaderLike,
+    TextureLoaderLike,
+    TypeEntryLoaderLike,
+    VarProviderLike,
+} from "../../maprender/MapRenderSceneBuildLoaders";
 
 const RUNTIME_STATUS_OK = 1;
 
@@ -135,16 +145,15 @@ function toUint8ArrayView(data: unknown): Uint8Array | undefined {
     return undefined;
 }
 
-function tryLoadDecoded(loader: unknown, id: number): unknown {
-    if (!loader || typeof loader !== "object") {
+function tryLoadDecoded(loader: TypeEntryLoaderLike | undefined, id: number): unknown {
+    if (!loader) {
         return undefined;
     }
-    const withTryLoad = loader as { tryLoad?: (id: number) => unknown };
-    if (typeof withTryLoad.tryLoad !== "function") {
+    if (typeof loader.tryLoad !== "function") {
         return undefined;
     }
     try {
-        const result = withTryLoad.tryLoad(id | 0) as { ok?: boolean; value?: unknown } | undefined;
+        const result = loader.tryLoad(id | 0);
         if (result?.ok) {
             return result.value;
         }
@@ -154,14 +163,13 @@ function tryLoadDecoded(loader: unknown, id: number): unknown {
     return undefined;
 }
 
-function tryLoadTypeBytes(loader: unknown, id: number): Uint8Array | undefined {
-    if (!loader || typeof loader !== "object") {
+function tryLoadTypeBytes(loader: TypeEntryLoaderLike | undefined, id: number): Uint8Array | undefined {
+    if (!loader) {
         return undefined;
     }
-    const withTryLoadBytes = loader as { tryLoadBytes?: (id: number) => unknown };
-    if (typeof withTryLoadBytes.tryLoadBytes === "function") {
+    if (typeof loader.tryLoadBytes === "function") {
         try {
-            const bytes = toUint8ArrayView(withTryLoadBytes.tryLoadBytes(id | 0));
+            const bytes = toUint8ArrayView(loader.tryLoadBytes(id | 0));
             if (bytes) {
                 return bytes;
             }
@@ -172,36 +180,31 @@ function tryLoadTypeBytes(loader: unknown, id: number): Uint8Array | undefined {
     return undefined;
 }
 
-function tryGetVarbitLoader(varProvider: unknown): unknown {
-    if (!varProvider || typeof varProvider !== "object") {
+function tryGetVarbitLoader(varProvider: VarProviderLike | undefined): TypeEntryLoaderLike | undefined {
+    if (!varProvider) {
         return undefined;
     }
-    const managerVarbitLoader = (varProvider as { varManager?: { varbitLoader?: unknown } })
-        .varManager?.varbitLoader;
-    if (
-        managerVarbitLoader &&
-        typeof (managerVarbitLoader as { tryLoad?: unknown }).tryLoad === "function"
-    ) {
+    const managerVarbitLoader = varProvider.varManager?.varbitLoader;
+    if (managerVarbitLoader && typeof managerVarbitLoader.tryLoad === "function") {
         return managerVarbitLoader;
     }
-    const directVarbitLoader = (varProvider as { varbitLoader?: unknown }).varbitLoader;
-    if (
-        directVarbitLoader &&
-        typeof (directVarbitLoader as { tryLoad?: unknown }).tryLoad === "function"
-    ) {
+    const directVarbitLoader = varProvider.varbitLoader;
+    if (directVarbitLoader && typeof directVarbitLoader.tryLoad === "function") {
         return directVarbitLoader;
     }
     return undefined;
 }
 
-function tryGetSkeletalSeqFromLoader(skeletalSeqLoader: unknown, seqId: number): unknown {
+function tryGetSkeletalSeqFromLoader(
+    skeletalSeqLoader: SkeletalSeqLoaderLike | undefined,
+    seqId: number,
+): unknown {
     if (!skeletalSeqLoader || seqId < 0 || typeof skeletalSeqLoader !== "object") {
         return undefined;
     }
-    const withTryGet = skeletalSeqLoader as { tryGet?: (id: number) => unknown };
-    if (typeof withTryGet.tryGet === "function") {
+    if (typeof skeletalSeqLoader.tryGet === "function") {
         try {
-            const seq = withTryGet.tryGet(seqId | 0) as
+            const seq = skeletalSeqLoader.tryGet(seqId | 0) as
                 | { ok?: boolean; value?: unknown }
                 | undefined;
             if (seq?.ok) {
@@ -217,14 +220,16 @@ function tryGetSkeletalSeqFromLoader(skeletalSeqLoader: unknown, seqId: number):
     return undefined;
 }
 
-function tryGetSeqFrameFromLoader(seqFrameLoader: unknown, frameId: number): unknown {
+function tryGetSeqFrameFromLoader(
+    seqFrameLoader: SeqFrameLoaderLike | undefined,
+    frameId: number,
+): unknown {
     if (!seqFrameLoader || frameId < 0 || typeof seqFrameLoader !== "object") {
         return undefined;
     }
-    const withTryGet = seqFrameLoader as { tryGet?: (id: number) => unknown };
-    if (typeof withTryGet.tryGet === "function") {
+    if (typeof seqFrameLoader.tryGet === "function") {
         try {
-            const frame = withTryGet.tryGet(frameId | 0) as
+            const frame = seqFrameLoader.tryGet(frameId | 0) as
                 | { ok?: boolean; value?: unknown }
                 | undefined;
             if (frame?.ok) {
@@ -237,10 +242,9 @@ function tryGetSeqFrameFromLoader(seqFrameLoader: unknown, frameId: number): unk
             // fall through to tryLoad path
         }
     }
-    const withTryLoad = seqFrameLoader as { tryLoad?: (id: number) => unknown };
-    if (typeof withTryLoad.tryLoad === "function") {
+    if (typeof seqFrameLoader.tryLoad === "function") {
         try {
-            const loaded = withTryLoad.tryLoad(frameId | 0) as
+            const loaded = seqFrameLoader.tryLoad(frameId | 0) as
                 | { ok?: boolean; value?: unknown }
                 | undefined;
             if (loaded?.ok) {
@@ -306,30 +310,14 @@ function createSceneBuildCacheByteProvider(
     const underlayTypeLoader = sceneBuildInput.underlayTypeLoader;
     const overlayTypeLoader = sceneBuildInput.overlayTypeLoader;
     const varbitLoader = tryGetVarbitLoader(sceneBuildInput.varProvider);
-    const locModelLoader = sceneBuildInput.locModelLoader as
-        | {
-              modelLoader?: unknown;
-              textureLoader?: unknown;
-              seqTypeLoader?: unknown;
-              seqFrameLoader?: unknown;
-              skeletalSeqLoader?: unknown;
-          }
-        | undefined;
+    const locModelLoader = sceneBuildInput.locModelLoader;
     const modelLoader = locModelLoader?.modelLoader;
-    const textureLoader = (sceneBuildInput.textureLoader ?? locModelLoader?.textureLoader) as
-        | {
-              getTextureIds?: () => number[];
-              isSd?: (id: number) => boolean;
-              isTransparent?: (id: number) => boolean;
-          }
-        | undefined;
+    const textureLoader = sceneBuildInput.textureLoader ?? locModelLoader?.textureLoader;
     const seqTypeLoader = sceneBuildInput.seqTypeLoader ?? locModelLoader?.seqTypeLoader;
     const seqFrameLoader = sceneBuildInput.seqFrameLoader ?? locModelLoader?.seqFrameLoader;
     const skeletalSeqLoader =
         sceneBuildInput.skeletalSeqLoader ?? locModelLoader?.skeletalSeqLoader;
-    const seqBaseLoader =
-        (skeletalSeqLoader as { baseLoader?: unknown } | undefined)?.baseLoader ??
-        (seqFrameLoader as { baseLoader?: unknown } | undefined)?.baseLoader;
+    const seqBaseLoader = skeletalSeqLoader?.baseLoader ?? seqFrameLoader?.baseLoader;
 
     return {
         tryGetLocTypeBytes: (id) => tryLoadTypeBytes(locTypeLoader, id),
@@ -505,61 +493,30 @@ export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     cacheRevision: number;
     unitsTileHeightBasis: number;
     mapBytesProvider: MapBytesProvider;
-    locTypeLoader: unknown;
-    objTypeLoader?: unknown;
-    locModelLoader: unknown;
-    seqTypeLoader?: unknown;
-    seqFrameLoader?: unknown;
-    skeletalSeqLoader?: unknown;
-    textureLoader?: unknown;
-    npcTypeLoader?: unknown;
-    basTypeLoader?: unknown;
-    varProvider: unknown;
-    underlayTypeLoader?: unknown;
-    overlayTypeLoader?: unknown;
+    locTypeLoader: TypeEntryLoaderLike;
+    objTypeLoader?: TypeEntryLoaderLike;
+    locModelLoader: LocModelLoaderLike;
+    seqTypeLoader?: TypeEntryLoaderLike;
+    seqFrameLoader?: SeqFrameLoaderLike;
+    skeletalSeqLoader?: SkeletalSeqLoaderLike;
+    textureLoader?: TextureLoaderLike;
+    npcTypeLoader?: TypeEntryLoaderLike;
+    basTypeLoader?: TypeEntryLoaderLike;
+    varProvider: VarProviderLike;
+    underlayTypeLoader?: TypeEntryLoaderLike;
+    overlayTypeLoader?: TypeEntryLoaderLike;
     objSpawns?: ReadonlyArray<ObjSpawn>;
     varpValues: Int32Array;
 }>;
 
-type LocModelLoaderDeps = Readonly<{
-    modelLoader?: unknown;
-    textureLoader?: unknown;
-    seqTypeLoader?: unknown;
-    seqFrameLoader?: unknown;
-    skeletalSeqLoader?: unknown;
-}>;
+export type ByteDrivenSceneBuildInputDeps = MapRenderSceneBuildInputDeps;
 
-export type ByteDrivenSceneBuildInputDeps = Readonly<{
-    mapBytesProvider: MapBytesProvider;
-    locTypeLoader: unknown;
-    objTypeLoader?: unknown;
-    locModelLoader: unknown;
-    seqTypeLoader?: unknown;
-    seqFrameLoader?: unknown;
-    skeletalSeqLoader?: unknown;
-    textureLoader?: unknown;
-    npcTypeLoader?: unknown;
-    basTypeLoader?: unknown;
-    varProvider: unknown;
-    underlayTypeLoader?: unknown;
-    overlayTypeLoader?: unknown;
-    objSpawns?: ReadonlyArray<ObjSpawn>;
-    cacheGame: number;
-    cacheRevision: number;
-}>;
-
-export function snapshotVarpValues(varProvider: unknown): Int32Array {
-    const provider = varProvider as
-        | {
-              varManager?: { values?: Int32Array };
-              values?: Int32Array;
-          }
-        | undefined;
-    const managerValues = provider?.varManager?.values;
+export function snapshotVarpValues(varProvider: VarProviderLike): Int32Array {
+    const managerValues = varProvider.varManager?.values;
     if (managerValues instanceof Int32Array) {
         return new Int32Array(managerValues);
     }
-    const directValues = provider?.values;
+    const directValues = varProvider.values;
     if (directValues instanceof Int32Array) {
         return new Int32Array(directValues);
     }
@@ -870,18 +827,8 @@ export class MapRenderRuntimeCacheV2Uploader {
         if (this.uploadedTextureListsForRuntime.has(key)) {
             return true;
         }
-        const locModelLoader = sceneBuildInput.locModelLoader as
-            | {
-                  textureLoader?: unknown;
-              }
-            | undefined;
-        const textureLoader = (sceneBuildInput.textureLoader ?? locModelLoader?.textureLoader) as
-            | {
-                  getTextureIds?: () => number[];
-                  isSd?: (id: number) => boolean;
-                  isTransparent?: (id: number) => boolean;
-              }
-            | undefined;
+        const locModelLoader = sceneBuildInput.locModelLoader;
+        const textureLoader = sceneBuildInput.textureLoader ?? locModelLoader?.textureLoader;
         if (
             !textureLoader ||
             typeof textureLoader.getTextureIds !== "function" ||
@@ -955,30 +902,11 @@ export class MapRenderRuntimeCacheV2Uploader {
 
     private async uploadLegacyModelFilesIfNeeded(
         feeder: RuntimeCacheFeeder,
-        modelLoader: unknown,
+        modelLoader: ModelLoaderLike | undefined,
         modelIds: ReadonlyArray<number> | undefined,
     ): Promise<Readonly<{ status: "not_legacy" | "ok" | "failed"; uploadedCount: number }>> {
         void modelIds;
-        const loader = modelLoader as
-            | {
-                  tryGetLegacyModelFileBytes?: () => Readonly<{
-                      headBytes: Uint8Array;
-                      face1Bytes: Uint8Array;
-                      face2Bytes: Uint8Array;
-                      face3Bytes: Uint8Array;
-                      face4Bytes: Uint8Array;
-                      face5Bytes: Uint8Array;
-                      point1Bytes: Uint8Array;
-                      point2Bytes: Uint8Array;
-                      point3Bytes: Uint8Array;
-                      point4Bytes: Uint8Array;
-                      point5Bytes: Uint8Array;
-                      vertex1Bytes: Uint8Array;
-                      vertex2Bytes: Uint8Array;
-                      axisBytes: Uint8Array;
-                  }>;
-              }
-            | undefined;
+        const loader = modelLoader;
         if (typeof loader?.tryGetLegacyModelFileBytes !== "function") {
             return { status: "not_legacy", uploadedCount: 0 };
         }
@@ -1052,23 +980,11 @@ export class MapRenderRuntimeCacheV2Uploader {
 
     private async uploadLegacySeqFrameFilesIfNeeded(
         feeder: RuntimeCacheFeeder,
-        seqFrameLoader: unknown,
+        seqFrameLoader: SeqFrameLoaderLike | undefined,
         frameIds: ReadonlyArray<number> | undefined,
     ): Promise<Readonly<{ status: "not_legacy" | "ok" | "failed"; uploadedCount: number }>> {
         void frameIds;
-        const loader = seqFrameLoader as
-            | {
-                  tryGetLegacySeqFrameFileBytes?: () => Readonly<{
-                      baseHeadBytes: Uint8Array;
-                      baseTypeBytes: Uint8Array;
-                      baseLabelBytes: Uint8Array;
-                      frameHeadBytes: Uint8Array;
-                      frameTran1Bytes: Uint8Array;
-                      frameTran2Bytes: Uint8Array;
-                      frameDelBytes: Uint8Array;
-                  }>;
-              }
-            | undefined;
+        const loader = seqFrameLoader;
         if (typeof loader?.tryGetLegacySeqFrameFileBytes !== "function") {
             return { status: "not_legacy", uploadedCount: 0 };
         }
@@ -1128,16 +1044,12 @@ export class MapRenderRuntimeCacheV2Uploader {
 
     private async uploadDatSeqFrameMapsForFrameIds(
         feeder: RuntimeCacheFeeder,
-        datSeqFrameLoader: unknown,
+        datSeqFrameLoader: SeqFrameLoaderLike | undefined,
         frameIds: ReadonlyArray<number> | undefined,
     ): Promise<number> {
         const sortedIds = sortedUniqueTypeIds(frameIds);
-        const loader = datSeqFrameLoader as {
-            tryGetFrameMapBlobForFrameId?: (
-                id: number,
-            ) => Readonly<{ frameMapId: number; bytes: Uint8Array }> | undefined;
-        };
-        if (typeof loader.tryGetFrameMapBlobForFrameId !== "function") {
+        const loader = datSeqFrameLoader;
+        if (!loader || typeof loader.tryGetFrameMapBlobForFrameId !== "function") {
             return 0;
         }
         const mapBytesById = new Map<number, Uint8Array>();
@@ -1283,7 +1195,7 @@ export class MapRenderRuntimeCacheV2Uploader {
     ): Promise<boolean> {
         const feeder = createRuntimeCacheFeeder(bridge, runtimeHandle);
         const provider = createSceneBuildCacheByteProvider(sceneBuildInput);
-        const locModelLoader = sceneBuildInput.locModelLoader as LocModelLoaderDeps | undefined;
+        const locModelLoader = sceneBuildInput.locModelLoader;
 
         let needsLegacyModelFiles = false;
         let needsLegacySeqFiles = false;

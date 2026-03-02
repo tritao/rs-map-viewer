@@ -2,6 +2,7 @@ import { SdMapData } from "../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
+import type { MapRenderSceneBuildLoaders } from "../maprender/MapRenderSceneBuildLoaders";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -185,11 +186,16 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         input: SdMapLoaderInput,
     ): MapRenderByteDrivenSceneBuildInput {
         const { session } = this.deps;
-        return createByteDrivenSceneBuildInput(input, {
-            mapBytesProvider: this.deps.mapBytesProvider,
+        const sceneBuildLoaders: MapRenderSceneBuildLoaders = this.deps.sceneBuildLoaders ?? {
             locTypeLoader: session.loaders.locTypeLoader,
             objTypeLoader: session.loaders.objTypeLoader,
-            locModelLoader: this.deps.locModelLoader,
+            locModelLoader: {
+                modelLoader: session.loaders.modelLoader,
+                textureLoader: session.loaders.textureLoader,
+                seqTypeLoader: session.loaders.seqTypeLoader,
+                seqFrameLoader: session.loaders.seqFrameLoader,
+                skeletalSeqLoader: session.loaders.skeletalSeqLoader,
+            },
             seqTypeLoader: session.loaders.seqTypeLoader,
             seqFrameLoader: session.loaders.seqFrameLoader,
             skeletalSeqLoader: session.loaders.skeletalSeqLoader,
@@ -198,7 +204,18 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             basTypeLoader: session.loaders.basTypeLoader,
             underlayTypeLoader: session.loaders.underlayTypeLoader,
             overlayTypeLoader: session.loaders.overlayTypeLoader,
-            varProvider: this.deps.varProvider,
+            varProvider: {
+                varManager: {
+                    values: session.varManager.values,
+                    varbitLoader: session.varManager.varbitLoader,
+                },
+                values: session.varManager.values,
+                varbitLoader: session.varManager.varbitLoader,
+            },
+        };
+        return createByteDrivenSceneBuildInput(input, {
+            mapBytesProvider: this.deps.mapBytesProvider,
+            ...sceneBuildLoaders,
             objSpawns: this.deps.objSpawns,
             cacheGame: session.cache.info.game,
             cacheRevision: session.cache.info.revision,
