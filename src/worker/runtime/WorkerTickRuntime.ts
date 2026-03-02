@@ -174,7 +174,7 @@ export class WorkerTickRuntime {
         maxLevel: number,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
-        npcOrderKeys?: Int32Array,
+        npcOrderKeys: Int32Array,
     ): Promise<ResolvedNpcBootstrapData> {
         const fromMapBytes = tryHydrateNpcBootstrapFromMapBytes(
             workerState,
@@ -241,8 +241,8 @@ export class WorkerTickRuntime {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcOrderKeys?: Int32Array,
-        npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>,
+        npcOrderKeys: Int32Array,
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
         if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
@@ -258,8 +258,6 @@ export class WorkerTickRuntime {
             npcOrderKeys,
         );
         const deps = createNpcSimStateStoreDeps(workerState);
-        const hasCallerAnimTable =
-            Array.isArray(npcTypeAnimationTable) && (npcTypeAnimationTable.length | 0) > 0;
         const npcBootstrapData = resolvedBootstrap.data;
         this.npcSimStateStore.registerMap(
             {
@@ -268,8 +266,7 @@ export class WorkerTickRuntime {
                 tileRenderFlagsLevel1,
                 collisionDatas,
                 locsAnimated,
-                npcTypeAnimationTable:
-                    hasCallerAnimTable ? (npcTypeAnimationTable as NpcTypeAnimationEntry[]) : npcBootstrapData.npcTypeAnimationTable,
+                npcTypeAnimationTable,
             },
             deps,
         );

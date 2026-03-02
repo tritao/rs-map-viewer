@@ -13,17 +13,6 @@ export class WebGLMapSquare
 {
     drawCallNpc!: DrawCallRange;
 
-    private static buildDefaultNpcDrawRanges(npcCount: number): Int32Array {
-        const drawRangesNpc = new Int32Array((npcCount | 0) * 3);
-        for (let i = 0; i < npcCount; i++) {
-            const off = i * 3;
-            drawRangesNpc[off + 0] = 0;
-            drawRangesNpc[off + 1] = 0;
-            drawRangesNpc[off + 2] = 1;
-        }
-        return drawRangesNpc;
-    }
-
     static load(
         app: PicoApp,
         mainProgram: Program,
@@ -102,7 +91,7 @@ export class WebGLMapSquare
             renderable.npcVertexArray !== undefined
                 ? data.npcDrawRangesBase
                     ? data.npcDrawRangesBase
-                    : WebGLMapSquare.buildDefaultNpcDrawRanges(data.npcs.length | 0)
+                    : new Int32Array(0)
                 : new Int32Array(0);
         renderable.drawCallNpc = createDrawCall(
             npcProgram,

@@ -19,9 +19,14 @@ import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/sim/NpcLifecyclePacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
+
+const DRAW_RANGE_STRIDE = 3;
+const EMPTY_NPC_ORDER_KEYS = new Int32Array(0);
+const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -161,6 +166,23 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 const level1 = sdMapData.tileRenderFlags[1] ?? [];
+                const npcDrawRangeInts = sdMapData.npcDrawRangesBase?.length ?? 0;
+                if ((npcDrawRangeInts % DRAW_RANGE_STRIDE) !== 0) {
+                    throw new Error(
+                        `[map-render][npc] invalid npcDrawRangesBase length for map ${sdMapData.mapX},${sdMapData.mapY}: ` +
+                            `len=${npcDrawRangeInts} stride=${DRAW_RANGE_STRIDE}`,
+                    );
+                }
+                const npcSlotCount = (npcDrawRangeInts / DRAW_RANGE_STRIDE) | 0;
+                const npcOrderKeys = sdMapData.npcOrderKeys ?? EMPTY_NPC_ORDER_KEYS;
+                if ((npcOrderKeys.length | 0) !== (npcSlotCount | 0)) {
+                    throw new Error(
+                        `[map-render][npc] npc slot metadata mismatch for map ${sdMapData.mapX},${sdMapData.mapY}: ` +
+                            `orderKeys=${npcOrderKeys.length | 0} slots=${npcSlotCount | 0}`,
+                    );
+                }
+                const npcTypeAnimationTable =
+                    sdMapData.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
                 try {
                     await this.workerPool.registerMapNpcSimState(
                         mapId,
@@ -169,8 +191,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                         level1,
                         sdMapData.collisionDatas,
                         sdMapData.locsAnimated,
-                        sdMapData.npcOrderKeys,
-                        sdMapData.npcTypeAnimationTable,
+                        npcOrderKeys,
+                        npcTypeAnimationTable,
                         mapSimToken,
                     );
                 } catch (e) {

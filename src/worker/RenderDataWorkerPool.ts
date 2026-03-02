@@ -10,6 +10,7 @@ import { RenderDataLoader } from "./RenderDataLoader";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 
@@ -153,8 +154,8 @@ export class RenderDataWorkerPool {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcOrderKeys?: Int32Array,
-        npcTypeAnimationTable?: unknown,
+        npcOrderKeys: Int32Array,
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
         return this.ensureInitialized().then(() =>
@@ -167,7 +168,7 @@ export class RenderDataWorkerPool {
                     collisionDatas,
                     locsAnimated as any,
                     npcOrderKeys,
-                    npcTypeAnimationTable as any,
+                    npcTypeAnimationTable,
                     mapSimToken,
                 ),
             ),

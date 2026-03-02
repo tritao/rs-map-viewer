@@ -5,6 +5,7 @@ import { Transfer, expose } from "threads/worker";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
@@ -64,8 +65,8 @@ const worker = {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcOrderKeys?: Int32Array,
-        npcTypeAnimationTable?: unknown,
+        npcOrderKeys: Int32Array,
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
         await tickRuntime.registerMapNpcSimState(
@@ -76,7 +77,7 @@ const worker = {
             collisionDatas,
             locsAnimated,
             npcOrderKeys,
-            npcTypeAnimationTable as any,
+            npcTypeAnimationTable,
             mapSimToken,
         );
     },

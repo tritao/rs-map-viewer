@@ -346,15 +346,23 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             const npcOrderKeys =
                 packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
             const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
+            const npcSlotCount = npcRangesLen > 0 ? ((npcRangesLen / 3) | 0) : 0;
             const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
             const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
+            const npcOrderKeysLen = npcOrderKeys ? npcOrderKeys.length | 0 : 0;
+            const hasNpcRangeStride = (npcRangesLen % 3) === 0;
             const hasNpcRanges = npcRangesLen > 0;
             const hasNpcGeometry = npcVerticesLen > 0 && npcIndicesLen > 0;
-            const keepNpcPayload = hasNpcRanges && hasNpcGeometry;
-            if (hasNpcRanges !== hasNpcGeometry) {
+            const hasNpcOrderKeysAligned =
+                hasNpcRanges && hasNpcRangeStride && npcOrderKeysLen === npcSlotCount;
+            const keepNpcPayload = hasNpcRanges && hasNpcGeometry && hasNpcOrderKeysAligned;
+            const hasAnyNpcPayloadField =
+                hasNpcRanges || hasNpcGeometry || npcOrderKeysLen > 0 || npcVerticesLen > 0 || npcIndicesLen > 0;
+            if (hasAnyNpcPayloadField && (hasNpcRanges !== hasNpcGeometry || !hasNpcOrderKeysAligned)) {
                 console.warn(
                     `[map-render][cpp-wasm] dropping inconsistent npc payload for ${input.mapX},${input.mapY} ` +
-                        `(ranges=${npcRangesLen} verts=${npcVerticesLen} indices=${npcIndicesLen})`,
+                        `(ranges=${npcRangesLen} verts=${npcVerticesLen} indices=${npcIndicesLen} ` +
+                        `slots=${npcSlotCount} orderKeys=${npcOrderKeysLen})`,
                 );
             }
             if (this.options?.telemetry && request.loadNpcs === true && !keepNpcPayload) {
@@ -369,6 +377,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                     npcRangesLen,
                     npcVerticesLen,
                     npcIndicesLen,
+                    npcSlotCount,
+                    npcOrderKeysLen,
                     npcBuildStats,
                     missingType,
                     legacyModelLoad,

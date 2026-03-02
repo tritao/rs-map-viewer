@@ -83,8 +83,6 @@ function createRuntimeCacheFeeder(
     };
 }
 
-const SD_TEXTURE_PACK_LIMIT = 2047;
-
 function sortedUniqueTypeIds(ids: ReadonlyArray<number> | undefined): number[] {
     if (!Array.isArray(ids) || ids.length <= 0) {
         return [];
@@ -431,8 +429,6 @@ function collectSeqFrameIdsForSeqTypes(
 
 type DerivedTypeUploadPlan = Readonly<{
     seqAlphaHintBytesById: ReadonlyMap<number, Uint8Array>;
-    transparentTextureIds: number[];
-    sdTextureIds: number[];
 }>;
 
 function buildDerivedTypeUploadPlan(
@@ -445,20 +441,6 @@ function buildDerivedTypeUploadPlan(
 ): DerivedTypeUploadPlan {
     const { provider, expanded } = args;
     const seqTypeIds = sortedUniqueTypeIds(expanded.seqTypeIds as number[] | undefined);
-
-    const transparentTextureIds: number[] = [];
-    const sdTextureIds: number[] = [];
-    const allTextureIds = provider.collectTextureIds();
-    for (let i = 0; i < allTextureIds.length; i++) {
-        const textureId = allTextureIds[i] | 0;
-        if (textureId < 0) continue;
-        if (provider.isTextureTransparent(textureId)) {
-            transparentTextureIds.push(textureId);
-        }
-        if (provider.isTextureSd(textureId) && sdTextureIds.length < SD_TEXTURE_PACK_LIMIT) {
-            sdTextureIds.push(textureId);
-        }
-    }
 
     const seqAlphaHintBytesById = new Map<number, Uint8Array>();
     for (let i = 0; i < seqTypeIds.length; i++) {
@@ -502,11 +484,7 @@ function buildDerivedTypeUploadPlan(
         seqAlphaHintBytesById.set(seqId, Uint8Array.of(hasAlphaTransform ? 1 : 0));
     }
 
-    return {
-        seqAlphaHintBytesById,
-        transparentTextureIds: sortedUniqueTypeIds(transparentTextureIds),
-        sdTextureIds: sortedUniqueTypeIds(sdTextureIds),
-    };
+    return { seqAlphaHintBytesById };
 }
 
 export type MapRenderByteDrivenSceneBuildInput = Readonly<{
@@ -884,35 +862,73 @@ export class MapRenderRuntimeCacheV2Uploader {
         if (this.uploadedTextureListsForRuntime.has(key)) {
             return true;
         }
-        const provider = createSceneBuildCacheByteProvider(sceneBuildInput);
-        const allTextureIds = provider.collectTextureIds();
-        const transparentTextureIds: number[] = [];
+        const locModelLoader = sceneBuildInput.locModelLoader as
+            | {
+                  textureLoader?: unknown;
+              }
+            | undefined;
+        const textureLoader = (sceneBuildInput.textureLoader ?? locModelLoader?.textureLoader) as
+            | {
+                  getTextureIds?: () => number[];
+                  isSd?: (id: number) => boolean;
+                  isTransparent?: (id: number) => boolean;
+              }
+            | undefined;
+        if (
+            !textureLoader ||
+            typeof textureLoader.getTextureIds !== "function" ||
+            typeof textureLoader.isSd !== "function" ||
+            typeof textureLoader.isTransparent !== "function"
+        ) {
+            // Without a texture loader we can't seed the runtime's texture packing lists.
+            // Still proceed: map builds can continue (render will just be missing textures).
+            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS)))
+                return false;
+            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT)))
+                return false;
+            this.uploadedTextureListsForRuntime.add(key);
+            return true;
+        }
+
+        // `textureIds` is used by C++ for:
+        // - SD classification (filtering Model.faceTextures to SD-only)
+        // - packed texture index mapping (C++ clamps indices >= 2047 to -1)
+        //
+        // So we must upload the full ordered SD id list (not truncated), matching
+        // TS `ModelData.light()` SD filtering semantics.
+        const allTextureIds = textureLoader.getTextureIds();
         const sdTextureIds: number[] = [];
+        const transparentTextureIds: number[] = [];
         for (let i = 0; i < allTextureIds.length; i++) {
             const textureId = allTextureIds[i] | 0;
             if (textureId < 0) continue;
-            if (provider.isTextureTransparent(textureId)) {
+            if (textureLoader.isTransparent(textureId)) {
                 transparentTextureIds.push(textureId);
             }
-            // Match TS "isSd" semantics: include all SD texture ids (in loader order, no sorting).
-            // Note: packed texture indices are limited elsewhere (first SD_TEXTURE_PACK_LIMIT ids).
-            if (provider.isTextureSd(textureId)) {
+            if (textureLoader.isSd(textureId)) {
                 sdTextureIds.push(textureId);
             }
         }
+        if (typeof process !== "undefined" && process?.env?.RS_DEBUG_TEXTURE_LISTS === "1") {
+            console.warn("[runtime-cache-v2] texture lists", {
+                runtimeHandle: key,
+                allCount: allTextureIds.length | 0,
+                sdCount: sdTextureIds.length | 0,
+                transparentCount: transparentTextureIds.length | 0,
+                sdSample: sdTextureIds.slice(0, 8),
+                transparentSample: transparentTextureIds.slice(0, 8),
+            });
+        }
 
-        // Re-seed the domains so C++ sees an exact TS-consistent presence list.
+        // Re-seed the domains so C++ sees an exact TS-consistent list.
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS)))
             return false;
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT)))
             return false;
-        if (
-            !(await this.uploadPresenceList(
-                feeder,
-                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-                sdTextureIds,
-            ))
-        ) {
+
+        // Presence-list encoding: (domain=100+kind, group=0, file=id) with empty bytes.
+        // For dat/dat2 caches, texture ids are contiguous so sorting is a stable, TS-consistent order.
+        if (!(await this.uploadPresenceList(feeder, RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, sdTextureIds))) {
             return false;
         }
         if (
@@ -924,6 +940,7 @@ export class MapRenderRuntimeCacheV2Uploader {
         ) {
             return false;
         }
+
         this.uploadedTextureListsForRuntime.add(key);
         return true;
     }
@@ -1418,23 +1435,9 @@ export class MapRenderRuntimeCacheV2Uploader {
             if (seqAlphaUploaded < 0) return false;
         }
 
-        const transparentUploaded = await this.uploadTypeEntriesFromIdsWithByteGetter(
-            feeder,
-            RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-            idsByDomain.get(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT),
-            () => new Uint8Array(0),
-            { allowEmptyBytes: true },
-        );
-        if (transparentUploaded < 0) return false;
-
-        const sdTextureUploaded = await this.uploadTypeEntriesFromIdsWithByteGetter(
-            feeder,
-            RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-            idsByDomain.get(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS),
-            () => new Uint8Array(0),
-            { allowEmptyBytes: true },
-        );
-        if (sdTextureUploaded < 0) return false;
+        // Texture packing lists are seeded once per runtime by ensureTextureListsUploaded().
+        // Do not satisfy missing requests for these domains here, otherwise we'd accidentally
+        // extend the packing lists beyond the TS-configured set and break parity.
 
         // Obj spawns is an ephemeral domain built from the worker's input list (not cache bytes).
         const objSpawnMapIds = idsByDomain.get(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS);
