@@ -2,7 +2,7 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
-import { applyNpcServerDeltas } from "../../runtime/sim/NpcSimMovement";
+import { applyNpcUpdateDeltas } from "../../runtime/sim/NpcSimMovement";
 import type { ApplyNpcLifecycleEventsOptions } from "../../runtime/sim/NpcLifecycleApplyOptions";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
@@ -249,7 +249,7 @@ export class WorkerNpcSimStateStore {
 
         this.rebuildNpcIndexMap(state);
         const deltas = deltaEvents.map((entry) => entry.delta);
-        const applied = applyNpcServerDeltas(state.npcs, deltas, state.npcIndexByOrderKey);
+        const applied = applyNpcUpdateDeltas(state.npcs, deltas, state.npcIndexByOrderKey);
         const npcCount = state.npcs.length | 0;
         if (replaceNpcSnapshot || npcCount !== npcCountBefore) {
             state.npcTickPatchesByVariant = this.createNpcTickPatchBuffers(

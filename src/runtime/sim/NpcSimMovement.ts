@@ -54,7 +54,7 @@ function isFiniteNumber(value: number | undefined): value is number {
     return typeof value === "number" && Number.isFinite(value);
 }
 
-export function applyNpcServerDelta(npc: NpcServerMovementLike, delta: NpcUpdateDelta): void {
+export function applyNpcUpdateDelta(npc: NpcServerMovementLike, delta: NpcUpdateDelta): void {
     if (delta.clearServerPath) {
         npc.serverPathLength = 0;
     }
@@ -102,7 +102,7 @@ export function applyNpcServerDelta(npc: NpcServerMovementLike, delta: NpcUpdate
     }
 }
 
-export function applyNpcServerDeltas(
+export function applyNpcUpdateDeltas(
     npcs: ReadonlyArray<NpcServerMovementLike>,
     deltas: ReadonlyArray<NpcUpdateDelta>,
     npcIndexByOrderKey?: ReadonlyMap<number, number>,
@@ -120,7 +120,7 @@ export function applyNpcServerDeltas(
         if (!npc) {
             continue;
         }
-        applyNpcServerDelta(npc, delta);
+        applyNpcUpdateDelta(npc, delta);
         applied++;
     }
     return applied | 0;
