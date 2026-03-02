@@ -38,7 +38,6 @@ import {
     WorkerNpcSimStateStore,
     type WorkerNpcSimStateStoreDeps,
 } from "./WorkerNpcSimStateStore";
-import type { NpcSpawnEvent } from "../../runtime/sim/NpcEvents";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 
 type WorkerTickRuntimeOptions = Readonly<{
@@ -78,7 +77,7 @@ function tryHydrateNpcBootstrapFromMapBytes(
     mapId: number,
     borderSize: number,
     tileRenderFlagsLevel1: Uint8Array[],
-): Readonly<{ data: NpcBootstrapData; decodedSpawnsCount: number }> | undefined {
+): Readonly<{ spawns: NpcSpawn[]; decodedSpawnsCount: number }> | undefined {
     const { mapX, mapY } = decodeMapSquareFromId(mapId);
     const npcSpawnBytes = workerState.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
     if (!(npcSpawnBytes instanceof Uint8Array) || npcSpawnBytes.length === 0) {
@@ -95,12 +94,12 @@ function tryHydrateNpcBootstrapFromMapBytes(
         return undefined;
     }
     return {
-        data: createNpcBootstrapDataFromSpawns(mapId | 0, decodedSpawns),
+        spawns: decodedSpawns,
         decodedSpawnsCount: decodedSpawns.length | 0,
     };
 }
 
-type NpcBootstrapSource = "caller" | "mapBytes" | "fallbackDataset";
+type NpcBootstrapSource = "mapBytes" | "fallbackDataset";
 
 type ResolvedNpcBootstrapData = Readonly<{
     data: NpcBootstrapData;
@@ -175,6 +174,7 @@ export class WorkerTickRuntime {
         maxLevel: number,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
+        npcOrderKeys?: Int32Array,
     ): Promise<ResolvedNpcBootstrapData> {
         const fromMapBytes = tryHydrateNpcBootstrapFromMapBytes(
             workerState,
@@ -184,7 +184,7 @@ export class WorkerTickRuntime {
         );
         if (fromMapBytes) {
             return {
-                data: fromMapBytes.data,
+                data: createNpcBootstrapDataFromSpawns(mapId | 0, fromMapBytes.spawns, npcOrderKeys),
                 source: "mapBytes",
                 decodedSpawnsCount: fromMapBytes.decodedSpawnsCount | 0,
             };
@@ -224,7 +224,7 @@ export class WorkerTickRuntime {
             };
         }
         return {
-            data: createNpcBootstrapDataFromSpawns(mapId | 0, mapSpawns),
+            data: createNpcBootstrapDataFromSpawns(mapId | 0, mapSpawns, npcOrderKeys),
             source: "fallbackDataset",
             fallbackUrl,
             fallbackCacheKey,
@@ -241,7 +241,7 @@ export class WorkerTickRuntime {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcBootstrapSpawnEvents?: ReadonlyArray<NpcSpawnEvent>,
+        npcOrderKeys?: Int32Array,
         npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
@@ -249,26 +249,17 @@ export class WorkerTickRuntime {
             return;
         }
         const workerState = await this.getWorkerState();
+        const resolvedBootstrap = await this.resolveNpcBootstrapData(
+            workerState,
+            mapId,
+            maxLevel,
+            borderSize,
+            tileRenderFlagsLevel1,
+            npcOrderKeys,
+        );
         const deps = createNpcSimStateStoreDeps(workerState);
-        const hasCallerEvents =
-            Array.isArray(npcBootstrapSpawnEvents) && (npcBootstrapSpawnEvents.length | 0) > 0;
         const hasCallerAnimTable =
             Array.isArray(npcTypeAnimationTable) && (npcTypeAnimationTable.length | 0) > 0;
-        const resolvedBootstrap = hasCallerEvents || hasCallerAnimTable
-            ? ({
-                  data: {
-                      spawnEvents: (npcBootstrapSpawnEvents ?? []) as NpcSpawnEvent[],
-                      npcTypeAnimationTable: (npcTypeAnimationTable ?? []) as NpcTypeAnimationEntry[],
-                  },
-                  source: "caller",
-              } satisfies ResolvedNpcBootstrapData)
-            : await this.resolveNpcBootstrapData(
-                  workerState,
-                  mapId,
-                  maxLevel,
-                  borderSize,
-                  tileRenderFlagsLevel1,
-              );
         const npcBootstrapData = resolvedBootstrap.data;
         this.npcSimStateStore.registerMap(
             {
@@ -284,7 +275,7 @@ export class WorkerTickRuntime {
         );
         this.npcSimStateStore.applyMapNpcLifecycleEvents(
             mapId | 0,
-            hasCallerEvents ? (npcBootstrapSpawnEvents as NpcSpawnEvent[]) : npcBootstrapData.spawnEvents,
+            npcBootstrapData.spawnEvents,
             deps,
             true,
         );

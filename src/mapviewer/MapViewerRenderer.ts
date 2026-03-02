@@ -156,7 +156,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         npcVerts: sdMapData.npcVertices?.length ?? 0,
                         npcIndices: sdMapData.npcIndices?.length ?? 0,
                         npcRangesBase: sdMapData.npcDrawRangesBase?.length ?? 0,
-                        npcBootstrapEvents: sdMapData.npcBootstrapSpawnEvents?.length ?? 0,
+                        npcOrderKeys: sdMapData.npcOrderKeys?.length ?? 0,
                         npcTypeAnimTable: sdMapData.npcTypeAnimationTable?.length ?? 0,
                     });
                 }
@@ -169,7 +169,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         level1,
                         sdMapData.collisionDatas,
                         sdMapData.locsAnimated,
-                        sdMapData.npcBootstrapSpawnEvents,
+                        sdMapData.npcOrderKeys,
                         sdMapData.npcTypeAnimationTable,
                         mapSimToken,
                     );

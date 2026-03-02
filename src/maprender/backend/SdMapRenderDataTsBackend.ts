@@ -735,6 +735,10 @@ export class SdMapRenderDataTsBackend {
         const npcIndices = npcGeometry.npcIndices;
         const npcDrawRangesBase = npcGeometry.npcDrawRangesBase;
         const npcDrawRangesAlpha = npcGeometry.npcDrawRangesAlpha;
+        const npcOrderKeys =
+            loadNpcs && npcGeometry.npcs.length > 0
+                ? Int32Array.from(npcGeometry.npcs, (npc) => npc.orderKey ?? -1)
+                : undefined;
         const npcBootstrap =
             loadNpcs && npcGeometry.npcs.length > 0
                 ? createNpcBootstrapData({
@@ -742,7 +746,6 @@ export class SdMapRenderDataTsBackend {
                       npcsIn: npcGeometry.npcs,
                   })
                 : undefined;
-        const npcBootstrapSpawnEvents = npcBootstrap?.spawnEvents;
         const npcTypeAnimationTable = npcBootstrap?.npcTypeAnimationTable;
 
         const preferWasmPacking = options?.preferWasmPacking === true;
@@ -881,7 +884,7 @@ export class SdMapRenderDataTsBackend {
             npcDrawRangesAlpha,
             npcVertices,
             npcIndices,
-            npcBootstrapSpawnEvents,
+            npcOrderKeys,
             npcTypeAnimationTable,
         };
 

@@ -107,9 +107,11 @@ export function createNpcBootstrapData(input: NpcBootstrapInput): NpcBootstrapDa
 export function createNpcBootstrapDataFromSpawns(
     mapId: number,
     spawns: ReadonlyArray<NpcSpawn>,
+    npcOrderKeys?: Int32Array,
 ): NpcBootstrapData {
     return createNpcBootstrapData({
         mapId: mapId | 0,
         npcsIn: createNpcDatasFromSpawns(Array.from(spawns)),
+        npcOrderKeys,
     });
 }

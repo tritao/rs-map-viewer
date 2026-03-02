@@ -1,6 +1,5 @@
 import { RenderableType } from "../../renderer/Renderer";
 import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
-import { NpcData } from "../../runtime/entities/NpcData";
 
 export type SdRenderableModelInfoTextures = {
     readonly base: Uint16Array;
@@ -45,7 +44,6 @@ export type SdRenderableData = {
     readonly drawRanges: SdRenderableDrawRanges;
 
     readonly locsAnimated: LocAnimatedData[];
-    readonly npcs: NpcData[];
 
     readonly loadedTextures: Map<number, Int32Array>;
     readonly npcDrawRangesBase?: Int32Array;

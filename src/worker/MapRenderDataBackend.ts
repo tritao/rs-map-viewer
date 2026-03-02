@@ -16,7 +16,10 @@ import type {
 } from "../wasm/MapRenderRuntimeBridgeAbi";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
-import { runtimePacketToPayloadOverlay, sdMapDataTransferables } from "./MapRenderDataContract";
+import {
+    runtimePacketToPayloadOverlay,
+    sdMapDataTransferables,
+} from "../maprender/MapRenderDataContract";
 import type { RenderDataResult } from "./RenderDataLoader";
 import {
     MapRenderByteDrivenSceneBuildInput,
@@ -340,7 +343,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 packet.npcDrawRangesAlpha instanceof Int32Array ? packet.npcDrawRangesAlpha : undefined;
             const npcVertices = packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
             const npcIndices = packet.npcIndices instanceof Int32Array ? packet.npcIndices : undefined;
-            const npcOrderKeys = packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
+            const npcOrderKeys =
+                packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
             const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
             const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
             const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
@@ -391,7 +395,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 heightMapTextureData: overlay.heightMapTextureData,
                 drawRanges: overlay.drawRanges,
                 locsAnimated: [],
-                npcs: [],
                 usedTextureIds: packet.usedTextureIds,
                 loadedTextures: new Map(),
                 npcDrawRangesBase: keepNpcPayload ? npcDrawRangesBase : undefined,

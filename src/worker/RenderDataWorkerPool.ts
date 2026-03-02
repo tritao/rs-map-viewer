@@ -153,7 +153,7 @@ export class RenderDataWorkerPool {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcBootstrapSpawnEvents?: unknown,
+        npcOrderKeys?: Int32Array,
         npcTypeAnimationTable?: unknown,
         mapSimToken?: number,
     ): Promise<void> {
@@ -166,7 +166,7 @@ export class RenderDataWorkerPool {
                     tileRenderFlagsLevel1,
                     collisionDatas,
                     locsAnimated as any,
-                    npcBootstrapSpawnEvents as any,
+                    npcOrderKeys,
                     npcTypeAnimationTable as any,
                     mapSimToken,
                 ),
