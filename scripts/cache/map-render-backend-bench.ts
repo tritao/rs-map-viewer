@@ -31,6 +31,7 @@ import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
     cacheName?: string;
+    square?: Square;
     limit: number;
     warmup: number;
     iterations: number;
@@ -92,6 +93,7 @@ function buildRuntimeRequest(
 
 function parseArgs(argv: string[]): Args {
     let cacheName: string | undefined;
+    let square: Square | undefined;
     let limit = 4;
     let warmup = 1;
     let iterations = 3;
@@ -101,6 +103,16 @@ function parseArgs(argv: string[]): Args {
         const arg = argv[i];
         if (arg === "--cache") {
             cacheName = argv[++i];
+        } else if (arg === "--square") {
+            const value = argv[++i];
+            const match = /^(\d+):(\d+)$/.exec(value ?? "");
+            if (!match) {
+                throw new Error("Invalid --square (expected mapX:mapY)");
+            }
+            square = {
+                mapX: Number(match[1]) | 0,
+                mapY: Number(match[2]) | 0,
+            };
         } else if (arg === "--limit") {
             limit = Number(argv[++i]);
         } else if (arg === "--warmup") {
@@ -129,6 +141,7 @@ function parseArgs(argv: string[]): Args {
 
     return {
         cacheName,
+        square,
         limit: limit | 0,
         warmup: warmup | 0,
         iterations: iterations | 0,
@@ -147,13 +160,33 @@ function pickCache(caches: CacheInfo[], cacheName?: string): CacheInfo {
     return caches.find((c) => c.name === cacheName) ?? latest;
 }
 
+function validateSquare(
+    mapFileIndex: {
+        tryGetTerrainArchiveId(x: number, y: number): number | undefined;
+        tryGetLocArchiveId(x: number, y: number): number | undefined;
+    },
+    square: Square,
+): void {
+    if (mapFileIndex.tryGetTerrainArchiveId(square.mapX, square.mapY) === undefined) {
+        throw new Error(`Square ${square.mapX}:${square.mapY} has no terrain archive`);
+    }
+    if (mapFileIndex.tryGetLocArchiveId(square.mapX, square.mapY) === undefined) {
+        throw new Error(`Square ${square.mapX}:${square.mapY} has no loc archive`);
+    }
+}
+
 function pickSquares(
     mapFileIndex: {
         tryGetTerrainArchiveId(x: number, y: number): number | undefined;
         tryGetLocArchiveId(x: number, y: number): number | undefined;
     },
+    preferredSquare: Square | undefined,
     limit: number,
 ): Square[] {
+    if (preferredSquare) {
+        validateSquare(mapFileIndex, preferredSquare);
+        return [preferredSquare];
+    }
     const squares: Square[] = [];
     outer: for (let mapX = 0; mapX <= 255; mapX++) {
         for (let mapY = 0; mapY <= 255; mapY++) {
@@ -283,7 +316,7 @@ async function main(): Promise<void> {
         objSpawns,
     });
 
-    const squares = pickSquares(loaders.mapFileLoader.mapFileIndex, args.limit);
+    const squares = pickSquares(loaders.mapFileLoader.mapFileIndex, args.square, args.limit);
     if (squares.length === 0) {
         throw new Error("No map squares found for benchmark");
     }

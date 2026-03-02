@@ -159,7 +159,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                         npcTypeAnimTable: sdMapData.npcTypeAnimationTable?.length ?? 0,
                     });
                 }
-                const level1 = sdMapData.tileRenderFlags[1] ?? [];
                 const npcDrawRangeInts = sdMapData.npcDrawRangesBase?.length ?? 0;
                 if ((npcDrawRangeInts % DRAW_RANGE_STRIDE) !== 0) {
                     throw new Error(
@@ -182,8 +181,6 @@ export class MapViewerRenderer extends RendererMainLoop {
                         mapId,
                         sdMapData.maxLevel,
                         sdMapData.borderSize,
-                        level1,
-                        sdMapData.collisionDatas,
                         sdMapData.locsAnimated,
                         npcOrderKeys,
                         npcTypeAnimationTable,

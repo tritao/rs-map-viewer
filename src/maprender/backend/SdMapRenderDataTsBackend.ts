@@ -839,7 +839,6 @@ export class SdMapRenderDataTsBackend {
             smoothTerrain,
             borderSize,
             tileRenderFlags: scene.tileRenderFlags,
-            collisionDatas: scene.collisionMaps,
             minimapBlob,
             vertices,
             indices,

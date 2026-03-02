@@ -5,7 +5,6 @@ import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./runtime/WorkerTickRuntime";
@@ -51,8 +50,6 @@ const worker = {
         mapId: number,
         maxLevel: number,
         borderSize: number,
-        tileRenderFlagsLevel1: Uint8Array[],
-        collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
         npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
@@ -62,8 +59,6 @@ const worker = {
             mapId,
             maxLevel,
             borderSize,
-            tileRenderFlagsLevel1,
-            collisionDatas,
             locsAnimated,
             npcOrderKeys,
             npcTypeAnimationTable,

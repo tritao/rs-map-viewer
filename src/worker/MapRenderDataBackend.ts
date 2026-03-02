@@ -2,7 +2,6 @@ import { SdMapData } from "../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
-import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -115,21 +114,6 @@ function createEmptyTileRenderFlags(levels: number, sizeX: number, sizeY: number
             cols[x] = new Uint8Array(sy);
         }
         out[l] = cols;
-    }
-    return out;
-}
-
-function createEmptyCollisionDatas(levels: number, sizeX: number, sizeY: number): CollisionData[] {
-    const lv = Math.max(0, levels | 0);
-    const sx = Math.max(0, sizeX | 0);
-    const sy = Math.max(0, sizeY | 0);
-    const out: CollisionData[] = new Array(lv);
-    for (let l = 0; l < lv; l++) {
-        out[l] = {
-            sizeX: sx,
-            sizeY: sy,
-            flags: new Int32Array(sx * sy),
-        };
     }
     return out;
 }
@@ -359,7 +343,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 smoothTerrain: input.smoothTerrain === true,
                 borderSize: request.borderSize | 0,
                 tileRenderFlags: createEmptyTileRenderFlags(levels, sizeX, sizeY),
-                collisionDatas: createEmptyCollisionDatas(levels, sizeX, sizeY),
                 minimapBlob: new Blob(),
                 vertices: packet.vertices,
                 indices: packet.indices,

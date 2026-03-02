@@ -239,7 +239,6 @@ export function sdMapDataTransferables(data: SdMapData): Transferable[] {
     );
     const transferables: Transferable[] = [
         ...data.tileRenderFlags.flat().map((buf) => buf.buffer as Transferable),
-        ...data.collisionDatas.map((collision) => collision.flags.buffer as Transferable),
         ...loadedTextureBuffers,
         data.vertices.buffer as Transferable,
         data.indices.buffer as Transferable,

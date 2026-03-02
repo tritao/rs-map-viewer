@@ -7,7 +7,6 @@ import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWor
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { SdMapData } from "../maprender/payload/SdMapData";
 import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
@@ -150,8 +149,6 @@ export class RenderDataWorkerPool {
         mapId: number,
         maxLevel: number,
         borderSize: number,
-        tileRenderFlagsLevel1: Uint8Array[],
-        collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
@@ -162,8 +159,6 @@ export class RenderDataWorkerPool {
                 mapId,
                 maxLevel,
                 borderSize,
-                tileRenderFlagsLevel1,
-                collisionDatas,
                 locsAnimated as any,
                 npcOrderKeys,
                 npcTypeAnimationTable,

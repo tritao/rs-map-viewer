@@ -1,4 +1,3 @@
-import type { CollisionData } from "../../rs/scene/CollisionMap";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
@@ -18,6 +17,9 @@ import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
+import { Scene } from "../../rs/scene/Scene";
+import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
 import type { MapRenderDataBackend } from "../MapRenderDataBackend";
@@ -40,6 +42,7 @@ import {
 type TickWorkerState = Readonly<{
     session: CacheSession;
     mapBytesProvider: MapBytesProvider;
+    sceneBuilder: SceneBuilder;
     mapRenderDataBackend: MapRenderDataBackend;
 }>;
 
@@ -174,12 +177,32 @@ export class WorkerTickRuntime {
         );
     }
 
+    private buildMapSimScene(
+        workerState: TickWorkerState,
+        mapId: number,
+        borderSize: number,
+    ): Scene {
+        const { mapX, mapY } = decodeMapSquareFromId(mapId);
+        const border = borderSize | 0;
+        const mapSize = Scene.MAP_SQUARE_SIZE + border * 2;
+        const baseX = mapX * Scene.MAP_SQUARE_SIZE - border;
+        const baseY = mapY * Scene.MAP_SQUARE_SIZE - border;
+        return buildSceneFromMapBytesProvider(
+            workerState.sceneBuilder,
+            workerState.mapBytesProvider,
+            baseX,
+            baseY,
+            mapSize,
+            mapSize,
+            false,
+            LocLoadType.NO_MODELS,
+        );
+    }
+
     async registerMapNpcSimState(
         mapId: number,
         maxLevel: number,
         borderSize: number,
-        tileRenderFlagsLevel1: Uint8Array[],
-        collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
         npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
@@ -189,6 +212,8 @@ export class WorkerTickRuntime {
             return;
         }
         const workerState = await this.getWorkerState();
+        const simScene = this.buildMapSimScene(workerState, mapId, borderSize);
+        const tileRenderFlagsLevel1 = simScene.tileRenderFlags[1] ?? [];
         const resolvedBootstrap = await this.resolveNpcBootstrapData(
             workerState,
             mapId,
@@ -204,7 +229,7 @@ export class WorkerTickRuntime {
                 mapId,
                 borderSize,
                 tileRenderFlagsLevel1,
-                collisionDatas,
+                collisionDatas: simScene.collisionMaps,
                 locsAnimated,
                 npcTypeAnimationTable,
             },
