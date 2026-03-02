@@ -124,6 +124,7 @@ export class ModelData extends Entity {
     contrast!: number;
 
     isBoundsCalculated: boolean;
+    private xzRadiusCache: number | null = null;
 
     minHeight!: number;
 
@@ -2749,6 +2750,36 @@ export class ModelData extends Entity {
         this.mergedNormals = undefined;
         this.faceNormals = undefined;
         this.isBoundsCalculated = false;
+        this.xzRadiusCache = null;
+    }
+
+    getXZRadius(): number {
+        if (this.xzRadiusCache !== null) {
+            return this.xzRadiusCache;
+        }
+        const count = (this.usedVertexCount > 0 ? this.usedVertexCount : this.verticesCount) | 0;
+        if (count <= 0) {
+            this.xzRadiusCache = 0;
+            return 0;
+        }
+        const max = Math.min(count, this.verticesX.length, this.verticesZ.length) | 0;
+        let maxRadiusSq = 0;
+        for (let i = 0; i < max; i++) {
+            const x = this.verticesX[i] | 0;
+            const z = this.verticesZ[i] | 0;
+            const radiusSq = x * x + z * z;
+            if (radiusSq > maxRadiusSq) {
+                maxRadiusSq = radiusSq;
+            }
+        }
+        // Mirror Model.calculateBoundsCylinder(): floor(sqrt(maxSq) + 0.99)
+        const radius = Math.floor(Math.sqrt(maxRadiusSq) + 0.99);
+        this.xzRadiusCache = radius;
+        return radius;
+    }
+
+    override tryGetXZRadius(): number {
+        return this.getXZRadius();
     }
 
     calculateBounds(): void {
