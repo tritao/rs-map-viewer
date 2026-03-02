@@ -57,14 +57,14 @@ import {
     applyNpcMovementStep,
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "./runtime/tickFrameHelpers";
+} from "./runtime/WorkerTickPatchPipeline";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./runtime/NpcGpuFrameBuilder";
 import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import {
     createNpcBootstrapDataFromSpawns,
     type NpcBootstrapData,
-} from "./runtime/NpcBootstrapEventAdapters";
+} from "../runtime/sim/NpcBootstrapData";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
 import { WorkerNpcSimStateStore } from "./runtime/WorkerNpcSimStateStore";
 

@@ -17,7 +17,7 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import { createNpcBootstrapData } from "../worker/runtime/NpcBootstrapEventAdapters";
+import { createNpcBootstrapData } from "../runtime/sim/NpcBootstrapData";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
