@@ -1,4 +1,4 @@
-import { NpcSpawn, getMapNpcSpawns } from "../../data/npc/NpcSpawn";
+import { NpcSpawn, fetchNpcSpawns, getMapNpcSpawns, getNpcSpawnsUrl } from "../../data/npc/NpcSpawn";
 import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
@@ -22,8 +22,8 @@ import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import type { BackendKind } from "../../util/BackendKind";
-import { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderDataContract";
-import { loadMinimapBlob } from "../../worker/MinimapData";
+import { MapRenderCommandStreamRuntimeInput } from "../MapRenderDataContract";
+import { loadMinimapBlob } from "../MinimapData";
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
 import { InteractType } from "../../renderer/InteractType";
@@ -64,7 +64,6 @@ export type SdMapRenderDataTsBackendDeps = Readonly<{
     mapImageRenderer: MapImageRenderer;
     varProvider: VarProvider;
     objSpawns: ObjSpawn[];
-    npcSpawns: NpcSpawn[];
     npcSpawnDecodeBackend?: NpcSpawnDecodeBackend;
     telemetry?: boolean;
 }>;
@@ -432,6 +431,7 @@ export class SdMapRenderDataTsBackend {
     private cachedTextureCacheName?: string;
     private cachedNpcLoginScreenPropsById?: Uint8Array;
     private cachedNpcLoginScreenPropsCacheName?: string;
+    private fallbackNpcSpawnsPromise?: Promise<NpcSpawn[]>;
 
     constructor(private readonly deps: SdMapRenderDataTsBackendDeps) {}
 
@@ -481,6 +481,18 @@ export class SdMapRenderDataTsBackend {
         this.cachedNpcLoginScreenPropsById = props;
         this.cachedNpcLoginScreenPropsCacheName = cacheName;
         return props;
+    }
+
+    private async getFallbackNpcSpawns(): Promise<NpcSpawn[]> {
+        if (this.fallbackNpcSpawnsPromise) {
+            return this.fallbackNpcSpawnsPromise;
+        }
+        const url = getNpcSpawnsUrl(this.deps.session.cache.info);
+        this.fallbackNpcSpawnsPromise = fetchNpcSpawns(url).catch((error: unknown) => {
+            this.fallbackNpcSpawnsPromise = undefined;
+            throw error;
+        });
+        return this.fallbackNpcSpawnsPromise;
     }
 
     async buildMapDataBridgeInput(
@@ -688,7 +700,10 @@ export class SdMapRenderDataTsBackend {
                     });
                 }
             } else {
-                npcSpawns = getMapNpcSpawns(this.deps.npcSpawns, maxLevel, mapX, mapY);
+                const fallbackNpcSpawns = await timeStepAsync("fetchFallbackNpcSpawns", () =>
+                    this.getFallbackNpcSpawns(),
+                );
+                npcSpawns = getMapNpcSpawns(fallbackNpcSpawns, maxLevel, mapX, mapY);
                 npcSpawns = npcSpawns.filter((spawn) => {
                     if (spawn.name === undefined) {
                         return true;

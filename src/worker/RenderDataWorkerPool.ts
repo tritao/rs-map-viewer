@@ -3,7 +3,6 @@ import { QueuedTask } from "threads/dist/master/pool";
 import { WorkerDescriptor } from "threads/dist/master/pool-types";
 import { ObservablePromise } from "threads/dist/observable-promise";
 
-import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "../maprender/MinimapData";
@@ -50,12 +49,8 @@ export class RenderDataWorkerPool {
         if (cached) {
             return cached;
         }
-        const promise = Promise.all([
-            fetchObjSpawns(),
-            fetchNpcSpawns(getNpcSpawnsUrl(cache.info)),
-        ]).then(([objSpawns, npcSpawns]) => ({
+        const promise = fetchObjSpawns().then((objSpawns) => ({
             objSpawns,
-            npcSpawns,
         }));
         this.spawnBootstrapByCacheKey.set(key, promise);
         return promise;

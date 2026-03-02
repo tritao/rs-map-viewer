@@ -111,7 +111,6 @@ async function initWorker(
             mapImageRenderer,
             varProvider,
             objSpawns: spawnBootstrap.objSpawns,
-            npcSpawns: spawnBootstrap.npcSpawns,
         },
         {
             telemetry: options?.mapRenderTelemetry,
