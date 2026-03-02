@@ -4,7 +4,6 @@ import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
-import { NpcType } from "../../rs/config/npctype/NpcType";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
@@ -32,14 +31,12 @@ import { RenderableType } from "../../renderer/Renderer";
 import {
     ContourGroundType,
     createLocAnimatedGroupKey,
-    createNpcDatas,
-    createNpcDatasFromSpawns,
+    buildNpcGeometry,
     emitSceneModelsToSceneBuffer,
     getSceneLocs,
     LocAnimatedData,
     LocAnimatedGroup,
     ModelHashBuffer,
-    NpcSpawnGroup,
     resolveLocRenderPlacement,
     SceneBuffer,
     SceneLocEntity,
@@ -56,53 +53,6 @@ import { SdMapData } from "../payload/SdMapData";
 import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
 import { createSdTexturePacking } from "../payload/SdTexturePacking";
-
-function addNpcAnimationFrames(
-    npcModelLoader: NpcModelLoader,
-    seqTypeLoader: SeqTypeLoader,
-    sceneBuf: SceneBuffer,
-    npcType: NpcType,
-    seqId: number,
-): AnimationFrames | undefined {
-    const seqResult = seqTypeLoader.tryLoad(seqId);
-    if (!seqResult.ok) {
-        return undefined;
-    }
-    const seqType = seqResult.value;
-    let frameCount: number;
-    if (seqType.hasAnimMayaSeq()) {
-        frameCount = seqType.getAnimMayaDuration();
-    } else {
-        if (!seqType.frameIds) {
-            return undefined;
-        }
-        frameCount = seqType.frameIds.length;
-    }
-    if (frameCount === 0) {
-        return undefined;
-    }
-    const frames = new Array<DrawRange>(frameCount);
-    const framesAlpha = new Array<DrawRange>(frameCount);
-    let alphaFrameCount = 0;
-    for (let i = 0; i < frameCount; i++) {
-        const model = npcModelLoader.getModel(npcType, seqId, i);
-        if (model) {
-            frames[i] = sceneBuf.addModelAnimFrame(model, false);
-            framesAlpha[i] = sceneBuf.addModelAnimFrame(model, true);
-            if (framesAlpha[i][1] > 0) {
-                alphaFrameCount++;
-            }
-        } else {
-            frames[i] = NULL_DRAW_RANGE;
-            framesAlpha[i] = NULL_DRAW_RANGE;
-        }
-    }
-
-    return {
-        frames,
-        framesAlpha: alphaFrameCount > 0 ? framesAlpha : undefined,
-    };
-}
 
 export type SdMapRenderDataTsBackendDeps = Readonly<{
     session: CacheSession;
@@ -216,18 +166,6 @@ function createEmptyModelInfoTextures(): SdRenderableModelInfoTextures {
         interactLod: new Uint16Array(0),
         interactLodAlpha: new Uint16Array(0),
     };
-}
-
-function createDefaultNpcDrawRanges(npcCount: number): Int32Array {
-    const count = Math.max(0, npcCount | 0);
-    const out = new Int32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-        const off = i * 3;
-        out[off + 0] = 0;
-        out[off + 1] = 0;
-        out[off + 2] = 1;
-    }
-    return out;
 }
 
 function flattenSceneTileHeights(scene: Scene): Int32Array {
@@ -486,72 +424,6 @@ function addLocEntities(
     }
 
     return locAnimatedGroupMap.values();
-}
-
-function createNpcSpawnGroups(
-    npcModelLoader: NpcModelLoader,
-    npcTypeLoader: NpcTypeLoader,
-    seqTypeLoader: SeqTypeLoader,
-    basTypeLoader: BasTypeLoader,
-    sceneBuf: SceneBuffer,
-    npcSpawns: NpcSpawn[],
-): NpcSpawnGroup[] {
-    const groupedSpawns = new Map<number, NpcSpawn[]>();
-    for (const spawn of npcSpawns) {
-        const group = groupedSpawns.get(spawn.id);
-        if (group) {
-            group.push(spawn);
-        } else {
-            groupedSpawns.set(spawn.id, [spawn]);
-        }
-    }
-
-    const groups: NpcSpawnGroup[] = [];
-
-    for (const spawns of groupedSpawns.values()) {
-        const npcResult = npcTypeLoader.tryLoad(spawns[0].id);
-        if (!npcResult.ok) {
-            continue;
-        }
-        const npcType = npcResult.value;
-
-        const idleSeqId = npcType.getIdleSeqId(basTypeLoader);
-        const walkSeqId = npcType.getWalkSeqId(basTypeLoader);
-
-        if (idleSeqId === -1) {
-            continue;
-        }
-
-        const idleAnim = addNpcAnimationFrames(
-            npcModelLoader,
-            seqTypeLoader,
-            sceneBuf,
-            npcType,
-            idleSeqId,
-        );
-        let walkAnim = idleAnim;
-        if (walkSeqId !== -1 && walkSeqId !== idleSeqId) {
-            walkAnim = addNpcAnimationFrames(
-                npcModelLoader,
-                seqTypeLoader,
-                sceneBuf,
-                npcType,
-                walkSeqId,
-            );
-        }
-
-        if (!idleAnim) {
-            continue;
-        }
-
-        groups.push({
-            idleAnim,
-            walkAnim,
-            spawns,
-        });
-    }
-
-    return groups;
 }
 
 export class SdMapRenderDataTsBackend {
@@ -826,37 +698,24 @@ export class SdMapRenderDataTsBackend {
                 });
             }
         }
-        const includeNpcAnimationFrames = options?.includeNpcAnimationFrames !== false;
-        const npcSceneBuf =
-            loadNpcs && includeNpcAnimationFrames
-                ? new SceneBuffer(textureLoader, textureIdIndexMap, 20000)
-                : undefined;
-        const npcs = includeNpcAnimationFrames
-            ? timeStep("createNpcDatas", () => {
-                  const npcSpawnGroups = createNpcSpawnGroups(
-                      npcModelLoader,
-                      npcTypeLoader,
-                      seqTypeLoader,
-                      basTypeLoader,
-                      npcSceneBuf ?? sceneBuf,
-                      npcSpawns,
-                  );
-                  return createNpcDatas(npcSpawnGroups);
-              })
-            : timeStep("createNpcDatasFromSpawns", () => createNpcDatasFromSpawns(npcSpawns));
-        const npcVertices =
-            npcSceneBuf && npcSceneBuf.vertexCount() > 0 ? npcSceneBuf.vertexBuf.byteArray() : undefined;
-        const npcIndices =
-            npcSceneBuf && npcSceneBuf.indices.length > 0
-                ? timeStep("packNpcIndices", () => new Int32Array(npcSceneBuf.indices))
-                : undefined;
-        const hasNpcGeometry =
-            npcVertices instanceof Uint8Array &&
-            npcVertices.length > 0 &&
-            npcIndices instanceof Int32Array &&
-            npcIndices.length > 0;
-        const npcDrawRangesBase = hasNpcGeometry ? createDefaultNpcDrawRanges(npcs.length | 0) : undefined;
-        const npcDrawRangesAlpha = hasNpcGeometry ? createDefaultNpcDrawRanges(npcs.length | 0) : undefined;
+        const npcGeometry = timeStep("buildNpcGeometry", () =>
+            buildNpcGeometry({
+                loadNpcs,
+                includeNpcAnimationFrames: options?.includeNpcAnimationFrames !== false,
+                npcSpawns,
+                textureLoader,
+                textureIdIndexMap,
+                npcModelLoader,
+                npcTypeLoader,
+                seqTypeLoader,
+                basTypeLoader,
+            }),
+        );
+        const npcs = npcGeometry.npcs;
+        const npcVertices = npcGeometry.npcVertices;
+        const npcIndices = npcGeometry.npcIndices;
+        const npcDrawRangesBase = npcGeometry.npcDrawRangesBase;
+        const npcDrawRangesAlpha = npcGeometry.npcDrawRangesAlpha;
 
         const preferWasmPacking = options?.preferWasmPacking === true;
         const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
@@ -918,10 +777,8 @@ export class SdMapRenderDataTsBackend {
                   );
 
         const usedTextureIdSet = new Set<number>(sceneBuf.usedTextureIds);
-        if (npcSceneBuf) {
-            for (const textureId of npcSceneBuf.usedTextureIds) {
-                usedTextureIdSet.add(textureId);
-            }
+        for (const textureId of npcGeometry.usedTextureIds) {
+            usedTextureIdSet.add(textureId);
         }
         const usedTextureIds = Int32Array.from(usedTextureIdSet);
 

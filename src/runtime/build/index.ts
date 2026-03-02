@@ -18,6 +18,13 @@ export {
     emitSceneModelsToSceneBuffer,
     summarizeSceneCommandPlan,
 } from "./SceneCommandPlan";
+export {
+    buildNpcGeometry,
+} from "./NpcGeometryBuilder";
+export type {
+    BuildNpcGeometryInput,
+    BuiltNpcGeometry,
+} from "./NpcGeometryBuilder";
 export type {
     SceneCommandPlan,
     SceneCommandPlanDigest,
