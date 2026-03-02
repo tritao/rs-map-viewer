@@ -47,6 +47,20 @@ type TickWorkerState = Readonly<{
     mapRenderDataBackend: MapRenderDataBackend;
 }>;
 
+type TickFrameInputs = Readonly<{
+    safeTicksElapsed: number;
+    safeClientTicks: number;
+    safeLodDistance: number;
+    hoveredMapIds: ReadonlySet<number>;
+    npcRingWriteIndex: number;
+}>;
+
+type WasmTickStreams = Readonly<{
+    isEnabled: boolean;
+    tickPatchCountsByMapId: Int32Array | undefined;
+    tickPatchPacked: Int32Array | undefined;
+}>;
+
 const tickWasmBridge = mapRenderRuntimeBridge;
 
 function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
@@ -256,6 +270,113 @@ export class WorkerTickRuntime {
         return applied | 0;
     }
 
+    private normalizeTickFrameInputs(
+        frameCount: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+        lodDistance: number,
+        hoveredMapIdsPacked: Int32Array,
+    ): TickFrameInputs {
+        const hoveredMapIds = new Set<number>();
+        if (hoveredMapIdsPacked instanceof Int32Array) {
+            for (let index = 0; index < hoveredMapIdsPacked.length; index++) {
+                hoveredMapIds.add(hoveredMapIdsPacked[index] | 0);
+            }
+        }
+        return {
+            safeTicksElapsed: Math.max(0, Math.min(ticksElapsed | 0, 4)),
+            safeClientTicks: Math.max(0, Math.min(clientTicksElapsed | 0, 50)),
+            safeLodDistance: Math.max(0, lodDistance | 0),
+            hoveredMapIds,
+            npcRingWriteIndex: (frameCount | 0) % NPC_DATA_TEXTURE_RING_SIZE,
+        };
+    }
+
+    private async runWasmTickIfEnabled(
+        workerState: TickWorkerState,
+        mapIds: Int32Array,
+        cycleNow: number,
+        safeClientTicks: number,
+    ): Promise<WasmTickStreams> {
+        const isEnabled =
+            shouldUseWasmTickInWorker(this.options) &&
+            typeof tickWasmBridge.tickMapsEmitPatchStreams === "function";
+        if (!isEnabled) {
+            return {
+                isEnabled: false,
+                tickPatchCountsByMapId: undefined,
+                tickPatchPacked: undefined,
+            };
+        }
+
+        const handle = workerState.mapRenderDataBackend.getCppWasmRuntimeHandle?.();
+        if (handle === undefined) {
+            throw new Error("[map-render][tick][cpp-wasm] map-render runtime handle missing");
+        }
+        const cycleNowFixed = Math.round(cycleNow * LOC_CYCLE_SCALE) | 0;
+        const wasmTick = tickWasmBridge.tickMapsEmitPatchStreams?.(
+            handle,
+            mapIds,
+            cycleNowFixed,
+            safeClientTicks,
+        ) as Readonly<{ tickPatchCountsByMapId: Int32Array; tickPatchPacked: Int32Array }> | null;
+        if (!wasmTick) {
+            throw new Error("[map-render][tick][cpp-wasm] tickMapsEmitPatchStreams failed");
+        }
+        return {
+            isEnabled: true,
+            tickPatchCountsByMapId: wasmTick.tickPatchCountsByMapId,
+            tickPatchPacked: wasmTick.tickPatchPacked,
+        };
+    }
+
+    private buildMissingStateMapEntry(
+        mapId: number,
+        mapEntryIndex: number,
+        cameraMapX: number,
+        cameraMapY: number,
+        safeLodDistance: number,
+        hoveredMapIds: ReadonlySet<number>,
+    ): FramePacketMapEntry {
+        if (this.workerMapSimLifecycle.consumeMissingTickStateWarning(mapId)) {
+            const { mapX, mapY } = decodeMapSquareFromId(mapId);
+            console.warn(
+                `[map-render][tick] missing worker sim state for visible map ${mapX},${mapY} ` +
+                    `(mapId=${mapId | 0} index=${mapEntryIndex | 0} backend=${
+                        this.options?.mapRenderBackend ?? "unknown"
+                    })`,
+            );
+        }
+        return buildFramePacketMapEntry({
+            mapId,
+            cameraMapX,
+            cameraMapY,
+            lodDistance: safeLodDistance,
+            hoveredMapIds,
+            hasNpcs: false,
+            npcOffset: -1,
+            tickPatchCounts: new Int32Array(TICK_PATCH_STREAM_COUNT),
+            tickPatchStreams: new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT),
+        });
+    }
+
+    private validateWasmPatchRead(
+        wasmReadOff: number,
+        tickPatchCountsByMapId: Int32Array | undefined,
+        tickPatchPacked: Int32Array | undefined,
+    ): void {
+        if (
+            tickPatchPacked instanceof Int32Array &&
+            tickPatchCountsByMapId instanceof Int32Array &&
+            wasmReadOff !== (tickPatchPacked.length | 0)
+        ) {
+            throw new Error(
+                `[map-render][tick][cpp-wasm] wasm patch read mismatch ` +
+                    `readOff=${wasmReadOff | 0} packedLen=${tickPatchPacked.length | 0}`,
+            );
+        }
+    }
+
     async tickFrame(
         frameCount: number,
         mapIds: Int32Array,
@@ -272,49 +393,26 @@ export class WorkerTickRuntime {
         }
 
         const workerState = await this.getWorkerState();
+        const inputs = this.normalizeTickFrameInputs(
+            frameCount,
+            ticksElapsed,
+            clientTicksElapsed,
+            lodDistance,
+            hoveredMapIdsPacked,
+        );
+        const wasmTick = await this.runWasmTickIfEnabled(
+            workerState,
+            mapIds,
+            cycleNow,
+            inputs.safeClientTicks,
+        );
         const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
         const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
-
         this.npcGpuFrameBuilder.beginFrame();
         const entries = new Array<FramePacketMapEntry>(mapIds.length | 0);
+        const wasmCountsByMapId = wasmTick.tickPatchCountsByMapId;
+        const wasmPatchesPacked = wasmTick.tickPatchPacked;
 
-        const safeTicksElapsed = Math.max(0, Math.min(ticksElapsed | 0, 4));
-        const safeClientTicks = Math.max(0, Math.min(clientTicksElapsed | 0, 50));
-
-        const useWasmTick =
-            shouldUseWasmTickInWorker(this.options) &&
-            typeof tickWasmBridge.tickMapsEmitPatchStreams === "function";
-        const cycleNowFixed = Math.round(cycleNow * LOC_CYCLE_SCALE) | 0;
-        let wasmTick:
-            | Readonly<{ tickPatchCountsByMapId: Int32Array; tickPatchPacked: Int32Array }>
-            | undefined;
-        if (useWasmTick) {
-            const handle = workerState.mapRenderDataBackend.getCppWasmRuntimeHandle?.();
-            if (handle === undefined) {
-                throw new Error("[map-render][tick][cpp-wasm] map-render runtime handle missing");
-            }
-            wasmTick = tickWasmBridge.tickMapsEmitPatchStreams?.(
-                handle,
-                mapIds,
-                cycleNowFixed,
-                safeClientTicks,
-            ) as any;
-            if (!wasmTick) {
-                throw new Error("[map-render][tick][cpp-wasm] tickMapsEmitPatchStreams failed");
-            }
-        }
-        const wasmCountsByMapId = wasmTick?.tickPatchCountsByMapId;
-        const wasmPatchesPacked = wasmTick?.tickPatchPacked;
-
-        const ringSize = NPC_DATA_TEXTURE_RING_SIZE;
-        const newIndexMod = (frameCount | 0) % ringSize;
-        const safeLodDistance = Math.max(0, lodDistance | 0);
-        const hoveredMapIds = new Set<number>();
-        if (hoveredMapIdsPacked instanceof Int32Array) {
-            for (let index = 0; index < hoveredMapIdsPacked.length; index++) {
-                hoveredMapIds.add(hoveredMapIdsPacked[index] | 0);
-            }
-        }
         let wasmReadOff = 0;
         for (let mapEntryIndex = 0; mapEntryIndex < mapIds.length; mapEntryIndex++) {
             const mapId = mapIds[mapEntryIndex] | 0;
@@ -328,26 +426,14 @@ export class WorkerTickRuntime {
             );
             wasmReadOff = wasmPatchRead.nextReadOff | 0;
             if (!state) {
-                if (this.workerMapSimLifecycle.consumeMissingTickStateWarning(mapId)) {
-                    const { mapX, mapY } = decodeMapSquareFromId(mapId);
-                    console.warn(
-                        `[map-render][tick] missing worker sim state for visible map ${mapX},${mapY} ` +
-                            `(mapId=${mapId | 0} index=${mapEntryIndex | 0} backend=${
-                                this.options?.mapRenderBackend ?? "unknown"
-                            })`,
-                    );
-                }
-                entries[mapEntryIndex] = buildFramePacketMapEntry({
+                entries[mapEntryIndex] = this.buildMissingStateMapEntry(
                     mapId,
+                    mapEntryIndex,
                     cameraMapX,
                     cameraMapY,
-                    lodDistance: safeLodDistance,
-                    hoveredMapIds,
-                    hasNpcs: false,
-                    npcOffset: -1,
-                    tickPatchCounts: new Int32Array(TICK_PATCH_STREAM_COUNT),
-                    tickPatchStreams: new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT),
-                });
+                    inputs.safeLodDistance,
+                    inputs.hoveredMapIds,
+                );
                 continue;
             }
             const hasNpcs = (state.npcs.length | 0) > 0;
@@ -355,8 +441,8 @@ export class WorkerTickRuntime {
             applyNpcMovementStep(
                 state,
                 this.npcSimPathfinder,
-                safeTicksElapsed,
-                safeClientTicks,
+                inputs.safeTicksElapsed,
+                inputs.safeClientTicks,
                 seqTypeLoader,
                 seqFrameLoader,
             );
@@ -377,7 +463,7 @@ export class WorkerTickRuntime {
                 cycleNow,
                 state,
                 seqFrameLoader,
-                includeTsLocTickPatches: !wasmTick,
+                includeTsLocTickPatches: !wasmTick.isEnabled,
                 useWasmLocStreams: wasmPatchRead.useWasmLocStreams,
                 hasWasmCountsForMap: wasmPatchRead.hasWasmCountsForMap,
                 wasmLocStreamsForMap: wasmPatchRead.streamsForMap,
@@ -387,29 +473,20 @@ export class WorkerTickRuntime {
                 mapId,
                 cameraMapX,
                 cameraMapY,
-                lodDistance: safeLodDistance,
-                hoveredMapIds,
+                lodDistance: inputs.safeLodDistance,
+                hoveredMapIds: inputs.hoveredMapIds,
                 hasNpcs,
                 npcOffset: npcOffset | 0,
                 tickPatchCounts: tickPatchesForMap.streamCounts,
                 tickPatchStreams: tickPatchesForMap.streamsForMap,
             });
         }
-        if (
-            wasmPatchesPacked instanceof Int32Array &&
-            wasmCountsByMapId instanceof Int32Array &&
-            wasmReadOff !== (wasmPatchesPacked.length | 0)
-        ) {
-            throw new Error(
-                `[map-render][tick][cpp-wasm] wasm patch read mismatch ` +
-                    `readOff=${wasmReadOff | 0} packedLen=${wasmPatchesPacked.length | 0}`,
-            );
-        }
+        this.validateWasmPatchRead(wasmReadOff, wasmCountsByMapId, wasmPatchesPacked);
 
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
         return buildFramePacketFromMapEntries({
             frameCount: frameCount | 0,
-            npcRingWriteIndex: newIndexMod | 0,
+            npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,
         });

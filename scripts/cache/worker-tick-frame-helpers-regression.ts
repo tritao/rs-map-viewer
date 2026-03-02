@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 
 import { TICK_PATCH_STREAM_COUNT } from "../../src/runtime/contracts/FramePacket";
+import { applyNpcMovementStep } from "../../src/runtime/sim/NpcSimMovement";
+import type { NpcSimMapState } from "../../src/runtime/sim/NpcSimStateStore";
 import {
-    applyNpcMovementStep,
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
 } from "../../src/worker/runtime/TickPatchStreamsBuilder";
-import type { WorkerNpcSimMapState } from "../../src/worker/runtime/WorkerNpcSimStateStore";
 
 function makeCountsForOneMap(mapId: number): Int32Array {
     const out = new Int32Array(1 + TICK_PATCH_STREAM_COUNT);
@@ -44,7 +44,7 @@ function testReadWasmPatchStreamsForMap(): void {
     );
 }
 
-function makeTestState(): WorkerNpcSimMapState {
+function makeTestState(): NpcSimMapState {
     let serverPathChecks = 0;
     let transformMoves = 0;
     let seqMoves = 0;
