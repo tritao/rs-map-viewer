@@ -9,6 +9,7 @@ import { clamp } from "../../util/MathUtil";
 const routeStrategy = new ExactRouteStrategy();
 
 export type NpcServerMovementLike = {
+    instanceId?: number;
     orderKey?: number;
     level: number;
     spawnX: number;
@@ -38,6 +39,7 @@ export type NpcUpdatePathDelta = Readonly<{
 }>;
 
 export type NpcUpdateDelta = Readonly<{
+    npcInstanceId?: number;
     npcIndex?: number;
     npcOrderKey?: number;
     clearServerPath?: boolean;
@@ -106,10 +108,17 @@ export function applyNpcUpdateDeltas(
     npcs: ReadonlyArray<NpcServerMovementLike>,
     deltas: ReadonlyArray<NpcUpdateDelta>,
     npcIndexByOrderKey?: ReadonlyMap<number, number>,
+    npcIndexByInstanceId?: ReadonlyMap<number, number>,
 ): number {
     let applied = 0;
     for (const delta of deltas) {
-        let index = delta.npcIndex;
+        let index =
+            delta.npcInstanceId !== undefined
+                ? npcIndexByInstanceId?.get(delta.npcInstanceId | 0)
+                : undefined;
+        if (index === undefined) {
+            index = delta.npcIndex;
+        }
         if (index === undefined && delta.npcOrderKey !== undefined) {
             index = npcIndexByOrderKey?.get(delta.npcOrderKey | 0);
         }

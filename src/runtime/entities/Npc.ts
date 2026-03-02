@@ -43,6 +43,7 @@ export class Npc {
         readonly npcType: NpcType,
         readonly idleSeqId: number,
         readonly walkSeqId: number,
+        readonly instanceId?: number,
         readonly orderKey?: number,
     ) {
         this.rotation = DIRECTION_ROTATIONS[npcType.spawnDirection];

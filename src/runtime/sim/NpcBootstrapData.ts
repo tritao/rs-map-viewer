@@ -51,18 +51,50 @@ function createNpcTypeAnimationTable(ordered: ReadonlyArray<NpcData>): NpcTypeAn
     return Array.from(byTypeId.values());
 }
 
+function fnv1a32Update(hash: number, value: number): number {
+    hash ^= value | 0;
+    hash = Math.imul(hash, 0x01000193);
+    return hash | 0;
+}
+
+function buildSyntheticNpcInstanceId(
+    mapId: number,
+    npcTypeId: number,
+    tileX: number,
+    tileY: number,
+    level: number,
+    index: number,
+): number {
+    let hash = 0x811c9dc5 | 0;
+    hash = fnv1a32Update(hash, mapId | 0);
+    hash = fnv1a32Update(hash, npcTypeId | 0);
+    hash = fnv1a32Update(hash, tileX | 0);
+    hash = fnv1a32Update(hash, tileY | 0);
+    hash = fnv1a32Update(hash, level | 0);
+    hash = fnv1a32Update(hash, index | 0);
+    return hash | 0;
+}
+
 export function createNpcBootstrapData(input: NpcBootstrapInput): NpcBootstrapData {
     const ordered = orderByPacketKeys(input.npcsIn, input.npcOrderKeys);
     const spawnEvents = new Array<NpcSpawnEvent>(ordered.length | 0);
     for (let i = 0; i < ordered.length; i++) {
         const npc = ordered[i]!;
+        const mapId = input.mapId | 0;
+        const npcTypeId = npc.id | 0;
+        const tileX = npc.tileX | 0;
+        const tileY = npc.tileY | 0;
+        const level = npc.level | 0;
         spawnEvents[i] = {
             kind: "spawn",
-            mapId: input.mapId | 0,
-            npcTypeId: npc.id | 0,
-            tileX: npc.tileX | 0,
-            tileY: npc.tileY | 0,
-            level: npc.level | 0,
+            mapId,
+            npcInstanceId:
+                npc.orderKey ??
+                buildSyntheticNpcInstanceId(mapId, npcTypeId, tileX, tileY, level, i),
+            npcTypeId,
+            tileX,
+            tileY,
+            level,
             orderKey: npc.orderKey,
         };
     }

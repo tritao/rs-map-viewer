@@ -71,8 +71,10 @@ export function decodeNpcUpdatePacket(input: ByteInput): DecodedNpcUpdatePacket 
             }
             if ((flags & FLAG_HAS_NPC_ORDER_KEY) !== 0) {
                 delta.npcOrderKey = reader.readInt() | 0;
+                delta.npcInstanceId = delta.npcOrderKey | 0;
             }
             if (
+                delta.npcInstanceId === undefined &&
                 delta.npcIndex === undefined &&
                 delta.npcOrderKey === undefined
             ) {
@@ -127,6 +129,7 @@ export function decodeNpcUpdatePacket(input: ByteInput): DecodedNpcUpdatePacket 
                 kind: "update",
                 mapId: mapId | 0,
                 delta,
+                npcInstanceId: delta.npcInstanceId,
             };
             deltaCount = (deltaCount + 1) | 0;
         }
