@@ -265,6 +265,19 @@ export class WorkerTickRuntime {
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
         let applied = 0;
+        if (decoded.version === 2) {
+            for (const [mapId, events] of decoded.lifecycleEventsByMapId.entries()) {
+                applied =
+                    (applied +
+                        (this.npcSimStateStore.applyMapNpcLifecycleEvents(
+                            mapId | 0,
+                            events,
+                            deps,
+                        ) | 0)) |
+                    0;
+            }
+            return applied | 0;
+        }
         for (const [mapId, events] of decoded.updateEventsByMapId.entries()) {
             const state = this.npcSimStateStore.getMap(mapId | 0);
             if (!state) {
