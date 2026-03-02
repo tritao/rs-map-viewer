@@ -48,6 +48,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_reset(const rs::i32 runtimeHandl
     runtime->mapPayload.clear();
     runtime->cache.clear();
     runtime->lastBuiltCommandStream.clear();
+    runtime->lastBuiltCommandStreamFull.clear();
     runtime->lastMissingBlobTriples.clear();
     runtime->payloadGeneration++;
     clearPacketHandlesForRuntime(runtimeHandle);

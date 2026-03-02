@@ -421,7 +421,23 @@ public:
 
             const std::size_t index = static_cast<std::size_t>(indexU16);
             if (index >= out.metadatas_.size()) {
-                return Result<LegacyModelLoader>::err(Status::BadFormat);
+                // TS assigns `metadatas[index] = meta` even when `index` exceeds the initial
+                // `count+100` allocation; JS arrays grow. Mirror that behavior here by resizing.
+                const std::size_t oldCap = out.metadatas_.size();
+                const std::size_t newCap = index + 1;
+                auto rrGrow = out.metadatas_.resize(newCap);
+                if (!rrGrow.isOk()) return Result<LegacyModelLoader>::err(rrGrow.status());
+                rrGrow = out.hasMetadata_.resize(newCap);
+                if (!rrGrow.isOk()) return Result<LegacyModelLoader>::err(rrGrow.status());
+                rrGrow = out.errorStatusById_.resize(newCap);
+                if (!rrGrow.isOk()) return Result<LegacyModelLoader>::err(rrGrow.status());
+                rrGrow = out.hasErrorById_.resize(newCap);
+                if (!rrGrow.isOk()) return Result<LegacyModelLoader>::err(rrGrow.status());
+                for (std::size_t j = oldCap; j < newCap; j++) {
+                    out.hasMetadata_[j] = 0;
+                    out.hasErrorById_[j] = 0;
+                    out.errorStatusById_[j] = Status::NotFound;
+                }
             }
             LegacyModelMetadata meta{};
             meta.vertexCount = static_cast<i32>(vertexCountU16);

@@ -548,7 +548,7 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
     varbitCache.reserve(64);
     std::unordered_map<std::uint64_t, rs::i32> npcTupleOccurrences{};
     std::vector<rs::i32> packedTextureIds{};
-    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &packedTextureIds);
+    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &packedTextureIds);
 
     const rs::i32 mapBaseX = mapX * kMapSquareSize;
     const rs::i32 mapBaseY = mapY * kMapSquareSize;

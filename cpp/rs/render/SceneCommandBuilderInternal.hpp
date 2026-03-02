@@ -492,6 +492,7 @@ Status appendLocPlacementGeometry(
     bool applyContour,
     Span<const i32> modelIds,
     bool transparentOnly,
+    SceneCommandStream* debugOut,
     Vec<u8>* outVertices,
     Vec<i32>* outIndices,
     i32* outElements,

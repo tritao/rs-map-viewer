@@ -11,6 +11,10 @@ if (runtime->cache.unitsTileHeightBasis <= 0) {
         0);
 }
 runtime->lastBuiltCommandStream.clear();
+// Keep the last successful full build intact across plan-only debug builds.
+if (buildPayload) {
+    runtime->lastBuiltCommandStreamFull.clear();
+}
 runtime->debugLastBuildFailureStage = kBuildFailNone;
 runtime->debugLastBuildFailureStatus = 0;
 runtime->debugLastBuildFailureDetail0 = 0;
@@ -126,6 +130,23 @@ if (cacheSeedStatus == RS_MAP_RENDER_STATUS_OK) {
         static_cast<rs::i32>(nativeBuildResult));
 	}
 	runtime->lastBuiltCommandStream = commandStream;
+	if (buildPayload) {
+	    runtime->lastBuiltCommandStreamFull = commandStream;
+	}
+
+	// If any resource lookups recorded missing blob keys (legacy model/seq files, type-entry bytes, etc),
+	// treat this as "not found" so the worker/parity loop can upload the missing blobs and retry.
+	// Otherwise we'll silently build an incomplete scene (skipping mergeNormals/geometry) and diverge
+	// from the TS path that has the bytes available.
+	if (!runtime->lastMissingBlobTriples.empty()) {
+	    runtime->lastBuiltCommandStream.clear();
+	    return recordBuildFailure(
+	        runtime,
+	        kBuildFailCommandStream,
+	        RS_MAP_RENDER_STATUS_NOT_FOUND,
+	        static_cast<rs::i32>(runtime->lastMissingBlobTriples.size() / 3U),
+	        0);
+	}
 
 	// If loc-animation tick init data was captured, register per-map tick state directly in the
 	// runtime so TS does not need to pre-pack tick state fields.
@@ -429,7 +450,7 @@ if ((loadNpcs | 0) != 0) {
 // uploaded SD texture id list (domain=109).
 {
     std::vector<rs::i32> textureIds{};
-    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
+    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
     runtime->mapPayload.usedTextureIds.clear();
     if (!textureIds.empty() && !runtime->mapPayload.vertices.empty()) {
         std::vector<rs::u8> seen(textureIds.size(), 0);

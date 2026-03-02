@@ -59,6 +59,10 @@ function getRuntimeDebugDecodeLocTypeExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_decode_loc_type;
 }
 
+function getRuntimeDebugDecodeSeqTypeExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_decode_seq_type;
+}
+
 function getRuntimeDebugGetLastTerrainTileFaceCountsMetaExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_last_terrain_tile_face_counts_meta;
 }
@@ -149,6 +153,10 @@ function getRuntimeDebugGetLocClassicAnimFrameFacesDigestExport(backendModule) {
 
 function getRuntimeDebugGetModelVerticesDigestExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_model_vertices_digest;
+}
+
+function getRuntimeDebugGetLastLegacyModelLoadExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_legacy_model_load;
 }
 
 function getRuntimeDebugGetLocVariantModelVerticesDigestExport(backendModule) {
@@ -704,6 +712,37 @@ export function runtimeDebugDecodeLocTypeWithWasm(backendModule, runtimeHandle, 
             resolvedOffsetY: a[53] | 0,
             seqId: a[54] | 0,
             resolvedSeqId: a[55] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+export function runtimeDebugDecodeSeqTypeWithWasm(backendModule, runtimeHandle, seqTypeId) {
+    const decode = getRuntimeDebugDecodeSeqTypeExport(backendModule);
+    if (typeof decode !== "function") {
+        return undefined;
+    }
+    // Keep in sync with RS_MAP_RENDER_DEBUG_SEQ_TYPE_FIELDS in cpp/tools/MapRenderRuntimeDebugExports.inl
+    const outPtr = mallocI32(backendModule, 8);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = decode(runtimeHandle | 0, seqTypeId | 0, outPtr, 8) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const a = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 8);
+        return {
+            id: a[0] | 0,
+            animMayaId: a[1] | 0,
+            animMayaStart: a[2] | 0,
+            animMayaEnd: a[3] | 0,
+            frameCount: a[4] | 0,
+            frameIdsLen: a[5] | 0,
+            frameLengthsLen: a[6] | 0,
+            firstFrameIdLow16: a[7] | 0,
         };
     } finally {
         backendModule._free(outPtr);
@@ -1273,6 +1312,29 @@ export function runtimeDebugGetModelVerticesDigestWithWasm(backendModule, runtim
             hash: a[3] | 0,
             textureFaceCount: a[4] | 0,
         };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+export function runtimeDebugGetLastLegacyModelLoadWithWasm(backendModule, runtimeHandle) {
+    const getLast = getRuntimeDebugGetLastLegacyModelLoadExport(backendModule);
+    if (typeof getLast !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, 3);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = getLast(runtimeHandle | 0, outPtr, 3) | 0;
+        if (status !== RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const id = backendModule.HEAP32[outPtr >> 2] | 0;
+        const st = backendModule.HEAP32[(outPtr >> 2) + 1] | 0;
+        const missingFile = backendModule.HEAP32[(outPtr >> 2) + 2] | 0;
+        return { id, status: st, missingFile };
     } finally {
         backendModule._free(outPtr);
     }

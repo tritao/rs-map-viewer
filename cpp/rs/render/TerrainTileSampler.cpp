@@ -10,6 +10,9 @@ namespace rs {
 
 namespace {
 
+// TS createSdTexturePacking slices to 2047 entries (indices 0..2046).
+static constexpr i32 kSdTexturePackLimit = 2047;
+
 static i32 findTextureIndex(Span<const i32> textureIds, i32 textureId) noexcept {
     for (std::size_t i = 0; i < textureIds.size(); i++) {
         if (textureIds[i] == textureId) {
@@ -19,11 +22,22 @@ static i32 findTextureIndex(Span<const i32> textureIds, i32 textureId) noexcept 
     return -1;
 }
 
+static bool isTextureSd(Span<const i32> textureIds, i32 textureId) noexcept {
+    if (textureId < 0) {
+        return false;
+    }
+    return findTextureIndex(textureIds, textureId) != -1;
+}
+
 static i32 mapTextureIdToPackedIndex0Based(Span<const i32> textureIds, i32 textureId) noexcept {
     if (textureId < 0) {
         return -1;
     }
-    return findTextureIndex(textureIds, textureId);
+    const i32 idx = findTextureIndex(textureIds, textureId);
+    if (idx < 0) {
+        return -1;
+    }
+    return idx < kSdTexturePackLimit ? idx : -1;
 }
 
 } // namespace
@@ -87,9 +101,8 @@ Status sampleTerrainTile(
                 i32* outTextureSize) {
                 auto isSdTextureCandidate = [&](i32 textureId) -> bool {
                     // TS uses `textureLoader.isSd(textureId)` here. In the wasm runtime we only
-                    // receive the packed texture-id list, which is derived from SD textures.
-                    return textureId != -1 &&
-                           mapTextureIdToPackedIndex0Based(textureIds, textureId) != -1;
+                    // receive the SD texture-id list; packed index truncation is applied separately.
+                    return isTextureSd(textureIds, textureId);
                 };
 
                 // Match TS `fillOverlaySample`: prefer primary texture when valid, otherwise

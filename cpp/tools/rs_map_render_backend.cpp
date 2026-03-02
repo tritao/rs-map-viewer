@@ -522,6 +522,12 @@ struct MapRenderRuntimeState {
     rs::tooling::MapRenderLoadedPayloadState mapPayload;
     MapRenderRuntimeCacheState cache;
     MapRenderCachedCommandStream lastBuiltCommandStream;
+    // Preserve the last *full geometry* build even when debug plan-only builds are run.
+    // The parity pipeline calls `rs_map_render_runtime_debug_build_map_plan_from_cache`, which
+    // overwrites `lastBuiltCommandStream` with a plan-only build (no geometry emit).
+    // Some debug exports (loc merge emit entries, normals trace, etc.) are only meaningful for
+    // the full build; store it separately to avoid "empty debug" false negatives.
+    MapRenderCachedCommandStream lastBuiltCommandStreamFull;
     // Stable: blob keys missing during the last build attempt (packed [domain,group,file] triples).
     // Used by JS/TS to drive on-demand uploads without a separate type-demand pass.
     std::vector<rs::i32> lastMissingBlobTriples;
@@ -754,6 +760,18 @@ static void collectBlobDomainGroup0IdsSortedUnique(
     }
     std::sort(outIds->begin(), outIds->end());
     outIds->erase(std::unique(outIds->begin(), outIds->end()), outIds->end());
+}
+
+static void collectBlobDomainTypeListPreferPayloadOrKeys(
+    const MapRenderRuntimeState* runtime,
+    const rs::i32 domain,
+    std::vector<rs::i32>* outIds) {
+    if (!runtime || !outIds) {
+        return;
+    }
+    // (domain, group=0, file=id) presence keys (orderless). For dat/dat2 caches texture ids are
+    // contiguous, so sorting matches the TS packing order.
+    collectBlobDomainGroup0IdsSortedUnique(runtime, domain, outIds);
 }
 
 static MapRenderRuntimeState* getMapRenderRuntime(const rs::i32 handle) {
@@ -1614,8 +1632,8 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     // We collect keys directly from the blob-store and keep the SceneCommandBuilder API minimal.
     std::vector<rs::i32> textureTransparentIds{};
     std::vector<rs::i32> textureIds{};
-    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT, &textureTransparentIds);
-    collectBlobDomainGroup0IdsSortedUnique(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
+    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT, &textureTransparentIds);
+    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
 
     rs::SceneCommandBuildInput input{};
     input.baseX = baseX;

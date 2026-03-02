@@ -1007,9 +1007,7 @@ static void computeModelFaceUvType0(
     const double uDenom = static_cast<double>(uBasisX) * static_cast<double>(edgeMx) +
         static_cast<double>(uBasisY) * static_cast<double>(edgeMy) +
         static_cast<double>(uBasisZ) * static_cast<double>(edgeMz);
-    if (uDenom == 0.0) {
-        return;
-    }
+    // TS parity: do not early-return on denom==0 (JS produces +/-Inf and NaNs here).
     const double invUDenom = 1.0 / uDenom;
 
     double u0 = (static_cast<double>(uBasisX) * static_cast<double>(v0x) +
@@ -1028,9 +1026,7 @@ static void computeModelFaceUvType0(
     const double vDenom = static_cast<double>(vBasisX) * static_cast<double>(edgeNx) +
         static_cast<double>(vBasisY) * static_cast<double>(edgeNy) +
         static_cast<double>(vBasisZ) * static_cast<double>(edgeNz);
-    if (vDenom == 0.0) {
-        return;
-    }
+    // TS parity: do not early-return on denom==0 (JS produces +/-Inf and NaNs here).
     const double invVDenom = 1.0 / vDenom;
 
     const double v0 = (static_cast<double>(vBasisX) * static_cast<double>(v0x) +
@@ -1706,6 +1702,8 @@ static bool isTextureTransparent(
     return findTypeBlobIndex(textureTransparentIds, textureId) >= 0;
 }
 
+// TS createSdTexturePacking slices to 2047 entries, so packed indices are 0..2046.
+// Keep this aligned to TS so "packable" textures match exactly across caches with >2k textures.
 static constexpr i32 RS_SD_TEXTURE_PACK_LIMIT = 2047;
 
 static bool isTextureSd(
@@ -1725,8 +1723,8 @@ i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcep
     if (index < 0) {
         return -1;
     }
-    // Packed texture indices match TS: 0-based index into the *truncated* SD texture list (<= 2047 ids).
-    // Texture ids beyond the pack limit still count as "textured" for transparency decisions, but pack as -1.
+    // Packed texture indices match TS: 0-based index into the cache's SD texture list, truncated to 2048.
+    // Indices beyond the pack limit must be treated as "untextured" so vertex packing/shaders stay consistent.
     return index < RS_SD_TEXTURE_PACK_LIMIT ? index : -1;
 }
 
@@ -2765,12 +2763,6 @@ static Status computeLitModelHashForGrouping(
     for (i32 fi = 0; fi < model.faceCount; fi++) {
         i32 faceType = modelFaceRenderType(model, fi);
         const i32 rawTextureId = modelFaceRawTextureId(model, fi);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-        if (rawAlphaSigned == -2) {
-            faceType = 3;
-        } else if (rawAlphaSigned == -1) {
-            faceType = 2;
-        }
 
         // TS parity: "textured" depends on SD-availability filtering (see filterSdTextureId()).
         const i32 textureId = filterSdTextureId(input, rawTextureId);
@@ -2905,12 +2897,6 @@ Status computeLitModelHashForGroupingWithLightingState(
     for (i32 fi = 0; fi < model.faceCount; fi++) {
         i32 faceType = modelFaceRenderType(model, fi);
         const i32 rawTextureId = modelFaceRawTextureId(model, fi);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-        if (rawAlphaSigned == -2) {
-            faceType = 3;
-        } else if (rawAlphaSigned == -1) {
-            faceType = 2;
-        }
 
         const i32 textureId = filterSdTextureId(input, rawTextureId);
         const bool hasTexture = isTextureSd(input.textureIds, textureId);
@@ -3139,42 +3125,34 @@ Status tryDecodeModelFaceStatsFromBlob(
         }
     }
 
-    for (i32 i = 0; i < model.faceCount; i++) {
-        i32 faceType = modelFaceRenderType(model, i);
-        i32 textureId = modelFaceRawTextureId(model, i);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, i);
-        if (rawAlphaSigned == -2) {
-            faceType = 3;
-        } else if (rawAlphaSigned == -1) {
-            faceType = 2;
+    // TS parity: match src/runtime/build/SceneBuffer.ts getModelFaces() + isModelFaceTransparentById().
+    for (i32 fi = 0; fi < model.faceCount; fi++) {
+        if (fi < 0 ||
+            fi >= static_cast<i32>(model.faceColors.size())) {
+            // Defensive: malformed model.
+            continue;
+        }
+        const i32 hslC = model.faceColors[static_cast<std::size_t>(fi)];
+        if (hslC == -2) {
+            continue;
         }
 
-        const bool hasTexture = isTextureSd(input.textureIds, textureId);
-        const bool textureAlpha =
-            hasTexture &&
-            isTextureTransparent(input.textureTransparentIds, textureId);
-
+        const i32 textureId = modelFaceRawTextureId(model, fi);
         i32 alpha = 0xff;
-        if (!hasTexture &&
+        if (textureId == -1 &&
             model.hasFaceAlphas &&
-            i < static_cast<i32>(model.faceAlphas.size())) {
-            alpha = 0xff - (static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(i)]) & 0xff);
+            fi >= 0 &&
+            fi < static_cast<i32>(model.faceAlphas.size())) {
+            alpha = 0xff - (static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]) & 0xff);
         }
         if (alpha == 0 || alpha == 1) {
             continue;
         }
 
-        if (!hasTexture) {
-            if (faceType != 0 && faceType != 1 && faceType != 3) {
-                continue;
-            }
-        } else {
-            if (faceType != 0 && faceType != 1) {
-                continue;
-            }
-        }
-
-        if (alpha < 0xff || textureAlpha) {
+        const bool isTransparent =
+            (alpha < 0xff) ||
+            (textureId != -1 && isTextureTransparent(input.textureTransparentIds, textureId));
+        if (isTransparent) {
             stats.alphaElements += 3;
         } else {
             stats.opaqueElements += 3;
@@ -3246,41 +3224,32 @@ Status tryDecodeObjModelFaceStatsFromBlob(
     applyObjModelMutations(&model, objType);
 
     ModelFaceStats stats{};
-    for (i32 i = 0; i < model.faceCount; i++) {
-        i32 renderType = modelFaceRenderType(model, i);
-        i32 textureId = modelFaceRawTextureId(model, i);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, i);
-        if (rawAlphaSigned == -2) {
-            renderType = 3;
-        } else if (rawAlphaSigned == -1) {
-            renderType = 2;
+    // TS parity: match src/runtime/build/SceneBuffer.ts getModelFaces() + isModelFaceTransparentById().
+    for (i32 fi = 0; fi < model.faceCount; fi++) {
+        if (fi < 0 ||
+            fi >= static_cast<i32>(model.faceColors.size())) {
+            continue;
+        }
+        const i32 hslC = model.faceColors[static_cast<std::size_t>(fi)];
+        if (hslC == -2) {
+            continue;
         }
 
-        const bool hasTexture = isTextureSd(input.textureIds, textureId);
-
+        const i32 textureId = modelFaceRawTextureId(model, fi);
         i32 alpha = 0xff;
-        if (model.hasFaceAlphas &&
-            !hasTexture &&
-            i < static_cast<i32>(model.faceAlphas.size())) {
-            alpha = 0xff - (static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(i)]) & 0xff);
+        if (textureId == -1 &&
+            model.hasFaceAlphas &&
+            fi < static_cast<i32>(model.faceAlphas.size())) {
+            alpha = 0xff - (static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]) & 0xff);
         }
         if (alpha == 0 || alpha == 1) {
             continue;
         }
 
-        if (!hasTexture) {
-            if (renderType != 0 && renderType != 1 && renderType != 3) {
-                continue;
-            }
-        } else {
-            if (renderType != 0 && renderType != 1) {
-                continue;
-            }
-        }
-
-        if (alpha < 0xff ||
-            (hasTexture &&
-             isTextureTransparent(input.textureTransparentIds, textureId))) {
+        const bool isTransparent =
+            (alpha < 0xff) ||
+            (textureId != -1 && isTextureTransparent(input.textureTransparentIds, textureId));
+        if (isTransparent) {
             stats.alphaElements += 3;
         } else {
             stats.opaqueElements += 3;
@@ -3453,6 +3422,7 @@ Status appendLocPlacementGeometry(
     bool applyContour,
     Span<const i32> modelIds,
     bool transparentOnly,
+    SceneCommandStream* debugOut,
     Vec<u8>* outVertices,
     Vec<i32>* outIndices,
     i32* outElements,
@@ -3693,14 +3663,99 @@ Status appendLocPlacementGeometry(
                     }
                     modelVerticesY = &model.verticesY;
                 } else {
+                auto maybeRecordWorldHeightProbe = [&](i32 level,
+                                                       i32 worldX,
+                                                       i32 worldZ,
+                                                       i32 outX,
+                                                       i32 outZ,
+                                                       i32 baseY) noexcept {
+                    if (!debugOut || debugOut->debugWorldHeightProbeHit != 0) {
+                        return;
+                    }
+                    if (debugOut->debugWorldHeightProbeLevel < 0) {
+                        return;
+                    }
+                    if (level != debugOut->debugWorldHeightProbeLevel) {
+                        return;
+                    }
+                    const i32 probeX = debugOut->debugWorldHeightProbeWorldX;
+                    const i32 probeZ = debugOut->debugWorldHeightProbeWorldZ;
+                    const bool firstSampleMode = probeX == -1 && probeZ == -1;
+                    if (!firstSampleMode) {
+                        const bool matchSample = worldX == probeX && worldZ == probeZ;
+                        const bool matchOutput = outX == probeX && outZ == probeZ;
+                        if (!matchSample && !matchOutput) {
+                            return;
+                        }
+                    }
+
+                    // Mirror sampleSceneHeightAtWorld() math and record the intermediate values.
+                    const i32 tx = worldX >> 7;
+                    const i32 tz = worldZ >> 7;
+                    const i32 rx = worldX & 0x7f;
+                    const i32 rz = worldZ & 0x7f;
+                    const auto within = [&](i32 lvl, i32 x, i32 y) noexcept {
+                        return lvl >= 0 &&
+                               lvl < scene.levels &&
+                               x >= 0 &&
+                               x <= scene.sizeX &&
+                               y >= 0 &&
+                               y <= scene.sizeY;
+                    };
+                    bool okSample =
+                        within(level, tx, tz) &&
+                        within(level, tx + 1, tz) &&
+                        within(level, tx, tz + 1) &&
+                        within(level, tx + 1, tz + 1);
+
+                    debugOut->debugWorldHeightProbeHit = okSample ? 1 : -1;
+                    debugOut->debugWorldHeightProbeLevel = level;
+                    debugOut->debugWorldHeightProbeWorldX = worldX;
+                    debugOut->debugWorldHeightProbeWorldZ = worldZ;
+
+                    debugOut->debugWorldHeightProbePacked[0] = okSample ? 1 : 0;
+                    debugOut->debugWorldHeightProbePacked[1] = tx;
+                    debugOut->debugWorldHeightProbePacked[2] = tz;
+                    debugOut->debugWorldHeightProbePacked[3] = rx;
+                    debugOut->debugWorldHeightProbePacked[4] = rz;
+                    if (!okSample) {
+                        return;
+                    }
+                    const i32 h00 = scene.height(level, tx, tz);
+                    const i32 h10 = scene.height(level, tx + 1, tz);
+                    const i32 h01 = scene.height(level, tx, tz + 1);
+                    const i32 h11 = scene.height(level, tx + 1, tz + 1);
+                    const i32 h0Numerator = h00 * (128 - rx) + h10 * rx;
+                    const i32 h0 = h0Numerator >> 7;
+                    const i32 h1Numerator = h01 * (128 - rx) + h11 * rx;
+                    const i32 h1 = h1Numerator >> 7;
+                    const i32 hNumerator = h0 * (128 - rz) + h1 * rz;
+                    const i32 h = hNumerator >> 7;
+
+                    debugOut->debugWorldHeightProbePacked[5] = h00;
+                    debugOut->debugWorldHeightProbePacked[6] = h10;
+                    debugOut->debugWorldHeightProbePacked[7] = h01;
+                    debugOut->debugWorldHeightProbePacked[8] = h11;
+                    debugOut->debugWorldHeightProbePacked[9] = h0Numerator;
+                    debugOut->debugWorldHeightProbePacked[10] = h0;
+                    debugOut->debugWorldHeightProbePacked[11] = h1Numerator;
+                    debugOut->debugWorldHeightProbePacked[12] = h1;
+                    debugOut->debugWorldHeightProbePacked[13] = hNumerator;
+                    debugOut->debugWorldHeightProbePacked[14] = h;
+                    debugOut->debugWorldHeightProbePacked[15] = baseY;
+                };
+
                 for (std::size_t vi = 0; vi < modelVerticesY->size(); vi++) {
                     const i32 baseY = model.verticesY[vi];
                     const i32 worldX = contourX + model.verticesX[vi];
                     const i32 worldZ = contourZ + model.verticesZ[vi];
+                    const i32 outX = renderX + model.verticesX[vi];
+                    const i32 outZ = renderZ + model.verticesZ[vi];
 
                     i32 h = 0;
                     i32 hAbove = 0;
                     const bool hasH = sampleSceneHeightAtWorld(scene, placement.level, worldX, worldZ, &h);
+                    maybeRecordWorldHeightProbe(placement.level, worldX, worldZ, outX, outZ, baseY);
                     const bool hasHAbove = sampleSceneHeightAtWorld(scene, placement.level + 1, worldX, worldZ, &hAbove);
 
                     i32 outY = baseY;
@@ -3713,7 +3768,17 @@ Status appendLocPlacementGeometry(
                             // TS parity: JS `baseY << 16` is a wrapping 32-bit shift; avoid UB on signed shift in C++.
                             const i32 yRatio = static_cast<i32>(static_cast<u32>(baseY) << 16) / minY;
                             if (yRatio < contourParam && hasH) {
-                                outY = baseY + ((h - sceneHeight) * (contourParam - yRatio)) / contourParam;
+                                // TS parity:
+                                //   contourVerticesY[i] = toI32(baseY + numer/param)
+                                // and the final ToInt32 truncates toward zero *after* adding the fractional part.
+                                // Doing `baseY + (numer/param)` in integer math truncates too early for negative
+                                // baseY, causing off-by-one (e.g. -71 + 0.68 -> -70 in TS but -71 here).
+                                const i64 numer =
+                                    static_cast<i64>(h - sceneHeight) *
+                                    static_cast<i64>(contourParam - yRatio);
+                                const i64 totalNumer =
+                                    static_cast<i64>(baseY) * static_cast<i64>(contourParam) + numer;
+                                outY = static_cast<i32>(totalNumer / static_cast<i64>(contourParam));
                             }
                         }
                     } else if (contourType == 4) {
@@ -3741,24 +3806,26 @@ Status appendLocPlacementGeometry(
         if (!ok(ls)) {
             continue;
         }
-        const i32 lightIntensity = modelLightIntensity(contrast);
-        ModelTextureScales texScales(alloc);
-        const Status tss = computeModelTextureScales(model, &texScales, alloc);
-        if (!ok(tss)) {
-            continue;
-        }
+	        const i32 lightIntensity = modelLightIntensity(contrast);
+	        ModelTextureScales texScales(alloc);
+	        const Status tss = computeModelTextureScales(model, &texScales, alloc);
+	        // UV mapping is best-effort; if scale computation fails, fall back to type0 UVs only.
+	        if (!ok(tss)) {
+	            texScales.ready = false;
+	        }
 
-        for (i32 fi = 0; fi < model.faceCount; fi++) {
-            i32 faceType = modelFaceRenderType(model, fi);
-            i32 textureId = modelFaceRawTextureId(model, fi);
-            const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-            if (rawAlphaSigned == -2) {
-            faceType = 3;
-        } else if (rawAlphaSigned == -1) {
-            faceType = 2;
-        }
+	        for (i32 fi = 0; fi < model.faceCount; fi++) {
+	            i32 faceType = modelFaceRenderType(model, fi);
+	            i32 textureId = modelFaceRawTextureId(model, fi);
+	            const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
+	            // TS parity: ModelData.light() treats faceAlphas -2/-1 as renderType overrides.
+	            if (rawAlphaSigned == -2) {
+	                faceType = 3;
+	            } else if (rawAlphaSigned == -1) {
+	                faceType = 2;
+	            }
 
-            const bool hasTexture = isTextureSd(input.textureIds, textureId);
+	            const bool hasTexture = isTextureSd(input.textureIds, textureId);
             i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
             const bool textureAlpha =
                 hasTexture &&
@@ -4110,11 +4177,79 @@ Status appendLocPlacementGeometry(
             }
 
             const i32 baseVertex = static_cast<i32>(outVertices->size() / 16);
+
+            // Debug-only: allow probing by output vertex X/Z to capture the underlying model vertex,
+            // whether contouring was applied, and the sampled height at the contour sample coordinate.
+            auto maybeRecordVertexProbe = [&](i32 outX, i32 outZ, i32 vertexIndex) noexcept {
+                if (!debugOut) {
+                    return;
+                }
+                // Allow the vertex-probe (marker=2) to overwrite a prior height-probe (marker=1),
+                // otherwise the contour sampling probe will always win and we can't debug the final
+                // vertex packing state.
+                if (debugOut->debugWorldHeightProbeHit == 2) {
+                    return;
+                }
+                if (debugOut->debugWorldHeightProbeLevel < 0 ||
+                    placement.level != debugOut->debugWorldHeightProbeLevel) {
+                    return;
+                }
+                if (debugOut->debugWorldHeightProbeWorldX < 0 ||
+                    debugOut->debugWorldHeightProbeWorldZ < 0) {
+                    return;
+                }
+                if (outX != debugOut->debugWorldHeightProbeWorldX ||
+                    outZ != debugOut->debugWorldHeightProbeWorldZ) {
+                    return;
+                }
+                if (vertexIndex < 0 ||
+                    vertexIndex >= static_cast<i32>(model.verticesY.size()) ||
+                    vertexIndex >= static_cast<i32>(model.verticesX.size()) ||
+                    vertexIndex >= static_cast<i32>(model.verticesZ.size()) ||
+                    vertexIndex >= static_cast<i32>(modelVerticesY->size())) {
+                    return;
+                }
+
+                const i32 baseY = model.verticesY[static_cast<std::size_t>(vertexIndex)];
+                const i32 usedY = (*modelVerticesY)[static_cast<std::size_t>(vertexIndex)];
+                const i32 outY = sceneHeight + usedY;
+
+                const i32 sampleX = contourX + model.verticesX[static_cast<std::size_t>(vertexIndex)];
+                const i32 sampleZ = contourZ + model.verticesZ[static_cast<std::size_t>(vertexIndex)];
+                i32 sampledH = 0;
+                const bool okH = sampleSceneHeightAtWorld(scene, placement.level, sampleX, sampleZ, &sampledH);
+
+                debugOut->debugWorldHeightProbeHit = 2; // "vertex probe hit"
+                debugOut->debugWorldHeightProbeLevel = placement.level;
+                debugOut->debugWorldHeightProbeWorldX = outX;
+                debugOut->debugWorldHeightProbeWorldZ = outZ;
+
+                debugOut->debugWorldHeightProbePacked[0] = 2;
+                debugOut->debugWorldHeightProbePacked[1] = vertexIndex;
+                debugOut->debugWorldHeightProbePacked[2] = model.verticesX[static_cast<std::size_t>(vertexIndex)];
+                debugOut->debugWorldHeightProbePacked[3] = baseY;
+                debugOut->debugWorldHeightProbePacked[4] = model.verticesZ[static_cast<std::size_t>(vertexIndex)];
+                debugOut->debugWorldHeightProbePacked[5] = usedY;
+                debugOut->debugWorldHeightProbePacked[6] = sceneHeight;
+                debugOut->debugWorldHeightProbePacked[7] = outY;
+                debugOut->debugWorldHeightProbePacked[8] = contourX;
+                debugOut->debugWorldHeightProbePacked[9] = contourZ;
+                debugOut->debugWorldHeightProbePacked[10] = sampleX;
+                debugOut->debugWorldHeightProbePacked[11] = sampleZ;
+                debugOut->debugWorldHeightProbePacked[12] = okH ? 1 : 0;
+                debugOut->debugWorldHeightProbePacked[13] = sampledH;
+                debugOut->debugWorldHeightProbePacked[14] = modelIds.empty() ? -1 : modelIds[0];
+                debugOut->debugWorldHeightProbePacked[15] = (modelVerticesY != &model.verticesY) ? 1 : 0;
+            };
+
+            const i32 outXa = renderX + model.verticesX[static_cast<std::size_t>(ia)];
+            const i32 outZa = renderZ + model.verticesZ[static_cast<std::size_t>(ia)];
+            maybeRecordVertexProbe(outXa, outZa, ia);
             Status vs = appendPackedVertex(
                 outVertices,
-                renderX + model.verticesX[static_cast<std::size_t>(ia)],
+                outXa,
                 sceneHeight + (*modelVerticesY)[static_cast<std::size_t>(ia)],
-                renderZ + model.verticesZ[static_cast<std::size_t>(ia)],
+                outZa,
                 hslA,
                 alpha,
                 u0,
@@ -4122,11 +4257,14 @@ Status appendLocPlacementGeometry(
                 priority + 1,
                 packedTextureId);
             if (!ok(vs)) return vs;
+            const i32 outXb = renderX + model.verticesX[static_cast<std::size_t>(ib)];
+            const i32 outZb = renderZ + model.verticesZ[static_cast<std::size_t>(ib)];
+            maybeRecordVertexProbe(outXb, outZb, ib);
             vs = appendPackedVertex(
                 outVertices,
-                renderX + model.verticesX[static_cast<std::size_t>(ib)],
+                outXb,
                 sceneHeight + (*modelVerticesY)[static_cast<std::size_t>(ib)],
-                renderZ + model.verticesZ[static_cast<std::size_t>(ib)],
+                outZb,
                 hslB,
                 alpha,
                 u1,
@@ -4134,11 +4272,14 @@ Status appendLocPlacementGeometry(
                 priority + 1,
                 packedTextureId);
             if (!ok(vs)) return vs;
+            const i32 outXc = renderX + model.verticesX[static_cast<std::size_t>(ic)];
+            const i32 outZc = renderZ + model.verticesZ[static_cast<std::size_t>(ic)];
+            maybeRecordVertexProbe(outXc, outZc, ic);
             vs = appendPackedVertex(
                 outVertices,
-                renderX + model.verticesX[static_cast<std::size_t>(ic)],
+                outXc,
                 sceneHeight + (*modelVerticesY)[static_cast<std::size_t>(ic)],
-                renderZ + model.verticesZ[static_cast<std::size_t>(ic)],
+                outZc,
                 hslC,
                 alpha,
                 u2,
@@ -4409,7 +4550,13 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
                     // TS parity: JS `baseY << 16` is a wrapping 32-bit shift; avoid UB on signed shift in C++.
                     const i32 yRatio = static_cast<i32>(static_cast<u32>(baseY) << 16) / minY;
                     if (yRatio < contourParam && hasH) {
-                        outY = baseY + ((h - sceneHeight) * (contourParam - yRatio)) / contourParam;
+                        // See contourType==2 comment above (must truncate after the add, not before).
+                        const i64 numer =
+                            static_cast<i64>(h - sceneHeight) *
+                            static_cast<i64>(contourParam - yRatio);
+                        const i64 totalNumer =
+                            static_cast<i64>(baseY) * static_cast<i64>(contourParam) + numer;
+                        outY = static_cast<i32>(totalNumer / static_cast<i64>(contourParam));
                     }
                 }
             } else if (contourType == 4) {
@@ -4430,17 +4577,25 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
         }
     }
 
-    for (i32 fi = 0; fi < model.faceCount; fi++) {
-        i32 faceType = modelFaceRenderType(model, fi);
-        i32 textureId = modelFaceRawTextureId(model, fi);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-        if (rawAlphaSigned == -2) {
-            faceType = 3;
-        } else if (rawAlphaSigned == -1) {
-            faceType = 2;
-        }
+    ModelTextureScales texScales(alloc);
+    const Status tss = computeModelTextureScales(model, &texScales, alloc);
+    // UV mapping is best-effort; if scale computation fails, fall back to type0 UVs only.
+    if (!ok(tss)) {
+        texScales.ready = false;
+    }
 
-        const bool hasTexture = isTextureSd(input.textureIds, textureId);
+	    for (i32 fi = 0; fi < model.faceCount; fi++) {
+	        i32 faceType = modelFaceRenderType(model, fi);
+	        i32 textureId = modelFaceRawTextureId(model, fi);
+	        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
+	        // TS parity: ModelData.light() treats faceAlphas -2/-1 as renderType overrides.
+	        if (rawAlphaSigned == -2) {
+	            faceType = 3;
+	        } else if (rawAlphaSigned == -1) {
+	            faceType = 2;
+	        }
+
+	        const bool hasTexture = isTextureSd(input.textureIds, textureId);
         i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
         const bool textureAlpha =
             hasTexture &&
@@ -4551,6 +4706,7 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
                         static_cast<i32>(model.textureRenderTypes[static_cast<std::size_t>(tc)]) & 0xff;
                 }
             }
+
             if (textureRenderType == 0) {
                 computeModelFaceUvType0(
                     model,
@@ -4562,6 +4718,230 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
                     &v1,
                     &u2,
                     &v2);
+            } else if (texScales.ready && texCoord != -1) {
+                const i32 tc = texCoord & 0xff;
+                if (tc >= 0 && tc < model.textureFaceCount) {
+                    const std::size_t sti = static_cast<std::size_t>(tc);
+                    const i32 centerX = texScales.centerX[sti];
+                    const i32 centerY = texScales.centerY[sti];
+                    const i32 centerZ = texScales.centerZ[sti];
+                    const float* transform = &texScales.matrices9[sti * 9];
+                    const i32 direction = static_cast<i32>(model.textureDirection[sti]);
+                    const float speed = static_cast<float>(model.textureSpeed[sti]) / 256.0f;
+                    if (textureRenderType == 1) {
+                        const float scaleZ =
+                            static_cast<float>(model.textureScaleZ[sti]) / 1024.0f;
+                        computeCylindricalUv(
+                            model.verticesX[static_cast<std::size_t>(ia)],
+                            model.verticesY[static_cast<std::size_t>(ia)],
+                            model.verticesZ[static_cast<std::size_t>(ia)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            transform,
+                            scaleZ,
+                            direction,
+                            speed,
+                            &u0,
+                            &v0);
+                        computeCylindricalUv(
+                            model.verticesX[static_cast<std::size_t>(ib)],
+                            model.verticesY[static_cast<std::size_t>(ib)],
+                            model.verticesZ[static_cast<std::size_t>(ib)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            transform,
+                            scaleZ,
+                            direction,
+                            speed,
+                            &u1,
+                            &v1);
+                        computeCylindricalUv(
+                            model.verticesX[static_cast<std::size_t>(ic)],
+                            model.verticesY[static_cast<std::size_t>(ic)],
+                            model.verticesZ[static_cast<std::size_t>(ic)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            transform,
+                            scaleZ,
+                            direction,
+                            speed,
+                            &u2,
+                            &v2);
+                        const float scaleZHalf = scaleZ / 2.0f;
+                        if ((direction & 0x1) == 0) {
+                            if (u1 - u0 > scaleZHalf) u1 -= scaleZ;
+                            else if (u0 - u1 > scaleZHalf) u1 += scaleZ;
+                            if (u2 - u0 > scaleZHalf) u2 -= scaleZ;
+                            else if (u0 - u2 > scaleZHalf) u2 += scaleZ;
+                        } else {
+                            if (v1 - v0 > scaleZHalf) v1 -= scaleZ;
+                            else if (v0 - v1 > scaleZHalf) v1 += scaleZ;
+                            if (v2 - v0 > scaleZHalf) v2 -= scaleZ;
+                            else if (v0 - v2 > scaleZHalf) v2 += scaleZ;
+                        }
+                    } else if (textureRenderType == 2) {
+                        const double uOffset =
+                            model.textureTransU.size() > sti
+                                ? static_cast<double>(model.textureTransU[sti]) / 256.0
+                                : 0.0;
+                        const double vOffset =
+                            model.textureTransV.size() > sti
+                                ? static_cast<double>(model.textureTransV[sti]) / 256.0
+                                : 0.0;
+                        const i32 dx1 =
+                            model.verticesX[static_cast<std::size_t>(ib)] -
+                            model.verticesX[static_cast<std::size_t>(ia)];
+                        const i32 dy1 =
+                            model.verticesY[static_cast<std::size_t>(ib)] -
+                            model.verticesY[static_cast<std::size_t>(ia)];
+                        const i32 dz1 =
+                            model.verticesZ[static_cast<std::size_t>(ib)] -
+                            model.verticesZ[static_cast<std::size_t>(ia)];
+                        const i32 dx2 =
+                            model.verticesX[static_cast<std::size_t>(ic)] -
+                            model.verticesX[static_cast<std::size_t>(ia)];
+                        const i32 dy2 =
+                            model.verticesY[static_cast<std::size_t>(ic)] -
+                            model.verticesY[static_cast<std::size_t>(ia)];
+                        const i32 dz2 =
+                            model.verticesZ[static_cast<std::size_t>(ic)] -
+                            model.verticesZ[static_cast<std::size_t>(ia)];
+                        // TS parity: do these products in 64-bit (JS doesn't overflow i32 here).
+                        const i64 vx64 =
+                            static_cast<i64>(dy1) * static_cast<i64>(dz2) -
+                            static_cast<i64>(dy2) * static_cast<i64>(dz1);
+                        const i64 vy64 =
+                            static_cast<i64>(dz1) * static_cast<i64>(dx2) -
+                            static_cast<i64>(dz2) * static_cast<i64>(dx1);
+                        const i64 vz64 =
+                            static_cast<i64>(dx1) * static_cast<i64>(dy2) -
+                            static_cast<i64>(dx2) * static_cast<i64>(dy1);
+                        const double vx = static_cast<double>(vx64);
+                        const double vy = static_cast<double>(vy64);
+                        const double vz = static_cast<double>(vz64);
+                        const double scaleX =
+                            64.0 / static_cast<double>(model.textureScaleX[sti]);
+                        const double scaleY =
+                            64.0 / static_cast<double>(model.textureScaleY[sti]);
+                        const double scaleZ =
+                            64.0 / static_cast<double>(model.textureScaleZ[sti]);
+                        const double t0 = static_cast<double>(transform[0]);
+                        const double t1 = static_cast<double>(transform[1]);
+                        const double t2 = static_cast<double>(transform[2]);
+                        const double t3 = static_cast<double>(transform[3]);
+                        const double t4 = static_cast<double>(transform[4]);
+                        const double t5 = static_cast<double>(transform[5]);
+                        const double t6 = static_cast<double>(transform[6]);
+                        const double t7 = static_cast<double>(transform[7]);
+                        const double t8 = static_cast<double>(transform[8]);
+                        const double scaledNormalX =
+                            (vx * t0 + vy * t1 + vz * t2) / scaleX;
+                        const double scaledNormalY =
+                            (vx * t3 + vy * t4 + vz * t5) / scaleY;
+                        const double scaledNormalZ =
+                            (vx * t6 + vy * t7 + vz * t8) / scaleZ;
+                        const i32 cubeFace = getDominantAxisFace(
+                            scaledNormalX,
+                            scaledNormalY,
+                            scaledNormalZ);
+                        computeBoxProjectedUv(
+                            model.verticesX[static_cast<std::size_t>(ia)],
+                            model.verticesY[static_cast<std::size_t>(ia)],
+                            model.verticesZ[static_cast<std::size_t>(ia)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            cubeFace,
+                            transform,
+                            direction,
+                            speed,
+                            static_cast<float>(uOffset),
+                            static_cast<float>(vOffset),
+                            &u0,
+                            &v0);
+                        computeBoxProjectedUv(
+                            model.verticesX[static_cast<std::size_t>(ib)],
+                            model.verticesY[static_cast<std::size_t>(ib)],
+                            model.verticesZ[static_cast<std::size_t>(ib)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            cubeFace,
+                            transform,
+                            direction,
+                            speed,
+                            static_cast<float>(uOffset),
+                            static_cast<float>(vOffset),
+                            &u1,
+                            &v1);
+                        computeBoxProjectedUv(
+                            model.verticesX[static_cast<std::size_t>(ic)],
+                            model.verticesY[static_cast<std::size_t>(ic)],
+                            model.verticesZ[static_cast<std::size_t>(ic)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            cubeFace,
+                            transform,
+                            direction,
+                            speed,
+                            static_cast<float>(uOffset),
+                            static_cast<float>(vOffset),
+                            &u2,
+                            &v2);
+                    } else if (textureRenderType == 3) {
+                        computeSphericalUv(
+                            model.verticesX[static_cast<std::size_t>(ia)],
+                            model.verticesY[static_cast<std::size_t>(ia)],
+                            model.verticesZ[static_cast<std::size_t>(ia)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            transform,
+                            direction,
+                            speed,
+                            &u0,
+                            &v0);
+                        computeSphericalUv(
+                            model.verticesX[static_cast<std::size_t>(ib)],
+                            model.verticesY[static_cast<std::size_t>(ib)],
+                            model.verticesZ[static_cast<std::size_t>(ib)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            transform,
+                            direction,
+                            speed,
+                            &u1,
+                            &v1);
+                        computeSphericalUv(
+                            model.verticesX[static_cast<std::size_t>(ic)],
+                            model.verticesY[static_cast<std::size_t>(ic)],
+                            model.verticesZ[static_cast<std::size_t>(ic)],
+                            centerX,
+                            centerY,
+                            centerZ,
+                            transform,
+                            direction,
+                            speed,
+                            &u2,
+                            &v2);
+                        if ((direction & 0x1) == 0) {
+                            if (u1 - u0 > 0.5f) u1 -= 1.0f;
+                            else if (u0 - u1 > 0.0f) u1 += 1.0f;
+                            if (u2 - u0 > 0.5f) u2 -= 1.0f;
+                            else if (u0 - u2 > 0.5f) u2 += 1.0f;
+                        } else {
+                            if (v1 - v0 > 0.5f) v1 -= 1.0f;
+                            else if (v0 - v1 > 0.5f) v1 += 1.0f;
+                            if (v2 - v0 > 0.5f) v2 -= 1.0f;
+                            else if (v0 - v2 > 0.5f) v2 += 1.0f;
+                        }
+                    }
+                }
             }
         }
 
@@ -4648,18 +5028,19 @@ Status appendObjPlacementGeometry(
         return ls;
     }
 
-    for (i32 fi = 0; fi < model.faceCount; fi++) {
-        i32 renderType = modelFaceRenderType(model, fi);
-        const i32 textureId = modelFaceRawTextureId(model, fi);
-        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
-        if (rawAlphaSigned == -2) {
-            renderType = 3;
-        } else if (rawAlphaSigned == -1) {
-            renderType = 2;
-        }
+		    for (i32 fi = 0; fi < model.faceCount; fi++) {
+		        i32 renderType = modelFaceRenderType(model, fi);
+		        const i32 textureId = modelFaceRawTextureId(model, fi);
+		        const i32 rawAlphaSigned = modelFaceRawAlpha(model, fi);
+		        // TS parity: ModelData.light() treats faceAlphas -2/-1 as renderType overrides.
+		        if (rawAlphaSigned == -2) {
+		            renderType = 3;
+		        } else if (rawAlphaSigned == -1) {
+		            renderType = 2;
+		        }
 
-        const bool hasTexture = isTextureSd(input.textureIds, textureId);
-        i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
+		        const bool hasTexture = isTextureSd(input.textureIds, textureId);
+	        i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
 
         i32 alpha = 0xff;
         if (model.hasFaceAlphas &&
@@ -5458,19 +5839,19 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             return Status::Ok;
         }
 
-        Status tryGetStaticModelXZRadius(
-            const LocType& locType,
-            i32 placementType,
-            i32 rotation,
-            i32* outRadius) const noexcept override {
-            if (!input || !alloc || !outRadius) {
-                return Status::InvalidArgument;
-            }
-            *outRadius = -1;
-
-            // TS SceneBuilder uses only the *first* expanded model variant for NORMAL/NORMAL_DIAGONAL
-            // when computing light occlusion from `entity.tryGetXZRadius()`. If we take the max across
-            // all expanded variants here, we can over-occlude terrain lighting and diverge.
+	        Status tryGetStaticModelXZRadius(
+	            const LocType& locType,
+	            i32 placementType,
+	            i32 rotation,
+	            i32* outRadius) const noexcept override {
+	            if (!input || !alloc || !outRadius) {
+	                return Status::InvalidArgument;
+	            }
+	            *outRadius = -1;
+	
+	            // TS SceneBuilder uses only the *first* expanded model variant for NORMAL/NORMAL_DIAGONAL
+	            // when computing light occlusion from `entity.tryGetXZRadius()`. If we take the max across
+	            // all expanded variants here, we can over-occlude terrain lighting and diverge.
             // See `src/rs/scene/SceneBuilder.ts` (NORMAL/NORMAL_DIAGIONAL branch).
             Vec<LocModelVariantRef> refs(*alloc);
             refs.clear();
@@ -6059,8 +6440,8 @@ Status deriveSceneLocRenderPlacementStage(
         input.baseHadTransforms ||
         !resolved.transforms.empty() ||
         (input.locLoadType == 1);
-    // Match TS render-data backend: interact id is the resolved loc type id (post-transform).
-    out->interactId = resolved.id;
+    // Match TS: interact id is the original placement loc type id (pre-transform).
+    out->interactId = input.placementId;
     return Status::Ok;
 }
 

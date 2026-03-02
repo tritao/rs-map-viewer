@@ -522,6 +522,32 @@ Status appendTerrainTileGeometry(
         if (!outIndex) {
             return Status::InvalidArgument;
         }
+        if (debugOut &&
+            debugOut->debugWorldHeightProbeHit == 0 &&
+            debugOut->debugWorldHeightProbeLevel == level &&
+            debugOut->debugWorldHeightProbeWorldX >= 0 &&
+            debugOut->debugWorldHeightProbeWorldZ >= 0 &&
+            debugOut->debugWorldHeightProbeWorldX == px &&
+            debugOut->debugWorldHeightProbeWorldZ == pz) {
+            debugOut->debugWorldHeightProbeHit = 3; // "terrain vertex probe hit"
+            debugOut->debugWorldHeightProbePacked[0] = 3;
+            debugOut->debugWorldHeightProbePacked[1] = x;
+            debugOut->debugWorldHeightProbePacked[2] = y;
+            debugOut->debugWorldHeightProbePacked[3] = shapeId;
+            debugOut->debugWorldHeightProbePacked[4] = rotation;
+            debugOut->debugWorldHeightProbePacked[5] = px;
+            debugOut->debugWorldHeightProbePacked[6] = py;
+            debugOut->debugWorldHeightProbePacked[7] = pz;
+            debugOut->debugWorldHeightProbePacked[8] = phsl;
+            debugOut->debugWorldHeightProbePacked[9] = palpha;
+            debugOut->debugWorldHeightProbePacked[10] = ppriority;
+            debugOut->debugWorldHeightProbePacked[11] = ptextureId;
+            debugOut->debugWorldHeightProbePacked[12] = ptextureId1;
+            debugOut->debugWorldHeightProbePacked[13] = hasOverlay ? 1 : 0;
+            debugOut->debugWorldHeightProbePacked[14] = hasUnderlay ? 1 : 0;
+            // Preserve a stable small value; floats are not packed here.
+            debugOut->debugWorldHeightProbePacked[15] = 0;
+        }
         const i32 index = static_cast<i32>(outVertices->size() / 16);
         const Status vs = PackedVertex::append(
             outVertices,

@@ -713,6 +713,8 @@ Status decodeLocsStage(
                         continue;
                     }
 
+                    // TS SceneBuilder uses `entity.tryGetXZRadius()` to compute light occlusion for NORMAL/NORMAL_DIAGONAL
+                    // locs. Mirror that by resolving the first expanded model variant's XZ radius.
                     if ((p.type == 10 || p.type == 11) && resolved->clipped) {
                         // TS `expandLocPlacementModelVariants`:
                         // NORMAL_DIAGONAL (11) uses NORMAL (10) with rotation+4 for model lookup.

@@ -531,16 +531,6 @@ static bool modelHasTransparentFacesForAnimatedFrameTs(
             continue;
         }
 
-        // TS `getModelFaces` skips faces where lit faceColors3 == -2.
-        // In the source ModelData this corresponds to raw alpha sentinel -2.
-        i32 rawAlphaSigned = 0;
-        if (model.hasFaceAlphas && fi >= 0 && fi < static_cast<i32>(model.faceAlphas.size())) {
-            rawAlphaSigned = static_cast<i32>(model.faceAlphas[static_cast<std::size_t>(fi)]);
-        }
-        if (rawAlphaSigned == -2) {
-            continue;
-        }
-
         i32 textureId = -1;
         if (model.hasFaceTextures && fi >= 0 && fi < static_cast<i32>(model.faceTextures.size())) {
             textureId = static_cast<i32>(model.faceTextures[static_cast<std::size_t>(fi)]);
@@ -1133,10 +1123,26 @@ static i32 computeLocSceneHeight(
         sizeY = swap;
     }
 
-    const i32 startX = (sizeX >> 1) + tileX;
-    const i32 endX = ((sizeX + 1) >> 1) + tileX;
-    const i32 startY = (sizeY >> 1) + tileY;
-    const i32 endY = ((sizeY + 1) >> 1) + tileY;
+    // Match TS SceneBuilder: clamp center-height sample window when the placement touches the
+    // scene edge. This avoids slightly different averages for out-of-window placements.
+    i32 startX = 0;
+    i32 endX = 0;
+    if (tileX + sizeX <= scene.sizeX) {
+        startX = (sizeX >> 1) + tileX;
+        endX = ((sizeX + 1) >> 1) + tileX;
+    } else {
+        startX = tileX;
+        endX = tileX + 1;
+    }
+    i32 startY = 0;
+    i32 endY = 0;
+    if (tileY + sizeY <= scene.sizeY) {
+        startY = (sizeY >> 1) + tileY;
+        endY = ((sizeY + 1) >> 1) + tileY;
+    } else {
+        startY = tileY;
+        endY = tileY + 1;
+    }
 
     if (!isWithinHeightBounds(scene, level, startX, startY) ||
         !isWithinHeightBounds(scene, level, endX, startY) ||
@@ -1863,6 +1869,7 @@ static Status executeLocInstancedOps(
                 applyContour,
                 Span<const i32>(scratchModelIds->data(), scratchModelIds->size()),
                 transparent,
+                debugOut,
                 &buffer->vertices,
                 &buffer->indices,
                 &generatedElements,
@@ -2095,6 +2102,7 @@ static Status executeLocMergeBuckets(
                     applyContour,
                     Span<const i32>(scratchModelIds->data(), scratchModelIds->size()),
                     bucket.transparent,
+                    debugOut,
                     &buffer->vertices,
                     &buffer->indices,
                     &generatedElements,
@@ -2577,6 +2585,11 @@ static Status planLocCommandsFromMapLocBytes(
                 if (z < e->boundsMinZ) e->boundsMinZ = z;
                 if (z > e->boundsMaxZ) e->boundsMaxZ = z;
                 if (y > e->boundsMaxY) e->boundsMaxY = y;
+            }
+            // TS ModelData.calculateBounds initializes `minHeight` to 0 and then tracks max vertex Y.
+            // This effectively clamps to 0 when all vertices are below the origin.
+            if (e->boundsMaxY < 0) {
+                e->boundsMaxY = 0;
             }
         };
 
@@ -3314,8 +3327,17 @@ static Status planLocCommandsFromMapLocBytes(
                     }
                 }
 
+                // TS parity: contouring uses the entity rotation, which for some placement
+                // types differs from the raw placement rotation due to variant expansion.
+                LocPlacement contourPlacement = p;
+                contourPlacement.rotation = variantRot;
                 const Status contourStatus =
-                    applyContourToModelForPlacement(*resolved, p, sp.tileX, sp.tileY, &entry.model);
+                    applyContourToModelForPlacement(
+                        *resolved,
+                        contourPlacement,
+                        sp.tileX,
+                        sp.tileY,
+                        &entry.model);
                 if (contourStatus == Status::Unsupported) {
                     variantBegin = variantEnd;
                     continue;
@@ -3639,65 +3661,97 @@ static Status planLocCommandsFromMapLocBytes(
 	                            if (active[static_cast<std::size_t>(li)] == 0) {
 	                                continue;
 	                            }
-	                            const Status ms = mergeLargeLocNormalsTsOrdered(li);
-	                            if (!ok(ms)) return ms;
-	                            active[static_cast<std::size_t>(li)] = 0;
-	                        }
-	                    }
-	                }
-	            }
+		                            const Status ms = mergeLargeLocNormalsTsOrdered(li);
+		                            if (!ok(ms)) return ms;
+		                            active[static_cast<std::size_t>(li)] = 0;
+		                        }
 
-	            // Floor decorations: TS Scene.mergeFloorNormals(...)
-	            for (i32 ai = 0; ai < static_cast<i32>(outPlan->mergeNormalsEntries.size()); ai++) {
-	                MergeNormalsEntry& a = outPlan->mergeNormalsEntries[static_cast<std::size_t>(ai)];
-	                if (a.placementType != 22) {
-                    continue;
-                }
-                const i32 endX = a.tileX + 1;
-                const i32 startY = a.tileY - 1;
-                const i32 endY = a.tileY + 1;
+		                        // Floor decorations: TS merges+lights these as part of the same tile walk.
+		                        for (i32 nfi = tileHeadFloor[idx]; nfi != -1;) {
+		                            if (nfi < 0 || nfi >= static_cast<i32>(floorNodes.size())) {
+		                                break;
+		                            }
+		                            const TileEntryNode& floorNode =
+		                                floorNodes[static_cast<std::size_t>(nfi)];
+		                            const i32 fi = floorNode.entryIndex;
+		                            nfi = floorNode.next;
+		                            if (fi < 0 ||
+		                                fi >= static_cast<i32>(outPlan->mergeNormalsEntries.size())) {
+		                                continue;
+		                            }
+		                            if (active[static_cast<std::size_t>(fi)] == 0) {
+		                                continue;
+		                            }
+		                            MergeNormalsEntry& a =
+		                                outPlan->mergeNormalsEntries[static_cast<std::size_t>(fi)];
+		                            if (a.placementType != 22) {
+		                                continue;
+		                            }
 
-                for (i32 x = a.tileX; x <= endX; x++) {
-                    if (x < 0 || x >= scene.sizeX) {
-                        continue;
-                    }
-                    for (i32 y = startY; y <= endY; y++) {
-                        if (y < 0 || y >= scene.sizeY) {
-                            continue;
-                        }
-                        if (x < endX && y < endY) {
-                            continue;
-                        }
+		                            const i32 endX = a.tileX + 1;
+		                            const i32 startY = a.tileY - 1;
+		                            const i32 endY = a.tileY + 1;
+		                            for (i32 x = a.tileX; x <= endX; x++) {
+		                                if (x < 0 || x >= scene.sizeX) {
+		                                    continue;
+		                                }
+		                                for (i32 y = startY; y <= endY; y++) {
+		                                    if (y < 0 || y >= scene.sizeY) {
+		                                        continue;
+		                                    }
+		                                    if (x < endX && y < endY) {
+		                                        continue;
+		                                    }
 
-                        const i32 deltaHeight = centerHeightForTile(a.level, x, y) - a.centerHeight;
-                        const i32 offX = (x - a.tileX) * 128;
-                        const i32 offZ = (y - a.tileY) * 128;
-                        const std::size_t tileIndex = scene.tileIdx(a.level, x, y);
-                        for (i32 nbi = tileHeadFloor[tileIndex]; nbi != -1;) {
-                            if (nbi < 0 || nbi >= static_cast<i32>(floorNodes.size())) {
-                                break;
-                            }
-                            const TileEntryNode& floorNode =
-                                floorNodes[static_cast<std::size_t>(nbi)];
-                            const i32 bi = floorNode.entryIndex;
-                            nbi = floorNode.next;
-                            if (bi == ai) {
-                                continue;
-                            }
-                            MergeNormalsEntry& b =
-                                outPlan->mergeNormalsEntries[static_cast<std::size_t>(bi)];
-                            const Status ms = mergeNormalsBetween(a, b, offX, deltaHeight, offZ, true, 3);
-                            if (!ok(ms)) {
-                                return ms;
-                            }
-                        }
-                    }
-                }
-            }
+		                                    const i32 deltaHeight =
+		                                        centerHeightForTile(a.level, x, y) - a.centerHeight;
+		                                    const i32 offX = (x - a.tileX) * 128;
+		                                    const i32 offZ = (y - a.tileY) * 128;
+		                                    const std::size_t tileIndex = scene.tileIdx(a.level, x, y);
+		                                    for (i32 nbi = tileHeadFloor[tileIndex]; nbi != -1;) {
+		                                        if (nbi < 0 || nbi >= static_cast<i32>(floorNodes.size())) {
+		                                            break;
+		                                        }
+		                                        const TileEntryNode& floorNodeB =
+		                                            floorNodes[static_cast<std::size_t>(nbi)];
+		                                        const i32 bi = floorNodeB.entryIndex;
+		                                        nbi = floorNodeB.next;
+		                                        if (bi == fi) {
+		                                            continue;
+		                                        }
+		                                        if (bi < 0 ||
+		                                            bi >= static_cast<i32>(outPlan->mergeNormalsEntries.size())) {
+		                                            continue;
+		                                        }
+		                                        if (active[static_cast<std::size_t>(bi)] == 0) {
+		                                            continue;
+		                                        }
+		                                        MergeNormalsEntry& b =
+		                                            outPlan->mergeNormalsEntries[static_cast<std::size_t>(bi)];
+		                                        const Status ms = mergeNormalsBetween(
+		                                            a,
+		                                            b,
+		                                            offX,
+		                                            deltaHeight,
+		                                            offZ,
+		                                            true,
+		                                            3);
+		                                        if (!ok(ms)) {
+		                                            return ms;
+		                                        }
+		                                    }
+		                                }
+		                            }
 
-            // Phase 3: compute per-entry stats+hash after merging/hiding.
-            for (std::size_t ei = 0; ei < outPlan->mergeNormalsEntries.size(); ei++) {
-                MergeNormalsEntry& e = outPlan->mergeNormalsEntries[ei];
+		                            // "Light" floor decoration: mark inactive so later tiles don't merge back with it.
+		                            active[static_cast<std::size_t>(fi)] = 0;
+		                        }
+		                    }
+		                }
+		            }
+	            // Phase 3: compute per-entry stats+hash after merging/hiding.
+	            for (std::size_t ei = 0; ei < outPlan->mergeNormalsEntries.size(); ei++) {
+	                MergeNormalsEntry& e = outPlan->mergeNormalsEntries[ei];
                 if (e.locTypeId < 0) {
                     continue;
                 }
@@ -3718,27 +3772,28 @@ static Status planLocCommandsFromMapLocBytes(
                 stats.minZ = e.boundsMinZ;
                 stats.maxZ = e.boundsMaxZ;
 
-                for (i32 fi = 0; fi < e.model.faceCount; fi++) {
-                    i32 faceType = 0;
-                    if (e.model.hasFaceRenderTypes &&
-                        fi >= 0 &&
-                        fi < static_cast<i32>(e.model.faceRenderTypes.size())) {
-                        faceType = static_cast<i32>(e.model.faceRenderTypes[static_cast<std::size_t>(fi)]);
-                    }
-                    const i32 rawAlphaSigned =
-                        (e.model.hasFaceAlphas && fi >= 0 && fi < static_cast<i32>(e.model.faceAlphas.size()))
-                            ? static_cast<i32>(e.model.faceAlphas[static_cast<std::size_t>(fi)])
-                            : 0;
-                    if (rawAlphaSigned == -2) {
-                        faceType = 3;
-                    } else if (rawAlphaSigned == -1) {
-                        faceType = 2;
-                    }
+	                for (i32 fi = 0; fi < e.model.faceCount; fi++) {
+	                    i32 faceType = 0;
+	                    if (e.model.hasFaceRenderTypes &&
+	                        fi >= 0 &&
+	                        fi < static_cast<i32>(e.model.faceRenderTypes.size())) {
+	                        faceType = static_cast<i32>(e.model.faceRenderTypes[static_cast<std::size_t>(fi)]);
+	                    }
+	                    // TS parity: ModelData.light() treats faceAlphas -2/-1 as renderType overrides.
+	                    const i32 rawAlphaSigned =
+	                        (e.model.hasFaceAlphas && fi >= 0 && fi < static_cast<i32>(e.model.faceAlphas.size()))
+	                            ? static_cast<i32>(e.model.faceAlphas[static_cast<std::size_t>(fi)])
+	                            : 0;
+	                    if (rawAlphaSigned == -2) {
+	                        faceType = 3;
+	                    } else if (rawAlphaSigned == -1) {
+	                        faceType = 2;
+	                    }
 
-                    const i32 textureId =
-                        (e.model.hasFaceTextures && fi >= 0 && fi < static_cast<i32>(e.model.faceTextures.size()))
-                            ? static_cast<i32>(e.model.faceTextures[static_cast<std::size_t>(fi)])
-                            : -1;
+	                    const i32 textureId =
+	                        (e.model.hasFaceTextures && fi >= 0 && fi < static_cast<i32>(e.model.faceTextures.size()))
+	                            ? static_cast<i32>(e.model.faceTextures[static_cast<std::size_t>(fi)])
+	                            : -1;
                     // TS parity: ModelData.light() filters faceTextures to SD-only (otherwise texture=-1).
                     const bool hasTexture =
                         textureId != -1 &&
@@ -3938,17 +3993,16 @@ static Status planLocCommandsFromMapLocBytes(
                         resolvedPlacement.seqId,
                         &seq,
                         alloc);
-                    if (!ok(sqs) || !seq) {
-                        continue;
-                    }
                     i32 frameCount = 0;
-                    if (seq->animMayaId >= 0) {
-                        frameCount = seq->animMayaEnd - seq->animMayaStart;
-                    } else {
-                        frameCount = static_cast<i32>(seq->frameIds.size());
-                    }
-                    if (frameCount <= 0) {
-                        continue;
+                    if (ok(sqs) && seq) {
+                        if (seq->animMayaId >= 0) {
+                            frameCount = seq->animMayaEnd - seq->animMayaStart;
+                        } else {
+                            frameCount = static_cast<i32>(seq->frameIds.size());
+                        }
+                        if (frameCount <= 0) {
+                            continue;
+                        }
                     }
 
                     bool seqHintHasAlpha = false;
@@ -3958,12 +4012,13 @@ static Status planLocCommandsFromMapLocBytes(
                         if (seqHintHasAlpha) {
                             hasAlpha = true;
                         }
-                    } else if (seq->animMayaId >= 0) {
+                    } else if (seq && seq->animMayaId >= 0) {
                         hasAlpha = true;
                     } else {
                         // Fallback when seq alpha hints are not available in the runtime cache:
                         // derive "has alpha transform" directly from uploaded classic seq-frame blobs.
-                        for (std::size_t fi = 0; fi < seq->frameIds.size(); fi++) {
+                        if (seq) {
+                            for (std::size_t fi = 0; fi < seq->frameIds.size(); fi++) {
                             const i32 frameId = seq->frameIds[fi];
                             SeqBase frameBase(-1, alloc);
                             SeqFrame frame(alloc);
@@ -3979,6 +4034,7 @@ static Status planLocCommandsFromMapLocBytes(
                             if (frame.hasAlphaTransform) {
                                 hasAlpha = true;
                                 break;
+                            }
                             }
                         }
                     }
@@ -4112,13 +4168,6 @@ static Status planLocCommandsFromMapLocBytes(
                             variantBegin = variantEnd;
                         }
                     }
-                    if (!hasAnyFaces) {
-                        if (debugOut) {
-                            debugOut->debugLocAnimatedNoFaces++;
-                        }
-                        continue;
-                    }
-
                     // Animated loc placeholders are grouped and keyed by the *entity* type/rotation in TS
                     // (see `createLocAnimatedGroupKey(resolved.rotation, resolved.type, locTypeId)`).
                     // For some placement types (e.g. normal diagonal=11, wall decorations 5-8, wall corner=2),
@@ -4163,8 +4212,8 @@ static Status planLocCommandsFromMapLocBytes(
                                 : resolveLocInstanceContourGround(scene, *resolved, p.level, sceneX, sceneY);
                         placeholder.instance.priority = priority;
                         placeholder.instance.interactType = static_cast<i32>(InteractType::Loc);
-                        // TS parity: animated loc placeholders use the resolved locType id (post-transform).
-                        placeholder.instance.interactId = resolved->id;
+                        // TS parity: interactId uses the original placement id (pre-transform).
+                        placeholder.instance.interactId = p.id;
                         // Preserve per-placement encounter order, but keep multi-variant placements stable
                         // (TS emits entity0 then entity1 for wall-corner/diagonal-double).
                         placeholder.sortKey = placementOrder * 2 + vi;
@@ -4445,7 +4494,7 @@ static Status planLocCommandsFromMapLocBytes(
                             i32 contourSceneZ = 0;
                             computeLocContourSampleOrigin(
                                 *resolved,
-                                p.rotation,
+                                variantRotation,
                                 sceneX,
                                 sceneY,
                                 &contourSceneX,
@@ -4456,7 +4505,7 @@ static Status planLocCommandsFromMapLocBytes(
                                 p.level,
                                 sceneX,
                                 sceneY,
-                                p.rotation);
+                                variantRotation);
                             const i32 mergedContour =
                                 (resolvedPlacement.sourceIsEntity && resolved->contourGroundType > 0)
                                     ? static_cast<i32>(ContourGroundType::Vertex)
@@ -4467,7 +4516,7 @@ static Status planLocCommandsFromMapLocBytes(
                                                  p.level,
                                                  sceneX,
                                                  sceneY,
-                                                 p.rotation,
+                                                 variantRotation,
                                                  variantHasBounds,
                                                  variantBoundsMinX,
                                                  variantBoundsMaxX,

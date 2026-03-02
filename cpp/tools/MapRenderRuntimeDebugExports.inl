@@ -1063,7 +1063,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_classic_anim_frame
         runtime,
         RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
         &textureTransparentIds);
-    collectBlobDomainGroup0IdsSortedUnique(
+    collectBlobDomainTypeListPreferPayloadOrKeys(
         runtime,
         RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
         &textureIds);
@@ -2140,10 +2140,12 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_loc_merge_emit_en
         outMetaLength < RS_MAP_RENDER_RUNTIME_LOC_MERGE_EMIT_ENTRIES_META_LENGTH) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    if (!runtime->lastBuiltCommandStream.loaded) {
+    // These records are only emitted by the full geometry build; plan-only builds clobber
+    // `lastBuiltCommandStream` during parity self-checks.
+    if (!runtime->lastBuiltCommandStreamFull.loaded) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
     }
-    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStream;
+    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStreamFull;
     outMeta[0] = static_cast<rs::i32>(stream.debugLocMergeEmitEntriesPacked.size());
     outMeta[1] = 13;
     return RS_MAP_RENDER_STATUS_OK;
@@ -2157,10 +2159,10 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_copy_last_loc_merge_emit_e
     if (!runtime) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    if (!runtime->lastBuiltCommandStream.loaded) {
+    if (!runtime->lastBuiltCommandStreamFull.loaded) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
     }
-    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStream;
+    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStreamFull;
     const rs::i32 len = static_cast<rs::i32>(stream.debugLocMergeEmitEntriesPacked.size());
     if (len <= 0) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
@@ -2184,10 +2186,10 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_loc_merge_normals
         outMetaLength < RS_MAP_RENDER_RUNTIME_LOC_MERGE_NORMALS_TRACE_ENTRIES_META_LENGTH) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    if (!runtime->lastBuiltCommandStream.loaded) {
+    if (!runtime->lastBuiltCommandStreamFull.loaded) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
     }
-    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStream;
+    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStreamFull;
     outMeta[0] = static_cast<rs::i32>(stream.debugLocMergeNormalsTraceEntriesPacked.size());
     outMeta[1] = 22;
     return RS_MAP_RENDER_STATUS_OK;
@@ -2201,10 +2203,10 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_copy_last_loc_merge_normal
     if (!runtime) {
         return RS_MAP_RENDER_STATUS_INVALID_ARG;
     }
-    if (!runtime->lastBuiltCommandStream.loaded) {
+    if (!runtime->lastBuiltCommandStreamFull.loaded) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
     }
-    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStream;
+    const MapRenderCachedCommandStream& stream = runtime->lastBuiltCommandStreamFull;
     const rs::i32 len = static_cast<rs::i32>(stream.debugLocMergeNormalsTraceEntriesPacked.size());
     if (len <= 0) {
         return RS_MAP_RENDER_STATUS_NOT_FOUND;
@@ -2345,6 +2347,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_build_stats(
 
 static constexpr rs::i32 RS_MAP_RENDER_DEBUG_OVERLAY_TYPE_FIELDS = 12;
 static constexpr rs::i32 RS_MAP_RENDER_DEBUG_LOC_TYPE_FIELDS = 56;
+static constexpr rs::i32 RS_MAP_RENDER_DEBUG_SEQ_TYPE_FIELDS = 8;
 
 static rs::Status decodeLocTypeFromTypeBlob(
     const MapRenderRuntimeState* runtime,
@@ -2601,5 +2604,80 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_loc_type(
     outFields[53] = resolved->offsetY;
     outFields[54] = base.seqId;
     outFields[55] = resolved->seqId;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+static rs::Status decodeSeqTypeFromTypeBlob(
+    const MapRenderRuntimeState* runtime,
+    const rs::CacheInfo& cacheInfo,
+    const rs::i32 seqTypeId,
+    rs::StringArena* strings,
+    rs::Allocator& alloc,
+    rs::SeqType* outType) {
+    if (!strings || !outType || seqTypeId < 0) {
+        return rs::Status::InvalidArgument;
+    }
+    rs::Span<const rs::u8> bytes{};
+    const rs::Status ss = getTypeEntrySpanForDeps(
+        runtime,
+        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE,
+        seqTypeId,
+        &bytes);
+    if (!rs::ok(ss)) {
+        return ss;
+    }
+
+    *outType = rs::SeqType(seqTypeId, cacheInfo);
+    rs::Uint8ArrayReader reader(bytes, 0);
+    rs::TypeDecodeError err{};
+    rs::TypeDecodeContext ctx{cacheInfo, strings, &alloc};
+    const rs::Status ds = rs::decodeType(*outType, reader, &err, &ctx);
+    if (!rs::ok(ds)) {
+        return ds;
+    }
+    return rs::Status::Ok;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_decode_seq_type(
+    const rs::i32 runtimeHandle,
+    const rs::i32 seqTypeId,
+    rs::i32* outFields,
+    const rs::i32 outFieldsLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outFields || outFieldsLength < RS_MAP_RENDER_DEBUG_SEQ_TYPE_FIELDS || seqTypeId < 0) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+
+    rs::CacheInfo cacheInfo{};
+    cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
+    cacheInfo.revision = runtime->cache.cacheRevision;
+    rs::Allocator& alloc = rs::defaultAllocator();
+    rs::StringArena strings(alloc, 4096);
+
+    rs::SeqType seq;
+    const rs::Status status = decodeSeqTypeFromTypeBlob(
+        runtime,
+        cacheInfo,
+        seqTypeId,
+        &strings,
+        alloc,
+        &seq);
+    if (status == rs::Status::NotFound) {
+        return RS_MAP_RENDER_STATUS_NOT_FOUND;
+    }
+    if (!rs::ok(status)) {
+        return RS_MAP_RENDER_STATUS_STATE;
+    }
+
+    const rs::i32 frameCount =
+        seq.animMayaId >= 0 ? (seq.animMayaEnd - seq.animMayaStart) : static_cast<rs::i32>(seq.frameIds.size());
+    outFields[0] = seq.id;
+    outFields[1] = seq.animMayaId;
+    outFields[2] = seq.animMayaStart;
+    outFields[3] = seq.animMayaEnd;
+    outFields[4] = frameCount;
+    outFields[5] = static_cast<rs::i32>(seq.frameIds.size());
+    outFields[6] = static_cast<rs::i32>(seq.frameLengths.size());
+    outFields[7] = !seq.frameIds.empty() ? static_cast<rs::i32>(seq.frameIds[0] & 0xffff) : -1;
     return RS_MAP_RENDER_STATUS_OK;
 }

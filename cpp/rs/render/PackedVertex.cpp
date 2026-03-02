@@ -19,9 +19,22 @@ static i32 clampI32(i32 value, i32 minValue, i32 maxValue) noexcept {
 // Matches `FloatUtil.packFloat11`.
 static i32 packFloat11Js(float v) noexcept {
     // TS parity: `Math.round(v * 64)` is `floor(v * 64 + 0.5)` even for negative values.
+    //
+    // JS allows NaN/Infinity here and later bitwise ops coerce NaN to 0. Avoid UB from casting
+    // NaN/Infinity or huge doubles to i32 in C++ by clamping in double space first.
+    if (!std::isfinite(static_cast<double>(v))) {
+        // +inf/NaN behaves like producing 0 after clamp+bitwise; -inf clamps to max.
+        return v < 0.0f ? 0x7ff : 0;
+    }
     const double scaled = static_cast<double>(v) * 64.0;
     const double rounded = std::floor(scaled + 0.5);
-    return static_cast<i32>(1024 - static_cast<i32>(rounded));
+    double packed = 1024.0 - rounded;
+    if (!std::isfinite(packed)) {
+        return packed < 0.0 ? 0 : 0x7ff;
+    }
+    if (packed < 0.0) packed = 0.0;
+    if (packed > 2047.0) packed = 2047.0;
+    return static_cast<i32>(packed);
 }
 
 static Status appendPackedVertexU32(Vec<u8>* outVertices, const PackedVertexU32& v) noexcept {
