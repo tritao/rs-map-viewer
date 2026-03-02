@@ -10,9 +10,9 @@ import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { NpcBootstrapSpawnEvent } from "./runtime/NpcBootstrapEvent";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -124,7 +124,7 @@ export class RenderDataWorkerPool {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcEvents: ReadonlyArray<NpcLifecycleEvent>,
+        npcEvents: ReadonlyArray<NpcBootstrapSpawnEvent>,
         mapSimToken?: number,
     ): Promise<void> {
         return this.getTickWorker().then((w) =>

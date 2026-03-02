@@ -1,17 +1,19 @@
 import type { NpcSpawn } from "../../data/npc/NpcSpawn";
-import { createNpcDatasFromSpawns, type NpcData } from "../entities/NpcData";
-import { orderByPacketKeys } from "../entities/orderByPacketKeys";
-import type { NpcSpawnEvent } from "./NpcLifecycleEvent";
+import { createNpcDatasFromSpawns, type NpcData } from "../../runtime/entities/NpcData";
+import { orderByPacketKeys } from "../../runtime/entities/orderByPacketKeys";
+import type { NpcBootstrapSpawnEvent } from "./NpcBootstrapEvent";
 
-export type NpcBootstrapEventsInput = Readonly<{
+export type NpcBootstrapSpawnEventsInput = Readonly<{
     mapId: number;
     npcsIn: ReadonlyArray<NpcData>;
     npcOrderKeys?: Int32Array;
 }>;
 
-export function createNpcBootstrapEvents(input: NpcBootstrapEventsInput): NpcSpawnEvent[] {
+export function createNpcBootstrapSpawnEvents(
+    input: NpcBootstrapSpawnEventsInput,
+): NpcBootstrapSpawnEvent[] {
     const ordered = orderByPacketKeys(input.npcsIn, input.npcOrderKeys);
-    const events = new Array<NpcSpawnEvent>(ordered.length | 0);
+    const events = new Array<NpcBootstrapSpawnEvent>(ordered.length | 0);
     for (let i = 0; i < ordered.length; i++) {
         const npc = ordered[i]!;
         events[i] = {
@@ -29,11 +31,11 @@ export function createNpcBootstrapEvents(input: NpcBootstrapEventsInput): NpcSpa
     return events;
 }
 
-export function createNpcBootstrapEventsFromSpawns(
+export function createNpcBootstrapSpawnEventsFromSpawns(
     mapId: number,
     spawns: ReadonlyArray<NpcSpawn>,
-): NpcSpawnEvent[] {
-    return createNpcBootstrapEvents({
+): NpcBootstrapSpawnEvent[] {
+    return createNpcBootstrapSpawnEvents({
         mapId: mapId | 0,
         npcsIn: createNpcDatasFromSpawns(Array.from(spawns)),
     });

@@ -8,8 +8,6 @@ import { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/contracts/NpcGpuFrame";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
-import { createNpcBootstrapEventsFromSpawns } from "../runtime/sim/NpcLifecycleEventAdapters";
 import { decodeNpcUpdatePacket } from "../runtime/sim/NpcUpdatePacket";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
@@ -61,10 +59,10 @@ import {
     readWasmPatchStreamsForMap,
 } from "./runtime/tickFrameHelpers";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./runtime/NpcGpuFrameBuilder";
+import type { NpcBootstrapSpawnEvent } from "./runtime/NpcBootstrapEvent";
+import { createNpcBootstrapSpawnEventsFromSpawns } from "./runtime/NpcBootstrapEventAdapters";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
-import {
-    WorkerNpcSimStateStore,
-} from "./runtime/WorkerNpcSimStateStore";
+import { WorkerNpcSimStateStore } from "./runtime/WorkerNpcSimStateStore";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -120,8 +118,8 @@ function maybeHydrateNpcBootstrapEventsFromMapBytes(
     mapId: number,
     borderSize: number,
     tileRenderFlagsLevel1: Uint8Array[],
-    npcEventsIn: ReadonlyArray<NpcLifecycleEvent>,
-): NpcLifecycleEvent[] {
+    npcEventsIn: ReadonlyArray<NpcBootstrapSpawnEvent>,
+): NpcBootstrapSpawnEvent[] {
     if ((npcEventsIn.length | 0) > 0) {
         return Array.from(npcEventsIn);
     }
@@ -148,7 +146,7 @@ function maybeHydrateNpcBootstrapEventsFromMapBytes(
     if ((filteredSpawns.length | 0) <= 0) {
         return [];
     }
-    return createNpcBootstrapEventsFromSpawns(mapId | 0, filteredSpawns);
+    return createNpcBootstrapSpawnEventsFromSpawns(mapId | 0, filteredSpawns);
 }
 
 async function requireWorkerState(): Promise<WorkerState> {
@@ -381,7 +379,7 @@ const worker = {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcEventsIn: NpcLifecycleEvent[],
+        npcEventsIn: NpcBootstrapSpawnEvent[],
         mapSimToken?: number,
     ): Promise<void> {
         if (!workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
@@ -410,7 +408,7 @@ const worker = {
             mapId | 0,
             npcEvents,
             deps,
-            { replaceSnapshot: true },
+            true,
         );
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     },

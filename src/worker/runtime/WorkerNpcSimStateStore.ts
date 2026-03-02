@@ -3,15 +3,11 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import { applyNpcUpdateDeltas } from "../../runtime/sim/NpcSimMovement";
-import type { ApplyNpcLifecycleEventsOptions } from "../../runtime/sim/NpcLifecycleApplyOptions";
+import type { NpcUpdateEvent } from "../../runtime/sim/NpcUpdateEvent";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { Npc } from "../../runtime/entities/Npc";
-import type {
-    NpcLifecycleEvent,
-    NpcSpawnEvent,
-    NpcUpdateEvent,
-} from "../../runtime/sim/NpcLifecycleEvent";
+import type { NpcBootstrapSpawnEvent, WorkerNpcLifecycleEvent } from "./NpcBootstrapEvent";
 
 export type WorkerNpcSimMapState = {
     borderSize: number;
@@ -153,7 +149,7 @@ export class WorkerNpcSimStateStore {
     }
 
     private createNpcFromSpawnEvent(
-        event: NpcSpawnEvent,
+        event: NpcBootstrapSpawnEvent,
         state: WorkerNpcSimMapState,
         deps: WorkerNpcSimStateStoreDeps,
     ): Npc | undefined {
@@ -202,13 +198,12 @@ export class WorkerNpcSimStateStore {
     private applyLifecycleEventsToState(
         mapId: number,
         state: WorkerNpcSimMapState,
-        events: ReadonlyArray<NpcLifecycleEvent>,
+        events: ReadonlyArray<WorkerNpcLifecycleEvent>,
         deps: WorkerNpcSimStateStoreDeps,
-        options?: ApplyNpcLifecycleEventsOptions,
+        replaceSnapshot: boolean,
     ): number {
-        const replaceNpcSnapshot = options?.replaceSnapshot === true;
         const npcCountBefore = state.npcs.length | 0;
-        if (replaceNpcSnapshot) {
+        if (replaceSnapshot) {
             state.npcs.length = 0;
             state.npcIndexByOrderKey.clear();
             state.seededNpcFlags = false;
@@ -251,7 +246,7 @@ export class WorkerNpcSimStateStore {
         const deltas = deltaEvents.map((entry) => entry.delta);
         const applied = applyNpcUpdateDeltas(state.npcs, deltas, state.npcIndexByOrderKey);
         const npcCount = state.npcs.length | 0;
-        if (replaceNpcSnapshot || npcCount !== npcCountBefore) {
+        if (replaceSnapshot || npcCount !== npcCountBefore) {
             state.npcTickPatchesByVariant = this.createNpcTickPatchBuffers(
                 npcCount,
                 deps.tickPatchEntryStride,
@@ -279,15 +274,15 @@ export class WorkerNpcSimStateStore {
 
     applyMapNpcLifecycleEvents(
         mapId: number,
-        events: ReadonlyArray<NpcLifecycleEvent>,
+        events: ReadonlyArray<WorkerNpcLifecycleEvent>,
         deps: WorkerNpcSimStateStoreDeps,
-        options?: ApplyNpcLifecycleEventsOptions,
+        replaceSnapshot: boolean = false,
     ): number {
         const state = this.maps.get(mapId | 0);
         if (!state) {
             return 0;
         }
-        return this.applyLifecycleEventsToState(mapId | 0, state, events, deps, options);
+        return this.applyLifecycleEventsToState(mapId | 0, state, events, deps, replaceSnapshot);
     }
 
     registerMap(

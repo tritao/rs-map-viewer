@@ -7,7 +7,6 @@ import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
 import { SdMapData } from "../maprender/payload/SdMapData";
-import { createNpcBootstrapEvents } from "../runtime/sim/NpcLifecycleEventAdapters";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
@@ -18,6 +17,7 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { createNpcBootstrapSpawnEvents } from "../worker/runtime/NpcBootstrapEventAdapters";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
@@ -158,7 +158,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 const level1 = sdMapData.tileRenderFlags[1] ?? [];
-                const npcEvents = createNpcBootstrapEvents({
+                const npcEvents = createNpcBootstrapSpawnEvents({
                     mapId,
                     npcsIn: sdMapData.npcs,
                     npcOrderKeys: sdMapData.npcOrderKeys,

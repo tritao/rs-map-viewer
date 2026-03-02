@@ -1,6 +1,6 @@
 import { MovementType } from "../../runtime/entities/Npc";
 import { ByteBuffer } from "../../rs/io/ByteBuffer";
-import type { NpcUpdateEvent } from "./NpcLifecycleEvent";
+import type { NpcUpdateEvent } from "./NpcUpdateEvent";
 import type { NpcUpdateDelta } from "./NpcSimMovement";
 
 const PACKET_VERSION = 1;
