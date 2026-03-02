@@ -231,14 +231,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
 
-    async applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+    async applyNpcUpdatePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
         const bytes =
             packet instanceof Uint8Array
                 ? packet
                 : packet instanceof ArrayBuffer
                   ? new Uint8Array(packet)
                   : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
-        return await this.workerPool.applyNpcServerDeltaPacketBytes(bytes);
+        return await this.workerPool.applyNpcUpdatePacketBytes(bytes);
     }
 
     override async init() {

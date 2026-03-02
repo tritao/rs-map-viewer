@@ -15,7 +15,7 @@ const FLAG_HAS_ORIENTATION = 1 << 5;
 const FLAG_HAS_ROTATION = 1 << 6;
 const FLAG_HAS_PATH = 1 << 7;
 
-export type DecodedNpcServerDeltaPacket = Readonly<{
+export type DecodedNpcUpdatePacket = Readonly<{
     version: number;
     updateEventsByMapId: ReadonlyMap<number, NpcUpdateEvent[]>;
     deltaCount: number;
@@ -41,15 +41,15 @@ function readMovementType(value: number): MovementType {
     if (value === MovementType.CRAWL || value === MovementType.WALK || value === MovementType.RUN) {
         return value;
     }
-    throw new Error(`[map-viewer][npc-delta-packet] invalid movement type: ${value | 0}`);
+    throw new Error(`[map-viewer][npc-update-packet] invalid movement type: ${value | 0}`);
 }
 
-export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDeltaPacket {
+export function decodeNpcUpdatePacket(input: ByteInput): DecodedNpcUpdatePacket {
     const reader = new ByteBuffer(toUint8Array(input));
     const version = reader.readUnsignedShort() | 0;
     if ((version | 0) !== PACKET_VERSION) {
         throw new Error(
-            `[map-viewer][npc-delta-packet] unsupported version: ` +
+            `[map-viewer][npc-update-packet] unsupported version: ` +
                 `got=${version | 0} expected=${PACKET_VERSION}`,
         );
     }
@@ -77,7 +77,7 @@ export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDe
                 delta.npcOrderKey === undefined
             ) {
                 throw new Error(
-                    `[map-viewer][npc-delta-packet] delta missing target: ` +
+                    `[map-viewer][npc-update-packet] delta missing target: ` +
                         `mapId=${mapId | 0} index=${i | 0}`,
                 );
             }
@@ -103,7 +103,7 @@ export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDe
                 const pathLength = reader.readUnsignedByte() | 0;
                 if (pathLength < 0 || pathLength > MAX_PATH_LENGTH) {
                     throw new Error(
-                        `[map-viewer][npc-delta-packet] invalid path length: ` +
+                        `[map-viewer][npc-update-packet] invalid path length: ` +
                             `mapId=${mapId | 0} index=${i | 0} len=${pathLength | 0}`,
                     );
                 }
@@ -135,7 +135,7 @@ export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDe
 
     if ((reader.remaining | 0) !== 0) {
         throw new Error(
-            `[map-viewer][npc-delta-packet] trailing bytes: ${reader.remaining | 0}`,
+            `[map-viewer][npc-update-packet] trailing bytes: ${reader.remaining | 0}`,
         );
     }
 

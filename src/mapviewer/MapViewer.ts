@@ -284,8 +284,8 @@ export class MapViewer {
         return this.runtimeOptions;
     }
 
-    applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
-        return this.renderer.applyNpcServerDeltaPacketBytes(packet);
+    applyNpcUpdatePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+        return this.renderer.applyNpcUpdatePacketBytes(packet);
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {

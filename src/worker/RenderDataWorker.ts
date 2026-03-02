@@ -11,7 +11,7 @@ import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 import { createNpcBootstrapEventsFromSpawns } from "../runtime/sim/NpcLifecycleEventAdapters";
-import { decodeNpcServerDeltaPacket } from "../runtime/sim/NpcServerDeltaPacket";
+import { decodeNpcUpdatePacket } from "../runtime/sim/NpcUpdatePacket";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -422,8 +422,8 @@ const worker = {
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
     },
-    async applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
-        const decoded = decodeNpcServerDeltaPacket(packet);
+    async applyNpcUpdatePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        const decoded = decodeNpcUpdatePacket(packet);
         const workerState = await requireWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
         let applied = 0;

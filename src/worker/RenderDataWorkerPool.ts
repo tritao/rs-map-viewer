@@ -144,8 +144,8 @@ export class RenderDataWorkerPool {
         return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
     }
 
-    applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
-        return this.getTickWorker().then((w) => w.applyNpcServerDeltaPacketBytes(packet));
+    applyNpcUpdatePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        return this.getTickWorker().then((w) => w.applyNpcUpdatePacketBytes(packet));
     }
 
     tickFrame(
