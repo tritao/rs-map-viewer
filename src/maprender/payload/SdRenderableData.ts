@@ -1,4 +1,3 @@
-import { RenderableType } from "../../renderer/Renderer";
 import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 
 export type SdRenderableModelInfoTextures = {
@@ -30,8 +29,6 @@ export type SdRenderableDrawRanges = {
 };
 
 export type SdRenderableData = {
-    readonly type: RenderableType;
-
     readonly cacheName: string;
 
     readonly borderSize: number;

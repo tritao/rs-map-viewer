@@ -1,5 +1,6 @@
 import { NpcSpawn, fetchNpcSpawns, getMapNpcSpawns, getNpcSpawnsUrl } from "../../data/npc/NpcSpawn";
 import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
+import type { MapRenderBuildDeps, NpcSpawnDecodeBackend } from "../MapRenderBuildDeps";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
@@ -8,10 +9,7 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
-import type { CacheSession } from "../../rs/loaders/CacheSession";
-import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Model } from "../../rs/model/Model";
-import type { MapImageRenderer } from "../../rs/render/minimap/MapImageRenderer";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
@@ -22,13 +20,11 @@ import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import type { BackendKind } from "../../util/BackendKind";
 import { MapRenderCommandStreamRuntimeInput } from "../MapRenderDataContract";
 import { loadMinimapBlob } from "../MinimapData";
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
 import { InteractType } from "../../renderer/InteractType";
-import { RenderableType } from "../../renderer/Renderer";
 import {
     ContourGroundType,
     createLocAnimatedGroupKey,
@@ -56,33 +52,7 @@ import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
 import { createSdTexturePacking } from "../payload/SdTexturePacking";
 
-export type SdMapRenderDataTsBackendDeps = Readonly<{
-    session: CacheSession;
-    sceneBuilder: SceneBuilder;
-    mapBytesProvider: MapBytesProvider;
-    locModelLoader: LocModelLoader;
-    objModelLoader: ObjModelLoader;
-    npcModelLoader: NpcModelLoader;
-    mapImageRenderer: MapImageRenderer;
-    varProvider: VarProvider;
-    objSpawns: ObjSpawn[];
-    npcSpawnDecodeBackend?: NpcSpawnDecodeBackend;
-    telemetry?: boolean;
-}>;
-
-export type NpcSpawnDecodeBackend = Readonly<{
-    name: BackendKind;
-    filtersLoginScreenProps?: boolean;
-    decodeNpcSpawnsFromBytes(
-        tileRenderFlagsLevel1: Uint8Array[],
-        borderSize: number,
-        mapX: number,
-        mapY: number,
-        data: Uint8Array,
-        npcLoginScreenPropsById?: Uint8Array,
-        requiredLoginScreenPropsMask?: number,
-    ): Promise<NpcSpawn[] | undefined>;
-}>;
+export type SdMapRenderDataTsBackendDeps = MapRenderBuildDeps;
 
 export type BuildMapDataOptions = Readonly<{
     includeRuntimeCommandStreamInput?: boolean;
@@ -435,7 +405,7 @@ export class SdMapRenderDataTsBackend {
     private cachedNpcLoginScreenPropsCacheName?: string;
     private fallbackNpcSpawnsPromise?: Promise<NpcSpawn[]>;
 
-    constructor(private readonly deps: SdMapRenderDataTsBackendDeps) {}
+    constructor(private readonly deps: MapRenderBuildDeps) {}
 
     init(): void {
         if (!this.modelHashBuf) {
@@ -859,7 +829,6 @@ export class SdMapRenderDataTsBackend {
         }
 
         const data: SdMapData = {
-            type: RenderableType.Map,
             mapX,
             mapY,
             cacheName: this.deps.session.cache.info.name,

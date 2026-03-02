@@ -1,11 +1,8 @@
-import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import { SdMapData } from "../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
-import type { SdMapRenderDataTsBackendDeps } from "../maprender/backend/SdMapRenderDataTsBackend";
-import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
+import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
 import type { CollisionData } from "../rs/scene/CollisionMap";
-import { RenderableType } from "../renderer/Renderer";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -37,7 +34,7 @@ export type MapRenderDataBackendOptions = Readonly<{
     telemetry?: boolean;
 }>;
 
-export type MapRenderDataBackendDeps = SdMapRenderDataTsBackendDeps;
+export type MapRenderDataBackendDeps = MapRenderBuildDeps;
 
 export interface MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind;
@@ -51,9 +48,7 @@ export interface MapRenderDataBackend {
 const CPP_WASM_OUTCOME_KEYS = [
     "success",
     "bridgeMissing",
-    "tsPayloadEmpty",
     "bridgeReturnedEmpty",
-    "validationFailed",
     "bridgeError",
 ] as const;
 
@@ -64,9 +59,7 @@ function createCppWasmBuildOutcomeStats(): CppWasmBuildOutcomeStats {
     return {
         success: 0,
         bridgeMissing: 0,
-        tsPayloadEmpty: 0,
         bridgeReturnedEmpty: 0,
-        validationFailed: 0,
         bridgeError: 0,
     };
 }
@@ -171,48 +164,13 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
     private readonly outcomeStats: CppWasmBuildOutcomeStats = createCppWasmBuildOutcomeStats();
-    private readonly mapBytesProvider: MapBytesProvider;
-    private readonly cacheName: string;
-    private readonly cacheGame: number;
-    private readonly cacheRevision: number;
-    private readonly locTypeLoader: unknown;
-    private readonly objTypeLoader: unknown;
-    private readonly locModelLoader: unknown;
-    private readonly seqTypeLoader: unknown;
-    private readonly seqFrameLoader: unknown;
-    private readonly skeletalSeqLoader: unknown;
-    private readonly textureLoader: unknown;
-    private readonly npcTypeLoader: unknown;
-    private readonly basTypeLoader: unknown;
-    private readonly underlayTypeLoader: unknown;
-    private readonly overlayTypeLoader: unknown;
-    private readonly varProvider: unknown;
-    private readonly objSpawns: ReadonlyArray<ObjSpawn>;
     private readonly cacheUploader = new MapRenderRuntimeCacheV2Uploader();
     private buildCalls = 0;
 
     constructor(
-        deps: MapRenderDataBackendDeps,
+        private readonly deps: MapRenderDataBackendDeps,
         private readonly options: MapRenderDataBackendOptions | undefined,
-    ) {
-        this.mapBytesProvider = deps.mapBytesProvider;
-        this.cacheName = deps.session.cache.info.name;
-        this.cacheGame = deps.session.cache.info.game;
-        this.cacheRevision = deps.session.cache.info.revision;
-        this.locTypeLoader = deps.session.loaders.locTypeLoader;
-        this.objTypeLoader = deps.session.loaders.objTypeLoader;
-        this.locModelLoader = deps.locModelLoader;
-        this.seqTypeLoader = deps.session.loaders.seqTypeLoader;
-        this.seqFrameLoader = deps.session.loaders.seqFrameLoader;
-        this.skeletalSeqLoader = deps.session.loaders.skeletalSeqLoader;
-        this.textureLoader = deps.session.getTextureLoader();
-        this.npcTypeLoader = deps.session.loaders.npcTypeLoader;
-        this.basTypeLoader = deps.session.loaders.basTypeLoader;
-        this.underlayTypeLoader = deps.session.loaders.underlayTypeLoader;
-        this.overlayTypeLoader = deps.session.loaders.overlayTypeLoader;
-        this.varProvider = deps.varProvider;
-        this.objSpawns = deps.objSpawns;
-    }
+    ) {}
 
     private async ensureRuntimeInitialized(bridge: CppWasmMapRenderDataBridge): Promise<boolean> {
         if (!this.runtimeInitPromise) {
@@ -226,8 +184,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     ): Promise<MapRenderRuntimeHandle | undefined> {
         if (!this.runtimeHandlePromise) {
             this.runtimeHandlePromise = bridge.createRuntimeWithConfig({
-                cacheGame: this.cacheGame | 0,
-                cacheRevision: this.cacheRevision | 0,
+                cacheGame: this.deps.session.cache.info.game | 0,
+                cacheRevision: this.deps.session.cache.info.revision | 0,
                 sceneLevels: 4,
                 unitsTileHeightBasis: 8,
             } as MapRenderRuntimeCreateConfig);
@@ -242,23 +200,24 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private createByteDrivenSceneBuildInput(
         input: SdMapLoaderInput,
     ): MapRenderByteDrivenSceneBuildInput {
+        const { session } = this.deps;
         return createByteDrivenSceneBuildInput(input, {
-            mapBytesProvider: this.mapBytesProvider,
-            locTypeLoader: this.locTypeLoader,
-            objTypeLoader: this.objTypeLoader,
-            locModelLoader: this.locModelLoader,
-            seqTypeLoader: this.seqTypeLoader,
-            seqFrameLoader: this.seqFrameLoader,
-            skeletalSeqLoader: this.skeletalSeqLoader,
-            textureLoader: this.textureLoader,
-            npcTypeLoader: this.npcTypeLoader,
-            basTypeLoader: this.basTypeLoader,
-            underlayTypeLoader: this.underlayTypeLoader,
-            overlayTypeLoader: this.overlayTypeLoader,
-            varProvider: this.varProvider,
-            objSpawns: this.objSpawns,
-            cacheGame: this.cacheGame,
-            cacheRevision: this.cacheRevision,
+            mapBytesProvider: this.deps.mapBytesProvider,
+            locTypeLoader: session.loaders.locTypeLoader,
+            objTypeLoader: session.loaders.objTypeLoader,
+            locModelLoader: this.deps.locModelLoader,
+            seqTypeLoader: session.loaders.seqTypeLoader,
+            seqFrameLoader: session.loaders.seqFrameLoader,
+            skeletalSeqLoader: session.loaders.skeletalSeqLoader,
+            textureLoader: session.getTextureLoader(),
+            npcTypeLoader: session.loaders.npcTypeLoader,
+            basTypeLoader: session.loaders.basTypeLoader,
+            underlayTypeLoader: session.loaders.underlayTypeLoader,
+            overlayTypeLoader: session.loaders.overlayTypeLoader,
+            varProvider: this.deps.varProvider,
+            objSpawns: this.deps.objSpawns,
+            cacheGame: session.cache.info.game,
+            cacheRevision: session.cache.info.revision,
         });
     }
 
@@ -390,10 +349,9 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             }
 
             return {
-                type: RenderableType.Map,
                 mapX: input.mapX | 0,
                 mapY: input.mapY | 0,
-                cacheName: this.cacheName,
+                cacheName: this.deps.session.cache.info.name,
                 maxLevel: input.maxLevel | 0,
                 loadObjs: input.loadObjs === true,
                 loadNpcs: input.loadNpcs === true,
