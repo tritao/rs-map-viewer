@@ -521,6 +521,14 @@ export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     varpValues: Int32Array;
 }>;
 
+type LocModelLoaderDeps = Readonly<{
+    modelLoader?: unknown;
+    textureLoader?: unknown;
+    seqTypeLoader?: unknown;
+    seqFrameLoader?: unknown;
+    skeletalSeqLoader?: unknown;
+}>;
+
 export type ByteDrivenSceneBuildInputDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;
     locTypeLoader: unknown;
@@ -1275,6 +1283,7 @@ export class MapRenderRuntimeCacheV2Uploader {
     ): Promise<boolean> {
         const feeder = createRuntimeCacheFeeder(bridge, runtimeHandle);
         const provider = createSceneBuildCacheByteProvider(sceneBuildInput);
+        const locModelLoader = sceneBuildInput.locModelLoader as LocModelLoaderDeps | undefined;
 
         let needsLegacyModelFiles = false;
         let needsLegacySeqFiles = false;
@@ -1324,7 +1333,7 @@ export class MapRenderRuntimeCacheV2Uploader {
         if (needsLegacyModelFiles) {
             const legacyResult = await this.uploadLegacyModelFilesIfNeeded(
                 feeder,
-                (sceneBuildInput.locModelLoader as any)?.modelLoader,
+                locModelLoader?.modelLoader,
                 idsByDomain.get(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL),
             );
             if (legacyResult.status === "failed") return false;
@@ -1352,7 +1361,7 @@ export class MapRenderRuntimeCacheV2Uploader {
         if (needsLegacySeqFiles) {
             const legacyResult = await this.uploadLegacySeqFrameFilesIfNeeded(
                 feeder,
-                (sceneBuildInput.locModelLoader as any)?.seqFrameLoader,
+                locModelLoader?.seqFrameLoader,
                 seqFrameIds,
             );
             if (legacyResult.status === "failed") return false;
@@ -1361,7 +1370,7 @@ export class MapRenderRuntimeCacheV2Uploader {
             if (datFrameIds.length > 0) {
                 const mapsUploaded = await this.uploadDatSeqFrameMapsForFrameIds(
                     feeder,
-                    (sceneBuildInput.locModelLoader as any)?.seqFrameLoader,
+                    locModelLoader?.seqFrameLoader,
                     datFrameIds,
                 );
                 if (mapsUploaded < 0) return false;

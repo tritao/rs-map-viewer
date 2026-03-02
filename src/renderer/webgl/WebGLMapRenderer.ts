@@ -91,6 +91,13 @@ export class WebGLMapRenderer
 
     cameraPosUni: vec2 = vec2.fromValues(0, 0);
     resolutionUni: vec2 = vec2.fromValues(0, 0);
+    renderDistanceUni = new Float32Array(1);
+    fogDepthUni = new Float32Array(1);
+    currentTimeUni = new Float32Array(1);
+    brightnessUni = new Float32Array(1);
+    colorBandingUni = new Float32Array(1);
+    isNewTextureAnimUni = new Float32Array(1);
+    debugTextureModeUni = new Float32Array(1);
 
     isNewTextureAnim: boolean = false;
 
@@ -352,6 +359,13 @@ export class WebGLMapRenderer
     private updateSceneUniforms(timeSec: number): void {
         this.cameraPosUni[0] = this.camera.getPosX();
         this.cameraPosUni[1] = this.camera.getPosZ();
+        this.renderDistanceUni[0] = this.renderDistance;
+        this.fogDepthUni[0] = this.fogDepth;
+        this.currentTimeUni[0] = timeSec;
+        this.brightnessUni[0] = this.brightness;
+        this.colorBandingUni[0] = this.colorBanding;
+        this.isNewTextureAnimUni[0] = this.isNewTextureAnim ? 1 : 0;
+        this.debugTextureModeUni[0] = this.debugTextureMode;
 
         this.sceneUniformBuffer!
             .set(0, this.camera.viewProjMatrix as Float32Array)
@@ -359,13 +373,13 @@ export class WebGLMapRenderer
             .set(2, this.camera.projectionMatrix as Float32Array)
             .set(3, this.skyColor as Float32Array)
             .set(4, this.cameraPosUni as Float32Array)
-            .set(5, this.renderDistance as any)
-            .set(6, this.fogDepth as any)
-            .set(7, timeSec as any)
-            .set(8, this.brightness as any)
-            .set(9, this.colorBanding as any)
-            .set(10, this.isNewTextureAnim as any)
-            .set(11, this.debugTextureMode as any)
+            .set(5, this.renderDistanceUni)
+            .set(6, this.fogDepthUni)
+            .set(7, this.currentTimeUni)
+            .set(8, this.brightnessUni)
+            .set(9, this.colorBandingUni)
+            .set(10, this.isNewTextureAnimUni)
+            .set(11, this.debugTextureModeUni)
             .update();
     }
 
