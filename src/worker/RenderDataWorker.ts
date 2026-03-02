@@ -6,8 +6,7 @@ import { Transfer, expose } from "threads/worker";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
-import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/contracts/NpcGpuFrame";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 import { createNpcBootstrapEventsFromSpawns } from "../runtime/sim/NpcLifecycleEventAdapters";
@@ -61,6 +60,7 @@ import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
 } from "./runtime/tickFrameHelpers";
+import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./runtime/NpcGpuFrameBuilder";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
 import {
     WorkerNpcSimStateStore,
@@ -99,7 +99,7 @@ export type WorkerRuntimeOptions = Readonly<{
 let workerStatePromise: Promise<WorkerStateInit> | undefined;
 const npcSimStateStore = new WorkerNpcSimStateStore();
 const npcSimPathfinder = new Pathfinder();
-const npcGpuDataBuilder = new NpcGpuDataBuilder();
+const npcGpuFrameBuilder = new NpcGpuFrameBuilder();
 const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBridgeV2;
 let workerRuntimeOptions: WorkerRuntimeOptions | undefined;
 const workerMapSimLifecycle = new WorkerMapSimLifecycle();
@@ -458,7 +458,7 @@ const worker = {
         const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
         const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
 
-        npcGpuDataBuilder.beginFrame();
+        npcGpuFrameBuilder.beginFrame();
 
         const entries = new Array<FramePacketMapEntry>(mapIds.length | 0);
 
@@ -546,7 +546,7 @@ const worker = {
             );
 
             // Build packed NPC gpu info (x,y,rotationAndPlane,typeId) and per-map offset.
-            const target: NpcGpuDataTarget = {
+            const target: NpcGpuFrameSource = {
                 id: mapId | 0,
                 getNpcs: () => state.npcs,
                 getTileRenderFlag: (_level: number, tileX: number, tileY: number): number => {
@@ -554,7 +554,7 @@ const worker = {
                     return col ? col[(tileY + state.borderSize) | 0] | 0 : 0;
                 },
             };
-            const npcOffset = npcGpuDataBuilder.addRenderable(target);
+            const npcOffset = npcGpuFrameBuilder.addRenderable(target);
 
             const tickPatchesForMap = buildTickPatchStreamsForMap({
                 mapId,
@@ -592,7 +592,7 @@ const worker = {
             );
         }
 
-        const npcGpuFrameData = npcGpuDataBuilder.flushPacked();
+        const npcGpuFrameData = npcGpuFrameBuilder.flushPacked();
         const packet: FramePacket = buildFramePacketFromMapEntries({
             frameCount: frameCount | 0,
             npcRingWriteIndex: newIndexMod | 0,

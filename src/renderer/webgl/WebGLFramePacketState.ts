@@ -1,4 +1,4 @@
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../../runtime/entities/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../../runtime/contracts/NpcGpuFrame";
 import {
     parseFramePacket,
     type FramePacket,

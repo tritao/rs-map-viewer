@@ -1,4 +1,4 @@
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../entities/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "./NpcGpuFrame";
 
 // Meta pairs: [mapId, npcDataOffset]
 export const NPC_OFFSETS_BY_MAP_ID_STRIDE = 2;

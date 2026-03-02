@@ -6,7 +6,7 @@ import {
     TICK_PATCH_STREAM_COUNT,
     type FramePacket,
 } from "./FramePacket";
-import type { NpcGpuFrameData } from "../entities/NpcGpuData";
+import type { NpcGpuFrameData } from "./NpcGpuFrame";
 
 export type FramePacketMapEntry = Readonly<{
     mapId: number;

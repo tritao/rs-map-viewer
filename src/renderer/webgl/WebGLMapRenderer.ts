@@ -31,7 +31,7 @@ import {
     type InteractionSnapshotRenderer,
 } from "../../runtime/contracts/Interaction";
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/entities/NpcGpuData";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import {
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,

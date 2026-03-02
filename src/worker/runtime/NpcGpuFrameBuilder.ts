@@ -1,7 +1,14 @@
 import { TileRenderFlag } from "../../rs/scene/Scene";
-import type { NpcGpuDataTarget, NpcGpuFrameData } from "./NpcGpuData";
+import type { Npc } from "../../runtime/entities/Npc";
+import type { NpcGpuFrameData } from "../../runtime/contracts/NpcGpuFrame";
 
-export class NpcGpuDataBuilder {
+export type NpcGpuFrameSource = Readonly<{
+    id: number;
+    getNpcs(): ReadonlyArray<Npc>;
+    getTileRenderFlag(level: number, tileX: number, tileY: number): number;
+}>;
+
+export class NpcGpuFrameBuilder {
     private count = 0;
     private data: Uint16Array = new Uint16Array(16 * 4);
 
@@ -9,7 +16,7 @@ export class NpcGpuDataBuilder {
         this.count = 0;
     }
 
-    addRenderable(renderable: NpcGpuDataTarget): number {
+    addRenderable(renderable: NpcGpuFrameSource): number {
         const npcs = renderable.getNpcs();
         if (npcs.length === 0) {
             return -1;
@@ -42,9 +49,6 @@ export class NpcGpuDataBuilder {
             newData.set(this.data);
             this.data = newData;
         }
-        // Important: this buffer may be transferred from worker -> main thread. Never return a view
-        // into `this.data` directly, otherwise the next frame would try to write into a detached
-        // buffer (threads Transfer detaches). Returning a copy keeps the internal scratch reusable.
         return {
             width: 16,
             height,
@@ -55,7 +59,6 @@ export class NpcGpuDataBuilder {
     private pushNpc(x: number, y: number, rotationAndPlane: number, npcTypeId: number): void {
         const nextCount = (this.count + 1) | 0;
         if ((((this.data.length / 4) | 0) as number) < nextCount) {
-            // Grow by ~2x, rounded to 16-texel rows (width=16, rgba=4).
             const newData = new Uint16Array(Math.ceil((nextCount * 2) / 16) * 16 * 4);
             newData.set(this.data);
             this.data = newData;
