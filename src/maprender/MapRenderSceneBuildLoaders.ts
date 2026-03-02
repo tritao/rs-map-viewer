@@ -1,10 +1,9 @@
 import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
-
-export type LoaderLoadResult<T> = Readonly<{ ok: boolean; value?: T }>;
+import type { Result } from "../util/Result";
 
 export type TypeEntryLoaderLike<T = unknown> = Readonly<{
-    tryLoad?: (id: number) => LoaderLoadResult<T> | undefined;
+    tryLoad?: (id: number) => Result<T, unknown> | undefined;
     tryLoadBytes?: (id: number) => Uint8Array | Int8Array | undefined;
 }>;
 
@@ -42,14 +41,14 @@ export type ModelLoaderLike = TypeEntryLoaderLike & Readonly<{
 }>;
 
 export type SeqFrameLoaderLike = TypeEntryLoaderLike & Readonly<{
-    tryGet?: (id: number) => LoaderLoadResult<unknown> | unknown;
+    tryGet?: (id: number) => Result<unknown, unknown> | unknown;
     baseLoader?: TypeEntryLoaderLike;
     tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
     tryGetFrameMapBlobForFrameId?: (id: number) => DatSeqFrameMapBlob | undefined;
 }>;
 
 export type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
-    tryGet?: (id: number) => LoaderLoadResult<unknown> | unknown;
+    tryGet?: (id: number) => Result<unknown, unknown> | unknown;
     baseLoader?: TypeEntryLoaderLike;
 }>;
 

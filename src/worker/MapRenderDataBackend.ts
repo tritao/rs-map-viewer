@@ -2,7 +2,6 @@ import { SdMapData } from "../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
-import type { MapRenderSceneBuildLoaders } from "../maprender/MapRenderSceneBuildLoaders";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -11,6 +10,10 @@ import type {
     MapRenderRuntimeCreateConfig,
     MapRenderRuntimeHandle,
 } from "../wasm/MapRenderRuntimeBridgeAbi";
+import {
+    MAP_RENDER_RUNTIME_STATUS_NOT_FOUND,
+    MAP_RENDER_RUNTIME_STATUS_OK,
+} from "../wasm/MapRenderRuntimeStatus.mjs";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
 import {
@@ -186,7 +189,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         input: SdMapLoaderInput,
     ): MapRenderByteDrivenSceneBuildInput {
         const { session } = this.deps;
-        const sceneBuildLoaders: MapRenderSceneBuildLoaders = this.deps.sceneBuildLoaders ?? {
+        const sceneBuildLoaders = {
             locTypeLoader: session.loaders.locTypeLoader,
             objTypeLoader: session.loaders.objTypeLoader,
             locModelLoader: {
@@ -232,124 +235,116 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         if (!request) {
             return undefined;
         }
-        const uploadedBase = await this.cacheUploader.uploadRuntimeCacheForBuildRequest(
+        const prepared = await this.cacheUploader.prepareRuntimeForBuildRequest(
             bridge,
             runtimeHandle,
             request,
             byteDrivenSceneBuildInput,
         );
-        if (!uploadedBase) {
+        if (!prepared) {
             return undefined;
         }
-        for (let pass = 0; pass < 12; pass++) {
-            const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
-            const overlay = runtimePacketToPayloadOverlay(packet);
-            if (this.options?.telemetry) {
-                const npcVerticesLen =
-                    packet?.npcVertices instanceof Uint8Array ? packet.npcVertices.length | 0 : -1;
-                const npcIndicesLen =
-                    packet?.npcIndices instanceof Int32Array ? packet.npcIndices.length | 0 : -1;
-                const npcDrawRangesBaseLen =
-                    packet?.npcDrawRangesBase instanceof Int32Array
-                        ? packet.npcDrawRangesBase.length | 0
-                        : -1;
-                const npcDrawRangesAlphaLen =
-                    packet?.npcDrawRangesAlpha instanceof Int32Array
-                        ? packet.npcDrawRangesAlpha.length | 0
-                        : -1;
-                const npcOrderKeysLen =
-                    packet?.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys.length | 0 : -1;
-                console.log("[map-render][telemetry][cpp-wasm] buildMapPacket npc payload", {
-                    square: `${input.mapX}:${input.mapY}`,
-                    pass: pass | 0,
-                    loadNpcs: request.loadNpcs === true,
-                    hasPacket: packet !== undefined,
-                    npcVerticesLen,
-                    npcIndicesLen,
-                    npcDrawRangesBaseLen,
-                    npcDrawRangesAlphaLen,
-                    npcOrderKeysLen,
-                });
-            }
-            const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-            if (missing && (missing.domains.length | 0) > 0) {
-                // Even if we got *some* geometry back (e.g. terrain-only), treat any missing
-                // blob entries as an incomplete build and retry after uploading them.
-                const okMissing = await this.cacheUploader.uploadMissingBlobEntriesForBuildRequest(
-                    bridge,
-                    runtimeHandle,
-                    missing,
-                    byteDrivenSceneBuildInput,
-                );
-                if (!okMissing) {
-                    return undefined;
-                }
-                continue;
-            }
+        const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+        const overlay = runtimePacketToPayloadOverlay(packet);
+        if (this.options?.telemetry) {
+            const npcVerticesLen =
+                packet?.npcVertices instanceof Uint8Array ? packet.npcVertices.length | 0 : -1;
+            const npcIndicesLen =
+                packet?.npcIndices instanceof Int32Array ? packet.npcIndices.length | 0 : -1;
+            const npcDrawRangesBaseLen =
+                packet?.npcDrawRangesBase instanceof Int32Array
+                    ? packet.npcDrawRangesBase.length | 0
+                    : -1;
+            const npcDrawRangesAlphaLen =
+                packet?.npcDrawRangesAlpha instanceof Int32Array
+                    ? packet.npcDrawRangesAlpha.length | 0
+                    : -1;
+            const npcOrderKeysLen =
+                packet?.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys.length | 0 : -1;
+            console.log("[map-render][telemetry][cpp-wasm] buildMapPacket npc payload", {
+                square: `${input.mapX}:${input.mapY}`,
+                pass: 0,
+                loadNpcs: request.loadNpcs === true,
+                hasPacket: packet !== undefined,
+                npcVerticesLen,
+                npcIndicesLen,
+                npcDrawRangesBaseLen,
+                npcDrawRangesAlphaLen,
+                npcOrderKeysLen,
+            });
+        }
+        const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+        const missingStatus =
+            missing && (missing.domains.length | 0) > 0
+                ? MAP_RENDER_RUNTIME_STATUS_NOT_FOUND
+                : MAP_RENDER_RUNTIME_STATUS_OK;
+        if (missingStatus !== MAP_RENDER_RUNTIME_STATUS_OK) {
+            return undefined;
+        }
 
-            const hasGeometry =
-                overlay &&
-                packet?.vertices instanceof Uint8Array &&
-                packet.vertices.length > 0 &&
-                packet?.indices instanceof Int32Array &&
-                packet.indices.length > 0 &&
-                packet?.usedTextureIds instanceof Int32Array;
-            if (!hasGeometry) {
-                return undefined;
-            }
+        const hasGeometry =
+            overlay &&
+            packet?.vertices instanceof Uint8Array &&
+            packet.vertices.length > 0 &&
+            packet?.indices instanceof Int32Array &&
+            packet.indices.length > 0 &&
+            packet?.usedTextureIds instanceof Int32Array;
+        if (!hasGeometry) {
+            return undefined;
+        }
 
-            const levels = packet.levels | 0;
-            const sizeX = packet.sizeX | 0;
-            const sizeY = packet.sizeY | 0;
-            const npcDrawRangesBase =
-                packet.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase : undefined;
-            const npcDrawRangesAlpha =
-                packet.npcDrawRangesAlpha instanceof Int32Array ? packet.npcDrawRangesAlpha : undefined;
-            const npcVertices = packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
-            const npcIndices = packet.npcIndices instanceof Int32Array ? packet.npcIndices : undefined;
-            const npcOrderKeys =
-                packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
-            const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
-            const npcSlotCount = npcRangesLen > 0 ? ((npcRangesLen / 3) | 0) : 0;
-            const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
-            const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
-            const npcOrderKeysLen = npcOrderKeys ? npcOrderKeys.length | 0 : 0;
-            const hasNpcRangeStride = (npcRangesLen % 3) === 0;
-            const hasNpcRanges = npcRangesLen > 0;
-            const hasNpcGeometry = npcVerticesLen > 0 && npcIndicesLen > 0;
-            const hasNpcOrderKeysAligned =
-                hasNpcRanges && hasNpcRangeStride && npcOrderKeysLen === npcSlotCount;
-            const keepNpcPayload = hasNpcRanges && hasNpcGeometry && hasNpcOrderKeysAligned;
-            const hasAnyNpcPayloadField =
-                hasNpcRanges || hasNpcGeometry || npcOrderKeysLen > 0 || npcVerticesLen > 0 || npcIndicesLen > 0;
-            if (hasAnyNpcPayloadField && (hasNpcRanges !== hasNpcGeometry || !hasNpcOrderKeysAligned)) {
-                console.warn(
-                    `[map-render][cpp-wasm] dropping inconsistent npc payload for ${input.mapX},${input.mapY} ` +
-                        `(ranges=${npcRangesLen} verts=${npcVerticesLen} indices=${npcIndicesLen} ` +
-                        `slots=${npcSlotCount} orderKeys=${npcOrderKeysLen})`,
-                );
-            }
-            if (this.options?.telemetry && request.loadNpcs === true && !keepNpcPayload) {
-                const [npcBuildStats, missingType, legacyModelLoad] = await Promise.all([
-                    bridge.debugGetLastNpcBuildStats?.(runtimeHandle),
-                    bridge.debugGetLastMissingType?.(runtimeHandle),
-                    bridge.debugGetLastLegacyModelLoad?.(runtimeHandle),
-                ]);
-                console.warn("[map-render][telemetry][cpp-wasm] npc payload empty diagnostics", {
-                    square: `${input.mapX}:${input.mapY}`,
-                    pass: pass | 0,
-                    npcRangesLen,
-                    npcVerticesLen,
-                    npcIndicesLen,
-                    npcSlotCount,
-                    npcOrderKeysLen,
-                    npcBuildStats,
-                    missingType,
-                    legacyModelLoad,
-                });
-            }
+        const levels = packet.levels | 0;
+        const sizeX = packet.sizeX | 0;
+        const sizeY = packet.sizeY | 0;
+        const npcDrawRangesBase =
+            packet.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase : undefined;
+        const npcDrawRangesAlpha =
+            packet.npcDrawRangesAlpha instanceof Int32Array ? packet.npcDrawRangesAlpha : undefined;
+        const npcVertices = packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
+        const npcIndices = packet.npcIndices instanceof Int32Array ? packet.npcIndices : undefined;
+        const npcOrderKeys =
+            packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
+        const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
+        const npcSlotCount = npcRangesLen > 0 ? ((npcRangesLen / 3) | 0) : 0;
+        const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
+        const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
+        const npcOrderKeysLen = npcOrderKeys ? npcOrderKeys.length | 0 : 0;
+        const hasNpcRangeStride = (npcRangesLen % 3) === 0;
+        const hasNpcRanges = npcRangesLen > 0;
+        const hasNpcGeometry = npcVerticesLen > 0 && npcIndicesLen > 0;
+        const hasNpcOrderKeysAligned =
+            hasNpcRanges && hasNpcRangeStride && npcOrderKeysLen === npcSlotCount;
+        const keepNpcPayload = hasNpcRanges && hasNpcGeometry && hasNpcOrderKeysAligned;
+        const hasAnyNpcPayloadField =
+            hasNpcRanges || hasNpcGeometry || npcOrderKeysLen > 0 || npcVerticesLen > 0 || npcIndicesLen > 0;
+        if (hasAnyNpcPayloadField && (hasNpcRanges !== hasNpcGeometry || !hasNpcOrderKeysAligned)) {
+            console.warn(
+                `[map-render][cpp-wasm] dropping inconsistent npc payload for ${input.mapX},${input.mapY} ` +
+                    `(ranges=${npcRangesLen} verts=${npcVerticesLen} indices=${npcIndicesLen} ` +
+                    `slots=${npcSlotCount} orderKeys=${npcOrderKeysLen})`,
+            );
+        }
+        if (this.options?.telemetry && request.loadNpcs === true && !keepNpcPayload) {
+            const [npcBuildStats, missingType, legacyModelLoad] = await Promise.all([
+                bridge.debugGetLastNpcBuildStats?.(runtimeHandle),
+                bridge.debugGetLastMissingType?.(runtimeHandle),
+                bridge.debugGetLastLegacyModelLoad?.(runtimeHandle),
+            ]);
+            console.warn("[map-render][telemetry][cpp-wasm] npc payload empty diagnostics", {
+                square: `${input.mapX}:${input.mapY}`,
+                pass: 0,
+                npcRangesLen,
+                npcVerticesLen,
+                npcIndicesLen,
+                npcSlotCount,
+                npcOrderKeysLen,
+                npcBuildStats,
+                missingType,
+                legacyModelLoad,
+            });
+        }
 
-            return {
+        return {
                 mapX: input.mapX | 0,
                 mapY: input.mapY | 0,
                 cacheName: this.deps.session.cache.info.name,
@@ -375,8 +370,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 npcIndices: keepNpcPayload ? npcIndices : undefined,
                 npcOrderKeys: keepNpcPayload ? npcOrderKeys : undefined,
             };
-        }
-        return undefined;
     }
 
     private trackOutcome(

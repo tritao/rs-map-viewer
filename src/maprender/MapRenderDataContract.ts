@@ -64,7 +64,7 @@ type RuntimePacketOverlayFailure = Readonly<{
     detail?: Readonly<Record<string, unknown>>;
 }>;
 
-type ValidatedRuntimePacketOverlayInput = Readonly<{
+type ValidatedOverlayInput = Readonly<{
     bucketCmdCounts: Int32Array;
     bucketModelInfoLengths: Int32Array;
     drawRangesPacked: Int32Array;
@@ -72,20 +72,24 @@ type ValidatedRuntimePacketOverlayInput = Readonly<{
     heightMapTextureData: Int16Array;
 }>;
 
+type OverlayValidationResult =
+    | Readonly<{ ok: true; value: ValidatedOverlayInput }>
+    | Readonly<{ ok: false; failure: RuntimePacketOverlayFailure }>;
+
 function valueTypeTag(value: unknown): string {
     return Object.prototype.toString.call(value);
 }
 
 function validateRuntimePacketForOverlay(
     packet: MapRenderRuntimePacket,
-    failureOut?: { value?: RuntimePacketOverlayFailure },
-): ValidatedRuntimePacketOverlayInput | undefined {
-    const fail = (reason: string, detail?: Readonly<Record<string, unknown>>) => {
-        if (failureOut) {
-            failureOut.value = { reason, detail };
-        }
-        return undefined;
-    };
+): OverlayValidationResult {
+    const fail = (
+        reason: string,
+        detail?: Readonly<Record<string, unknown>>,
+    ): OverlayValidationResult => ({
+        ok: false,
+        failure: { reason, detail },
+    });
     const packetVersion = packet.packetVersion | 0;
     if (packetVersion !== 1 && packetVersion !== 2 && packetVersion !== 3) {
         return fail("unsupported_packet_version", { packetVersion });
@@ -174,16 +178,19 @@ function validateRuntimePacketForOverlay(
         }
     }
     return {
-        bucketCmdCounts,
-        bucketModelInfoLengths,
-        drawRangesPacked,
-        modelInfoTextureBuckets,
-        heightMapTextureData,
+        ok: true,
+        value: {
+            bucketCmdCounts,
+            bucketModelInfoLengths,
+            drawRangesPacked,
+            modelInfoTextureBuckets,
+            heightMapTextureData,
+        },
     };
 }
 
 function buildOverlayFromValidatedRuntimePacket(
-    input: ValidatedRuntimePacketOverlayInput,
+    input: ValidatedOverlayInput,
 ): MapRenderPayloadOverlay {
     const drawRanges = {} as Record<MapRenderDrawBucketKey, Int32Array>;
     const modelInfoTextures = {} as Record<MapRenderDrawBucketKey, Uint16Array>;
@@ -218,7 +225,7 @@ export function runtimePacketToPayloadOverlay(
         return undefined;
     }
     const validated = validateRuntimePacketForOverlay(packet);
-    return validated ? buildOverlayFromValidatedRuntimePacket(validated) : undefined;
+    return validated.ok ? buildOverlayFromValidatedRuntimePacket(validated.value) : undefined;
 }
 
 export function runtimePacketToPayloadOverlayDiagnostic(
@@ -227,10 +234,11 @@ export function runtimePacketToPayloadOverlayDiagnostic(
     if (!packet) {
         return { overlay: undefined, failure: { reason: "packet_missing" } };
     }
-    const out: { value?: RuntimePacketOverlayFailure } = {};
-    const validated = validateRuntimePacketForOverlay(packet, out);
-    const overlay = validated ? buildOverlayFromValidatedRuntimePacket(validated) : undefined;
-    return { overlay, failure: out.value };
+    const validated = validateRuntimePacketForOverlay(packet);
+    if (!validated.ok) {
+        return { overlay: undefined, failure: validated.failure };
+    }
+    return { overlay: buildOverlayFromValidatedRuntimePacket(validated.value), failure: undefined };
 }
 
 export function sdMapDataTransferables(data: SdMapData): Transferable[] {
@@ -246,10 +254,10 @@ export function sdMapDataTransferables(data: SdMapData): Transferable[] {
         data.usedTextureIds.buffer as Transferable,
     ];
     for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
-        transferables.push(data.modelInfoTextures[key].buffer as Transferable);
-    }
-    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
-        transferables.push(data.drawRanges[key].buffer as Transferable);
+        transferables.push(
+            data.modelInfoTextures[key].buffer as Transferable,
+            data.drawRanges[key].buffer as Transferable,
+        );
     }
     if (
         data.npcVertices instanceof Uint8Array &&
