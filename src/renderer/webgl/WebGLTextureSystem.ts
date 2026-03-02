@@ -22,7 +22,7 @@ export class WebGLTextureSystem {
         textureFilterMode: TextureFilterMode,
         frameCount: number,
     ): void {
-        this.residency.init(app, gl, textureLoader as any, cacheInfo, textureFilterMode, frameCount);
+        this.residency.init(app, gl, textureLoader, cacheInfo, textureFilterMode, frameCount);
         this.rebuildMaterialsTexture(app, textureLoader);
     }
 

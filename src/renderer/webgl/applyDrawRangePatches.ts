@@ -17,6 +17,7 @@ export function applyDrawRangePatches(
     patchStreamPacked: Int32Array,
     patchCount: number,
 ): void {
+    const multiDrawCall = drawCall as unknown as MultiDrawCall;
     const maxPatchCountByStream = (patchStreamPacked.length / DRAW_RANGE_PATCH_STRIDE) | 0;
     const requestedPatchCount = patchCount | 0;
     const safePatchCount = Math.max(0, Math.min(requestedPatchCount, maxPatchCountByStream));
@@ -41,8 +42,8 @@ export function applyDrawRangePatches(
         const instances = patchStreamPacked[patchOffset + DRAW_RANGE_PATCH_INSTANCES_INDEX] | 0;
 
         drawCall.offsets[drawRangeIndex] = offset;
-        (drawCall as any).numElements[drawRangeIndex] = elements;
-        (drawCall as any).numInstances[drawRangeIndex] = instances;
+        multiDrawCall.numElements[drawRangeIndex] = elements;
+        multiDrawCall.numInstances[drawRangeIndex] = instances;
 
         drawRangesPacked[drawRangeOffset + DRAW_RANGE_OFFSET_INDEX] = offset;
         drawRangesPacked[drawRangeOffset + DRAW_RANGE_ELEMENTS_INDEX] = elements;
@@ -50,3 +51,7 @@ export function applyDrawRangePatches(
     }
 }
 
+type MultiDrawCall = DrawCall & {
+    numElements: Int32Array | number[];
+    numInstances: Int32Array | number[];
+};

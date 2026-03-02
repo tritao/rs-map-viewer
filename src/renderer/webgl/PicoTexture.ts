@@ -9,7 +9,7 @@ export function createTextureArray(
     width: number,
     height: number,
     depth: number,
-    options: any,
+    options: unknown,
 ): TextureType {
     return new PicoTexture(
         app.gl,
@@ -27,14 +27,14 @@ export function createTextureArray(
 export class PicoTexture extends Texture {
     constructor(
         gl: WebGLRenderingContext,
-        appState: any,
+        appState: unknown,
         binding: number,
         image: ArrayBufferView,
         width: number,
         height: number,
         depth: number,
         mipmaps: boolean,
-        options: any,
+        options: unknown,
     ) {
         // @ts-ignore
         super(gl, appState, binding, image, width, height, depth, mipmaps, options);
@@ -61,44 +61,48 @@ export class PicoTexture extends Texture {
             this.appState.textures[this.currentUnit] = null;
         }
 
-        const thisAny = this as any;
+        const textureInternal = this as unknown as TextureInternalState;
 
-        this.texture = this.gl.createTexture() as any;
-        thisAny.bind(Math.max(this.currentUnit, 0));
+        const texture = this.gl.createTexture();
+        if (!texture) {
+            throw new Error("Failed creating texture");
+        }
+        this.texture = texture;
+        textureInternal.bind(Math.max(this.currentUnit, 0));
 
         this.width = width;
         this.height = height;
         this.depth = depth;
 
-        this.gl.texParameteri(this.binding, gl.TEXTURE_MIN_FILTER, thisAny.minFilter);
-        this.gl.texParameteri(this.binding, gl.TEXTURE_MAG_FILTER, thisAny.magFilter);
-        this.gl.texParameteri(this.binding, gl.TEXTURE_WRAP_S, thisAny.wrapS);
-        this.gl.texParameteri(this.binding, gl.TEXTURE_WRAP_T, thisAny.wrapT);
-        this.gl.texParameteri(this.binding, gl.TEXTURE_WRAP_R, thisAny.wrapR);
-        this.gl.texParameteri(this.binding, gl.TEXTURE_COMPARE_FUNC, thisAny.compareFunc);
-        this.gl.texParameteri(this.binding, gl.TEXTURE_COMPARE_MODE, thisAny.compareMode);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_MIN_FILTER, textureInternal.minFilter);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_MAG_FILTER, textureInternal.magFilter);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_WRAP_S, textureInternal.wrapS);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_WRAP_T, textureInternal.wrapT);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_WRAP_R, textureInternal.wrapR);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_COMPARE_FUNC, textureInternal.compareFunc);
+        this.gl.texParameteri(this.binding, gl.TEXTURE_COMPARE_MODE, textureInternal.compareMode);
 
-        if (thisAny.minLOD !== null) {
-            this.gl.texParameterf(this.binding, gl.TEXTURE_MIN_LOD, thisAny.minLOD);
+        if (textureInternal.minLOD !== null) {
+            this.gl.texParameterf(this.binding, gl.TEXTURE_MIN_LOD, textureInternal.minLOD);
         }
 
-        if (thisAny.maxLOD !== null) {
-            this.gl.texParameterf(this.binding, gl.TEXTURE_MAX_LOD, thisAny.maxLOD);
+        if (textureInternal.maxLOD !== null) {
+            this.gl.texParameterf(this.binding, gl.TEXTURE_MAX_LOD, textureInternal.maxLOD);
         }
 
-        if (thisAny.baseLevel !== null) {
-            this.gl.texParameteri(this.binding, gl.TEXTURE_BASE_LEVEL, thisAny.baseLevel);
+        if (textureInternal.baseLevel !== null) {
+            this.gl.texParameteri(this.binding, gl.TEXTURE_BASE_LEVEL, textureInternal.baseLevel);
         }
 
-        if (thisAny.maxLevel !== null) {
-            this.gl.texParameteri(this.binding, gl.TEXTURE_MAX_LEVEL, thisAny.maxLevel);
+        if (textureInternal.maxLevel !== null) {
+            this.gl.texParameteri(this.binding, gl.TEXTURE_MAX_LEVEL, textureInternal.maxLevel);
         }
 
-        if (thisAny.maxAnisotropy > 1) {
+        if (textureInternal.maxAnisotropy > 1) {
             this.gl.texParameteri(
                 this.binding,
                 PicoGL.TEXTURE_MAX_ANISOTROPY_EXT,
-                thisAny.maxAnisotropy,
+                textureInternal.maxAnisotropy,
             );
         }
 
@@ -136,3 +140,19 @@ export class PicoTexture extends Texture {
         return this;
     }
 }
+
+type TextureInternalState = TextureType & {
+    bind(unit: number): void;
+    minFilter: number;
+    magFilter: number;
+    wrapS: number;
+    wrapT: number;
+    wrapR: number;
+    compareFunc: number;
+    compareMode: number;
+    minLOD: number | null;
+    maxLOD: number | null;
+    baseLevel: number | null;
+    maxLevel: number | null;
+    maxAnisotropy: number;
+};

@@ -1,7 +1,7 @@
 import PicoGL, { App as PicoApp, Texture } from "picogl";
 
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
-import type { TextureLoader } from "../../rs/texture/TextureLoader";
+import type { TextureService } from "../../rs/loaders/Loaders";
 import { TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
 import { TextureResidencyPolicy } from "./texture/TextureResidencyPolicy";
 import { createTextureArray } from "./PicoTexture";
@@ -16,7 +16,7 @@ export class WebGLTextureResidency {
 
     private app?: PicoApp;
     private gl?: WebGL2RenderingContext;
-    private textureLoader?: TextureLoader;
+    private textureLoader?: TextureService;
     private debugLastResidencyLogFrame = 0;
 
     private readonly policy: TextureResidencyPolicy;
@@ -32,7 +32,7 @@ export class WebGLTextureResidency {
     init(
         app: PicoApp,
         gl: WebGL2RenderingContext,
-        textureLoader: TextureLoader,
+        textureLoader: TextureService,
         cacheInfo: CacheInfo,
         textureFilterMode: TextureFilterMode,
         frameCount: number,

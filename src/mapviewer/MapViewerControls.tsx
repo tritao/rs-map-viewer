@@ -19,6 +19,10 @@ interface MapViewerControlsProps {
 }
 
 type ColorRgb = { r: number; g: number; b: number };
+type RendererDebugControls = {
+    debugTextureMode?: number;
+    logTextureDebugStats?: () => void;
+};
 
 function createRendererControls(renderer: MapRenderer<any, any>): Schema {
     const base: Schema = {
@@ -140,23 +144,29 @@ function createRendererControls(renderer: MapRenderer<any, any>): Schema {
     };
 
     // Optional debug controls for WebGL renderer without importing WebGL classes here.
-    const rAny = renderer as any;
-    if (typeof rAny.logTextureDebugStats === "function" || "debugTextureMode" in rAny) {
+    const debugControls = renderer as unknown as RendererDebugControls;
+    if (
+        typeof debugControls.logTextureDebugStats === "function" ||
+        typeof debugControls.debugTextureMode === "number"
+    ) {
         base.Debug = folder(
             {
                 "Texture Debug": {
-                    value: typeof rAny.debugTextureMode === "number" ? rAny.debugTextureMode : 0,
+                    value:
+                        typeof debugControls.debugTextureMode === "number"
+                            ? debugControls.debugTextureMode
+                            : 0,
                     options: {
                         Off: 0,
                         "Missing Magenta": 1,
                         "Raw Texture": 2,
                     },
                     onChange: (v: number) => {
-                        rAny.debugTextureMode = v;
+                        debugControls.debugTextureMode = v;
                     },
                 },
-                ...(typeof rAny.logTextureDebugStats === "function"
-                    ? { "Log Texture Stats": button(() => rAny.logTextureDebugStats()) }
+                ...(typeof debugControls.logTextureDebugStats === "function"
+                    ? { "Log Texture Stats": button(() => debugControls.logTextureDebugStats?.()) }
                     : {}),
             },
             { collapsed: true },

@@ -6,15 +6,24 @@ export type WebGLDevice = Readonly<{
     hasMultiDraw: boolean;
 }>;
 
+type PicoAppWithExtensions = PicoApp & {
+    state: PicoApp["state"] & {
+        extensions?: {
+            multiDrawInstanced?: unknown;
+        };
+    };
+};
+
 export function createWebGLDevice(canvas: HTMLCanvasElement): WebGLDevice {
     const app = PicoGL.createApp(canvas);
     const gl = app.gl as WebGL2RenderingContext;
 
     // Hack to get the right multi draw extension for picogl.
-    const state: any = (app as any).state;
+    const appWithExtensions = app as PicoAppWithExtensions;
     const ext = gl.getExtension("WEBGL_multi_draw");
     PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED = ext;
-    state.extensions.multiDrawInstanced = ext;
+    appWithExtensions.state.extensions = appWithExtensions.state.extensions ?? {};
+    appWithExtensions.state.extensions.multiDrawInstanced = ext;
 
     const hasMultiDraw = !!PicoGL.WEBGL_INFO.MULTI_DRAW_INSTANCED;
 
@@ -29,4 +38,3 @@ export function createWebGLDevice(canvas: HTMLCanvasElement): WebGLDevice {
 
     return { app, gl, hasMultiDraw };
 }
-
