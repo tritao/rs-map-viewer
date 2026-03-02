@@ -1,3 +1,5 @@
+import type { NpcSpawn } from "../data/npc/NpcSpawn";
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { VarManagerProvider } from "../rs/config/vartype/VarProvider";
 import type { CacheSession } from "../rs/loaders/CacheSession";
 import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
@@ -26,4 +28,9 @@ export type WorkerState = {
 export type WorkerRuntimeOptions = Readonly<{
     mapRenderBackend?: MapRenderDataBackendKind;
     mapRenderTelemetry?: boolean;
+}>;
+
+export type WorkerSpawnBootstrap = Readonly<{
+    objSpawns: ObjSpawn[];
+    npcSpawns: NpcSpawn[];
 }>;

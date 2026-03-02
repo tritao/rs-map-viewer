@@ -12,7 +12,7 @@ import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./runtime/WorkerTickRuntime";
-import type { WorkerRuntimeOptions } from "./RenderDataWorkerTypes";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 registerSerializer(renderDataLoaderSerializer);
@@ -21,10 +21,14 @@ const buildService = new RenderDataWorkerBuild();
 const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
 
 const worker = {
-    async initCache(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
+    async initCache(
+        cache: LoadedCache,
+        spawnBootstrap: WorkerSpawnBootstrap,
+        options?: WorkerRuntimeOptions,
+    ): Promise<void> {
         tickRuntime.setRuntimeOptions(options);
         tickRuntime.resetForCache();
-        await buildService.initCache(cache, options);
+        await buildService.initCache(cache, spawnBootstrap, options);
     },
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         buildService.initDataLoader(dataLoader);

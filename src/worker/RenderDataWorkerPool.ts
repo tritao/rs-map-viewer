@@ -3,10 +3,12 @@ import { QueuedTask } from "threads/dist/master/pool";
 import { WorkerDescriptor } from "threads/dist/master/pool-types";
 import { ObservablePromise } from "threads/dist/observable-promise";
 
+import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
+import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "../maprender/MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
-import type { WorkerRuntimeOptions } from "./RenderDataWorkerTypes";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { CollisionData } from "../rs/scene/CollisionMap";
@@ -34,14 +36,52 @@ export class RenderDataWorkerPool {
         readonly size: number,
     ) {}
 
-    initCache(cache: LoadedCache, options?: WorkerRuntimeOptions): void {
-        for (const worker of this.workers) {
-            worker.init.then((w) => w.initCache(cache, options));
-        }
+    private readonly spawnBootstrapByCacheKey = new Map<string, Promise<WorkerSpawnBootstrap>>();
+    private initPromise: Promise<void> = Promise.resolve();
+
+    private getSpawnBootstrapCacheKey(cache: LoadedCache): string {
+        const info = cache.info;
+        return `${info.game}:${info.revision}:${info.name}`;
     }
 
-    initCacheAndWait(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
-        return this.runAll((w) => w.initCache(cache, options));
+    private ensureSpawnBootstrap(cache: LoadedCache): Promise<WorkerSpawnBootstrap> {
+        const key = this.getSpawnBootstrapCacheKey(cache);
+        const cached = this.spawnBootstrapByCacheKey.get(key);
+        if (cached) {
+            return cached;
+        }
+        const promise = Promise.all([
+            fetchObjSpawns(),
+            fetchNpcSpawns(getNpcSpawnsUrl(cache.info)),
+        ]).then(([objSpawns, npcSpawns]) => ({
+            objSpawns,
+            npcSpawns,
+        }));
+        this.spawnBootstrapByCacheKey.set(key, promise);
+        return promise;
+    }
+
+    private runInit(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
+        return (async () => {
+            const spawnBootstrap = await this.ensureSpawnBootstrap(cache);
+            await this.runAll((w) => w.initCache(cache, spawnBootstrap, options));
+        })();
+    }
+
+    private async ensureInitialized(): Promise<void> {
+        await this.initPromise;
+    }
+
+    initCache(cache: LoadedCache, options?: WorkerRuntimeOptions): void {
+        this.initPromise = this.runInit(cache, options);
+        this.initPromise.catch((e) => {
+            console.error("Failed to initialize render data worker", e);
+        });
+    }
+
+    async initCacheAndWait(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
+        this.initPromise = this.runInit(cache, options);
+        await this.initPromise;
     }
 
     async runAll(task: (w: RenderDataWorkerThread) => any): Promise<void> {
@@ -60,7 +100,9 @@ export class RenderDataWorkerPool {
         loader: Loader,
         input: I,
     ): QueuedTask<RenderDataWorkerThread, D> {
-        return this.pool.queue((w) => w.load(loader, input) as ObservablePromise<D>);
+        return this.pool.queue(
+            (w) => this.ensureInitialized().then(() => w.load(loader, input)) as ObservablePromise<D>,
+        );
     }
 
     queueLoadTexture(
@@ -70,7 +112,8 @@ export class RenderDataWorkerPool {
         brightness: number,
     ): QueuedTask<RenderDataWorkerThread, Int32Array> {
         return this.pool.queue(
-            (w) => w.loadTexture(id, size, flipH, brightness) as ObservablePromise<Int32Array>,
+            (w) =>
+                this.ensureInitialized().then(() => w.loadTexture(id, size, flipH, brightness)) as ObservablePromise<Int32Array>,
         );
     }
 
@@ -80,23 +123,25 @@ export class RenderDataWorkerPool {
         level: number,
         drawMapFunctions: boolean,
     ): QueuedTask<RenderDataWorkerThread, MinimapData | undefined> {
-        return this.pool.queue((w) => w.loadMapImage(mapX, mapY, level, drawMapFunctions));
+        return this.pool.queue((w) =>
+            this.ensureInitialized().then(() => w.loadMapImage(mapX, mapY, level, drawMapFunctions)),
+        );
     }
 
     setVars(vars: Int32Array): Promise<void> {
-        return this.runAll((w) => w.setVars(vars));
+        return this.ensureInitialized().then(() => this.runAll((w) => w.setVars(vars)));
     }
 
     loadCachedMapImages(): QueuedTask<RenderDataWorkerThread, Map<number, string>> {
-        return this.pool.queue((w) => w.loadCachedMapImages());
+        return this.pool.queue((w) => this.ensureInitialized().then(() => w.loadCachedMapImages()));
     }
 
     exportSprites(): QueuedTask<RenderDataWorkerThread, Blob> {
-        return this.pool.queue((w) => w.exportSpritesToZip());
+        return this.pool.queue((w) => this.ensureInitialized().then(() => w.exportSpritesToZip()));
     }
 
     exportTextures(): QueuedTask<RenderDataWorkerThread, Blob> {
-        return this.pool.queue((w) => w.exportTexturesToZip());
+        return this.pool.queue((w) => this.ensureInitialized().then(() => w.exportTexturesToZip()));
     }
 
     // Dedicated worker for per-frame sim/tick packets. Keeping it sticky avoids state divergence.
@@ -118,26 +163,32 @@ export class RenderDataWorkerPool {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        return this.getTickWorker().then((w) =>
-            w.registerMapNpcSimState(
-                mapId,
-                borderSize,
-                tileRenderFlagsLevel1,
-                collisionDatas,
-                locsAnimated as any,
-                npcEvents as any,
-                npcTypeAnimationTable as any,
-                mapSimToken,
+        return this.ensureInitialized().then(() =>
+            this.getTickWorker().then((w) =>
+                w.registerMapNpcSimState(
+                    mapId,
+                    borderSize,
+                    tileRenderFlagsLevel1,
+                    collisionDatas,
+                    locsAnimated as any,
+                    npcEvents as any,
+                    npcTypeAnimationTable as any,
+                    mapSimToken,
+                ),
             ),
         );
     }
 
     unregisterMapNpcSimState(mapId: number, mapSimToken?: number): Promise<void> {
-        return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
+        return this.ensureInitialized().then(() =>
+            this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken)),
+        );
     }
 
     applyNpcUpdatePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
-        return this.getTickWorker().then((w) => w.applyNpcUpdatePacketBytes(packet));
+        return this.ensureInitialized().then(() =>
+            this.getTickWorker().then((w) => w.applyNpcUpdatePacketBytes(packet)),
+        );
     }
 
     tickFrame(
@@ -151,18 +202,20 @@ export class RenderDataWorkerPool {
         lodDistance: number,
         hoveredMapIdsPacked: Int32Array,
     ): Promise<FramePacket | undefined> {
-        return this.getTickWorker().then((w) =>
-            w.tickFrame(
-                frameCount,
-                mapIds,
-                ticksElapsed,
-                clientTicksElapsed,
-                cycleNow,
-                cameraMapX,
-                cameraMapY,
-                lodDistance,
-                hoveredMapIdsPacked,
-            ) as any,
+        return this.ensureInitialized().then(() =>
+            this.getTickWorker().then((w) =>
+                w.tickFrame(
+                    frameCount,
+                    mapIds,
+                    ticksElapsed,
+                    clientTicksElapsed,
+                    cycleNow,
+                    cameraMapX,
+                    cameraMapY,
+                    lodDistance,
+                    hoveredMapIdsPacked,
+                ) as any,
+            ),
         );
     }
 

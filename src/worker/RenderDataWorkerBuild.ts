@@ -2,8 +2,6 @@ import JSZip from "jszip";
 import { TransferDescriptor } from "threads";
 import { Transfer } from "threads/worker";
 
-import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
-import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
@@ -27,7 +25,11 @@ import { Hasher } from "../util/Hasher";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
 import { MinimapData, loadMinimapBlob } from "../maprender/MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
-import type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
+import type {
+    WorkerRuntimeOptions,
+    WorkerSpawnBootstrap,
+    WorkerState,
+} from "./RenderDataWorkerTypes";
 
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 
@@ -36,6 +38,7 @@ const hasherPromise = Hasher.init();
 
 async function initWorker(
     cache: LoadedCache,
+    spawnBootstrap: WorkerSpawnBootstrap,
     options?: WorkerRuntimeOptions,
 ): Promise<WorkerState> {
     await hasherPromise;
@@ -90,10 +93,6 @@ async function initWorker(
         varProvider,
     });
     const mapRenderBackendKind = options?.mapRenderBackend ?? "cpp-wasm";
-    const [objSpawns, npcSpawns] = await Promise.all([
-        fetchObjSpawns(),
-        fetchNpcSpawns(getNpcSpawnsUrl(cache.info)),
-    ]);
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,
@@ -111,8 +110,8 @@ async function initWorker(
             npcModelLoader,
             mapImageRenderer,
             varProvider,
-            objSpawns,
-            npcSpawns,
+            objSpawns: spawnBootstrap.objSpawns,
+            npcSpawns: spawnBootstrap.npcSpawns,
         },
         {
             telemetry: options?.mapRenderTelemetry,
@@ -259,10 +258,11 @@ export class RenderDataWorkerBuild {
 
     async initCache(
         cache: LoadedCache,
+        spawnBootstrap: WorkerSpawnBootstrap,
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
         console.log("init worker", cache.info);
-        this.workerStatePromise = initWorker(cache, options)
+        this.workerStatePromise = initWorker(cache, spawnBootstrap, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
         await this.requireWorkerState();
