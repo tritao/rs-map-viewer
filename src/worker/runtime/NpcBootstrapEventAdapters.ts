@@ -4,7 +4,7 @@ import { orderByPacketKeys } from "../../runtime/entities/orderByPacketKeys";
 import type { NpcSpawnEvent } from "../../runtime/sim/NpcSpawnEvent";
 import type { NpcTypeAnimationEntry } from "../../runtime/sim/NpcTypeAnimationTable";
 
-export type NpcBootstrapInput = Readonly<{
+type NpcBootstrapInput = Readonly<{
     mapId: number;
     npcsIn: ReadonlyArray<NpcData>;
     npcOrderKeys?: Int32Array;
