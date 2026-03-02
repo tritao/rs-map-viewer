@@ -1,7 +1,7 @@
 import { MovementType } from "../../runtime/entities/Npc";
 import { ByteBuffer } from "../../rs/io/ByteBuffer";
 import type { NpcUpdateEvent } from "./NpcLifecycleEvent";
-import type { NpcServerDelta } from "./NpcSimMovement";
+import type { NpcUpdateDelta } from "./NpcSimMovement";
 
 const PACKET_VERSION = 1;
 const MAX_PATH_LENGTH = 25;
@@ -21,8 +21,8 @@ export type DecodedNpcUpdatePacket = Readonly<{
     deltaCount: number;
 }>;
 
-type MutableNpcServerDelta = {
-    -readonly [K in keyof NpcServerDelta]: NpcServerDelta[K];
+type MutableNpcUpdateDelta = {
+    -readonly [K in keyof NpcUpdateDelta]: NpcUpdateDelta[K];
 };
 
 type ByteInput = ArrayBuffer | ArrayBufferView;
@@ -64,7 +64,7 @@ export function decodeNpcUpdatePacket(input: ByteInput): DecodedNpcUpdatePacket 
         const mapEvents = new Array<NpcUpdateEvent>(mapDeltaCount);
         for (let i = 0; i < mapDeltaCount; i++) {
             const flags = reader.readUnsignedByte() | 0;
-            const delta: MutableNpcServerDelta = {};
+            const delta: MutableNpcUpdateDelta = {};
 
             if ((flags & FLAG_HAS_NPC_INDEX) !== 0) {
                 delta.npcIndex = reader.readUnsignedShort() | 0;

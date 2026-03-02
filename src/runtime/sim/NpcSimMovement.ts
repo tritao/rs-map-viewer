@@ -30,14 +30,14 @@ export type NpcServerMovementLike = {
     queuePath(x: number, y: number, movementType: MovementType): void;
 };
 
-export type NpcServerPathDelta = Readonly<{
+export type NpcUpdatePathDelta = Readonly<{
     length?: number;
     pathX: ArrayLike<number>;
     pathY: ArrayLike<number>;
     pathMovementType?: ArrayLike<number>;
 }>;
 
-export type NpcServerDelta = Readonly<{
+export type NpcUpdateDelta = Readonly<{
     npcIndex?: number;
     npcOrderKey?: number;
     clearServerPath?: boolean;
@@ -47,14 +47,14 @@ export type NpcServerDelta = Readonly<{
     snapWorldY?: number;
     orientation?: number;
     rotation?: number;
-    path?: NpcServerPathDelta;
+    path?: NpcUpdatePathDelta;
 }>;
 
 function isFiniteNumber(value: number | undefined): value is number {
     return typeof value === "number" && Number.isFinite(value);
 }
 
-export function applyNpcServerDelta(npc: NpcServerMovementLike, delta: NpcServerDelta): void {
+export function applyNpcServerDelta(npc: NpcServerMovementLike, delta: NpcUpdateDelta): void {
     if (delta.clearServerPath) {
         npc.serverPathLength = 0;
     }
@@ -104,7 +104,7 @@ export function applyNpcServerDelta(npc: NpcServerMovementLike, delta: NpcServer
 
 export function applyNpcServerDeltas(
     npcs: ReadonlyArray<NpcServerMovementLike>,
-    deltas: ReadonlyArray<NpcServerDelta>,
+    deltas: ReadonlyArray<NpcUpdateDelta>,
     npcIndexByOrderKey?: ReadonlyMap<number, number>,
 ): number {
     let applied = 0;

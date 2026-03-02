@@ -1,5 +1,5 @@
 import type { AnimationFrames } from "../../renderer/AnimationFrames";
-import type { NpcServerDelta } from "./NpcSimMovement";
+import type { NpcUpdateDelta } from "./NpcSimMovement";
 
 export type NpcSpawnEvent = Readonly<{
     kind: "spawn";
@@ -16,7 +16,7 @@ export type NpcSpawnEvent = Readonly<{
 export type NpcUpdateEvent = Readonly<{
     kind: "update";
     mapId: number;
-    delta: NpcServerDelta;
+    delta: NpcUpdateDelta;
 }>;
 
 export type NpcDespawnEvent = Readonly<{
