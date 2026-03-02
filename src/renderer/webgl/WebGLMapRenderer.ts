@@ -14,7 +14,7 @@ import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { CacheSession } from "../../rs/loaders/CacheSession";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import { Camera } from "../../mapviewer/Camera";
-import { DrawRange } from "../DrawRange";
+import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import { MapRenderer, TextureFilterMode } from "../MapRenderer";
 import { FrameStats, RendererStats } from "../Renderer";
 import { SdMapData } from "../../maprender/payload/SdMapData";

@@ -24,8 +24,8 @@ import { TextureLoader } from "../../rs/texture/TextureLoader";
 import type { BackendKind } from "../../util/BackendKind";
 import { MapRenderCommandStreamRuntimeInput } from "../../worker/MapRenderDataContract";
 import { loadMinimapBlob } from "../../worker/MinimapData";
-import { AnimationFrames } from "../../renderer/AnimationFrames";
-import { DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../renderer/DrawRange";
+import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
+import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
 import { InteractType } from "../../renderer/InteractType";
 import { RenderableType } from "../../renderer/Renderer";
 import {
