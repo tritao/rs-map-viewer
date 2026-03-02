@@ -18,7 +18,7 @@ import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
-import { encodeNpcLifecyclePacketFromEvents } from "../runtime/sim/NpcLifecyclePacket";
+import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";

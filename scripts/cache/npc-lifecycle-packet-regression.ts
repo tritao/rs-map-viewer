@@ -5,7 +5,7 @@ import type { NpcEvent } from "../../src/runtime/sim/NpcEvents";
 import {
     decodeNpcLifecyclePacket,
     encodeNpcLifecyclePacketFromEvents,
-} from "../../src/runtime/sim/NpcLifecyclePacket";
+} from "../../src/runtime/contracts/NpcLifecyclePacket";
 
 function testRoundtrip(): void {
     const events: NpcEvent[] = [

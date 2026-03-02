@@ -2,7 +2,7 @@ import type { CollisionData } from "../../rs/scene/CollisionMap";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import { decodeNpcLifecyclePacket } from "../../runtime/sim/NpcLifecyclePacket";
+import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
