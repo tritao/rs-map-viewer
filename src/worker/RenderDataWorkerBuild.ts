@@ -25,9 +25,9 @@ import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
 import { createMapRenderDataBackend } from "./MapRenderDataBackend";
-import { MinimapData, loadMinimapBlob } from "./MinimapData";
+import { MinimapData, loadMinimapBlob } from "../maprender/MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
-import type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorker";
+import type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 

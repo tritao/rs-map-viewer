@@ -1,5 +1,5 @@
 import type { RenderDataLoader, RenderDataResult } from "../RenderDataLoader";
-import type { WorkerState } from "../RenderDataWorker";
+import type { WorkerState } from "../RenderDataWorkerTypes";
 import { SdMapData } from "../../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../../maprender/payload/SdMapLoaderInput";
 

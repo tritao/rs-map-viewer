@@ -11,7 +11,7 @@ import { fetchCacheList } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
 import { renderDataLoaderSerializer } from "../worker/RenderDataLoader";
-import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
+import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
 import { MapViewer } from "./MapViewer";

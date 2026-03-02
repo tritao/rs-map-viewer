@@ -2,52 +2,22 @@ import { TransferDescriptor } from "threads";
 import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import { NpcSpawn } from "../data/npc/NpcSpawn";
-import { ObjSpawn } from "../data/obj/ObjSpawn";
+import type { NpcSpawn } from "../data/npc/NpcSpawn";
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
-import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
-import { CacheSession } from "../rs/loaders/CacheSession";
-import { MapBytesProvider } from "../rs/map/MapBytesProvider";
 import type { CollisionData } from "../rs/scene/CollisionMap";
-import { SceneBuilder } from "../rs/scene/SceneBuilder";
-import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
-import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
-import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
-import { LoadedCache } from "../util/Caches";
-import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
+import type { LoadedCache } from "../util/Caches";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
 import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./runtime/WorkerTickRuntime";
+import type { WorkerRuntimeOptions } from "./RenderDataWorkerTypes";
+export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 registerSerializer(renderDataLoaderSerializer);
-
-export type WorkerState = {
-    session: CacheSession;
-    varProvider: VarManagerProvider;
-    mapBytesProvider: MapBytesProvider;
-    locModelLoader: LocModelLoader;
-    objModelLoader: ObjModelLoader;
-    npcModelLoader: NpcModelLoader;
-
-    sceneBuilder: SceneBuilder;
-    mapRenderDataBackend: MapRenderDataBackend;
-
-    mapImageRenderer: MapImageRenderer;
-    mapImageCache: Cache;
-
-    objSpawns: ObjSpawn[];
-    npcSpawns: NpcSpawn[];
-};
-
-export type WorkerRuntimeOptions = Readonly<{
-    mapRenderBackend?: MapRenderDataBackendKind;
-    mapRenderTelemetry?: boolean;
-}>;
 
 const buildService = new RenderDataWorkerBuild();
 const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
