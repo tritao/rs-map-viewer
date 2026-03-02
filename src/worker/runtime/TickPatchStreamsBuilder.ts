@@ -1,16 +1,12 @@
-import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
-import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import { NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
-import { stepNpcSimulatedServerMovement } from "../../runtime/sim/NpcSimMovement";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
 } from "../../runtime/contracts/FramePacket";
-import type { WorkerNpcSimMapState } from "./WorkerNpcSimStateStore";
+import type { NpcSimMapState } from "../../runtime/sim/NpcSimStateStore";
 
 function emitTickPatch(
     outPacked: Int32Array,
@@ -33,7 +29,7 @@ function emitTickPatch(
 }
 
 function emitLocPatchesForChangedFrame(
-    state: WorkerNpcSimMapState,
+    state: NpcSimMapState,
     locIndex: number,
     newFrameId: number,
 ) {
@@ -157,61 +153,11 @@ export function readWasmPatchStreamsForMap(
     };
 }
 
-export function applyNpcMovementStep(
-    state: WorkerNpcSimMapState,
-    pathfinder: Pathfinder,
-    safeTicksElapsed: number,
-    safeClientTicks: number,
-    seqTypeLoader: SeqTypeLoader,
-    seqFrameLoader: SeqFrameLoader,
-): void {
-    if (!state.seededNpcFlags) {
-        for (const npc of state.npcs) {
-            const level = npc.level | 0;
-            const collisionMap = state.collisionMaps[level];
-            if (!collisionMap) {
-                continue;
-            }
-            const currentX = npc.pathX[0] | 0;
-            const currentY = npc.pathY[0] | 0;
-            const size = npc.getSize() | 0;
-            for (let fx = currentX; fx < currentX + size; fx++) {
-                for (let fy = currentY; fy < currentY + size; fy++) {
-                    collisionMap.flag(
-                        (fx + state.borderSize) | 0,
-                        (fy + state.borderSize) | 0,
-                        CollisionFlag.BLOCK_NPCS,
-                    );
-                }
-            }
-        }
-        state.seededNpcFlags = true;
-    }
-
-    for (let t = 0; t < safeTicksElapsed; t++) {
-        for (const npc of state.npcs) {
-            stepNpcSimulatedServerMovement(npc, pathfinder, state.borderSize, state.collisionMaps);
-        }
-    }
-
-    for (let t = 0; t < safeClientTicks; t++) {
-        for (const npc of state.npcs) {
-            npc.updateMovementTransformOnly();
-        }
-    }
-
-    for (let t = 0; t < safeClientTicks; t++) {
-        for (const npc of state.npcs) {
-            npc.updateMovementSeq(seqTypeLoader, seqFrameLoader);
-        }
-    }
-}
-
 export type BuildTickPatchStreamsForMapInput = Readonly<{
     mapId: number;
     mapEntryIndex: number;
     cycleNow: number;
-    state: WorkerNpcSimMapState;
+    state: NpcSimMapState;
     seqFrameLoader: SeqFrameLoader;
     includeTsLocTickPatches: boolean;
     useWasmLocStreams: boolean;

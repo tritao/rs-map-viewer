@@ -1,3 +1,5 @@
+import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
+import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
 import { BLOCKED_STATEGY, NORMAL_STRATEGY } from "../../rs/pathfinder/CollisionStrategy";
 import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { ExactRouteStrategy } from "../../rs/pathfinder/RouteStrategy";
@@ -5,6 +7,7 @@ import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { MovementType } from "../../runtime/entities/Npc";
 import { clamp } from "../../util/MathUtil";
+import type { NpcSimMapState } from "./NpcSimStateStore";
 
 const routeStrategy = new ExactRouteStrategy();
 
@@ -265,4 +268,54 @@ export function stepNpcSimulatedServerMovement(
     }
     planNpcLocalWanderPath(npc, pathfinder, borderSize, collisionMap);
     stepNpcAlongPlannedPath(npc, borderSize, collisionMap);
+}
+
+export function applyNpcMovementStep(
+    state: NpcSimMapState,
+    pathfinder: Pathfinder,
+    safeTicksElapsed: number,
+    safeClientTicks: number,
+    seqTypeLoader: SeqTypeLoader,
+    seqFrameLoader: SeqFrameLoader,
+): void {
+    if (!state.seededNpcFlags) {
+        for (const npc of state.npcs) {
+            const level = npc.level | 0;
+            const collisionMap = state.collisionMaps[level];
+            if (!collisionMap) {
+                continue;
+            }
+            const currentX = npc.pathX[0] | 0;
+            const currentY = npc.pathY[0] | 0;
+            const size = npc.getSize() | 0;
+            for (let fx = currentX; fx < currentX + size; fx++) {
+                for (let fy = currentY; fy < currentY + size; fy++) {
+                    collisionMap.flag(
+                        (fx + state.borderSize) | 0,
+                        (fy + state.borderSize) | 0,
+                        CollisionFlag.BLOCK_NPCS,
+                    );
+                }
+            }
+        }
+        state.seededNpcFlags = true;
+    }
+
+    for (let t = 0; t < safeTicksElapsed; t++) {
+        for (const npc of state.npcs) {
+            stepNpcSimulatedServerMovement(npc, pathfinder, state.borderSize, state.collisionMaps);
+        }
+    }
+
+    for (let t = 0; t < safeClientTicks; t++) {
+        for (const npc of state.npcs) {
+            npc.updateMovementTransformOnly();
+        }
+    }
+
+    for (let t = 0; t < safeClientTicks; t++) {
+        for (const npc of state.npcs) {
+            npc.updateMovementSeq(seqTypeLoader, seqFrameLoader);
+        }
+    }
 }

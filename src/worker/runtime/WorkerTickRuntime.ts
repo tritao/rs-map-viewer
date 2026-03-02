@@ -28,16 +28,16 @@ import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "../MapRenderDataBackend";
 import {
-    applyNpcMovementStep,
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "./WorkerTickPatchPipeline";
+} from "./TickPatchStreamsBuilder";
+import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./NpcGpuFrameBuilder";
 import { WorkerMapSimLifecycle } from "./WorkerMapSimLifecycle";
 import {
-    WorkerNpcSimStateStore,
-    type WorkerNpcSimStateStoreDeps,
-} from "./WorkerNpcSimStateStore";
+    NpcSimStateStore,
+    type NpcSimStateStoreDeps,
+} from "../../runtime/sim/NpcSimStateStore";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 
 type WorkerTickRuntimeOptions = Readonly<{
@@ -63,7 +63,7 @@ function shouldUseWasmTickInWorker(options: WorkerTickRuntimeOptions | undefined
     return options?.mapRenderBackend === "cpp-wasm";
 }
 
-function createNpcSimStateStoreDeps(workerState: TickWorkerState): WorkerNpcSimStateStoreDeps {
+function createNpcSimStateStoreDeps(workerState: TickWorkerState): NpcSimStateStoreDeps {
     return {
         npcTypeLoader: workerState.session.loaders.npcTypeLoader as NpcTypeLoader,
         basTypeLoader: workerState.session.loaders.basTypeLoader as BasTypeLoader,
@@ -113,7 +113,7 @@ type ResolvedNpcBootstrapData = Readonly<{
 }>;
 
 export class WorkerTickRuntime {
-    private readonly npcSimStateStore = new WorkerNpcSimStateStore();
+    private readonly npcSimStateStore = new NpcSimStateStore();
     private readonly npcSimPathfinder = new Pathfinder();
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();

@@ -2,14 +2,14 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
-import { applyNpcUpdateDeltas } from "../../runtime/sim/NpcSimMovement";
-import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "../../runtime/sim/NpcEvents";
-import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
-import { LocAnimated } from "../../runtime/entities/LocAnimated";
-import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
-import { Npc } from "../../runtime/entities/Npc";
+import { applyNpcUpdateDeltas } from "./NpcSimMovement";
+import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "./NpcEvents";
+import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
+import { LocAnimated } from "../entities/LocAnimated";
+import type { LocAnimatedData } from "../entities/LocAnimatedData";
+import { Npc } from "../entities/Npc";
 
-export type WorkerNpcSimMapState = {
+export type NpcSimMapState = {
     borderSize: number;
     tileRenderFlagsLevel1: Uint8Array[];
     collisionMaps: CollisionMap[];
@@ -29,7 +29,7 @@ export type WorkerNpcSimMapState = {
     nextSyntheticOrderKey: number;
 };
 
-export type RegisterWorkerNpcSimMapInput = Readonly<{
+export type RegisterNpcSimMapInput = Readonly<{
     mapId: number;
     borderSize: number;
     tileRenderFlagsLevel1: Uint8Array[];
@@ -38,15 +38,15 @@ export type RegisterWorkerNpcSimMapInput = Readonly<{
     npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 
-export type WorkerNpcSimStateStoreDeps = Readonly<{
+export type NpcSimStateStoreDeps = Readonly<{
     npcTypeLoader: NpcTypeLoader;
     basTypeLoader: BasTypeLoader;
     seqTypeLoader: SeqTypeLoader;
     tickPatchEntryStride: number;
 }>;
 
-export class WorkerNpcSimStateStore {
-    private readonly maps = new Map<number, WorkerNpcSimMapState>();
+export class NpcSimStateStore {
+    private readonly maps = new Map<number, NpcSimMapState>();
 
     private buildLocsAnimated(
         locsAnimatedIn: ReadonlyArray<LocAnimatedData>,
@@ -96,9 +96,9 @@ export class WorkerNpcSimStateStore {
     }
 
     private createMapState(
-        input: RegisterWorkerNpcSimMapInput,
-        deps: WorkerNpcSimStateStoreDeps,
-    ): WorkerNpcSimMapState {
+        input: RegisterNpcSimMapInput,
+        deps: NpcSimStateStoreDeps,
+    ): NpcSimMapState {
         const locsAnimated = this.buildLocsAnimated(input.locsAnimated, deps.seqTypeLoader);
         return {
             borderSize: input.borderSize | 0,
@@ -124,7 +124,7 @@ export class WorkerNpcSimStateStore {
         };
     }
 
-    private rebuildNpcIndexMap(state: WorkerNpcSimMapState): void {
+    private rebuildNpcIndexMap(state: NpcSimMapState): void {
         state.npcIndexByInstanceId.clear();
         state.npcIndexByOrderKey.clear();
         for (let i = 0; i < state.npcs.length; i++) {
@@ -140,9 +140,9 @@ export class WorkerNpcSimStateStore {
     }
 
     private setMapLocContext(
-        state: WorkerNpcSimMapState,
-        input: RegisterWorkerNpcSimMapInput,
-        deps: WorkerNpcSimStateStoreDeps,
+        state: NpcSimMapState,
+        input: RegisterNpcSimMapInput,
+        deps: NpcSimStateStoreDeps,
     ): void {
         state.borderSize = input.borderSize | 0;
         state.tileRenderFlagsLevel1 = input.tileRenderFlagsLevel1;
@@ -190,7 +190,7 @@ export class WorkerNpcSimStateStore {
         return out;
     }
 
-    private allocateSyntheticOrderKey(state: WorkerNpcSimMapState): number {
+    private allocateSyntheticOrderKey(state: NpcSimMapState): number {
         const key = state.nextSyntheticOrderKey | 0;
         state.nextSyntheticOrderKey = (state.nextSyntheticOrderKey - 1) | 0;
         return key;
@@ -198,8 +198,8 @@ export class WorkerNpcSimStateStore {
 
     private createNpcFromSpawnEvent(
         event: NpcSpawnEvent,
-        state: WorkerNpcSimMapState,
-        deps: WorkerNpcSimStateStoreDeps,
+        state: NpcSimMapState,
+        deps: NpcSimStateStoreDeps,
     ): Npc | undefined {
         const npcTypeId = event.npcTypeId | 0;
         const npcTypeResult = deps.npcTypeLoader.tryLoad(npcTypeId);
@@ -227,7 +227,7 @@ export class WorkerNpcSimStateStore {
     }
 
     private removeNpcByEventTarget(
-        state: WorkerNpcSimMapState,
+        state: NpcSimMapState,
         npcInstanceId: number,
     ): void {
         const index = state.npcIndexByInstanceId.get(npcInstanceId | 0);
@@ -237,7 +237,7 @@ export class WorkerNpcSimStateStore {
     }
 
     private shouldApplySeq(
-        state: WorkerNpcSimMapState,
+        state: NpcSimMapState,
         npcInstanceId: number,
         seq: number,
     ): boolean {
@@ -253,9 +253,9 @@ export class WorkerNpcSimStateStore {
 
     private applyLifecycleEventsToState(
         mapId: number,
-        state: WorkerNpcSimMapState,
+        state: NpcSimMapState,
         events: ReadonlyArray<NpcEvent>,
-        deps: WorkerNpcSimStateStoreDeps,
+        deps: NpcSimStateStoreDeps,
         replaceSnapshot: boolean,
     ): number {
         const npcCountBefore = state.npcs.length | 0;
@@ -350,14 +350,14 @@ export class WorkerNpcSimStateStore {
         this.maps.delete(mapId | 0);
     }
 
-    getMap(mapId: number): WorkerNpcSimMapState | undefined {
+    getMap(mapId: number): NpcSimMapState | undefined {
         return this.maps.get(mapId | 0);
     }
 
     applyMapNpcLifecycleEvents(
         mapId: number,
         events: ReadonlyArray<NpcEvent>,
-        deps: WorkerNpcSimStateStoreDeps,
+        deps: NpcSimStateStoreDeps,
         replaceSnapshot: boolean = false,
     ): number {
         const state = this.maps.get(mapId | 0);
@@ -368,8 +368,8 @@ export class WorkerNpcSimStateStore {
     }
 
     registerMap(
-        input: RegisterWorkerNpcSimMapInput,
-        deps: WorkerNpcSimStateStoreDeps,
+        input: RegisterNpcSimMapInput,
+        deps: NpcSimStateStoreDeps,
     ): void {
         const mapId = input.mapId | 0;
         const state = this.maps.get(mapId) ?? this.createMapState(input, deps);

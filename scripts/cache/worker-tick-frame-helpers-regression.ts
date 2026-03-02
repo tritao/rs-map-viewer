@@ -5,7 +5,7 @@ import {
     applyNpcMovementStep,
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "../../src/worker/runtime/WorkerTickPatchPipeline";
+} from "../../src/worker/runtime/TickPatchStreamsBuilder";
 import type { WorkerNpcSimMapState } from "../../src/worker/runtime/WorkerNpcSimStateStore";
 
 function makeCountsForOneMap(mapId: number): Int32Array {
