@@ -17,7 +17,6 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import { createNpcBootstrapData } from "../runtime/sim/NpcBootstrapData";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/sim/NpcLifecyclePacket";
 import { MapViewer } from "./MapViewer";
@@ -154,26 +153,24 @@ export class MapViewerRenderer extends RendererMainLoop {
                         loadLocs: sdMapData.loadLocs,
                         loadNpcs: sdMapData.loadNpcs,
                         locsAnimated: sdMapData.locsAnimated?.length ?? -1,
-                        npcs: sdMapData.npcs?.length ?? -1,
                         npcVerts: sdMapData.npcVertices?.length ?? 0,
                         npcIndices: sdMapData.npcIndices?.length ?? 0,
+                        npcRangesBase: sdMapData.npcDrawRangesBase?.length ?? 0,
+                        npcBootstrapEvents: sdMapData.npcBootstrapSpawnEvents?.length ?? 0,
+                        npcTypeAnimTable: sdMapData.npcTypeAnimationTable?.length ?? 0,
                     });
                 }
                 const level1 = sdMapData.tileRenderFlags[1] ?? [];
-                const npcBootstrapData = createNpcBootstrapData({
-                    mapId,
-                    npcsIn: sdMapData.npcs,
-                    npcOrderKeys: sdMapData.npcOrderKeys,
-                });
                 try {
                     await this.workerPool.registerMapNpcSimState(
                         mapId,
+                        sdMapData.maxLevel,
                         sdMapData.borderSize,
                         level1,
                         sdMapData.collisionDatas,
                         sdMapData.locsAnimated,
-                        npcBootstrapData.spawnEvents,
-                        npcBootstrapData.npcTypeAnimationTable,
+                        sdMapData.npcBootstrapSpawnEvents,
+                        sdMapData.npcTypeAnimationTable,
                         mapSimToken,
                     );
                 } catch (e) {

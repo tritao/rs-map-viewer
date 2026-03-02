@@ -8,8 +8,6 @@ import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataLoader, renderDataLoaderSerializer } from "./RenderDataLoader";
-import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./runtime/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
@@ -61,22 +59,24 @@ const worker = {
     },
     async registerMapNpcSimState(
         mapId: number,
+        maxLevel: number,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcEventsIn: NpcSpawnEvent[],
-        npcTypeAnimationTableIn: NpcTypeAnimationEntry[],
+        npcBootstrapSpawnEvents?: unknown,
+        npcTypeAnimationTable?: unknown,
         mapSimToken?: number,
     ): Promise<void> {
         await tickRuntime.registerMapNpcSimState(
             mapId,
+            maxLevel,
             borderSize,
             tileRenderFlagsLevel1,
             collisionDatas,
             locsAnimated,
-            npcEventsIn,
-            npcTypeAnimationTableIn,
+            npcBootstrapSpawnEvents as any,
+            npcTypeAnimationTable as any,
             mapSimToken,
         );
     },

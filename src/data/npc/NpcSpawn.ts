@@ -24,7 +24,14 @@ export function getNpcSpawnsUrl(cacheInfo: CacheInfo): string {
 
 export async function fetchNpcSpawns(url: string): Promise<NpcSpawn[]> {
     const response = await fetch(url);
-    return await response.json();
+    if (!response.ok) {
+        throw new Error(`[map-render][npc-spawns] fetch failed status=${response.status} url=${url}`);
+    }
+    const json = await response.json();
+    if (!Array.isArray(json)) {
+        throw new Error(`[map-render][npc-spawns] invalid json (expected array) url=${url}`);
+    }
+    return json as NpcSpawn[];
 }
 
 export function fetchOsrsNpcSpawns(): Promise<NpcSpawn[]> {

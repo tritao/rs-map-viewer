@@ -12,8 +12,6 @@ import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -150,23 +148,25 @@ export class RenderDataWorkerPool {
 
     registerMapNpcSimState(
         mapId: number,
+        maxLevel: number,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcEvents: ReadonlyArray<NpcSpawnEvent>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
+        npcBootstrapSpawnEvents?: unknown,
+        npcTypeAnimationTable?: unknown,
         mapSimToken?: number,
     ): Promise<void> {
         return this.ensureInitialized().then(() =>
             this.getTickWorker().then((w) =>
                 w.registerMapNpcSimState(
                     mapId,
+                    maxLevel,
                     borderSize,
                     tileRenderFlagsLevel1,
                     collisionDatas,
                     locsAnimated as any,
-                    npcEvents as any,
+                    npcBootstrapSpawnEvents as any,
                     npcTypeAnimationTable as any,
                     mapSimToken,
                 ),

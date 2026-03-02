@@ -21,6 +21,7 @@ import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { BackendKind } from "../../util/BackendKind";
 import { MapRenderCommandStreamRuntimeInput } from "../MapRenderDataContract";
 import { loadMinimapBlob } from "../MinimapData";
@@ -49,6 +50,7 @@ import {
     type SceneCommandPlan,
     type SceneCommandPlanDigest,
 } from "../../runtime/build";
+import { createNpcBootstrapData } from "../../runtime/sim/NpcBootstrapData";
 import { SdMapData } from "../payload/SdMapData";
 import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
@@ -705,11 +707,14 @@ export class SdMapRenderDataTsBackend {
                 );
                 npcSpawns = getMapNpcSpawns(fallbackNpcSpawns, maxLevel, mapX, mapY);
                 npcSpawns = npcSpawns.filter((spawn) => {
+                    const npcResult = npcTypeLoader.tryLoad(spawn.id);
+                    if (!npcResult.ok) {
+                        return false;
+                    }
                     if (spawn.name === undefined) {
                         return true;
                     }
-                    const npcResult = npcTypeLoader.tryLoad(spawn.id);
-                    return npcResult.ok && spawn.name === npcResult.value.name;
+                    return spawn.name === npcResult.value.name;
                 });
             }
         }
@@ -726,11 +731,19 @@ export class SdMapRenderDataTsBackend {
                 basTypeLoader,
             }),
         );
-        const npcs = npcGeometry.npcs;
         const npcVertices = npcGeometry.npcVertices;
         const npcIndices = npcGeometry.npcIndices;
         const npcDrawRangesBase = npcGeometry.npcDrawRangesBase;
         const npcDrawRangesAlpha = npcGeometry.npcDrawRangesAlpha;
+        const npcBootstrap =
+            loadNpcs && npcGeometry.npcs.length > 0
+                ? createNpcBootstrapData({
+                      mapId: getMapSquareId(mapX, mapY),
+                      npcsIn: npcGeometry.npcs,
+                  })
+                : undefined;
+        const npcBootstrapSpawnEvents = npcBootstrap?.spawnEvents;
+        const npcTypeAnimationTable = npcBootstrap?.npcTypeAnimationTable;
 
         const preferWasmPacking = options?.preferWasmPacking === true;
         const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
@@ -862,13 +875,14 @@ export class SdMapRenderDataTsBackend {
             heightMapTextureData,
             drawRanges,
             locsAnimated,
-            npcs,
             usedTextureIds,
             loadedTextures,
             npcDrawRangesBase,
             npcDrawRangesAlpha,
             npcVertices,
             npcIndices,
+            npcBootstrapSpawnEvents,
+            npcTypeAnimationTable,
         };
 
         return {
