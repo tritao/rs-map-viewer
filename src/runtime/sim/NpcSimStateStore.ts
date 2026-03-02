@@ -34,7 +34,7 @@ export type RegisterNpcSimMapInput = Readonly<{
     borderSize: number;
     tileRenderFlagsLevel1: Uint8Array[];
     collisionDatas: CollisionData[];
-    locsAnimated: LocAnimatedData[];
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
     npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 

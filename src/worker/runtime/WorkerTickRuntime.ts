@@ -203,7 +203,7 @@ export class WorkerTickRuntime {
         mapId: number,
         maxLevel: number,
         borderSize: number,
-        locsAnimated: LocAnimatedData[],
+        locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,

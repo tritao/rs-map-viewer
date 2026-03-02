@@ -84,16 +84,18 @@ export class RenderDataWorkerPool {
         await Promise.all(this.workers.map((desc) => desc.init.then(task)));
     }
 
-    private queue<T>(task: (w: RenderDataWorkerThread) => Promise<T>): Promise<T> {
+    private queue<T>(task: (w: RenderDataWorkerThread) => PromiseLike<T>): Promise<T> {
         // `threads` pool returns a thenable task object; callers use it as a Promise.
-        return this.pool.queue(async (w) => {
-            await this.awaitInitCache();
-            return task(w);
-        }) as any;
+        return Promise.resolve(
+            this.pool.queue(async (w) => {
+                await this.awaitInitCache();
+                return await task(w);
+            }),
+        );
     }
 
     queueSdMapData(input: SdMapLoaderInput): Promise<SdMapData | undefined> {
-        return this.queue((w) => w.loadSdMapData(input) as any);
+        return this.queue((w) => w.loadSdMapData(input));
     }
 
     queueLoadTexture(
@@ -102,7 +104,7 @@ export class RenderDataWorkerPool {
         flipH: boolean,
         brightness: number,
     ): Promise<Int32Array> {
-        return this.queue((w) => w.loadTexture(id, size, flipH, brightness) as any);
+        return this.queue((w) => w.loadTexture(id, size, flipH, brightness));
     }
 
     queueMapImage(
@@ -111,7 +113,7 @@ export class RenderDataWorkerPool {
         level: number,
         drawMapFunctions: boolean,
     ): Promise<MinimapData | undefined> {
-        return this.queue((w) => w.loadMapImage(mapX, mapY, level, drawMapFunctions) as any);
+        return this.queue((w) => w.loadMapImage(mapX, mapY, level, drawMapFunctions));
     }
 
     setVars(vars: Int32Array): Promise<void> {
@@ -119,15 +121,15 @@ export class RenderDataWorkerPool {
     }
 
     loadCachedMapImages(): Promise<Map<number, string>> {
-        return this.queue((w) => w.loadCachedMapImages() as any);
+        return this.queue((w) => w.loadCachedMapImages());
     }
 
     exportSprites(): Promise<Blob> {
-        return this.queue((w) => w.exportSpritesToZip() as any);
+        return this.queue((w) => w.exportSpritesToZip());
     }
 
     exportTextures(): Promise<Blob> {
-        return this.queue((w) => w.exportTexturesToZip() as any);
+        return this.queue((w) => w.exportTexturesToZip());
     }
 
     // Dedicated worker for per-frame sim/tick packets. Keeping it sticky avoids state divergence.
@@ -159,7 +161,7 @@ export class RenderDataWorkerPool {
                 mapId,
                 maxLevel,
                 borderSize,
-                locsAnimated as any,
+                locsAnimated,
                 npcOrderKeys,
                 npcTypeAnimationTable,
                 mapSimToken,
@@ -168,7 +170,7 @@ export class RenderDataWorkerPool {
     }
 
     unregisterMapNpcSimState(mapId: number, mapSimToken?: number): Promise<void> {
-        return this.withTickWorker((w) => Promise.resolve(w.unregisterMapNpcSimState(mapId, mapSimToken)));
+        return this.withTickWorker((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
     }
 
     applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
@@ -187,7 +189,7 @@ export class RenderDataWorkerPool {
         hoveredMapIdsPacked: Int32Array,
     ): Promise<FramePacket | undefined> {
         return this.withTickWorker((w) =>
-            (w.tickFrame(
+            w.tickFrame(
                 frameCount,
                 mapIds,
                 ticksElapsed,
@@ -197,7 +199,7 @@ export class RenderDataWorkerPool {
                 cameraMapY,
                 lodDistance,
                 hoveredMapIdsPacked,
-            ) as any),
+            ),
         );
     }
 
