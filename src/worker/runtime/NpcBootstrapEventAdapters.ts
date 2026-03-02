@@ -72,19 +72,6 @@ export function createNpcBootstrapData(input: NpcBootstrapSpawnEventsInput): Npc
     };
 }
 
-export function createNpcBootstrapSpawnEvents(
-    input: NpcBootstrapSpawnEventsInput,
-): NpcSpawnEvent[] {
-    return createNpcBootstrapData(input).spawnEvents;
-}
-
-export function createNpcBootstrapSpawnEventsFromSpawns(
-    mapId: number,
-    spawns: ReadonlyArray<NpcSpawn>,
-): NpcSpawnEvent[] {
-    return createNpcBootstrapDataFromSpawns(mapId, spawns).spawnEvents;
-}
-
 export function createNpcBootstrapDataFromSpawns(
     mapId: number,
     spawns: ReadonlyArray<NpcSpawn>,
