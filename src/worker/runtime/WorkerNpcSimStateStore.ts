@@ -2,12 +2,15 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
-import { applyNpcServerDeltas, type NpcServerDelta } from "../../runtime/sim/NpcSimMovement";
+import { applyNpcServerDeltas } from "../../runtime/sim/NpcSimMovement";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { Npc } from "../../runtime/entities/Npc";
-import type { NpcData } from "../../runtime/entities/NpcData";
-import { orderByPacketKeys } from "../../runtime/entities/orderByPacketKeys";
+import type {
+    NpcLifecycleEvent,
+    NpcSpawnEvent,
+    NpcUpdateEvent,
+} from "../../runtime/sim/NpcLifecycleEvent";
 
 export type WorkerNpcSimMapState = {
     borderSize: number;
@@ -23,6 +26,7 @@ export type WorkerNpcSimMapState = {
     locTickPatchCountsByVariant: Int32Array; // length 8
     npcTickPatchesByVariant: Int32Array[]; // 2 variants (base/alpha)
     npcTickPatchCountsByVariant: Int32Array; // length 2
+    nextSyntheticOrderKey: number;
 };
 
 export type RegisterWorkerNpcSimMapInput = Readonly<{
@@ -31,8 +35,8 @@ export type RegisterWorkerNpcSimMapInput = Readonly<{
     tileRenderFlagsLevel1: Uint8Array[];
     collisionDatas: CollisionData[];
     locsAnimated: LocAnimatedData[];
-    npcsIn: NpcData[];
-    npcOrderKeys?: Int32Array;
+    npcEvents: ReadonlyArray<NpcLifecycleEvent>;
+    replaceNpcSnapshot?: boolean;
 }>;
 
 export type WorkerNpcSimStateStoreDeps = Readonly<{
@@ -45,70 +49,14 @@ export type WorkerNpcSimStateStoreDeps = Readonly<{
 export class WorkerNpcSimStateStore {
     private readonly maps = new Map<number, WorkerNpcSimMapState>();
 
-    resetForCache(): void {
-        this.maps.clear();
-    }
-
-    resetForLoaderReset(): void {
-        this.maps.clear();
-    }
-
-    unregisterMap(mapId: number): void {
-        this.maps.delete(mapId | 0);
-    }
-
-    getMap(mapId: number): WorkerNpcSimMapState | undefined {
-        return this.maps.get(mapId | 0);
-    }
-
-    applyServerDeltas(mapId: number, deltas: ReadonlyArray<NpcServerDelta>): number {
-        if ((deltas.length | 0) <= 0) {
-            return 0;
-        }
-        const state = this.maps.get(mapId | 0);
-        if (!state) {
-            return 0;
-        }
-        return applyNpcServerDeltas(state.npcs, deltas, state.npcIndexByOrderKey);
-    }
-
-    registerMap(
-        input: RegisterWorkerNpcSimMapInput,
-        deps: WorkerNpcSimStateStoreDeps,
-    ): void {
-        const ordered = orderByPacketKeys(input.npcsIn, input.npcOrderKeys);
-        const npcs: Npc[] = [];
-        const npcIndexByOrderKey = new Map<number, number>();
-        for (const init of ordered) {
-            const npcTypeResult = deps.npcTypeLoader.tryLoad(init.id);
-            if (!npcTypeResult.ok) {
-                continue;
-            }
-            const npcType = npcTypeResult.value;
-            const idleSeqId = npcType.getIdleSeqId(deps.basTypeLoader);
-            const walkSeqId = npcType.getWalkSeqId(deps.basTypeLoader);
-            npcs.push(
-                new Npc(
-                    init.tileX | 0,
-                    init.tileY | 0,
-                    init.level | 0,
-                    init.idleAnim,
-                    init.walkAnim,
-                    npcType,
-                    idleSeqId | 0,
-                    walkSeqId | 0,
-                    init.orderKey,
-                ),
-            );
-            if (init.orderKey !== undefined) {
-                npcIndexByOrderKey.set(init.orderKey | 0, (npcs.length - 1) | 0);
-            }
-        }
-
+    private buildLocsAnimated(
+        locsAnimatedIn: ReadonlyArray<LocAnimatedData>,
+        seqTypeLoader: SeqTypeLoader,
+    ): LocAnimated[] {
         const cycleNow = 0;
         const locs: LocAnimated[] = [];
-        for (const loc of input.locsAnimated) {
-            const seqResult = deps.seqTypeLoader.tryLoad(loc.seqId);
+        for (const loc of locsAnimatedIn) {
+            const seqResult = seqTypeLoader.tryLoad(loc.seqId);
             if (!seqResult.ok) {
                 continue;
             }
@@ -130,32 +78,234 @@ export class WorkerNpcSimStateStore {
                 ),
             );
         }
+        return locs;
+    }
 
-        const locCount = locs.length | 0;
-        const locTickPatchesByVariant: Int32Array[] = [];
+    private createLocTickPatchBuffers(locCount: number, tickPatchEntryStride: number): Int32Array[] {
+        const out: Int32Array[] = [];
         for (let i = 0; i < 8; i++) {
-            locTickPatchesByVariant.push(
-                new Int32Array((locCount | 0) * (deps.tickPatchEntryStride | 0)),
-            );
+            out.push(new Int32Array((locCount | 0) * (tickPatchEntryStride | 0)));
         }
-        const npcCount = npcs.length | 0;
-        const npcTickPatchesByVariant: Int32Array[] = [
-            new Int32Array((npcCount | 0) * (deps.tickPatchEntryStride | 0)),
-            new Int32Array((npcCount | 0) * (deps.tickPatchEntryStride | 0)),
-        ];
+        return out;
+    }
 
-        this.maps.set(input.mapId | 0, {
+    private createNpcTickPatchBuffers(npcCount: number, tickPatchEntryStride: number): Int32Array[] {
+        return [
+            new Int32Array((npcCount | 0) * (tickPatchEntryStride | 0)),
+            new Int32Array((npcCount | 0) * (tickPatchEntryStride | 0)),
+        ];
+    }
+
+    private createMapState(
+        input: RegisterWorkerNpcSimMapInput,
+        deps: WorkerNpcSimStateStoreDeps,
+    ): WorkerNpcSimMapState {
+        const locsAnimated = this.buildLocsAnimated(input.locsAnimated, deps.seqTypeLoader);
+        return {
             borderSize: input.borderSize | 0,
             tileRenderFlagsLevel1: input.tileRenderFlagsLevel1,
             collisionMaps: input.collisionDatas.map(CollisionMap.fromData),
             seededNpcFlags: false,
-            npcs,
-            npcIndexByOrderKey,
-            locsAnimated: locs,
-            locTickPatchesByVariant,
+            npcs: [],
+            npcIndexByOrderKey: new Map<number, number>(),
+            locsAnimated,
+            locTickPatchesByVariant: this.createLocTickPatchBuffers(
+                locsAnimated.length | 0,
+                deps.tickPatchEntryStride,
+            ),
             locTickPatchCountsByVariant: new Int32Array(8),
-            npcTickPatchesByVariant,
+            npcTickPatchesByVariant: this.createNpcTickPatchBuffers(0, deps.tickPatchEntryStride),
             npcTickPatchCountsByVariant: new Int32Array(2),
-        });
+            nextSyntheticOrderKey: -1,
+        };
+    }
+
+    private rebuildNpcIndexMap(state: WorkerNpcSimMapState): void {
+        state.npcIndexByOrderKey.clear();
+        for (let i = 0; i < state.npcs.length; i++) {
+            const orderKey = state.npcs[i]!.orderKey;
+            if (orderKey !== undefined) {
+                state.npcIndexByOrderKey.set(orderKey | 0, i | 0);
+            }
+        }
+    }
+
+    private setMapLocContext(
+        state: WorkerNpcSimMapState,
+        input: RegisterWorkerNpcSimMapInput,
+        deps: WorkerNpcSimStateStoreDeps,
+    ): void {
+        state.borderSize = input.borderSize | 0;
+        state.tileRenderFlagsLevel1 = input.tileRenderFlagsLevel1;
+        state.collisionMaps = input.collisionDatas.map(CollisionMap.fromData);
+        state.locsAnimated = this.buildLocsAnimated(input.locsAnimated, deps.seqTypeLoader);
+        state.locTickPatchesByVariant = this.createLocTickPatchBuffers(
+            state.locsAnimated.length | 0,
+            deps.tickPatchEntryStride,
+        );
+        state.locTickPatchCountsByVariant = new Int32Array(8);
+        state.seededNpcFlags = false;
+    }
+
+    private allocateSyntheticOrderKey(state: WorkerNpcSimMapState): number {
+        const key = state.nextSyntheticOrderKey | 0;
+        state.nextSyntheticOrderKey = (state.nextSyntheticOrderKey - 1) | 0;
+        return key;
+    }
+
+    private createNpcFromSpawnEvent(
+        event: NpcSpawnEvent,
+        state: WorkerNpcSimMapState,
+        deps: WorkerNpcSimStateStoreDeps,
+    ): Npc | undefined {
+        const npcTypeResult = deps.npcTypeLoader.tryLoad(event.npcTypeId | 0);
+        if (!npcTypeResult.ok) {
+            return undefined;
+        }
+        const npcType = npcTypeResult.value;
+        const idleSeqId = npcType.getIdleSeqId(deps.basTypeLoader);
+        const walkSeqId = npcType.getWalkSeqId(deps.basTypeLoader);
+        const orderKey = event.orderKey ?? this.allocateSyntheticOrderKey(state);
+        return new Npc(
+            event.tileX | 0,
+            event.tileY | 0,
+            event.level | 0,
+            event.idleAnim,
+            event.walkAnim,
+            npcType,
+            idleSeqId | 0,
+            walkSeqId | 0,
+            orderKey,
+        );
+    }
+
+    private removeNpcByEventTarget(
+        state: WorkerNpcSimMapState,
+        npcOrderKey: number | undefined,
+        npcIndex: number | undefined,
+    ): void {
+        if (npcOrderKey !== undefined) {
+            const index = state.npcIndexByOrderKey.get(npcOrderKey | 0);
+            if (index !== undefined) {
+                state.npcs.splice(index | 0, 1);
+            }
+            return;
+        }
+        if (npcIndex === undefined) {
+            return;
+        }
+        const index = npcIndex | 0;
+        if (index >= 0 && index < (state.npcs.length | 0)) {
+            state.npcs.splice(index, 1);
+        }
+    }
+
+    private applyLifecycleEventsToState(
+        mapId: number,
+        state: WorkerNpcSimMapState,
+        events: ReadonlyArray<NpcLifecycleEvent>,
+        deps: WorkerNpcSimStateStoreDeps,
+        replaceNpcSnapshot: boolean,
+    ): number {
+        const npcCountBefore = state.npcs.length | 0;
+        if (replaceNpcSnapshot) {
+            state.npcs.length = 0;
+            state.npcIndexByOrderKey.clear();
+            state.seededNpcFlags = false;
+        }
+
+        const deltaEvents: NpcUpdateEvent[] = [];
+        for (let i = 0; i < events.length; i++) {
+            const event = events[i]!;
+            if ((event.mapId | 0) !== (mapId | 0)) {
+                continue;
+            }
+            if (event.kind === "spawn") {
+                const npc = this.createNpcFromSpawnEvent(event, state, deps);
+                if (!npc) {
+                    continue;
+                }
+                const orderKey = npc.orderKey;
+                if (orderKey !== undefined) {
+                    const existingIndex = state.npcIndexByOrderKey.get(orderKey | 0);
+                    if (existingIndex !== undefined) {
+                        state.npcs[existingIndex | 0] = npc;
+                    } else {
+                        state.npcs.push(npc);
+                    }
+                } else {
+                    state.npcs.push(npc);
+                }
+                state.seededNpcFlags = false;
+                continue;
+            }
+            if (event.kind === "despawn") {
+                this.removeNpcByEventTarget(state, event.npcOrderKey, event.npcIndex);
+                state.seededNpcFlags = false;
+                continue;
+            }
+            deltaEvents.push(event);
+        }
+
+        this.rebuildNpcIndexMap(state);
+        const deltas = deltaEvents.map((entry) => entry.delta);
+        const applied = applyNpcServerDeltas(state.npcs, deltas, state.npcIndexByOrderKey);
+        const npcCount = state.npcs.length | 0;
+        if (replaceNpcSnapshot || npcCount !== npcCountBefore) {
+            state.npcTickPatchesByVariant = this.createNpcTickPatchBuffers(
+                npcCount,
+                deps.tickPatchEntryStride,
+            );
+            state.npcTickPatchCountsByVariant = new Int32Array(2);
+        }
+        return applied | 0;
+    }
+
+    resetForCache(): void {
+        this.maps.clear();
+    }
+
+    resetForLoaderReset(): void {
+        this.maps.clear();
+    }
+
+    unregisterMap(mapId: number): void {
+        this.maps.delete(mapId | 0);
+    }
+
+    getMap(mapId: number): WorkerNpcSimMapState | undefined {
+        return this.maps.get(mapId | 0);
+    }
+
+    applyLifecycleEvents(
+        mapId: number,
+        events: ReadonlyArray<NpcLifecycleEvent>,
+        deps: WorkerNpcSimStateStoreDeps,
+    ): number {
+        if ((events.length | 0) <= 0) {
+            return 0;
+        }
+        const state = this.maps.get(mapId | 0);
+        if (!state) {
+            return 0;
+        }
+        return this.applyLifecycleEventsToState(mapId | 0, state, events, deps, false);
+    }
+
+    registerMap(
+        input: RegisterWorkerNpcSimMapInput,
+        deps: WorkerNpcSimStateStoreDeps,
+    ): void {
+        const mapId = input.mapId | 0;
+        const state = this.maps.get(mapId) ?? this.createMapState(input, deps);
+        this.setMapLocContext(state, input, deps);
+        this.applyLifecycleEventsToState(
+            mapId,
+            state,
+            input.npcEvents,
+            deps,
+            input.replaceNpcSnapshot === true,
+        );
+        this.maps.set(mapId, state);
     }
 }

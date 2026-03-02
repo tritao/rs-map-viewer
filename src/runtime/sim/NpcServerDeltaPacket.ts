@@ -1,5 +1,6 @@
 import { MovementType } from "../../runtime/entities/Npc";
 import { ByteBuffer } from "../../rs/io/ByteBuffer";
+import type { NpcUpdateEvent } from "./NpcLifecycleEvent";
 import type { NpcServerDelta } from "./NpcSimMovement";
 
 const PACKET_VERSION = 1;
@@ -16,7 +17,7 @@ const FLAG_HAS_PATH = 1 << 7;
 
 export type DecodedNpcServerDeltaPacket = Readonly<{
     version: number;
-    deltasByMapId: ReadonlyMap<number, NpcServerDelta[]>;
+    updateEventsByMapId: ReadonlyMap<number, NpcUpdateEvent[]>;
     deltaCount: number;
 }>;
 
@@ -54,13 +55,13 @@ export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDe
     }
 
     const mapCount = reader.readUnsignedShort() | 0;
-    const deltasByMapId = new Map<number, NpcServerDelta[]>();
+    const updateEventsByMapId = new Map<number, NpcUpdateEvent[]>();
     let deltaCount = 0;
 
     for (let m = 0; m < mapCount; m++) {
         const mapId = reader.readUnsignedShort() | 0;
         const mapDeltaCount = reader.readUnsignedShort() | 0;
-        const mapDeltas = new Array<NpcServerDelta>(mapDeltaCount);
+        const mapEvents = new Array<NpcUpdateEvent>(mapDeltaCount);
         for (let i = 0; i < mapDeltaCount; i++) {
             const flags = reader.readUnsignedByte() | 0;
             const delta: MutableNpcServerDelta = {};
@@ -122,10 +123,14 @@ export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDe
                 };
             }
 
-            mapDeltas[i] = delta;
+            mapEvents[i] = {
+                kind: "update",
+                mapId: mapId | 0,
+                delta,
+            };
             deltaCount = (deltaCount + 1) | 0;
         }
-        deltasByMapId.set(mapId | 0, mapDeltas);
+        updateEventsByMapId.set(mapId | 0, mapEvents);
     }
 
     if ((reader.remaining | 0) !== 0) {
@@ -136,7 +141,7 @@ export function decodeNpcServerDeltaPacket(input: ByteInput): DecodedNpcServerDe
 
     return {
         version: version | 0,
-        deltasByMapId,
+        updateEventsByMapId,
         deltaCount: deltaCount | 0,
     };
 }

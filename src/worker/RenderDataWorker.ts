@@ -6,12 +6,11 @@ import { Transfer, expose } from "threads/worker";
 import { NpcSpawn } from "../data/npc/NpcSpawn";
 import { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcData } from "../runtime/entities/NpcData";
-import { createNpcDatasFromSpawns } from "../runtime/entities/NpcData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
+import type { NpcLifecycleEvent, NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
+import { createNpcBootstrapEventsFromSpawns } from "../runtime/sim/NpcLifecycleEventAdapters";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -113,20 +112,20 @@ function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: nu
     };
 }
 
-function maybeHydrateNpcSimDatasFromMapBytes(
+function maybeHydrateNpcBootstrapEventsFromMapBytes(
     workerState: WorkerState,
     mapId: number,
     borderSize: number,
     tileRenderFlagsLevel1: Uint8Array[],
-    npcsIn: NpcData[],
-): NpcData[] {
-    if ((npcsIn.length | 0) > 0) {
-        return npcsIn;
+    npcEventsIn: ReadonlyArray<NpcLifecycleEvent>,
+): NpcLifecycleEvent[] {
+    if ((npcEventsIn.length | 0) > 0) {
+        return Array.from(npcEventsIn);
     }
     const { mapX, mapY } = decodeMapSquareFromId(mapId);
     const npcSpawnBytes = workerState.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
     if (!(npcSpawnBytes instanceof Uint8Array) || npcSpawnBytes.length === 0) {
-        return npcsIn;
+        return [];
     }
     const decodedSpawns = decodeNpcSpawnsFromBytes(
         tileRenderFlagsLevel1,
@@ -136,7 +135,7 @@ function maybeHydrateNpcSimDatasFromMapBytes(
         npcSpawnBytes,
     );
     if (!decodedSpawns || (decodedSpawns.length | 0) <= 0) {
-        return npcsIn;
+        return [];
     }
     const npcTypeLoader = workerState.session.loaders.npcTypeLoader;
     const filteredSpawns = decodedSpawns.filter((spawn) => {
@@ -144,9 +143,9 @@ function maybeHydrateNpcSimDatasFromMapBytes(
         return npcResult.ok && (npcResult.value.loginScreenProps & 0x1) > 0;
     });
     if ((filteredSpawns.length | 0) <= 0) {
-        return npcsIn;
+        return [];
     }
-    return createNpcDatasFromSpawns(filteredSpawns);
+    return createNpcBootstrapEventsFromSpawns(mapId | 0, filteredSpawns);
 }
 
 async function requireWorkerState(): Promise<WorkerState> {
@@ -158,6 +157,15 @@ async function requireWorkerState(): Promise<WorkerState> {
         throw new Error(init.error);
     }
     return init.state;
+}
+
+function createNpcSimStateStoreDeps(workerState: WorkerState) {
+    return {
+        npcTypeLoader: workerState.session.loaders.npcTypeLoader,
+        basTypeLoader: workerState.session.loaders.basTypeLoader,
+        seqTypeLoader: workerState.session.loaders.seqTypeLoader,
+        tickPatchEntryStride: TICK_PATCH_ENTRY_STRIDE,
+    } as const;
 }
 
 async function initWorker(
@@ -370,20 +378,19 @@ const worker = {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcsIn: NpcData[],
-        npcOrderKeys?: Int32Array,
+        npcEventsIn: NpcLifecycleEvent[],
         mapSimToken?: number,
     ): Promise<void> {
         if (!workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         const workerState = await requireWorkerState();
-        const hydratedNpcs = maybeHydrateNpcSimDatasFromMapBytes(
+        const npcEvents = maybeHydrateNpcBootstrapEventsFromMapBytes(
             workerState,
             mapId,
             borderSize,
             tileRenderFlagsLevel1,
-            npcsIn,
+            npcEventsIn,
         );
         npcSimStateStore.registerMap(
             {
@@ -392,15 +399,10 @@ const worker = {
                 tileRenderFlagsLevel1,
                 collisionDatas,
                 locsAnimated,
-                npcsIn: hydratedNpcs,
-                npcOrderKeys: hydratedNpcs === npcsIn ? npcOrderKeys : undefined,
+                npcEvents,
+                replaceNpcSnapshot: true,
             },
-            {
-                npcTypeLoader: workerState.session.loaders.npcTypeLoader,
-                basTypeLoader: workerState.session.loaders.basTypeLoader,
-                seqTypeLoader: workerState.session.loaders.seqTypeLoader,
-                tickPatchEntryStride: TICK_PATCH_ENTRY_STRIDE,
-            },
+            createNpcSimStateStoreDeps(workerState),
         );
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     },
@@ -412,8 +414,13 @@ const worker = {
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
     },
-    applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): number {
-        return npcSimStateStore.applyServerDeltas(mapId, deltas);
+    async applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): Promise<number> {
+        const workerState = await requireWorkerState();
+        return npcSimStateStore.applyLifecycleEvents(
+            mapId | 0,
+            events,
+            createNpcSimStateStoreDeps(workerState),
+        );
     },
     async tickFrame(
         frameCount: number,

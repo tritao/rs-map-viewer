@@ -10,10 +10,9 @@ import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
+import type { NpcLifecycleEvent, NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcData } from "../runtime/entities/NpcData";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 
@@ -125,8 +124,7 @@ export class RenderDataWorkerPool {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcs: ReadonlyArray<NpcData>,
-        npcOrderKeys?: Int32Array,
+        npcEvents: ReadonlyArray<NpcLifecycleEvent>,
         mapSimToken?: number,
     ): Promise<void> {
         return this.getTickWorker().then((w) =>
@@ -136,8 +134,7 @@ export class RenderDataWorkerPool {
                 tileRenderFlagsLevel1,
                 collisionDatas,
                 locsAnimated as any,
-                npcs as any,
-                npcOrderKeys,
+                npcEvents as any,
                 mapSimToken,
             ),
         );
@@ -147,8 +144,8 @@ export class RenderDataWorkerPool {
         return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
     }
 
-    applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): Promise<number> {
-        return this.getTickWorker().then((w) => w.applyMapNpcServerDeltas(mapId, deltas));
+    applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): Promise<number> {
+        return this.getTickWorker().then((w) => w.applyMapNpcUpdateEvents(mapId, events));
     }
 
     tickFrame(

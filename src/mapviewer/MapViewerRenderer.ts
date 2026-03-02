@@ -7,7 +7,8 @@ import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
 import { SdMapData } from "../maprender/payload/SdMapData";
-import type { NpcServerDelta } from "../runtime/sim/NpcSimMovement";
+import type { NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
+import { createNpcBootstrapEvents } from "../runtime/sim/NpcLifecycleEventAdapters";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
@@ -158,6 +159,11 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 const level1 = sdMapData.tileRenderFlags[1] ?? [];
+                const npcEvents = createNpcBootstrapEvents({
+                    mapId,
+                    npcsIn: sdMapData.npcs,
+                    npcOrderKeys: sdMapData.npcOrderKeys,
+                });
                 try {
                     await this.workerPool.registerMapNpcSimState(
                         mapId,
@@ -165,8 +171,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         level1,
                         sdMapData.collisionDatas,
                         sdMapData.locsAnimated,
-                        sdMapData.npcs,
-                        sdMapData.npcOrderKeys,
+                        npcEvents,
                         mapSimToken,
                     );
                 } catch (e) {
@@ -227,11 +232,11 @@ export class MapViewerRenderer extends RendererMainLoop {
         void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
 
-    applyMapNpcServerDeltas(mapId: number, deltas: NpcServerDelta[]): void {
-        if ((deltas.length | 0) <= 0) {
+    applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): void {
+        if ((events.length | 0) <= 0) {
             return;
         }
-        void this.workerPool.applyMapNpcServerDeltas(mapId | 0, deltas).catch(() => {
+        void this.workerPool.applyMapNpcUpdateEvents(mapId | 0, events).catch(() => {
             return;
         });
     }
