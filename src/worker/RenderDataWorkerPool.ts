@@ -12,8 +12,8 @@ import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcSpawnEvent } from "../runtime/sim/NpcSpawnEvent";
-import type { NpcTypeAnimationEntry } from "../runtime/sim/NpcTypeAnimationTable";
+import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 

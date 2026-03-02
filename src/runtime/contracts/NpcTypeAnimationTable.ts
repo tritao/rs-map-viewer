@@ -1,4 +1,4 @@
-import type { AnimationFrames } from "../contracts/AnimationFrames";
+import type { AnimationFrames } from "./AnimationFrames";
 
 export type NpcTypeAnimationEntry = Readonly<{
     npcTypeId: number;

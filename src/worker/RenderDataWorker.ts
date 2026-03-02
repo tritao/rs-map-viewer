@@ -59,8 +59,8 @@ import {
     readWasmPatchStreamsForMap,
 } from "./runtime/tickFrameHelpers";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./runtime/NpcGpuFrameBuilder";
-import type { NpcSpawnEvent } from "../runtime/sim/NpcSpawnEvent";
-import type { NpcTypeAnimationEntry } from "../runtime/sim/NpcTypeAnimationTable";
+import type { NpcSpawnEvent } from "../runtime/sim/NpcEvents";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import {
     createNpcBootstrapDataFromSpawns,
     type NpcBootstrapData,
