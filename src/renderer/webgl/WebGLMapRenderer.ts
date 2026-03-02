@@ -35,7 +35,9 @@ import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/entities/NpcGpuData";
 import {
     chooseLocTickPatchVariant,
     chooseNpcTickPatchVariant,
-} from "../../runtime/contracts/TickPatchStreams";
+    getLocTickPatchStreamIndex,
+    getNpcTickPatchStreamIndex,
+} from "../../runtime/contracts/TickPatchVariants";
 import {
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
@@ -505,11 +507,11 @@ export class WebGLMapRenderer
         if (!frame) {
             return;
         }
-        const variant = chooseLocTickPatchVariant(isAlpha, isInteract, isLod) as number;
+        const variant = chooseLocTickPatchVariant(isAlpha, isInteract, isLod);
         const mapId = renderable.id | 0;
         const entryIndex = frame.mapIdToIndex.get(mapId);
         if (entryIndex !== undefined) {
-            const streamIndex = variant | 0; // loc variants 0..7
+            const streamIndex = getLocTickPatchStreamIndex(variant);
             const idx = (entryIndex * TICK_PATCH_STREAM_COUNT + streamIndex) | 0;
             const count = frame.streamCounts[idx] | 0;
             if (count > 0) {
@@ -535,9 +537,8 @@ export class WebGLMapRenderer
         const mapId = renderable.id | 0;
         const entryIndex = frame.mapIdToIndex.get(mapId);
         if (entryIndex !== undefined) {
-            // npc variants occupy streams 8..9 in the packet
-            const npcVariant = chooseNpcTickPatchVariant(isAlpha) as number;
-            const streamIndex = (8 + (npcVariant | 0)) | 0;
+            const npcVariant = chooseNpcTickPatchVariant(isAlpha);
+            const streamIndex = getNpcTickPatchStreamIndex(npcVariant);
             const idx = (entryIndex * TICK_PATCH_STREAM_COUNT + streamIndex) | 0;
             const count = frame.streamCounts[idx] | 0;
             if (count > 0) {

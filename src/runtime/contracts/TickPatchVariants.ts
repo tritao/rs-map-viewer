@@ -16,6 +16,11 @@ export const enum NpcTickPatchVariant {
     Alpha = 1,
 }
 
+export const LOC_TICK_PATCH_STREAM_BASE = 0;
+export const LOC_TICK_PATCH_STREAM_COUNT = 8;
+export const NPC_TICK_PATCH_STREAM_BASE = LOC_TICK_PATCH_STREAM_BASE + LOC_TICK_PATCH_STREAM_COUNT;
+export const NPC_TICK_PATCH_STREAM_COUNT = 2;
+
 export function chooseLocTickPatchVariant(
     isAlpha: boolean,
     isInteract: boolean,
@@ -35,4 +40,12 @@ export function chooseLocTickPatchVariant(
 
 export function chooseNpcTickPatchVariant(isAlpha: boolean): NpcTickPatchVariant {
     return isAlpha ? NpcTickPatchVariant.Alpha : NpcTickPatchVariant.Base;
+}
+
+export function getLocTickPatchStreamIndex(variant: LocTickPatchVariant): number {
+    return (LOC_TICK_PATCH_STREAM_BASE + (variant | 0)) | 0;
+}
+
+export function getNpcTickPatchStreamIndex(variant: NpcTickPatchVariant): number {
+    return (NPC_TICK_PATCH_STREAM_BASE + (variant | 0)) | 0;
 }
