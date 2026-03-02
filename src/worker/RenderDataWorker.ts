@@ -83,8 +83,8 @@ const worker = {
     unregisterMapNpcSimState(mapId: number, mapSimToken?: number): void {
         tickRuntime.unregisterMapNpcSimState(mapId, mapSimToken);
     },
-    async applyNpcUpdatePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
-        return tickRuntime.applyNpcUpdatePacketBytes(packet);
+    async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
     async tickFrame(
         frameCount: number,

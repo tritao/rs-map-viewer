@@ -20,6 +20,7 @@ import { Result, err, ok } from "../util/Result";
 import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
+import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -269,8 +270,12 @@ export class MapViewer {
         return this.runtimeOptions;
     }
 
-    applyNpcUpdatePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
-        return this.renderer.applyNpcUpdatePacketBytes(packet);
+    applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
+        return this.renderer.applyNpcLifecycleEvents(events);
+    }
+
+    applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+        return this.renderer.applyNpcLifecyclePacketBytes(packet);
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {

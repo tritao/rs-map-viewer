@@ -18,6 +18,8 @@ import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { createNpcBootstrapData } from "../runtime/sim/NpcBootstrapData";
+import type { NpcEvent } from "../runtime/sim/NpcEvents";
+import { encodeNpcLifecyclePacketFromEvents } from "../runtime/sim/NpcUpdatePacket";
 import { MapViewer } from "./MapViewer";
 import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
 import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
@@ -232,14 +234,22 @@ export class MapViewerRenderer extends RendererMainLoop {
         void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
 
-    async applyNpcUpdatePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+    async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
+        if ((events.length | 0) <= 0) {
+            return 0;
+        }
+        const packet = encodeNpcLifecyclePacketFromEvents(events);
+        return this.applyNpcLifecyclePacketBytes(packet);
+    }
+
+    async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
         const bytes =
             packet instanceof Uint8Array
                 ? packet
                 : packet instanceof ArrayBuffer
                   ? new Uint8Array(packet)
                   : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
-        return await this.workerPool.applyNpcUpdatePacketBytes(bytes);
+        return await this.workerPool.applyNpcLifecyclePacketBytes(bytes);
     }
 
     override async init() {

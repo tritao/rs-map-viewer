@@ -185,9 +185,9 @@ export class RenderDataWorkerPool {
         );
     }
 
-    applyNpcUpdatePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+    applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return this.ensureInitialized().then(() =>
-            this.getTickWorker().then((w) => w.applyNpcUpdatePacketBytes(packet)),
+            this.getTickWorker().then((w) => w.applyNpcLifecyclePacketBytes(packet)),
         );
     }
 
