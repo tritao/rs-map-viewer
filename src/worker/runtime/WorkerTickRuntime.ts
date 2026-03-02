@@ -20,13 +20,13 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
-import type { MapRenderDataBackend, MapRenderDataBackendKind } from "../MapRenderDataBackend";
+import type { MapRenderDataBackend } from "../MapRenderDataBackend";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
 } from "./TickPatchStreamsBuilder";
 import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
-import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./NpcGpuFrameBuilder";
+import { NpcGpuFrameBuilder } from "./NpcGpuFrameBuilder";
 import {
     NpcSimStateStore,
     type NpcSimStateStoreDeps,
@@ -36,10 +36,6 @@ import {
     NpcBootstrapResolver,
     type ResolvedNpcBootstrapData,
 } from "../../runtime/sim/NpcBootstrapResolver";
-
-type WorkerTickRuntimeOptions = Readonly<{
-    mapRenderBackend?: MapRenderDataBackendKind;
-}>;
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
@@ -61,17 +57,20 @@ type WasmTickStreams = Readonly<{
     tickPatchPacked: Int32Array | undefined;
 }>;
 
+type WasmTickEmitResult = Readonly<{
+    tickPatchCountsByMapId: Int32Array;
+    tickPatchPacked: Int32Array;
+}>;
+
 const tickWasmBridge = mapRenderRuntimeBridge;
+const EMPTY_TICK_PATCH_COUNTS = new Int32Array(TICK_PATCH_STREAM_COUNT);
+const EMPTY_TICK_PATCH_STREAMS = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
 
 function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
     return {
         mapX: (mapId >> 8) & 0xff,
         mapY: mapId & 0xff,
     };
-}
-
-function shouldUseWasmTickInWorker(options: WorkerTickRuntimeOptions | undefined): boolean {
-    return options?.mapRenderBackend === "cpp-wasm";
 }
 
 function createNpcSimStateStoreDeps(workerState: TickWorkerState): NpcSimStateStoreDeps {
@@ -81,6 +80,17 @@ function createNpcSimStateStoreDeps(workerState: TickWorkerState): NpcSimStateSt
         seqTypeLoader: workerState.session.loaders.seqTypeLoader as SeqTypeLoader,
         tickPatchEntryStride: TICK_PATCH_ENTRY_STRIDE,
     };
+}
+
+function isWasmTickEmitResult(value: unknown): value is WasmTickEmitResult {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const candidate = value as Partial<WasmTickEmitResult>;
+    return (
+        candidate.tickPatchCountsByMapId instanceof Int32Array &&
+        candidate.tickPatchPacked instanceof Int32Array
+    );
 }
 
 export class WorkerMapSimLifecycle {
@@ -124,13 +134,8 @@ export class WorkerTickRuntime {
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
-    private options: WorkerTickRuntimeOptions | undefined;
 
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
-
-    setRuntimeOptions(options: WorkerTickRuntimeOptions | undefined): void {
-        this.options = options;
-    }
 
     resetForCache(): void {
         this.npcSimStateStore.resetForCache();
@@ -299,7 +304,7 @@ export class WorkerTickRuntime {
         safeClientTicks: number,
     ): Promise<WasmTickStreams> {
         const isEnabled =
-            shouldUseWasmTickInWorker(this.options) &&
+            workerState.mapRenderDataBackend.kind === "cpp-wasm" &&
             typeof tickWasmBridge.tickMapsEmitPatchStreams === "function";
         if (!isEnabled) {
             return {
@@ -314,19 +319,21 @@ export class WorkerTickRuntime {
             throw new Error("[map-render][tick][cpp-wasm] map-render runtime handle missing");
         }
         const cycleNowFixed = Math.round(cycleNow * LOC_CYCLE_SCALE) | 0;
-        const wasmTick = tickWasmBridge.tickMapsEmitPatchStreams?.(
+        const wasmTickValue = tickWasmBridge.tickMapsEmitPatchStreams?.(
             handle,
             mapIds,
             cycleNowFixed,
             safeClientTicks,
-        ) as Readonly<{ tickPatchCountsByMapId: Int32Array; tickPatchPacked: Int32Array }> | null;
-        if (!wasmTick) {
-            throw new Error("[map-render][tick][cpp-wasm] tickMapsEmitPatchStreams failed");
+        );
+        if (!isWasmTickEmitResult(wasmTickValue)) {
+            throw new Error(
+                "[map-render][tick][cpp-wasm] tickMapsEmitPatchStreams returned invalid data",
+            );
         }
         return {
             isEnabled: true,
-            tickPatchCountsByMapId: wasmTick.tickPatchCountsByMapId,
-            tickPatchPacked: wasmTick.tickPatchPacked,
+            tickPatchCountsByMapId: wasmTickValue.tickPatchCountsByMapId,
+            tickPatchPacked: wasmTickValue.tickPatchPacked,
         };
     }
 
@@ -337,14 +344,13 @@ export class WorkerTickRuntime {
         cameraMapY: number,
         safeLodDistance: number,
         hoveredMapIds: ReadonlySet<number>,
+        backendKind: string,
     ): FramePacketMapEntry {
         if (this.workerMapSimLifecycle.consumeMissingTickStateWarning(mapId)) {
             const { mapX, mapY } = decodeMapSquareFromId(mapId);
             console.warn(
                 `[map-render][tick] missing worker sim state for visible map ${mapX},${mapY} ` +
-                    `(mapId=${mapId | 0} index=${mapEntryIndex | 0} backend=${
-                        this.options?.mapRenderBackend ?? "unknown"
-                    })`,
+                    `(mapId=${mapId | 0} index=${mapEntryIndex | 0} backend=${backendKind})`,
             );
         }
         return buildFramePacketMapEntry({
@@ -355,8 +361,8 @@ export class WorkerTickRuntime {
             hoveredMapIds,
             hasNpcs: false,
             npcOffset: -1,
-            tickPatchCounts: new Int32Array(TICK_PATCH_STREAM_COUNT),
-            tickPatchStreams: new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT),
+            tickPatchCounts: EMPTY_TICK_PATCH_COUNTS,
+            tickPatchStreams: EMPTY_TICK_PATCH_STREAMS,
         });
     }
 
@@ -393,6 +399,7 @@ export class WorkerTickRuntime {
         }
 
         const workerState = await this.getWorkerState();
+        const backendKind = workerState.mapRenderDataBackend.kind ?? "unknown";
         const inputs = this.normalizeTickFrameInputs(
             frameCount,
             ticksElapsed,
@@ -433,6 +440,7 @@ export class WorkerTickRuntime {
                     cameraMapY,
                     inputs.safeLodDistance,
                     inputs.hoveredMapIds,
+                    backendKind,
                 );
                 continue;
             }
@@ -447,15 +455,11 @@ export class WorkerTickRuntime {
                 seqFrameLoader,
             );
 
-            const target: NpcGpuFrameSource = {
-                id: mapId | 0,
-                getNpcs: () => state.npcs,
-                getTileRenderFlag: (_level: number, tileX: number, tileY: number): number => {
-                    const col = state.tileRenderFlagsLevel1[(tileX + state.borderSize) | 0];
-                    return col ? col[(tileY + state.borderSize) | 0] | 0 : 0;
-                },
-            };
-            const npcOffset = this.npcGpuFrameBuilder.addRenderable(target);
+            const npcOffset = this.npcGpuFrameBuilder.addMapNpcs(
+                state.npcs,
+                state.borderSize,
+                state.tileRenderFlagsLevel1,
+            );
 
             const tickPatchesForMap = buildTickPatchStreamsForMap({
                 mapId,
