@@ -2,12 +2,7 @@ import type { CollisionData } from "../../rs/scene/CollisionMap";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import {
-    createNpcBootstrapDataFromSpawns,
-    type NpcBootstrapData,
-} from "../../runtime/sim/NpcBootstrapData";
 import { decodeNpcLifecyclePacket } from "../../runtime/sim/NpcLifecyclePacket";
-import { fetchNpcSpawns, getNpcSpawnsUrl, type NpcSpawn } from "../../data/npc/NpcSpawn";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
@@ -18,7 +13,6 @@ import {
     buildFramePacketFromMapEntries,
     type FramePacketMapEntry,
 } from "../../runtime/contracts/FramePacketBuilder";
-import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
 import type { CacheSession } from "../../rs/loaders/CacheSession";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
@@ -39,6 +33,10 @@ import {
     type NpcSimStateStoreDeps,
 } from "../../runtime/sim/NpcSimStateStore";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
+import {
+    NpcBootstrapResolver,
+    type ResolvedNpcBootstrapData,
+} from "../../runtime/sim/NpcBootstrapResolver";
 
 type WorkerTickRuntimeOptions = Readonly<{
     mapRenderBackend?: MapRenderDataBackendKind;
@@ -72,54 +70,13 @@ function createNpcSimStateStoreDeps(workerState: TickWorkerState): NpcSimStateSt
     };
 }
 
-function tryHydrateNpcBootstrapFromMapBytes(
-    workerState: TickWorkerState,
-    mapId: number,
-    borderSize: number,
-    tileRenderFlagsLevel1: Uint8Array[],
-): Readonly<{ spawns: NpcSpawn[]; decodedSpawnsCount: number }> | undefined {
-    const { mapX, mapY } = decodeMapSquareFromId(mapId);
-    const npcSpawnBytes = workerState.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
-    if (!(npcSpawnBytes instanceof Uint8Array) || npcSpawnBytes.length === 0) {
-        return undefined;
-    }
-    const decodedSpawns = decodeNpcSpawnsFromBytes(
-        tileRenderFlagsLevel1,
-        borderSize,
-        mapX,
-        mapY,
-        npcSpawnBytes,
-    );
-    if (!decodedSpawns || (decodedSpawns.length | 0) <= 0) {
-        return undefined;
-    }
-    return {
-        spawns: decodedSpawns,
-        decodedSpawnsCount: decodedSpawns.length | 0,
-    };
-}
-
-type NpcBootstrapSource = "mapBytes" | "fallbackDataset";
-
-type ResolvedNpcBootstrapData = Readonly<{
-    data: NpcBootstrapData;
-    source: NpcBootstrapSource;
-    decodedSpawnsCount?: number;
-    fallbackUrl?: string;
-    fallbackCacheKey?: string;
-    fallbackTotalSpawns?: number;
-    fallbackMapSpawnsCount?: number;
-    fallbackMapSpawnsAllLevelsCount?: number;
-}>;
-
 export class WorkerTickRuntime {
+    private readonly npcBootstrapResolver = new NpcBootstrapResolver();
     private readonly npcSimStateStore = new NpcSimStateStore();
     private readonly npcSimPathfinder = new Pathfinder();
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
-    private fallbackNpcSpawnsPromise: Promise<NpcSpawn[]> | undefined;
-    private fallbackNpcSpawnsCacheKey: string | undefined;
     private options: WorkerTickRuntimeOptions | undefined;
 
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
@@ -130,42 +87,16 @@ export class WorkerTickRuntime {
 
     resetForCache(): void {
         this.npcSimStateStore.resetForCache();
+        this.npcBootstrapResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
-        this.fallbackNpcSpawnsPromise = undefined;
-        this.fallbackNpcSpawnsCacheKey = undefined;
     }
 
     resetForLoaderReset(): void {
         this.npcSimStateStore.resetForLoaderReset();
+        this.npcBootstrapResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
-        this.fallbackNpcSpawnsPromise = undefined;
-        this.fallbackNpcSpawnsCacheKey = undefined;
-    }
-
-    private getFallbackNpcSpawns(workerState: TickWorkerState): Promise<NpcSpawn[]> {
-        const cacheInfo = workerState.session.cache.info;
-        const cacheKey = `${cacheInfo.game}:${cacheInfo.revision}:${cacheInfo.name}`;
-        if (this.fallbackNpcSpawnsPromise && this.fallbackNpcSpawnsCacheKey === cacheKey) {
-            return this.fallbackNpcSpawnsPromise;
-        }
-        const url = getNpcSpawnsUrl(cacheInfo);
-        const promise = fetchNpcSpawns(url).catch((error: unknown) => {
-            console.error("[map-render][npc-spawns] failed to fetch fallback spawn dataset", {
-                cacheKey,
-                url,
-                error,
-            });
-            if (this.fallbackNpcSpawnsCacheKey === cacheKey) {
-                this.fallbackNpcSpawnsPromise = undefined;
-                this.fallbackNpcSpawnsCacheKey = undefined;
-            }
-            return [];
-        });
-        this.fallbackNpcSpawnsPromise = promise;
-        this.fallbackNpcSpawnsCacheKey = cacheKey;
-        return promise;
     }
 
     private async resolveNpcBootstrapData(
@@ -176,62 +107,19 @@ export class WorkerTickRuntime {
         tileRenderFlagsLevel1: Uint8Array[],
         npcOrderKeys: Int32Array,
     ): Promise<ResolvedNpcBootstrapData> {
-        const fromMapBytes = tryHydrateNpcBootstrapFromMapBytes(
-            workerState,
-            mapId,
-            borderSize,
-            tileRenderFlagsLevel1,
+        return this.npcBootstrapResolver.resolve(
+            {
+                mapBytesProvider: workerState.mapBytesProvider,
+                cacheInfo: workerState.session.cache.info,
+            },
+            {
+                mapId,
+                maxLevel,
+                borderSize,
+                tileRenderFlagsLevel1,
+                npcOrderKeys,
+            },
         );
-        if (fromMapBytes) {
-            return {
-                data: createNpcBootstrapDataFromSpawns(mapId | 0, fromMapBytes.spawns, npcOrderKeys),
-                source: "mapBytes",
-                decodedSpawnsCount: fromMapBytes.decodedSpawnsCount | 0,
-            };
-        }
-
-        const { mapX, mapY } = decodeMapSquareFromId(mapId);
-        const cacheInfo = workerState.session.cache.info;
-        const fallbackCacheKey = `${cacheInfo.game}:${cacheInfo.revision}:${cacheInfo.name}`;
-        const fallbackUrl = getNpcSpawnsUrl(cacheInfo);
-        const fallbackSpawns = await this.getFallbackNpcSpawns(workerState);
-        const mapSpawns: NpcSpawn[] = [];
-        let mapSpawnsAllLevelsCount = 0;
-        for (let i = 0; i < fallbackSpawns.length; i++) {
-            const obj = fallbackSpawns[i]!;
-            const npcMapX = (obj.x / 64) | 0;
-            const npcMapY = (obj.y / 64) | 0;
-            if (mapX !== npcMapX || mapY !== npcMapY) {
-                continue;
-            }
-            mapSpawnsAllLevelsCount = (mapSpawnsAllLevelsCount + 1) | 0;
-            if ((obj.level | 0) <= (maxLevel | 0)) {
-                mapSpawns.push(obj);
-            }
-        }
-        if ((mapSpawns.length | 0) <= 0) {
-            return {
-                data: {
-                    spawnEvents: [],
-                    npcTypeAnimationTable: [],
-                },
-                source: "fallbackDataset",
-                fallbackUrl,
-                fallbackCacheKey,
-                fallbackTotalSpawns: fallbackSpawns.length | 0,
-                fallbackMapSpawnsCount: 0,
-                fallbackMapSpawnsAllLevelsCount: mapSpawnsAllLevelsCount | 0,
-            };
-        }
-        return {
-            data: createNpcBootstrapDataFromSpawns(mapId | 0, mapSpawns, npcOrderKeys),
-            source: "fallbackDataset",
-            fallbackUrl,
-            fallbackCacheKey,
-            fallbackTotalSpawns: fallbackSpawns.length | 0,
-            fallbackMapSpawnsCount: mapSpawns.length | 0,
-            fallbackMapSpawnsAllLevelsCount: mapSpawnsAllLevelsCount | 0,
-        };
     }
 
     async registerMapNpcSimState(
