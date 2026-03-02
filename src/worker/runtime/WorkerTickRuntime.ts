@@ -28,7 +28,7 @@ import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { MapRenderRuntimeBridgeV2 } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
-import type { MapRenderDataBackend } from "../MapRenderDataBackend";
+import type { MapRenderDataBackend, MapRenderDataBackendKind } from "../MapRenderDataBackend";
 import {
     applyNpcMovementStep,
     buildTickPatchStreamsForMap,
@@ -42,7 +42,7 @@ import {
 } from "./WorkerNpcSimStateStore";
 
 type WorkerTickRuntimeOptions = Readonly<{
-    mapRenderBackend?: string;
+    mapRenderBackend?: MapRenderDataBackendKind;
 }>;
 
 type TickWorkerState = Readonly<{
