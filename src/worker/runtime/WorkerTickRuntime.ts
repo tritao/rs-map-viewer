@@ -26,7 +26,6 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
-import type { MapRenderRuntimeBridgeV2 } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
 import type { MapRenderDataBackend, MapRenderDataBackendKind } from "../MapRenderDataBackend";
 import {
@@ -51,7 +50,7 @@ type TickWorkerState = Readonly<{
     mapRenderDataBackend: MapRenderDataBackend;
 }>;
 
-const tickWasmBridge = mapRenderRuntimeBridge as unknown as MapRenderRuntimeBridgeV2;
+const tickWasmBridge = mapRenderRuntimeBridge;
 
 function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
     return {

@@ -43,7 +43,7 @@ type DrawRangePatchBridge = Readonly<{
         | undefined;
 }>;
 
-const bridge = mapRenderRuntimeBridge as unknown as DrawRangePatchBridge;
+const bridge = mapRenderRuntimeBridge as DrawRangePatchBridge;
 let runtimeReady = false;
 let runtimeHandle: number | undefined;
 let initPromise: Promise<boolean> | undefined;

@@ -159,8 +159,7 @@ type CppWasmMapRenderDataBridge = MapRenderRuntimeBridgeV2;
 
 class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "cpp-wasm";
-    private readonly bridge: CppWasmMapRenderDataBridge =
-        mapRenderRuntimeBridge as unknown as CppWasmMapRenderDataBridge;
+    private readonly bridge: CppWasmMapRenderDataBridge = mapRenderRuntimeBridge;
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
