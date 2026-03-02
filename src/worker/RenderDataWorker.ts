@@ -59,7 +59,7 @@ import {
     readWasmPatchStreamsForMap,
 } from "./runtime/tickFrameHelpers";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./runtime/NpcGpuFrameBuilder";
-import type { NpcBootstrapSpawnEvent } from "./runtime/NpcBootstrapEvent";
+import type { NpcSpawnEvent } from "../runtime/sim/NpcSpawnEvent";
 import { createNpcBootstrapSpawnEventsFromSpawns } from "./runtime/NpcBootstrapEventAdapters";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
 import { WorkerNpcSimStateStore } from "./runtime/WorkerNpcSimStateStore";
@@ -118,8 +118,8 @@ function maybeHydrateNpcBootstrapEventsFromMapBytes(
     mapId: number,
     borderSize: number,
     tileRenderFlagsLevel1: Uint8Array[],
-    npcEventsIn: ReadonlyArray<NpcBootstrapSpawnEvent>,
-): NpcBootstrapSpawnEvent[] {
+    npcEventsIn: ReadonlyArray<NpcSpawnEvent>,
+): NpcSpawnEvent[] {
     if ((npcEventsIn.length | 0) > 0) {
         return Array.from(npcEventsIn);
     }
@@ -379,7 +379,7 @@ const worker = {
         tileRenderFlagsLevel1: Uint8Array[],
         collisionDatas: CollisionData[],
         locsAnimated: LocAnimatedData[],
-        npcEventsIn: NpcBootstrapSpawnEvent[],
+        npcEventsIn: NpcSpawnEvent[],
         mapSimToken?: number,
     ): Promise<void> {
         if (!workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {

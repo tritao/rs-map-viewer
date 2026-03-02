@@ -3,11 +3,12 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import { applyNpcUpdateDeltas } from "../../runtime/sim/NpcSimMovement";
+import type { NpcEvent } from "../../runtime/sim/NpcEvent";
+import type { NpcSpawnEvent } from "../../runtime/sim/NpcSpawnEvent";
 import type { NpcUpdateEvent } from "../../runtime/sim/NpcUpdateEvent";
 import { LocAnimated } from "../../runtime/entities/LocAnimated";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { Npc } from "../../runtime/entities/Npc";
-import type { NpcBootstrapSpawnEvent, WorkerNpcLifecycleEvent } from "./NpcBootstrapEvent";
 
 export type WorkerNpcSimMapState = {
     borderSize: number;
@@ -149,7 +150,7 @@ export class WorkerNpcSimStateStore {
     }
 
     private createNpcFromSpawnEvent(
-        event: NpcBootstrapSpawnEvent,
+        event: NpcSpawnEvent,
         state: WorkerNpcSimMapState,
         deps: WorkerNpcSimStateStoreDeps,
     ): Npc | undefined {
@@ -198,7 +199,7 @@ export class WorkerNpcSimStateStore {
     private applyLifecycleEventsToState(
         mapId: number,
         state: WorkerNpcSimMapState,
-        events: ReadonlyArray<WorkerNpcLifecycleEvent>,
+        events: ReadonlyArray<NpcEvent>,
         deps: WorkerNpcSimStateStoreDeps,
         replaceSnapshot: boolean,
     ): number {
@@ -274,7 +275,7 @@ export class WorkerNpcSimStateStore {
 
     applyMapNpcLifecycleEvents(
         mapId: number,
-        events: ReadonlyArray<WorkerNpcLifecycleEvent>,
+        events: ReadonlyArray<NpcEvent>,
         deps: WorkerNpcSimStateStoreDeps,
         replaceSnapshot: boolean = false,
     ): number {
