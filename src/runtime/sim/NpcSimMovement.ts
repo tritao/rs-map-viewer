@@ -39,9 +39,6 @@ export type NpcUpdatePathDelta = Readonly<{
 }>;
 
 export type NpcUpdateDelta = Readonly<{
-    npcInstanceId?: number;
-    npcIndex?: number;
-    npcOrderKey?: number;
     clearServerPath?: boolean;
     snapTileX?: number;
     snapTileY?: number;
@@ -106,22 +103,12 @@ export function applyNpcUpdateDelta(npc: NpcServerMovementLike, delta: NpcUpdate
 
 export function applyNpcUpdateDeltas(
     npcs: ReadonlyArray<NpcServerMovementLike>,
-    deltas: ReadonlyArray<NpcUpdateDelta>,
-    npcIndexByOrderKey?: ReadonlyMap<number, number>,
+    updates: ReadonlyArray<Readonly<{ npcInstanceId: number; delta: NpcUpdateDelta }>>,
     npcIndexByInstanceId?: ReadonlyMap<number, number>,
 ): number {
     let applied = 0;
-    for (const delta of deltas) {
-        let index =
-            delta.npcInstanceId !== undefined
-                ? npcIndexByInstanceId?.get(delta.npcInstanceId | 0)
-                : undefined;
-        if (index === undefined) {
-            index = delta.npcIndex;
-        }
-        if (index === undefined && delta.npcOrderKey !== undefined) {
-            index = npcIndexByOrderKey?.get(delta.npcOrderKey | 0);
-        }
+    for (const update of updates) {
+        const index = npcIndexByInstanceId?.get(update.npcInstanceId | 0);
         if (index === undefined) {
             continue;
         }
@@ -129,7 +116,7 @@ export function applyNpcUpdateDeltas(
         if (!npc) {
             continue;
         }
-        applyNpcUpdateDelta(npc, delta);
+        applyNpcUpdateDelta(npc, update.delta);
         applied++;
     }
     return applied | 0;

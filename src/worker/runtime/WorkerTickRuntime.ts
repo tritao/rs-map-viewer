@@ -2,13 +2,13 @@ import type { CollisionData } from "../../rs/scene/CollisionMap";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import type { NpcSpawnEvent } from "../../runtime/sim/NpcEvents";
+import type { NpcSpawnEvent, NpcUpdateEvent } from "../../runtime/sim/NpcEvents";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 import {
     createNpcBootstrapDataFromSpawns,
     type NpcBootstrapData,
 } from "../../runtime/sim/NpcBootstrapData";
-import { decodeNpcUpdatePacket } from "../../runtime/sim/NpcUpdatePacket";
+import { decodeNpcUpdatePacket, type LegacyNpcUpdateEvent } from "../../runtime/sim/NpcUpdatePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
@@ -37,6 +37,7 @@ import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "./NpcGpuFrameBuilder
 import { WorkerMapSimLifecycle } from "./WorkerMapSimLifecycle";
 import {
     WorkerNpcSimStateStore,
+    type WorkerNpcSimMapState,
     type WorkerNpcSimStateStoreDeps,
 } from "./WorkerNpcSimStateStore";
 
@@ -128,6 +129,7 @@ export class WorkerTickRuntime {
     private readonly npcSimPathfinder = new Pathfinder();
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
+    private nextNpcLifecycleSeq = 1;
     private options: WorkerTickRuntimeOptions | undefined;
 
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
@@ -139,11 +141,13 @@ export class WorkerTickRuntime {
     resetForCache(): void {
         this.npcSimStateStore.resetForCache();
         this.workerMapSimLifecycle.reset();
+        this.nextNpcLifecycleSeq = 1;
     }
 
     resetForLoaderReset(): void {
         this.npcSimStateStore.resetForLoaderReset();
         this.workerMapSimLifecycle.reset();
+        this.nextNpcLifecycleSeq = 1;
     }
 
     async registerMapNpcSimState(
@@ -199,17 +203,82 @@ export class WorkerTickRuntime {
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     }
 
+    private allocateNpcLifecycleSeq(): number {
+        const seq = this.nextNpcLifecycleSeq | 0;
+        this.nextNpcLifecycleSeq = (this.nextNpcLifecycleSeq + 1) | 0;
+        if ((this.nextNpcLifecycleSeq | 0) <= 0) {
+            this.nextNpcLifecycleSeq = 1;
+        }
+        return seq;
+    }
+
+    private resolveNpcInstanceIdFromLegacyUpdate(
+        state: WorkerNpcSimMapState,
+        event: LegacyNpcUpdateEvent,
+    ): number | undefined {
+        if (event.npcInstanceId !== undefined) {
+            return event.npcInstanceId | 0;
+        }
+        if (event.npcOrderKey !== undefined) {
+            const index = state.npcIndexByOrderKey.get(event.npcOrderKey | 0);
+            if (index !== undefined) {
+                const instanceId = state.npcs[index | 0]?.instanceId;
+                if (instanceId !== undefined) {
+                    return instanceId | 0;
+                }
+            }
+        }
+        if (event.npcIndex !== undefined) {
+            const instanceId = state.npcs[event.npcIndex | 0]?.instanceId;
+            if (instanceId !== undefined) {
+                return instanceId | 0;
+            }
+        }
+        return undefined;
+    }
+
+    private adaptLegacyNpcUpdateEvents(
+        mapId: number,
+        state: WorkerNpcSimMapState,
+        events: ReadonlyArray<LegacyNpcUpdateEvent>,
+    ): NpcUpdateEvent[] {
+        const out: NpcUpdateEvent[] = [];
+        for (let i = 0; i < events.length; i++) {
+            const event = events[i]!;
+            const npcInstanceId = this.resolveNpcInstanceIdFromLegacyUpdate(state, event);
+            if (npcInstanceId === undefined) {
+                continue;
+            }
+            out.push({
+                kind: "update",
+                mapId: mapId | 0,
+                npcInstanceId: npcInstanceId | 0,
+                seq: this.allocateNpcLifecycleSeq(),
+                delta: event.delta,
+            });
+        }
+        return out;
+    }
+
     async applyNpcUpdatePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         const decoded = decodeNpcUpdatePacket(packet);
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
         let applied = 0;
         for (const [mapId, events] of decoded.updateEventsByMapId.entries()) {
+            const state = this.npcSimStateStore.getMap(mapId | 0);
+            if (!state) {
+                continue;
+            }
+            const adapted = this.adaptLegacyNpcUpdateEvents(mapId | 0, state, events);
+            if ((adapted.length | 0) <= 0) {
+                continue;
+            }
             applied =
                 (applied +
                     (this.npcSimStateStore.applyMapNpcLifecycleEvents(
                         mapId | 0,
-                        events,
+                        adapted,
                         deps,
                     ) | 0)) |
                 0;

@@ -1,6 +1,5 @@
 import { MovementType } from "../../runtime/entities/Npc";
 import { ByteBuffer } from "../../rs/io/ByteBuffer";
-import type { NpcUpdateEvent } from "./NpcEvents";
 import type { NpcUpdateDelta } from "./NpcSimMovement";
 
 const PACKET_VERSION = 1;
@@ -17,13 +16,21 @@ const FLAG_HAS_PATH = 1 << 7;
 
 export type DecodedNpcUpdatePacket = Readonly<{
     version: number;
-    updateEventsByMapId: ReadonlyMap<number, NpcUpdateEvent[]>;
+    updateEventsByMapId: ReadonlyMap<number, LegacyNpcUpdateEvent[]>;
     deltaCount: number;
 }>;
 
 type MutableNpcUpdateDelta = {
     -readonly [K in keyof NpcUpdateDelta]: NpcUpdateDelta[K];
 };
+
+export type LegacyNpcUpdateEvent = Readonly<{
+    mapId: number;
+    npcIndex?: number;
+    npcOrderKey?: number;
+    npcInstanceId?: number;
+    delta: NpcUpdateDelta;
+}>;
 
 type ByteInput = ArrayBuffer | ArrayBufferView;
 
@@ -55,29 +62,28 @@ export function decodeNpcUpdatePacket(input: ByteInput): DecodedNpcUpdatePacket 
     }
 
     const mapCount = reader.readUnsignedShort() | 0;
-    const updateEventsByMapId = new Map<number, NpcUpdateEvent[]>();
+    const updateEventsByMapId = new Map<number, LegacyNpcUpdateEvent[]>();
     let deltaCount = 0;
 
     for (let m = 0; m < mapCount; m++) {
         const mapId = reader.readUnsignedShort() | 0;
         const mapDeltaCount = reader.readUnsignedShort() | 0;
-        const mapEvents = new Array<NpcUpdateEvent>(mapDeltaCount);
+        const mapEvents = new Array<LegacyNpcUpdateEvent>(mapDeltaCount);
         for (let i = 0; i < mapDeltaCount; i++) {
             const flags = reader.readUnsignedByte() | 0;
             const delta: MutableNpcUpdateDelta = {};
+            let npcIndex: number | undefined;
+            let npcOrderKey: number | undefined;
+            let npcInstanceId: number | undefined;
 
             if ((flags & FLAG_HAS_NPC_INDEX) !== 0) {
-                delta.npcIndex = reader.readUnsignedShort() | 0;
+                npcIndex = reader.readUnsignedShort() | 0;
             }
             if ((flags & FLAG_HAS_NPC_ORDER_KEY) !== 0) {
-                delta.npcOrderKey = reader.readInt() | 0;
-                delta.npcInstanceId = delta.npcOrderKey | 0;
+                npcOrderKey = reader.readInt() | 0;
+                npcInstanceId = npcOrderKey | 0;
             }
-            if (
-                delta.npcInstanceId === undefined &&
-                delta.npcIndex === undefined &&
-                delta.npcOrderKey === undefined
-            ) {
+            if (npcInstanceId === undefined && npcIndex === undefined && npcOrderKey === undefined) {
                 throw new Error(
                     `[map-viewer][npc-update-packet] delta missing target: ` +
                         `mapId=${mapId | 0} index=${i | 0}`,
@@ -125,12 +131,7 @@ export function decodeNpcUpdatePacket(input: ByteInput): DecodedNpcUpdatePacket 
                 };
             }
 
-            mapEvents[i] = {
-                kind: "update",
-                mapId: mapId | 0,
-                delta,
-                npcInstanceId: delta.npcInstanceId,
-            };
+            mapEvents[i] = { mapId: mapId | 0, npcIndex, npcOrderKey, npcInstanceId, delta };
             deltaCount = (deltaCount + 1) | 0;
         }
         updateEventsByMapId.set(mapId | 0, mapEvents);

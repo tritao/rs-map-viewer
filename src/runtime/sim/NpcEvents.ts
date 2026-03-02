@@ -14,16 +14,16 @@ export type NpcSpawnEvent = Readonly<{
 export type NpcUpdateEvent = Readonly<{
     kind: "update";
     mapId: number;
+    npcInstanceId: number;
+    seq: number;
     delta: NpcUpdateDelta;
-    npcInstanceId?: number;
 }>;
 
 export type NpcDespawnEvent = Readonly<{
     kind: "despawn";
     mapId: number;
-    npcInstanceId?: number;
-    npcOrderKey?: number;
-    npcIndex?: number;
+    npcInstanceId: number;
+    seq: number;
 }>;
 
 export type NpcRuntimeEvent = NpcUpdateEvent | NpcDespawnEvent;
