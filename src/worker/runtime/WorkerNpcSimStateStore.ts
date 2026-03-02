@@ -35,8 +35,10 @@ export type RegisterWorkerNpcSimMapInput = Readonly<{
     tileRenderFlagsLevel1: Uint8Array[];
     collisionDatas: CollisionData[];
     locsAnimated: LocAnimatedData[];
-    npcEvents: ReadonlyArray<NpcLifecycleEvent>;
-    replaceNpcSnapshot?: boolean;
+}>;
+
+export type ApplyNpcLifecycleEventsOptions = Readonly<{
+    replaceSnapshot?: boolean;
 }>;
 
 export type WorkerNpcSimStateStoreDeps = Readonly<{
@@ -205,8 +207,9 @@ export class WorkerNpcSimStateStore {
         state: WorkerNpcSimMapState,
         events: ReadonlyArray<NpcLifecycleEvent>,
         deps: WorkerNpcSimStateStoreDeps,
-        replaceNpcSnapshot: boolean,
+        options?: ApplyNpcLifecycleEventsOptions,
     ): number {
+        const replaceNpcSnapshot = options?.replaceSnapshot === true;
         const npcCountBefore = state.npcs.length | 0;
         if (replaceNpcSnapshot) {
             state.npcs.length = 0;
@@ -277,19 +280,17 @@ export class WorkerNpcSimStateStore {
         return this.maps.get(mapId | 0);
     }
 
-    applyLifecycleEvents(
+    applyMapNpcLifecycleEvents(
         mapId: number,
         events: ReadonlyArray<NpcLifecycleEvent>,
         deps: WorkerNpcSimStateStoreDeps,
+        options?: ApplyNpcLifecycleEventsOptions,
     ): number {
-        if ((events.length | 0) <= 0) {
-            return 0;
-        }
         const state = this.maps.get(mapId | 0);
         if (!state) {
             return 0;
         }
-        return this.applyLifecycleEventsToState(mapId | 0, state, events, deps, false);
+        return this.applyLifecycleEventsToState(mapId | 0, state, events, deps, options);
     }
 
     registerMap(
@@ -299,13 +300,6 @@ export class WorkerNpcSimStateStore {
         const mapId = input.mapId | 0;
         const state = this.maps.get(mapId) ?? this.createMapState(input, deps);
         this.setMapLocContext(state, input, deps);
-        this.applyLifecycleEventsToState(
-            mapId,
-            state,
-            input.npcEvents,
-            deps,
-            input.replaceNpcSnapshot === true,
-        );
         this.maps.set(mapId, state);
     }
 }

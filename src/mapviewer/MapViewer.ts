@@ -24,8 +24,7 @@ import { WorkerRuntimeOptions } from "../worker/RenderDataWorker";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
 import { MapViewerRenderer } from "./MapViewerRenderer";
-import type { NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
-import { decodeNpcServerDeltaPacket } from "../runtime/sim/NpcServerDeltaPacket";
+import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -286,18 +285,12 @@ export class MapViewer {
         return this.runtimeOptions;
     }
 
-    applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): void {
-        this.renderer.applyMapNpcUpdateEvents(mapId | 0, events);
+    applyMapNpcLifecycleEvents(mapId: number, events: NpcLifecycleEvent[]): void {
+        this.renderer.applyMapNpcLifecycleEvents(mapId | 0, events);
     }
 
-    applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): number {
-        const decoded = decodeNpcServerDeltaPacket(packet);
-        let applied = 0;
-        for (const [mapId, events] of decoded.updateEventsByMapId.entries()) {
-            this.renderer.applyMapNpcUpdateEvents(mapId | 0, events);
-            applied = (applied + (events.length | 0)) | 0;
-        }
-        return applied | 0;
+    applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+        return this.renderer.applyNpcServerDeltaPacketBytes(packet);
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {

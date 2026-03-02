@@ -9,8 +9,9 @@ import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuDataTarget } from "../runtime/entities/NpcGpuData";
 import { NpcGpuDataBuilder } from "../runtime/entities/NpcGpuDataBuilder";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcLifecycleEvent, NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
+import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 import { createNpcBootstrapEventsFromSpawns } from "../runtime/sim/NpcLifecycleEventAdapters";
+import { decodeNpcServerDeltaPacket } from "../runtime/sim/NpcServerDeltaPacket";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
@@ -61,7 +62,10 @@ import {
     readWasmPatchStreamsForMap,
 } from "./runtime/tickFrameHelpers";
 import { WorkerMapSimLifecycle } from "./runtime/WorkerMapSimLifecycle";
-import { WorkerNpcSimStateStore } from "./runtime/WorkerNpcSimStateStore";
+import {
+    type ApplyNpcLifecycleEventsOptions,
+    WorkerNpcSimStateStore,
+} from "./runtime/WorkerNpcSimStateStore";
 
 registerSerializer(renderDataLoaderSerializer);
 
@@ -392,6 +396,7 @@ const worker = {
             tileRenderFlagsLevel1,
             npcEventsIn,
         );
+        const deps = createNpcSimStateStoreDeps(workerState);
         npcSimStateStore.registerMap(
             {
                 mapId,
@@ -399,10 +404,14 @@ const worker = {
                 tileRenderFlagsLevel1,
                 collisionDatas,
                 locsAnimated,
-                npcEvents,
-                replaceNpcSnapshot: true,
             },
-            createNpcSimStateStoreDeps(workerState),
+            deps,
+        );
+        npcSimStateStore.applyMapNpcLifecycleEvents(
+            mapId | 0,
+            npcEvents,
+            deps,
+            { replaceSnapshot: true },
         );
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     },
@@ -414,13 +423,36 @@ const worker = {
         workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
         // Tick state is owned by the map-render runtime (C++). Do not mirror/clear it from TS here.
     },
-    async applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): Promise<number> {
+    async applyMapNpcLifecycleEvents(
+        mapId: number,
+        events: NpcLifecycleEvent[],
+        options?: ApplyNpcLifecycleEventsOptions,
+    ): Promise<number> {
         const workerState = await requireWorkerState();
-        return npcSimStateStore.applyLifecycleEvents(
+        const deps = createNpcSimStateStoreDeps(workerState);
+        return npcSimStateStore.applyMapNpcLifecycleEvents(
             mapId | 0,
             events,
-            createNpcSimStateStoreDeps(workerState),
+            deps,
+            options,
         );
+    },
+    async applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        const decoded = decodeNpcServerDeltaPacket(packet);
+        const workerState = await requireWorkerState();
+        const deps = createNpcSimStateStoreDeps(workerState);
+        let applied = 0;
+        for (const [mapId, events] of decoded.updateEventsByMapId.entries()) {
+            applied =
+                (applied +
+                    (npcSimStateStore.applyMapNpcLifecycleEvents(
+                        mapId | 0,
+                        events,
+                        deps,
+                    ) | 0)) |
+                0;
+        }
+        return applied | 0;
     },
     async tickFrame(
         frameCount: number,

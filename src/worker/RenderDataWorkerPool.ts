@@ -10,7 +10,8 @@ import { MinimapData } from "./MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
 import { RenderDataWorker, WorkerRuntimeOptions } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcLifecycleEvent, NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
+import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
+import type { ApplyNpcLifecycleEventsOptions } from "./runtime/WorkerNpcSimStateStore";
 import type { CollisionData } from "../rs/scene/CollisionMap";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 
@@ -144,8 +145,16 @@ export class RenderDataWorkerPool {
         return this.getTickWorker().then((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
     }
 
-    applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): Promise<number> {
-        return this.getTickWorker().then((w) => w.applyMapNpcUpdateEvents(mapId, events));
+    applyMapNpcLifecycleEvents(
+        mapId: number,
+        events: NpcLifecycleEvent[],
+        options?: ApplyNpcLifecycleEventsOptions,
+    ): Promise<number> {
+        return this.getTickWorker().then((w) => w.applyMapNpcLifecycleEvents(mapId, events, options));
+    }
+
+    applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        return this.getTickWorker().then((w) => w.applyNpcServerDeltaPacketBytes(packet));
     }
 
     tickFrame(

@@ -7,7 +7,7 @@ import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
 import { SdMapData } from "../maprender/payload/SdMapData";
-import type { NpcUpdateEvent } from "../runtime/sim/NpcLifecycleEvent";
+import type { NpcLifecycleEvent } from "../runtime/sim/NpcLifecycleEvent";
 import { createNpcBootstrapEvents } from "../runtime/sim/NpcLifecycleEventAdapters";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapDataLoader } from "../worker/loaders/SdMapDataLoader";
@@ -232,13 +232,23 @@ export class MapViewerRenderer extends RendererMainLoop {
         void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
 
-    applyMapNpcUpdateEvents(mapId: number, events: NpcUpdateEvent[]): void {
+    applyMapNpcLifecycleEvents(mapId: number, events: NpcLifecycleEvent[]): void {
         if ((events.length | 0) <= 0) {
             return;
         }
-        void this.workerPool.applyMapNpcUpdateEvents(mapId | 0, events).catch(() => {
+        void this.workerPool.applyMapNpcLifecycleEvents(mapId | 0, events).catch(() => {
             return;
         });
+    }
+
+    async applyNpcServerDeltaPacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+        const bytes =
+            packet instanceof Uint8Array
+                ? packet
+                : packet instanceof ArrayBuffer
+                  ? new Uint8Array(packet)
+                  : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
+        return await this.workerPool.applyNpcServerDeltaPacketBytes(bytes);
     }
 
     override async init() {
