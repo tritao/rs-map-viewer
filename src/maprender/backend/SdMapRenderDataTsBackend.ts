@@ -218,6 +218,18 @@ function createEmptyModelInfoTextures(): SdRenderableModelInfoTextures {
     };
 }
 
+function createDefaultNpcDrawRanges(npcCount: number): Int32Array {
+    const count = Math.max(0, npcCount | 0);
+    const out = new Int32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const off = i * 3;
+        out[off + 0] = 0;
+        out[off + 1] = 0;
+        out[off + 2] = 1;
+    }
+    return out;
+}
+
 function flattenSceneTileHeights(scene: Scene): Int32Array {
     const levels = scene.levels;
     const sizeX = scene.sizeX;
@@ -815,6 +827,10 @@ export class SdMapRenderDataTsBackend {
             }
         }
         const includeNpcAnimationFrames = options?.includeNpcAnimationFrames !== false;
+        const npcSceneBuf =
+            loadNpcs && includeNpcAnimationFrames
+                ? new SceneBuffer(textureLoader, textureIdIndexMap, 20000)
+                : undefined;
         const npcs = includeNpcAnimationFrames
             ? timeStep("createNpcDatas", () => {
                   const npcSpawnGroups = createNpcSpawnGroups(
@@ -822,12 +838,25 @@ export class SdMapRenderDataTsBackend {
                       npcTypeLoader,
                       seqTypeLoader,
                       basTypeLoader,
-                      sceneBuf,
+                      npcSceneBuf ?? sceneBuf,
                       npcSpawns,
                   );
                   return createNpcDatas(npcSpawnGroups);
               })
             : timeStep("createNpcDatasFromSpawns", () => createNpcDatasFromSpawns(npcSpawns));
+        const npcVertices =
+            npcSceneBuf && npcSceneBuf.vertexCount() > 0 ? npcSceneBuf.vertexBuf.byteArray() : undefined;
+        const npcIndices =
+            npcSceneBuf && npcSceneBuf.indices.length > 0
+                ? timeStep("packNpcIndices", () => new Int32Array(npcSceneBuf.indices))
+                : undefined;
+        const hasNpcGeometry =
+            npcVertices instanceof Uint8Array &&
+            npcVertices.length > 0 &&
+            npcIndices instanceof Int32Array &&
+            npcIndices.length > 0;
+        const npcDrawRangesBase = hasNpcGeometry ? createDefaultNpcDrawRanges(npcs.length | 0) : undefined;
+        const npcDrawRangesAlpha = hasNpcGeometry ? createDefaultNpcDrawRanges(npcs.length | 0) : undefined;
 
         const preferWasmPacking = options?.preferWasmPacking === true;
         const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
@@ -888,7 +917,13 @@ export class SdMapRenderDataTsBackend {
                       loadMinimapBlob(this.deps.mapImageRenderer, scene, 0, borderSize, false),
                   );
 
-        const usedTextureIds = Int32Array.from(sceneBuf.usedTextureIds);
+        const usedTextureIdSet = new Set<number>(sceneBuf.usedTextureIds);
+        if (npcSceneBuf) {
+            for (const textureId of npcSceneBuf.usedTextureIds) {
+                usedTextureIdSet.add(textureId);
+            }
+        }
+        const usedTextureIds = Int32Array.from(usedTextureIdSet);
 
         const includeLoadedTextures = options?.includeLoadedTextures !== false;
         const loadedTextures = new Map<number, Int32Array>();
@@ -896,7 +931,7 @@ export class SdMapRenderDataTsBackend {
         if (includeLoadedTextures) {
             const loadTexturesStart = performance.now();
             let missingTextureCount = 0;
-            for (const textureId of sceneBuf.usedTextureIds) {
+            for (const textureId of usedTextureIdSet) {
                 if (!loadedTextureIdSet.has(textureId)) {
                     const pixels = textureLoader.tryGetPixelsArgb(textureId, 128, true, 1.0);
                     if (pixels) {
@@ -909,7 +944,7 @@ export class SdMapRenderDataTsBackend {
             if (loadTexturesMs > 250) {
                 console.log(
                     `load map ${mapX},${mapY}: textures used=${
-                        sceneBuf.usedTextureIds.size
+                        usedTextureIdSet.size
                     } missing=${missingTextureCount} decoded=${
                         loadedTextures.size
                     } ms=${loadTexturesMs.toFixed(1)}`,
@@ -958,6 +993,10 @@ export class SdMapRenderDataTsBackend {
             npcs,
             usedTextureIds,
             loadedTextures,
+            npcDrawRangesBase,
+            npcDrawRangesAlpha,
+            npcVertices,
+            npcIndices,
         };
 
         return {
