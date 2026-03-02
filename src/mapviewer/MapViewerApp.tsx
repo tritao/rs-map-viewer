@@ -4,7 +4,6 @@ import { registerSerializer } from "threads";
 import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
-import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { fetchCacheList } from "../util/Caches";
@@ -57,8 +56,6 @@ function MapViewerApp() {
         const abortController = new AbortController();
 
         const load = async () => {
-            const objSpawnsPromise = fetchObjSpawns();
-
             const cacheList = await cachesPromise;
             if (!cacheList) {
                 setErrorMessage("Failed to load cache list");
@@ -74,10 +71,11 @@ function MapViewerApp() {
                 }
             }
 
-            const [context, objSpawns] = await Promise.all([
-                MapViewer.loadCacheContext(cacheInfo, abortController.signal, setDownloadProgress),
-                objSpawnsPromise,
-            ]);
+            const context = await MapViewer.loadCacheContext(
+                cacheInfo,
+                abortController.signal,
+                setDownloadProgress,
+            );
             const runtimeOptions = parseWorkerRuntimeOptions(searchParams);
 
             const mapImageCache = await caches.open("map-images");
@@ -85,7 +83,6 @@ function MapViewerApp() {
             const mapViewerResult = MapViewer.tryCreate(
                 workerPool,
                 cacheList,
-                objSpawns,
                 mapImageCache,
                 context,
                 runtimeOptions,

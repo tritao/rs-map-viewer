@@ -2,9 +2,6 @@ import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { NpcSpawn } from "../data/npc/NpcSpawn";
-import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
-import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { Camera, CameraView, ProjectionType } from "./Camera";
 import { MapManager } from "./MapManager";
 import { MenuTargetType } from "../rs/MenuEntry";
@@ -32,7 +29,6 @@ const CACHED_MAP_IMAGE_PREFIX = "/map-images/";
 type CacheContext = {
     readonly loadedCache: LoadedCache;
     readonly session: CacheSession;
-    readonly npcSpawns: NpcSpawn[];
 };
 
 type DevFixedMapSquare = Readonly<{ mapX: number; mapY: number }>;
@@ -138,7 +134,6 @@ export class MapViewer {
     static tryCreate(
         workerPool: RenderDataWorkerPool,
         cacheList: CacheList,
-        objSpawns: ObjSpawn[],
         mapImageCache: Cache,
         context: CacheContext,
         runtimeOptions?: WorkerRuntimeOptions,
@@ -148,7 +143,6 @@ export class MapViewer {
             new MapViewer(
                 workerPool,
                 cacheList,
-                objSpawns,
                 mapImageCache,
                 context,
                 runtimeOptions,
@@ -162,10 +156,12 @@ export class MapViewer {
         signal?: AbortSignal,
         progressListener?: ProgressListener,
     ): Promise<CacheContext> {
-        const [loadedCache, npcSpawns] = await Promise.all([
-            loadCacheFiles(new BrowserCacheLoader(), cacheInfo, signal, progressListener),
-            fetchNpcSpawns(getNpcSpawnsUrl(cacheInfo)),
-        ]);
+        const loadedCache = await loadCacheFiles(
+            new BrowserCacheLoader(),
+            cacheInfo,
+            signal,
+            progressListener,
+        );
 
         const sessionResult = tryCreateCacheSession(loadedCache, new JSCompressionHandler());
         if (!sessionResult.ok) {
@@ -175,14 +171,12 @@ export class MapViewer {
         return {
             loadedCache,
             session: sessionResult.value,
-            npcSpawns,
         };
     }
 
     private constructor(
         readonly workerPool: RenderDataWorkerPool,
         readonly cacheList: CacheList,
-        readonly objSpawns: ObjSpawn[],
         readonly mapImageCache: Cache,
         context: CacheContext,
         runtimeOptions?: WorkerRuntimeOptions,
@@ -196,12 +190,7 @@ export class MapViewer {
             this.applySearchParams(initialSearchParams);
         }
 
-        this.workerPool.initCache(
-            context.loadedCache,
-            this.objSpawns,
-            context.npcSpawns,
-            this.runtimeOptions,
-        );
+        this.workerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
         this.renderer.initCache();
         this.resetMenu();
@@ -216,10 +205,6 @@ export class MapViewer {
 
     get session(): CacheSession {
         return this.cacheContext.session;
-    }
-
-    get npcSpawns(): NpcSpawn[] {
-        return this.cacheContext.npcSpawns;
     }
 
     getSearchParams(): URLSearchParamsInit {
@@ -301,12 +286,7 @@ export class MapViewer {
         // (threads RPC / structured clone of cache inputs).
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
-        await this.workerPool.initCacheAndWait(
-            this.cacheContext.loadedCache,
-            this.objSpawns,
-            this.cacheContext.npcSpawns,
-            this.runtimeOptions,
-        );
+        await this.workerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
         await this.renderer.applyCacheContext();
         this.resetMenu();
@@ -454,12 +434,7 @@ export class MapViewer {
     private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
         this.cacheContext = context;
 
-        this.workerPool.initCache(
-            context.loadedCache,
-            this.objSpawns,
-            context.npcSpawns,
-            this.runtimeOptions,
-        );
+        this.workerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
 
         await this.renderer.applyCacheContext();

@@ -2,8 +2,8 @@ import JSZip from "jszip";
 import { TransferDescriptor } from "threads";
 import { Transfer } from "threads/worker";
 
-import { NpcSpawn } from "../data/npc/NpcSpawn";
-import { ObjSpawn } from "../data/obj/ObjSpawn";
+import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
+import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
@@ -36,8 +36,6 @@ const hasherPromise = Hasher.init();
 
 async function initWorker(
     cache: LoadedCache,
-    objSpawns: ObjSpawn[],
-    npcSpawns: NpcSpawn[],
     options?: WorkerRuntimeOptions,
 ): Promise<WorkerState> {
     await hasherPromise;
@@ -92,6 +90,10 @@ async function initWorker(
         varProvider,
     });
     const mapRenderBackendKind = options?.mapRenderBackend ?? "cpp-wasm";
+    const [objSpawns, npcSpawns] = await Promise.all([
+        fetchObjSpawns(),
+        fetchNpcSpawns(getNpcSpawnsUrl(cache.info)),
+    ]);
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,
@@ -130,8 +132,6 @@ async function initWorker(
         mapRenderDataBackend,
         mapImageRenderer,
         mapImageCache,
-        objSpawns,
-        npcSpawns,
     };
 }
 
@@ -259,12 +259,10 @@ export class RenderDataWorkerBuild {
 
     async initCache(
         cache: LoadedCache,
-        objSpawns: ObjSpawn[],
-        npcSpawns: NpcSpawn[],
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
         console.log("init worker", cache.info);
-        this.workerStatePromise = initWorker(cache, objSpawns, npcSpawns, options)
+        this.workerStatePromise = initWorker(cache, options)
             .then((state) => ({ ok: true, state }) as const)
             .catch((e) => ({ ok: false, error: errorToString(e) }) as const);
         await this.requireWorkerState();

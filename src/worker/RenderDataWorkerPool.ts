@@ -3,8 +3,6 @@ import { QueuedTask } from "threads/dist/master/pool";
 import { WorkerDescriptor } from "threads/dist/master/pool-types";
 import { ObservablePromise } from "threads/dist/observable-promise";
 
-import { NpcSpawn } from "../data/npc/NpcSpawn";
-import { ObjSpawn } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "../maprender/MinimapData";
 import { RenderDataLoader } from "./RenderDataLoader";
@@ -36,24 +34,14 @@ export class RenderDataWorkerPool {
         readonly size: number,
     ) {}
 
-    initCache(
-        cache: LoadedCache,
-        objSpawns: ObjSpawn[],
-        npcSpawns: NpcSpawn[],
-        options?: WorkerRuntimeOptions,
-    ): void {
+    initCache(cache: LoadedCache, options?: WorkerRuntimeOptions): void {
         for (const worker of this.workers) {
-            worker.init.then((w) => w.initCache(cache, objSpawns, npcSpawns, options));
+            worker.init.then((w) => w.initCache(cache, options));
         }
     }
 
-    initCacheAndWait(
-        cache: LoadedCache,
-        objSpawns: ObjSpawn[],
-        npcSpawns: NpcSpawn[],
-        options?: WorkerRuntimeOptions,
-    ): Promise<void> {
-        return this.runAll((w) => w.initCache(cache, objSpawns, npcSpawns, options));
+    initCacheAndWait(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
+        return this.runAll((w) => w.initCache(cache, options));
     }
 
     async runAll(task: (w: RenderDataWorkerThread) => any): Promise<void> {

@@ -2,8 +2,6 @@ import { TransferDescriptor } from "threads";
 import { registerSerializer } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { NpcSpawn } from "../data/npc/NpcSpawn";
-import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
@@ -23,15 +21,10 @@ const buildService = new RenderDataWorkerBuild();
 const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
 
 const worker = {
-    async initCache(
-        cache: LoadedCache,
-        objSpawns: ObjSpawn[],
-        npcSpawns: NpcSpawn[],
-        options?: WorkerRuntimeOptions,
-    ): Promise<void> {
+    async initCache(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
         tickRuntime.setRuntimeOptions(options);
         tickRuntime.resetForCache();
-        await buildService.initCache(cache, objSpawns, npcSpawns, options);
+        await buildService.initCache(cache, options);
     },
     initDataLoader<I, D>(dataLoader: RenderDataLoader<I, D>) {
         buildService.initDataLoader(dataLoader);
