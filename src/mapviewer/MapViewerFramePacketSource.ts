@@ -30,24 +30,39 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;
     private lastTickMapIds: Int32Array = EMPTY_INT32;
+    private tickMapIdsVersion: number = 0;
+    private lastTickViewState:
+        | Readonly<{ cameraMapX: number; cameraMapY: number; lodDistance: number }>
+        | undefined;
 
     constructor(private readonly deps: WorkerMapViewerFramePacketSourceDeps) {}
 
     nextPacket(input: TickFrameInput): FramePacket | undefined {
         const packet = this.latestFramePacket;
+        const mapManager = this.deps.getMapManager();
+        const camera = this.deps.getCamera();
+        const mapIds = this.collectVisibleMapIds(mapManager);
+        const cameraMapX = camera.getMapX() | 0;
+        const cameraMapY = camera.getMapY() | 0;
+        const lodDistance = this.deps.getLodDistance() | 0;
+        const shouldUpdateTickMaps = !this.areInt32ArraysEqual(mapIds, this.lastTickMapIds);
+        const shouldUpdateTickViewState = !this.lastTickViewState
+            ? true
+            : this.lastTickViewState.cameraMapX !== cameraMapX ||
+              this.lastTickViewState.cameraMapY !== cameraMapY ||
+              this.lastTickViewState.lodDistance !== lodDistance;
 
         if (
             !this.pendingFramePacket &&
-            (input.ticksElapsed > 0 || input.clientTicksElapsed > 0 || !this.latestFramePacket)
+            (
+                input.ticksElapsed > 0 ||
+                input.clientTicksElapsed > 0 ||
+                !this.latestFramePacket ||
+                shouldUpdateTickMaps ||
+                shouldUpdateTickViewState
+            )
         ) {
             const epoch = this.packetEpoch | 0;
-            const mapManager = this.deps.getMapManager();
-            const camera = this.deps.getCamera();
-            const mapIds = this.collectVisibleMapIds(mapManager);
-            const shouldUpdateTickMaps = !this.areInt32ArraysEqual(mapIds, this.lastTickMapIds);
-            if (shouldUpdateTickMaps) {
-                this.lastTickMapIds = mapIds;
-            }
             const hoveredMapIdsPacked = this.deps.getHoveredMapIdsPacked() ?? EMPTY_INT32;
             const runTickFrame = () =>
                 this.deps.workerPool.tickFrame(
@@ -55,17 +70,30 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                     input.ticksElapsed,
                     input.clientTicksElapsed,
                     input.cycle,
-                    camera.getMapX(),
-                    camera.getMapY(),
-                    this.deps.getLodDistance(),
                     hoveredMapIdsPacked,
                 );
-            const startFrameTick = shouldUpdateTickMaps
-                ? this.deps.workerPool.setTickMapIds(mapIds).then(runTickFrame)
-                : runTickFrame();
+            const updatePromises = this.syncTickRuntimeState({
+                mapIds,
+                shouldUpdateTickMaps,
+                cameraMapX,
+                cameraMapY,
+                lodDistance,
+                shouldUpdateTickViewState,
+            });
+            const startFrameTick =
+                updatePromises.length > 0
+                    ? Promise.all(updatePromises).then(runTickFrame)
+                    : runTickFrame();
             this.pendingFramePacket = startFrameTick
                 .then((nextPacket) => {
                     if ((this.packetEpoch | 0) === epoch) {
+                        if (
+                            nextPacket &&
+                            (nextPacket.tickMapIdsVersion | 0) !== (this.tickMapIdsVersion | 0)
+                        ) {
+                            this.latestFramePacket = undefined;
+                            return undefined;
+                        }
                         this.latestFramePacket = nextPacket;
                     }
                     return nextPacket;
@@ -91,7 +119,12 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         this.pendingFramePacket = undefined;
         this.latestFramePacket = undefined;
         this.lastTickMapIds = EMPTY_INT32;
-        void this.deps.workerPool.setTickMapIds(EMPTY_INT32);
+        this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+        this.lastTickViewState = undefined;
+        void Promise.all([
+            this.deps.workerPool.setTickMapIds(EMPTY_INT32),
+            this.deps.workerPool.setTickViewState(0, 0, 0),
+        ]);
     }
 
     private collectVisibleMapIds(mapManager: MapManager): Int32Array {
@@ -116,5 +149,36 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
             }
         }
         return true;
+    }
+
+    private syncTickRuntimeState(input: Readonly<{
+        mapIds: Int32Array;
+        shouldUpdateTickMaps: boolean;
+        cameraMapX: number;
+        cameraMapY: number;
+        lodDistance: number;
+        shouldUpdateTickViewState: boolean;
+    }>): Promise<void>[] {
+        const updatePromises = new Array<Promise<void>>();
+        if (input.shouldUpdateTickMaps) {
+            this.lastTickMapIds = input.mapIds;
+            this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+            updatePromises.push(this.deps.workerPool.setTickMapIds(input.mapIds));
+        }
+        if (input.shouldUpdateTickViewState) {
+            this.lastTickViewState = {
+                cameraMapX: input.cameraMapX | 0,
+                cameraMapY: input.cameraMapY | 0,
+                lodDistance: input.lodDistance | 0,
+            };
+            updatePromises.push(
+                this.deps.workerPool.setTickViewState(
+                    input.cameraMapX | 0,
+                    input.cameraMapY | 0,
+                    input.lodDistance | 0,
+                ),
+            );
+        }
+        return updatePromises;
     }
 }

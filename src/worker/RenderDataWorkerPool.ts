@@ -193,14 +193,17 @@ export class RenderDataWorkerPool {
         return this.withTickWorker((w) => w.setTickMapIds(mapIds));
     }
 
+    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): Promise<void> {
+        return this.withTickWorker((w) =>
+            w.setTickViewState(cameraMapX, cameraMapY, lodDistance),
+        );
+    }
+
     tickFrame(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-        cameraMapX: number,
-        cameraMapY: number,
-        lodDistance: number,
         hoveredMapIdsPacked: Int32Array,
     ): Promise<FramePacket | undefined> {
         return this.withTickWorker((w) =>
@@ -209,9 +212,6 @@ export class RenderDataWorkerPool {
                 ticksElapsed,
                 clientTicksElapsed,
                 cycleNow,
-                cameraMapX,
-                cameraMapY,
-                lodDistance,
                 hoveredMapIdsPacked,
             ),
         );

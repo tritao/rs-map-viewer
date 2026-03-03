@@ -87,6 +87,7 @@ async function main(): Promise<void> {
     const mapId = 13106;
     registerEmptyMapState(runtime, workerState, mapId);
     runtime.setTickMapIds(Int32Array.from([mapId]));
+    runtime.setTickViewState(mapId >> 8, mapId & 0xff, 2);
 
     const spawnEvents: NpcEvent[] = [
         {
@@ -107,9 +108,6 @@ async function main(): Promise<void> {
         0,
         0,
         0,
-        mapId >> 8,
-        mapId & 0xff,
-        2,
         new Int32Array(0),
     );
     assert.ok(packetAfterSpawn, "expected frame packet after spawn");
@@ -131,9 +129,6 @@ async function main(): Promise<void> {
         0,
         0,
         0,
-        mapId >> 8,
-        mapId & 0xff,
-        2,
         new Int32Array(0),
     );
     assert.ok(packetAfterDespawn, "expected frame packet after despawn");

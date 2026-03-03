@@ -55,9 +55,14 @@ type TickWorkerState = Readonly<{
 type TickFrameInputs = Readonly<{
     safeTicksElapsed: number;
     safeClientTicks: number;
-    safeLodDistance: number;
     hoveredMapIds: ReadonlySet<number>;
     npcRingWriteIndex: number;
+}>;
+
+type TickViewState = Readonly<{
+    cameraMapX: number;
+    cameraMapY: number;
+    lodDistance: number;
 }>;
 
 type WasmTickStreams = Readonly<{
@@ -144,6 +149,12 @@ export class WorkerTickRuntime {
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
     private tickMapIds: Int32Array = new Int32Array(0);
+    private tickMapIdsVersion: number = 0;
+    private tickViewState: TickViewState = {
+        cameraMapX: 0,
+        cameraMapY: 0,
+        lodDistance: 0,
+    };
 
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
 
@@ -153,6 +164,8 @@ export class WorkerTickRuntime {
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.tickMapIds = new Int32Array(0);
+        this.tickMapIdsVersion = 0;
+        this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
     }
 
     resetForLoaderReset(): void {
@@ -161,14 +174,26 @@ export class WorkerTickRuntime {
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.tickMapIds = new Int32Array(0);
+        this.tickMapIdsVersion = 0;
+        this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
     }
 
     setTickMapIds(mapIds: Int32Array): void {
         if (!(mapIds instanceof Int32Array) || (mapIds.length | 0) <= 0) {
             this.tickMapIds = new Int32Array(0);
+            this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
             return;
         }
         this.tickMapIds = Int32Array.from(mapIds);
+        this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+    }
+
+    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+        this.tickViewState = {
+            cameraMapX: cameraMapX | 0,
+            cameraMapY: cameraMapY | 0,
+            lodDistance: Math.max(0, lodDistance | 0),
+        };
     }
 
     private async resolveNpcBootstrapData(
@@ -358,7 +383,6 @@ export class WorkerTickRuntime {
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
-        lodDistance: number,
         hoveredMapIdsPacked: Int32Array,
     ): TickFrameInputs {
         const hoveredMapIds = new Set<number>();
@@ -370,7 +394,6 @@ export class WorkerTickRuntime {
         return {
             safeTicksElapsed: Math.max(0, Math.min(ticksElapsed | 0, 4)),
             safeClientTicks: Math.max(0, Math.min(clientTicksElapsed | 0, 50)),
-            safeLodDistance: Math.max(0, lodDistance | 0),
             hoveredMapIds,
             npcRingWriteIndex: (frameCount | 0) % NPC_DATA_TEXTURE_RING_SIZE,
         };
@@ -467,9 +490,6 @@ export class WorkerTickRuntime {
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-        cameraMapX: number,
-        cameraMapY: number,
-        lodDistance: number,
         hoveredMapIdsPacked: Int32Array,
     ): Promise<FramePacket | undefined> {
         const mapIds = this.tickMapIds;
@@ -483,9 +503,9 @@ export class WorkerTickRuntime {
             frameCount,
             ticksElapsed,
             clientTicksElapsed,
-            lodDistance,
             hoveredMapIdsPacked,
         );
+        const view = this.tickViewState;
         const wasmTick = await this.runWasmTickIfEnabled(
             workerState,
             mapIds,
@@ -515,9 +535,9 @@ export class WorkerTickRuntime {
                 entries[mapEntryIndex] = this.buildMissingStateMapEntry(
                     mapId,
                     mapEntryIndex,
-                    cameraMapX,
-                    cameraMapY,
-                    inputs.safeLodDistance,
+                    view.cameraMapX | 0,
+                    view.cameraMapY | 0,
+                    view.lodDistance | 0,
                     inputs.hoveredMapIds,
                     backendKind,
                 );
@@ -552,9 +572,9 @@ export class WorkerTickRuntime {
             });
             entries[mapEntryIndex] = buildFramePacketMapEntry({
                 mapId,
-                cameraMapX,
-                cameraMapY,
-                lodDistance: inputs.safeLodDistance,
+                cameraMapX: view.cameraMapX | 0,
+                cameraMapY: view.cameraMapY | 0,
+                lodDistance: view.lodDistance | 0,
                 hoveredMapIds: inputs.hoveredMapIds,
                 npcRangeStart: npcRange.start | 0,
                 npcRangeCount: npcRange.count | 0,
@@ -567,6 +587,7 @@ export class WorkerTickRuntime {
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
         return buildFramePacketFromMapEntries({
             frameCount: frameCount | 0,
+            tickMapIdsVersion: this.tickMapIdsVersion | 0,
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,

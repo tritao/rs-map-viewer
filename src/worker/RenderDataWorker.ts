@@ -83,14 +83,14 @@ const worker = {
     setTickMapIds(mapIds: Int32Array): void {
         tickRuntime.setTickMapIds(mapIds);
     },
+    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+        tickRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
+    },
     async tickFrame(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-        cameraMapX: number,
-        cameraMapY: number,
-        lodDistance: number,
         hoveredMapIdsPacked: Int32Array,
     ): Promise<TransferDescriptor<FramePacket | undefined>> {
         const packet = await tickRuntime.tickFrame(
@@ -98,9 +98,6 @@ const worker = {
             ticksElapsed,
             clientTicksElapsed,
             cycleNow,
-            cameraMapX,
-            cameraMapY,
-            lodDistance,
             hoveredMapIdsPacked,
         );
         return packet
