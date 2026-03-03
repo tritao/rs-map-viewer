@@ -1701,21 +1701,6 @@ struct DecodedModelFaceStatsCache final {
     explicit DecodedModelFaceStatsCache(Allocator& alloc) noexcept : entries(alloc) {}
 };
 
-i32 findTypeBlobIndex(Span<const i32> ids, i32 id) noexcept {
-    for (std::size_t i = 0; i < ids.size(); i++) {
-        if (ids[i] == id) {
-            return static_cast<i32>(i);
-        }
-    }
-    return -1;
-}
-
-i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcept {
-    (void)textureIds;
-    // New packing stores raw cache texture ids directly (as textureIdPlus1 in the packed-vertex stream).
-    return textureId >= 0 ? textureId : -1;
-}
-
 Status tryDecodeUnderlayTypeFromBlob(
     const SceneCommandBuildInput& input,
     i32 underlayId,

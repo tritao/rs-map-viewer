@@ -76,16 +76,6 @@ struct SceneCommandBuildInput final {
         i32 id,
         Span<const u8>* outBytes) = nullptr;
 
-    // Texture presence lists (blob-store-backed, presence encoded by domain/group/file ids).
-    //
-    // TS parity notes:
-    // - ModelData.light() considers a face "textured" iff `textureId != -1 && textureLoader.isSd(textureId)`.
-    // - Packed vertices store raw cache texture ids (as `textureIdPlus1`, 0 reserved), so the runtime only
-    //   needs SD membership (not a stable ordering) to decide textured/untextured faces.
-    Span<const i32> textureTransparentIds{};
-    // List of SD texture ids (ordering is irrelevant; this is used for membership checks).
-    Span<const i32> textureIds{};
-
     // Optional fallback for dat (classic) seq frames: these do not have stable per-frame
     // raw bytes, so the runtime can provide decoded base+frame directly from frame-map blobs.
     const void* datSeqFrameCtx = nullptr;

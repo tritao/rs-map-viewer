@@ -523,10 +523,6 @@ i32 inferTerrainBorderSize(i32 sizeX, i32 sizeY) noexcept;
 i32 floorDiv(i32 n, i32 d) noexcept;
 i32 ceilDiv(i32 n, i32 d) noexcept;
 
-i32 findTypeBlobIndex(Span<const i32> ids, i32 id) noexcept;
-
-i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcept;
-
 // Decode a loc model and apply TS-equivalent loc mutations (rotate/recolor/retexture/resize/offset, etc.)
 // for a specific placement variant.
 Status decodeLocModelFromBlobForPlacement(
