@@ -19,6 +19,10 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import {
+    buildStaticMapPacket,
+    type StaticMapPacket,
+} from "../runtime/contracts/StaticMapPacket";
 import { MapViewer } from "./MapViewer";
 import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
 import { WorkerMapViewerFramePacketSource } from "./MapViewerFramePacketSource";
@@ -40,6 +44,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly tickCoordinator = new MapViewerTickCoordinator();
     private readonly framePacketSource: WorkerMapViewerFramePacketSource;
     private readonly mapSimTokenByMapId = new Map<number, number>();
+    private readonly staticMapPacketsByMapId = new Map<number, StaticMapPacket>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
 
@@ -204,14 +209,16 @@ export class MapViewerRenderer extends RendererMainLoop {
                     return;
                 }
 
-                this.mapManager.addMap(mapX, mapY);
-                this.renderer.addMap(mapData);
+                const staticMapPacket = buildStaticMapPacket(sdMapData);
+                this.staticMapPacketsByMapId.set(mapId, staticMapPacket);
+                this.mapManager.addMap(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY);
+                this.renderer.addMap(staticMapPacket.mapData as unknown as MapData);
 
-                if (mapData.minimapBlob.size > 0) {
+                if (staticMapPacket.mapData.minimapBlob.size > 0) {
                     this.mapViewer.setMapImageUrl(
-                        mapData.mapX,
-                        mapData.mapY,
-                        URL.createObjectURL(mapData.minimapBlob),
+                        staticMapPacket.mapData.mapX,
+                        staticMapPacket.mapData.mapY,
+                        URL.createObjectURL(staticMapPacket.mapData.minimapBlob),
                         true,
                         false,
                     );
@@ -246,6 +253,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
+        this.staticMapPacketsByMapId.delete(mapInfo.mapId | 0);
         const mapSimToken = this.invalidateMapSimToken(mapInfo.mapId);
         void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
@@ -317,6 +325,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const wasRunning = this.pauseLoop();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapSimTokenByMapId.clear();
+        this.staticMapPacketsByMapId.clear();
 
         try {
             await this.renderer.cleanUp();
@@ -352,6 +361,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         await super.cleanUp();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapSimTokenByMapId.clear();
+        this.staticMapPacketsByMapId.clear();
         this.tickCoordinator.resetForShutdown(this.framePacketSource);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
