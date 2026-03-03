@@ -62,6 +62,9 @@ static i32 nextPow2AtLeast(i32 value) noexcept {
 Status dedupePackedVerticesAndRemapIndices(
     Vec<u8>* vertices,
     Vec<i32>* indices,
+    i32 debugProbeFinalIndex,
+    i32* outProbeOldIndex,
+    i32* outProbeVertexU32,
     Allocator& alloc) noexcept {
     if (!vertices || !indices) {
         return Status::InvalidArgument;
@@ -77,6 +80,16 @@ Status dedupePackedVerticesAndRemapIndices(
     }
 
     const i32 vertexCount = static_cast<i32>(vertices->size() / 16u);
+
+    if (outProbeOldIndex) {
+        *outProbeOldIndex = -1;
+    }
+    if (outProbeVertexU32) {
+        // 4x u32 stored as i32 for easy export.
+        for (int i = 0; i < 4; i++) {
+            outProbeVertexU32[i] = 0;
+        }
+    }
 
     Vec<i32> remap(alloc);
     auto rrRemap = remap.resize(static_cast<std::size_t>(vertexCount));
@@ -146,6 +159,18 @@ Status dedupePackedVerticesAndRemapIndices(
             }
             for (std::size_t b = 0; b < 16u; b++) {
                 dedupVertices[dedupVertices.size() - 16u + b] = (*vertices)[off + b];
+            }
+
+            if (debugProbeFinalIndex >= 0 && newIndex == debugProbeFinalIndex) {
+                if (outProbeOldIndex) {
+                    *outProbeOldIndex = vi;
+                }
+                if (outProbeVertexU32) {
+                    outProbeVertexU32[0] = static_cast<i32>(key.v0);
+                    outProbeVertexU32[1] = static_cast<i32>(key.v1);
+                    outProbeVertexU32[2] = static_cast<i32>(key.v2);
+                    outProbeVertexU32[3] = static_cast<i32>(key.v3);
+                }
             }
 
             PackedVertexMapEntry newEntry{};

@@ -73,6 +73,9 @@ struct DrawCommand final {
     i32 elements = 0;
     i32 instanceStart = 0;
     i32 instanceCount = 0;
+    // 0 = immediate pool, 1 = deferred pool (used to preserve TS command/instance ordering:
+    // instanced ops first, merged groups appended after).
+    u8 instancePoolKind = 0;
     DebugCommandProvenance debugProvenance{};
 };
 
@@ -83,6 +86,7 @@ struct SceneBuffer final {
     Vec<u8> vertices{};
     Vec<i32> indices{};
     Vec<ModelInfo> instances{};
+    Vec<ModelInfo> deferredInstances{};
 
     Vec<DrawCommand> drawCommands{};
     Vec<DrawCommand> drawCommandsAlpha{};
@@ -92,6 +96,15 @@ struct SceneBuffer final {
     Vec<DrawCommand> drawCommandsInteractAlpha{};
     Vec<DrawCommand> drawCommandsInteractLod{};
     Vec<DrawCommand> drawCommandsInteractLodAlpha{};
+
+    Vec<DrawCommand> deferredDrawCommands{};
+    Vec<DrawCommand> deferredDrawCommandsAlpha{};
+    Vec<DrawCommand> deferredDrawCommandsLod{};
+    Vec<DrawCommand> deferredDrawCommandsLodAlpha{};
+    Vec<DrawCommand> deferredDrawCommandsInteract{};
+    Vec<DrawCommand> deferredDrawCommandsInteractAlpha{};
+    Vec<DrawCommand> deferredDrawCommandsInteractLod{};
+    Vec<DrawCommand> deferredDrawCommandsInteractLodAlpha{};
 
     Result<void> init(Allocator& alloc) noexcept;
     void clear() noexcept;
@@ -106,6 +119,7 @@ struct SceneBuffer final {
         i32 offset,
         i32 elements,
         Span<const ModelInfo> commandInstances,
+        bool defer = false,
         const DebugCommandProvenance* debugProvenance = nullptr) noexcept;
 
     Status emitMergedCommand(
@@ -114,6 +128,7 @@ struct SceneBuffer final {
         Span<const ModelInfo> commandInstances,
         bool transparent,
         bool includeLod,
+        bool defer = false,
         const DebugCommandProvenance* debugProvenance = nullptr) noexcept;
 
     Status emitInteractCommand(
@@ -122,28 +137,38 @@ struct SceneBuffer final {
         Span<const ModelInfo> commandInstances,
         bool transparent,
         bool includeLod,
+        bool defer = false,
         const DebugCommandProvenance* debugProvenance = nullptr) noexcept;
 
     [[nodiscard]] i32 bucketCommandCount(DrawBucketKey bucket) const noexcept;
     [[nodiscard]] Span<const DrawCommand> bucketCommands(DrawBucketKey bucket) const noexcept;
+    [[nodiscard]] Span<const DrawCommand> bucketDeferredCommands(DrawBucketKey bucket) const noexcept;
 
     // Ensure indices/vertices are consistent and deduped after all geometry emission.
     // `indexCount` is the number of indices referenced by command ranges.
-    Status finalizeGeometry(i32 indexCount, Allocator& alloc = defaultAllocator()) noexcept;
+    // Debug: when debugProbeFinalVertexIndex >= 0, report the first pre-dedupe vertex index
+    // that produced the deduped vertex at that final index (and copy its packed u32 words).
+    Status finalizeGeometry(
+        i32 indexCount,
+        i32 debugProbeFinalVertexIndex,
+        i32* outProbeOldVertexIndex,
+        i32* outProbeVertexU32,
+        Allocator& alloc = defaultAllocator()) noexcept;
 
     Status appendCommandStream(
         SceneCommandStream* out,
         Allocator& alloc = defaultAllocator()) const noexcept;
 
-private:
-    [[nodiscard]] Vec<DrawCommand>* bucketVec(DrawBucketKey bucket) noexcept;
-    [[nodiscard]] const Vec<DrawCommand>* bucketVec(DrawBucketKey bucket) const noexcept;
+	private:
+    [[nodiscard]] Vec<DrawCommand>* bucketVec(DrawBucketKey bucket, bool defer) noexcept;
+    [[nodiscard]] const Vec<DrawCommand>* bucketVec(DrawBucketKey bucket, bool defer) const noexcept;
 
     Status emitToBuckets(
         Span<const DrawBucketKey> buckets,
         i32 offset,
         i32 elements,
         Span<const ModelInfo> commandInstances,
+        bool defer,
         const DebugCommandProvenance* debugProvenance) noexcept;
 };
 

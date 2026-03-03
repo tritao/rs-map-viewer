@@ -16,6 +16,7 @@
 
 #include <chrono>
 #include <limits>
+#include <new>
 
 namespace rs {
 namespace scb {
@@ -1836,6 +1837,7 @@ static Status executeLocInstancedOps(
                         Span<const ModelInfo>(&zeroInst, 1),
                         false,
                         /*includeLod=*/false,
+                        /*defer=*/false,
                         &groupPassProvenance);
                     if (!ok(zis)) {
                         return zis;
@@ -1949,6 +1951,7 @@ static Status executeLocInstancedOps(
             opInstances,
             transparent,
             /*includeLod=*/false,
+            /*defer=*/false,
             &groupPassProvenance);
         if (!ok(ms)) {
             return ms;
@@ -1959,6 +1962,7 @@ static Status executeLocInstancedOps(
             opInstances,
             transparent,
             /*includeLod=*/false,
+            /*defer=*/false,
             &groupPassProvenance);
         if (!ok(is)) {
             return is;
@@ -1974,6 +1978,7 @@ static Status executeLocInstancedOps(
                 modelOffsetBytes,
                 effectiveElements,
                 opLodInstances,
+                /*defer=*/false,
                 &groupPassProvenance);
             if (!ok(ls)) {
                 return ls;
@@ -1983,6 +1988,7 @@ static Status executeLocInstancedOps(
                 modelOffsetBytes,
                 effectiveElements,
                 opLodInstances,
+                /*defer=*/false,
                 &groupPassProvenance);
             if (!ok(ls)) {
                 return ls;
@@ -2211,6 +2217,7 @@ static Status executeLocMergeBuckets(
                     Span<const ModelInfo>(&interactDummy, 1),
                     bucket.transparent,
                     bucket.includeLod,
+                    /*defer=*/false,
                     &mergeBucketProvenance);
                 if (!ok(zis)) {
                     return zis;
@@ -2374,6 +2381,7 @@ static Status executeLocMergeBuckets(
                 Span<const ModelInfo>(&interactDummy, 1),
                 bucket.transparent,
                 bucket.includeLod,
+                /*defer=*/false,
                 &mergeBucketProvenance);
             if (!ok(is)) {
                 return is;
@@ -2463,6 +2471,7 @@ static Status executeLocMergeBuckets(
                 Span<const ModelInfo>(&mergedDummy, 1),
                 bucket.transparent,
                 bucket.includeLod,
+                /*defer=*/false,
                 &mergedDummyProvenance);
             if (!ok(ms)) {
                 return ms;
@@ -2508,6 +2517,7 @@ static Status emitLocAnimatedPlaceholders(
             0,
             0,
             instSpan,
+            /*defer=*/false,
             &animatedOpaqueProvenance);
         if (!ok(as)) {
             return as;
@@ -2522,6 +2532,7 @@ static Status emitLocAnimatedPlaceholders(
                 0,
                 0,
                 instSpan,
+                /*defer=*/false,
                 &animatedAlphaProvenance);
             if (!ok(as)) {
                 return as;
@@ -2538,6 +2549,7 @@ static Status emitLocAnimatedPlaceholders(
                 0,
                 0,
                 instSpan,
+                /*defer=*/false,
                 &animatedOpaqueProvenance);
             if (!ok(as)) {
                 return as;
@@ -2552,6 +2564,7 @@ static Status emitLocAnimatedPlaceholders(
                     0,
                     0,
                     instSpan,
+                    /*defer=*/false,
                     &animatedAlphaProvenance);
                 if (!ok(as)) {
                     return as;
@@ -2568,6 +2581,7 @@ static Status emitLocAnimatedPlaceholders(
             0,
             0,
             instSpan,
+            /*defer=*/false,
             &animatedOpaqueProvenance);
         if (!ok(as)) {
             return as;
@@ -2582,6 +2596,7 @@ static Status emitLocAnimatedPlaceholders(
                 0,
                 0,
                 instSpan,
+                /*defer=*/false,
                 &animatedAlphaProvenance);
             if (!ok(as)) {
                 return as;
@@ -2598,6 +2613,7 @@ static Status emitLocAnimatedPlaceholders(
                 0,
                 0,
                 instSpan,
+                /*defer=*/false,
                 &animatedOpaqueProvenance);
             if (!ok(as)) {
                 return as;
@@ -2612,6 +2628,7 @@ static Status emitLocAnimatedPlaceholders(
                     0,
                     0,
                     instSpan,
+                    /*defer=*/false,
                     &animatedAlphaProvenance);
                 if (!ok(as)) {
                     return as;
@@ -5926,6 +5943,132 @@ Status emitLocCommandsFromMapLocBytes(
         debugOut->debugLocExecuteTotalUs = locExecuteUs;
     }
     return execStatus;
+}
+
+struct LocDeferredPlan final {
+    LocCommandPlan plan;
+    explicit LocDeferredPlan(Allocator& alloc) noexcept : plan(alloc) {}
+};
+
+Status createLocDeferredPlanFromMapLocBytes(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    const Vec<u8>* tileHasValidFaceColorsAForLowDetail,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    DecodedLocTypeCache* locTypeCache,
+    DecodedVarBitTypeCache* varbitCache,
+    DecodedSeqTypeCache* seqTypeCache,
+    DecodedModelFaceStatsCache* modelCache,
+    SceneCommandStream* debugOut,
+    LocDeferredPlan** outPlan,
+    Vec<LocAnimatedGroupPlan>* outAnimatedGroups,
+    Vec<LocAnimatedPlaceholder>* outAnimatedEntries,
+    Allocator& alloc) noexcept {
+    if (!outPlan || !locTypeCache || !varbitCache || !seqTypeCache || !modelCache) {
+        return Status::InvalidArgument;
+    }
+    *outPlan = nullptr;
+    if (outAnimatedGroups) outAnimatedGroups->clear();
+    if (outAnimatedEntries) outAnimatedEntries->clear();
+
+    void* mem = alloc.alloc ? alloc.alloc(alloc.ctx, sizeof(LocDeferredPlan), alignof(LocDeferredPlan)) : nullptr;
+    if (!mem) {
+        return Status::OutOfMemory;
+    }
+    LocDeferredPlan* plan = new (mem) LocDeferredPlan(alloc);
+
+    const Status ps = planLocCommandsFromMapLocBytes(
+        input,
+        scene,
+        tileHasValidFaceColorsAForLowDetail,
+        planOps,
+        locTypeCache,
+        varbitCache,
+        seqTypeCache,
+        modelCache,
+        debugOut,
+        &plan->plan,
+        alloc);
+    if (!ok(ps)) {
+        plan->~LocDeferredPlan();
+        if (alloc.free) alloc.free(alloc.ctx, mem, alignof(LocDeferredPlan));
+        return ps;
+    }
+
+    if (outAnimatedGroups) {
+        *outAnimatedGroups = rs::move(plan->plan.animatedGroups);
+    }
+    if (outAnimatedEntries) {
+        *outAnimatedEntries = rs::move(plan->plan.animatedEntries);
+    }
+
+    *outPlan = plan;
+    return Status::Ok;
+}
+
+Status executeLocDeferredPlanInstanced(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedLocTypeCache* locTypeCache,
+    LocDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept {
+    if (!buffer || !indexCount || !locTypeCache || !plan) {
+        return Status::InvalidArgument;
+    }
+    Vec<i32> groupModelIds(alloc);
+    return executeLocInstancedOps(
+        input,
+        scene,
+        Span<LocCommandGroup>(plan->plan.groups.data(), plan->plan.groups.size()),
+        Span<const LocInstancedOp>(plan->plan.instancedOps.data(), plan->plan.instancedOps.size()),
+        Span<const ModelInfo>(plan->plan.instancedInstancesPool.data(), plan->plan.instancedInstancesPool.size()),
+        Span<const ModelInfo>(plan->plan.instancedLodInstancesPool.data(), plan->plan.instancedLodInstancesPool.size()),
+        Span<const MergeNormalsEntry>(plan->plan.mergeNormalsEntries.data(), plan->plan.mergeNormalsEntries.size()),
+        buffer,
+        &groupModelIds,
+        indexCount,
+        locTypeCache,
+        debugOut,
+        alloc);
+}
+
+Status executeLocDeferredPlanMerged(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedLocTypeCache* locTypeCache,
+    LocDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept {
+    if (!buffer || !indexCount || !locTypeCache || !plan) {
+        return Status::InvalidArgument;
+    }
+    Vec<i32> groupModelIds(alloc);
+    return executeLocMergeBuckets(
+        input,
+        scene,
+        Span<LocCommandGroup>(plan->plan.groups.data(), plan->plan.groups.size()),
+        Span<LocMergeBucket>(plan->plan.mergeBuckets.data(), plan->plan.mergeBuckets.size()),
+        Span<const MergeNormalsEntry>(plan->plan.mergeNormalsEntries.data(), plan->plan.mergeNormalsEntries.size()),
+        buffer,
+        &groupModelIds,
+        indexCount,
+        locTypeCache,
+        debugOut,
+        alloc);
+}
+
+Status destroyLocDeferredPlan(LocDeferredPlan* plan, Allocator& alloc) noexcept {
+    if (!plan) return Status::Ok;
+    plan->~LocDeferredPlan();
+    if (alloc.free) {
+        alloc.free(alloc.ctx, plan, alignof(LocDeferredPlan));
+    }
+    return Status::Ok;
 }
 
 Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(

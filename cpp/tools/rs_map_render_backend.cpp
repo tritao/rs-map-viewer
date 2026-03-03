@@ -225,7 +225,9 @@ struct MapRenderCachedCommandStream final {
     rs::i32 debugWorldHeightProbeLevel = -1;
     rs::i32 debugWorldHeightProbeWorldX = -1;
     rs::i32 debugWorldHeightProbeWorldZ = -1;
-    rs::i32 debugWorldHeightProbePacked[16]{};
+    rs::i32 debugWorldHeightProbeLocId = -1;
+    rs::i32 debugPackedVertexProbeIndex = -1;
+    rs::i32 debugWorldHeightProbePacked[32]{};
 
     // Scene command plan digest (TS parity helper): matches src/renderer/buffer/SceneCommandPlan.ts.
     rs::i32 debugSceneCommandPlanOpCount = 0;
@@ -384,6 +386,7 @@ struct MapRenderCachedCommandStream final {
         debugWorldHeightProbeLevel = -1;
         debugWorldHeightProbeWorldX = -1;
         debugWorldHeightProbeWorldZ = -1;
+        debugWorldHeightProbeLocId = -1;
         for (std::size_t i = 0; i < (sizeof(debugWorldHeightProbePacked) / sizeof(debugWorldHeightProbePacked[0])); i++) {
             debugWorldHeightProbePacked[i] = 0;
         }
@@ -579,6 +582,8 @@ struct MapRenderRuntimeState {
     rs::i32 debugWorldHeightProbeLevel = -1;
     rs::i32 debugWorldHeightProbeWorldX = -1;
     rs::i32 debugWorldHeightProbeWorldZ = -1;
+    rs::i32 debugWorldHeightProbeLocId = -1;
+    rs::i32 debugPackedVertexProbeIndex = -1;
     // Debug-only: last build failure summary for cache->packet builds.
     // stage=0 means last build succeeded (or hasn't run yet).
     rs::i32 debugLastBuildFailureStage = 0;
@@ -688,7 +693,7 @@ static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_TERRAIN_DIGEST_LENGTH = 12;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_TERRAIN_DIGEST_SAMPLES_META_LENGTH = 3;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_TERRAIN_PROBE_LENGTH = 68;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_CACHED_TERRAIN_CELL_LENGTH = 16;
-static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_WORLD_HEIGHT_PROBE_PACKED_LENGTH = 16;
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_WORLD_HEIGHT_PROBE_PACKED_LENGTH = 32;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_WORLD_HEIGHT_PROBE_LENGTH =
     4 + RS_MAP_RENDER_RUNTIME_WORLD_HEIGHT_PROBE_PACKED_LENGTH;
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_SCENE_COMMAND_PLAN_OPS_PACKED_META_LENGTH = 1;
@@ -1731,6 +1736,8 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     input.debugWorldHeightProbeLevel = runtime->debugWorldHeightProbeLevel;
     input.debugWorldHeightProbeWorldX = runtime->debugWorldHeightProbeWorldX;
     input.debugWorldHeightProbeWorldZ = runtime->debugWorldHeightProbeWorldZ;
+    input.debugWorldHeightProbeLocId = runtime->debugWorldHeightProbeLocId;
+    input.debugPackedVertexProbeIndex = runtime->debugPackedVertexProbeIndex;
     input.mapSquareIds = rs::Span<const rs::i32>(
         mapSquareIds.empty() ? nullptr : mapSquareIds.data(),
         mapSquareIds.size());

@@ -34,6 +34,7 @@ Result<void> SceneBuffer::init(Allocator& alloc) noexcept {
     vertices = Vec<u8>(alloc);
     indices = Vec<i32>(alloc);
     instances = Vec<ModelInfo>(alloc);
+    deferredInstances = Vec<ModelInfo>(alloc);
     drawCommands = Vec<DrawCommand>(alloc);
     drawCommandsAlpha = Vec<DrawCommand>(alloc);
     drawCommandsLod = Vec<DrawCommand>(alloc);
@@ -42,6 +43,14 @@ Result<void> SceneBuffer::init(Allocator& alloc) noexcept {
     drawCommandsInteractAlpha = Vec<DrawCommand>(alloc);
     drawCommandsInteractLod = Vec<DrawCommand>(alloc);
     drawCommandsInteractLodAlpha = Vec<DrawCommand>(alloc);
+    deferredDrawCommands = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsAlpha = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsLod = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsLodAlpha = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsInteract = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsInteractAlpha = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsInteractLod = Vec<DrawCommand>(alloc);
+    deferredDrawCommandsInteractLodAlpha = Vec<DrawCommand>(alloc);
     return Result<void>::ok();
 }
 
@@ -49,6 +58,7 @@ void SceneBuffer::clear() noexcept {
     vertices.clear();
     indices.clear();
     instances.clear();
+    deferredInstances.clear();
     drawCommands.clear();
     drawCommandsAlpha.clear();
     drawCommandsLod.clear();
@@ -57,6 +67,14 @@ void SceneBuffer::clear() noexcept {
     drawCommandsInteractAlpha.clear();
     drawCommandsInteractLod.clear();
     drawCommandsInteractLodAlpha.clear();
+    deferredDrawCommands.clear();
+    deferredDrawCommandsAlpha.clear();
+    deferredDrawCommandsLod.clear();
+    deferredDrawCommandsLodAlpha.clear();
+    deferredDrawCommandsInteract.clear();
+    deferredDrawCommandsInteractAlpha.clear();
+    deferredDrawCommandsInteractLod.clear();
+    deferredDrawCommandsInteractLodAlpha.clear();
 }
 
 i32 SceneBuffer::indexByteOffset() const noexcept {
@@ -88,7 +106,12 @@ Status SceneBuffer::appendIndices(Span<const i32> values) noexcept {
     return Status::Ok;
 }
 
-Status SceneBuffer::finalizeGeometry(i32 indexCount, Allocator& alloc) noexcept {
+Status SceneBuffer::finalizeGeometry(
+    i32 indexCount,
+    i32 debugProbeFinalVertexIndex,
+    i32* outProbeOldVertexIndex,
+    i32* outProbeVertexU32,
+    Allocator& alloc) noexcept {
     if (indexCount < 0) {
         return Status::OutOfRange;
     }
@@ -105,50 +128,56 @@ Status SceneBuffer::finalizeGeometry(i32 indexCount, Allocator& alloc) noexcept 
             return rr.status();
         }
     }
-    return dedupePackedVerticesAndRemapIndices(&vertices, &indices, alloc);
+    return dedupePackedVerticesAndRemapIndices(
+        &vertices,
+        &indices,
+        debugProbeFinalVertexIndex,
+        outProbeOldVertexIndex,
+        outProbeVertexU32,
+        alloc);
 }
 
-Vec<DrawCommand>* SceneBuffer::bucketVec(DrawBucketKey bucket) noexcept {
+Vec<DrawCommand>* SceneBuffer::bucketVec(DrawBucketKey bucket, bool defer) noexcept {
     switch (bucket) {
     case DrawBucketKey::Base:
-        return &drawCommands;
+        return defer ? &deferredDrawCommands : &drawCommands;
     case DrawBucketKey::Alpha:
-        return &drawCommandsAlpha;
+        return defer ? &deferredDrawCommandsAlpha : &drawCommandsAlpha;
     case DrawBucketKey::Lod:
-        return &drawCommandsLod;
+        return defer ? &deferredDrawCommandsLod : &drawCommandsLod;
     case DrawBucketKey::LodAlpha:
-        return &drawCommandsLodAlpha;
+        return defer ? &deferredDrawCommandsLodAlpha : &drawCommandsLodAlpha;
     case DrawBucketKey::Interact:
-        return &drawCommandsInteract;
+        return defer ? &deferredDrawCommandsInteract : &drawCommandsInteract;
     case DrawBucketKey::InteractAlpha:
-        return &drawCommandsInteractAlpha;
+        return defer ? &deferredDrawCommandsInteractAlpha : &drawCommandsInteractAlpha;
     case DrawBucketKey::InteractLod:
-        return &drawCommandsInteractLod;
+        return defer ? &deferredDrawCommandsInteractLod : &drawCommandsInteractLod;
     case DrawBucketKey::InteractLodAlpha:
-        return &drawCommandsInteractLodAlpha;
+        return defer ? &deferredDrawCommandsInteractLodAlpha : &drawCommandsInteractLodAlpha;
     default:
         return nullptr;
     }
 }
 
-const Vec<DrawCommand>* SceneBuffer::bucketVec(DrawBucketKey bucket) const noexcept {
+const Vec<DrawCommand>* SceneBuffer::bucketVec(DrawBucketKey bucket, bool defer) const noexcept {
     switch (bucket) {
     case DrawBucketKey::Base:
-        return &drawCommands;
+        return defer ? &deferredDrawCommands : &drawCommands;
     case DrawBucketKey::Alpha:
-        return &drawCommandsAlpha;
+        return defer ? &deferredDrawCommandsAlpha : &drawCommandsAlpha;
     case DrawBucketKey::Lod:
-        return &drawCommandsLod;
+        return defer ? &deferredDrawCommandsLod : &drawCommandsLod;
     case DrawBucketKey::LodAlpha:
-        return &drawCommandsLodAlpha;
+        return defer ? &deferredDrawCommandsLodAlpha : &drawCommandsLodAlpha;
     case DrawBucketKey::Interact:
-        return &drawCommandsInteract;
+        return defer ? &deferredDrawCommandsInteract : &drawCommandsInteract;
     case DrawBucketKey::InteractAlpha:
-        return &drawCommandsInteractAlpha;
+        return defer ? &deferredDrawCommandsInteractAlpha : &drawCommandsInteractAlpha;
     case DrawBucketKey::InteractLod:
-        return &drawCommandsInteractLod;
+        return defer ? &deferredDrawCommandsInteractLod : &drawCommandsInteractLod;
     case DrawBucketKey::InteractLodAlpha:
-        return &drawCommandsInteractLodAlpha;
+        return defer ? &deferredDrawCommandsInteractLodAlpha : &drawCommandsInteractLodAlpha;
     default:
         return nullptr;
     }
@@ -159,6 +188,7 @@ Status SceneBuffer::emitToBuckets(
     i32 offset,
     i32 elements,
     Span<const ModelInfo> commandInstances,
+    bool defer,
     const DebugCommandProvenance* debugProvenance) noexcept {
     if (offset < 0 || elements < 0) {
         return Status::InvalidArgument;
@@ -179,7 +209,7 @@ Status SceneBuffer::emitToBuckets(
     }
 
     for (std::size_t i = 0; i < buckets.size(); i++) {
-        Vec<DrawCommand>* commands = bucketVec(buckets[i]);
+        Vec<DrawCommand>* commands = bucketVec(buckets[i], defer);
         if (!commands) {
             return Status::InvalidArgument;
         }
@@ -189,10 +219,12 @@ Status SceneBuffer::emitToBuckets(
         }
     }
 
-    const i32 instanceStart = static_cast<i32>(instances.size());
+    Vec<ModelInfo>* pool = defer ? &deferredInstances : &instances;
+    const i32 poolKind = defer ? 1 : 0;
+    const i32 instanceStart = static_cast<i32>(pool->size());
     const i32 instanceCount = static_cast<i32>(commandInstances.size());
     for (std::size_t i = 0; i < commandInstances.size(); i++) {
-        rr = instances.pushBack(commandInstances[i]);
+        rr = pool->pushBack(commandInstances[i]);
         if (!rr.isOk()) {
             return rr.status();
         }
@@ -203,10 +235,11 @@ Status SceneBuffer::emitToBuckets(
     command.elements = elements;
     command.instanceStart = instanceStart;
     command.instanceCount = instanceCount;
+    command.instancePoolKind = static_cast<u8>(poolKind);
     command.debugProvenance = debugProvenance ? *debugProvenance : DebugCommandProvenance{};
 
     for (std::size_t i = 0; i < buckets.size(); i++) {
-        Vec<DrawCommand>* commands = bucketVec(buckets[i]);
+        Vec<DrawCommand>* commands = bucketVec(buckets[i], defer);
         if (!commands) {
             return Status::InvalidArgument;
         }
@@ -224,6 +257,7 @@ Status SceneBuffer::emitCommandToBucket(
     i32 offset,
     i32 elements,
     Span<const ModelInfo> commandInstances,
+    bool defer,
     const DebugCommandProvenance* debugProvenance) noexcept {
     const DrawBucketKey keys[1] = {bucket};
     return emitToBuckets(
@@ -231,6 +265,7 @@ Status SceneBuffer::emitCommandToBucket(
         offset,
         elements,
         commandInstances,
+        defer,
         debugProvenance);
 }
 
@@ -240,6 +275,7 @@ Status SceneBuffer::emitMergedCommand(
     Span<const ModelInfo> commandInstances,
     bool transparent,
     bool includeLod,
+    bool defer,
     const DebugCommandProvenance* debugProvenance) noexcept {
     DrawBucketKey keys[2];
     std::size_t count = 0;
@@ -259,6 +295,7 @@ Status SceneBuffer::emitMergedCommand(
         offset,
         elements,
         commandInstances,
+        defer,
         debugProvenance);
 }
 
@@ -268,6 +305,7 @@ Status SceneBuffer::emitInteractCommand(
     Span<const ModelInfo> commandInstances,
     bool transparent,
     bool includeLod,
+    bool defer,
     const DebugCommandProvenance* debugProvenance) noexcept {
     DrawBucketKey keys[2];
     std::size_t count = 0;
@@ -287,19 +325,38 @@ Status SceneBuffer::emitInteractCommand(
         offset,
         elements,
         commandInstances,
+        defer,
         debugProvenance);
 }
 
 i32 SceneBuffer::bucketCommandCount(DrawBucketKey bucket) const noexcept {
-    const Vec<DrawCommand>* commands = bucketVec(bucket);
-    if (!commands || commands->size() > static_cast<std::size_t>(2147483647)) {
+    const Vec<DrawCommand>* commands = bucketVec(bucket, false);
+    const Vec<DrawCommand>* deferred = bucketVec(bucket, true);
+    if (!commands || !deferred) {
         return 0;
     }
-    return static_cast<i32>(commands->size());
+    if (commands->size() > static_cast<std::size_t>(2147483647) ||
+        deferred->size() > static_cast<std::size_t>(2147483647)) {
+        return 0;
+    }
+    const i32 a = static_cast<i32>(commands->size());
+    const i32 b = static_cast<i32>(deferred->size());
+    if (b > 2147483647 - a) {
+        return 0;
+    }
+    return a + b;
 }
 
 Span<const DrawCommand> SceneBuffer::bucketCommands(DrawBucketKey bucket) const noexcept {
-    const Vec<DrawCommand>* commands = bucketVec(bucket);
+    const Vec<DrawCommand>* commands = bucketVec(bucket, false);
+    if (!commands) {
+        return Span<const DrawCommand>(nullptr, 0);
+    }
+    return commands->span();
+}
+
+Span<const DrawCommand> SceneBuffer::bucketDeferredCommands(DrawBucketKey bucket) const noexcept {
+    const Vec<DrawCommand>* commands = bucketVec(bucket, true);
     if (!commands) {
         return Span<const DrawCommand>(nullptr, 0);
     }
@@ -332,21 +389,51 @@ Status SceneBuffer::appendCommandStream(SceneCommandStream* out, Allocator& allo
         &drawCommandsInteractLod,
         &drawCommandsInteractLodAlpha,
     };
+    const Vec<DrawCommand>* orderedBucketsDeferred[kDrawBucketCount] = {
+        &deferredDrawCommands,
+        &deferredDrawCommandsAlpha,
+        &deferredDrawCommandsLod,
+        &deferredDrawCommandsLodAlpha,
+        &deferredDrawCommandsInteract,
+        &deferredDrawCommandsInteractAlpha,
+        &deferredDrawCommandsInteractLod,
+        &deferredDrawCommandsInteractLodAlpha,
+    };
 
     i32 totalCmdCount = 0;
     i32 totalInstances = 0;
     for (i32 bucket = 0; bucket < kDrawBucketCount; bucket++) {
         const Vec<DrawCommand>& commands = *orderedBuckets[static_cast<std::size_t>(bucket)];
+        const Vec<DrawCommand>& deferredCommands =
+            *orderedBucketsDeferred[static_cast<std::size_t>(bucket)];
         if (commands.size() > static_cast<std::size_t>(2147483647)) {
             return Status::OutOfRange;
         }
+        if (deferredCommands.size() > static_cast<std::size_t>(2147483647)) {
+            return Status::OutOfRange;
+        }
         const i32 commandCount = static_cast<i32>(commands.size());
+        const i32 deferredCommandCount = static_cast<i32>(deferredCommands.size());
         if (commandCount > 2147483647 - totalCmdCount) {
             return Status::OutOfRange;
         }
         totalCmdCount += commandCount;
         for (std::size_t i = 0; i < commands.size(); i++) {
             const DrawCommand& command = commands[i];
+            if (command.instanceCount < 0 || command.instanceStart < 0) {
+                return Status::BadFormat;
+            }
+            if (command.instanceCount > 2147483647 - totalInstances) {
+                return Status::OutOfRange;
+            }
+            totalInstances += command.instanceCount;
+        }
+        if (deferredCommandCount > 2147483647 - totalCmdCount) {
+            return Status::OutOfRange;
+        }
+        totalCmdCount += deferredCommandCount;
+        for (std::size_t i = 0; i < deferredCommands.size(); i++) {
+            const DrawCommand& command = deferredCommands[i];
             if (command.instanceCount < 0 || command.instanceStart < 0) {
                 return Status::BadFormat;
             }
@@ -383,9 +470,9 @@ Status SceneBuffer::appendCommandStream(SceneCommandStream* out, Allocator& allo
     i32 cmdCursor = 0;
     i32 packedInstanceCursor = 0;
     for (i32 bucket = 0; bucket < kDrawBucketCount; bucket++) {
-        const Vec<DrawCommand>& commands = *orderedBuckets[static_cast<std::size_t>(bucket)];
-        for (std::size_t i = 0; i < commands.size(); i++) {
-            const DrawCommand& command = commands[i];
+        const auto appendCommands = [&](const Vec<DrawCommand>& commands) noexcept -> Status {
+            for (std::size_t i = 0; i < commands.size(); i++) {
+                const DrawCommand& command = commands[i];
             if (command.offset < 0 || command.elements < 0) {
                 return Status::BadFormat;
             }
@@ -393,7 +480,9 @@ Status SceneBuffer::appendCommandStream(SceneCommandStream* out, Allocator& allo
             if (instanceEnd < command.instanceStart) {
                 return Status::OutOfRange;
             }
-            if (instanceEnd > static_cast<i32>(instances.size())) {
+            const Vec<ModelInfo>* pool =
+                (command.instancePoolKind == 1) ? &deferredInstances : &instances;
+            if (instanceEnd > static_cast<i32>(pool->size())) {
                 return Status::BadFormat;
             }
 
@@ -417,7 +506,7 @@ Status SceneBuffer::appendCommandStream(SceneCommandStream* out, Allocator& allo
             out->debugCommandProvenancePacked[static_cast<std::size_t>(provenanceOff + 11)] = command.debugProvenance.splitSignature;
 
             for (i32 j = 0; j < command.instanceCount; j++) {
-                const ModelInfo& inst = instances[static_cast<std::size_t>(command.instanceStart + j)];
+                const ModelInfo& inst = (*pool)[static_cast<std::size_t>(command.instanceStart + j)];
                 const i32 outOff = packedInstanceCursor * kSceneCommandInstanceStrideInts;
                 out->cmdPackedInstances[static_cast<std::size_t>(outOff + 0)] = inst.sceneX;
                 out->cmdPackedInstances[static_cast<std::size_t>(outOff + 1)] = inst.sceneZ;
@@ -430,7 +519,17 @@ Status SceneBuffer::appendCommandStream(SceneCommandStream* out, Allocator& allo
                 packedInstanceCursor++;
             }
             cmdCursor++;
-        }
+            }
+            return Status::Ok;
+        };
+
+        const Vec<DrawCommand>& commands = *orderedBuckets[static_cast<std::size_t>(bucket)];
+        Status s = appendCommands(commands);
+        if (!ok(s)) return s;
+        const Vec<DrawCommand>& deferredCommands =
+            *orderedBucketsDeferred[static_cast<std::size_t>(bucket)];
+        s = appendCommands(deferredCommands);
+        if (!ok(s)) return s;
     }
 
     if (cmdCursor != totalCmdCount || packedInstanceCursor != totalInstances) {
@@ -462,13 +561,23 @@ Status packDrawRangesForBucket(
     }
     *outDrawRanges = Vec<i32>(alloc);
     const Span<const DrawCommand> commands = buffer.bucketCommands(bucket);
-    auto rr = outDrawRanges->resize(commands.size() * 3);
+    const Span<const DrawCommand> deferredCommands = buffer.bucketDeferredCommands(bucket);
+    const std::size_t total = commands.size() + deferredCommands.size();
+    auto rr = outDrawRanges->resize(total * 3);
     if (!rr.isOk()) {
         return rr.status();
     }
-    for (std::size_t i = 0; i < commands.size(); i++) {
+    std::size_t outIdx = 0;
+    for (std::size_t i = 0; i < commands.size(); i++, outIdx++) {
         const DrawCommand& cmd = commands[i];
-        const std::size_t off = i * 3;
+        const std::size_t off = outIdx * 3;
+        (*outDrawRanges)[off + 0] = cmd.offset;
+        (*outDrawRanges)[off + 1] = cmd.elements;
+        (*outDrawRanges)[off + 2] = cmd.instanceCount;
+    }
+    for (std::size_t i = 0; i < deferredCommands.size(); i++, outIdx++) {
+        const DrawCommand& cmd = deferredCommands[i];
+        const std::size_t off = outIdx * 3;
         (*outDrawRanges)[off + 0] = cmd.offset;
         (*outDrawRanges)[off + 1] = cmd.elements;
         (*outDrawRanges)[off + 2] = cmd.instanceCount;
@@ -487,9 +596,11 @@ Status createModelInfoTextureData(
     *outTextureData = Vec<u16>(alloc);
 
     const Span<const DrawCommand> commands = buffer.bucketCommands(bucket);
+    const Span<const DrawCommand> deferredCommands = buffer.bucketDeferredCommands(bucket);
     i32 instanceCount = 0;
-    for (std::size_t i = 0; i < commands.size(); i++) {
-        const DrawCommand& cmd = commands[i];
+    const auto countInstances = [&](const Span<const DrawCommand> cmds) noexcept -> Status {
+        for (std::size_t i = 0; i < cmds.size(); i++) {
+            const DrawCommand& cmd = cmds[i];
         if (cmd.instanceCount < 0 || cmd.instanceStart < 0) {
             return Status::BadFormat;
         }
@@ -497,11 +608,18 @@ Status createModelInfoTextureData(
             return Status::OutOfRange;
         }
         instanceCount += cmd.instanceCount;
-    }
-    if (commands.size() > static_cast<std::size_t>(2147483647)) {
+        }
+        return Status::Ok;
+    };
+    Status s = countInstances(commands);
+    if (!ok(s)) return s;
+    s = countInstances(deferredCommands);
+    if (!ok(s)) return s;
+    const std::size_t totalCmdSize = commands.size() + deferredCommands.size();
+    if (totalCmdSize > static_cast<std::size_t>(2147483647)) {
         return Status::OutOfRange;
     }
-    const i32 cmdCount = static_cast<i32>(commands.size());
+    const i32 cmdCount = static_cast<i32>(totalCmdSize);
     const i32 textureLength = runtimeCommandModelInfoTextureLengthFromCounts(cmdCount, instanceCount);
     if (textureLength < 0) {
         return Status::OutOfRange;
@@ -516,23 +634,29 @@ Status createModelInfoTextureData(
 
     i32 dataOffset = 0;
     for (i32 i = 0; i < cmdCount; i++) {
-        const DrawCommand& cmd = commands[static_cast<std::size_t>(i)];
+        const DrawCommand& cmd =
+            (static_cast<std::size_t>(i) < commands.size())
+                ? commands[static_cast<std::size_t>(i)]
+                : deferredCommands[static_cast<std::size_t>(i) - commands.size()];
         (*outTextureData)[static_cast<std::size_t>(i * 4)] =
             static_cast<u16>(cmdCount + dataOffset);
         dataOffset += cmd.instanceCount;
     }
 
     i32 instanceCursor = 0;
-    for (std::size_t cmdIdx = 0; cmdIdx < commands.size(); cmdIdx++) {
-        const DrawCommand& cmd = commands[cmdIdx];
+    const auto emitInstances = [&](const Span<const DrawCommand> cmds) noexcept -> Status {
+        for (std::size_t cmdIdx = 0; cmdIdx < cmds.size(); cmdIdx++) {
+            const DrawCommand& cmd = cmds[cmdIdx];
         const i32 instanceEnd = cmd.instanceStart + cmd.instanceCount;
+        const Vec<ModelInfo>* pool =
+            (cmd.instancePoolKind == 1) ? &buffer.deferredInstances : &buffer.instances;
         if (instanceEnd < cmd.instanceStart ||
-            instanceEnd > static_cast<i32>(buffer.instances.size())) {
+            instanceEnd > static_cast<i32>(pool->size())) {
             return Status::BadFormat;
         }
         for (i32 i = 0; i < cmd.instanceCount; i++) {
             const ModelInfo& data =
-                buffer.instances[static_cast<std::size_t>(cmd.instanceStart + i)];
+                (*pool)[static_cast<std::size_t>(cmd.instanceStart + i)];
             const i32 outOff = cmdCount * 4 + instanceCursor * 4;
             (*outTextureData)[static_cast<std::size_t>(outOff + 0)] =
                 static_cast<u16>(data.sceneX | (data.level << 14));
@@ -549,7 +673,13 @@ Status createModelInfoTextureData(
                 static_cast<u16>(data.interactId);
             instanceCursor++;
         }
-    }
+        }
+        return Status::Ok;
+    };
+    s = emitInstances(commands);
+    if (!ok(s)) return s;
+    s = emitInstances(deferredCommands);
+    if (!ok(s)) return s;
 
     if (instanceCursor != instanceCount) {
         return Status::BadFormat;

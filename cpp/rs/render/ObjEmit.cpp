@@ -1,9 +1,15 @@
 #include "SceneCommandBuilderInternal.hpp"
 
+#include "../config/floortype/OverlayFloorType.hpp"
+#include "../config/floortype/UnderlayFloorType.hpp"
 #include "../config/objtype/ObjType.hpp"
 #include "../core/StrUtil.hpp"
 #include "../map/TerrainConstants.hpp"
 #include "../scene/SceneData.hpp"
+#include "TerrainTileBuilder.hpp"
+#include "TerrainTileSampler.hpp"
+
+#include <new>
 
 namespace rs {
 namespace scb {
@@ -130,6 +136,9 @@ struct ObjCommandPlan final {
 static Status planObjCommandsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
     Vec<SceneCommandPlanDebugOp>* planOps,
     DecodedObjTypeCache* objTypeCache,
     DecodedModelFaceStatsCache* objModelCache,
@@ -204,26 +213,12 @@ static Status buildObjRenderCommandPlan(
                 continue;
             }
 
-            bool canInstance = true;
-            if (group.sceneHeights.empty()) {
-                canInstance = false;
-            } else {
-                const i32 firstHeight = group.sceneHeights[0];
-                for (std::size_t hi = 1; hi < group.sceneHeights.size(); hi++) {
-                    if (group.sceneHeights[hi] != firstHeight) {
-                        canInstance = false;
-                        break;
-                    }
-                }
-            }
-
             const SceneModelMergeDecision mergeDecision = decideSceneModelMergeStrategy(
                 static_cast<i32>(group.mergedInstances.size()),
                 group.opaqueElementsPerInstance / 3,
                 group.alphaElementsPerInstance / 3,
                 input.minimizeDrawCalls);
             const bool mergeByPlacement =
-                !canInstance ||
                 (transparent ? mergeDecision.mergeTransparent : mergeDecision.mergeOpaque);
 
             if (debugOut) {
@@ -352,7 +347,8 @@ static Status executeObjRenderOpMergeByPlacement(
             effectiveElements,
             interactSpan,
             transparent,
-            group.includeLod);
+            group.includeLod,
+            /*defer=*/false);
         if (!ok(is)) {
             return is;
         }
@@ -372,7 +368,8 @@ static Status executeObjRenderOpMergeByPlacement(
         mergedElements,
         Span<const ModelInfo>(&mergedDummy, 1),
         transparent,
-        group.includeLod);
+        group.includeLod,
+        /*defer=*/false);
     if (!ok(ms)) {
         return ms;
     }
@@ -396,10 +393,6 @@ static Status executeObjRenderOpInstanced(
     if (elementsPerInstance <= 0) {
         return Status::InvalidArgument;
     }
-    if (group.sceneHeights.empty()) {
-        return Status::InvalidArgument;
-    }
-
     const i32 modelOffsetBytes = (*indexCount) * 4;
     i32 generatedElements = 0;
     const Status gs = appendObjPlacementGeometry(
@@ -408,7 +401,9 @@ static Status executeObjRenderOpInstanced(
         group.modelId,
         0,
         0,
-        group.sceneHeights[0],
+        // TS writes instanced geometry in model-space and relies on per-instance contouring/offset,
+        // so the shared geometry must not bake in a specific terrain center-height.
+        0,
         transparent,
         &buffer->vertices,
         &buffer->indices,
@@ -458,6 +453,9 @@ static Status executeObjRenderOpInstanced(
 static Status planObjCommandsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
     Vec<SceneCommandPlanDebugOp>* planOps,
     DecodedObjTypeCache* objTypeCache,
     DecodedModelFaceStatsCache* objModelCache,
@@ -483,6 +481,182 @@ static Status planObjCommandsFromPackedSpawns(
     Vec<ObjCommandGroup> groups(alloc);
 
     const i32 border = inferTerrainBorderSize(input.sizeX, input.sizeY);
+    const i32 vertexOffset = border * -kTerrainTileSize;
+
+    // TS gates obj scene-models on `tile.tileModel.faces.length > 0`. For core tiles we can use the
+    // precomputed face-grid. For border tiles (and plan-only builds without the grid) we compute the
+    // terrain-tile face count on-demand via the same append path as terrain emission (discarding geometry).
+    if (!underlayCache || !overlayCache) {
+        return Status::InvalidArgument;
+    }
+
+    struct TerrainSamplerCtx final {
+        const SceneCommandBuildInput* input = nullptr;
+        DecodedUnderlayTypeCache* underlayCache = nullptr;
+        DecodedOverlayTypeCache* overlayCache = nullptr;
+        Allocator* alloc = nullptr;
+    };
+
+    auto tryLoadUnderlayCb = [](void* c, i32 underlayIdMinusOne, const UnderlayFloorType** outType) noexcept -> Status {
+        if (!c || !outType) {
+            return Status::InvalidArgument;
+        }
+        *outType = nullptr;
+        TerrainSamplerCtx* ctx = static_cast<TerrainSamplerCtx*>(c);
+        return tryDecodeUnderlayTypeFromBlob(
+            *ctx->input,
+            underlayIdMinusOne,
+            ctx->underlayCache,
+            outType,
+            *ctx->alloc);
+    };
+
+    auto tryLoadOverlayCb = [](void* c, i32 overlayIdMinusOne, const OverlayFloorType** outType) noexcept -> Status {
+        if (!c || !outType) {
+            return Status::InvalidArgument;
+        }
+        *outType = nullptr;
+        TerrainSamplerCtx* ctx = static_cast<TerrainSamplerCtx*>(c);
+        return tryDecodeOverlayTypeFromBlob(
+            *ctx->input,
+            overlayIdMinusOne,
+            ctx->overlayCache,
+            outType,
+            *ctx->alloc);
+    };
+
+    TerrainSamplerCtx samplerCtx{&input, underlayCache, overlayCache, &alloc};
+    TerrainTypeProvider samplerProvider{&samplerCtx, tryLoadUnderlayCb, tryLoadOverlayCb};
+    Vec<u8> scratchVertices(alloc);
+    Vec<i32> scratchIndices(alloc);
+
+    const auto tryComputeTerrainTileFaces =
+        [&](i32 level, i32 tileX, i32 tileY, i32* outFaces) noexcept -> Status {
+        if (!outFaces) {
+            return Status::InvalidArgument;
+        }
+        *outFaces = 0;
+        if (!scene.isWithinBounds(level, tileX, tileY)) {
+            return Status::Ok;
+        }
+        if (tileX + 1 >= scene.sizeX || tileY + 1 >= scene.sizeY) {
+            return Status::Ok;
+        }
+
+        TerrainTileSample tileSample{};
+        const Status ss = sampleTerrainTile(
+            scene,
+            input.cacheGame,
+            input.cacheRevision,
+            input.textureIds,
+            samplerProvider,
+            level,
+            tileX,
+            tileY,
+            input.smoothTerrain,
+            &tileSample);
+        if (!ok(ss)) {
+            return ss;
+        }
+
+        const i32 underlayRaw = static_cast<i32>(scene.underlay(level, tileX, tileY));
+        const bool hasUnderlay = underlayRaw > 0;
+        const bool hasOverlay = tileSample.hasOverlay;
+        if (!hasUnderlay && !hasOverlay) {
+            return Status::Ok;
+        }
+
+        const bool useOverlayEdgeHsls = tileSample.useOverlayEdgeHsls;
+        const i32 underlayTexturePacked = tileSample.underlayTexturePacked;
+        const i32 underlayTextureSize = tileSample.underlayTextureSize;
+        const i32 underlayBlendSw = tileSample.underlayBlendSw;
+        const i32 underlayBlendSe = tileSample.underlayBlendSe;
+        const i32 underlayBlendNe = tileSample.underlayBlendNe;
+        const i32 underlayBlendNw = tileSample.underlayBlendNw;
+        const i32* overlayCornerBaseHsl = tileSample.overlayCornerBaseHsl;
+        const i32* overlayEdgeBaseHsl = tileSample.overlayEdgeBaseHsl;
+        const i32* overlayCornerTexturePacked = tileSample.overlayCornerTexturePacked;
+        const i32* overlayCornerTextureSize = tileSample.overlayCornerTextureSize;
+        const i32* overlayEdgeTexturePacked = tileSample.overlayEdgeTexturePacked;
+        const i32* overlayEdgeTextureSize = tileSample.overlayEdgeTextureSize;
+
+        const i32 lightSw = static_cast<i32>(scene.lightValue(level, tileX, tileY));
+        const i32 lightSe = static_cast<i32>(scene.lightValue(level, tileX + 1, tileY));
+        const i32 lightNe = static_cast<i32>(scene.lightValue(level, tileX + 1, tileY + 1));
+        const i32 lightNw = static_cast<i32>(scene.lightValue(level, tileX, tileY + 1));
+
+        const i32 underlayHslSw = adjustUnderlayLight(underlayBlendSw, lightSw);
+        const i32 underlayHslSe = adjustUnderlayLight(underlayBlendSe, lightSe);
+        const i32 underlayHslNe = adjustUnderlayLight(underlayBlendNe, lightNe);
+        const i32 underlayHslNw = adjustUnderlayLight(underlayBlendNw, lightNw);
+
+        const i32 overlayHslSw = adjustOverlayLight(overlayCornerBaseHsl[0], lightSw);
+        const i32 overlayHslSe = adjustOverlayLight(overlayCornerBaseHsl[1], lightSe);
+        const i32 overlayHslNe = adjustOverlayLight(overlayCornerBaseHsl[2], lightNe);
+        const i32 overlayHslNw = adjustOverlayLight(overlayCornerBaseHsl[3], lightNw);
+        const i32 lightS = (lightSw + lightSe) >> 1;
+        const i32 lightE = (lightSe + lightNe) >> 1;
+        const i32 lightN = (lightNe + lightNw) >> 1;
+        const i32 lightW = (lightNw + lightSw) >> 1;
+        const i32 overlayHslSAvg = adjustOverlayLight(overlayEdgeBaseHsl[0], lightS);
+        const i32 overlayHslEAvg = adjustOverlayLight(overlayEdgeBaseHsl[1], lightE);
+        const i32 overlayHslNAvg = adjustOverlayLight(overlayEdgeBaseHsl[2], lightN);
+        const i32 overlayHslWAvg = adjustOverlayLight(overlayEdgeBaseHsl[3], lightW);
+
+        i32 shapeId = 0;
+        i32 rotation = 0;
+        if (hasOverlay) {
+            shapeId = static_cast<i32>(scene.shape(level, tileX, tileY)) + 1;
+            if (shapeId < 1 || shapeId > 12) {
+                shapeId = 0;
+            }
+            rotation = static_cast<i32>(scene.rotation(level, tileX, tileY)) & 3;
+        }
+
+        bool tileFaceColorsAAllValid = true;
+        i32 scratchElements = 0;
+        scratchVertices.clear();
+        scratchIndices.clear();
+        const Status gs = appendTerrainTileGeometry(
+            scene,
+            level,
+            tileX,
+            tileY,
+            vertexOffset,
+            shapeId,
+            rotation,
+            hasOverlay,
+            hasUnderlay,
+            underlayHslSw,
+            underlayHslSe,
+            underlayHslNe,
+            underlayHslNw,
+            overlayHslSw,
+            overlayHslSe,
+            overlayHslNe,
+            overlayHslNw,
+            overlayHslSAvg,
+            overlayHslEAvg,
+            overlayHslNAvg,
+            overlayHslWAvg,
+            useOverlayEdgeHsls,
+            underlayTexturePacked,
+            underlayTextureSize,
+            overlayCornerTexturePacked,
+            overlayCornerTextureSize,
+            overlayEdgeTexturePacked,
+            overlayEdgeTextureSize,
+            &tileFaceColorsAAllValid,
+            /*debugOut=*/nullptr,
+            &scratchVertices,
+            &scratchIndices,
+            &scratchElements);
+        if (!ok(gs)) {
+            return gs;
+        }
+        *outFaces = (scratchElements > 0) ? (scratchElements / 3) : 0;
+        return Status::Ok;
+    };
 
     for (i32 mx = mapStartX; mx < mapEndX; mx++) {
         for (i32 my = mapStartY; my < mapEndY; my++) {
@@ -527,8 +701,48 @@ static Status planObjCommandsFromPackedSpawns(
                 if (!scene.isWithinBounds(renderLevel, tileX, tileY)) {
                     continue;
                 }
+                // Match TS `createObjSceneModel`: obj scene-models are only created when the target
+                // tile has a terrain tile-model with at least one visible face.
+                //
+                // In TS, this is `tile.tileModel.faces.length > 0` (faces are skipped when their
+                // colors/textures are invalid/hidden). The C++ terrain emitter already knows the
+                // emitted face count per tile, so prefer that when available.
+                bool hasVisibleTerrainFaces = false;
+                if (terrainFaceGrid && !terrainFaceGrid->counts.empty()) {
+                    const i32 lx = tileX - border;
+                    const i32 ly = tileY - border;
+                    if (lx >= 0 && ly >= 0 &&
+                        lx < terrainFaceGrid->width && ly < terrainFaceGrid->height) {
+                        hasVisibleTerrainFaces = terrainFaceGrid->get(renderLevel, lx, ly) > 0;
+                    }
+                }
+                if (!hasVisibleTerrainFaces) {
+                    i32 faces = 0;
+                    const Status fs = tryComputeTerrainTileFaces(renderLevel, tileX, tileY, &faces);
+                    if (!ok(fs) || faces <= 0) {
+                        continue;
+                    }
+                    hasVisibleTerrainFaces = true;
+                }
                 if (debugOut) {
                     debugOut->debugObjSpawnsInBounds++;
+                }
+
+                // Match TS `createObjSceneModel` gating:
+                // - first gate on the *base* obj type name ("null" spawns are skipped before count transforms)
+                // - then resolve count transforms (ObjModelLoader.getModel recursion) for the actual model/type.
+                const ObjType* baseType = nullptr;
+                const Status baseStatus = tryDecodeObjTypeFromBlob(
+                    input,
+                    objTypeCache,
+                    spawn.id,
+                    &baseType,
+                    alloc);
+                if (!ok(baseStatus) || !baseType) {
+                    continue;
+                }
+                if (equalsIgnoreCaseAscii(baseType->name, "null")) {
+                    continue;
                 }
 
                 const ObjType* resolved = resolveObjTypeForCount(
@@ -538,9 +752,6 @@ static Status planObjCommandsFromPackedSpawns(
                     spawn.count,
                     alloc);
                 if (!resolved) {
-                    continue;
-                }
-                if (equalsIgnoreCaseAscii(resolved->name, "null")) {
                     continue;
                 }
 
@@ -746,6 +957,9 @@ static Status executeObjCommandsFromPlan(
 Status emitObjCommandsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
     Vec<SceneCommandPlanDebugOp>* planOps,
     SceneBuffer* buffer,
     i32* indexCount,
@@ -761,6 +975,9 @@ Status emitObjCommandsFromPackedSpawns(
     const Status ps = planObjCommandsFromPackedSpawns(
         input,
         scene,
+        terrainFaceGrid,
+        underlayCache,
+        overlayCache,
         planOps,
         objTypeCache,
         objModelCache,
@@ -784,6 +1001,9 @@ Status emitObjCommandsFromPackedSpawns(
 Status appendObjPlanOpsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
     Vec<SceneCommandPlanDebugOp>* planOps,
     DecodedObjTypeCache* objTypeCache,
     DecodedModelFaceStatsCache* objModelCache,
@@ -796,12 +1016,194 @@ Status appendObjPlanOpsFromPackedSpawns(
     return planObjCommandsFromPackedSpawns(
         input,
         scene,
+        terrainFaceGrid,
+        underlayCache,
+        overlayCache,
         planOps,
         objTypeCache,
         objModelCache,
         debugOut,
         &plan,
         alloc);
+}
+
+struct ObjDeferredPlan final {
+    ObjCommandPlan plan;
+    explicit ObjDeferredPlan(Allocator& alloc) noexcept : plan(alloc) {}
+};
+
+Status createObjDeferredPlanFromPackedSpawns(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    DecodedObjTypeCache* objTypeCache,
+    DecodedModelFaceStatsCache* objModelCache,
+    SceneCommandStream* debugOut,
+    ObjDeferredPlan** outPlan,
+    Allocator& alloc) noexcept {
+    if (!outPlan || !objTypeCache || !objModelCache) {
+        return Status::InvalidArgument;
+    }
+    *outPlan = nullptr;
+
+    void* mem = alloc.alloc ? alloc.alloc(alloc.ctx, sizeof(ObjDeferredPlan), alignof(ObjDeferredPlan)) : nullptr;
+    if (!mem) {
+        return Status::OutOfMemory;
+    }
+    ObjDeferredPlan* plan = new (mem) ObjDeferredPlan(alloc);
+
+    const Status ps = planObjCommandsFromPackedSpawns(
+        input,
+        scene,
+        terrainFaceGrid,
+        underlayCache,
+        overlayCache,
+        planOps,
+        objTypeCache,
+        objModelCache,
+        debugOut,
+        &plan->plan,
+        alloc);
+    if (!ok(ps)) {
+        plan->~ObjDeferredPlan();
+        if (alloc.free) alloc.free(alloc.ctx, mem, alignof(ObjDeferredPlan));
+        return ps;
+    }
+
+    *outPlan = plan;
+    return Status::Ok;
+}
+
+static Status executeObjDeferredPlanPhase(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    ObjDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    ObjRenderOpKind wantKind,
+    Allocator& alloc) noexcept {
+    if (!buffer || !indexCount || !objTypeCache || !plan) {
+        return Status::InvalidArgument;
+    }
+
+    Vec<const ObjType*> resolvedTypes(alloc);
+    auto rrResolved = resolvedTypes.resize(plan->plan.groups.size());
+    if (!rrResolved.isOk()) {
+        return rrResolved.status();
+    }
+    for (std::size_t i = 0; i < resolvedTypes.size(); i++) {
+        resolvedTypes[i] = nullptr;
+    }
+
+    for (std::size_t oi = 0; oi < plan->plan.ops.size(); oi++) {
+        const ObjRenderOp& op = plan->plan.ops[oi];
+        if (op.kind != wantKind) {
+            continue;
+        }
+        if (op.groupIndex < 0 || op.groupIndex >= static_cast<i32>(plan->plan.groups.size())) {
+            return Status::OutOfRange;
+        }
+        const ObjCommandGroup& group = plan->plan.groups[static_cast<std::size_t>(op.groupIndex)];
+        if (group.mergedInstances.empty()) {
+            continue;
+        }
+
+        const std::size_t gi = static_cast<std::size_t>(op.groupIndex);
+        const ObjType* resolved = resolvedTypes[gi];
+        if (!resolved) {
+            const Status ts = tryDecodeObjTypeFromBlob(
+                input,
+                objTypeCache,
+                group.objTypeId,
+                &resolved,
+                alloc);
+            if (!ok(ts) || !resolved) {
+                continue;
+            }
+            resolvedTypes[gi] = resolved;
+        }
+
+        Status s = Status::Ok;
+        if (op.kind == ObjRenderOpKind::MergeByPlacement) {
+            s = executeObjRenderOpMergeByPlacement(
+                input,
+                *resolved,
+                group,
+                op.transparent,
+                op.elementsPerInstance,
+                buffer,
+                indexCount,
+                debugOut,
+                alloc);
+        } else {
+            s = executeObjRenderOpInstanced(
+                input,
+                *resolved,
+                group,
+                op.transparent,
+                op.elementsPerInstance,
+                buffer,
+                indexCount,
+                debugOut,
+                alloc);
+        }
+        if (!ok(s)) {
+            return s;
+        }
+    }
+
+    return Status::Ok;
+}
+
+Status executeObjDeferredPlanInstanced(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    ObjDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept {
+    return executeObjDeferredPlanPhase(
+        input,
+        buffer,
+        indexCount,
+        objTypeCache,
+        plan,
+        debugOut,
+        ObjRenderOpKind::Instanced,
+        alloc);
+}
+
+Status executeObjDeferredPlanMerged(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    ObjDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept {
+    return executeObjDeferredPlanPhase(
+        input,
+        buffer,
+        indexCount,
+        objTypeCache,
+        plan,
+        debugOut,
+        ObjRenderOpKind::MergeByPlacement,
+        alloc);
+}
+
+Status destroyObjDeferredPlan(ObjDeferredPlan* plan, Allocator& alloc) noexcept {
+    if (!plan) return Status::Ok;
+    plan->~ObjDeferredPlan();
+    if (alloc.free) {
+        alloc.free(alloc.ctx, plan, alignof(ObjDeferredPlan));
+    }
+    return Status::Ok;
 }
 
 } // namespace scb

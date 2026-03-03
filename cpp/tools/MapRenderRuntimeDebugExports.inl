@@ -542,6 +542,28 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_set_world_height_probe(
     return RS_MAP_RENDER_STATUS_OK;
 }
 
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_set_world_height_probe_loc_filter(
+    const rs::i32 runtimeHandle,
+    const rs::i32 locId) {
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    runtime->debugWorldHeightProbeLocId = locId;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_set_packed_vertex_probe_index(
+    const rs::i32 runtimeHandle,
+    const rs::i32 vertexIndex) {
+    MapRenderRuntimeState* runtime = getMapRenderRuntime(runtimeHandle);
+    if (!runtime) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    runtime->debugPackedVertexProbeIndex = vertexIndex;
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_terrain_digest_samples_meta(
     const rs::i32 runtimeHandle,
     rs::i32* outMeta,
@@ -717,7 +739,14 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_world_height_prob
     outI32[1] = stream.debugWorldHeightProbeLevel;
     outI32[2] = stream.debugWorldHeightProbeWorldX;
     outI32[3] = stream.debugWorldHeightProbeWorldZ;
+    const bool extended = stream.debugWorldHeightProbeHit == 2;
+    // Keep the original 16-int payload stable; extended payload is only meaningful for marker=2.
+    const rs::i32 baseLen = 16;
     for (rs::i32 i = 0; i < RS_MAP_RENDER_RUNTIME_WORLD_HEIGHT_PROBE_PACKED_LENGTH; i++) {
+        if (!extended && i >= baseLen) {
+            outI32[4 + i] = 0;
+            continue;
+        }
         outI32[4 + i] = stream.debugWorldHeightProbePacked[static_cast<std::size_t>(i)];
     }
     return RS_MAP_RENDER_STATUS_OK;

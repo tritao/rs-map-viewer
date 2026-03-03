@@ -303,6 +303,24 @@ struct TerrainTileFaceCountGrid final {
         const i32 clipped = (faces > 255) ? 255 : (faces < 0 ? 0 : faces);
         counts[idx] = static_cast<u8>(clipped);
     }
+
+    i32 get(i32 level, i32 lx, i32 ly) const noexcept {
+        if (counts.empty() || width <= 0 || height <= 0) {
+            return 0;
+        }
+        if (level < 0 || level >= levels || lx < 0 || ly < 0 || lx >= width || ly >= height) {
+            return 0;
+        }
+        const std::size_t idx =
+            static_cast<std::size_t>(level) *
+                static_cast<std::size_t>(width) * static_cast<std::size_t>(height) +
+            static_cast<std::size_t>(lx) * static_cast<std::size_t>(height) +
+            static_cast<std::size_t>(ly);
+        if (idx >= counts.size()) {
+            return 0;
+        }
+        return static_cast<i32>(counts[idx]);
+    }
 };
 
 struct DecodedLocTypeCache;
@@ -312,6 +330,81 @@ struct DecodedUnderlayTypeCache;
 struct DecodedOverlayTypeCache;
 struct DecodedObjTypeCache;
 struct DecodedModelFaceStatsCache;
+
+// Deferred plan handles (opaque to SceneCommandBuilder.cpp) used to match TS ordering:
+// instanced ops first, then merged-group geometry emitted after.
+struct LocDeferredPlan;
+struct ObjDeferredPlan;
+
+Status createLocDeferredPlanFromMapLocBytes(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    const Vec<u8>* tileHasValidFaceColorsAForLowDetail,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    DecodedLocTypeCache* locTypeCache,
+    DecodedVarBitTypeCache* varbitCache,
+    DecodedSeqTypeCache* seqTypeCache,
+    DecodedModelFaceStatsCache* modelCache,
+    SceneCommandStream* debugOut,
+    LocDeferredPlan** outPlan,
+    Vec<LocAnimatedGroupPlan>* outAnimatedGroups,
+    Vec<LocAnimatedPlaceholder>* outAnimatedEntries,
+    Allocator& alloc) noexcept;
+
+Status executeLocDeferredPlanInstanced(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedLocTypeCache* locTypeCache,
+    LocDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept;
+
+Status executeLocDeferredPlanMerged(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedLocTypeCache* locTypeCache,
+    LocDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept;
+
+Status destroyLocDeferredPlan(LocDeferredPlan* plan, Allocator& alloc) noexcept;
+
+Status createObjDeferredPlanFromPackedSpawns(
+    const SceneCommandBuildInput& input,
+    const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
+    Vec<SceneCommandPlanDebugOp>* planOps,
+    DecodedObjTypeCache* objTypeCache,
+    DecodedModelFaceStatsCache* objModelCache,
+    SceneCommandStream* debugOut,
+    ObjDeferredPlan** outPlan,
+    Allocator& alloc) noexcept;
+
+Status executeObjDeferredPlanInstanced(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    ObjDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept;
+
+Status executeObjDeferredPlanMerged(
+    const SceneCommandBuildInput& input,
+    SceneBuffer* buffer,
+    i32* indexCount,
+    DecodedObjTypeCache* objTypeCache,
+    ObjDeferredPlan* plan,
+    SceneCommandStream* debugOut,
+    Allocator& alloc) noexcept;
+
+Status destroyObjDeferredPlan(ObjDeferredPlan* plan, Allocator& alloc) noexcept;
 
 i32 locPlacementCategoryForSceneOrder(i32 placementType) noexcept;
 
@@ -611,6 +704,9 @@ Status appendLocPlanOpsFromMapLocBytes(
 Status emitObjCommandsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
     Vec<SceneCommandPlanDebugOp>* planOps,
     SceneBuffer* buffer,
     i32* indexCount,
@@ -622,6 +718,9 @@ Status emitObjCommandsFromPackedSpawns(
 Status appendObjPlanOpsFromPackedSpawns(
     const SceneCommandBuildInput& input,
     const SceneData& scene,
+    const TerrainTileFaceCountGrid* terrainFaceGrid,
+    DecodedUnderlayTypeCache* underlayCache,
+    DecodedOverlayTypeCache* overlayCache,
     Vec<SceneCommandPlanDebugOp>* planOps,
     DecodedObjTypeCache* objTypeCache,
     DecodedModelFaceStatsCache* objModelCache,

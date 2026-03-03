@@ -45,6 +45,13 @@ struct SceneCommandBuildInput final {
     i32 debugWorldHeightProbeLevel = -1;
     i32 debugWorldHeightProbeWorldX = -1;
     i32 debugWorldHeightProbeWorldZ = -1;
+    // Debug only: optional loc-type filter for vertex probes, so parity can avoid hitting unrelated
+    // locs that share the same output coordinate.
+    i32 debugWorldHeightProbeLocId = -1;
+    // Debug only: optional packed-vertex index probe (global vertex index in the packed vertex stream).
+    // When set, vertex-probe capture triggers on the exact emitted packed vertex index, avoiding
+    // coordinate collisions.
+    i32 debugPackedVertexProbeIndex = -1;
 
     Span<const i32> mapSquareIds{};
     Span<const i32> terrainOffsets{};
@@ -185,7 +192,11 @@ struct SceneCommandStream final {
     i32 debugWorldHeightProbeLevel = -1;
     i32 debugWorldHeightProbeWorldX = -1;
     i32 debugWorldHeightProbeWorldZ = -1;
-    i32 debugWorldHeightProbePacked[16]{};
+    i32 debugWorldHeightProbeLocId = -1;
+    i32 debugPackedVertexProbeIndex = -1;
+    // Packed payload for world-height sample probe and (optionally) a vertex-probe overlay.
+    // The first 16 entries match the original layout; extra entries are debug-only extensions.
+    i32 debugWorldHeightProbePacked[32]{};
 
     // Scene command plan digest (TS parity helper): matches src/renderer/buffer/SceneCommandPlan.ts.
     i32 debugSceneCommandPlanOpCount = 0;
@@ -422,6 +433,8 @@ struct SceneCommandStream final {
         debugWorldHeightProbeLevel = -1;
         debugWorldHeightProbeWorldX = -1;
         debugWorldHeightProbeWorldZ = -1;
+        debugWorldHeightProbeLocId = -1;
+        debugPackedVertexProbeIndex = -1;
         for (std::size_t i = 0; i < (sizeof(debugWorldHeightProbePacked) / sizeof(debugWorldHeightProbePacked[0])); i++) {
             debugWorldHeightProbePacked[i] = 0;
         }
