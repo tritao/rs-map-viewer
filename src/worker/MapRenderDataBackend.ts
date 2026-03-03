@@ -255,16 +255,6 @@ function sdMapDataTransferables(data: SdMapData): Transferable[] {
     return transferables;
 }
 
-const CPP_WASM_OUTCOME_KEYS = [
-    "success",
-    "bridgeMissing",
-    "bridgeReturnedEmpty",
-    "bridgeError",
-] as const;
-
-type CppWasmBuildOutcome = (typeof CPP_WASM_OUTCOME_KEYS)[number];
-type CppWasmBuildOutcomeStats = Record<CppWasmBuildOutcome, number>;
-
 class TsMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "ts";
     private readonly backend: SdMapRenderDataTsBackend;
@@ -296,14 +286,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
-    private readonly outcomeStats: CppWasmBuildOutcomeStats = {
-        success: 0,
-        bridgeMissing: 0,
-        bridgeReturnedEmpty: 0,
-        bridgeError: 0,
-    };
     private readonly cacheUploader = new MapRenderRuntimeCacheV2Uploader();
-    private buildCalls = 0;
 
     constructor(
         private readonly deps: MapRenderDataBackendDeps,
@@ -590,50 +573,29 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         };
     }
 
-    private trackOutcome(
-        outcome: CppWasmBuildOutcome,
-        input: SdMapLoaderInput,
-        totalMs?: number,
-        details?: string,
-    ): void {
-        this.outcomeStats[outcome]++;
-        this.buildCalls++;
-        if (!this.options?.telemetry) {
-            return;
-        }
-        const suffix = details ? ` details=${details}` : "";
-        const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
-        console.log(
-            `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=${outcome}${timing}${suffix}`,
-        );
-        if (this.buildCalls % 25 === 0) {
-            const summary = CPP_WASM_OUTCOME_KEYS.map((k) => `${k}=${this.outcomeStats[k]}`).join(
-                " ",
-            );
-            console.log(`[map-render] backend=cpp-wasm outcomes ${summary}`);
-        }
-    }
-
     async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
-        const t0 = this.options?.telemetry ? performance.now() : undefined;
+        const telemetry = this.options?.telemetry === true;
+        const t0 = telemetry ? performance.now() : undefined;
         const bridge = this.bridge;
         if (!(await this.ensureRuntimeInitialized())) {
-            this.trackOutcome(
-                "bridgeMissing",
-                input,
-                t0 !== undefined ? performance.now() - t0 : undefined,
-                "runtimeInitFailed",
-            );
+            if (telemetry) {
+                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
+                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
+                console.log(
+                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeMissing${timing} details=runtimeInitFailed`,
+                );
+            }
             return { data: undefined, transferables: [] };
         }
         const runtimeHandle = await this.ensureRuntimeHandle();
         if (runtimeHandle === undefined) {
-            this.trackOutcome(
-                "bridgeMissing",
-                input,
-                t0 !== undefined ? performance.now() - t0 : undefined,
-                "runtimeHandleMissing",
-            );
+            if (telemetry) {
+                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
+                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
+                console.log(
+                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeMissing${timing} details=runtimeHandleMissing`,
+                );
+            }
             return { data: undefined, transferables: [] };
         }
         const byteDrivenSceneBuildInput = this.createByteDrivenSceneBuildInput(input);
@@ -645,31 +607,37 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 byteDrivenSceneBuildInput,
             );
             if (!bridgePayload) {
-                this.trackOutcome(
-                    "bridgeReturnedEmpty",
-                    input,
-                    t0 !== undefined ? performance.now() - t0 : undefined,
-                    "runtimePacketMissingOrIncompleteGeometry_or_build_failed=true",
-                );
+                if (telemetry) {
+                    const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
+                    const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
+                    console.log(
+                        `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeReturnedEmpty${timing} details=runtimePacketMissingOrIncompleteGeometry_or_build_failed=true`,
+                    );
+                }
                 return { data: undefined, transferables: [] };
             }
-            this.trackOutcome(
-                "success",
-                input,
-                t0 !== undefined ? performance.now() - t0 : undefined,
-            );
+            if (telemetry) {
+                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
+                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
+                console.log(
+                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=success${timing}`,
+                );
+            }
             return {
                 data: bridgePayload,
                 transferables: sdMapDataTransferables(bridgePayload),
             };
         } catch (e) {
             console.warn(`[map-render-backend] cpp-wasm buildMapData failed: ${errorToString(e)}`);
-            this.trackOutcome(
-                "bridgeError",
-                input,
-                t0 !== undefined ? performance.now() - t0 : undefined,
-                errorToString(e),
-            );
+            if (telemetry) {
+                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
+                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
+                console.log(
+                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeError${timing} details=${errorToString(
+                        e,
+                    )}`,
+                );
+            }
             return { data: undefined, transferables: [] };
         }
     }
