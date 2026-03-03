@@ -47,7 +47,7 @@ import {
     type SceneCommandPlanDigest,
 } from "../../runtime/build";
 import { createNpcBootstrapData } from "../../runtime/sim/NpcBootstrapData";
-import { SdMapData } from "../payload/SdMapData";
+import type { SdMapData } from "../payload/SdMapData";
 import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
 import { createSdTexturePacking } from "../payload/SdTexturePacking";
@@ -460,6 +460,11 @@ export class SdMapRenderDataTsBackend {
 
     private async getFallbackNpcSpawns(): Promise<NpcSpawn[]> {
         if (this.fallbackNpcSpawnsPromise) {
+            return this.fallbackNpcSpawnsPromise;
+        }
+        if (this.deps.fallbackNpcSpawns) {
+            const fromDeps = this.deps.fallbackNpcSpawns as NpcSpawn[];
+            this.fallbackNpcSpawnsPromise = Promise.resolve(fromDeps);
             return this.fallbackNpcSpawnsPromise;
         }
         const url = getNpcSpawnsUrl(this.deps.session.cache.info);

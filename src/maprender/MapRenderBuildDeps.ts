@@ -34,6 +34,7 @@ export type MapRenderBuildDeps = Readonly<{
     mapImageRenderer: MapImageRenderer;
     varProvider: VarProvider;
     objSpawns: ObjSpawn[];
+    fallbackNpcSpawns?: ReadonlyArray<NpcSpawn>;
     npcSpawnDecodeBackend?: NpcSpawnDecodeBackend;
     telemetry?: boolean;
 }>;

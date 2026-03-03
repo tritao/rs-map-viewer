@@ -6,7 +6,7 @@ import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/payload/MapData";
-import { SdMapData } from "../maprender/payload/SdMapData";
+import type { SdMapData } from "../maprender/payload/SdMapData";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { MenuTargetType } from "../rs/MenuEntry";

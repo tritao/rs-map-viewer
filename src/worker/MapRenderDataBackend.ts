@@ -1,4 +1,4 @@
-import { SdMapData } from "../maprender/payload/SdMapData";
+import type { SdMapData } from "../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
@@ -17,8 +17,8 @@ import {
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
 import {
+    MAP_RENDER_DRAW_BUCKET_KEYS,
     runtimePacketToPayloadOverlay,
-    sdMapDataTransferables,
 } from "../maprender/MapRenderDataContract";
 import {
     MapRenderByteDrivenSceneBuildInput,
@@ -46,6 +46,44 @@ export interface MapRenderDataBackend {
     // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
     // This allows the worker tick path to use the same runtime instance that built the map packets.
     getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
+}
+
+function sdMapDataTransferables(data: SdMapData): Transferable[] {
+    const loadedTextureBuffers = Array.from(data.loadedTextures.values()).map(
+        (pixels) => pixels.buffer as Transferable,
+    );
+    const transferables: Transferable[] = [
+        ...data.tileRenderFlags.flat().map((buf) => buf.buffer as Transferable),
+        ...loadedTextureBuffers,
+        data.vertices.buffer as Transferable,
+        data.indices.buffer as Transferable,
+        data.heightMapTextureData.buffer as Transferable,
+        data.usedTextureIds.buffer as Transferable,
+    ];
+    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
+        transferables.push(
+            data.modelInfoTextures[key].buffer as Transferable,
+            data.drawRanges[key].buffer as Transferable,
+        );
+    }
+    if (
+        data.npcVertices instanceof Uint8Array &&
+        data.npcIndices instanceof Int32Array &&
+        data.npcDrawRangesBase instanceof Int32Array
+    ) {
+        transferables.push(
+            data.npcVertices.buffer as Transferable,
+            data.npcIndices.buffer as Transferable,
+            data.npcDrawRangesBase.buffer as Transferable,
+        );
+        if (data.npcDrawRangesAlpha) {
+            transferables.push(data.npcDrawRangesAlpha.buffer as Transferable);
+        }
+        if (data.npcOrderKeys) {
+            transferables.push(data.npcOrderKeys.buffer as Transferable);
+        }
+    }
+    return transferables;
 }
 
 const CPP_WASM_OUTCOME_KEYS = [
@@ -235,13 +273,21 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         if (!request) {
             return undefined;
         }
-        const prepared = await this.cacheUploader.prepareRuntimeForBuildRequest(
+        const prepareResult = await this.cacheUploader.prepareRuntimeForBuildRequestDetailed(
             bridge,
             runtimeHandle,
             request,
             byteDrivenSceneBuildInput,
         );
-        if (!prepared) {
+        if (!prepareResult.ok) {
+            console.warn("[map-render][cpp-wasm] prepareRuntimeForBuildRequest failed", {
+                square: `${input.mapX}:${input.mapY}`,
+                reason: prepareResult.reason,
+                status: prepareResult.status,
+                passesTried: prepareResult.passesTried,
+                missingCount: prepareResult.missingCount,
+                lastBuildFailure: prepareResult.lastBuildFailure,
+            });
             return undefined;
         }
         const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);

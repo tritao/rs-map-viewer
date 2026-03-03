@@ -2,6 +2,7 @@ import type { ObjSpawn } from "../../data/obj/ObjSpawn";
 import { SdMapLoaderInput } from "../../maprender/payload/SdMapLoaderInput";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Scene } from "../../rs/scene/Scene";
+import type { Result } from "../../util/Result";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
@@ -9,20 +10,119 @@ import type {
     MapRenderRuntimeMapSquareEntry,
     MapRenderRuntimeMissingBlobEntries,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
-import type {
-    LocModelLoaderLike,
-    MapRenderSceneBuildInputDeps,
-    ModelLoaderLike,
-    SeqFrameLoaderLike,
-    SkeletalSeqLoaderLike,
-    TextureLoaderLike,
-    TypeEntryLoaderLike,
-    VarProviderLike,
-} from "../../maprender/MapRenderSceneBuildLoaders";
 import {
+    MAP_RENDER_RUNTIME_STATUS_INVALID_ARG,
     MAP_RENDER_RUNTIME_STATUS_NOT_FOUND,
     MAP_RENDER_RUNTIME_STATUS_OK,
 } from "../../wasm/MapRenderRuntimeStatus.mjs";
+
+export type TypeEntryLoaderLike<T = unknown> = Readonly<{
+    tryLoad?: (id: number) => Result<T, unknown> | undefined;
+    tryLoadBytes?: (id: number) => Uint8Array | Int8Array | undefined;
+}>;
+
+type LegacyModelFileBytes = Readonly<{
+    headBytes: Uint8Array;
+    face1Bytes: Uint8Array;
+    face2Bytes: Uint8Array;
+    face3Bytes: Uint8Array;
+    face4Bytes: Uint8Array;
+    face5Bytes: Uint8Array;
+    point1Bytes: Uint8Array;
+    point2Bytes: Uint8Array;
+    point3Bytes: Uint8Array;
+    point4Bytes: Uint8Array;
+    point5Bytes: Uint8Array;
+    vertex1Bytes: Uint8Array;
+    vertex2Bytes: Uint8Array;
+    axisBytes: Uint8Array;
+}>;
+
+type LegacySeqFrameFileBytes = Readonly<{
+    baseHeadBytes: Uint8Array;
+    baseTypeBytes: Uint8Array;
+    baseLabelBytes: Uint8Array;
+    frameHeadBytes: Uint8Array;
+    frameTran1Bytes: Uint8Array;
+    frameTran2Bytes: Uint8Array;
+    frameDelBytes: Uint8Array;
+}>;
+
+type DatSeqFrameMapBlob = Readonly<{ frameMapId: number; bytes: Uint8Array }>;
+
+export type ModelLoaderLike = TypeEntryLoaderLike & Readonly<{
+    tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes;
+}>;
+
+export type SeqFrameLoaderLike = TypeEntryLoaderLike & Readonly<{
+    tryGet?: (id: number) => Result<unknown, unknown> | unknown;
+    baseLoader?: TypeEntryLoaderLike;
+    tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
+    tryGetFrameMapBlobForFrameId?: (id: number) => DatSeqFrameMapBlob | undefined;
+}>;
+
+export type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
+    tryGet?: (id: number) => Result<unknown, unknown> | unknown;
+    baseLoader?: TypeEntryLoaderLike;
+}>;
+
+export type TextureLoaderLike = Readonly<{
+    getTextureIds?: () => number[];
+    isSd?: (id: number) => boolean;
+    isTransparent?: (id: number) => boolean;
+}>;
+
+export type LocModelLoaderLike = Readonly<{
+    modelLoader?: ModelLoaderLike;
+    textureLoader?: TextureLoaderLike;
+    seqTypeLoader?: TypeEntryLoaderLike;
+    seqFrameLoader?: SeqFrameLoaderLike;
+    skeletalSeqLoader?: SkeletalSeqLoaderLike;
+}>;
+
+export type VarProviderLike = Readonly<{
+    values?: Int32Array;
+    varbitLoader?: TypeEntryLoaderLike;
+    varManager?: Readonly<{
+        values?: Int32Array;
+        varbitLoader?: TypeEntryLoaderLike;
+    }>;
+}>;
+
+export type MapRenderSceneBuildInputDeps = Readonly<{
+    mapBytesProvider: MapBytesProvider;
+    objSpawns?: ReadonlyArray<ObjSpawn>;
+    cacheGame: number;
+    cacheRevision: number;
+    locTypeLoader: TypeEntryLoaderLike;
+    objTypeLoader?: TypeEntryLoaderLike;
+    locModelLoader: LocModelLoaderLike;
+    seqTypeLoader?: TypeEntryLoaderLike;
+    seqFrameLoader?: SeqFrameLoaderLike;
+    skeletalSeqLoader?: SkeletalSeqLoaderLike;
+    textureLoader?: TextureLoaderLike;
+    npcTypeLoader?: TypeEntryLoaderLike;
+    basTypeLoader?: TypeEntryLoaderLike;
+    varProvider: VarProviderLike;
+    underlayTypeLoader?: TypeEntryLoaderLike;
+    overlayTypeLoader?: TypeEntryLoaderLike;
+}>;
+
+export type MapRenderRuntimePrepareResult = Readonly<{
+    ok: boolean;
+    reason:
+        | "ok"
+        | "upload_base_failed"
+        | "upload_missing_failed"
+        | "status_non_ok"
+        | "max_passes_exhausted";
+    status: number;
+    passesTried: number;
+    missingCount: number;
+    lastBuildFailure?:
+        | Readonly<{ stage: number; status: number; detail0: number; detail1: number }>
+        | undefined;
+}>;
 
 type RuntimeCacheFeeder = Readonly<{
     setBuildConfig(request: MapRenderRuntimeBuildRequest): Promise<boolean>;
@@ -1512,13 +1612,13 @@ export class MapRenderRuntimeCacheV2Uploader {
         return true;
     }
 
-    async prepareRuntimeForBuildRequest(
+    async prepareRuntimeForBuildRequestDetailed(
         bridge: MapRenderRuntimeBridgeV2,
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
         maxPasses = 12,
-    ): Promise<boolean> {
+    ): Promise<MapRenderRuntimePrepareResult> {
         const uploadedBase = await this.uploadRuntimeCacheForBuildRequest(
             bridge,
             runtimeHandle,
@@ -1526,13 +1626,21 @@ export class MapRenderRuntimeCacheV2Uploader {
             sceneBuildInput,
         );
         if (!uploadedBase) {
-            return false;
+            return {
+                ok: false,
+                reason: "upload_base_failed",
+                status: MAP_RENDER_RUNTIME_STATUS_INVALID_ARG,
+                passesTried: 0,
+                missingCount: 0,
+            };
         }
 
         const passes = Math.max(1, maxPasses | 0);
+        let lastStatus = MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
         for (let pass = 0; pass < passes; pass++) {
             let status = MAP_RENDER_RUNTIME_STATUS_OK;
-            if (typeof bridge.probeBuildMapPacketFromCacheStatus === "function") {
+            const hasProbe = typeof bridge.probeBuildMapPacketFromCacheStatus === "function";
+            if (hasProbe) {
                 status = (await bridge.probeBuildMapPacketFromCacheStatus(
                     runtimeHandle,
                     request,
@@ -1543,8 +1651,10 @@ export class MapRenderRuntimeCacheV2Uploader {
                     ? MAP_RENDER_RUNTIME_STATUS_OK
                     : MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
             }
+            lastStatus = status | 0;
 
             const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+            const missingCount = missing ? missing.domains.length | 0 : 0;
             if (missing && (missing.domains.length | 0) > 0) {
                 const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
                     bridge,
@@ -1553,18 +1663,98 @@ export class MapRenderRuntimeCacheV2Uploader {
                     sceneBuildInput,
                 );
                 if (!okMissing) {
-                    return false;
+                    return {
+                        ok: false,
+                        reason: "upload_missing_failed",
+                        status,
+                        passesTried: (pass + 1) | 0,
+                        missingCount,
+                        lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+                    };
                 }
                 continue;
             }
 
             if (status === MAP_RENDER_RUNTIME_STATUS_OK) {
-                return true;
+                return {
+                    ok: true,
+                    reason: "ok",
+                    status,
+                    passesTried: (pass + 1) | 0,
+                    missingCount: 0,
+                };
             }
-            return false;
+
+            // Some bridge/probe versions can report non-OK without surfacing missing blob
+            // entries. Fall back to one full build attempt to surface missing blobs (or to
+            // confirm a successful build).
+            if (hasProbe) {
+                const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+                if (packet) {
+                    return {
+                        ok: true,
+                        reason: "ok",
+                        status: MAP_RENDER_RUNTIME_STATUS_OK,
+                        passesTried: (pass + 1) | 0,
+                        missingCount: 0,
+                    };
+                }
+                const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                if (missingAfterBuild && (missingAfterBuild.domains.length | 0) > 0) {
+                    const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
+                        bridge,
+                        runtimeHandle,
+                        missingAfterBuild,
+                        sceneBuildInput,
+                    );
+                    if (!okMissing) {
+                        return {
+                            ok: false,
+                            reason: "upload_missing_failed",
+                            status,
+                            passesTried: (pass + 1) | 0,
+                            missingCount: missingAfterBuild.domains.length | 0,
+                            lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+                        };
+                    }
+                    continue;
+                }
+            }
+            return {
+                ok: false,
+                reason: "status_non_ok",
+                status,
+                passesTried: (pass + 1) | 0,
+                missingCount: 0,
+                lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+            };
         }
 
-        return false;
+        return {
+            ok: false,
+            reason: "max_passes_exhausted",
+            status: lastStatus | 0,
+            passesTried: passes | 0,
+            missingCount: 0,
+            lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+        };
+    }
+
+    async prepareRuntimeForBuildRequest(
+        bridge: MapRenderRuntimeBridgeV2,
+        runtimeHandle: MapRenderRuntimeHandle,
+        request: MapRenderRuntimeBuildRequest,
+        sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
+        maxPasses = 12,
+    ): Promise<boolean> {
+        const result = await this.prepareRuntimeForBuildRequestDetailed(
+            bridge,
+            runtimeHandle,
+            request,
+            sceneBuildInput,
+            maxPasses,
+        );
+        return result.ok;
     }
 }
 
@@ -1580,5 +1770,22 @@ export async function uploadRuntimeCacheForBuildRequest(
         runtimeHandle,
         request,
         sceneBuildInput,
+    );
+}
+
+export async function prepareRuntimeForBuildRequestDetailed(
+    bridge: MapRenderRuntimeBridgeV2,
+    runtimeHandle: MapRenderRuntimeHandle,
+    request: MapRenderRuntimeBuildRequest,
+    sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
+    maxPasses = 12,
+): Promise<MapRenderRuntimePrepareResult> {
+    const uploader = new MapRenderRuntimeCacheV2Uploader();
+    return uploader.prepareRuntimeForBuildRequestDetailed(
+        bridge,
+        runtimeHandle,
+        request,
+        sceneBuildInput,
+        maxPasses,
     );
 }
