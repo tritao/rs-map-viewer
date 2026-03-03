@@ -143,6 +143,7 @@ export class WorkerTickRuntime {
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
+    private tickMapIds: Int32Array = new Int32Array(0);
 
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
 
@@ -151,6 +152,7 @@ export class WorkerTickRuntime {
         this.npcBootstrapResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
+        this.tickMapIds = new Int32Array(0);
     }
 
     resetForLoaderReset(): void {
@@ -158,6 +160,15 @@ export class WorkerTickRuntime {
         this.npcBootstrapResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
+        this.tickMapIds = new Int32Array(0);
+    }
+
+    setTickMapIds(mapIds: Int32Array): void {
+        if (!(mapIds instanceof Int32Array) || (mapIds.length | 0) <= 0) {
+            this.tickMapIds = new Int32Array(0);
+            return;
+        }
+        this.tickMapIds = Int32Array.from(mapIds);
     }
 
     private async resolveNpcBootstrapData(
@@ -453,7 +464,6 @@ export class WorkerTickRuntime {
 
     async tickFrame(
         frameCount: number,
-        mapIds: Int32Array,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
@@ -462,6 +472,7 @@ export class WorkerTickRuntime {
         lodDistance: number,
         hoveredMapIdsPacked: Int32Array,
     ): Promise<FramePacket | undefined> {
+        const mapIds = this.tickMapIds;
         if (!(mapIds instanceof Int32Array) || mapIds.length === 0) {
             return undefined;
         }

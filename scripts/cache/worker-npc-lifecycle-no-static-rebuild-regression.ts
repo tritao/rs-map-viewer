@@ -86,6 +86,7 @@ async function main(): Promise<void> {
 
     const mapId = 13106;
     registerEmptyMapState(runtime, workerState, mapId);
+    runtime.setTickMapIds(Int32Array.from([mapId]));
 
     const spawnEvents: NpcEvent[] = [
         {
@@ -103,7 +104,6 @@ async function main(): Promise<void> {
 
     const packetAfterSpawn = await runtime.tickFrame(
         1,
-        Int32Array.from([mapId]),
         0,
         0,
         0,
@@ -128,7 +128,6 @@ async function main(): Promise<void> {
 
     const packetAfterDespawn = await runtime.tickFrame(
         2,
-        Int32Array.from([mapId]),
         0,
         0,
         0,

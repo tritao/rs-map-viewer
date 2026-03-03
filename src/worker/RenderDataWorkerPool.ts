@@ -189,9 +189,12 @@ export class RenderDataWorkerPool {
         return this.withTickWorker((w) => w.applyNpcLifecyclePacketBytes(packet));
     }
 
+    setTickMapIds(mapIds: Int32Array): Promise<void> {
+        return this.withTickWorker((w) => w.setTickMapIds(mapIds));
+    }
+
     tickFrame(
         frameCount: number,
-        mapIds: Int32Array,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
@@ -203,7 +206,6 @@ export class RenderDataWorkerPool {
         return this.withTickWorker((w) =>
             w.tickFrame(
                 frameCount,
-                mapIds,
                 ticksElapsed,
                 clientTicksElapsed,
                 cycleNow,

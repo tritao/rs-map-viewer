@@ -29,6 +29,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
     private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;
+    private lastTickMapIds: Int32Array = EMPTY_INT32;
 
     constructor(private readonly deps: WorkerMapViewerFramePacketSourceDeps) {}
 
@@ -42,16 +43,15 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
             const epoch = this.packetEpoch | 0;
             const mapManager = this.deps.getMapManager();
             const camera = this.deps.getCamera();
-            const n = mapManager.visibleMapCount | 0;
-            const mapIds = new Int32Array(n);
-            for (let i = 0; i < n; i++) {
-                mapIds[i] = mapManager.visibleMaps[i]!.mapId | 0;
+            const mapIds = this.collectVisibleMapIds(mapManager);
+            const shouldUpdateTickMaps = !this.areInt32ArraysEqual(mapIds, this.lastTickMapIds);
+            if (shouldUpdateTickMaps) {
+                this.lastTickMapIds = mapIds;
             }
             const hoveredMapIdsPacked = this.deps.getHoveredMapIdsPacked() ?? EMPTY_INT32;
-            this.pendingFramePacket = this.deps.workerPool
-                .tickFrame(
+            const runTickFrame = () =>
+                this.deps.workerPool.tickFrame(
                     input.frameCount,
-                    mapIds,
                     input.ticksElapsed,
                     input.clientTicksElapsed,
                     input.cycle,
@@ -59,7 +59,11 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                     camera.getMapY(),
                     this.deps.getLodDistance(),
                     hoveredMapIdsPacked,
-                )
+                );
+            const startFrameTick = shouldUpdateTickMaps
+                ? this.deps.workerPool.setTickMapIds(mapIds).then(runTickFrame)
+                : runTickFrame();
+            this.pendingFramePacket = startFrameTick
                 .then((nextPacket) => {
                     if ((this.packetEpoch | 0) === epoch) {
                         this.latestFramePacket = nextPacket;
@@ -86,5 +90,31 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         this.packetEpoch = (this.packetEpoch + 1) | 0;
         this.pendingFramePacket = undefined;
         this.latestFramePacket = undefined;
+        this.lastTickMapIds = EMPTY_INT32;
+        void this.deps.workerPool.setTickMapIds(EMPTY_INT32);
+    }
+
+    private collectVisibleMapIds(mapManager: MapManager): Int32Array {
+        const n = mapManager.visibleMapCount | 0;
+        if ((n | 0) <= 0) {
+            return EMPTY_INT32;
+        }
+        const mapIds = new Int32Array(n);
+        for (let i = 0; i < n; i++) {
+            mapIds[i] = mapManager.visibleMaps[i]!.mapId | 0;
+        }
+        return mapIds;
+    }
+
+    private areInt32ArraysEqual(left: Int32Array, right: Int32Array): boolean {
+        if ((left.length | 0) !== (right.length | 0)) {
+            return false;
+        }
+        for (let i = 0; i < left.length; i++) {
+            if ((left[i] | 0) !== (right[i] | 0)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

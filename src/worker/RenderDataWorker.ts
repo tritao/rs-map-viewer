@@ -80,9 +80,11 @@ const worker = {
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
+    setTickMapIds(mapIds: Int32Array): void {
+        tickRuntime.setTickMapIds(mapIds);
+    },
     async tickFrame(
         frameCount: number,
-        mapIds: Int32Array,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
@@ -93,7 +95,6 @@ const worker = {
     ): Promise<TransferDescriptor<FramePacket | undefined>> {
         const packet = await tickRuntime.tickFrame(
             frameCount,
-            mapIds,
             ticksElapsed,
             clientTicksElapsed,
             cycleNow,
