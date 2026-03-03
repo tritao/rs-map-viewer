@@ -111,7 +111,6 @@ export type MapRenderRuntimePrepareResult = Readonly<{
 
 export type SceneBuildCacheProvider = Readonly<{
     tryGetLocTypeBytes(id: number): Uint8Array | undefined;
-    tryGetLocTypeDecoded(id: number): unknown;
     tryGetObjTypeBytes(id: number): Uint8Array | undefined;
     tryGetNpcTypeBytes(id: number): Uint8Array | undefined;
     tryGetBasTypeBytes(id: number): Uint8Array | undefined;
@@ -120,12 +119,10 @@ export type SceneBuildCacheProvider = Readonly<{
     tryGetVarbitTypeBytes(id: number): Uint8Array | undefined;
     tryGetModelBytes(id: number): Uint8Array | undefined;
     tryGetSeqTypeBytes(id: number): Uint8Array | undefined;
-    tryGetSeqTypeDecoded(id: number): unknown;
     tryGetSeqFrameBytes(id: number): Uint8Array | undefined;
-    tryGetSeqFrameDecoded(id: number): unknown;
     tryGetSkeletalSeqBytes(id: number): Uint8Array | undefined;
-    tryGetSkeletalSeqDecoded(id: number): unknown;
     tryGetSeqBaseBytes(id: number): Uint8Array | undefined;
+    tryGetSeqAlphaHintBytes(seqId: number): Uint8Array;
     tryCollectTextureIds(): ReadonlyArray<number> | undefined;
     isTextureTransparent(id: number): boolean;
     isTextureSd(id: number): boolean;
@@ -394,6 +391,9 @@ function getFrameIdsArrayLike(seqType: unknown): ArrayLike<number> | undefined {
     return undefined;
 }
 
+const SEQ_ALPHA_HINT_FALSE = Uint8Array.of(0);
+const SEQ_ALPHA_HINT_TRUE = Uint8Array.of(1);
+
 export function createSceneBuildCacheProvider(
     loaders: SceneBuildCacheProviderLoaders,
 ): SceneBuildCacheProvider {
@@ -411,13 +411,13 @@ export function createSceneBuildCacheProvider(
     const seqFrameLoader = loaders.seqFrameLoader ?? locModelLoader?.seqFrameLoader;
     const skeletalSeqLoader = loaders.skeletalSeqLoader ?? locModelLoader?.skeletalSeqLoader;
     const seqBaseLoader = skeletalSeqLoader?.baseLoader ?? seqFrameLoader?.baseLoader;
+    const seqAlphaHintBySeqId = new Map<number, Uint8Array>();
 
     const base: Omit<
         SceneBuildCacheProvider,
         "tryGetLegacyModelFileBytes" | "tryGetLegacySeqFrameFileBytes" | "tryGetFrameMapBlobForFrameId"
     > = {
         tryGetLocTypeBytes: (id) => tryLoadTypeBytes(locTypeLoader, id),
-        tryGetLocTypeDecoded: (id) => tryLoadDecoded(locTypeLoader, id),
         tryGetObjTypeBytes: (id) => tryLoadTypeBytes(objTypeLoader, id),
         tryGetNpcTypeBytes: (id) => tryLoadTypeBytes(npcTypeLoader, id),
         tryGetBasTypeBytes: (id) => tryLoadTypeBytes(basTypeLoader, id),
@@ -426,12 +426,58 @@ export function createSceneBuildCacheProvider(
         tryGetVarbitTypeBytes: (id) => tryLoadTypeBytes(varbitLoader, id),
         tryGetModelBytes: (id) => tryLoadTypeBytes(modelLoader, id),
         tryGetSeqTypeBytes: (id) => tryLoadTypeBytes(seqTypeLoader, id),
-        tryGetSeqTypeDecoded: (id) => tryLoadDecoded(seqTypeLoader, id),
         tryGetSeqFrameBytes: (id) => tryLoadTypeBytes(seqFrameLoader, id),
-        tryGetSeqFrameDecoded: (id) => tryGetSeqFrameFromLoader(seqFrameLoader, id),
         tryGetSkeletalSeqBytes: (id) => tryLoadTypeBytes(skeletalSeqLoader, id),
-        tryGetSkeletalSeqDecoded: (id) => tryGetSkeletalSeqFromLoader(skeletalSeqLoader, id),
         tryGetSeqBaseBytes: (id) => tryLoadTypeBytes(seqBaseLoader, id),
+        tryGetSeqAlphaHintBytes: (seqId) => {
+            const key = seqId | 0;
+            const cached = seqAlphaHintBySeqId.get(key);
+            if (cached) {
+                return cached;
+            }
+
+            const seqType = tryLoadDecoded(seqTypeLoader, key) as
+                | { hasAnimMayaSeq?: () => boolean; animMayaId?: number; frameIds?: unknown }
+                | undefined;
+
+            let hasAlphaTransform = false;
+            if (seqType) {
+                const hasAnimMaya =
+                    typeof seqType.hasAnimMayaSeq === "function"
+                        ? (() => {
+                              try {
+                                  return seqType.hasAnimMayaSeq() === true;
+                              } catch {
+                                  return (seqType.animMayaId ?? -1) >= 0;
+                              }
+                          })()
+                        : (seqType.animMayaId ?? -1) >= 0;
+                if (hasAnimMaya) {
+                    const animMayaId = (seqType.animMayaId ?? -1) | 0;
+                    const skeletalSeq = tryGetSkeletalSeqFromLoader(skeletalSeqLoader, animMayaId) as
+                        | { hasAlphaTransform?: boolean }
+                        | undefined;
+                    hasAlphaTransform = skeletalSeq?.hasAlphaTransform === true;
+                } else {
+                    const frameIds = getFrameIdsArrayLike(seqType);
+                    const frameCount = frameIds ? frameIds.length | 0 : 0;
+                    for (let f = 0; f < frameCount; f++) {
+                        const frameId = Number(frameIds![f]) | 0;
+                        const seqFrame = tryGetSeqFrameFromLoader(seqFrameLoader, frameId) as
+                            | { hasAlphaTransform?: boolean }
+                            | undefined;
+                        if (seqFrame?.hasAlphaTransform === true) {
+                            hasAlphaTransform = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const bytes = hasAlphaTransform ? SEQ_ALPHA_HINT_TRUE : SEQ_ALPHA_HINT_FALSE;
+            seqAlphaHintBySeqId.set(key, bytes);
+            return bytes;
+        },
         tryCollectTextureIds: () => {
             if (!textureLoader || typeof textureLoader.getTextureIds !== "function") return undefined;
             try {
@@ -492,125 +538,6 @@ export function createSceneBuildCacheProvider(
             : {};
 
     return { ...base, ...legacyModelFns, ...legacySeqFns, ...frameMapFns };
-}
-
-function collectAugmentedSeqTypeIds(
-    args: Readonly<{
-        provider: SceneBuildCacheProvider;
-        expanded: Readonly<{
-            seqTypeIds?: ReadonlyArray<number>;
-            locTypeIds?: ReadonlyArray<number>;
-        }>;
-    }>,
-): number[] {
-    const { provider, expanded } = args;
-    const out = new Set<number>(sortedUniqueTypeIds(expanded.seqTypeIds as number[] | undefined));
-    const locTypeIds = sortedUniqueTypeIds(expanded.locTypeIds as number[] | undefined);
-    for (let i = 0; i < locTypeIds.length; i++) {
-        const locType = provider.tryGetLocTypeDecoded(locTypeIds[i] | 0) as
-            | { seqId?: number; randomSeqIds?: number[] }
-            | undefined;
-        if (!locType) {
-            continue;
-        }
-        const seqId = (locType.seqId ?? -1) | 0;
-        if (seqId >= 0) {
-            out.add(seqId);
-        }
-        const randomSeqIds = Array.isArray(locType.randomSeqIds) ? locType.randomSeqIds : [];
-        for (let j = 0; j < randomSeqIds.length; j++) {
-            const randomSeqId = randomSeqIds[j] | 0;
-            if (randomSeqId >= 0) {
-                out.add(randomSeqId);
-            }
-        }
-    }
-    return sortedUniqueTypeIds(Array.from(out));
-}
-
-function collectSeqFrameIdsForSeqTypes(
-    args: Readonly<{
-        provider: SceneBuildCacheProvider;
-        seqTypeIds: ReadonlyArray<number> | undefined;
-    }>,
-): number[] {
-    const { provider, seqTypeIds } = args;
-    const out = new Set<number>();
-    const sortedSeqTypeIds = sortedUniqueTypeIds(seqTypeIds);
-    for (let i = 0; i < sortedSeqTypeIds.length; i++) {
-        const seqType = provider.tryGetSeqTypeDecoded(sortedSeqTypeIds[i] | 0) as
-            | { frameIds?: unknown }
-            | undefined;
-        const frameIds = getFrameIdsArrayLike(seqType);
-        const frameCount = frameIds ? frameIds.length | 0 : 0;
-        for (let j = 0; j < frameCount; j++) {
-            const frameId = Number(frameIds![j]) | 0;
-            if (frameId >= 0) {
-                out.add(frameId);
-            }
-        }
-    }
-    return sortedUniqueTypeIds(Array.from(out));
-}
-
-type DerivedTypeUploadPlan = Readonly<{
-    seqAlphaHintBytesById: ReadonlyMap<number, Uint8Array>;
-}>;
-
-function buildDerivedTypeUploadPlan(
-    args: Readonly<{
-        provider: SceneBuildCacheProvider;
-        expanded: Readonly<{
-            seqTypeIds?: ReadonlyArray<number>;
-        }>;
-    }>,
-): DerivedTypeUploadPlan {
-    const { provider, expanded } = args;
-    const seqTypeIds = sortedUniqueTypeIds(expanded.seqTypeIds as number[] | undefined);
-
-    const seqAlphaHintBytesById = new Map<number, Uint8Array>();
-    for (let i = 0; i < seqTypeIds.length; i++) {
-        const seqId = seqTypeIds[i] | 0;
-        const seqType = provider.tryGetSeqTypeDecoded(seqId) as
-            | { hasAnimMayaSeq?: () => boolean; animMayaId?: number; frameIds?: unknown }
-            | undefined;
-        let hasAlphaTransform = false;
-        if (seqType) {
-            const hasAnimMaya =
-                typeof seqType.hasAnimMayaSeq === "function"
-                    ? (() => {
-                          try {
-                              return seqType.hasAnimMayaSeq() === true;
-                          } catch {
-                              return (seqType.animMayaId ?? -1) >= 0;
-                          }
-                      })()
-                    : (seqType.animMayaId ?? -1) >= 0;
-            if (hasAnimMaya) {
-                const animMayaId = (seqType.animMayaId ?? -1) | 0;
-                const skeletalSeq = provider.tryGetSkeletalSeqDecoded(animMayaId) as
-                    | { hasAlphaTransform?: boolean }
-                    | undefined;
-                hasAlphaTransform = skeletalSeq?.hasAlphaTransform === true;
-            } else {
-                const frameIds = getFrameIdsArrayLike(seqType);
-                const frameCount = frameIds ? frameIds.length | 0 : 0;
-                for (let f = 0; f < frameCount; f++) {
-                    const frameId = Number(frameIds![f]) | 0;
-                    const seqFrame = provider.tryGetSeqFrameDecoded(frameId) as
-                        | { hasAlphaTransform?: boolean }
-                        | undefined;
-                    if (seqFrame?.hasAlphaTransform === true) {
-                        hasAlphaTransform = true;
-                        break;
-                    }
-                }
-            }
-        }
-        seqAlphaHintBytesById.set(seqId, Uint8Array.of(hasAlphaTransform ? 1 : 0));
-    }
-
-    return { seqAlphaHintBytesById };
 }
 
 export type MapRenderByteDrivenSceneBuildInput = Readonly<{
@@ -1394,17 +1321,11 @@ export class WasmCacheUploader {
 
         const seqAlphaHintIds = idsByDomain.get(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_ALPHA_HINT);
         if (seqAlphaHintIds && seqAlphaHintIds.length > 0) {
-            const plan = buildDerivedTypeUploadPlan({
-                provider,
-                expanded: {
-                    seqTypeIds: seqAlphaHintIds,
-                },
-            });
             const seqAlphaUploaded = await this.uploadTypeEntriesFromIdsWithByteGetter(
                 feeder,
                 RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_ALPHA_HINT,
                 seqAlphaHintIds,
-                (id) => plan.seqAlphaHintBytesById.get(id | 0),
+                (id) => provider.tryGetSeqAlphaHintBytes(id),
             );
             if (seqAlphaUploaded < 0) return false;
         }
