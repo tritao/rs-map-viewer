@@ -199,12 +199,16 @@ export class RenderDataWorkerPool {
         );
     }
 
+    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
+        return this.withTickWorker((w) => w.setTickHoveredMapIds(hoveredMapIdsPacked));
+    }
+
     tickFrame(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-        hoveredMapIdsPacked: Int32Array,
+        hoveredMapIdsPacked?: Int32Array,
     ): Promise<FramePacket | undefined> {
         return this.withTickWorker((w) =>
             w.tickFrame(

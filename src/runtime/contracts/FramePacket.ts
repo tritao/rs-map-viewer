@@ -58,6 +58,7 @@ export type ParsedFrameNpcRangesByMapId = ReadonlyMap<number, ParsedFrameNpcRang
 export type ParsedFramePacket = Readonly<{
     frameCount: number;
     tickMapIdsVersion: number;
+    tickViewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     readyMapIds: ReadonlySet<number>;
@@ -69,6 +70,7 @@ export type ParsedFramePacket = Readonly<{
 export type FramePacket = Readonly<{
     frameCount: number;
     tickMapIdsVersion: number;
+    tickViewStateVersion: number;
     npcRingWriteIndex: number;
 
     // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,typeId).
@@ -109,6 +111,7 @@ export type TickPatchStreamsByMap = (Int32Array | undefined)[][];
 export type BuildFramePacketInput = Readonly<{
     frameCount: number;
     tickMapIdsVersion: number;
+    tickViewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     readyMapIdsPacked: Int32Array;
@@ -198,6 +201,12 @@ function validateFramePacketStrict(packet: FramePacket): void {
     if (tickMapIdsVersion < 0) {
         throw new Error(
             `[map-render][frame-packet] tickMapIdsVersion invalid: ${tickMapIdsVersion}`,
+        );
+    }
+    const tickViewStateVersion = packet.tickViewStateVersion | 0;
+    if (tickViewStateVersion < 0) {
+        throw new Error(
+            `[map-render][frame-packet] tickViewStateVersion invalid: ${tickViewStateVersion}`,
         );
     }
 
@@ -328,6 +337,7 @@ export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
     const packet: FramePacket = {
         frameCount: input.frameCount | 0,
         tickMapIdsVersion: input.tickMapIdsVersion | 0,
+        tickViewStateVersion: input.tickViewStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
         readyMapIdsPacked: input.readyMapIdsPacked,
@@ -449,6 +459,7 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
     return {
         frameCount: packet.frameCount | 0,
         tickMapIdsVersion: packet.tickMapIdsVersion | 0,
+        tickViewStateVersion: packet.tickViewStateVersion | 0,
         npcRingWriteIndex,
         npcGpuFrameData: packet.npcGpuFrameData,
         readyMapIds: new Set<number>(packet.readyMapIdsPacked),

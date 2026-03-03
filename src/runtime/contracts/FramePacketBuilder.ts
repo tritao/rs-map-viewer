@@ -32,6 +32,7 @@ export type BuildFramePacketMapEntryInput = Readonly<{
 export type BuildFramePacketFromMapEntriesInput = Readonly<{
     frameCount: number;
     tickMapIdsVersion: number;
+    tickViewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     entries: readonly FramePacketMapEntry[];
@@ -118,6 +119,7 @@ export function buildFramePacketFromMapEntries(
     return buildFramePacket({
         frameCount: input.frameCount | 0,
         tickMapIdsVersion: input.tickMapIdsVersion | 0,
+        tickViewStateVersion: input.tickViewStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
         readyMapIdsPacked,

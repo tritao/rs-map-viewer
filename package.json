@@ -95,6 +95,7 @@
     "rs:scene-light-delegation-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/scene-light-delegation-regression.ts",
     "rs:map-render-wasm-surface-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-wasm-surface-regression.ts",
     "rs:worker-tick-frame-helpers-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-tick-frame-helpers-regression.ts",
+    "rs:worker-frame-packet-source-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-frame-packet-source-regression.ts",
     "rs:worker-map-sim-lifecycle-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-map-sim-lifecycle-regression.ts",
     "rs:npc-lifecycle-packet-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/npc-lifecycle-packet-regression.ts",
     "rs:wasm-tick-npc-path-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/wasm-tick-npc-path-regression.ts",

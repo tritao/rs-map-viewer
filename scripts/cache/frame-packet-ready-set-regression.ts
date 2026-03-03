@@ -38,6 +38,7 @@ function testReadySupersetAccepted(): void {
     const packet = buildFramePacket({
         frameCount: 1,
         tickMapIdsVersion: 1,
+        tickViewStateVersion: 1,
         npcRingWriteIndex: 0,
         npcGpuFrameData: makeNpcGpuData(),
         readyMapIdsPacked: new Int32Array([100, 200]),
@@ -57,6 +58,7 @@ function testRenderMapMustBeReady(): void {
             buildFramePacket({
                 frameCount: 1,
                 tickMapIdsVersion: 1,
+                tickViewStateVersion: 1,
                 npcRingWriteIndex: 0,
                 npcGpuFrameData: makeNpcGpuData(),
                 readyMapIdsPacked: new Int32Array([200]),
@@ -75,6 +77,7 @@ function testReadyMapSetMustBeSortedUnique(): void {
             buildFramePacket({
                 frameCount: 1,
                 tickMapIdsVersion: 1,
+                tickViewStateVersion: 1,
                 npcRingWriteIndex: 0,
                 npcGpuFrameData: makeNpcGpuData(),
                 readyMapIdsPacked: new Int32Array([200, 100]),
@@ -93,6 +96,7 @@ function testBuilderProducesSortedUniqueReadySet(): void {
     const packet = buildFramePacketFromMapEntries({
         frameCount: 2,
         tickMapIdsVersion: 3,
+        tickViewStateVersion: 4,
         npcRingWriteIndex: 1,
         npcGpuFrameData: makeNpcGpuData(),
         entries: [

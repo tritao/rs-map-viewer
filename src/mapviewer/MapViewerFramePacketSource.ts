@@ -31,6 +31,8 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
     private packetEpoch: number = 0;
     private lastTickMapIds: Int32Array = EMPTY_INT32;
     private tickMapIdsVersion: number = 0;
+    private tickViewStateVersion: number = 0;
+    private lastTickHoveredMapIds: Int32Array = EMPTY_INT32;
     private lastTickViewState:
         | Readonly<{ cameraMapX: number; cameraMapY: number; lodDistance: number }>
         | undefined;
@@ -64,13 +66,16 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         ) {
             const epoch = this.packetEpoch | 0;
             const hoveredMapIdsPacked = this.deps.getHoveredMapIdsPacked() ?? EMPTY_INT32;
+            const shouldUpdateHoveredMapIds = !this.areInt32ArraysEqual(
+                hoveredMapIdsPacked,
+                this.lastTickHoveredMapIds,
+            );
             const runTickFrame = () =>
                 this.deps.workerPool.tickFrame(
                     input.frameCount,
                     input.ticksElapsed,
                     input.clientTicksElapsed,
                     input.cycle,
-                    hoveredMapIdsPacked,
                 );
             const updatePromises = this.syncTickRuntimeState({
                 mapIds,
@@ -79,6 +84,8 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                 cameraMapY,
                 lodDistance,
                 shouldUpdateTickViewState,
+                hoveredMapIdsPacked,
+                shouldUpdateHoveredMapIds,
             });
             const startFrameTick =
                 updatePromises.length > 0
@@ -89,7 +96,12 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                     if ((this.packetEpoch | 0) === epoch) {
                         if (
                             nextPacket &&
-                            (nextPacket.tickMapIdsVersion | 0) !== (this.tickMapIdsVersion | 0)
+                            (
+                                (nextPacket.tickMapIdsVersion | 0) !==
+                                    (this.tickMapIdsVersion | 0) ||
+                                (nextPacket.tickViewStateVersion | 0) !==
+                                    (this.tickViewStateVersion | 0)
+                            )
                         ) {
                             this.latestFramePacket = undefined;
                             return undefined;
@@ -120,10 +132,13 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         this.latestFramePacket = undefined;
         this.lastTickMapIds = EMPTY_INT32;
         this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+        this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
+        this.lastTickHoveredMapIds = EMPTY_INT32;
         this.lastTickViewState = undefined;
         void Promise.all([
             this.deps.workerPool.setTickMapIds(EMPTY_INT32),
             this.deps.workerPool.setTickViewState(0, 0, 0),
+            this.deps.workerPool.setTickHoveredMapIds(EMPTY_INT32),
         ]);
     }
 
@@ -158,6 +173,8 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         cameraMapY: number;
         lodDistance: number;
         shouldUpdateTickViewState: boolean;
+        hoveredMapIdsPacked: Int32Array;
+        shouldUpdateHoveredMapIds: boolean;
     }>): Promise<void>[] {
         const updatePromises = new Array<Promise<void>>();
         if (input.shouldUpdateTickMaps) {
@@ -171,12 +188,19 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                 cameraMapY: input.cameraMapY | 0,
                 lodDistance: input.lodDistance | 0,
             };
+            this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
             updatePromises.push(
                 this.deps.workerPool.setTickViewState(
                     input.cameraMapX | 0,
                     input.cameraMapY | 0,
                     input.lodDistance | 0,
                 ),
+            );
+        }
+        if (input.shouldUpdateHoveredMapIds) {
+            this.lastTickHoveredMapIds = Int32Array.from(input.hoveredMapIdsPacked);
+            updatePromises.push(
+                this.deps.workerPool.setTickHoveredMapIds(input.hoveredMapIdsPacked),
             );
         }
         return updatePromises;
