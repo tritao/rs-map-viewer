@@ -357,35 +357,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         });
     }
 
-    private static logNpcPayloadSummary(
-        packet: MapRenderRuntimePacket | undefined,
-        request: MapRenderRuntimeBuildRequest,
-        input: SdMapLoaderInput,
-    ): void {
-        const npcVerticesLen =
-            packet?.npcVertices instanceof Uint8Array ? packet.npcVertices.length | 0 : -1;
-        const npcIndicesLen =
-            packet?.npcIndices instanceof Int32Array ? packet.npcIndices.length | 0 : -1;
-        const npcDrawRangesBaseLen =
-            packet?.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase.length | 0 : -1;
-        const npcDrawRangesAlphaLen =
-            packet?.npcDrawRangesAlpha instanceof Int32Array
-                ? packet.npcDrawRangesAlpha.length | 0
-                : -1;
-        const npcOrderKeysLen =
-            packet?.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys.length | 0 : -1;
-        console.log("[map-render][telemetry][cpp-wasm] buildMapPacket npc payload", {
-            square: `${input.mapX}:${input.mapY}`,
-            loadNpcs: request.loadNpcs === true,
-            hasPacket: packet !== undefined,
-            npcVerticesLen,
-            npcIndicesLen,
-            npcDrawRangesBaseLen,
-            npcDrawRangesAlphaLen,
-            npcOrderKeysLen,
-        });
-    }
-
     private async selectNpcPayload(
         bridge: MapRenderRuntimeBridgeV2,
         runtimeHandle: MapRenderRuntimeHandle,
@@ -497,9 +468,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             return undefined;
         }
         const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
-        if (telemetry) {
-            CppWasmMapRenderDataBackend.logNpcPayloadSummary(packet, request, input);
-        }
         if (!packet) {
             return undefined;
         }
