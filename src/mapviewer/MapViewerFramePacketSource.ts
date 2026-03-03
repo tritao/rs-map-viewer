@@ -1,5 +1,3 @@
-import { MapRenderer, type MapSquareRenderable } from "../renderer/MapRenderer";
-import type { MapData } from "../maprender/MapRenderPayload";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { Camera } from "./Camera";
@@ -14,24 +12,25 @@ export type TickFrameInput = Readonly<{
     clientTicksElapsed: number;
 }>;
 
-export interface MapRenderFramePacketSource {
+export interface MapViewerFramePacketSource {
     nextPacket(input: TickFrameInput): FramePacket | undefined;
     reset(): void;
 }
 
-type WorkerFramePacketSourceDeps = Readonly<{
+type WorkerMapViewerFramePacketSourceDeps = Readonly<{
     workerPool: RenderDataWorkerPool;
-    getRenderer(): MapRenderer<MapSquareRenderable, MapData>;
+    getLodDistance(): number;
+    getHoveredMapIdsPacked(): Int32Array | undefined;
     getMapManager(): MapManager;
     getCamera(): Camera;
 }>;
 
-export class WorkerFramePacketSource implements MapRenderFramePacketSource {
+export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSource {
     private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;
 
-    constructor(private readonly deps: WorkerFramePacketSourceDeps) {}
+    constructor(private readonly deps: WorkerMapViewerFramePacketSourceDeps) {}
 
     nextPacket(input: TickFrameInput): FramePacket | undefined {
         const packet = this.latestFramePacket;
@@ -42,16 +41,13 @@ export class WorkerFramePacketSource implements MapRenderFramePacketSource {
         ) {
             const epoch = this.packetEpoch | 0;
             const mapManager = this.deps.getMapManager();
-            const renderer = this.deps.getRenderer();
             const camera = this.deps.getCamera();
             const n = mapManager.visibleMapCount | 0;
             const mapIds = new Int32Array(n);
             for (let i = 0; i < n; i++) {
                 mapIds[i] = mapManager.visibleMaps[i]!.mapId | 0;
             }
-            const hoveredMapIdsPacked =
-                renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked() ??
-                EMPTY_INT32;
+            const hoveredMapIdsPacked = this.deps.getHoveredMapIdsPacked() ?? EMPTY_INT32;
             this.pendingFramePacket = this.deps.workerPool
                 .tickFrame(
                     input.frameCount,
@@ -61,7 +57,7 @@ export class WorkerFramePacketSource implements MapRenderFramePacketSource {
                     input.cycle,
                     camera.getMapX(),
                     camera.getMapY(),
-                    renderer.lodDistance,
+                    this.deps.getLodDistance(),
                     hoveredMapIdsPacked,
                 )
                 .then((nextPacket) => {

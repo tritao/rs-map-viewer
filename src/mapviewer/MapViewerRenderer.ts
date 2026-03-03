@@ -20,8 +20,8 @@ import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import { MapViewer } from "./MapViewer";
-import { MapRenderTickCoordinator } from "./MapRenderTickCoordinator";
-import { WorkerFramePacketSource } from "./MapRenderFramePacketSource";
+import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
+import { WorkerMapViewerFramePacketSource } from "./MapViewerFramePacketSource";
 
 const DRAW_RANGE_STRIDE = 3;
 const EMPTY_NPC_ORDER_KEYS = new Int32Array(0);
@@ -37,8 +37,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManagerTime: number = 0;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
-    private readonly tickCoordinator = new MapRenderTickCoordinator();
-    private readonly framePacketSource: WorkerFramePacketSource;
+    private readonly tickCoordinator = new MapViewerTickCoordinator();
+    private readonly framePacketSource: WorkerMapViewerFramePacketSource;
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
@@ -58,9 +58,11 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.framePacketSource = new WorkerFramePacketSource({
+        this.framePacketSource = new WorkerMapViewerFramePacketSource({
             workerPool: this.workerPool,
-            getRenderer: () => this.renderer,
+            getLodDistance: () => this.renderer.lodDistance,
+            getHoveredMapIdsPacked: () =>
+                this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
             getMapManager: () => this.mapManager,
             getCamera: () => this.camera,
         });
