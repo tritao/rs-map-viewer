@@ -20,7 +20,7 @@ import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { MapRenderCommandStreamRuntimeInput } from "../MapRenderDataContract";
+import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build";
 import { loadMinimapBlob } from "../MinimapData";
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
@@ -63,6 +63,7 @@ export type BuildMapDataOptions = Readonly<{
     includeNpcAnimationFrames?: boolean;
     debugIncludeSceneCommandPlanDigest?: boolean;
     debugIncludeSceneCommandPlanOpsPacked?: boolean;
+    debugIncludeStageProfile?: boolean;
 }>;
 
 export type BuildMapDataBridgeInputResult = Readonly<{
@@ -70,6 +71,8 @@ export type BuildMapDataBridgeInputResult = Readonly<{
     runtimeCommandStreamInput: MapRenderCommandStreamRuntimeInput | undefined;
     debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
     debugSceneCommandPlanOpsPacked?: Int32Array;
+    debugStageProfile?: Readonly<Record<string, number>>;
+    debugTotalMs?: number;
 }>;
 
 function packSceneCommandPlanOps(plan: SceneCommandPlan): Int32Array {
@@ -481,7 +484,6 @@ export class SdMapRenderDataTsBackend {
         }: SdMapLoaderInput,
         options?: BuildMapDataOptions,
     ): Promise<BuildMapDataBridgeInputResult> {
-        console.time(`load map ${mapX},${mapY}`);
         this.init();
 
         const profileStart = performance.now();
@@ -524,19 +526,19 @@ export class SdMapRenderDataTsBackend {
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
-        console.time(`build scene ${mapX},${mapY}`);
-        const scene = buildSceneFromMapBytesProvider(
-            this.deps.sceneBuilder,
-            this.deps.mapBytesProvider,
-            baseX,
-            baseY,
-            mapSize,
-            mapSize,
-            smoothTerrain,
-            // If we aren't rendering locs, still decode loc placements but avoid model loads/lighting.
-            loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+        const scene = timeStep("buildScene", () =>
+            buildSceneFromMapBytesProvider(
+                this.deps.sceneBuilder,
+                this.deps.mapBytesProvider,
+                baseX,
+                baseY,
+                mapSize,
+                mapSize,
+                smoothTerrain,
+                // If we aren't rendering locs, still decode loc placements but avoid model loads/lighting.
+                loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+            ),
         );
-        console.timeEnd(`build scene ${mapX},${mapY}`);
 
         const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
         timeStep("addTerrain", () => sceneBuf.addTerrain(scene, borderSize, maxLevel));
@@ -799,6 +801,7 @@ export class SdMapRenderDataTsBackend {
                 }
             }
             const loadTexturesMs = performance.now() - loadTexturesStart;
+            profile.loadMissingTextures = loadTexturesMs;
             if (loadTexturesMs > 250) {
                 console.log(
                     `load map ${mapX},${mapY}: textures used=${
@@ -809,8 +812,6 @@ export class SdMapRenderDataTsBackend {
                 );
             }
         }
-
-        console.timeEnd(`load map ${mapX},${mapY}`);
 
         const totalMs = performance.now() - profileStart;
         if (totalMs > 5000) {
@@ -861,6 +862,8 @@ export class SdMapRenderDataTsBackend {
             runtimeCommandStreamInput,
             debugSceneCommandPlanDigest,
             debugSceneCommandPlanOpsPacked,
+            debugStageProfile: options?.debugIncludeStageProfile ? { ...profile } : undefined,
+            debugTotalMs: options?.debugIncludeStageProfile ? totalMs : undefined,
         };
     }
 

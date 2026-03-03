@@ -75,7 +75,7 @@ export type VarProviderLike = Readonly<{
     }>;
 }>;
 
-export type MapRenderSceneBuildLoaders = Readonly<{
+type SceneBuildLoaders = Readonly<{
     locTypeLoader: TypeEntryLoaderLike;
     objTypeLoader?: TypeEntryLoaderLike;
     locModelLoader: LocModelLoaderLike;
@@ -91,7 +91,7 @@ export type MapRenderSceneBuildLoaders = Readonly<{
 }>;
 
 export type MapRenderSceneBuildInputDeps = Readonly<
-    MapRenderSceneBuildLoaders & {
+    SceneBuildLoaders & {
         mapBytesProvider: MapBytesProvider;
         objSpawns?: ReadonlyArray<ObjSpawn>;
         cacheGame: number;

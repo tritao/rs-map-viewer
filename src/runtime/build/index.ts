@@ -14,6 +14,9 @@ export {
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
 } from "./SceneCommandBuilder";
+export type {
+    MapRenderCommandStreamRuntimeInput,
+} from "./SceneCommandBuilder";
 export {
     emitSceneModelsToSceneBuffer,
     summarizeSceneCommandPlan,

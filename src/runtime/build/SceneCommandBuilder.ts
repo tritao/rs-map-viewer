@@ -1,4 +1,3 @@
-import type { MapRenderCommandStreamRuntimeInput } from "../../maprender/MapRenderDataContract";
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
@@ -48,6 +47,19 @@ export type RuntimeInputDimensions = Readonly<{
     sizeX: number;
     sizeY: number;
     unitsTileHeightBasis: number;
+}>;
+
+export type MapRenderCommandStreamRuntimeInput = Readonly<{
+    sceneTileHeights: Int32Array;
+    levels: number;
+    sizeX: number;
+    sizeY: number;
+    unitsTileHeightBasis: number;
+    cmdBucketIndices: Int32Array;
+    cmdOffsets: Int32Array;
+    cmdElements: Int32Array;
+    cmdInstanceCounts: Int32Array;
+    cmdPackedInstances: Int32Array;
 }>;
 
 export function buildRuntimeCommandStreamFromBuckets(

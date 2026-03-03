@@ -4,19 +4,6 @@ import type {
     SdRenderableModelInfoTextures,
 } from "./payload/SdRenderableData";
 
-export type MapRenderCommandStreamRuntimeInput = Readonly<{
-    sceneTileHeights: Int32Array;
-    levels: number;
-    sizeX: number;
-    sizeY: number;
-    unitsTileHeightBasis: number;
-    cmdBucketIndices: Int32Array;
-    cmdOffsets: Int32Array;
-    cmdElements: Int32Array;
-    cmdInstanceCounts: Int32Array;
-    cmdPackedInstances: Int32Array;
-}>;
-
 export const MAP_RENDER_DRAW_BUCKET_KEYS = [
     "base",
     "alpha",
