@@ -163,11 +163,22 @@ function createObjSceneModels(
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
     scene: Scene,
+    baseX: number,
+    baseY: number,
     borderSize: number,
     spawns: ObjSpawn[],
 ): void {
     for (const spawn of spawns) {
-        createObjSceneModel(objTypeLoader, objModelLoader, sceneModels, scene, borderSize, spawn);
+        createObjSceneModel(
+            objTypeLoader,
+            objModelLoader,
+            sceneModels,
+            scene,
+            baseX,
+            baseY,
+            borderSize,
+            spawn,
+        );
     }
 }
 
@@ -176,6 +187,8 @@ function createObjSceneModel(
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
     scene: Scene,
+    baseX: number,
+    baseY: number,
     borderSize: number,
     spawn: ObjSpawn,
 ): void {
@@ -188,11 +201,11 @@ function createObjSceneModel(
         return;
     }
 
-    const localX = spawn.x % 64;
-    const localY = spawn.y % 64;
-
-    const tileX = localX + borderSize;
-    const tileY = localY + borderSize;
+    // `spawns` are world coordinates; map them into the current scene window.
+    // This is intentionally window-relative (not `% 64`) so border-region spawns in adjacent
+    // map squares land on the correct tiles.
+    const tileX = (spawn.x - baseX) | 0;
+    const tileY = (spawn.y - baseY) | 0;
 
     const model = objModelLoader.getModel(spawn.id, spawn.count);
     if (!model) {
@@ -235,8 +248,9 @@ function createObjSceneModel(
         lowDetail: false,
         forceMerge: false,
         sceneHeight,
-        sceneX: localX * 128 + 64,
-        sceneZ: localY * 128 + 64,
+        // Scene-model coordinates are relative to the central map square (border excluded).
+        sceneX: (tileX - borderSize) * 128 + 64,
+        sceneZ: (tileY - borderSize) * 128 + 64,
         heightOffset,
         level: renderLevel,
         contourGround,
@@ -578,6 +592,8 @@ export class SdMapRenderDataTsBackend {
                     objModelLoader,
                     sceneModels,
                     scene,
+                    baseX,
+                    baseY,
                     borderSize,
                     objSpawns,
                 ),
