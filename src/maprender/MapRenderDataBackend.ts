@@ -1,8 +1,9 @@
 import type { MapRenderBuildDeps } from "./MapRenderBuildDeps";
 import type { SdMapData, SdMapLoaderInput } from "./MapRenderPayload";
+import { sdMapDataTransferables } from "./MapRenderPayload";
 import type { BackendKind } from "../util/BackendKind";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
-import { TsMapRenderDataBackend } from "./ts/TsMapRenderDataBackend";
+import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 import { WasmMapRenderDataBackend } from "./wasm/WasmMapRenderDataBackend";
 
 export type RenderDataResult<T> = Readonly<{
@@ -25,6 +26,27 @@ export interface MapRenderDataBackend {
     getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
 }
 
+class TsMapRenderDataBackend implements MapRenderDataBackend {
+    readonly kind: MapRenderDataBackendKind = "ts";
+    private readonly backend: MapRenderTsBackend;
+
+    constructor(deps: MapRenderBuildDeps) {
+        this.backend = new MapRenderTsBackend(deps);
+    }
+
+    async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
+        const data = await this.backend.buildMapData(input);
+        return {
+            data,
+            transferables: data ? sdMapDataTransferables(data) : [],
+        };
+    }
+
+    reset(): void {
+        this.backend.reset();
+    }
+}
+
 export function createMapRenderDataBackend(
     kind: MapRenderDataBackendKind,
     deps: MapRenderBuildDeps,
@@ -38,4 +60,3 @@ export function createMapRenderDataBackend(
         telemetry: options?.telemetry,
     });
 }
-

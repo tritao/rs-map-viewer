@@ -1,6 +1,6 @@
 import type { SdMapData, SdMapLoaderInput } from "../MapRenderPayload";
+import { sdMapDataTransferables } from "../MapRenderPayload";
 import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
-import { sdMapDataTransferables } from "../MapRenderTransferables";
 import type {
     MapRenderDataBackend,
     MapRenderDataBackendKind,
@@ -336,4 +336,3 @@ export class WasmMapRenderDataBackend implements MapRenderDataBackend {
         this.bridge.reset?.();
     }
 }
-
