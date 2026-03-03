@@ -14,11 +14,11 @@ import type {
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
 import {
     MapRenderByteDrivenSceneBuildInput,
-    WasmRuntimeCacheUploader,
+    WasmCacheUploader,
     createByteDrivenSceneBuildInput,
-} from "./wasm/WasmRuntimeCacheUploader";
-import { runtimePacketToPayloadOverlay } from "./wasm/WasmRuntimePacketOverlay";
-import { SdMapRenderDataTsBackend } from "./ts/SdMapRenderDataTsBackend";
+} from "./wasm/WasmCacheUploader";
+import { runtimePacketToPayloadOverlay } from "./wasm/WasmPacketOverlay";
+import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 
 export type RenderDataResult<T> = Readonly<{
     data: T;
@@ -80,10 +80,10 @@ function sdMapDataTransferables(data: SdMapData): Transferable[] {
 
 class TsMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "ts";
-    private readonly backend: SdMapRenderDataTsBackend;
+    private readonly backend: MapRenderTsBackend;
 
     constructor(deps: MapRenderBuildDeps) {
-        this.backend = new SdMapRenderDataTsBackend(deps);
+        this.backend = new MapRenderTsBackend(deps);
     }
 
     async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
@@ -109,7 +109,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
-    private readonly cacheUploader = new WasmRuntimeCacheUploader();
+    private readonly cacheUploader = new WasmCacheUploader();
 
     constructor(
         private readonly deps: MapRenderBuildDeps,

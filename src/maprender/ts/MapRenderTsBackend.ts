@@ -52,7 +52,7 @@ import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
 import { createSdTexturePacking } from "../payload/SdTexturePacking";
 
-export type SdMapRenderDataTsBackendDeps = MapRenderBuildDeps;
+export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 
 export type BuildMapDataOptions = Readonly<{
     includeRuntimeCommandStreamInput?: boolean;
@@ -414,7 +414,7 @@ function addLocEntities(
     return locAnimatedGroupMap.values();
 }
 
-export class SdMapRenderDataTsBackend {
+export class MapRenderTsBackend {
     modelHashBuf?: ModelHashBuffer;
     private cachedTextureIdIndexMap?: Map<number, number>;
     private cachedTextureCacheName?: string;
