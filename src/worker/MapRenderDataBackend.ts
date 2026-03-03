@@ -33,8 +33,6 @@ export type MapRenderDataBackendOptions = Readonly<{
     telemetry?: boolean;
 }>;
 
-export type MapRenderDataBackendDeps = MapRenderBuildDeps;
-
 export interface MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind;
     buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>>;
@@ -205,7 +203,7 @@ class TsMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "ts";
     private readonly backend: SdMapRenderDataTsBackend;
 
-    constructor(deps: MapRenderDataBackendDeps) {
+    constructor(deps: MapRenderBuildDeps) {
         this.backend = new SdMapRenderDataTsBackend(deps);
     }
 
@@ -235,7 +233,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private readonly cacheUploader = new MapRenderRuntimeCacheV2Uploader();
 
     constructor(
-        private readonly deps: MapRenderDataBackendDeps,
+        private readonly deps: MapRenderBuildDeps,
         private readonly options: MapRenderDataBackendOptions | undefined,
     ) {}
 
@@ -608,7 +606,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
 
 export function createMapRenderDataBackend(
     kind: MapRenderDataBackendKind,
-    deps: MapRenderDataBackendDeps,
+    deps: MapRenderBuildDeps,
     options?: MapRenderDataBackendOptions,
 ): MapRenderDataBackend {
     if (kind === "cpp-wasm") {
