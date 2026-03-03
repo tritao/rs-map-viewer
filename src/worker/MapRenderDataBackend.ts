@@ -363,7 +363,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         packet: MapRenderRuntimePacket,
         request: MapRenderRuntimeBuildRequest,
         input: SdMapLoaderInput,
-        telemetry: boolean,
     ): Promise<
         Readonly<{
             npcDrawRangesBase?: Int32Array;
@@ -408,25 +407,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             );
         }
 
-        if (telemetry && request.loadNpcs === true && !keepNpcPayload) {
-            const [npcBuildStats, missingType, legacyModelLoad] = await Promise.all([
-                bridge.debugGetLastNpcBuildStats?.(runtimeHandle),
-                bridge.debugGetLastMissingType?.(runtimeHandle),
-                bridge.debugGetLastLegacyModelLoad?.(runtimeHandle),
-            ]);
-            console.warn("[map-render][telemetry][cpp-wasm] npc payload empty diagnostics", {
-                square: `${input.mapX}:${input.mapY}`,
-                npcRangesLen,
-                npcVerticesLen,
-                npcIndicesLen,
-                npcSlotCount,
-                npcOrderKeysLen,
-                npcBuildStats,
-                missingType,
-                legacyModelLoad,
-            });
-        }
-
         return keepNpcPayload
             ? {
                   npcDrawRangesBase,
@@ -443,7 +423,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         runtimeHandle: MapRenderRuntimeHandle,
         input: SdMapLoaderInput,
         byteDrivenSceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-        telemetry: boolean,
     ): Promise<SdMapData | undefined> {
         const request =
             CppWasmMapRenderDataBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
@@ -498,7 +477,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             packet,
             request,
             input,
-            telemetry,
         );
 
         return {
@@ -530,28 +508,12 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     }
 
     async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
-        const telemetry = this.options?.telemetry === true;
-        const t0 = telemetry ? performance.now() : undefined;
         const bridge = this.bridge;
         if (!(await this.ensureRuntimeInitialized())) {
-            if (telemetry) {
-                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
-                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeMissing${timing} details=runtimeInitFailed`,
-                );
-            }
             return { data: undefined, transferables: [] };
         }
         const runtimeHandle = await this.ensureRuntimeHandle();
         if (runtimeHandle === undefined) {
-            if (telemetry) {
-                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
-                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeMissing${timing} details=runtimeHandleMissing`,
-                );
-            }
             return { data: undefined, transferables: [] };
         }
         const byteDrivenSceneBuildInput = this.createByteDrivenSceneBuildInput(input);
@@ -561,24 +523,9 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 runtimeHandle,
                 input,
                 byteDrivenSceneBuildInput,
-                telemetry,
             );
             if (!bridgePayload) {
-                if (telemetry) {
-                    const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
-                    const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
-                    console.log(
-                        `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeReturnedEmpty${timing} details=runtimePacketMissingOrIncompleteGeometry_or_build_failed=true`,
-                    );
-                }
                 return { data: undefined, transferables: [] };
-            }
-            if (telemetry) {
-                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
-                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=success${timing}`,
-                );
             }
             return {
                 data: bridgePayload,
@@ -586,15 +533,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             };
         } catch (e) {
             console.warn(`[map-render-backend] cpp-wasm buildMapData failed: ${errorToString(e)}`);
-            if (telemetry) {
-                const totalMs = t0 !== undefined ? performance.now() - t0 : undefined;
-                const timing = totalMs !== undefined ? ` totalMs=${totalMs.toFixed(1)}` : "";
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} backend=cpp-wasm outcome=bridgeError${timing} details=${errorToString(
-                        e,
-                    )}`,
-                );
-            }
             return { data: undefined, transferables: [] };
         }
     }
