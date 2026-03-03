@@ -41,6 +41,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const seqFrameLoader = loaders.seqFrameLoader;
         const skeletalSeqLoader = loaders.skeletalSeqLoader;
         return createSceneBuildCacheProvider({
+            mapBytesProvider: this.deps.mapBytesProvider,
             locTypeLoader: loaders.locTypeLoader,
             objTypeLoader: loaders.objTypeLoader,
             locModelLoader: {
@@ -147,12 +148,11 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     }
 
     private createByteDrivenSceneBuildInput(input: SdMapLoaderInput): MapRenderByteDrivenSceneBuildInput {
-        const { session, mapBytesProvider, objSpawns } = this.deps;
+        const { session, objSpawns } = this.deps;
         const varManager = session.varManager;
         const varpValues =
             varManager.values instanceof Int32Array ? new Int32Array(varManager.values) : new Int32Array(0);
         return createByteDrivenSceneBuildInput(input, {
-            mapBytesProvider,
             objSpawns,
             varpValues,
             cacheProvider: this.cacheProvider,

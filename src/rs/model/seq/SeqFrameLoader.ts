@@ -170,6 +170,10 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
         return { frameMapId: mapId | 0, bytes };
     }
 
+    tryGetFrameMapBytesForMapId(mapId: number): Uint8Array | undefined {
+        return this.frameMapSource.getBytes(mapId | 0) ?? undefined;
+    }
+
     clearCache(): void {}
 }
 
