@@ -16,7 +16,7 @@ import {
     MAP_RENDER_RUNTIME_STATUS_OK,
 } from "../../wasm/MapRenderRuntimeStatus.mjs";
 
-export type TypeEntryLoaderLike<T = unknown> = Readonly<{
+type TypeEntryLoaderLike<T = unknown> = Readonly<{
     tryLoad?: (id: number) => Result<T, unknown> | undefined;
     tryLoadBytes?: (id: number) => Uint8Array | Int8Array | undefined;
 }>;
@@ -50,29 +50,29 @@ type LegacySeqFrameFileBytes = Readonly<{
 
 type DatSeqFrameMapBlob = Readonly<{ frameMapId: number; bytes: Uint8Array }>;
 
-export type ModelLoaderLike = TypeEntryLoaderLike & Readonly<{
+type ModelLoaderLike = TypeEntryLoaderLike & Readonly<{
     tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes;
 }>;
 
-export type SeqFrameLoaderLike = TypeEntryLoaderLike & Readonly<{
+type SeqFrameLoaderLike = TypeEntryLoaderLike & Readonly<{
     tryGet?: (id: number) => Result<unknown, unknown> | unknown;
     baseLoader?: TypeEntryLoaderLike;
     tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
     tryGetFrameMapBlobForFrameId?: (id: number) => DatSeqFrameMapBlob | undefined;
 }>;
 
-export type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
+type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
     tryGet?: (id: number) => Result<unknown, unknown> | unknown;
     baseLoader?: TypeEntryLoaderLike;
 }>;
 
-export type TextureLoaderLike = Readonly<{
+type TextureLoaderLike = Readonly<{
     getTextureIds?: () => number[];
     isSd?: (id: number) => boolean;
     isTransparent?: (id: number) => boolean;
 }>;
 
-export type LocModelLoaderLike = Readonly<{
+type LocModelLoaderLike = Readonly<{
     modelLoader?: ModelLoaderLike;
     textureLoader?: TextureLoaderLike;
     seqTypeLoader?: TypeEntryLoaderLike;
@@ -80,7 +80,7 @@ export type LocModelLoaderLike = Readonly<{
     skeletalSeqLoader?: SkeletalSeqLoaderLike;
 }>;
 
-export type VarProviderLike = Readonly<{
+type VarProviderLike = Readonly<{
     values?: Int32Array;
     varbitLoader?: TypeEntryLoaderLike;
     varManager?: Readonly<{
@@ -89,7 +89,7 @@ export type VarProviderLike = Readonly<{
     }>;
 }>;
 
-export type MapRenderSceneBuildInputDeps = Readonly<{
+type MapRenderSceneBuildInputDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;
     objSpawns?: ReadonlyArray<ObjSpawn>;
     cacheGame: number;
@@ -615,9 +615,7 @@ export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     varpValues: Int32Array;
 }>;
 
-export type ByteDrivenSceneBuildInputDeps = MapRenderSceneBuildInputDeps;
-
-export function snapshotVarpValues(varProvider: VarProviderLike): Int32Array {
+function snapshotVarpValues(varProvider: VarProviderLike): Int32Array {
     const managerValues = varProvider.varManager?.values;
     if (managerValues instanceof Int32Array) {
         return new Int32Array(managerValues);
@@ -631,7 +629,7 @@ export function snapshotVarpValues(varProvider: VarProviderLike): Int32Array {
 
 export function createByteDrivenSceneBuildInput(
     input: SdMapLoaderInput,
-    deps: ByteDrivenSceneBuildInputDeps,
+    deps: MapRenderSceneBuildInputDeps,
 ): MapRenderByteDrivenSceneBuildInput {
     const borderSize = 6;
     const mapSquareSize = 64;
@@ -1770,22 +1768,5 @@ export async function uploadRuntimeCacheForBuildRequest(
         runtimeHandle,
         request,
         sceneBuildInput,
-    );
-}
-
-export async function prepareRuntimeForBuildRequestDetailed(
-    bridge: MapRenderRuntimeBridgeV2,
-    runtimeHandle: MapRenderRuntimeHandle,
-    request: MapRenderRuntimeBuildRequest,
-    sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-    maxPasses = 12,
-): Promise<MapRenderRuntimePrepareResult> {
-    const uploader = new MapRenderRuntimeCacheV2Uploader();
-    return uploader.prepareRuntimeForBuildRequestDetailed(
-        bridge,
-        runtimeHandle,
-        request,
-        sceneBuildInput,
-        maxPasses,
     );
 }
