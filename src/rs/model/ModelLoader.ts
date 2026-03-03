@@ -10,6 +10,7 @@ import { ModelData } from "./ModelData";
 export interface ModelLoader {
     tryLoad(id: number): Result<ModelData, DecodeError>;
     tryGet(id: number): ModelData | undefined;
+    tryLoadBytes?(id: number): Uint8Array | undefined;
     getCount(): number;
     clearCache(): void;
 }

@@ -8,6 +8,8 @@ import { SkeletalSeq } from "./SkeletalSeq";
 export interface SkeletalSeqLoader {
     tryLoad(id: number): Result<SkeletalSeq, DecodeError>;
     tryGet(id: number): SkeletalSeq | undefined;
+    tryLoadBytes?(id: number): Uint8Array | undefined;
+    readonly baseLoader?: SeqBaseLoader;
 
     clearCache(): void;
 }

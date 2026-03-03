@@ -43,17 +43,10 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             mapBytesProvider: this.deps.mapBytesProvider,
             locTypeLoader: loaders.locTypeLoader,
             objTypeLoader: loaders.objTypeLoader,
-            modelLoader: loaders.modelLoader as unknown as {
-                tryLoadBytes?: (id: number) => Uint8Array | undefined;
-            },
+            modelLoader: loaders.modelLoader,
             seqTypeLoader: loaders.seqTypeLoader,
             seqFrameLoader: loaders.seqFrameLoader,
-            skeletalSeqLoader: loaders.skeletalSeqLoader as unknown as
-                | {
-                      tryLoadBytes?: (id: number) => Uint8Array | undefined;
-                      baseLoader?: { tryLoadBytes?: (id: number) => Uint8Array | undefined };
-                  }
-                | undefined,
+            skeletalSeqLoader: loaders.skeletalSeqLoader,
             npcTypeLoader: loaders.npcTypeLoader,
             basTypeLoader: loaders.basTypeLoader,
             underlayTypeLoader: loaders.underlayTypeLoader,

@@ -8,6 +8,7 @@ import { Dat2SeqBase, SeqBase } from "./SeqBase";
 export interface SeqBaseLoader {
     tryLoad(id: number): Result<SeqBase, DecodeError>;
     tryGet(id: number): SeqBase | undefined;
+    tryLoadBytes?(id: number): Uint8Array | undefined;
 
     clearCache(): void;
 }

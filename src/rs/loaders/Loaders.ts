@@ -24,12 +24,18 @@ export type LoaderCapabilities = Readonly<{
     hasDistinctUnderlayTypeLoader: boolean;
 }>;
 
-export type ModelService = Pick<ModelLoader, "tryLoad" | "tryGet" | "getCount" | "clearCache">;
+export type ModelService = Pick<
+    ModelLoader,
+    "tryLoad" | "tryGet" | "tryLoadBytes" | "getCount" | "clearCache"
+>;
 export type SeqFrameService = Pick<
     SeqFrameLoader,
     "tryLoad" | "tryGet" | "tryLoadBytes" | "clearCache"
 >;
-export type SkeletalSeqService = Pick<SkeletalSeqLoader, "tryLoad" | "tryGet" | "clearCache">;
+export type SkeletalSeqService = Pick<
+    SkeletalSeqLoader,
+    "tryLoad" | "tryGet" | "tryLoadBytes" | "baseLoader" | "clearCache"
+>;
 export type TextureService = Pick<
     TextureLoader,
     | "getTextureIds"
