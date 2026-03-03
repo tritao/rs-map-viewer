@@ -1527,29 +1527,6 @@ struct DecodedSeqTypeCacheEntry final {
     rs::SeqType seq{};
 };
 
-static rs::i32 findTypeBlobIndex(const std::vector<rs::i32>& ids, const rs::i32 id) {
-    for (std::size_t i = 0; i < ids.size(); i++) {
-        if (ids[i] == id) {
-            return static_cast<rs::i32>(i);
-        }
-    }
-    return -1;
-}
-
-static rs::i32 mapTextureIdToPackedIndex(
-    const std::vector<rs::i32>& textureIds,
-    const rs::i32 textureId) {
-    if (textureId < 0) {
-        return -1;
-    }
-    const rs::i32 packed = findTypeBlobIndex(textureIds, textureId);
-    if (packed < 0) {
-        return -1;
-    }
-    // Packed texture index 0 is reserved as untextured in the renderer.
-    return packed + 1;
-}
-
 static rs::Status tryDecodeSeqTypeFromBlob(
     const MapRenderRuntimeState* runtime,
     const rs::CacheInfo& cacheInfo,
@@ -2398,26 +2375,30 @@ static rs::Status appendPackedVertex(
         return rs::Status::OutOfRange;
     }
 
-    if (textureId >= 2048) {
+    // Packed format stores raw cache texture ids as 16-bit `textureIdPlus1` (0 reserved).
+    if (textureId > 0xfffe) {
         textureId = -1;
     }
-    if (textureId1 >= 2048) {
+    if (textureId1 > 0xfffe) {
         textureId1 = -1;
     }
 
     if (textureBlend < 0.0f) textureBlend = 0.0f;
     if (textureBlend > 1.0f) textureBlend = 1.0f;
 
-    const bool isTextured = textureId != -1;
+    const rs::i32 tex0 = textureId != -1 ? (textureId + 1) : 0;
+    const rs::i32 tex1 = textureId1 != -1 ? (textureId1 + 1) : 0;
+
+    const bool isTextured = tex0 != 0;
     if (isTextured) {
         hsl &= 127;
-        hsl |= (textureId & 0x1ff) << 7;
+        hsl |= (tex0 & 0x1ff) << 7;
     }
 
     const bool hasBlend =
         isTextured &&
-        textureId1 != -1 &&
-        textureId1 != textureId &&
+        tex1 != 0 &&
+        tex1 != tex0 &&
         textureBlend > 0.0f;
 
     const rs::i32 xPos = clampI32(x + 0x4000, 0, 0x8000);
@@ -2431,9 +2412,9 @@ static rs::Status appendPackedVertex(
 
     const rs::i32 blend8 =
         hasBlend ? clampI32(static_cast<rs::i32>(textureBlend * 255.0f + 0.5f), 0, 0xff) : 0;
-    const rs::i32 tex1Lo = hasBlend ? clampI32(textureId1, 0, 0x3ff) : 0;
-    const rs::i32 tex0Hi = (textureId >> 10) & 0x1;
-    const rs::i32 tex1Hi = (textureId1 >> 10) & 0x1;
+    const rs::i32 tex0High7 = isTextured ? ((tex0 >> 9) & 0x7f) : 0;
+    const rs::i32 tex1Low10 = hasBlend ? (tex1 & 0x3ff) : 0;
+    const rs::i32 tex1High6 = hasBlend ? ((tex1 >> 10) & 0x3f) : 0;
 
     const rs::u32 v0 =
         (static_cast<rs::u32>(xPos) << 17) |
@@ -2447,14 +2428,13 @@ static rs::Status appendPackedVertex(
         (static_cast<rs::u32>(zPos) << 17) |
         (static_cast<rs::u32>(alphaClamped) << 9) |
         (static_cast<rs::u32>(priorityClamped) << 6) |
-        (static_cast<rs::u32>(isTextured ? ((textureId >> 9) & 0x1) : 0) << 5) |
         static_cast<rs::u32>(uPacked >> 6);
     const rs::u32 v3 =
-        static_cast<rs::u32>(tex1Lo) |
+        static_cast<rs::u32>(tex1Low10) |
         (static_cast<rs::u32>(hasBlend ? 1 : 0) << 10) |
         (static_cast<rs::u32>(blend8) << 11) |
-        (static_cast<rs::u32>(tex0Hi) << 19) |
-        (static_cast<rs::u32>(tex1Hi) << 20);
+        (static_cast<rs::u32>(tex0High7) << 19) |
+        (static_cast<rs::u32>(tex1High6) << 26);
 
     const std::size_t off = outVertices->size();
     outVertices->resize(off + 16);

@@ -80,11 +80,10 @@ struct SceneCommandBuildInput final {
     //
     // TS parity notes:
     // - ModelData.light() considers a face "textured" iff `textureId != -1 && textureLoader.isSd(textureId)`.
-    // - Packed texture indices stored in vertices use `createSdTexturePacking(...).textureIds`, which is
-    //   the SD texture id list truncated to the first 2047 entries; ids beyond that still count as "textured"
-    //   for transparency decisions, but pack as -1 in vertex data.
+    // - Packed vertices store raw cache texture ids (as `textureIdPlus1`, 0 reserved), so the runtime only
+    //   needs SD membership (not a stable ordering) to decide textured/untextured faces.
     Span<const i32> textureTransparentIds{};
-    // Ordered list of all SD texture ids (not truncated to 2047). Packed index is `index < 2047 ? index : -1`.
+    // List of SD texture ids (ordering is irrelevant; this is used for membership checks).
     Span<const i32> textureIds{};
 
     // Optional fallback for dat (classic) seq frames: these do not have stable per-frame

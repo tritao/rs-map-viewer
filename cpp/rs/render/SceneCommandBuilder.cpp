@@ -1719,10 +1719,6 @@ static bool isTextureTransparent(
     return findTypeBlobIndex(textureTransparentIds, textureId) >= 0;
 }
 
-// TS createSdTexturePacking slices to 2047 entries, so packed indices are 0..2046.
-// Keep this aligned to TS so "packable" textures match exactly across caches with >2k textures.
-static constexpr i32 RS_SD_TEXTURE_PACK_LIMIT = 2047;
-
 static bool isTextureSd(
     Span<const i32> textureSdIds,
     i32 textureId) noexcept {
@@ -1736,13 +1732,8 @@ i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcep
     if (textureId < 0) {
         return -1;
     }
-    const i32 index = findTypeBlobIndex(textureIds, textureId);
-    if (index < 0) {
-        return -1;
-    }
-    // Packed texture indices match TS: 0-based index into the cache's SD texture list, truncated to 2048.
-    // Indices beyond the pack limit must be treated as "untextured" so vertex packing/shaders stay consistent.
-    return index < RS_SD_TEXTURE_PACK_LIMIT ? index : -1;
+    // New packing stores raw cache texture ids directly (as textureIdPlus1 in the packed-vertex stream).
+    return findTypeBlobIndex(textureIds, textureId) >= 0 ? textureId : -1;
 }
 
 Status tryDecodeUnderlayTypeFromBlob(
@@ -2718,8 +2709,6 @@ static inline i32 filterSdTextureId(const SceneCommandBuildInput& input, i32 tex
     if (textureId < 0) {
         return -1;
     }
-    // TS parity: SD filtering is independent of packed index truncation; textures beyond the pack
-    // limit still remain "textured" (textureId != -1) but pack as -1 later.
     return isTextureSd(input.textureIds, textureId) ? textureId : -1;
 }
 
@@ -4471,10 +4460,8 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
                 }
             }
 
-            const i32 sdIndex = findTypeBlobIndex(input.textureIds, textureId);
-            const bool hasTexture = sdIndex >= 0;
-            const i32 packedTextureId =
-                hasTexture && sdIndex < RS_SD_TEXTURE_PACK_LIMIT ? sdIndex : -1;
+            const bool hasTexture = findTypeBlobIndex(input.textureIds, textureId) >= 0;
+            const i32 packedTextureId = hasTexture ? textureId : -1;
             const bool textureAlpha =
                 hasTexture &&
                 findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0;

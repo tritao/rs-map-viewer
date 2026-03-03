@@ -39,6 +39,7 @@ const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ = 116;
 // Legacy fallback: (domain, group=0, file=id) presence keys with empty payload.
 const RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_GROUP = 1;
 const RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_FILE = 0;
+const RUNTIME_BLOB_TYPE_ENTRY_ID_PRESENCE_GROUP = 0;
 // Domain for map-square bytes: (domain=2, group=mapSquareId, file=<map-square file id>).
 const RUNTIME_BLOB_DOMAIN_MAP_SQUARE = 2;
 const RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN = 0;
@@ -647,19 +648,30 @@ export class WasmCacheUploader {
         this.uploadedTextureListsForRuntime.clear();
     }
 
-    private async uploadPackedI32List(
+    private async uploadTypeIdPresenceKeys(
         feeder: RuntimeCacheFeeder,
         domain: number,
         ids: ReadonlyArray<number>,
     ): Promise<boolean> {
         const kept = sortedUniqueTypeIds(ids);
-        const packed = Int32Array.from(kept);
-        return await feeder.putBlob(
-            domain,
-            RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_GROUP,
-            RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_FILE,
-            new Uint8Array(packed.buffer, packed.byteOffset, packed.byteLength),
-        );
+        if (kept.length <= 0) {
+            return true;
+        }
+
+        // Presence keys:
+        // - (domain, group=0, file=id) with empty payload.
+        const n = kept.length | 0;
+        const groups = new Int32Array(n);
+        const files = new Int32Array(n);
+        const offsets = new Int32Array(n);
+        const lengths = new Int32Array(n);
+        for (let i = 0; i < n; i++) {
+            groups[i] = RUNTIME_BLOB_TYPE_ENTRY_ID_PRESENCE_GROUP;
+            files[i] = kept[i] | 0;
+            offsets[i] = 0;
+            lengths[i] = 0;
+        }
+        return await feeder.putBlobBatch(domain, groups, files, offsets, lengths, new Uint8Array(0));
     }
 
     private async ensureTextureListsUploaded(
@@ -735,19 +747,28 @@ export class WasmCacheUploader {
             });
         }
 
-        // Prefer a single packed list payload; runtime can fall back to presence keys if needed.
-        if (!(await this.uploadPackedI32List(feeder, RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, sdTextureIds))) {
-            return fail("put.texture_ids.packed_list", {
+        // Presence keys only (no ordered payload list). With raw texture-id vertex packing,
+        // runtime no longer needs a stable SD texture ordering; membership is enough.
+        if (
+            !(await this.uploadTypeIdPresenceKeys(
+                feeder,
+                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
+                sdTextureIds,
+            ))
+        ) {
+            return fail("put.texture_ids.presence_keys", {
                 domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
                 sdCount: sdTextureIds.length | 0,
             });
         }
-        if (!(await this.uploadPackedI32List(
-            feeder,
-            RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-            transparentTextureIds,
-        ))) {
-            return fail("put.texture_transparent.packed_list", {
+        if (
+            !(await this.uploadTypeIdPresenceKeys(
+                feeder,
+                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+                transparentTextureIds,
+            ))
+        ) {
+            return fail("put.texture_transparent.presence_keys", {
                 domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
                 transparentCount: transparentTextureIds.length | 0,
             });

@@ -20,7 +20,6 @@ import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneComma
 import type { SdMapData, SdMapLoaderInput } from "../../src/maprender/MapRenderPayload";
 import { MapRenderTsBackend } from "../../src/maprender/ts/MapRenderTsBackend";
 import type { MapRenderTsBackendDeps } from "../../src/maprender/ts/MapRenderTsBackend";
-import { createSdTexturePacking } from "../../src/maprender/ts/TexturePacking";
 import {
     WasmCacheUploader,
     createByteDrivenSceneBuildInput,
@@ -1225,7 +1224,7 @@ function computeTerrainDigestSamplePackedFromTsDigest(
     scene: Scene,
     borderSize: number,
     maxLevel: number,
-    textureIdIndexMap: ReadonlyMap<number, number>,
+    textureLoader: Readonly<{ isSd(id: number): boolean }>,
     limitVertices: number,
     startVertex: number = 0,
 ): { count: number; stride: number; packed: Int32Array } {
@@ -1260,8 +1259,10 @@ function computeTerrainDigestSamplePackedFromTsDigest(
                 const vertices = collectTerrainTileVertexRecords(tile, vertexOffset, vertexOffset);
                 for (let i = 0; i < vertices.length; i++) {
                     const v = vertices[i];
-                    const tex0 = (textureIdIndexMap.get(v.textureId) ?? -1) | 0;
-                    const tex1 = (textureIdIndexMap.get(v.textureId1) ?? -1) | 0;
+                    const id0 = v.textureId | 0;
+                    const id1 = v.textureId1 | 0;
+                    const tex0 = id0 >= 0 && textureLoader.isSd(id0) ? id0 : -1;
+                    const tex1 = id1 >= 0 && textureLoader.isSd(id1) ? id1 : -1;
                     const qU = quantizeUv(v.u);
                     const qV = quantizeUv(v.v);
                     const blendI = (v.texBlend | 0) as number;
@@ -1662,8 +1663,7 @@ function digestSceneLightRenderFromScene(
     locTypeLoader: SceneBuilder["services"]["locTypeLoader"],
     textureLoader: SceneBuilder["services"]["textureLoader"],
 ): SceneLightStageDigest {
-    const { textureIdIndexMap } = createSdTexturePacking(textureLoader as any);
-    const sceneBuf = new SceneBuffer(textureLoader as any, new Map(textureIdIndexMap), 100000);
+    const sceneBuf = new SceneBuffer(textureLoader as any, 100000);
     sceneBuf.addTerrain(scene, borderSize | 0, maxLevel | 0);
     const sceneLocs = getSceneLocs(locTypeLoader as any, scene, borderSize | 0, maxLevel | 0);
     emitSceneModelsToSceneBuffer(
@@ -2974,8 +2974,6 @@ async function debugDumpTsLocModelUvForPackedVertex(opts: {
     locTypeId: number;
     placementType: number;
     placementRotation: number;
-    // Packed vertices store SD texture *indices*; provide the index->id table to resolve faceTextures.
-    sdTextureIds?: ReadonlyArray<number>;
     // When provided, we resolve scene-space positions by applying (sceneX,sceneZ,sceneHeight+heightOffset).
     // This matches how SceneBuffer writes vertices.
     scene?: Scene;
@@ -3039,10 +3037,7 @@ async function debugDumpTsLocModelUvForPackedVertex(opts: {
     const y = opts.vertex.y | 0;
     const z = opts.vertex.z | 0;
     const packedTexIndex = opts.vertex.textureId | 0;
-    const texId =
-        opts.sdTextureIds && packedTexIndex >= 0 && packedTexIndex < opts.sdTextureIds.length
-            ? opts.sdTextureIds[packedTexIndex] | 0
-            : packedTexIndex;
+    const texId = packedTexIndex;
 
     const instances =
         opts.instances && opts.instances.length > 0
@@ -8027,9 +8022,9 @@ function decodePackedVertexDebug(bytes: Uint8Array, vertexIndex: number): Packed
     const v3 = view.getUint32(off + 12, true) >>> 0;
     const hsl = (v1 >>> 15) & 0xffff;
     const isTextured = (v1 >>> 31) & 0x1;
-    const textureIdBits =
-        ((hsl >>> 7) & 0x1ff) | (((v2 >>> 5) & 0x1) << 9) | (((v3 >>> 19) & 0x1) << 10);
-    const textureId1Bits = ((v3 >>> 0) & 0x3ff) | (((v3 >>> 20) & 0x1) << 10);
+    // New packing stores raw texture ids as 16-bit `textureIdPlus1` (0 reserved).
+    const tex0Plus1 = ((hsl >>> 7) & 0x1ff) | (((v3 >>> 19) & 0x7f) << 9);
+    const tex1Plus1 = ((v3 >>> 0) & 0x3ff) | (((v3 >>> 26) & 0x3f) << 10);
     const hasBlend = (v3 >>> 10) & 0x1;
     const blend = (v3 >>> 11) & 0xff;
     const alpha = (v2 >>> 9) & 0xff;
@@ -8044,8 +8039,8 @@ function decodePackedVertexDebug(bytes: Uint8Array, vertexIndex: number): Packed
         z: (((v2 >>> 17) & 0x7fff) - 0x4000) | 0,
         hsl,
         isTextured,
-        textureId: isTextured ? textureIdBits | 0 : -1,
-        textureId1: hasBlend ? textureId1Bits | 0 : -1,
+        textureId: isTextured && tex0Plus1 > 0 ? ((tex0Plus1 - 1) | 0) : -1,
+        textureId1: hasBlend && tex1Plus1 > 0 ? ((tex1Plus1 - 1) | 0) : -1,
         hasBlend,
         blend,
         alpha,
@@ -8999,12 +8994,8 @@ async function main(): Promise<void> {
                                     dbgScene.light(sceneBuilder.textureLoader, -50, -10, -50);
 
                                     const textureLoader = sceneBuilder.services.textureLoader;
-                                    const { textureIdIndexMap } = createSdTexturePacking(
-                                        textureLoader as any,
-                                    );
                                     const dbgBuf = new SceneBuffer(
                                         textureLoader as any,
-                                        new Map(textureIdIndexMap),
                                         100000,
                                     );
                                     dbgBuf.addTerrain(
@@ -9052,7 +9043,6 @@ async function main(): Promise<void> {
                     const borderSize = ((((sceneBuildInput.sizeX as number) | 0) - 64) / 2) | 0;
                     if (borderSize >= 0) {
                         const textureLoader = sceneBuilder.services.textureLoader;
-                        const { textureIdIndexMap } = createSdTexturePacking(textureLoader);
                         const tsTerrainScene = buildSceneFromMapBytesProvider(
                             sceneBuilder,
                             mapBytesProvider,
@@ -9067,7 +9057,7 @@ async function main(): Promise<void> {
                             tsTerrainScene,
                             borderSize,
                             input.maxLevel | 0,
-                            textureIdIndexMap,
+                            textureLoader as any,
                         );
 
                         // When terrain digest mismatches, fetch the first few vertex records from both
@@ -9128,7 +9118,7 @@ async function main(): Promise<void> {
                                         tsTerrainScene,
                                         borderSize,
                                         input.maxLevel | 0,
-                                        textureIdIndexMap,
+                                        textureLoader,
                                         512,
                                         start,
                                     );
@@ -13345,8 +13335,6 @@ async function main(): Promise<void> {
                 try {
                     const borderSize = ((((sceneBuildInput.sizeX as number) | 0) - 64) / 2) | 0;
                     if (borderSize >= 0) {
-                        const textureLoader = sceneBuilder.services.textureLoader;
-                        const { textureIdIndexMap } = createSdTexturePacking(textureLoader);
                         const tsTerrainScene = buildSceneFromMapBytesProvider(
                             sceneBuilder,
                             mapBytesProvider,
@@ -13361,7 +13349,7 @@ async function main(): Promise<void> {
                             tsTerrainScene,
                             borderSize,
                             input.maxLevel | 0,
-                            textureIdIndexMap,
+                            sceneBuilder.services.textureLoader as any,
                         );
                         if (!args.quiet) {
                             console.error(
@@ -15514,16 +15502,12 @@ async function main(): Promise<void> {
                                                       LocLoadType.NO_MODELS,
                                                   )
                                                 : undefined;
-                                        const { textureIds: sdTextureIds } = createSdTexturePacking(
-                                            sceneBuilder.services.textureLoader,
-                                        );
                                         const tsUvMatches =
                                             await debugDumpTsLocModelUvForPackedVertex({
                                                 sceneBuilder,
                                                 locTypeId: prov.locTypeId | 0,
                                                 placementType: prov.placementType | 0,
                                                 placementRotation: prov.placementRotation | 0,
-                                                sdTextureIds,
                                                 scene: tsSceneForUv,
                                                 borderTiles,
                                                 instances: tsInstances,
@@ -15548,7 +15532,6 @@ async function main(): Promise<void> {
                                                       locTypeId: prov.locTypeId | 0,
                                                       placementType: prov.placementType | 0,
                                                       placementRotation: prov.placementRotation | 0,
-                                                      sdTextureIds,
                                                       scene: tsSceneForUv,
                                                       borderTiles,
                                                       instances: tsInstances,

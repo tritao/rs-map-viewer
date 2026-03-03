@@ -144,7 +144,6 @@ export type BuildNpcGeometryInput = Readonly<{
     includeNpcAnimationFrames: boolean;
     npcSpawns: readonly NpcSpawn[];
     textureLoader: TextureLoader;
-    textureIdIndexMap: Map<number, number>;
     npcModelLoader: NpcModelLoader;
     npcTypeLoader: NpcTypeLoader;
     seqTypeLoader: SeqTypeLoader;
@@ -185,7 +184,6 @@ export function buildNpcGeometry(input: BuildNpcGeometryInput): BuiltNpcGeometry
 
     const sceneBuf = new SceneBuffer(
         input.textureLoader,
-        input.textureIdIndexMap,
         NPC_SCENE_BUFFER_INIT_VERTEX_COUNT,
     );
     const npcSpawnGroups = createNpcSpawnGroups(

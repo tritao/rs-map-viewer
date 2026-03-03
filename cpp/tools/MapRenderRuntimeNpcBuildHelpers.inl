@@ -342,7 +342,7 @@ static rs::Status tryDecodeModelDataFromRuntime(
 
 static rs::Status appendNpcModelGeometry(
     const rs::ModelData& model,
-    const std::vector<rs::i32>& textureIds,
+    const std::vector<rs::i32>& textureSdIds,
     const rs::i32 sceneTileX,
     const rs::i32 sceneTileY,
     std::vector<rs::u8>* outVertices,
@@ -367,7 +367,10 @@ static rs::Status appendNpcModelGeometry(
         if (model.hasFaceTextures && fi < static_cast<rs::i32>(model.faceTextures.size())) {
             textureId = static_cast<rs::i32>(model.faceTextures[static_cast<std::size_t>(fi)]);
         }
-        const rs::i32 packedTextureId = mapTextureIdToPackedIndex(textureIds, textureId);
+        const rs::i32 textureIdSd =
+            (textureId >= 0 && std::binary_search(textureSdIds.begin(), textureSdIds.end(), textureId))
+                ? textureId
+                : -1;
 
         rs::i32 alpha = 0xff;
         if (model.hasFaceAlphas && textureId == -1 && fi < static_cast<rs::i32>(model.faceAlphas.size())) {
@@ -415,7 +418,7 @@ static rs::Status appendNpcModelGeometry(
             0.0f,
             0.0f,
             priority,
-            packedTextureId);
+            textureIdSd);
         if (!rs::ok(vs)) {
             return vs;
         }
@@ -430,7 +433,7 @@ static rs::Status appendNpcModelGeometry(
             1.0f,
             0.0f,
             priority,
-            packedTextureId);
+            textureIdSd);
         if (!rs::ok(vs)) {
             return vs;
         }
@@ -445,7 +448,7 @@ static rs::Status appendNpcModelGeometry(
             1.0f,
             1.0f,
             priority,
-            packedTextureId);
+            textureIdSd);
         if (!rs::ok(vs)) {
             return vs;
         }
@@ -547,8 +550,8 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
     std::vector<DecodedVarBitTypeCacheEntry> varbitCache{};
     varbitCache.reserve(64);
     std::unordered_map<std::uint64_t, rs::i32> npcTupleOccurrences{};
-    std::vector<rs::i32> packedTextureIds{};
-    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &packedTextureIds);
+    std::vector<rs::i32> textureSdIds{};
+    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureSdIds);
 
     const rs::i32 mapBaseX = mapX * kMapSquareSize;
     const rs::i32 mapBaseY = mapY * kMapSquareSize;
@@ -618,7 +621,7 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
             rs::i32 modelIndexCount = 0;
             const rs::Status gs = appendNpcModelGeometry(
                 model,
-                packedTextureIds,
+                textureSdIds,
                 sceneTileX,
                 sceneTileY,
                 &payload->npcVertices,

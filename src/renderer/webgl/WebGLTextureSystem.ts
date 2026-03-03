@@ -74,9 +74,9 @@ export class WebGLTextureSystem {
             this.materialsTexture = undefined;
         }
 
-        const { data, width } = buildTextureMaterialsTable(this.getTextureIds(), textureLoader);
+        const { data, width, height } = buildTextureMaterialsTable(this.getTextureIds(), textureLoader);
 
-        this.materialsTexture = app.createTexture2D(data, width, 1, {
+        this.materialsTexture = app.createTexture2D(data, width, height, {
             minFilter: PicoGL.NEAREST,
             magFilter: PicoGL.NEAREST,
             internalFormat: PicoGL.RGBA8I,

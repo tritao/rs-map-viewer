@@ -33,7 +33,7 @@ function runRegression(): void {
     assert.deepEqual(getInteractCommandBucketKeys(false, true), ["interact", "interactLod"]);
     assert.deepEqual(getInteractCommandBucketKeys(true, false), ["interactAlpha"]);
 
-    const sceneBuf = new SceneBuffer({} as any, new Map<number, number>(), 0);
+    const sceneBuf = new SceneBuffer({} as any, 0);
     const opaque = makeCommand(12, 6, 0);
     const alpha = makeCommand(24, 3, 1);
 

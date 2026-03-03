@@ -102,7 +102,7 @@ export function summarizeTerrainGeometry(
     scene: Scene,
     borderSize: number,
     maxLevel: number,
-    textureIdIndexMap?: ReadonlyMap<number, number>,
+    textureLoader?: TextureLoader,
 ): TerrainDigest {
     const startX = borderSize;
     const startY = borderSize;
@@ -135,12 +135,12 @@ export function summarizeTerrainGeometry(
                 levelVertices[level] += vertices.length;
                 for (let i = 0; i < vertices.length; i++) {
                     const v = vertices[i];
+                    const id0 = v.textureId | 0;
+                    const id1 = v.textureId1 | 0;
                     const tex0 =
-                        textureIdIndexMap?.get(v.textureId) ??
-                        (textureIdIndexMap ? -1 : v.textureId | 0);
+                        id0 >= 0 && textureLoader && textureLoader.isSd(id0) ? id0 : -1;
                     const tex1 =
-                        textureIdIndexMap?.get(v.textureId1) ??
-                        (textureIdIndexMap ? -1 : v.textureId1 | 0);
+                        id1 >= 0 && textureLoader && textureLoader.isSd(id1) ? id1 : -1;
                     hash = fnv1a32UpdateInt(hash, v.x | 0);
                     hash = fnv1a32UpdateInt(hash, v.y | 0);
                     hash = fnv1a32UpdateInt(hash, v.z | 0);
@@ -333,10 +333,17 @@ export class SceneBuffer {
 
     constructor(
         readonly textureLoader: TextureLoader,
-        readonly textureIdIndexMap: Map<number, number>,
         initVertexCount: number,
     ) {
         this.vertexBuf = new VertexBuffer(initVertexCount);
+    }
+
+    private resolveSdTextureId(textureId: number): number {
+        const id = textureId | 0;
+        if (id < 0) {
+            return -1;
+        }
+        return this.textureLoader.isSd(id) ? id : -1;
     }
 
     vertexCount(): number {
@@ -417,14 +424,14 @@ export class SceneBuffer {
         const vertices = collectTerrainTileVertexRecords(tile, offsetX, offsetY);
         for (let i = 0; i < vertices.length; i++) {
             const vertex = vertices[i];
-            const textureIndex0 = this.textureIdIndexMap.get(vertex.textureId) ?? -1;
-            const textureIndex1 = this.textureIdIndexMap.get(vertex.textureId1) ?? -1;
+            const textureId0 = this.resolveSdTextureId(vertex.textureId);
+            const textureId1 = this.resolveSdTextureId(vertex.textureId1);
 
-            if (textureIndex0 !== -1) {
-                this.usedTextureIds.add(vertex.textureId);
+            if (textureId0 !== -1) {
+                this.usedTextureIds.add(textureId0);
             }
-            if (textureIndex1 !== -1) {
-                this.usedTextureIds.add(vertex.textureId1);
+            if (textureId1 !== -1) {
+                this.usedTextureIds.add(textureId1);
             }
 
             const index = this.vertexBuf.addVertex(
@@ -435,10 +442,10 @@ export class SceneBuffer {
                 0xff,
                 vertex.u,
                 vertex.v,
-                textureIndex0,
+                textureId0,
                 0,
                 true,
-                textureIndex1,
+                textureId1,
                 vertex.texBlend,
             );
 
@@ -716,7 +723,7 @@ export class SceneBuffer {
             const alpha = face.alpha;
             const priority = face.priority;
             const textureId = face.textureId;
-            const textureIndex = this.textureIdIndexMap.get(textureId) ?? -1;
+            const textureIdSd = this.resolveSdTextureId(textureId);
 
             let hslA = model.faceColors1[index];
             let hslB = model.faceColors2[index];
@@ -764,8 +771,8 @@ export class SceneBuffer {
             const vzb = sceneZ + verticesZ[fb];
             const vzc = sceneZ + verticesZ[fc];
 
-            if (textureIndex !== -1) {
-                this.usedTextureIds.add(textureId);
+            if (textureIdSd !== -1) {
+                this.usedTextureIds.add(textureIdSd);
             }
 
             const index0 = this.vertexBuf.addVertex(
@@ -776,7 +783,7 @@ export class SceneBuffer {
                 alpha,
                 u0,
                 v0,
-                textureIndex,
+                textureIdSd,
                 priority + 1,
                 reuseVertices,
             );
@@ -788,7 +795,7 @@ export class SceneBuffer {
                 alpha,
                 u1,
                 v1,
-                textureIndex,
+                textureIdSd,
                 priority + 1,
                 reuseVertices,
             );
@@ -800,7 +807,7 @@ export class SceneBuffer {
                 alpha,
                 u2,
                 v2,
-                textureIndex,
+                textureIdSd,
                 priority + 1,
                 reuseVertices,
             );

@@ -4,6 +4,10 @@ import { GameType } from "../../../rs/cache/CacheInfo";
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
 const MAX_TEXTURE_PIXEL_CACHE = 512;
 
+const TEXTURE_ID_LUT_WIDTH = 256;
+const TEXTURE_ID_LUT_HEIGHT = 256;
+const TEXTURE_ID_LUT_SIZE = TEXTURE_ID_LUT_WIDTH * TEXTURE_ID_LUT_HEIGHT;
+
 export const enum EnsureTextureStatus {
     Ok = 0,
     UnknownTexture = 1,
@@ -20,7 +24,7 @@ export type EnsureTextureResult = Readonly<{
 
 export class TextureResidencyPolicy {
     private textureIds: number[] = [];
-    private textureIdToIndex: Map<number, number> = new Map();
+    private knownTextureIds: Set<number> = new Set();
 
     readonly textureIdToSlot: Map<number, number> = new Map();
     readonly freeTextureSlots: number[] = [];
@@ -41,19 +45,26 @@ export class TextureResidencyPolicy {
 
     setTextureIds(textureIds: ReadonlyArray<number>): void {
         this.textureIds = Array.from(textureIds);
-        this.textureIdToIndex.clear();
+        this.knownTextureIds.clear();
         for (let i = 0; i < this.textureIds.length; i++) {
-            this.textureIdToIndex.set(this.textureIds[i], i + 1); // 1-based index (0 is reserved)
+            this.knownTextureIds.add(this.textureIds[i] | 0);
         }
     }
 
-    getTextureIndex(textureId: number): number | undefined {
-        return this.textureIdToIndex.get(textureId);
+    getTextureIdPlus1(textureId: number): number | undefined {
+        const id = textureId | 0;
+        if (!this.knownTextureIds.has(id)) {
+            return undefined;
+        }
+        const plus1 = (id + 1) | 0;
+        if (plus1 <= 0 || plus1 >= TEXTURE_ID_LUT_SIZE) {
+            return undefined;
+        }
+        return plus1;
     }
 
     initTextureSlotLutData(): Uint16Array {
-        const textureCount = this.textureIds.length + 1;
-        this.textureSlotLutData = new Uint16Array(textureCount);
+        this.textureSlotLutData = new Uint16Array(TEXTURE_ID_LUT_SIZE);
         return this.textureSlotLutData;
     }
 
@@ -87,9 +98,9 @@ export class TextureResidencyPolicy {
         }
         this.touchTexture(textureId);
 
-        const textureIndex = this.textureIdToIndex.get(textureId);
-        if (textureIndex !== undefined && this.textureSlotLutData) {
-            this.textureSlotLutData[textureIndex] = slot;
+        const textureIdPlus1 = this.getTextureIdPlus1(textureId);
+        if (textureIdPlus1 !== undefined && this.textureSlotLutData) {
+            this.textureSlotLutData[textureIdPlus1] = slot;
         }
     }
 
@@ -201,8 +212,8 @@ export class TextureResidencyPolicy {
             return { slot: existingSlot, lutDirty: false, updated: false, status: EnsureTextureStatus.Ok };
         }
 
-        const textureIndex = this.textureIdToIndex.get(textureId);
-        if (textureIndex === undefined) {
+        const textureIdPlus1 = this.getTextureIdPlus1(textureId);
+        if (textureIdPlus1 === undefined) {
             return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.UnknownTexture };
         }
 
@@ -233,7 +244,7 @@ export class TextureResidencyPolicy {
 
         let outLutDirty = false;
         if (this.textureSlotLutData) {
-            this.textureSlotLutData[textureIndex] = slot;
+            this.textureSlotLutData[textureIdPlus1] = slot;
             outLutDirty = true;
         }
 
@@ -270,9 +281,9 @@ export class TextureResidencyPolicy {
         this.textureIdToSlot.delete(candidateTextureId);
         this.textureLastUsedFrame.delete(candidateTextureId);
 
-        const textureIndex = this.textureIdToIndex.get(candidateTextureId);
-        if (textureIndex !== undefined && this.textureSlotLutData) {
-            this.textureSlotLutData[textureIndex] = 0;
+        const textureIdPlus1 = this.getTextureIdPlus1(candidateTextureId);
+        if (textureIdPlus1 !== undefined && this.textureSlotLutData) {
+            this.textureSlotLutData[textureIdPlus1] = 0;
         }
 
         return slot;

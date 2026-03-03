@@ -18,7 +18,6 @@ import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
-import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build";
 import { loadMinimapBlob } from "./MinimapData";
@@ -51,7 +50,6 @@ import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../MapRenderPayload";
 import { MAP_RENDER_DRAW_BUCKET_KEYS } from "../MapRenderPayload";
-import { createSdTexturePacking } from "./TexturePacking";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 
@@ -417,8 +415,6 @@ function addLocEntities(
 
 export class MapRenderTsBackend {
     modelHashBuf?: ModelHashBuffer;
-    private cachedTextureIdIndexMap?: Map<number, number>;
-    private cachedTextureCacheName?: string;
     private cachedNpcLoginScreenPropsById?: Uint8Array;
     private cachedNpcLoginScreenPropsCacheName?: string;
     private fallbackNpcSpawnsPromise?: Promise<NpcSpawn[]>;
@@ -429,23 +425,6 @@ export class MapRenderTsBackend {
         if (!this.modelHashBuf) {
             this.modelHashBuf = new ModelHashBuffer(5000);
         }
-    }
-
-    private getTextureIdIndexMap(
-        textureLoader: TextureLoader,
-        cacheName: string,
-    ): Map<number, number> {
-        if (this.cachedTextureIdIndexMap && this.cachedTextureCacheName === cacheName) {
-            return this.cachedTextureIdIndexMap;
-        }
-
-        const { textureIdIndexMap } = createSdTexturePacking(textureLoader);
-        // Cache a mutable Map instance for downstream code that expects Map methods.
-        const out = new Map<number, number>(textureIdIndexMap);
-
-        this.cachedTextureIdIndexMap = out;
-        this.cachedTextureCacheName = cacheName;
-        return out;
     }
 
     private getNpcLoginScreenPropsById(
@@ -535,11 +514,6 @@ export class MapRenderTsBackend {
 
         const varManager = this.deps.varProvider;
 
-        const textureIdIndexMap = this.getTextureIdIndexMap(
-            textureLoader,
-            this.deps.session.cache.info.name,
-        );
-
         const borderSize = 6;
 
         const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
@@ -560,7 +534,7 @@ export class MapRenderTsBackend {
             ),
         );
 
-        const sceneBuf = new SceneBuffer(textureLoader, textureIdIndexMap, 100000);
+        const sceneBuf = new SceneBuffer(textureLoader, 100000);
         timeStep("addTerrain", () => sceneBuf.addTerrain(scene, borderSize, maxLevel));
 
         const sceneModels: SceneModel[] = [];
@@ -718,7 +692,6 @@ export class MapRenderTsBackend {
                 includeNpcAnimationFrames: options?.includeNpcAnimationFrames !== false,
                 npcSpawns,
                 textureLoader,
-                textureIdIndexMap,
                 npcModelLoader,
                 npcTypeLoader,
                 seqTypeLoader,
@@ -899,8 +872,6 @@ export class MapRenderTsBackend {
 
     reset(): void {
         this.modelHashBuf = undefined;
-        this.cachedTextureIdIndexMap = undefined;
-        this.cachedTextureCacheName = undefined;
         this.cachedNpcLoginScreenPropsById = undefined;
         this.cachedNpcLoginScreenPropsCacheName = undefined;
     }

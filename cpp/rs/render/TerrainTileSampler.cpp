@@ -10,9 +10,6 @@ namespace rs {
 
 namespace {
 
-// TS createSdTexturePacking slices to 2047 entries (indices 0..2046).
-static constexpr i32 kSdTexturePackLimit = 2047;
-
 static i32 findTextureIndex(Span<const i32> textureIds, i32 textureId) noexcept {
     for (std::size_t i = 0; i < textureIds.size(); i++) {
         if (textureIds[i] == textureId) {
@@ -29,15 +26,8 @@ static bool isTextureSd(Span<const i32> textureIds, i32 textureId) noexcept {
     return findTextureIndex(textureIds, textureId) != -1;
 }
 
-static i32 mapTextureIdToPackedIndex0Based(Span<const i32> textureIds, i32 textureId) noexcept {
-    if (textureId < 0) {
-        return -1;
-    }
-    const i32 idx = findTextureIndex(textureIds, textureId);
-    if (idx < 0) {
-        return -1;
-    }
-    return idx < kSdTexturePackLimit ? idx : -1;
+static i32 resolveSdTextureId(Span<const i32> textureIds, i32 textureId) noexcept {
+    return isTextureSd(textureIds, textureId) ? textureId : -1;
 }
 
 } // namespace
@@ -66,7 +56,7 @@ Status sampleTerrainTile(
         const UnderlayFloorType* underlayType = nullptr;
         const Status us = provider.tryLoadUnderlay(provider.ctx, underlayRaw - 1, &underlayType);
         if (ok(us) && underlayType) {
-            out->underlayTexturePacked = mapTextureIdToPackedIndex0Based(textureIds, underlayType->textureId);
+            out->underlayTexturePacked = resolveSdTextureId(textureIds, underlayType->textureId);
             out->underlayTextureSize = underlayType->textureSize > 0 ? underlayType->textureSize : kTerrainTileSize;
         }
     }
@@ -93,15 +83,15 @@ Status sampleTerrainTile(
         if (ok(os) && overlayType) {
             out->hasOverlay = true;
 
-            auto fillOverlaySample = [&](
-                const OverlayFloorType* sample,
-                bool preferBlendColour,
-                i32* outBaseHsl,
-                i32* outTexturePacked,
-                i32* outTextureSize) {
+                auto fillOverlaySample = [&](
+                    const OverlayFloorType* sample,
+                    bool preferBlendColour,
+                    i32* outBaseHsl,
+                    i32* outTexturePacked,
+                    i32* outTextureSize) {
                 auto isSdTextureCandidate = [&](i32 textureId) -> bool {
                     // TS uses `textureLoader.isSd(textureId)` here. In the wasm runtime we only
-                    // receive the SD texture-id list; packed index truncation is applied separately.
+                    // receive the SD texture-id list.
                     return isTextureSd(textureIds, textureId);
                 };
 
@@ -118,7 +108,7 @@ Status sampleTerrainTile(
 
                 const i32 packed =
                     (selectedTextureId != -1)
-                        ? mapTextureIdToPackedIndex0Based(textureIds, selectedTextureId)
+                        ? resolveSdTextureId(textureIds, selectedTextureId)
                         : -1;
                 const i32 texSize = (sample && sample->textureSize > 0) ? sample->textureSize : kTerrainTileSize;
                 i32 baseHsl = -1;

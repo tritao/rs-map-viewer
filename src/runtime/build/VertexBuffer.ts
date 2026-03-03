@@ -54,24 +54,25 @@ export class VertexBuffer extends DataBuffer {
         textureId1: number = -1,
         textureBlend: number = 0,
     ) {
-        // Packed format supports 11-bit texture indices (0..2047). Values are indices into the cache's
-        // `textureIds` list, not raw cache texture ids.
-        if (textureId >= 2048) {
+        // Packed format stores raw cache texture ids (0-based) as `textureIdPlus1` (0 reserved).
+        // We cap to 16-bit `textureIdPlus1` (0..65535), so raw ids must be <= 65534.
+        if (textureId > 0xfffe) {
             textureId = -1;
         }
-        if (textureId1 >= 2048) {
+        if (textureId1 > 0xfffe) {
             textureId1 = -1;
         }
 
         const blendClamped = clamp(textureBlend, 0, 1);
-        const hasBlend =
-            textureId !== -1 && textureId1 !== -1 && textureId1 !== textureId && blendClamped > 0;
-        const isTextured = textureId !== -1;
+        const tex0 = textureId !== -1 ? ((textureId + 1) | 0) : 0;
+        const tex1 = textureId1 !== -1 ? ((textureId1 + 1) | 0) : 0;
+        const hasBlend = tex0 !== 0 && tex1 !== 0 && tex1 !== tex0 && blendClamped > 0;
+        const isTextured = tex0 !== 0;
         if (isTextured) {
             // textureId = 119;
             // only light
             hsl &= 127;
-            hsl |= (textureId & 0x1ff) << 7;
+            hsl |= (tex0 & 0x1ff) << 7;
         }
 
         const xPos = clamp(x + 0x4000, 0, 0x8000);
@@ -91,16 +92,24 @@ export class VertexBuffer extends DataBuffer {
             (zPos << 17) |
             (alpha << 9) |
             (priority << 6) |
-            (((textureId >> 9) & 0x1) << 5) |
             (uPacked >> 6);
 
         const blend8 = hasBlend ? clamp(Math.round(blendClamped * 255), 0, 255) : 0;
-        const isTextured1 = hasBlend;
-        const tex1Lo = isTextured1 ? clamp(textureId1, 0, 0x3ff) : 0;
-        const tex0Hi = (textureId >> 10) & 0x1;
-        const tex1Hi = (textureId1 >> 10) & 0x1;
+
+        // Store texture ids as 16-bit `textureIdPlus1` values:
+        // - tex0 low 9 bits in `hsl` high bits (like the old packing)
+        // - tex0 high 7 bits in v3[19..25]
+        // - tex1 low 10 bits in v3[0..9]
+        // - tex1 high 6 bits in v3[26..31]
+        const tex0High7 = isTextured ? ((tex0 >> 9) & 0x7f) : 0;
+        const tex1Low10 = hasBlend ? (tex1 & 0x3ff) : 0;
+        const tex1High6 = hasBlend ? ((tex1 >> 10) & 0x3f) : 0;
         const v3 =
-            tex1Lo | (Number(isTextured1) << 10) | (blend8 << 11) | (tex0Hi << 19) | (tex1Hi << 20);
+            tex1Low10 |
+            (Number(hasBlend) << 10) |
+            (blend8 << 11) |
+            (tex0High7 << 19) |
+            (tex1High6 << 26);
 
         const v0u = v0 >>> 0;
         const v1u = v1 >>> 0;

@@ -6,9 +6,10 @@ import { TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
 import { TextureResidencyPolicy } from "./texture/TextureResidencyPolicy";
 import { createTextureArray } from "./PicoTexture";
 
-const MAX_TEXTURES = 2048;
 const TEXTURE_SIZE = 128;
 const MAX_TEXTURE_SLOTS = 256;
+const TEXTURE_ID_LUT_WIDTH = 256;
+const TEXTURE_ID_LUT_HEIGHT = 256;
 
 export class WebGLTextureResidency {
     textureArray?: Texture;
@@ -44,8 +45,7 @@ export class WebGLTextureResidency {
 
         const allTextureIds = textureLoader.getTextureIds();
         const textureIds = allTextureIds
-            .filter((id) => textureLoader.isSd(id))
-            .slice(0, MAX_TEXTURES - 1);
+            .filter((id) => textureLoader.isSd(id));
         this.policy.setTextureIds(textureIds);
 
         this.initTextureSlotLut();
@@ -83,7 +83,7 @@ export class WebGLTextureResidency {
         const samplePixelStride = 97;
         const samplePixelCount = 512;
         for (const textureId of sampleIds) {
-            const index = this.policy.getTextureIndex(textureId) ?? -1;
+            const index = this.policy.getTextureIdPlus1(textureId) ?? -1;
             const slot = this.policy.textureIdToSlot.get(textureId) ?? 0;
             const pixels = this.policy.texturePixelCache.get(textureId);
             if (!pixels) {
@@ -225,13 +225,17 @@ export class WebGLTextureResidency {
         this.textureSlotLut?.delete();
         this.textureSlotLut = undefined;
 
-        const textureCount = this.policy.getTextureIds().length + 1;
         const lutData = this.policy.initTextureSlotLutData();
-        this.textureSlotLut = this.app.createTexture2D(lutData, textureCount, 1, {
+        this.textureSlotLut = this.app.createTexture2D(
+            lutData,
+            TEXTURE_ID_LUT_WIDTH,
+            TEXTURE_ID_LUT_HEIGHT,
+            {
             internalFormat: PicoGL.R16UI,
             minFilter: PicoGL.NEAREST,
             magFilter: PicoGL.NEAREST,
-        });
+            },
+        );
     }
 
     private initTextureArray(cacheInfo: CacheInfo, filterMode: TextureFilterMode) {

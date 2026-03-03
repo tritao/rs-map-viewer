@@ -84,11 +84,12 @@ Status PackedVertex::packU32(
         return Status::InvalidArgument;
     }
 
-    // Texture ids are indices into the runtime `textureIds` list.
-    if (textureId >= 2048) {
+    // Packed format stores raw cache texture ids as 16-bit `textureIdPlus1` (0 reserved).
+    // Raw ids must fit in 0..65534 so `textureIdPlus1` fits in u16 (0..65535).
+    if (textureId > 0xfffe) {
         textureId = -1;
     }
-    if (textureId1 >= 2048) {
+    if (textureId1 > 0xfffe) {
         textureId1 = -1;
     }
 
@@ -96,16 +97,19 @@ Status PackedVertex::packU32(
     if (blendClamped < 0.0f) blendClamped = 0.0f;
     if (blendClamped > 1.0f) blendClamped = 1.0f;
 
-    const bool isTextured = textureId != -1;
+    const i32 tex0 = textureId != -1 ? (textureId + 1) : 0;
+    const i32 tex1 = textureId1 != -1 ? (textureId1 + 1) : 0;
+
+    const bool isTextured = tex0 != 0;
     if (isTextured) {
         hsl &= 127;
-        hsl |= (textureId & 0x1ff) << 7;
+        hsl |= (tex0 & 0x1ff) << 7;
     }
 
     const bool hasBlend =
         isTextured &&
-        textureId1 != -1 &&
-        textureId1 != textureId &&
+        tex1 != 0 &&
+        tex1 != tex0 &&
         blendClamped > 0.0f;
 
     const i32 xPos = clampI32(x + 0x4000, 0, 0x8000);
@@ -120,10 +124,9 @@ Status PackedVertex::packU32(
     const i32 blend8 =
         hasBlend ? clampI32(static_cast<i32>(blendClamped * 255.0f + 0.5f), 0, 0xff) : 0;
 
-    // TS quirk: these bits are derived unconditionally from the texture ids even when not used.
-    const i32 tex1Lo = hasBlend ? clampI32(textureId1, 0, 0x3ff) : 0;
-    const i32 tex0Hi = (textureId >> 10) & 0x1;
-    const i32 tex1Hi = (textureId1 >> 10) & 0x1;
+    const i32 tex0High7 = isTextured ? ((tex0 >> 9) & 0x7f) : 0;
+    const i32 tex1Low10 = hasBlend ? clampI32(tex1, 0, 0xffff) & 0x3ff : 0;
+    const i32 tex1High6 = hasBlend ? ((tex1 >> 10) & 0x3f) : 0;
 
     out->v0 =
         (static_cast<u32>(xPos) << 17) |
@@ -137,14 +140,13 @@ Status PackedVertex::packU32(
         (static_cast<u32>(zPos) << 17) |
         (static_cast<u32>(alphaClamped) << 9) |
         (static_cast<u32>(priorityClamped) << 6) |
-        (static_cast<u32>((textureId >> 9) & 0x1) << 5) |
         static_cast<u32>(uPacked >> 6);
     out->v3 =
-        static_cast<u32>(tex1Lo) |
+        static_cast<u32>(tex1Low10) |
         (static_cast<u32>(hasBlend ? 1 : 0) << 10) |
         (static_cast<u32>(blend8) << 11) |
-        (static_cast<u32>(tex0Hi) << 19) |
-        (static_cast<u32>(tex1Hi) << 20);
+        (static_cast<u32>(tex0High7) << 19) |
+        (static_cast<u32>(tex1High6) << 26);
 
     return Status::Ok;
 }

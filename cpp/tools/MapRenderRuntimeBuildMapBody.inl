@@ -499,20 +499,16 @@ if ((loadNpcs | 0) != 0) {
 runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingBuildNpcUs)] =
     elapsedUs(buildNpcStart);
 
-// Derive used texture ids from packed vertices so TS can drive texture residency without
-// building a full TS SceneBuffer scaffold.
+// Derive used texture ids from packed vertices so TS can drive texture residency.
 //
-// Vertex format stores 0-based indices into the runtime `textureIds` list; shader adds +1.
-// Decode both primary and blended texture ids and map back to raw texture ids using the
-// uploaded SD texture id list (domain=109).
+// Vertex format stores raw cache texture ids as 16-bit `textureIdPlus1` values (0 reserved).
+// Decode both primary and blended ids and write the raw ids into the payload.
 const auto deriveTexturesStart = BuildClock::now();
 {
-    std::vector<rs::i32> textureIds{};
-    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
     runtime->mapPayload.usedTextureIds.clear();
-    if (!textureIds.empty() && !runtime->mapPayload.vertices.empty()) {
-        std::vector<rs::u8> seen(textureIds.size(), 0);
-
+    if (!runtime->mapPayload.vertices.empty()) {
+        std::unordered_set<rs::i32> seen{};
+        seen.reserve(256);
         const auto readU32LE = [](const rs::u8* p) noexcept -> rs::u32 {
             return static_cast<rs::u32>(p[0]) |
                 (static_cast<rs::u32>(p[1]) << 8u) |
@@ -525,37 +521,40 @@ const auto deriveTexturesStart = BuildClock::now();
         for (std::size_t vi = 0; vi < vcount; vi++) {
             const rs::u8* base = vbytes + (vi * 16);
             const rs::u32 v1 = readU32LE(base + 4);
-            const rs::u32 v2 = readU32LE(base + 8);
             const rs::u32 v3 = readU32LE(base + 12);
             const rs::u32 isTextured = (v1 >> 31u) & 0x1u;
             if (!isTextured) {
                 continue;
             }
             const rs::u32 hsl = (v1 >> 15u) & 0xffffu;
-            const rs::u32 idx0 =
-                (hsl >> 7u) |
-                (((v2 >> 5u) & 0x1u) << 9u) |
-                (((v3 >> 19u) & 0x1u) << 10u);
-            if (idx0 < textureIds.size()) {
-                seen[idx0] = 1;
+            const rs::u32 tex0Plus1 =
+                ((hsl >> 7u) & 0x1ffu) |
+                (((v3 >> 19u) & 0x7fu) << 9u);
+            if (tex0Plus1 > 0u) {
+                const rs::i32 raw0 = static_cast<rs::i32>(tex0Plus1 - 1u);
+                if (raw0 >= 0) {
+                    seen.insert(raw0);
+                }
             }
             const rs::u32 hasBlend = (v3 >> 10u) & 0x1u;
             if (hasBlend) {
-                const rs::u32 idx1 =
+                const rs::u32 tex1Plus1 =
                     (v3 & 0x3ffu) |
-                    (((v3 >> 20u) & 0x1u) << 10u);
-                if (idx1 < textureIds.size()) {
-                    seen[idx1] = 1;
+                    (((v3 >> 26u) & 0x3fu) << 10u);
+                if (tex1Plus1 > 0u) {
+                    const rs::i32 raw1 = static_cast<rs::i32>(tex1Plus1 - 1u);
+                    if (raw1 >= 0) {
+                        seen.insert(raw1);
+                    }
                 }
             }
         }
 
-        for (std::size_t i = 0; i < seen.size(); i++) {
-            if (!seen[i]) {
-                continue;
-            }
-            runtime->mapPayload.usedTextureIds.push_back(textureIds[i]);
+        runtime->mapPayload.usedTextureIds.reserve(seen.size());
+        for (const rs::i32 id : seen) {
+            runtime->mapPayload.usedTextureIds.push_back(id);
         }
+        std::sort(runtime->mapPayload.usedTextureIds.begin(), runtime->mapPayload.usedTextureIds.end());
     }
 }
 runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingDeriveUsedTextureIdsUs)] =

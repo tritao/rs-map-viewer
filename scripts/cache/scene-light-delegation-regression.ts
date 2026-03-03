@@ -5,7 +5,6 @@ import {
     collectRuntimeDrawCommandBuckets,
 } from "../../src/runtime/build/SceneCommandBuilder";
 import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
-import { createSdTexturePacking } from "../../src/maprender/ts/TexturePacking";
 import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
@@ -211,8 +210,7 @@ function digestSceneRenderOutput(
         getPixelsArgb?(id: number): unknown;
     } & object,
 ): SceneRenderDigest {
-    const { textureIdIndexMap } = createSdTexturePacking(textureLoader as any);
-    const sceneBuf = new SceneBuffer(textureLoader as any, new Map(textureIdIndexMap), 100000);
+    const sceneBuf = new SceneBuffer(textureLoader as any, 100000);
     sceneBuf.addTerrain(scene, BORDER_SIZE, MAX_LEVEL);
 
     const sceneLocs = getSceneLocs(locTypeLoader as any, scene, BORDER_SIZE, MAX_LEVEL);
