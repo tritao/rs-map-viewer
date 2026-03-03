@@ -11,14 +11,9 @@ import { errorToString } from "../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
-    MapRenderRuntimeCreateConfig,
     MapRenderRuntimeHandle,
     MapRenderRuntimePacket,
 } from "../wasm/MapRenderRuntimeBridgeAbi";
-import {
-    MAP_RENDER_RUNTIME_STATUS_NOT_FOUND,
-    MAP_RENDER_RUNTIME_STATUS_OK,
-} from "../wasm/MapRenderRuntimeStatus.mjs";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
 import {
@@ -388,7 +383,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 cacheRevision: this.deps.session.cache.info.revision | 0,
                 sceneLevels: 4,
                 unitsTileHeightBasis: 8,
-            } as MapRenderRuntimeCreateConfig);
+            });
         }
         const runtimeHandle = await this.runtimeHandlePromise;
         if (runtimeHandle !== undefined) {
@@ -494,11 +489,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             });
         }
         const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-        const missingStatus =
-            missing && (missing.domains.length | 0) > 0
-                ? MAP_RENDER_RUNTIME_STATUS_NOT_FOUND
-                : MAP_RENDER_RUNTIME_STATUS_OK;
-        if (missingStatus !== MAP_RENDER_RUNTIME_STATUS_OK) {
+        if (missing && (missing.domains.length | 0) > 0) {
             return undefined;
         }
 
