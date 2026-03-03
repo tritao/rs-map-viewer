@@ -724,13 +724,13 @@ inline Status decodeTextureMappingV1(
         s = translation.readByte(&speed);
         if (!ok(s)) return s;
 
-        // TS parity: per-texture-face indexing (same index as textureRenderTypes).
-        out->textureScaleX[ti] = sx;
-        out->textureScaleY[ti] = sy;
-        out->textureScaleZ[ti] = sz;
-        out->textureRotation[ti] = rot;
-        out->textureDirection[ti] = dir;
-        out->textureSpeed[ti] = static_cast<i32>(speed);
+        // TS parity: these arrays can be shorter than `textureFaceCount` (writes past length are ignored).
+        if (ti < out->textureScaleX.size()) out->textureScaleX[ti] = sx;
+        if (ti < out->textureScaleY.size()) out->textureScaleY[ti] = sy;
+        if (ti < out->textureScaleZ.size()) out->textureScaleZ[ti] = sz;
+        if (ti < out->textureRotation.size()) out->textureRotation[ti] = rot;
+        if (ti < out->textureDirection.size()) out->textureDirection[ti] = dir;
+        if (ti < out->textureSpeed.size()) out->textureSpeed[ti] = static_cast<i32>(speed);
 
         if (type == 2) {
             i8 u = 0;
@@ -739,8 +739,8 @@ inline Status decodeTextureMappingV1(
             if (!ok(s)) return s;
             s = translation.readByte(&v);
             if (!ok(s)) return s;
-            out->textureTransU[ti] = static_cast<i32>(u);
-            out->textureTransV[ti] = static_cast<i32>(v);
+            if (ti < out->textureTransU.size()) out->textureTransU[ti] = static_cast<i32>(u);
+            if (ti < out->textureTransV.size()) out->textureTransV[ti] = static_cast<i32>(v);
         }
     }
     return Status::Ok;

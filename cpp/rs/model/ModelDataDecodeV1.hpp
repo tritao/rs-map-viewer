@@ -163,23 +163,42 @@ inline Status decodeModelDataV1(Span<const u8> data, ModelData* out) noexcept {
         if (!ok(s)) return s;
         s = initRequiredVec(&out->textureMappingN, static_cast<std::size_t>(texFaceCount));
         if (!ok(s)) return s;
-        // TS parity: these arrays are indexed by texture-face index (0..textureFaceCount-1), not compacted.
-        s = initRequiredVec(&out->textureScaleX, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleY, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureScaleZ, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureRotation, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureDirection, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureSpeed, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureTransU, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
-        s = initRequiredVec(&out->textureTransV, static_cast<std::size_t>(texFaceCount));
-        if (!ok(s)) return s;
+
+        // TS parity: V1 only allocates the per-face texture transform arrays when those texture faces exist.
+        // For models with only type=0 texture faces, these arrays stay empty/absent in TS.
+        if (complexTextureFaceCount > 0) {
+            const std::size_t n = static_cast<std::size_t>(complexTextureFaceCount);
+            s = initRequiredVec(&out->textureScaleX, n);
+            if (!ok(s)) return s;
+            s = initRequiredVec(&out->textureScaleY, n);
+            if (!ok(s)) return s;
+            s = initRequiredVec(&out->textureScaleZ, n);
+            if (!ok(s)) return s;
+            s = initRequiredVec(&out->textureRotation, n);
+            if (!ok(s)) return s;
+            s = initRequiredVec(&out->textureDirection, n);
+            if (!ok(s)) return s;
+            s = initRequiredVec(&out->textureSpeed, n);
+            if (!ok(s)) return s;
+        } else {
+            clearVec(&out->textureScaleX);
+            clearVec(&out->textureScaleY);
+            clearVec(&out->textureScaleZ);
+            clearVec(&out->textureRotation);
+            clearVec(&out->textureDirection);
+            clearVec(&out->textureSpeed);
+        }
+
+        if (cubeTextureFaceCount > 0) {
+            const std::size_t n = static_cast<std::size_t>(cubeTextureFaceCount);
+            s = initRequiredVec(&out->textureTransU, n);
+            if (!ok(s)) return s;
+            s = initRequiredVec(&out->textureTransV, n);
+            if (!ok(s)) return s;
+        } else {
+            clearVec(&out->textureTransU);
+            clearVec(&out->textureTransV);
+        }
     } else {
         clearVec(&out->textureMappingP);
         clearVec(&out->textureMappingM);
