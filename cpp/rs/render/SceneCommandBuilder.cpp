@@ -6583,7 +6583,10 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         out->debugTerrainTileFaceCountsBorder = terrainFaceGrid.border;
     }
 
-    if (emitGeometry && input.enableExpensiveDebugStats) {
+    // Parity/debug: these "merged dummy" stats are compared against TS by scanning the final packed
+    // command stream arrays. Keep them correct regardless of whether other expensive debug passes
+    // are enabled.
+    if (emitGeometry) {
         recomputeLocMergedDummyDebugStatsFromPackedCommands(out);
     }
     buildFinalizeUs = elapsedUs(finalizeStart);
