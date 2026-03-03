@@ -341,7 +341,9 @@ if (RS_BUILD_WASM_MAP_RENDER_BACKEND)
         -sEXPORT_ES6=1
         -sALLOW_MEMORY_GROWTH=1
         -sINITIAL_MEMORY=268435456
-        -sMAXIMUM_MEMORY=1073741824
+        # Some rs2/osrs squares with full loc-model geometry can exceed 1GB in wasm builds.
+        # Keep growth enabled but raise the ceiling to avoid runtime OOM failures in parity/bench scripts.
+        -sMAXIMUM_MEMORY=2147483648
         --no-entry
         "-sEXPORTED_FUNCTIONS=${RS_MAP_RENDER_EXPORTED_FUNCTIONS}"
     )
