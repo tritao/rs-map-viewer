@@ -357,21 +357,16 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         });
     }
 
-    private async selectNpcPayload(
-        bridge: MapRenderRuntimeBridgeV2,
-        runtimeHandle: MapRenderRuntimeHandle,
+    private static selectNpcPayload(
         packet: MapRenderRuntimePacket,
-        request: MapRenderRuntimeBuildRequest,
         input: SdMapLoaderInput,
-    ): Promise<
-        Readonly<{
-            npcDrawRangesBase?: Int32Array;
-            npcDrawRangesAlpha?: Int32Array;
-            npcVertices?: Uint8Array;
-            npcIndices?: Int32Array;
-            npcOrderKeys?: Int32Array;
-        }>
-    > {
+    ): Readonly<{
+        npcDrawRangesBase?: Int32Array;
+        npcDrawRangesAlpha?: Int32Array;
+        npcVertices?: Uint8Array;
+        npcIndices?: Int32Array;
+        npcOrderKeys?: Int32Array;
+    }> {
         const npcDrawRangesBase =
             packet.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase : undefined;
         const npcDrawRangesAlpha =
@@ -471,13 +466,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         const levels = packet.levels | 0;
         const sizeX = packet.sizeX | 0;
         const sizeY = packet.sizeY | 0;
-        const npcPayload = await this.selectNpcPayload(
-            bridge,
-            runtimeHandle,
-            packet,
-            request,
-            input,
-        );
+        const npcPayload = CppWasmMapRenderDataBackend.selectNpcPayload(packet, input);
 
         return {
             mapX: input.mapX | 0,
