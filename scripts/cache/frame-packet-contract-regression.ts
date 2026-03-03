@@ -41,18 +41,16 @@ function testReadySupersetAccepted(): void {
         tickViewStateVersion: 1,
         npcRingWriteIndex: 0,
         npcGpuFrameData: makeNpcGpuData(),
-        readyMapIdsPacked: new Int32Array([100, 200]),
         npcRangesByMapIdPacked: new Int32Array([100, 0, 0]),
         renderListPacked: new Int32Array([100, 0]),
         tickPatchCountsByMapId: makeTickCountsPacked([100]),
         tickPatchStreamsByMap: makeEmptyTickStreamsByMap(1),
     });
     const parsed = parseFramePacket(packet)!;
-    assert.equal(parsed.readyMapIds.has(100), true);
-    assert.equal(parsed.readyMapIds.has(200), true);
+    assert.deepEqual(Array.from(parsed.renderListPacked), [100, 0]);
 }
 
-function testRenderMapMustBeReady(): void {
+function testDuplicateRenderMapRejected(): void {
     assert.throws(
         () =>
             buildFramePacket({
@@ -61,17 +59,16 @@ function testRenderMapMustBeReady(): void {
                 tickViewStateVersion: 1,
                 npcRingWriteIndex: 0,
                 npcGpuFrameData: makeNpcGpuData(),
-                readyMapIdsPacked: new Int32Array([200]),
-                npcRangesByMapIdPacked: new Int32Array([100, 0, 0]),
-                renderListPacked: new Int32Array([100, 0]),
-                tickPatchCountsByMapId: makeTickCountsPacked([100]),
-                tickPatchStreamsByMap: makeEmptyTickStreamsByMap(1),
+                npcRangesByMapIdPacked: new Int32Array([100, 0, 0, 100, 0, 0]),
+                renderListPacked: new Int32Array([100, 0, 100, 0]),
+                tickPatchCountsByMapId: makeTickCountsPacked([100, 100]),
+                tickPatchStreamsByMap: makeEmptyTickStreamsByMap(2),
             }),
-        /render map missing from readyMapIdsPacked/,
+        /duplicate render map entry/,
     );
 }
 
-function testReadyMapSetMustBeSortedUnique(): void {
+function testMapOrderMismatchRejected(): void {
     assert.throws(
         () =>
             buildFramePacket({
@@ -80,17 +77,16 @@ function testReadyMapSetMustBeSortedUnique(): void {
                 tickViewStateVersion: 1,
                 npcRingWriteIndex: 0,
                 npcGpuFrameData: makeNpcGpuData(),
-                readyMapIdsPacked: new Int32Array([200, 100]),
                 npcRangesByMapIdPacked: new Int32Array([100, 0, 0]),
                 renderListPacked: new Int32Array([100, 0]),
-                tickPatchCountsByMapId: makeTickCountsPacked([100]),
+                tickPatchCountsByMapId: makeTickCountsPacked([200]),
                 tickPatchStreamsByMap: makeEmptyTickStreamsByMap(1),
             }),
-        /readyMapIdsPacked must be unique sorted asc/,
+        /mapId order mismatch/,
     );
 }
 
-function testBuilderProducesSortedUniqueReadySet(): void {
+function testBuilderProducesAlignedMapEntries(): void {
     const emptyCounts = new Int32Array(TICK_PATCH_STREAM_COUNT);
     const emptyStreams = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
     const packet = buildFramePacketFromMapEntries({
@@ -101,7 +97,7 @@ function testBuilderProducesSortedUniqueReadySet(): void {
         npcGpuFrameData: makeNpcGpuData(),
         entries: [
             {
-                mapId: 200,
+                mapId: 150,
                 renderFlags: 0,
                 npcRangeStart: 0,
                 npcRangeCount: 0,
@@ -127,15 +123,16 @@ function testBuilderProducesSortedUniqueReadySet(): void {
         ],
     });
 
-    assert.deepEqual(Array.from(packet.readyMapIdsPacked), [100, 200]);
+    assert.deepEqual(Array.from(packet.renderListPacked), [150, 0, 100, 0, 200, 0]);
+    assert.deepEqual(Array.from(packet.npcRangesByMapIdPacked), [150, 0, 0, 100, 0, 0, 200, 0, 0]);
 }
 
 async function main(): Promise<void> {
     testReadySupersetAccepted();
-    testRenderMapMustBeReady();
-    testReadyMapSetMustBeSortedUnique();
-    testBuilderProducesSortedUniqueReadySet();
-    console.log("frame-packet-ready-set-regression: ok");
+    testDuplicateRenderMapRejected();
+    testMapOrderMismatchRejected();
+    testBuilderProducesAlignedMapEntries();
+    console.log("frame-packet-contract-regression: ok");
 }
 
 main().catch((error: unknown) => {

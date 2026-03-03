@@ -6,7 +6,6 @@ import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/MapRenderPayload";
-import type { SdMapData } from "../maprender/MapRenderPayload";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MenuTargetType } from "../rs/MenuEntry";
@@ -19,10 +18,7 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import {
-    buildStaticMapPacket,
-    type StaticMapPacket,
-} from "../runtime/contracts/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 import { MapViewer } from "./MapViewer";
 import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
 import { WorkerMapViewerFramePacketSource } from "./MapViewerFramePacketSource";
@@ -78,7 +74,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
     }
 
-    private async loadSdMapData(mapX: number, mapY: number): Promise<SdMapData | undefined> {
+    private async loadStaticMapPacket(
+        mapX: number,
+        mapY: number,
+    ): Promise<StaticMapPacket | undefined> {
         const r = this.renderer;
         const input: SdMapLoaderInput = {
             mapX,
@@ -91,7 +90,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             minimizeDrawCalls: !r.hasMultiDraw,
             loadedTextureIds: Int32Array.from(r.loadedTextureIds),
         };
-        return await this.workerPool.queueSdMapData(input);
+        return await this.workerPool.queueStaticMapPacket(input);
     }
 
     private reserveMapSimToken(mapId: number): number {
@@ -116,29 +115,32 @@ export class MapViewerRenderer extends RendererMainLoop {
             // Fixed-square dev mode: never queue builds for other squares.
             return;
         }
-        const mapData = await this.loadSdMapData(mapX, mapY);
+        const staticMapPacket = await this.loadStaticMapPacket(mapX, mapY);
         if ((this.loadEpoch | 0) !== queuedLoadEpoch) {
             return;
         }
         const devsqAfter = this.mapViewer.getDevFixedMapSquare();
         if (
             devsqAfter &&
-            mapData &&
-            (mapData.mapX !== devsqAfter.mapX || mapData.mapY !== devsqAfter.mapY)
+            staticMapPacket &&
+            (staticMapPacket.mapData.mapX !== devsqAfter.mapX ||
+                staticMapPacket.mapData.mapY !== devsqAfter.mapY)
         ) {
             // Dev mode may have been enabled while this async build was in flight. Drop the result
             // to avoid loading/building maps outside the fixed square.
-            this.mapManager.loadingMapIds.delete(getMapSquareId(mapData.mapX, mapData.mapY));
+            this.mapManager.loadingMapIds.delete(
+                getMapSquareId(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY),
+            );
             return;
         }
-        if (mapData) {
+        if (staticMapPacket) {
+            const mapData = staticMapPacket.mapData;
             if (this.renderer.isValidMapData(mapData)) {
-                const sdMapData = mapData as unknown as SdMapData;
-                const mapId = getMapSquareId(sdMapData.mapX, sdMapData.mapY);
+                const mapId = staticMapPacket.mapId | 0;
                 const mapSimToken = this.reserveMapSimToken(mapId);
                 const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
                 if (runtimeOptions.mapRenderTelemetry) {
-                    const ranges = sdMapData.drawRanges.base;
+                    const ranges = mapData.drawRanges.base;
                     const drawCount = Math.floor((ranges?.length ?? 0) / 3);
                     let nonZero = 0;
                     if (ranges instanceof Int32Array) {
@@ -150,66 +152,65 @@ export class MapViewerRenderer extends RendererMainLoop {
                         }
                     }
                     console.log("[map-render][telemetry] map packet summary", {
-                        square: `${sdMapData.mapX}:${sdMapData.mapY}`,
-                        verts: sdMapData.vertices?.length ?? -1,
-                        indices: sdMapData.indices?.length ?? -1,
+                        square: `${mapData.mapX}:${mapData.mapY}`,
+                        verts: mapData.vertices?.length ?? -1,
+                        indices: mapData.indices?.length ?? -1,
                         drawRangesBaseCount: drawCount,
                         drawRangesBaseNonZero: nonZero,
-                        loadObjs: sdMapData.loadObjs,
-                        loadLocs: sdMapData.loadLocs,
-                        loadNpcs: sdMapData.loadNpcs,
-                        locsAnimated: sdMapData.locsAnimated?.length ?? -1,
-                        npcVerts: sdMapData.npcVertices?.length ?? 0,
-                        npcIndices: sdMapData.npcIndices?.length ?? 0,
-                        npcRangesBase: sdMapData.npcDrawRangesBase?.length ?? 0,
-                        npcOrderKeys: sdMapData.npcOrderKeys?.length ?? 0,
-                        npcTypeAnimTable: sdMapData.npcTypeAnimationTable?.length ?? 0,
+                        loadObjs: mapData.loadObjs,
+                        loadLocs: mapData.loadLocs,
+                        loadNpcs: mapData.loadNpcs,
+                        locsAnimated: mapData.locsAnimated?.length ?? -1,
+                        npcVerts: mapData.npcVertices?.length ?? 0,
+                        npcIndices: mapData.npcIndices?.length ?? 0,
+                        npcRangesBase: mapData.npcDrawRangesBase?.length ?? 0,
+                        npcOrderKeys: mapData.npcOrderKeys?.length ?? 0,
+                        npcTypeAnimTable: mapData.npcTypeAnimationTable?.length ?? 0,
                     });
                 }
-                const npcDrawRangeInts = sdMapData.npcDrawRangesBase?.length ?? 0;
+                const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
                 if ((npcDrawRangeInts % DRAW_RANGE_STRIDE) !== 0) {
                     throw new Error(
-                        `[map-render][npc] invalid npcDrawRangesBase length for map ${sdMapData.mapX},${sdMapData.mapY}: ` +
+                        `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
                             `len=${npcDrawRangeInts} stride=${DRAW_RANGE_STRIDE}`,
                     );
                 }
                 const npcSlotCount = (npcDrawRangeInts / DRAW_RANGE_STRIDE) | 0;
-                const npcOrderKeys = sdMapData.npcOrderKeys ?? EMPTY_NPC_ORDER_KEYS;
+                const npcOrderKeys = mapData.npcOrderKeys ?? EMPTY_NPC_ORDER_KEYS;
                 if ((npcOrderKeys.length | 0) !== (npcSlotCount | 0)) {
                     throw new Error(
-                        `[map-render][npc] npc slot metadata mismatch for map ${sdMapData.mapX},${sdMapData.mapY}: ` +
+                        `[map-render][npc] npc slot metadata mismatch for map ${mapData.mapX},${mapData.mapY}: ` +
                             `orderKeys=${npcOrderKeys.length | 0} slots=${npcSlotCount | 0}`,
                     );
                 }
                 const npcTypeAnimationTable =
-                    sdMapData.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
+                    mapData.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
                 try {
                     await this.workerPool.registerMapNpcSimState(
                         mapId,
-                        sdMapData.borderSize,
-                        sdMapData.locsAnimated,
+                        mapData.borderSize,
+                        mapData.locsAnimated,
                         npcTypeAnimationTable,
                         mapSimToken,
                     );
                     await this.workerPool.bootstrapMapNpcLifecycle(
                         mapId,
-                        sdMapData.maxLevel,
+                        mapData.maxLevel,
                         npcOrderKeys,
                         mapSimToken,
                     );
                 } catch (e) {
                     console.warn(
-                        `[map-render] failed to register worker sim state for ${sdMapData.mapX},${sdMapData.mapY}`,
+                        `[map-render] failed to register worker sim state for ${mapData.mapX},${mapData.mapY}`,
                         e,
                     );
-                    this.mapManager.addInvalidMap(sdMapData.mapX, sdMapData.mapY);
+                    this.mapManager.addInvalidMap(mapData.mapX, mapData.mapY);
                     return;
                 }
                 if ((this.loadEpoch | 0) !== queuedLoadEpoch || !this.hasMapSimToken(mapId, mapSimToken)) {
                     return;
                 }
 
-                const staticMapPacket = buildStaticMapPacket(sdMapData);
                 this.staticMapPacketsByMapId.set(mapId, staticMapPacket);
                 this.mapManager.addMap(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY);
                 this.renderer.addMap(staticMapPacket.mapData as unknown as MapData);

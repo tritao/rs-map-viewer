@@ -13,7 +13,6 @@ export class WebGLFramePacketState {
     );
     private npcDataRingIndex: number = 0;
     private npcGpuFrameData: NpcGpuFrameData | undefined;
-    private readyMapIds: ReadonlySet<number> = new Set<number>();
     private frameTickPatches: ParsedFrameTickPatches | undefined;
     private frameRenderListPacked: Int32Array | undefined;
     private lastAppliedFramePacketFrameCount: number = -1;
@@ -41,7 +40,6 @@ export class WebGLFramePacketState {
         this.frameTickPatches = undefined;
         this.frameRenderListPacked = undefined;
         this.npcGpuFrameData = undefined;
-        this.readyMapIds = new Set<number>();
         this.npcDataTextureDirty = false;
     }
 
@@ -55,10 +53,6 @@ export class WebGLFramePacketState {
 
     getNpcGpuFrameData(): NpcGpuFrameData | undefined {
         return this.npcGpuFrameData;
-    }
-
-    isMapReady(mapId: number): boolean {
-        return this.readyMapIds.has(mapId | 0);
     }
 
     isNpcDataTextureDirty(): boolean {
@@ -86,7 +80,6 @@ export class WebGLFramePacketState {
 
     private applyParsedFramePacket(packet: ParsedFramePacket): void {
         this.npcGpuFrameData = packet.npcGpuFrameData;
-        this.readyMapIds = packet.readyMapIds;
         this.frameTickPatches = packet.tickPatches;
         this.frameRenderListPacked = packet.renderListPacked;
         this.setNpcDataRingIndex(packet.npcRingWriteIndex);

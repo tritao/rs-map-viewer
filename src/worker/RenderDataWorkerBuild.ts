@@ -24,8 +24,12 @@ import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
 import { createMapRenderBackend } from "../maprender/MapRenderBackend";
 import { MinimapData, loadMinimapBlob } from "../maprender/ts/MinimapData";
-import type { SdMapData } from "../maprender/MapRenderPayload";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import {
+    buildStaticMapPacket,
+    staticMapPacketTransferables,
+    type StaticMapPacket,
+} from "../runtime/contracts/StaticMapPacket";
 import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
@@ -268,14 +272,18 @@ export class RenderDataWorkerBuild {
         await this.requireWorkerState();
     }
 
-    async loadSdMapData(
+    async loadStaticMapPacket(
         input: SdMapLoaderInput,
-    ): Promise<TransferDescriptor<SdMapData | undefined>> {
+    ): Promise<TransferDescriptor<StaticMapPacket | undefined>> {
         const workerState = await this.requireWorkerState();
         const { data, transferables } = await workerState.mapRenderBackend.buildMapData(input);
-        return data
-            ? Transfer<SdMapData | undefined>(data, transferables)
-            : Transfer<SdMapData | undefined>(undefined, []);
+        if (!data) {
+            return Transfer<StaticMapPacket | undefined>(undefined, []);
+        }
+        const packet = buildStaticMapPacket(data);
+        const packetTransferables = staticMapPacketTransferables(packet);
+        const allTransferables = packetTransferables.length > 0 ? packetTransferables : transferables;
+        return Transfer<StaticMapPacket | undefined>(packet, allTransferables);
     }
 
     async loadTexture(

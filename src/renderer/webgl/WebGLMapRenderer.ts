@@ -600,11 +600,6 @@ export class WebGLMapRenderer
             const off = (i * FRAME_RENDER_LIST_STRIDE) | 0;
             const mapId = packed[off + 0] | 0;
             const flags = packed[off + 1] | 0;
-            if (!this.framePacketState.isMapReady(mapId)) {
-                throw new Error(
-                    `[map-render][strict-frame-packet] renderListMapNotReady mapId=${mapId | 0}`,
-                );
-            }
             const map = this.loadedMaps.get(mapId);
             if (!map) {
                 continue;

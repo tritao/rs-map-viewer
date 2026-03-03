@@ -9,8 +9,8 @@ import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import type { SdMapData } from "../maprender/MapRenderPayload";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 const buildService = new RenderDataWorkerBuild();
@@ -25,10 +25,10 @@ const worker = {
         tickRuntime.resetForCache();
         await buildService.initCache(cache, spawnBootstrap, options);
     },
-    async loadSdMapData(
+    async loadStaticMapPacket(
         input: SdMapLoaderInput,
-    ): Promise<TransferDescriptor<SdMapData | undefined>> {
-        return buildService.loadSdMapData(input);
+    ): Promise<TransferDescriptor<StaticMapPacket | undefined>> {
+        return buildService.loadStaticMapPacket(input);
     },
     async loadTexture(
         id: number,

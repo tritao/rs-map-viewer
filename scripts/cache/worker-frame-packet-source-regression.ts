@@ -14,7 +14,6 @@ function makePacket(
         tickViewStateVersion: tickViewStateVersion | 0,
         npcRingWriteIndex: 0,
         npcGpuFrameData: { data: new Uint16Array(4), width: 1, height: 1 },
-        readyMapIdsPacked: new Int32Array(0),
         npcRangesByMapIdPacked: new Int32Array(0),
         renderListPacked: new Int32Array(0),
         tickPatchCountsByMapId: new Int32Array(0),

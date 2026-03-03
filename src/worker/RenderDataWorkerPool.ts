@@ -8,8 +8,8 @@ import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { SdMapData } from "../maprender/MapRenderPayload";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 type WorkerDescriptorLike = Readonly<{ init: Promise<RenderDataWorkerThread> }>;
@@ -94,8 +94,8 @@ export class RenderDataWorkerPool {
         );
     }
 
-    queueSdMapData(input: SdMapLoaderInput): Promise<SdMapData | undefined> {
-        return this.queue((w) => w.loadSdMapData(input));
+    queueStaticMapPacket(input: SdMapLoaderInput): Promise<StaticMapPacket | undefined> {
+        return this.queue((w) => w.loadStaticMapPacket(input));
     }
 
     queueLoadTexture(

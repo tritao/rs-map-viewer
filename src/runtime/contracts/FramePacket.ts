@@ -61,7 +61,6 @@ export type ParsedFramePacket = Readonly<{
     tickViewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
-    readyMapIds: ReadonlySet<number>;
     npcRangesByMapId: ParsedFrameNpcRangesByMapId;
     tickPatches: ParsedFrameTickPatches | undefined;
     renderListPacked: Int32Array;
@@ -75,8 +74,6 @@ export type FramePacket = Readonly<{
 
     // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,typeId).
     npcGpuFrameData: NpcGpuFrameData;
-    // Explicit ready map set for this frame; renderer should only draw maps listed here.
-    readyMapIdsPacked: Int32Array;
 
     // Tuples of [mapId, start, count] for the current frame's NPC upload.
     // `start` is the npc index into `npcGpuFrameData.data`, `count` is npc entries for mapId.
@@ -93,7 +90,6 @@ export type FramePacket = Readonly<{
 export function framePacketTransferables(packet: FramePacket): Transferable[] {
     const out: Transferable[] = [];
     out.push(packet.npcGpuFrameData.data.buffer as Transferable);
-    out.push(packet.readyMapIdsPacked.buffer as Transferable);
     out.push(packet.npcRangesByMapIdPacked.buffer as Transferable);
     out.push(packet.renderListPacked.buffer as Transferable);
     out.push(packet.tickPatchCountsByMapId.buffer as Transferable);
@@ -114,7 +110,6 @@ export type BuildFramePacketInput = Readonly<{
     tickViewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
-    readyMapIdsPacked: Int32Array;
     npcRangesByMapIdPacked: Int32Array;
     renderListPacked: Int32Array;
     tickPatchCountsByMapId: Int32Array;
@@ -244,8 +239,6 @@ function validateFramePacketStrict(packet: FramePacket): void {
                 `len=${renderInts} stride=${FRAME_RENDER_LIST_STRIDE}`,
         );
     }
-    const readyInts = packet.readyMapIdsPacked.length | 0;
-
     const rangeInts = packet.npcRangesByMapIdPacked.length | 0;
     if ((rangeInts % NPC_RANGES_BY_MAP_ID_STRIDE) !== 0) {
         throw new Error(
@@ -272,20 +265,7 @@ function validateFramePacketStrict(packet: FramePacket): void {
         );
     }
 
-    const readyMapIds = packet.readyMapIdsPacked;
-    const readySet = new Set<number>();
-    let prevReadyMapId = -1;
-    for (let i = 0; i < readyInts; i++) {
-        const readyMapId = readyMapIds[i] | 0;
-        if ((i | 0) > 0 && (readyMapId | 0) <= (prevReadyMapId | 0)) {
-            throw new Error(
-                `[map-render][frame-packet] readyMapIdsPacked must be unique sorted asc: ` +
-                    `entry=${i | 0} prev=${prevReadyMapId | 0} cur=${readyMapId | 0}`,
-            );
-        }
-        prevReadyMapId = readyMapId | 0;
-        readySet.add(readyMapId | 0);
-    }
+    const seenMapIds = new Set<number>();
 
     const maxNpcEntries = ((gpu.width | 0) * (gpu.height | 0)) | 0;
 
@@ -311,12 +291,13 @@ function validateFramePacketStrict(packet: FramePacket): void {
                     `entry=${i | 0} render=${renderMapId} npcRanges=${rangesMapId} tick=${tickMapId}`,
             );
         }
-        if (!readySet.has(renderMapId | 0)) {
+        if (seenMapIds.has(renderMapId | 0)) {
             throw new Error(
-                `[map-render][frame-packet] render map missing from readyMapIdsPacked: ` +
+                `[map-render][frame-packet] duplicate render map entry: ` +
                     `entry=${i | 0} mapId=${renderMapId | 0}`,
             );
         }
+        seenMapIds.add(renderMapId | 0);
         if ((npcStart | 0) < 0 || (npcCount | 0) < 0 || ((npcStart + npcCount) | 0) > maxNpcEntries) {
             throw new Error(
                 `[map-render][frame-packet] npc range invalid: ` +
@@ -340,7 +321,6 @@ export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
         tickViewStateVersion: input.tickViewStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
-        readyMapIdsPacked: input.readyMapIdsPacked,
         npcRangesByMapIdPacked: input.npcRangesByMapIdPacked,
         renderListPacked: input.renderListPacked,
         tickPatchCountsByMapId: input.tickPatchCountsByMapId,
@@ -462,7 +442,6 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
         tickViewStateVersion: packet.tickViewStateVersion | 0,
         npcRingWriteIndex,
         npcGpuFrameData: packet.npcGpuFrameData,
-        readyMapIds: new Set<number>(packet.readyMapIdsPacked),
         npcRangesByMapId: parseFramePacketNpcRangesByMapId(packet.npcRangesByMapIdPacked),
         tickPatches: parseFramePacketTickPatchesFromPacket(packet),
         renderListPacked: parseFramePacketRenderList(packet.renderListPacked),

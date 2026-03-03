@@ -89,7 +89,6 @@ export function buildFramePacketFromMapEntries(
     input: BuildFramePacketFromMapEntriesInput,
 ): FramePacket {
     const entryCount = input.entries.length | 0;
-    const readyMapIdsPacked = buildReadyMapIdsPacked(input.entries);
     const npcRangesByMapIdPacked = new Int32Array((entryCount | 0) * 3);
     const renderListPacked = new Int32Array((entryCount | 0) * 2);
     const tickPatchCountsByMapId = new Int32Array(
@@ -122,35 +121,9 @@ export function buildFramePacketFromMapEntries(
         tickViewStateVersion: input.tickViewStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
-        readyMapIdsPacked,
         npcRangesByMapIdPacked,
         renderListPacked,
         tickPatchCountsByMapId,
         tickPatchStreamsByMap,
     });
-}
-
-function buildReadyMapIdsPacked(entries: readonly FramePacketMapEntry[]): Int32Array {
-    const entryCount = entries.length | 0;
-    if ((entryCount | 0) <= 0) {
-        return new Int32Array(0);
-    }
-
-    const sorted = new Int32Array(entryCount | 0);
-    for (let i = 0; i < entryCount; i++) {
-        sorted[i] = entries[i]!.mapId | 0;
-    }
-    sorted.sort();
-
-    let uniqueCount = 0;
-    for (let i = 0; i < entryCount; i++) {
-        const mapId = sorted[i] | 0;
-        if ((i | 0) > 0 && (mapId | 0) === (sorted[i - 1] | 0)) {
-            continue;
-        }
-        sorted[uniqueCount] = mapId;
-        uniqueCount = (uniqueCount + 1) | 0;
-    }
-
-    return sorted.slice(0, uniqueCount | 0);
 }
