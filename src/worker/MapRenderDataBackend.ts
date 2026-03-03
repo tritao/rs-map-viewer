@@ -367,18 +367,16 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         private readonly options: MapRenderDataBackendOptions | undefined,
     ) {}
 
-    private async ensureRuntimeInitialized(bridge: CppWasmMapRenderDataBridge): Promise<boolean> {
+    private async ensureRuntimeInitialized(): Promise<boolean> {
         if (!this.runtimeInitPromise) {
-            this.runtimeInitPromise = bridge.initRuntime();
+            this.runtimeInitPromise = this.bridge.initRuntime();
         }
         return this.runtimeInitPromise;
     }
 
-    private async ensureRuntimeHandle(
-        bridge: CppWasmMapRenderDataBridge,
-    ): Promise<MapRenderRuntimeHandle | undefined> {
+    private async ensureRuntimeHandle(): Promise<MapRenderRuntimeHandle | undefined> {
         if (!this.runtimeHandlePromise) {
-            this.runtimeHandlePromise = bridge.createRuntimeWithConfig({
+            this.runtimeHandlePromise = this.bridge.createRuntimeWithConfig({
                 cacheGame: this.deps.session.cache.info.game | 0,
                 cacheRevision: this.deps.session.cache.info.revision | 0,
                 sceneLevels: 4,
@@ -612,7 +610,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         t0: number | undefined,
     ): Promise<RenderDataResult<SdMapData | undefined>> {
         const bridge = this.bridge;
-        if (!(await this.ensureRuntimeInitialized(bridge))) {
+        if (!(await this.ensureRuntimeInitialized())) {
             this.trackOutcome(
                 "bridgeMissing",
                 input,
@@ -621,7 +619,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             );
             return { data: undefined, transferables: [] };
         }
-        const runtimeHandle = await this.ensureRuntimeHandle(bridge);
+        const runtimeHandle = await this.ensureRuntimeHandle();
         if (runtimeHandle === undefined) {
             this.trackOutcome(
                 "bridgeMissing",
