@@ -986,6 +986,10 @@ export class WasmCacheUploader {
 
         // Group missing entries by domain+group for stable batching.
         const byDomain = new Map<number, Map<number, Set<number>>>();
+        let unsatisfiedCount = 0;
+        let unsatisfiedPreview:
+            | Readonly<{ domain: number; group: number; file: number }>
+            | undefined = undefined;
         for (let i = 0; i < n; i++) {
             const domain = domains[i] | 0;
             const group = groups[i] | 0;
@@ -996,6 +1000,17 @@ export class WasmCacheUploader {
             // extend the packing lists beyond the TS-configured set and break parity.
             if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS) continue;
             if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT) continue;
+
+            // Fail fast if we can't satisfy the runtime's request; otherwise we'd just spin passes.
+            // (The actual upload batching below will fetch bytes again; this is just a guard.)
+            const maybe = provider.tryGetBlobBytes(domain, group, file);
+            if (!(maybe instanceof Uint8Array) || maybe.length <= 0) {
+                unsatisfiedCount++;
+                if (!unsatisfiedPreview) {
+                    unsatisfiedPreview = { domain, group, file };
+                }
+                continue;
+            }
 
             let byGroup = byDomain.get(domain);
             if (!byGroup) {
@@ -1008,6 +1023,15 @@ export class WasmCacheUploader {
                 byGroup.set(group, fileSet);
             }
             fileSet.add(file | 0);
+        }
+
+        if (unsatisfiedCount > 0) {
+            const preview = unsatisfiedPreview ?? { domain: -1, group: -1, file: -1 };
+            console.warn(
+                `[runtime-cache-v2] cannot satisfy ${unsatisfiedCount} missing blobs ` +
+                    `(first: domain=${preview.domain} group=${preview.group} file=${preview.file})`,
+            );
+            return false;
         }
 
         for (const [domain, byGroup] of byDomain.entries()) {
@@ -1078,7 +1102,7 @@ export class WasmCacheUploader {
         if (!(await this.ensureTextureListsUploaded(feeder, runtimeHandle, sceneBuildInput)))
             return false;
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_MAP_SQUARE))) return false;
-        const provider = sceneBuildInput.cacheProvider;
+        const provider = createSceneBuildCacheProviderForBuild(sceneBuildInput);
         const bounds = computeSceneBuildMapBounds(
             sceneBuildInput.baseX | 0,
             sceneBuildInput.baseY | 0,
@@ -1155,26 +1179,34 @@ export class WasmCacheUploader {
         }
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS)))
             return false;
-        const objSpawnBytesByMapId = createObjSpawnBytesByMapIdForBuild(sceneBuildInput);
-        if (objSpawnBytesByMapId && objSpawnBytesByMapId.size > 0) {
-            const mapIds = Array.from(objSpawnBytesByMapId.keys()).sort((a, b) => (a | 0) - (b | 0));
+        {
             const groups: number[] = [];
             const files: number[] = [];
             const offsets: number[] = [];
             const lengths: number[] = [];
             const chunks: Uint8Array[] = [];
             let totalBytes = 0;
-            for (let i = 0; i < mapIds.length; i++) {
-                const mapId = mapIds[i] | 0;
-                const bytes = objSpawnBytesByMapId.get(mapId);
-                if (!(bytes instanceof Uint8Array) || bytes.length <= 0) continue;
-                groups.push(0);
-                files.push(mapId | 0);
-                offsets.push(totalBytes);
-                lengths.push(bytes.length | 0);
-                chunks.push(bytes);
-                totalBytes += bytes.length | 0;
+
+            for (let mapX = bounds.mapStartX; mapX < bounds.mapEndX; mapX++) {
+                for (let mapY = bounds.mapStartY; mapY < bounds.mapEndY; mapY++) {
+                    const mapId = (((mapX | 0) & 0xff) << 8) | ((mapY | 0) & 0xff);
+                    const spawnBytes = provider.tryGetBlobBytes(
+                        RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
+                        0,
+                        mapId,
+                    );
+                    if (!(spawnBytes instanceof Uint8Array) || spawnBytes.length <= 0) {
+                        continue;
+                    }
+                    groups.push(0);
+                    files.push(mapId | 0);
+                    offsets.push(totalBytes);
+                    lengths.push(spawnBytes.length | 0);
+                    chunks.push(spawnBytes);
+                    totalBytes += spawnBytes.length | 0;
+                }
             }
+
             if (groups.length > 0) {
                 const bytes = new Uint8Array(totalBytes);
                 let off = 0;
