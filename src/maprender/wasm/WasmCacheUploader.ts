@@ -126,15 +126,8 @@ type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
     baseLoader?: TypeEntryLoaderLike;
 }>;
 
-type TextureLoaderLike = Readonly<{
-    getTextureIds?: () => number[];
-    isSd?: (id: number) => boolean;
-    isTransparent?: (id: number) => boolean;
-}>;
-
 type LocModelLoaderLike = Readonly<{
     modelLoader?: ModelLoaderLike;
-    textureLoader?: TextureLoaderLike;
     seqTypeLoader?: TypeEntryLoaderLike;
     seqFrameLoader?: SeqFrameLoaderLike;
     skeletalSeqLoader?: SkeletalSeqLoaderLike;
@@ -147,6 +140,7 @@ type MapRenderSceneBuildInputDeps = Readonly<
         | "cacheGame"
         | "cacheRevision"
         | "cacheProvider"
+        | "textureIdLists"
         | "varpValues"
     >
 >;
@@ -171,15 +165,6 @@ export type SceneBuildCacheProvider = Readonly<{
     tryGetBlobBytes(domain: number, group: number, file: number): Uint8Array | undefined;
 }>;
 
-type SceneBuildCacheProviderImpl = SceneBuildCacheProvider &
-    Readonly<{
-        tryCollectTextureIds(): ReadonlyArray<number> | undefined;
-        isTextureTransparent(id: number): boolean;
-        isTextureSd(id: number): boolean;
-        tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes | undefined;
-        tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes | undefined;
-    }>;
-
 export type SceneBuildCacheProviderLoaders = Readonly<{
     mapBytesProvider?: MapBytesProvider;
     locTypeLoader: TypeEntryLoaderLike;
@@ -188,7 +173,6 @@ export type SceneBuildCacheProviderLoaders = Readonly<{
     seqTypeLoader?: TypeEntryLoaderLike;
     seqFrameLoader?: SeqFrameLoaderLike;
     skeletalSeqLoader?: SkeletalSeqLoaderLike;
-    textureLoader?: TextureLoaderLike;
     npcTypeLoader?: TypeEntryLoaderLike;
     basTypeLoader?: TypeEntryLoaderLike;
     varbitLoader?: TypeEntryLoaderLike;
@@ -320,7 +304,6 @@ export function createSceneBuildCacheProvider(
     const varbitLoader = loaders.varbitLoader;
     const locModelLoader = loaders.locModelLoader;
     const modelLoader = locModelLoader?.modelLoader;
-    const textureLoader = loaders.textureLoader ?? locModelLoader?.textureLoader;
     const seqTypeLoader = loaders.seqTypeLoader ?? locModelLoader?.seqTypeLoader;
     const seqFrameLoader = loaders.seqFrameLoader ?? locModelLoader?.seqFrameLoader;
     const skeletalSeqLoader = loaders.skeletalSeqLoader ?? locModelLoader?.skeletalSeqLoader;
@@ -385,25 +368,6 @@ export function createSceneBuildCacheProvider(
                 return undefined;
         }
     };
-
-    const tryCollectTextureIds = (): ReadonlyArray<number> | undefined => {
-            if (!textureLoader || typeof textureLoader.getTextureIds !== "function") return undefined;
-            try {
-                const ids = textureLoader.getTextureIds();
-                return Array.isArray(ids) ? ids : undefined;
-            } catch {
-                return undefined;
-            }
-        };
-
-    const isTextureTransparent = (id: number) =>
-            !!textureLoader &&
-            typeof textureLoader.isTransparent === "function" &&
-            textureLoader.isTransparent(id | 0);
-    const isTextureSd = (id: number) =>
-            !!textureLoader &&
-            typeof textureLoader.isSd === "function" &&
-            textureLoader.isSd(id | 0);
 
     const tryGetBlobBytes = (domain: number, group: number, file: number): Uint8Array | undefined => {
         const d = domain | 0;
@@ -500,16 +464,13 @@ export function createSceneBuildCacheProvider(
         return tryGetTypeEntryBytes(d, f);
     };
 
-    const out: SceneBuildCacheProviderImpl = {
-        tryGetBlobBytes,
-        tryCollectTextureIds,
-        isTextureTransparent,
-        isTextureSd,
-        ...(tryGetLegacyModelFileBytes ? { tryGetLegacyModelFileBytes } : {}),
-        ...(tryGetLegacySeqFrameFileBytes ? { tryGetLegacySeqFrameFileBytes } : {}),
-    };
-    return out;
+    return { tryGetBlobBytes };
 }
+
+export type MapRenderTextureIdLists = Readonly<{
+    sdTextureIds: ReadonlyArray<number>;
+    transparentTextureIds: ReadonlyArray<number>;
+}>;
 
 export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     mapX: number;
@@ -531,6 +492,7 @@ export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     objSpawns?: ReadonlyArray<ObjSpawn>;
     varpValues: Int32Array;
     cacheProvider: SceneBuildCacheProvider;
+    textureIdLists?: MapRenderTextureIdLists;
 }>;
 
 export function createByteDrivenSceneBuildInput(
@@ -567,6 +529,7 @@ export function createByteDrivenSceneBuildInput(
         objSpawns: deps.objSpawns,
         varpValues: deps.varpValues,
         cacheProvider: deps.cacheProvider,
+        textureIdLists: deps.textureIdLists,
     };
 }
 
@@ -720,10 +683,10 @@ export class WasmCacheUploader {
         if (this.uploadedTextureListsForRuntime.has(key)) {
             return true;
         }
-        const provider = sceneBuildInput.cacheProvider as SceneBuildCacheProviderImpl;
-        const allTextureIds = provider.tryCollectTextureIds();
-        if (!allTextureIds) {
-            // Without a texture loader we can't seed the runtime's texture packing lists.
+
+        const lists = sceneBuildInput.textureIdLists;
+        if (!lists) {
+            // Without texture lists we can't seed the runtime's texture packing lists.
             // Still proceed: map builds can continue (render will just be missing textures).
             if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS)))
                 return false;
@@ -739,22 +702,11 @@ export class WasmCacheUploader {
         //
         // So we must upload the full ordered SD id list (not truncated), matching
         // TS `ModelData.light()` SD filtering semantics.
-        const sdTextureIds: number[] = [];
-        const transparentTextureIds: number[] = [];
-        for (let i = 0; i < allTextureIds.length; i++) {
-            const textureId = allTextureIds[i] | 0;
-            if (textureId < 0) continue;
-            if (provider.isTextureTransparent(textureId)) {
-                transparentTextureIds.push(textureId);
-            }
-            if (provider.isTextureSd(textureId)) {
-                sdTextureIds.push(textureId);
-            }
-        }
+        const sdTextureIds = lists.sdTextureIds;
+        const transparentTextureIds = lists.transparentTextureIds;
         if (typeof process !== "undefined" && process?.env?.RS_DEBUG_TEXTURE_LISTS === "1") {
             console.warn("[runtime-cache-v2] texture lists", {
                 runtimeHandle: key,
-                allCount: allTextureIds.length | 0,
                 sdCount: sdTextureIds.length | 0,
                 transparentCount: transparentTextureIds.length | 0,
                 sdSample: sdTextureIds.slice(0, 8),

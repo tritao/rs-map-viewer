@@ -17,6 +17,7 @@ import type {
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import {
     MapRenderByteDrivenSceneBuildInput,
+    MapRenderTextureIdLists,
     WasmCacheUploader,
     createSceneBuildCacheProvider,
     createByteDrivenSceneBuildInput,
@@ -34,6 +35,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
     private readonly cacheUploader = new WasmCacheUploader();
+    private textureIdLists: MapRenderTextureIdLists | null | undefined;
     private readonly cacheProvider = (() => {
         const { session } = this.deps;
         const loaders = session.loaders;
@@ -46,7 +48,6 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             objTypeLoader: loaders.objTypeLoader,
             locModelLoader: {
                 modelLoader: loaders.modelLoader,
-                textureLoader: loaders.textureLoader,
                 seqTypeLoader,
                 seqFrameLoader,
                 skeletalSeqLoader,
@@ -54,7 +55,6 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             seqTypeLoader,
             seqFrameLoader,
             skeletalSeqLoader,
-            textureLoader: session.getTextureLoader(),
             npcTypeLoader: loaders.npcTypeLoader,
             basTypeLoader: loaders.basTypeLoader,
             underlayTypeLoader: loaders.underlayTypeLoader,
@@ -147,6 +147,47 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         return runtimeHandle;
     }
 
+    private getTextureIdLists(): MapRenderTextureIdLists | undefined {
+        if (this.textureIdLists !== undefined) {
+            return this.textureIdLists ?? undefined;
+        }
+        const { session } = this.deps;
+        const loader = session.getTextureLoader() as unknown as {
+            getTextureIds?: () => number[];
+            isSd?: (id: number) => boolean;
+            isTransparent?: (id: number) => boolean;
+        };
+        if (!loader || typeof loader.getTextureIds !== "function") {
+            this.textureIdLists = null;
+            return undefined;
+        }
+
+        try {
+            const all = loader.getTextureIds();
+            if (!Array.isArray(all) || all.length <= 0) {
+                this.textureIdLists = null;
+                return undefined;
+            }
+            const sdTextureIds: number[] = [];
+            const transparentTextureIds: number[] = [];
+            for (let i = 0; i < all.length; i++) {
+                const id = all[i] | 0;
+                if (id < 0) continue;
+                if (typeof loader.isTransparent === "function" && loader.isTransparent(id)) {
+                    transparentTextureIds.push(id);
+                }
+                if (typeof loader.isSd === "function" && loader.isSd(id)) {
+                    sdTextureIds.push(id);
+                }
+            }
+            this.textureIdLists = { sdTextureIds, transparentTextureIds };
+            return this.textureIdLists;
+        } catch {
+            this.textureIdLists = null;
+            return undefined;
+        }
+    }
+
     private createByteDrivenSceneBuildInput(input: SdMapLoaderInput): MapRenderByteDrivenSceneBuildInput {
         const { session, objSpawns } = this.deps;
         const varManager = session.varManager;
@@ -158,6 +199,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             cacheProvider: this.cacheProvider,
             cacheGame: session.cache.info.game,
             cacheRevision: session.cache.info.revision,
+            textureIdLists: this.getTextureIdLists(),
         });
     }
 
