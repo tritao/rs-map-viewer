@@ -96,6 +96,14 @@ function getRuntimeDebugSetWorldHeightProbeExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_set_world_height_probe;
 }
 
+function getRuntimeDebugSetWorldHeightProbeLocFilterExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_set_world_height_probe_loc_filter;
+}
+
+function getRuntimeDebugSetPackedVertexProbeIndexExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_set_packed_vertex_probe_index;
+}
+
 function getRuntimeDebugGetLastWorldHeightProbeExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_last_world_height_probe;
 }
@@ -946,12 +954,39 @@ export function runtimeDebugSetWorldHeightProbeWithWasm(
     return status === RUNTIME_STATUS_OK;
 }
 
+export function runtimeDebugSetWorldHeightProbeLocFilterWithWasm(
+    backendModule,
+    runtimeHandle,
+    locId,
+) {
+    const setFilter = getRuntimeDebugSetWorldHeightProbeLocFilterExport(backendModule);
+    if (typeof setFilter !== "function") {
+        return false;
+    }
+    const status = setFilter(runtimeHandle | 0, locId | 0) | 0;
+    return status === RUNTIME_STATUS_OK;
+}
+
+export function runtimeDebugSetPackedVertexProbeIndexWithWasm(
+    backendModule,
+    runtimeHandle,
+    vertexIndex,
+) {
+    const setIndex = getRuntimeDebugSetPackedVertexProbeIndexExport(backendModule);
+    if (typeof setIndex !== "function") {
+        return false;
+    }
+    const status = setIndex(runtimeHandle | 0, vertexIndex | 0) | 0;
+    return status === RUNTIME_STATUS_OK;
+}
+
 export function runtimeDebugGetLastWorldHeightProbeWithWasm(backendModule, runtimeHandle) {
     const getProbe = getRuntimeDebugGetLastWorldHeightProbeExport(backendModule);
     if (typeof getProbe !== "function") {
         return undefined;
     }
-    const PROBE_LEN = 20;
+    // 4 header i32 + packed payload.
+    const PROBE_LEN = 36;
     const outPtr = mallocI32(backendModule, PROBE_LEN);
     if (!outPtr) {
         return undefined;

@@ -3,7 +3,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 
 import type { NpcSpawn } from "../../src/data/npc/NpcSpawn";
-import type { ObjSpawn } from "../../src/data/obj/ObjSpawn";
+import { getWindowObjSpawns, type ObjSpawn } from "../../src/data/obj/ObjSpawn";
 import { ModelHashBuffer, getModelHash } from "../../src/runtime/build/ModelHashBuffer";
 import {
     SceneBuffer,
@@ -98,6 +98,8 @@ import {
     runtimeDebugSetTerrainDigestSampleStartVertexWithWasm,
     runtimeDebugSetTerrainProbeWithWasm,
     runtimeDebugSetWorldHeightProbeWithWasm,
+    runtimeDebugSetWorldHeightProbeLocFilterWithWasm,
+    runtimeDebugSetPackedVertexProbeIndexWithWasm,
     tryLoadBackendModule,
 } from "../../src/wasm/rs_map_render_backend_debug.mjs";
 import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
@@ -487,6 +489,28 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
                 )) ?? false
             );
         },
+        async debugSetWorldHeightProbeLocFilter(runtimeHandle: number, locId: number) {
+            return (
+                (await withBackendModule((m) =>
+                    runtimeDebugSetWorldHeightProbeLocFilterWithWasm(
+                        m,
+                        runtimeHandle,
+                        locId,
+                    ),
+                )) ?? false
+            );
+        },
+        async debugSetPackedVertexProbeIndex(runtimeHandle: number, vertexIndex: number) {
+            return (
+                (await withBackendModule((m) =>
+                    runtimeDebugSetPackedVertexProbeIndexWithWasm(
+                        m,
+                        runtimeHandle,
+                        vertexIndex,
+                    ),
+                )) ?? false
+            );
+        },
         async debugGetRuntimeLastWorldHeightProbe(runtimeHandle: number) {
             return withBackendModule((m) =>
                 runtimeDebugGetLastWorldHeightProbeWithWasm(m, runtimeHandle),
@@ -820,6 +844,8 @@ type StageKey =
     | "sceneCommandPlanStage"
     | "sceneCommandPlanOpsStage"
     | "sceneBucketsStage"
+    // Debug-only: explain why TS did/didn't create obj scene-models for window spawns.
+    | "objSpawnGatingStage"
     | "locRenderPlacementStage"
     | "modelFacesStage"
     | "locVariantStage"
@@ -846,6 +872,7 @@ const STAGE_KEYS: ReadonlyArray<StageKey> = [
     "sceneCommandPlanStage",
     "sceneCommandPlanOpsStage",
     "sceneBucketsStage",
+    "objSpawnGatingStage",
     "locRenderPlacementStage",
     "modelFacesStage",
     "locVariantStage",
@@ -870,6 +897,7 @@ function createStageFailureCounter(): Record<StageKey, number> {
         sceneCommandPlanStage: 0,
         sceneCommandPlanOpsStage: 0,
         sceneBucketsStage: 0,
+        objSpawnGatingStage: 0,
         locRenderPlacementStage: 0,
         modelFacesStage: 0,
         locVariantStage: 0,
@@ -892,6 +920,100 @@ function createStageFailureSquareList(): Record<StageKey, string[]> {
 
 function formatStageFailureSummary(stageFailures: Record<StageKey, number>): string {
     return STAGE_KEYS.map((key) => `${key}=${stageFailures[key] | 0}`).join(" ");
+}
+
+function debugDescribeTsObjSpawnGatingForSquare(params: Readonly<{
+    cacheInfo: CacheInfo;
+    sceneBuilder: SceneBuilder;
+    mapBytesProvider: MapFileBytesProvider;
+    objSpawns: readonly ObjSpawn[];
+    objTypeLoader: { tryLoad(id: number): { ok: boolean; value?: unknown } };
+    objModelLoader: ObjModelLoader;
+    square: Square;
+    maxLevel: number;
+    smoothTerrain: boolean;
+}>): string[] {
+    const borderSize = 6;
+    const mapSquareSize = 64;
+    const baseX = (params.square.mapX * mapSquareSize - borderSize) | 0;
+    const baseY = (params.square.mapY * mapSquareSize - borderSize) | 0;
+    const size = (mapSquareSize + borderSize * 2) | 0;
+
+    const lines: string[] = [];
+    const windowSpawns = getWindowObjSpawns(params.objSpawns as ObjSpawn[], params.maxLevel, baseX, baseY, size, size);
+    lines.push(`  objSpawnGating: windowSpawns=${windowSpawns.length} base=${baseX},${baseY} size=${size}`);
+    if (windowSpawns.length === 0) {
+        return lines;
+    }
+
+    // Build a minimal scene so we can evaluate bridge flags + tile-model faces like SdMapRenderDataTsBackend does.
+    const scene = buildSceneFromMapBytesProvider(
+        params.sceneBuilder,
+        params.mapBytesProvider,
+        baseX,
+        baseY,
+        size,
+        size,
+        params.smoothTerrain,
+        LocLoadType.NO_MODELS,
+    );
+
+    // Keep output compact: show only spawns that map to in-bounds tiles and where any gating step fails.
+    // Also cap to avoid spamming stdout.
+    let printed = 0;
+    const limit = 32;
+    for (let i = 0; i < windowSpawns.length && printed < limit; i++) {
+        const spawn = windowSpawns[i];
+        const spawnMapX = Math.floor((spawn.x | 0) / 64) | 0;
+        const spawnMapY = Math.floor((spawn.y | 0) / 64) | 0;
+        const terrainLen =
+            (params.mapBytesProvider as any).getTerrainBytes?.(spawnMapX, spawnMapY)?.length ?? -1;
+        const tileX = ((spawn.x | 0) - baseX) | 0;
+        const tileY = ((spawn.y | 0) - baseY) | 0;
+        if (!(tileX > 0 && tileY > 0 && tileX < (size - 1) && tileY < (size - 1))) {
+            continue;
+        }
+
+        const typeRes = params.objTypeLoader.tryLoad(spawn.id | 0);
+        const type = typeRes.ok ? (typeRes as any).value : undefined;
+        const name = typeof type?.name === "string" ? type.name : undefined;
+        const modelId = typeof type?.model === "number" ? (type.model | 0) : undefined;
+
+        let renderLevel = spawn.plane | 0;
+        // TileRenderFlag.Bridge = 0x2
+        if (renderLevel < 3 && (scene.tileRenderFlags[1]?.[tileX]?.[tileY] & 0x2) !== 0) {
+            renderLevel = (renderLevel + 1) | 0;
+        }
+
+        const tile = scene.tiles?.[renderLevel]?.[tileX]?.[tileY];
+        const faceLen = tile?.tileModel?.faces?.length ?? 0;
+        const model = params.objModelLoader.getModel(spawn.id | 0, spawn.count | 0);
+
+        const typeOk = !!typeRes.ok;
+        const nameOk = name !== "null";
+        const modelOk = !!model;
+        const tileOk = faceLen > 0;
+
+        // Only print when we'd skip (so we can explain missing TS OBJ ops).
+        if (typeOk && nameOk && modelOk && tileOk) {
+            continue;
+        }
+
+        printed++;
+        lines.push(
+            `  objSpawnGating[${printed}] id=${spawn.id | 0} cnt=${spawn.count | 0} plane=${spawn.plane | 0}` +
+                ` map=${spawnMapX},${spawnMapY} terrainLen=${terrainLen | 0}` +
+                ` tile=${tileX},${tileY} lvl=${renderLevel} faces=${faceLen | 0}` +
+                ` typeOk=${typeOk ? 1 : 0} name=${name ?? "<missing>"} modelId=${modelId ?? "<missing>"}` +
+                ` hasModel=${modelOk ? 1 : 0}`,
+        );
+    }
+    if (printed === 0) {
+        lines.push("  objSpawnGating: all window spawns passed TS gating (no skips detected)");
+    } else if (windowSpawns.length > limit) {
+        lines.push(`  objSpawnGating: printed=${printed} (cap=${limit})`);
+    }
+    return lines;
 }
 
 function compareInputDigests(
@@ -1554,11 +1676,60 @@ function digestSceneLightRenderFromScene(
     const vertices = sceneBuf.vertexBuf.byteArray();
     const indices = Int32Array.from(sceneBuf.indices);
     const commandDigest = digestSceneLightCommandBucketsFromSceneBuffer(sceneBuf);
+
+    // Match the runtime scene-light stage semantics: hash only geometry that is referenced
+    // by non-placeholder commands (offset>=0 && elements>0). This keeps this stage stable when
+    // extra unreferenced geometry exists in either implementation.
+    const buckets = collectRuntimeDrawCommandBuckets(sceneBuf);
+    const usedRanges: Array<{ start: number; end: number }> = [];
+    for (let bucketIndex = 0; bucketIndex < DRAW_BUCKET_KEYS.length; bucketIndex++) {
+        const bucket = DRAW_BUCKET_KEYS[bucketIndex];
+        const commands = buckets[bucket];
+        for (let i = 0; i < commands.length; i++) {
+            const cmd = commands[i];
+            const offsetBytes = cmd.offset | 0;
+            const elements = cmd.elements | 0;
+            if (offsetBytes < 0 || elements <= 0) continue;
+            const start = offsetBytes >> 2;
+            const end = start + elements;
+            if (end > start) usedRanges.push({ start, end });
+        }
+    }
+    usedRanges.sort((a, b) => a.start - b.start);
+    const merged: Array<{ start: number; end: number }> = [];
+    for (let i = 0; i < usedRanges.length; i++) {
+        const r = usedRanges[i];
+        if (merged.length === 0) {
+            merged.push({ start: r.start | 0, end: r.end | 0 });
+            continue;
+        }
+        const last = merged[merged.length - 1];
+        if ((r.start | 0) <= (last.end | 0)) {
+            if ((r.end | 0) > (last.end | 0)) last.end = r.end | 0;
+            continue;
+        }
+        merged.push({ start: r.start | 0, end: r.end | 0 });
+    }
+    let maxIndex = -1;
+    let indicesUsedLength = 0;
+    for (let r = 0; r < merged.length; r++) {
+        const start = Math.max(0, merged[r].start | 0);
+        const end = Math.min(indices.length, merged[r].end | 0);
+        if (end > indicesUsedLength) indicesUsedLength = end;
+        for (let i = start; i < end; i++) {
+            const v = indices[i] | 0;
+            if (v > maxIndex) maxIndex = v;
+        }
+    }
+    const verticesUsedLength =
+        maxIndex >= 0
+            ? Math.min(vertices.length, (maxIndex + 1) * PACKED_VERTEX_SIZE_BYTES)
+            : 0;
     return {
-        verticesLength: vertices.length | 0,
-        verticesHash: hashByteArray(vertices, 2166136261 >>> 0),
-        indicesLength: indices.length | 0,
-        indicesHash: hashArray(indices, 2166136261 >>> 0),
+        verticesLength: verticesUsedLength | 0,
+        verticesHash: hashVertexPrefixFromIndexRanges(vertices, indices, merged),
+        indicesLength: indicesUsedLength | 0,
+        indicesHash: hashIndicesInRanges(indices, merged),
         commandCount: commandDigest.commandCount | 0,
         commandHash: commandDigest.commandHash >>> 0,
         bucketCmdCounts: commandDigest.bucketCmdCounts.map((v) => v | 0),
@@ -1728,6 +1899,223 @@ function digestSceneLightFromRuntimeCommandArrays(input: {
         commandCount,
         commandHash: h >>> 0,
         bucketCmdCounts,
+    };
+}
+
+type SceneLightStageDebug = Readonly<{
+    mergedRangesCount: number;
+    indicesUsedLength: number;
+    verticesUsedLength: number;
+    maxIndex: number;
+    maxIndexPos: number;
+    // Runtime-only fields (0/1-based as stored in the command stream arrays)
+    runtimeCmdIndex?: number;
+    runtimeBucketIndex?: number;
+    runtimeInstHead?: number[];
+    // TS-only fields
+    tsBucketKey?: string;
+    tsBucketIndex?: number;
+    tsCmdIndexInBucket?: number;
+    tsInstHead?: number[];
+}>;
+
+function computeSceneLightStageDebugFromRuntimeCommandArrays(input: {
+    cmdBucketIndices: Int32Array;
+    cmdOffsets: Int32Array;
+    cmdElements: Int32Array;
+    cmdInstanceCounts: Int32Array;
+    cmdPackedInstances: Int32Array;
+    vertices: Uint8Array;
+    indices: Int32Array;
+}): SceneLightStageDebug {
+    // Merge used index ranges from non-placeholder commands.
+    const usedRanges: Array<{ start: number; end: number }> = [];
+    for (let i = 0; i < (input.cmdOffsets.length | 0); i++) {
+        const offsetBytes = input.cmdOffsets[i] | 0;
+        const elements = input.cmdElements[i] | 0;
+        if (offsetBytes < 0 || elements <= 0) continue;
+        const start = offsetBytes >> 2;
+        const end = start + elements;
+        if (end > start) usedRanges.push({ start, end });
+    }
+    usedRanges.sort((a, b) => a.start - b.start);
+    const merged: Array<{ start: number; end: number }> = [];
+    for (let i = 0; i < usedRanges.length; i++) {
+        const r = usedRanges[i];
+        if (merged.length === 0) {
+            merged.push({ start: r.start | 0, end: r.end | 0 });
+            continue;
+        }
+        const last = merged[merged.length - 1];
+        if ((r.start | 0) <= (last.end | 0)) {
+            if ((r.end | 0) > (last.end | 0)) last.end = r.end | 0;
+            continue;
+        }
+        merged.push({ start: r.start | 0, end: r.end | 0 });
+    }
+    let maxIndex = -1;
+    let maxIndexPos = -1;
+    let indicesUsedLength = 0;
+    for (let r = 0; r < merged.length; r++) {
+        const start = Math.max(0, merged[r].start | 0);
+        const end = Math.min(input.indices.length, merged[r].end | 0);
+        if (end > indicesUsedLength) indicesUsedLength = end;
+        for (let i = start; i < end; i++) {
+            const v = input.indices[i] | 0;
+            if (v > maxIndex) {
+                maxIndex = v;
+                maxIndexPos = i;
+            }
+        }
+    }
+    const verticesUsedLength =
+        maxIndex >= 0
+            ? Math.min(input.vertices.length, (maxIndex + 1) * PACKED_VERTEX_SIZE_BYTES)
+            : 0;
+
+    // Map maxIndexPos back to the command that owns it (first match).
+    let runtimeCmdIndex = -1;
+    let runtimeBucketIndex = -1;
+    let runtimeInstHead: number[] | undefined;
+    if (maxIndexPos >= 0) {
+        let instanceBase = 0;
+        for (let i = 0; i < (input.cmdOffsets.length | 0); i++) {
+            const instCount = input.cmdInstanceCounts[i] | 0;
+            const offsetBytes = input.cmdOffsets[i] | 0;
+            const elements = input.cmdElements[i] | 0;
+            const start = offsetBytes >> 2;
+            const end = start + elements;
+            const isPlaceholder = elements <= 0;
+            const hit = !isPlaceholder && maxIndexPos >= start && maxIndexPos < end;
+            if (hit && runtimeCmdIndex < 0) {
+                runtimeCmdIndex = i;
+                runtimeBucketIndex = input.cmdBucketIndices[i] | 0;
+                const head: number[] = [];
+                const off = (instanceBase * 8) | 0;
+                const n = Math.min(instCount, 1);
+                for (let k = 0; k < n; k++) {
+                    for (let f = 0; f < 8; f++) head.push(input.cmdPackedInstances[off + f] | 0);
+                }
+                runtimeInstHead = head;
+                break;
+            }
+            instanceBase += instCount;
+        }
+    }
+
+    return {
+        mergedRangesCount: merged.length | 0,
+        indicesUsedLength: indicesUsedLength | 0,
+        verticesUsedLength: verticesUsedLength | 0,
+        maxIndex: maxIndex | 0,
+        maxIndexPos: maxIndexPos | 0,
+        runtimeCmdIndex: runtimeCmdIndex >= 0 ? (runtimeCmdIndex | 0) : undefined,
+        runtimeBucketIndex: runtimeCmdIndex >= 0 ? (runtimeBucketIndex | 0) : undefined,
+        runtimeInstHead,
+    };
+}
+
+function computeSceneLightStageDebugFromSceneBuffer(sceneBuf: SceneBuffer): SceneLightStageDebug {
+    const vertices = sceneBuf.vertexBuf.byteArray();
+    const indices = Int32Array.from(sceneBuf.indices);
+    const buckets = collectRuntimeDrawCommandBuckets(sceneBuf);
+
+    const usedRanges: Array<{ start: number; end: number }> = [];
+    for (let bucketIndex = 0; bucketIndex < DRAW_BUCKET_KEYS.length; bucketIndex++) {
+        const bucket = DRAW_BUCKET_KEYS[bucketIndex];
+        const commands = buckets[bucket];
+        for (let i = 0; i < commands.length; i++) {
+            const cmd = commands[i];
+            const offsetBytes = cmd.offset | 0;
+            const elements = cmd.elements | 0;
+            if (offsetBytes < 0 || elements <= 0) continue;
+            const start = offsetBytes >> 2;
+            const end = start + elements;
+            if (end > start) usedRanges.push({ start, end });
+        }
+    }
+    usedRanges.sort((a, b) => a.start - b.start);
+    const merged: Array<{ start: number; end: number }> = [];
+    for (let i = 0; i < usedRanges.length; i++) {
+        const r = usedRanges[i];
+        if (merged.length === 0) {
+            merged.push({ start: r.start | 0, end: r.end | 0 });
+            continue;
+        }
+        const last = merged[merged.length - 1];
+        if ((r.start | 0) <= (last.end | 0)) {
+            if ((r.end | 0) > (last.end | 0)) last.end = r.end | 0;
+            continue;
+        }
+        merged.push({ start: r.start | 0, end: r.end | 0 });
+    }
+
+    let maxIndex = -1;
+    let maxIndexPos = -1;
+    let indicesUsedLength = 0;
+    for (let r = 0; r < merged.length; r++) {
+        const start = Math.max(0, merged[r].start | 0);
+        const end = Math.min(indices.length, merged[r].end | 0);
+        if (end > indicesUsedLength) indicesUsedLength = end;
+        for (let i = start; i < end; i++) {
+            const v = indices[i] | 0;
+            if (v > maxIndex) {
+                maxIndex = v;
+                maxIndexPos = i;
+            }
+        }
+    }
+    const verticesUsedLength =
+        maxIndex >= 0 ? Math.min(vertices.length, (maxIndex + 1) * PACKED_VERTEX_SIZE_BYTES) : 0;
+
+    let tsBucketIndex = -1;
+    let tsBucketKey: string | undefined;
+    let tsCmdIndexInBucket = -1;
+    let tsInstHead: number[] | undefined;
+    if (maxIndexPos >= 0) {
+        outer: for (let bucketIndex = 0; bucketIndex < DRAW_BUCKET_KEYS.length; bucketIndex++) {
+            const bucket = DRAW_BUCKET_KEYS[bucketIndex];
+            const commands = buckets[bucket];
+            for (let i = 0; i < commands.length; i++) {
+                const cmd = commands[i];
+                const offsetBytes = cmd.offset | 0;
+                const elements = cmd.elements | 0;
+                if (offsetBytes < 0 || elements <= 0) continue;
+                const start = offsetBytes >> 2;
+                const end = start + elements;
+                if (maxIndexPos >= start && maxIndexPos < end) {
+                    tsBucketIndex = bucketIndex;
+                    tsBucketKey = String(bucket);
+                    tsCmdIndexInBucket = i;
+                    const inst = cmd.instances && cmd.instances.length > 0 ? cmd.instances[0] : undefined;
+                    if (inst) {
+                        tsInstHead = [
+                            inst.sceneX | 0,
+                            inst.sceneZ | 0,
+                            inst.heightOffset | 0,
+                            inst.level | 0,
+                            inst.contourGround | 0,
+                            inst.priority | 0,
+                            inst.interactType | 0,
+                            inst.interactId | 0,
+                        ];
+                    }
+                    break outer;
+                }
+            }
+        }
+    }
+
+    return {
+        mergedRangesCount: merged.length | 0,
+        indicesUsedLength: indicesUsedLength | 0,
+        verticesUsedLength: verticesUsedLength | 0,
+        maxIndex: maxIndex | 0,
+        maxIndexPos: maxIndexPos | 0,
+        tsBucketKey,
+        tsBucketIndex: tsBucketIndex >= 0 ? (tsBucketIndex | 0) : undefined,
+        tsCmdIndexInBucket: tsCmdIndexInBucket >= 0 ? (tsCmdIndexInBucket | 0) : undefined,
+        tsInstHead,
     };
 }
 
@@ -8562,6 +8950,70 @@ async function main(): Promise<void> {
                             cacheCmdArraysAfter,
                             profile.loadLocs,
                         );
+                        if (
+                            args.debugStage === "sceneLightStage" &&
+                            !sceneLightStageResult.ok &&
+                            cacheCmdArraysAfter
+                        ) {
+                            const runtimeDbg =
+                                computeSceneLightStageDebugFromRuntimeCommandArrays(
+                                    cacheCmdArraysAfter,
+                                );
+                            let tsDbg: SceneLightStageDebug | undefined;
+                            try {
+                                const borderSize =
+                                    ((((sceneBuildInput.sizeX as number) | 0) - 64) / 2) | 0;
+                                if (borderSize >= 0) {
+                                    const dbgScene = buildTsSceneForLightStage(
+                                        sceneBuilder,
+                                        mapBytesProvider,
+                                        sceneBuildInput,
+                                        true,
+                                    );
+                                    dbgScene.light(sceneBuilder.textureLoader, -50, -10, -50);
+
+                                    const textureLoader = sceneBuilder.services.textureLoader;
+                                    const { textureIdIndexMap } = createSdTexturePacking(
+                                        textureLoader as any,
+                                    );
+                                    const dbgBuf = new SceneBuffer(
+                                        textureLoader as any,
+                                        new Map(textureIdIndexMap),
+                                        100000,
+                                    );
+                                    dbgBuf.addTerrain(
+                                        dbgScene,
+                                        borderSize | 0,
+                                        input.maxLevel | 0,
+                                    );
+                                    const sceneLocs = getSceneLocs(
+                                        sceneBuilder.services.locTypeLoader as any,
+                                        dbgScene,
+                                        borderSize | 0,
+                                        input.maxLevel | 0,
+                                    );
+                                    emitSceneModelsToSceneBuffer(
+                                        new ModelHashBuffer(5000),
+                                        textureLoader as any,
+                                        dbgBuf,
+                                        sceneLocs.locs,
+                                        false,
+                                    );
+                                    tsDbg = computeSceneLightStageDebugFromSceneBuffer(dbgBuf);
+                                }
+                            } catch (e) {
+                                console.log(
+                                    `[sceneLightStage][debug] ts-debug-build-failed: ${String(e)}`,
+                                );
+                            }
+                            console.log(
+                                `[sceneLightStage][debug] square=${input.mapX | 0}:${
+                                    input.mapY | 0
+                                } ts=${JSON.stringify(tsDbg ?? null)} runtime=${JSON.stringify(
+                                    runtimeDbg,
+                                )}`,
+                            );
+                        }
                     } catch (e) {
                         sceneLightStageResult = {
                             key: "sceneLightStage",
@@ -10227,6 +10679,75 @@ async function main(): Promise<void> {
                 }
             }
 
+            let objSpawnGatingStageResult: StageResult = { key: "objSpawnGatingStage", ok: true };
+            if (args.debugStage === "objSpawnGatingStage" && profile.loadObjs) {
+                try {
+                    const lines = debugDescribeTsObjSpawnGatingForSquare({
+                        cacheInfo,
+                        sceneBuilder,
+                        mapBytesProvider,
+                        objSpawns,
+                        objTypeLoader: loaders.objTypeLoader as any,
+                        objModelLoader,
+                        square,
+                        maxLevel: profile.loadLocs ? 3 : 3,
+                        smoothTerrain: input.smoothTerrain,
+                    });
+                    for (let i = 0; i < lines.length; i++) {
+                        console.error(lines[i]);
+                    }
+
+                    // Correlate TS gating failures with the runtime's cached terrain cell decode, so we can
+                    // identify whether the divergence is in terrain decode vs obj gating.
+                    if (typeof bridge.debugDecodeCachedTerrainCell === "function") {
+                        const borderSize = 6;
+                        const baseX = (square.mapX * 64 - borderSize) | 0;
+                        const baseY = (square.mapY * 64 - borderSize) | 0;
+                        const size = (64 + borderSize * 2) | 0;
+                        const windowSpawns = getWindowObjSpawns(
+                            objSpawns as ObjSpawn[],
+                            3,
+                            baseX,
+                            baseY,
+                            size,
+                            size,
+                        );
+                        const filtered = windowSpawns.filter((s) => (s.id | 0) === 526).slice(0, 8);
+                        for (let i = 0; i < filtered.length; i++) {
+                            const s = filtered[i];
+                            const mapX = Math.floor((s.x | 0) / 64) | 0;
+                            const mapY = Math.floor((s.y | 0) / 64) | 0;
+                            const localX = ((s.x | 0) - mapX * 64) | 0;
+                            const localY = ((s.y | 0) - mapY * 64) | 0;
+                            const cell = await bridge.debugDecodeCachedTerrainCell(
+                                runtimeHandle,
+                                mapX,
+                                mapY,
+                                0,
+                                localX,
+                                localY,
+                            );
+                            console.error(
+                                `  objSpawnGating[runtimeTerrain] id=${s.id | 0} map=${mapX},${mapY} local=${localX},${localY} cell=${JSON.stringify(
+                                    cell ?? null,
+                                )}`,
+                            );
+                        }
+                    }
+                    objSpawnGatingStageResult = {
+                        key: "objSpawnGatingStage",
+                        ok: true,
+                        detail: `printed=${lines.length}`,
+                    };
+                } catch (e) {
+                    objSpawnGatingStageResult = {
+                        key: "objSpawnGatingStage",
+                        ok: false,
+                        detail: "exception: " + String(e),
+                    };
+                }
+            }
+
             const stageResults: StageResult[] = [
                 compareInputDigests(jsInputDigest, cacheInputDigest),
                 compareCommandDigests(tsCmdDigest, cacheCmdDigestAfter),
@@ -10245,6 +10766,9 @@ async function main(): Promise<void> {
                     ? sceneCommandPlanOpsStageResult
                     : { key: "sceneCommandPlanOpsStage", ok: true },
                 args.stages ? sceneBucketsStageResult : { key: "sceneBucketsStage", ok: true },
+                args.debugStage === "objSpawnGatingStage"
+                    ? objSpawnGatingStageResult
+                    : { key: "objSpawnGatingStage", ok: true },
                 args.stages
                     ? locRenderPlacementStageResult
                     : { key: "locRenderPlacementStage", ok: true },
@@ -10433,6 +10957,30 @@ async function main(): Promise<void> {
                             cacheSceneCommandPlanDigestStage,
                         )}`,
                     );
+                }
+                if (cacheSceneCommandPlanOpProvenancePacked instanceof Int32Array) {
+                    const stride = 8;
+                    const opCount = Math.floor(cacheSceneCommandPlanOpProvenancePacked.length / stride);
+                    const maxDump = Math.min(opCount, 8);
+                    for (let i = 0; i < maxDump; i++) {
+                        const base = i * stride;
+                        const srcKind = cacheSceneCommandPlanOpProvenancePacked[base + 0] | 0;
+                        const typeId = cacheSceneCommandPlanOpProvenancePacked[base + 1] | 0;
+                        const placementType = cacheSceneCommandPlanOpProvenancePacked[base + 2] | 0;
+                        const rotation = cacheSceneCommandPlanOpProvenancePacked[base + 3] | 0;
+                        const modelId = cacheSceneCommandPlanOpProvenancePacked[base + 4] | 0;
+                        const modelIdsHash = cacheSceneCommandPlanOpProvenancePacked[base + 5] | 0;
+                        const levelHint = cacheSceneCommandPlanOpProvenancePacked[base + 6] | 0;
+                        const priHint = cacheSceneCommandPlanOpProvenancePacked[base + 7] | 0;
+                        console.error(
+                            `  cache plan-op provenance[${i}] src=${srcKind} typeId=${typeId} ` +
+                                `placementType=${placementType} rot=${rotation} modelId=${modelId} ` +
+                                `modelIdsHash=${modelIdsHash} levelHint=${levelHint} priHint=${priHint}`,
+                        );
+                    }
+                    if (opCount > maxDump) {
+                        console.error(`  cache plan-op provenance: ... (${opCount - maxDump} more)`);
+                    }
                 }
                 if (args.quiet) {
                     try {
@@ -10741,8 +11289,34 @@ async function main(): Promise<void> {
                                                                 );
                                                             const level =
                                                                 (cacheInsts?.[0]?.level ?? 0) | 0;
-                                                            const probeX = tsVertex.x | 0;
-                                                            const probeZ = tsVertex.z | 0;
+                                                            // Prefer probing the cache-side mismatched vertex position; that's the
+                                                            // one with the bad packed UVs and guarantees we hit a vertex emitted by C++.
+                                                            const probeSource =
+                                                                cacheVertex != null
+                                                                    ? "cache"
+                                                                    : "ts";
+                                                            const probeX =
+                                                                (cacheVertex?.x ?? tsVertex.x) |
+                                                                0;
+                                                            const probeZ =
+                                                                (cacheVertex?.z ?? tsVertex.z) |
+                                                                0;
+                                                            const hasPackedVertexProbe =
+                                                                typeof (bridge as any)
+                                                                    .debugSetPackedVertexProbeIndex ===
+                                                                "function";
+                                                            if (
+                                                                typeof (bridge as any)
+                                                                    .debugSetWorldHeightProbeLocFilter ===
+                                                                "function"
+                                                            ) {
+                                                                await (
+                                                                    bridge as any
+                                                                ).debugSetWorldHeightProbeLocFilter(
+                                                                    runtimeHandle,
+                                                                    -1,
+                                                                );
+                                                            }
                                                             await (
                                                                 bridge as any
                                                             ).debugSetWorldHeightProbe(
@@ -10751,17 +11325,78 @@ async function main(): Promise<void> {
                                                                 probeX,
                                                                 probeZ,
                                                             );
-                                                            await bridge.buildMapPacketFromCache(
-                                                                runtimeHandle,
-                                                                request,
-                                                            );
-                                                            const probe = await (
-                                                                bridge as any
-                                                            ).debugGetRuntimeLastWorldHeightProbe(
-                                                                runtimeHandle,
-                                                            );
+                                                            let probe: any = undefined;
+                                                            if (hasPackedVertexProbe) {
+                                                                // Two-pass debug:
+                                                                // 1) Use a negative probe index to request dedupe final->old mapping.
+                                                                // 2) Re-run with the old (pre-dedupe) vertex index to capture UV mapping inputs.
+                                                                const finalIndex = vertexIndex | 0;
+                                                                const encodedFinal =
+                                                                    (-(finalIndex + 1)) | 0;
+                                                                await (
+                                                                    bridge as any
+                                                                ).debugSetPackedVertexProbeIndex(
+                                                                    runtimeHandle,
+                                                                    encodedFinal,
+                                                                );
+                                                                await bridge.buildMapPacketFromCache(
+                                                                    runtimeHandle,
+                                                                    request,
+                                                                );
+                                                                const probeMap = await (
+                                                                    bridge as any
+                                                                ).debugGetRuntimeLastWorldHeightProbe(
+                                                                    runtimeHandle,
+                                                                );
+                                                                console.error(
+                                                                    `  cpp packed-vertex-dedupe-probe(final=${finalIndex}) -> ${JSON.stringify(
+                                                                        probeMap,
+                                                                    )}`,
+                                                                );
+                                                                let oldIndex = -1;
+                                                                if (
+                                                                    probeMap?.packed instanceof
+                                                                        Int32Array &&
+                                                                    ((probeMap.packed[0] |
+                                                                        0) ===
+                                                                        5 ||
+                                                                        (probeMap.packed[0] |
+                                                                            0) ===
+                                                                            4)
+                                                                ) {
+                                                                    oldIndex =
+                                                                        probeMap.packed[2] | 0;
+                                                                }
+                                                                if (oldIndex >= 0) {
+                                                                    await (
+                                                                        bridge as any
+                                                                    ).debugSetPackedVertexProbeIndex(
+                                                                        runtimeHandle,
+                                                                        oldIndex,
+                                                                    );
+                                                                }
+                                                                await bridge.buildMapPacketFromCache(
+                                                                    runtimeHandle,
+                                                                    request,
+                                                                );
+                                                                probe = await (
+                                                                    bridge as any
+                                                                ).debugGetRuntimeLastWorldHeightProbe(
+                                                                    runtimeHandle,
+                                                                );
+                                                            } else {
+                                                                await bridge.buildMapPacketFromCache(
+                                                                    runtimeHandle,
+                                                                    request,
+                                                                );
+                                                                probe = await (
+                                                                    bridge as any
+                                                                ).debugGetRuntimeLastWorldHeightProbe(
+                                                                    runtimeHandle,
+                                                                );
+                                                            }
                                                             console.error(
-                                                                `  cpp world-height-probe level=${level} world=(${probeX},${probeZ}) -> ${JSON.stringify(
+                                                                `  cpp world-height-probe(${probeSource}) level=${level} world=(${probeX},${probeZ}) -> ${JSON.stringify(
                                                                     probe,
                                                                 )}`,
                                                             );
@@ -10849,6 +11484,18 @@ async function main(): Promise<void> {
                                                                 const p = probe.packed;
                                                                 const marker = p[0] | 0;
                                                                 if (marker === 2) {
+                                                                    const uPack =
+                                                                        p[22] | 0;
+                                                                    const vPack =
+                                                                        p[23] | 0;
+                                                                    const unpackFloat11Debug =
+                                                                        (
+                                                                            packed: number,
+                                                                        ) =>
+                                                                            (1024 -
+                                                                                (packed |
+                                                                                    0)) /
+                                                                            64;
                                                                     console.error(
                                                                         `  cpp vertex-probe packed=${JSON.stringify(
                                                                             {
@@ -10884,6 +11531,47 @@ async function main(): Promise<void> {
                                                                                     (p[15] |
                                                                                         0) !==
                                                                                     0,
+                                                                                // Extended UV diagnostics (debug-only; filled by the C++ vertex probe).
+                                                                                faceIndex:
+                                                                                    p[16] | 0,
+                                                                                texCoord:
+                                                                                    p[17] | 0,
+                                                                                textureRenderType:
+                                                                                    p[18] | 0,
+                                                                                texScalesReady:
+                                                                                    (p[19] |
+                                                                                        0) !==
+                                                                                    0,
+                                                                                texScalesStatus:
+                                                                                    p[20] | 0,
+                                                                                packedTextureId:
+                                                                                    p[21] | 0,
+                                                                                uPack,
+                                                                                vPack,
+                                                                                uApprox:
+                                                                                    unpackFloat11Debug(
+                                                                                        uPack,
+                                                                                    ),
+                                                                                vApprox:
+                                                                                    unpackFloat11Debug(
+                                                                                        vPack,
+                                                                                    ),
+                                                                                tc:
+                                                                                    p[24] | 0,
+                                                                                textureFaceCount:
+                                                                                    p[25] | 0,
+                                                                                modelTextureRenderType:
+                                                                                    p[26] | 0,
+                                                                                textureScaleX:
+                                                                                    p[27] | 0,
+                                                                                textureScaleY:
+                                                                                    p[28] | 0,
+                                                                                textureScaleZ:
+                                                                                    p[29] | 0,
+                                                                                textureTransU:
+                                                                                    p[30] | 0,
+                                                                                textureTransV:
+                                                                                    p[31] | 0,
                                                                             },
                                                                         )}`,
                                                                     );
@@ -18576,6 +19264,76 @@ async function main(): Promise<void> {
                                 cache.drawRanges[b],
                                 cache.modelInfoTextures[b],
                             );
+                            // Help chase obj/loc mismatches: summarize interact types/ids for each bucket.
+                            const summarizeInteractTypes = (inst: ReturnType<typeof decodeModelInfoTextureInstances>) => {
+                                const counts = new Map<number, number>();
+                                const objIds = new Set<number>();
+                                for (let i = 0; i < inst.length; i++) {
+                                    const it = inst[i].interactType | 0;
+                                    counts.set(it, (counts.get(it) ?? 0) + 1);
+                                    if (it === 2) {
+                                        objIds.add(inst[i].interactId >>> 0);
+                                    }
+                                }
+                                return {
+                                    counts: Array.from(counts.entries()).sort((a, c) => a[0] - c[0]),
+                                    objIds: Array.from(objIds).sort((a, c) => a - c).slice(0, 16),
+                                };
+                            };
+                            const tsSummary = summarizeInteractTypes(tsInst);
+                            const cacheSummary = summarizeInteractTypes(cacheInst);
+                            if (
+                                JSON.stringify(tsSummary.counts) !== JSON.stringify(cacheSummary.counts) ||
+                                JSON.stringify(tsSummary.objIds) !== JSON.stringify(cacheSummary.objIds)
+                            ) {
+                                console.error(
+                                    `  modelInfo bucket=${b} interactTypeCounts ts=${JSON.stringify(
+                                        tsSummary.counts,
+                                    )} cache=${JSON.stringify(cacheSummary.counts)} ` +
+                                        `objIds ts=${JSON.stringify(tsSummary.objIds)} cache=${JSON.stringify(
+                                            cacheSummary.objIds,
+                                        )}`,
+                                );
+                            }
+                            const cacheCmdArraysForScan = cacheCmdArraysAfter;
+                            if (cacheSummary.objIds.length > 0 && b === "interact" && cacheCmdArraysForScan) {
+                                try {
+                                    const insts: any[] = [];
+                                    let base = 0;
+                                    for (let ci = 0; ci < cacheCmdArraysForScan.cmdBucketIndices.length; ci++) {
+                                        const bucketKey = cacheCmdArraysForScan.cmdBucketIndices[ci] | 0;
+                                        const ic =
+                                            ci < cacheCmdArraysForScan.cmdInstanceCounts.length
+                                                ? cacheCmdArraysForScan.cmdInstanceCounts[ci] | 0
+                                                : 0;
+                                        if (bucketKey !== 4) { // interact
+                                            base += ic;
+                                            continue;
+                                        }
+                                        const cmdInsts = collectCommandInstances(
+                                            ci,
+                                            cacheCmdArraysForScan.cmdInstanceCounts,
+                                            cacheCmdArraysForScan.cmdPackedInstances,
+                                        );
+                                        for (let ii = 0; ii < cmdInsts.length; ii++) {
+                                            const inst = cmdInsts[ii] as any;
+                                            if ((inst.interactType | 0) === 2) {
+                                                insts.push(inst);
+                                                if (insts.length >= 4) break;
+                                            }
+                                        }
+                                        base += ic;
+                                        if (insts.length >= 4) break;
+                                    }
+                                    if (insts.length > 0) {
+                                        console.error(
+                                            `  cache interact OBJ instances(sample)=${JSON.stringify(insts)}`,
+                                        );
+                                    }
+                                } catch (e) {
+                                    console.error("  cache OBJ instance scan failed: " + String(e));
+                                }
+                            }
                             if (tsInst.length !== cacheInst.length) {
                                 console.error(
                                     `  modelInfo bucket=${b} instanceCount ts=${tsInst.length} cache=${cacheInst.length}`,

@@ -488,6 +488,14 @@ export type MapRenderRuntimeDebugBridgeV2 = MapRenderRuntimeBridgeV2 &
             worldX: number,
             worldZ: number,
         ): Promise<boolean>;
+        debugSetWorldHeightProbeLocFilter?(
+            runtimeHandle: MapRenderRuntimeHandle,
+            locId: number,
+        ): Promise<boolean>;
+        debugSetPackedVertexProbeIndex?(
+            runtimeHandle: MapRenderRuntimeHandle,
+            vertexIndex: number,
+        ): Promise<boolean>;
         debugGetRuntimeLastWorldHeightProbe?(
             runtimeHandle: MapRenderRuntimeHandle,
         ): Promise<MapRenderRuntimeWorldHeightProbe | undefined>;

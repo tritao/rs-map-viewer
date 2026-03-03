@@ -15,15 +15,16 @@ type Args = {
     cacheName?: string;
     limit: number;
     ids?: number[];
+    parts: boolean;
 };
 
 type TsEntry = { id: number; hash: number };
 type CppEntry =
-    | { id: number; ok: true; hash: number }
+    | { id: number; ok: true; hash: number; parts?: Record<string, number> }
     | { id: number; ok: false; status: string; statusCode: number };
 
 function parseArgs(argv: string[]): Args {
-    const args: Args = { limit: 100 };
+    const args: Args = { limit: 100, parts: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--cache") args.cacheName = argv[++i];
@@ -34,6 +35,8 @@ function parseArgs(argv: string[]): Args {
                 .map((s) => s.trim())
                 .filter(Boolean)
                 .map((s) => Number(s));
+        } else if (a === "--parts") {
+            args.parts = true;
         }
     }
     if (!Number.isFinite(args.limit) || args.limit <= 0) {
@@ -92,6 +95,65 @@ function fnv1a32UpdateNestedIntArray(
         h = fnv1a32UpdateIntArray(h, values[i]);
     }
     return h >>> 0;
+}
+
+function hashModelDataParts(model: ModelData): Record<string, number> {
+    const hashVec = (values: ArrayLike<number>): number => {
+        let h = 2166136261 >>> 0;
+        h = fnv1a32UpdateIntArray(h, values);
+        return h | 0;
+    };
+    const hashOptVec = (values: ArrayLike<number> | undefined): number => {
+        let h = 2166136261 >>> 0;
+        h = fnv1a32UpdateOptionalIntArray(h, values);
+        return h | 0;
+    };
+    const hashNestedOpt = (values: ArrayLike<ArrayLike<number>> | undefined): number => {
+        let h = 2166136261 >>> 0;
+        h = fnv1a32UpdateNestedIntArray(h, values);
+        return h | 0;
+    };
+
+    let core = 2166136261 >>> 0;
+    core = fnv1a32UpdateInt(core, 0x4d444154); // 'MDAT'
+    core = fnv1a32UpdateInt(core, model.version | 0);
+    core = fnv1a32UpdateInt(core, model.verticesCount | 0);
+    core = fnv1a32UpdateInt(core, model.usedVertexCount | 0);
+    core = fnv1a32UpdateInt(core, model.faceCount | 0);
+    core = fnv1a32UpdateInt(core, model.textureFaceCount | 0);
+    core = fnv1a32UpdateInt(core, model.priority | 0);
+
+    return {
+        core: core | 0,
+        verticesX: hashVec(model.verticesX),
+        verticesY: hashVec(model.verticesY),
+        verticesZ: hashVec(model.verticesZ),
+        indices1: hashVec(model.indices1),
+        indices2: hashVec(model.indices2),
+        indices3: hashVec(model.indices3),
+        faceColors: hashVec(model.faceColors),
+        faceRenderTypes: hashOptVec(model.faceRenderTypes),
+        faceRenderPriorities: hashOptVec(model.faceRenderPriorities),
+        faceAlphas: hashOptVec(model.faceAlphas),
+        textureCoords: hashOptVec(model.textureCoords),
+        faceTextures: hashOptVec(model.faceTextures),
+        textureRenderTypes: hashVec(model.textureRenderTypes ?? new Int8Array(0)),
+        textureMappingP: hashVec(model.textureMappingP ?? new Int16Array(0)),
+        textureMappingM: hashVec(model.textureMappingM ?? new Int16Array(0)),
+        textureMappingN: hashVec(model.textureMappingN ?? new Int16Array(0)),
+        textureScaleX: hashVec(model.textureScaleX ?? new Int32Array(0)),
+        textureScaleY: hashVec(model.textureScaleY ?? new Int32Array(0)),
+        textureScaleZ: hashVec(model.textureScaleZ ?? new Int32Array(0)),
+        textureRotation: hashVec(model.textureRotation ?? new Int8Array(0)),
+        textureDirection: hashVec(model.textureDirection ?? new Int8Array(0)),
+        textureSpeed: hashVec(model.textureSpeed ?? new Int32Array(0)),
+        textureTransU: hashVec(model.textureTransU ?? new Int32Array(0)),
+        textureTransV: hashVec(model.textureTransV ?? new Int32Array(0)),
+        vertexSkins: hashOptVec(model.vertexSkins),
+        faceSkins: hashOptVec(model.faceSkins),
+        animMayaGroups: hashNestedOpt(model.animMayaGroups),
+        animMayaScales: hashNestedOpt(model.animMayaScales),
+    };
 }
 
 function hashModelData(model: ModelData): number {
@@ -229,6 +291,25 @@ async function main(): Promise<void> {
         if (c.hash !== ts.hash) {
             mismatches++;
             console.error(`hash mismatch id=${ts.id}: ts=${ts.hash} cpp=${c.hash}`);
+            if (args.parts) {
+                const loaded = modelLoader.tryLoad(ts.id);
+                if (loaded.ok) {
+                    const tsParts = hashModelDataParts(loaded.value);
+                    const cppParts = c.parts ?? {};
+                    const keys = Array.from(
+                        new Set([...Object.keys(tsParts), ...Object.keys(cppParts)]),
+                    ).sort();
+                    for (const k of keys) {
+                        const a = tsParts[k];
+                        const b = cppParts[k];
+                        if ((a | 0) !== (b | 0)) {
+                            console.error(`  part mismatch ${k}: ts=${a | 0} cpp=${b | 0}`);
+                        }
+                    }
+                } else {
+                    console.error(`  (parts) TS re-load failed id=${ts.id}: ${loaded.error.message}`);
+                }
+            }
         }
     }
 
