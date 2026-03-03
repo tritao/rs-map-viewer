@@ -39,22 +39,21 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private readonly cacheProvider = (() => {
         const { session } = this.deps;
         const loaders = session.loaders;
-        const seqTypeLoader = loaders.seqTypeLoader;
-        const seqFrameLoader = loaders.seqFrameLoader;
-        const skeletalSeqLoader = loaders.skeletalSeqLoader;
         return createSceneBuildCacheProvider({
             mapBytesProvider: this.deps.mapBytesProvider,
             locTypeLoader: loaders.locTypeLoader,
             objTypeLoader: loaders.objTypeLoader,
-            locModelLoader: {
-                modelLoader: loaders.modelLoader,
-                seqTypeLoader,
-                seqFrameLoader,
-                skeletalSeqLoader,
+            modelLoader: loaders.modelLoader as unknown as {
+                tryLoadBytes?: (id: number) => Uint8Array | undefined;
             },
-            seqTypeLoader,
-            seqFrameLoader,
-            skeletalSeqLoader,
+            seqTypeLoader: loaders.seqTypeLoader,
+            seqFrameLoader: loaders.seqFrameLoader,
+            skeletalSeqLoader: loaders.skeletalSeqLoader as unknown as
+                | {
+                      tryLoadBytes?: (id: number) => Uint8Array | undefined;
+                      baseLoader?: { tryLoadBytes?: (id: number) => Uint8Array | undefined };
+                  }
+                | undefined,
             npcTypeLoader: loaders.npcTypeLoader,
             basTypeLoader: loaders.basTypeLoader,
             underlayTypeLoader: loaders.underlayTypeLoader,

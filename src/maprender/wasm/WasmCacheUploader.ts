@@ -2,7 +2,6 @@ import type { ObjSpawn } from "../../data/obj/ObjSpawn";
 import { SdMapLoaderInput } from "../MapRenderPayload";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Scene } from "../../rs/scene/Scene";
-import type { Result } from "../../util/Result";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
@@ -78,8 +77,7 @@ const RUNTIME_BLOB_LEGACY_MODEL_FILE_VERTEX1 = 11;
 const RUNTIME_BLOB_LEGACY_MODEL_FILE_VERTEX2 = 12;
 const RUNTIME_BLOB_LEGACY_MODEL_FILE_AXIS = 13;
 
-type TypeEntryLoaderLike<T = unknown> = Readonly<{
-    tryLoad?: (id: number) => Result<T, unknown> | undefined;
+type TypeEntryLoaderLike = Readonly<{
     tryLoadBytes?: (id: number) => Uint8Array | Int8Array | undefined;
 }>;
 
@@ -115,22 +113,13 @@ type ModelLoaderLike = TypeEntryLoaderLike & Readonly<{
 }>;
 
 type SeqFrameLoaderLike = TypeEntryLoaderLike & Readonly<{
-    tryGet?: (id: number) => Result<unknown, unknown> | unknown;
     baseLoader?: TypeEntryLoaderLike;
     tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
     tryGetFrameMapBytesForMapId?: (mapId: number) => Uint8Array | undefined;
 }>;
 
 type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
-    tryGet?: (id: number) => Result<unknown, unknown> | unknown;
     baseLoader?: TypeEntryLoaderLike;
-}>;
-
-type LocModelLoaderLike = Readonly<{
-    modelLoader?: ModelLoaderLike;
-    seqTypeLoader?: TypeEntryLoaderLike;
-    seqFrameLoader?: SeqFrameLoaderLike;
-    skeletalSeqLoader?: SkeletalSeqLoaderLike;
 }>;
 
 type MapRenderSceneBuildInputDeps = Readonly<
@@ -169,7 +158,7 @@ export type SceneBuildCacheProviderLoaders = Readonly<{
     mapBytesProvider?: MapBytesProvider;
     locTypeLoader: TypeEntryLoaderLike;
     objTypeLoader?: TypeEntryLoaderLike;
-    locModelLoader?: LocModelLoaderLike;
+    modelLoader?: ModelLoaderLike;
     seqTypeLoader?: TypeEntryLoaderLike;
     seqFrameLoader?: SeqFrameLoaderLike;
     skeletalSeqLoader?: SkeletalSeqLoaderLike;
@@ -302,11 +291,10 @@ export function createSceneBuildCacheProvider(
     const underlayTypeLoader = loaders.underlayTypeLoader;
     const overlayTypeLoader = loaders.overlayTypeLoader;
     const varbitLoader = loaders.varbitLoader;
-    const locModelLoader = loaders.locModelLoader;
-    const modelLoader = locModelLoader?.modelLoader;
-    const seqTypeLoader = loaders.seqTypeLoader ?? locModelLoader?.seqTypeLoader;
-    const seqFrameLoader = loaders.seqFrameLoader ?? locModelLoader?.seqFrameLoader;
-    const skeletalSeqLoader = loaders.skeletalSeqLoader ?? locModelLoader?.skeletalSeqLoader;
+    const modelLoader = loaders.modelLoader;
+    const seqTypeLoader = loaders.seqTypeLoader;
+    const seqFrameLoader = loaders.seqFrameLoader;
+    const skeletalSeqLoader = loaders.skeletalSeqLoader;
     const seqBaseLoader = skeletalSeqLoader?.baseLoader ?? seqFrameLoader?.baseLoader;
     const legacyModelFilesByFileId = new Map<number, Uint8Array>();
     const legacySeqFilesByFileId = new Map<number, Uint8Array>();
