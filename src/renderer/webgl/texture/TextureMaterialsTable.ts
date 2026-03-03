@@ -1,12 +1,9 @@
 import type { TextureMaterial } from "../../../rs/texture/TextureMaterial";
+import { TEXTURE_ID_LUT_HEIGHT, TEXTURE_ID_LUT_SIZE, TEXTURE_ID_LUT_WIDTH, textureIdToLutIndex } from "./TextureIdLut";
 
 export type TextureMaterialProvider = Readonly<{
     tryGetMaterial(id: number): TextureMaterial | undefined;
 }>;
-
-const TEXTURE_ID_LUT_WIDTH = 256;
-const TEXTURE_ID_LUT_HEIGHT = 256;
-const TEXTURE_ID_LUT_SIZE = TEXTURE_ID_LUT_WIDTH * TEXTURE_ID_LUT_HEIGHT;
 
 export function buildTextureMaterialsTable(
     textureIds: ReadonlyArray<number>,
@@ -23,8 +20,8 @@ export function buildTextureMaterialsTable(
             continue;
         }
 
-        const textureIdPlus1 = (id + 1) | 0;
-        if (textureIdPlus1 <= 0 || textureIdPlus1 >= TEXTURE_ID_LUT_SIZE) {
+        const textureIdPlus1 = textureIdToLutIndex(id);
+        if (textureIdPlus1 === undefined) {
             continue;
         }
         const index = (textureIdPlus1 * 4) | 0;

@@ -3,13 +3,12 @@ import PicoGL, { App as PicoApp, Texture } from "picogl";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
+import { TEXTURE_ID_LUT_HEIGHT, TEXTURE_ID_LUT_WIDTH } from "./texture/TextureIdLut";
 import { TextureResidencyPolicy } from "./texture/TextureResidencyPolicy";
 import { createTextureArray } from "./PicoTexture";
 
 const TEXTURE_SIZE = 128;
 const MAX_TEXTURE_SLOTS = 256;
-const TEXTURE_ID_LUT_WIDTH = 256;
-const TEXTURE_ID_LUT_HEIGHT = 256;
 
 export class WebGLTextureResidency {
     textureArray?: Texture;
@@ -43,10 +42,7 @@ export class WebGLTextureResidency {
         this.textureLoader = textureLoader;
         this.policy.frameCount = frameCount | 0;
 
-        const allTextureIds = textureLoader.getTextureIds();
-        const textureIds = allTextureIds
-            .filter((id) => textureLoader.isSd(id));
-        this.policy.setTextureIds(textureIds);
+        this.policy.setTextureIds(textureLoader.getTextureIds());
 
         this.initTextureSlotLut();
         this.initTextureArray(cacheInfo, textureFilterMode);

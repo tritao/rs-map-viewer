@@ -1,12 +1,9 @@
 import type { CacheInfo } from "../../../rs/cache/CacheInfo";
 import { GameType } from "../../../rs/cache/CacheInfo";
+import { TEXTURE_ID_LUT_SIZE, textureIdToLutIndex } from "./TextureIdLut";
 
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
 const MAX_TEXTURE_PIXEL_CACHE = 512;
-
-const TEXTURE_ID_LUT_WIDTH = 256;
-const TEXTURE_ID_LUT_HEIGHT = 256;
-const TEXTURE_ID_LUT_SIZE = TEXTURE_ID_LUT_WIDTH * TEXTURE_ID_LUT_HEIGHT;
 
 export const enum EnsureTextureStatus {
     Ok = 0,
@@ -56,11 +53,7 @@ export class TextureResidencyPolicy {
         if (!this.knownTextureIds.has(id)) {
             return undefined;
         }
-        const plus1 = (id + 1) | 0;
-        if (plus1 <= 0 || plus1 >= TEXTURE_ID_LUT_SIZE) {
-            return undefined;
-        }
-        return plus1;
+        return textureIdToLutIndex(id);
     }
 
     initTextureSlotLutData(): Uint16Array {
