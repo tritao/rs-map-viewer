@@ -165,7 +165,6 @@ export type MapRenderRuntimePrepareResult = Readonly<{
 
 export type SceneBuildCacheProvider = Readonly<{
     tryGetBlobBytes(domain: number, group: number, file: number): Uint8Array | undefined;
-    tryGetTypeEntryBytes(domain: number, id: number): Uint8Array | undefined;
     tryGetSeqAlphaHintBytes(seqId: number): Uint8Array;
     tryCollectTextureIds(): ReadonlyArray<number> | undefined;
     isTextureTransparent(id: number): boolean;
@@ -452,11 +451,11 @@ export function createSceneBuildCacheProvider(
             : undefined;
 
     const tryGetTypeEntryBytes = (domain: number, id: number): Uint8Array | undefined => {
-            const d = domain | 0;
-            const typeId = id | 0;
-            if (typeId < 0) return undefined;
-            switch (d) {
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC:
+        const d = domain | 0;
+        const typeId = id | 0;
+        if (typeId < 0) return undefined;
+        switch (d) {
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC:
                     return tryLoadTypeBytes(locTypeLoader, typeId);
                 case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ:
                     return tryLoadTypeBytes(objTypeLoader, typeId);
@@ -480,10 +479,10 @@ export function createSceneBuildCacheProvider(
                     return tryLoadTypeBytes(skeletalSeqLoader, typeId);
                 case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE:
                     return tryLoadTypeBytes(seqBaseLoader, typeId);
-                default:
-                    return undefined;
-            }
-        };
+            default:
+                return undefined;
+        }
+    };
 
     const tryGetSeqAlphaHintBytes = (seqId: number): Uint8Array => {
             const key = seqId | 0;
@@ -655,7 +654,6 @@ export function createSceneBuildCacheProvider(
 
     return {
         tryGetBlobBytes,
-        tryGetTypeEntryBytes,
         tryGetSeqAlphaHintBytes,
         tryCollectTextureIds,
         isTextureTransparent,
