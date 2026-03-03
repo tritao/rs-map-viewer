@@ -1,7 +1,12 @@
 import type { SdMapData } from "../maprender/payload/SdMapData";
 import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
+import {
+    MAP_RENDER_DRAW_BUCKET_KEYS,
+    type MapRenderDrawBucketKey,
+} from "../maprender/payload/SdRenderableData";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
+import type { MapRenderRuntimePacket } from "../maprender/MapRenderDataContract";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -16,10 +21,6 @@ import {
 } from "../wasm/MapRenderRuntimeStatus.mjs";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
-import {
-    MAP_RENDER_DRAW_BUCKET_KEYS,
-    runtimePacketToPayloadOverlay,
-} from "../maprender/MapRenderDataContract";
 import {
     MapRenderByteDrivenSceneBuildInput,
     MapRenderRuntimeCacheV2Uploader,
@@ -46,6 +47,179 @@ export interface MapRenderDataBackend {
     // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
     // This allows the worker tick path to use the same runtime instance that built the map packets.
     getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
+}
+
+type MapRenderPayloadOverlay = Readonly<
+    Pick<SdMapData, "heightMapTextureData" | "drawRanges" | "modelInfoTextures">
+>;
+
+type RuntimePacketOverlayFailure = Readonly<{
+    reason: string;
+    detail?: Readonly<Record<string, unknown>>;
+}>;
+
+type ValidatedOverlayInput = Readonly<{
+    bucketCmdCounts: Int32Array;
+    bucketModelInfoLengths: Int32Array;
+    drawRangesPacked: Int32Array;
+    modelInfoTextureBuckets: ReadonlyArray<Uint16Array>;
+    heightMapTextureData: Int16Array;
+}>;
+
+type OverlayValidationResult =
+    | Readonly<{ ok: true; value: ValidatedOverlayInput }>
+    | Readonly<{ ok: false; failure: RuntimePacketOverlayFailure }>;
+
+const MAP_RENDER_DRAW_BUCKET_COUNT = MAP_RENDER_DRAW_BUCKET_KEYS.length;
+const EMPTY_I32_ARRAY = new Int32Array(0);
+const EMPTY_U16_ARRAY = new Uint16Array(0);
+
+function valueTypeTag(value: unknown): string {
+    return Object.prototype.toString.call(value);
+}
+
+function validateRuntimePacketForOverlay(packet: MapRenderRuntimePacket): OverlayValidationResult {
+    const fail = (
+        reason: string,
+        detail?: Readonly<Record<string, unknown>>,
+    ): OverlayValidationResult => ({
+        ok: false,
+        failure: { reason, detail },
+    });
+    const packetVersion = packet.packetVersion | 0;
+    if (packetVersion !== 1 && packetVersion !== 2 && packetVersion !== 3) {
+        return fail("unsupported_packet_version", { packetVersion });
+    }
+    const bucketCmdCounts = packet.bucketCmdCounts;
+    const bucketModelInfoLengths = packet.bucketModelInfoLengths;
+    const drawRangesPacked = packet.drawRangesPacked;
+    const modelInfoTextureBuckets = packet.modelInfoTextureBuckets;
+    const heightMapTextureData = packet.heightMapTextureData;
+
+    if (
+        bucketCmdCounts.length !== MAP_RENDER_DRAW_BUCKET_COUNT ||
+        bucketModelInfoLengths.length !== MAP_RENDER_DRAW_BUCKET_COUNT
+    ) {
+        return fail("bucket_lengths_invalid", {
+            bucketCmdCountsLength: bucketCmdCounts.length | 0,
+            bucketModelInfoLengthsLength: bucketModelInfoLengths.length | 0,
+            expected: MAP_RENDER_DRAW_BUCKET_COUNT | 0,
+        });
+    }
+
+    let totalCmdCount = 0;
+    let totalModelInfoLength = 0;
+    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
+        const cmdCount = bucketCmdCounts[i] | 0;
+        const modelInfoLength = bucketModelInfoLengths[i] | 0;
+        if (cmdCount < 0 || modelInfoLength < 0) {
+            return fail("negative_bucket_values", {
+                bucketIndex: i,
+                bucketKey: MAP_RENDER_DRAW_BUCKET_KEYS[i],
+                cmdCount,
+                modelInfoLength,
+            });
+        }
+        totalCmdCount += cmdCount;
+        totalModelInfoLength += modelInfoLength;
+    }
+    if ((packet.totalModelInfoLength | 0) !== totalModelInfoLength) {
+        return fail("total_model_info_length_mismatch", {
+            packetTotalModelInfoLength: packet.totalModelInfoLength | 0,
+            computedTotalModelInfoLength: totalModelInfoLength | 0,
+        });
+    }
+    if (
+        !(drawRangesPacked instanceof Int32Array) ||
+        drawRangesPacked.length !== totalCmdCount * 3
+    ) {
+        return fail("draw_ranges_packed_invalid", {
+            drawRangesPackedType: valueTypeTag(drawRangesPacked),
+            drawRangesPackedLength:
+                drawRangesPacked instanceof Int32Array ? drawRangesPacked.length | 0 : -1,
+            expectedLength: (totalCmdCount * 3) | 0,
+        });
+    }
+    if (
+        !Array.isArray(modelInfoTextureBuckets) ||
+        modelInfoTextureBuckets.length !== MAP_RENDER_DRAW_BUCKET_COUNT
+    ) {
+        return fail("model_info_buckets_shape_invalid", {
+            modelInfoTextureBucketsType: valueTypeTag(modelInfoTextureBuckets),
+            modelInfoTextureBucketsLength: Array.isArray(modelInfoTextureBuckets)
+                ? modelInfoTextureBuckets.length | 0
+                : -1,
+            expected: MAP_RENDER_DRAW_BUCKET_COUNT | 0,
+        });
+    }
+
+    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
+        const key = MAP_RENDER_DRAW_BUCKET_KEYS[i];
+        const modelInfoLength = bucketModelInfoLengths[i] | 0;
+        const packetBucketModelInfo = modelInfoTextureBuckets[i];
+        if (
+            !(packetBucketModelInfo instanceof Uint16Array) ||
+            packetBucketModelInfo.length !== modelInfoLength
+        ) {
+            return fail("model_info_bucket_invalid", {
+                bucketIndex: i,
+                bucketKey: key,
+                modelInfoLengthExpected: modelInfoLength,
+                modelInfoTypeActual: valueTypeTag(packetBucketModelInfo),
+                modelInfoLengthActual:
+                    packetBucketModelInfo instanceof Uint16Array
+                        ? packetBucketModelInfo.length | 0
+                        : -1,
+            });
+        }
+    }
+    return {
+        ok: true,
+        value: {
+            bucketCmdCounts,
+            bucketModelInfoLengths,
+            drawRangesPacked,
+            modelInfoTextureBuckets,
+            heightMapTextureData,
+        },
+    };
+}
+
+function buildOverlayFromValidatedRuntimePacket(input: ValidatedOverlayInput): MapRenderPayloadOverlay {
+    const drawRanges = {} as Record<MapRenderDrawBucketKey, Int32Array>;
+    const modelInfoTextures = {} as Record<MapRenderDrawBucketKey, Uint16Array>;
+
+    let drawRangeCursor = 0;
+    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
+        const key = MAP_RENDER_DRAW_BUCKET_KEYS[i];
+        const cmdCount = input.bucketCmdCounts[i] | 0;
+        const bucketRangeLen = cmdCount * 3;
+        drawRanges[key] =
+            bucketRangeLen > 0
+                ? input.drawRangesPacked.slice(drawRangeCursor, drawRangeCursor + bucketRangeLen)
+                : EMPTY_I32_ARRAY;
+        drawRangeCursor += bucketRangeLen;
+
+        const modelInfoLength = input.bucketModelInfoLengths[i] | 0;
+        const packetBucketModelInfo = input.modelInfoTextureBuckets[i];
+        modelInfoTextures[key] = modelInfoLength > 0 ? packetBucketModelInfo : EMPTY_U16_ARRAY;
+    }
+
+    return {
+        heightMapTextureData: input.heightMapTextureData,
+        drawRanges: drawRanges as SdMapData["drawRanges"],
+        modelInfoTextures: modelInfoTextures as SdMapData["modelInfoTextures"],
+    };
+}
+
+function runtimePacketToPayloadOverlay(
+    packet: MapRenderRuntimePacket | undefined,
+): MapRenderPayloadOverlay | undefined {
+    if (!packet) {
+        return undefined;
+    }
+    const validated = validateRuntimePacketForOverlay(packet);
+    return validated.ok ? buildOverlayFromValidatedRuntimePacket(validated.value) : undefined;
 }
 
 function sdMapDataTransferables(data: SdMapData): Transferable[] {

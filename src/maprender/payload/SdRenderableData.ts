@@ -1,5 +1,18 @@
 import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 
+export const MAP_RENDER_DRAW_BUCKET_KEYS = [
+    "base",
+    "alpha",
+    "lod",
+    "lodAlpha",
+    "interact",
+    "interactAlpha",
+    "interactLod",
+    "interactLodAlpha",
+] as const;
+
+export type MapRenderDrawBucketKey = (typeof MAP_RENDER_DRAW_BUCKET_KEYS)[number];
+
 export type SdRenderableModelInfoTextures = {
     readonly base: Uint16Array;
     readonly alpha: Uint16Array;
