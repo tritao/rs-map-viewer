@@ -18,6 +18,7 @@ import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
+    createSceneBuildCacheProvider,
     createByteDrivenSceneBuildInput,
 } from "./WasmCacheUploader";
 import { runtimePacketToPayloadOverlay } from "./WasmPacketOverlay";
@@ -125,10 +126,9 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const seqTypeLoader = loaders.seqTypeLoader;
         const seqFrameLoader = loaders.seqFrameLoader;
         const skeletalSeqLoader = loaders.skeletalSeqLoader;
-        const values = varManager.values;
-        const varbitLoader = varManager.varbitLoader;
-        return createByteDrivenSceneBuildInput(input, {
-            mapBytesProvider,
+        const varpValues =
+            varManager.values instanceof Int32Array ? new Int32Array(varManager.values) : new Int32Array(0);
+        const cacheProvider = createSceneBuildCacheProvider({
             locTypeLoader: loaders.locTypeLoader,
             objTypeLoader: loaders.objTypeLoader,
             locModelLoader: {
@@ -146,12 +146,13 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             basTypeLoader: loaders.basTypeLoader,
             underlayTypeLoader: loaders.underlayTypeLoader,
             overlayTypeLoader: loaders.overlayTypeLoader,
-            varProvider: {
-                varManager,
-                values,
-                varbitLoader,
-            },
+            varbitLoader: varManager.varbitLoader,
+        });
+        return createByteDrivenSceneBuildInput(input, {
+            mapBytesProvider,
             objSpawns,
+            varpValues,
+            cacheProvider,
             cacheGame: session.cache.info.game,
             cacheRevision: session.cache.info.revision,
         });
