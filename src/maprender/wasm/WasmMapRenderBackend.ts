@@ -34,6 +34,33 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
     private readonly cacheUploader = new WasmCacheUploader();
+    private readonly cacheProvider = (() => {
+        const { session } = this.deps;
+        const loaders = session.loaders;
+        const seqTypeLoader = loaders.seqTypeLoader;
+        const seqFrameLoader = loaders.seqFrameLoader;
+        const skeletalSeqLoader = loaders.skeletalSeqLoader;
+        return createSceneBuildCacheProvider({
+            locTypeLoader: loaders.locTypeLoader,
+            objTypeLoader: loaders.objTypeLoader,
+            locModelLoader: {
+                modelLoader: loaders.modelLoader,
+                textureLoader: loaders.textureLoader,
+                seqTypeLoader,
+                seqFrameLoader,
+                skeletalSeqLoader,
+            },
+            seqTypeLoader,
+            seqFrameLoader,
+            skeletalSeqLoader,
+            textureLoader: session.getTextureLoader(),
+            npcTypeLoader: loaders.npcTypeLoader,
+            basTypeLoader: loaders.basTypeLoader,
+            underlayTypeLoader: loaders.underlayTypeLoader,
+            overlayTypeLoader: loaders.overlayTypeLoader,
+            varbitLoader: session.varManager.varbitLoader,
+        });
+    })();
 
     constructor(
         private readonly deps: MapRenderBuildDeps,
@@ -121,38 +148,14 @@ export class WasmMapRenderBackend implements MapRenderBackend {
 
     private createByteDrivenSceneBuildInput(input: SdMapLoaderInput): MapRenderByteDrivenSceneBuildInput {
         const { session, mapBytesProvider, objSpawns } = this.deps;
-        const loaders = session.loaders;
         const varManager = session.varManager;
-        const seqTypeLoader = loaders.seqTypeLoader;
-        const seqFrameLoader = loaders.seqFrameLoader;
-        const skeletalSeqLoader = loaders.skeletalSeqLoader;
         const varpValues =
             varManager.values instanceof Int32Array ? new Int32Array(varManager.values) : new Int32Array(0);
-        const cacheProvider = createSceneBuildCacheProvider({
-            locTypeLoader: loaders.locTypeLoader,
-            objTypeLoader: loaders.objTypeLoader,
-            locModelLoader: {
-                modelLoader: loaders.modelLoader,
-                textureLoader: loaders.textureLoader,
-                seqTypeLoader,
-                seqFrameLoader,
-                skeletalSeqLoader,
-            },
-            seqTypeLoader,
-            seqFrameLoader,
-            skeletalSeqLoader,
-            textureLoader: session.getTextureLoader(),
-            npcTypeLoader: loaders.npcTypeLoader,
-            basTypeLoader: loaders.basTypeLoader,
-            underlayTypeLoader: loaders.underlayTypeLoader,
-            overlayTypeLoader: loaders.overlayTypeLoader,
-            varbitLoader: varManager.varbitLoader,
-        });
         return createByteDrivenSceneBuildInput(input, {
             mapBytesProvider,
             objSpawns,
             varpValues,
-            cacheProvider,
+            cacheProvider: this.cacheProvider,
             cacheGame: session.cache.info.game,
             cacheRevision: session.cache.info.revision,
         });
