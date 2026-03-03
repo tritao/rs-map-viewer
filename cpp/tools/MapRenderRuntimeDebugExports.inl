@@ -993,13 +993,28 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_model_faces_digest(
         if (textureId < 0) {
             return false;
         }
-        // Texture transparent ids are stored as presence-only keys:
-        // (domain=104, group=0, file=textureId).
-        const MapRenderRuntimeCacheState::BlobKey key{
-            RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-            0,
-            textureId};
-        return runtime->cache.blobEntries.find(key) != runtime->cache.blobEntries.end();
+        rs::Span<const rs::u8> texBytes{};
+        const rs::Status ts = getTypeEntrySpanForDeps(
+            runtime,
+            RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF,
+            textureId,
+            &texBytes);
+        if (!rs::ok(ts) || texBytes.size() <= 0) {
+            return false;
+        }
+        if (texBytes.size() < 4) {
+            return false;
+        }
+        const rs::u8 opaque = texBytes[2];
+        const rs::u8 spriteCount = texBytes[3];
+        if (spriteCount < 1 || spriteCount > 4) {
+            return false;
+        }
+        const std::size_t expectedLen = static_cast<std::size_t>(8 * spriteCount + 4);
+        if (texBytes.size() != expectedLen) {
+            return false;
+        }
+        return opaque == 0;
     };
 
     rs::Allocator& alloc = rs::defaultAllocator();
@@ -1100,17 +1115,7 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_classic_anim_frame
     }
 
     // Build a minimal SceneCommandBuildInput matching runtime build semantics so we can reuse
-    // loc-model decode helpers and texture id presence lists.
-    std::vector<rs::i32> textureTransparentIds{};
-    std::vector<rs::i32> textureIds{};
-    collectBlobDomainGroup0IdsSortedUnique(
-        runtime,
-        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-        &textureTransparentIds);
-    collectBlobDomainTypeListPreferPayloadOrKeys(
-        runtime,
-        RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-        &textureIds);
+    // loc-model decode helpers.
 
     rs::SceneCommandBuildInput input{};
     input.cacheGame = runtime->cache.cacheGame;
@@ -1118,11 +1123,6 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_classic_anim_frame
     input.unitsTileHeightBasis = runtime->cache.unitsTileHeightBasis;
     input.typeEntryBytesCtx = runtime;
     input.tryGetTypeEntryBytes = runtimeTryGetTypeEntryBytesFromRuntimeCtx;
-    input.textureTransparentIds = rs::Span<const rs::i32>(
-        !textureTransparentIds.empty() ? textureTransparentIds.data() : nullptr,
-        textureTransparentIds.size());
-    input.textureIds =
-        rs::Span<const rs::i32>(!textureIds.empty() ? textureIds.data() : nullptr, textureIds.size());
 
     rs::CacheInfo cacheInfo{};
     cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
@@ -1267,12 +1267,10 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_loc_classic_anim_frame
     }
 
     auto isTextureTransparent = [&](rs::i32 textureId) -> bool {
-        if (textureId < 0) return false;
-        return rs::scb::findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0;
+        return rs::scb::isTextureTransparentFromRuntimeDefs(input, textureId);
     };
     auto isTextureSd = [&](rs::i32 textureId) -> bool {
-        if (textureId < 0) return false;
-        return rs::scb::findTypeBlobIndex(input.textureIds, textureId) >= 0;
+        return rs::scb::isTextureSdFromRuntimeDefs(input, textureId);
     };
 
     rs::u32 h = 2166136261u;

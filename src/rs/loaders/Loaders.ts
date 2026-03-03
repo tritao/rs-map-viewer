@@ -40,6 +40,7 @@ export type TextureService = Pick<
     TextureLoader,
     | "getTextureIds"
     | "getTextureIndex"
+    | "tryLoadBytes"
     | "isSmall"
     | "isSd"
     | "isTransparent"

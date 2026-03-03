@@ -133,14 +133,8 @@ async function buildRuntimeLifecycleFixture(): Promise<
         underlayTypeLoader: session.loaders.underlayTypeLoader,
         overlayTypeLoader: session.loaders.overlayTypeLoader,
         varbitLoader: session.varManager.varbitLoader,
+        textureLoader: session.loaders.textureLoader,
     });
-    const allTextureIds = session.loaders.textureLoader.getTextureIds();
-    const textureIdLists = {
-        sdTextureIds: allTextureIds.filter((id) => session.loaders.textureLoader.isSd(id | 0)),
-        transparentTextureIds: allTextureIds.filter((id) =>
-            session.loaders.textureLoader.isTransparent(id | 0),
-        ),
-    };
     const sceneBuildInput = createByteDrivenSceneBuildInput(
         {
             mapX: square.mapX,
@@ -157,7 +151,6 @@ async function buildRuntimeLifecycleFixture(): Promise<
             cacheGame: loadedCache.info.game,
             cacheRevision: loadedCache.info.revision,
             cacheProvider,
-            textureIdLists,
             varpValues: new Int32Array(varProvider.varManager.values),
         },
     );

@@ -6,6 +6,7 @@
 
 namespace rs {
 
+struct SceneCommandBuildInput;
 struct SceneData;
 struct UnderlayFloorType;
 struct OverlayFloorType;
@@ -39,9 +40,7 @@ struct TerrainTypeProvider final {
 
 Status sampleTerrainTile(
     const SceneData& scene,
-    i32 cacheGame,
-    i32 cacheRevision,
-    Span<const i32> textureIds,
+    const SceneCommandBuildInput& input,
     const TerrainTypeProvider& provider,
     i32 level,
     i32 x,

@@ -7,6 +7,14 @@ export interface TextureLoader {
 
     getTextureIndex(id: number): number;
 
+    /**
+     * Optional: raw per-texture definition bytes (cache-type dependent).
+     *
+     * Used by the C++/wasm map-render runtime to classify textures (SD/transparent) without
+     * TS uploading global id lists.
+     */
+    tryLoadBytes?: (id: number) => Uint8Array | undefined;
+
     isSmall(id: number): boolean;
 
     isSd(id: number): boolean;

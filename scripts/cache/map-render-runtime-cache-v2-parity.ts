@@ -8259,14 +8259,8 @@ async function main(): Promise<void> {
         underlayTypeLoader: loaders.underlayTypeLoader,
         overlayTypeLoader: loaders.overlayTypeLoader,
         varbitLoader: session.varManager.varbitLoader,
+        textureLoader: loaders.textureLoader,
     });
-    const allTextureIds = loaders.textureLoader.getTextureIds();
-    const textureIdLists = {
-        sdTextureIds: allTextureIds.filter((id) => loaders.textureLoader.isSd(id | 0)),
-        transparentTextureIds: allTextureIds.filter((id) =>
-            loaders.textureLoader.isTransparent(id | 0),
-        ),
-    };
     const transparentTextureIds = collectTransparentTextureIdSet(
         sceneBuilder.services.textureLoader,
     );
@@ -8370,7 +8364,6 @@ async function main(): Promise<void> {
                 cacheGame: cacheInfo.game,
                 cacheRevision: cacheInfo.revision,
                 cacheProvider,
-                textureIdLists,
                 varpValues: snapshotVarpValues(varProvider),
             });
             // This digest is meaningful only after the cache inputs have been uploaded into the runtime.

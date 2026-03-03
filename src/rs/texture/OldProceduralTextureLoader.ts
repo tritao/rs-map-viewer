@@ -28,7 +28,7 @@ export class OldProceduralTextureLoader implements TextureLoader {
     ): OldProceduralTextureLoader {
         const definitions = new Map<number, ProceduralTextureDefinition>();
         if (!textureDefinitionSource) {
-            return new OldProceduralTextureLoader(spriteSource, [], definitions);
+            return new OldProceduralTextureLoader(undefined, spriteSource, [], definitions);
         }
 
         const textureIds = Array.from(textureDefinitionSource.getIds());
@@ -56,10 +56,16 @@ export class OldProceduralTextureLoader implements TextureLoader {
             );
         }
 
-        return new OldProceduralTextureLoader(spriteSource, textureIds, definitions);
+        return new OldProceduralTextureLoader(
+            textureDefinitionSource,
+            spriteSource,
+            textureIds,
+            definitions,
+        );
     }
 
     constructor(
+        readonly textureDefinitionSource: BytesProvider<number> | undefined,
         readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly definitions: Map<number, ProceduralTextureDefinition>,
@@ -76,6 +82,10 @@ export class OldProceduralTextureLoader implements TextureLoader {
 
     getTextureIndex(id: number): number {
         return this.idIndexMap.get(id) ?? -1;
+    }
+
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        return this.textureDefinitionSource?.getBytes(id) ?? undefined;
     }
 
     isSmall(id: number): boolean {

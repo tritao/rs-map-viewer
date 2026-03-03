@@ -1,5 +1,6 @@
 #include "TerrainTileSampler.hpp"
 
+#include "SceneCommandBuilderInternal.hpp"
 #include "TerrainTileBuilder.hpp" // computeOverlayEdgeEligibility, kTerrainTileSize
 
 #include "../config/floortype/OverlayFloorType.hpp"
@@ -10,33 +11,15 @@ namespace rs {
 
 namespace {
 
-static i32 findTextureIndex(Span<const i32> textureIds, i32 textureId) noexcept {
-    for (std::size_t i = 0; i < textureIds.size(); i++) {
-        if (textureIds[i] == textureId) {
-            return static_cast<i32>(i);
-        }
-    }
-    return -1;
-}
-
-static bool isTextureSd(Span<const i32> textureIds, i32 textureId) noexcept {
-    if (textureId < 0) {
-        return false;
-    }
-    return findTextureIndex(textureIds, textureId) != -1;
-}
-
-static i32 resolveSdTextureId(Span<const i32> textureIds, i32 textureId) noexcept {
-    return isTextureSd(textureIds, textureId) ? textureId : -1;
+static i32 resolveSdTextureId(const SceneCommandBuildInput& input, i32 textureId) noexcept {
+    return scb::isTextureSdFromRuntimeDefs(input, textureId) ? textureId : -1;
 }
 
 } // namespace
 
 Status sampleTerrainTile(
     const SceneData& scene,
-    i32 cacheGame,
-    i32 cacheRevision,
-    Span<const i32> textureIds,
+    const SceneCommandBuildInput& input,
     const TerrainTypeProvider& provider,
     i32 level,
     i32 x,
@@ -56,7 +39,7 @@ Status sampleTerrainTile(
         const UnderlayFloorType* underlayType = nullptr;
         const Status us = provider.tryLoadUnderlay(provider.ctx, underlayRaw - 1, &underlayType);
         if (ok(us) && underlayType) {
-            out->underlayTexturePacked = resolveSdTextureId(textureIds, underlayType->textureId);
+            out->underlayTexturePacked = resolveSdTextureId(input, underlayType->textureId);
             out->underlayTextureSize = underlayType->textureSize > 0 ? underlayType->textureSize : kTerrainTileSize;
         }
     }
@@ -90,9 +73,9 @@ Status sampleTerrainTile(
                     i32* outTexturePacked,
                     i32* outTextureSize) {
                 auto isSdTextureCandidate = [&](i32 textureId) -> bool {
-                    // TS uses `textureLoader.isSd(textureId)` here. In the wasm runtime we only
-                    // receive the SD texture-id list.
-                    return isTextureSd(textureIds, textureId);
+                    // TS uses `textureLoader.isSd(textureId)` here. In the wasm runtime we infer
+                    // SD eligibility via runtime-cached per-texture definition blobs (kind=4).
+                    return scb::isTextureSdFromRuntimeDefs(input, textureId);
                 };
 
                 // Match TS `fillOverlaySample`: prefer primary texture when valid, otherwise
@@ -108,7 +91,7 @@ Status sampleTerrainTile(
 
                 const i32 packed =
                     (selectedTextureId != -1)
-                        ? resolveSdTextureId(textureIds, selectedTextureId)
+                        ? resolveSdTextureId(input, selectedTextureId)
                         : -1;
                 const i32 texSize = (sample && sample->textureSize > 0) ? sample->textureSize : kTerrainTileSize;
                 i32 baseHsl = -1;
@@ -181,7 +164,7 @@ Status sampleTerrainTile(
                         continue;
                     }
                     i32 priority = 0;
-                    if (cacheGame == static_cast<i32>(GameType::Runescape) && cacheRevision >= 667) {
+                    if (input.cacheGame == static_cast<i32>(GameType::Runescape) && input.cacheRevision >= 667) {
                         priority = static_cast<i32>(candidate->blendPriority);
                     }
                     if (!best || priority > bestPriority || (priority == bestPriority && isCurrent && !bestIsCurrent)) {

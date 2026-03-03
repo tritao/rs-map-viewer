@@ -1710,30 +1710,10 @@ i32 findTypeBlobIndex(Span<const i32> ids, i32 id) noexcept {
     return -1;
 }
 
-static bool isTextureTransparent(
-    Span<const i32> textureTransparentIds,
-    i32 textureId) noexcept {
-    if (textureId < 0) {
-        return false;
-    }
-    return findTypeBlobIndex(textureTransparentIds, textureId) >= 0;
-}
-
-static bool isTextureSd(
-    Span<const i32> textureSdIds,
-    i32 textureId) noexcept {
-    if (textureId < 0) {
-        return false;
-    }
-    return findTypeBlobIndex(textureSdIds, textureId) >= 0;
-}
-
 i32 mapTextureIdToPackedIndex(Span<const i32> textureIds, i32 textureId) noexcept {
-    if (textureId < 0) {
-        return -1;
-    }
+    (void)textureIds;
     // New packing stores raw cache texture ids directly (as textureIdPlus1 in the packed-vertex stream).
-    return findTypeBlobIndex(textureIds, textureId) >= 0 ? textureId : -1;
+    return textureId >= 0 ? textureId : -1;
 }
 
 Status tryDecodeUnderlayTypeFromBlob(
@@ -2704,12 +2684,9 @@ static void xxh32UpdateI32VecWithTsPadding(
 
 // TS parity: ModelData.light() filters faceTextures to "SD-only" before lighting and before model hashing.
 // In TS this is `textureId !== -1 && textureLoader.isSd(textureId)` else texture=-1.
-// Here, `input.textureIds` is the runtime SD texture id list; anything not present must be treated as -1.
+// Here, SD filtering is driven by runtime-cached per-texture definition blobs (kind=4).
 static inline i32 filterSdTextureId(const SceneCommandBuildInput& input, i32 textureId) noexcept {
-    if (textureId < 0) {
-        return -1;
-    }
-    return isTextureSd(input.textureIds, textureId) ? textureId : -1;
+    return filterSdTextureIdFromRuntimeDefs(input, textureId);
 }
 
 static Status computeLitModelHashForGrouping(
@@ -2772,7 +2749,7 @@ static Status computeLitModelHashForGrouping(
 
         // TS parity: "textured" depends on SD-availability filtering (see filterSdTextureId()).
         const i32 textureId = filterSdTextureId(input, rawTextureId);
-        const bool hasTexture = isTextureSd(input.textureIds, textureId);
+        const bool hasTexture = isTextureSdFromRuntimeDefs(input, textureId);
 
         const bool hasIndices =
             fi >= 0 &&
@@ -2905,7 +2882,7 @@ Status computeLitModelHashForGroupingWithLightingState(
         const i32 rawTextureId = modelFaceRawTextureId(model, fi);
 
         const i32 textureId = filterSdTextureId(input, rawTextureId);
-        const bool hasTexture = isTextureSd(input.textureIds, textureId);
+        const bool hasTexture = isTextureSdFromRuntimeDefs(input, textureId);
 
         const bool hasIndices =
             fi >= 0 &&
@@ -3157,7 +3134,7 @@ Status tryDecodeModelFaceStatsFromBlob(
 
         const bool isTransparent =
             (alpha < 0xff) ||
-            (textureId != -1 && isTextureTransparent(input.textureTransparentIds, textureId));
+            (textureId != -1 && isTextureTransparentFromRuntimeDefs(input, textureId));
         if (isTransparent) {
             stats.alphaElements += 3;
         } else {
@@ -3254,7 +3231,7 @@ Status tryDecodeObjModelFaceStatsFromBlob(
 
         const bool isTransparent =
             (alpha < 0xff) ||
-            (textureId != -1 && isTextureTransparent(input.textureTransparentIds, textureId));
+            (textureId != -1 && isTextureTransparentFromRuntimeDefs(input, textureId));
         if (isTransparent) {
             stats.alphaElements += 3;
         } else {
@@ -3836,11 +3813,10 @@ Status appendLocPlacementGeometry(
 	                faceType = 2;
 	            }
 
-	            const bool hasTexture = isTextureSd(input.textureIds, textureId);
-            i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
+	            const bool hasTexture = isTextureSdFromRuntimeDefs(input, textureId);
+            const i32 packedTextureId = hasTexture ? textureId : -1;
             const bool textureAlpha =
-                hasTexture &&
-                isTextureTransparent(input.textureTransparentIds, textureId);
+                hasTexture && isTextureTransparentFromRuntimeDefs(input, textureId);
 
             i32 alpha = 0xff;
             if (!hasTexture &&
@@ -4460,11 +4436,10 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
                 }
             }
 
-            const bool hasTexture = findTypeBlobIndex(input.textureIds, textureId) >= 0;
+            const bool hasTexture = isTextureSdFromRuntimeDefs(input, textureId);
             const i32 packedTextureId = hasTexture ? textureId : -1;
             const bool textureAlpha =
-                hasTexture &&
-                findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0;
+                hasTexture && isTextureTransparentFromRuntimeDefs(input, textureId);
 
             if (textureLookupCount < kTextureLookupCacheCapacity) {
                 TextureLookupCacheEntry& entry =
@@ -5356,8 +5331,8 @@ Status appendObjPlacementGeometry(
 		            renderType = 2;
 		        }
 
-		        const bool hasTexture = isTextureSd(input.textureIds, textureId);
-	        i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
+		        const bool hasTexture = isTextureSdFromRuntimeDefs(input, textureId);
+	        const i32 packedTextureId = hasTexture ? textureId : -1;
 
         i32 alpha = 0xff;
         if (model.hasFaceAlphas &&
@@ -5381,7 +5356,7 @@ Status appendObjPlacementGeometry(
 
         const bool textureAlpha =
             hasTexture &&
-            isTextureTransparent(input.textureTransparentIds, textureId);
+            isTextureTransparentFromRuntimeDefs(input, textureId);
         const bool transparent =
             alpha < 0xff ||
             textureAlpha;

@@ -587,7 +587,7 @@ static bool modelHasTransparentFacesForAnimatedFrameTs(
         if (alpha < 0xff) {
             return true;
         }
-        if (textureId != -1 && findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0) {
+        if (textureId != -1 && isTextureTransparentFromRuntimeDefs(input, textureId)) {
             return true;
         }
     }
@@ -4061,7 +4061,7 @@ static Status planLocCommandsFromMapLocBytes(
                     // TS parity: ModelData.light() filters faceTextures to SD-only (otherwise texture=-1).
                     const bool hasTexture =
                         textureId != -1 &&
-                        findTypeBlobIndex(input.textureIds, textureId) >= 0;
+                        isTextureSdFromRuntimeDefs(input, textureId);
 
                     i32 alpha = 0xff;
                     if (!hasTexture &&
@@ -4086,7 +4086,7 @@ static Status planLocCommandsFromMapLocBytes(
 
                     const bool textureAlpha =
                         hasTexture &&
-                        findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0;
+                        isTextureTransparentFromRuntimeDefs(input, textureId);
                     if (alpha < 0xff || textureAlpha) {
                         stats.alphaElements += 3;
                     } else {

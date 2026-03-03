@@ -250,6 +250,10 @@ export class ProceduralTextureLoader implements TextureLoader {
         return id;
     }
 
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        return this.textureSource.getBytes(id) ?? undefined;
+    }
+
     isSd(id: number): boolean {
         // Some caches (e.g. RuneScape 667) reference procedural texture ids that don't have a corresponding
         // "material" entry (or the `valid` flag isn't set) but are still renderable via the texture definitions.

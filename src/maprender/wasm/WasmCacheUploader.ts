@@ -22,24 +22,21 @@ const MAP_SQUARE_SIZE = 64;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC = 101;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT = 102;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL = 103;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT = 104;
+// Per-texture definition bytes (cache-type dependent):
+// - Dat2 Sprite textures: SpriteTextureDefinition bytes
+// - Dat2 procedural textures: procedural texture definition bytes
+// (domain=104, group=0, file=textureId).
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF = 104;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE = 105;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME = 106;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC = 107;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS = 108;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS = 109;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY = 110;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY = 111;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ = 112;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS = 113;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE = 115;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ = 116;
-// For list-like type-entry domains, prefer a single packed payload:
-// (domain, group=1, file=0) -> bytes: little-endian i32 ids.
-// Legacy fallback: (domain, group=0, file=id) presence keys with empty payload.
-const RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_GROUP = 1;
-const RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_FILE = 0;
-const RUNTIME_BLOB_TYPE_ENTRY_ID_PRESENCE_GROUP = 0;
 // Domain for map-square bytes: (domain=2, group=mapSquareId, file=<map-square file id>).
 const RUNTIME_BLOB_DOMAIN_MAP_SQUARE = 2;
 const RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN = 0;
@@ -130,7 +127,6 @@ type MapRenderSceneBuildInputDeps = Readonly<
         | "cacheGame"
         | "cacheRevision"
         | "cacheProvider"
-        | "textureIdLists"
         | "varpValues"
     >
 >;
@@ -165,6 +161,7 @@ export type SceneBuildCacheProviderLoaders = Readonly<{
     skeletalSeqLoader?: SkeletalSeqLoaderLike;
     npcTypeLoader?: TypeEntryLoaderLike;
     basTypeLoader?: TypeEntryLoaderLike;
+    textureLoader?: TypeEntryLoaderLike;
     varbitLoader?: TypeEntryLoaderLike;
     underlayTypeLoader?: TypeEntryLoaderLike;
     overlayTypeLoader?: TypeEntryLoaderLike;
@@ -289,6 +286,7 @@ export function createSceneBuildCacheProvider(
     const objTypeLoader = loaders.objTypeLoader;
     const npcTypeLoader = loaders.npcTypeLoader;
     const basTypeLoader = loaders.basTypeLoader;
+    const textureLoader = loaders.textureLoader;
     const underlayTypeLoader = loaders.underlayTypeLoader;
     const overlayTypeLoader = loaders.overlayTypeLoader;
     const varbitLoader = loaders.varbitLoader;
@@ -337,6 +335,8 @@ export function createSceneBuildCacheProvider(
                     return tryLoadTypeBytes(npcTypeLoader, typeId);
                 case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS:
                     return tryLoadTypeBytes(basTypeLoader, typeId);
+                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF:
+                    return tryLoadTypeBytes(textureLoader, typeId);
                 case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY:
                     return tryLoadTypeBytes(underlayTypeLoader, typeId);
                 case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY:
@@ -363,8 +363,6 @@ export function createSceneBuildCacheProvider(
         const g = group | 0;
         const f = file | 0;
 
-        if (d === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS) return undefined;
-        if (d === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT) return undefined;
         if (d === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS) return undefined;
 
         if (d === RUNTIME_BLOB_DOMAIN_MAP_SQUARE) {
@@ -456,11 +454,6 @@ export function createSceneBuildCacheProvider(
     return { tryGetBlobBytes };
 }
 
-export type MapRenderTextureIdLists = Readonly<{
-    sdTextureIds: ReadonlyArray<number>;
-    transparentTextureIds: ReadonlyArray<number>;
-}>;
-
 export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     mapX: number;
     mapY: number;
@@ -481,7 +474,6 @@ export type MapRenderByteDrivenSceneBuildInput = Readonly<{
     objSpawns?: ReadonlyArray<ObjSpawn>;
     varpValues: Int32Array;
     cacheProvider: SceneBuildCacheProvider;
-    textureIdLists?: MapRenderTextureIdLists;
 }>;
 
 export function createByteDrivenSceneBuildInput(
@@ -518,7 +510,6 @@ export function createByteDrivenSceneBuildInput(
         objSpawns: deps.objSpawns,
         varpValues: deps.varpValues,
         cacheProvider: deps.cacheProvider,
-        textureIdLists: deps.textureIdLists,
     };
 }
 
@@ -641,141 +632,9 @@ function createSceneBuildCacheProviderForBuild(
 }
 
 export class WasmCacheUploader {
-    // Upload the texture packing lists once per runtime handle.
-    private readonly uploadedTextureListsForRuntime: Set<number> = new Set();
-
     reset(): void {
-        this.uploadedTextureListsForRuntime.clear();
-    }
-
-    private async uploadTypeIdPresenceKeys(
-        feeder: RuntimeCacheFeeder,
-        domain: number,
-        ids: ReadonlyArray<number>,
-    ): Promise<boolean> {
-        const kept = sortedUniqueTypeIds(ids);
-        if (kept.length <= 0) {
-            return true;
-        }
-
-        // Presence keys:
-        // - (domain, group=0, file=id) with empty payload.
-        const n = kept.length | 0;
-        const groups = new Int32Array(n);
-        const files = new Int32Array(n);
-        const offsets = new Int32Array(n);
-        const lengths = new Int32Array(n);
-        for (let i = 0; i < n; i++) {
-            groups[i] = RUNTIME_BLOB_TYPE_ENTRY_ID_PRESENCE_GROUP;
-            files[i] = kept[i] | 0;
-            offsets[i] = 0;
-            lengths[i] = 0;
-        }
-        return await feeder.putBlobBatch(domain, groups, files, offsets, lengths, new Uint8Array(0));
-    }
-
-    private async ensureTextureListsUploaded(
-        feeder: RuntimeCacheFeeder,
-        runtimeHandle: MapRenderRuntimeHandle,
-        sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-    ): Promise<boolean> {
-        const key = runtimeHandle | 0;
-        const fail = (
-            stage: string,
-            detail?: Readonly<Record<string, number | boolean | string | undefined>>,
-        ): false => {
-            console.warn("[runtime-cache-v2] texture list upload failed", {
-                stage,
-                runtimeHandle: key,
-                ...detail,
-            });
-            return false;
-        };
-        if (this.uploadedTextureListsForRuntime.has(key)) {
-            return true;
-        }
-
-        const lists = sceneBuildInput.textureIdLists;
-        if (!lists) {
-            // Without texture lists we can't seed the runtime's texture packing lists.
-            // Still proceed: map builds can continue (render will just be missing textures).
-            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS))) {
-                return fail("clear.texture_ids.without_lists", {
-                    domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-                });
-            }
-            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT))) {
-                return fail("clear.texture_transparent.without_lists", {
-                    domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-                });
-            }
-            this.uploadedTextureListsForRuntime.add(key);
-            return true;
-        }
-
-        // `textureIds` is used by C++ for:
-        // - SD classification (filtering Model.faceTextures to SD-only)
-        // - packed texture index mapping (C++ clamps indices >= 2047 to -1)
-        //
-        // So we must upload the full ordered SD id list (not truncated), matching
-        // TS `ModelData.light()` SD filtering semantics.
-        const sdTextureIds = lists.sdTextureIds;
-        const transparentTextureIds = lists.transparentTextureIds;
-        if (typeof process !== "undefined" && process?.env?.RS_DEBUG_TEXTURE_LISTS === "1") {
-            console.warn("[runtime-cache-v2] texture lists", {
-                runtimeHandle: key,
-                sdCount: sdTextureIds.length | 0,
-                transparentCount: transparentTextureIds.length | 0,
-                sdSample: sdTextureIds.slice(0, 8),
-                transparentSample: transparentTextureIds.slice(0, 8),
-            });
-        }
-
-        // Re-seed the domains so C++ sees an exact TS-consistent list.
-        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS))) {
-            return fail("clear.texture_ids.with_lists", {
-                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-                sdCount: sdTextureIds.length | 0,
-                transparentCount: transparentTextureIds.length | 0,
-            });
-        }
-        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT))) {
-            return fail("clear.texture_transparent.with_lists", {
-                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-                sdCount: sdTextureIds.length | 0,
-                transparentCount: transparentTextureIds.length | 0,
-            });
-        }
-
-        // Presence keys only (no ordered payload list). With raw texture-id vertex packing,
-        // runtime no longer needs a stable SD texture ordering; membership is enough.
-        if (
-            !(await this.uploadTypeIdPresenceKeys(
-                feeder,
-                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-                sdTextureIds,
-            ))
-        ) {
-            return fail("put.texture_ids.presence_keys", {
-                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
-                sdCount: sdTextureIds.length | 0,
-            });
-        }
-        if (
-            !(await this.uploadTypeIdPresenceKeys(
-                feeder,
-                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-                transparentTextureIds,
-            ))
-        ) {
-            return fail("put.texture_transparent.presence_keys", {
-                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-                transparentCount: transparentTextureIds.length | 0,
-            });
-        }
-
-        this.uploadedTextureListsForRuntime.add(key);
-        return true;
+        // No-op: texture lists are no longer uploaded. Texture SD/transparent classification is
+        // determined inside the runtime from per-texture definition bytes (kind=4, domain=104).
     }
 
     async uploadMissingBlobEntriesForBuildRequest(
@@ -805,16 +664,13 @@ export class WasmCacheUploader {
             const group = groups[i] | 0;
             const file = files[i] | 0;
 
-            // Texture packing lists are seeded once per runtime by ensureTextureListsUploaded().
-            // Do not satisfy missing requests for these domains here, otherwise we'd accidentally
-            // extend the packing lists beyond the TS-configured set and break parity.
-            if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS) continue;
-            if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT) continue;
-
             // Fail fast if we can't satisfy the runtime's request; otherwise we'd just spin passes.
             // (The actual upload batching below will fetch bytes again; this is just a guard.)
+            const allowEmpty =
+                domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF &&
+                group === 0;
             const maybe = provider.tryGetBlobBytes(domain, group, file);
-            if (!(maybe instanceof Uint8Array) || maybe.length <= 0) {
+            if ((!maybe || maybe.length <= 0) && !allowEmpty) {
                 unsatisfiedCount++;
                 if (!unsatisfiedPreview) {
                     unsatisfiedPreview = { domain, group, file };
@@ -862,7 +718,15 @@ export class WasmCacheUploader {
                 for (let fi = 0; fi < sortedFiles.length; fi++) {
                     const file = sortedFiles[fi] | 0;
                     const bytes = provider.tryGetBlobBytes(domain, group, file);
-                    if (!(bytes instanceof Uint8Array) || bytes.length <= 0) continue;
+                    if (!(bytes instanceof Uint8Array) || bytes.length <= 0) {
+                        if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF && group === 0) {
+                            outGroups.push(group);
+                            outFiles.push(file);
+                            outOffsets.push(totalBytes);
+                            outLengths.push(0);
+                        }
+                        continue;
+                    }
                     outGroups.push(group);
                     outFiles.push(file);
                     outOffsets.push(totalBytes);
@@ -926,10 +790,6 @@ export class WasmCacheUploader {
         if (!(await feeder.setBuildConfig(request))) return fail("setBuildConfig");
         if (!(await feeder.setVarps(sceneBuildInput.varpValues)))
             return fail("setVarps", { varpCount: sceneBuildInput.varpValues.length | 0 });
-        if (!(await this.ensureTextureListsUploaded(feeder, runtimeHandle, sceneBuildInput)))
-            return fail("ensureTextureListsUploaded", {
-                hasTextureIdLists: sceneBuildInput.textureIdLists !== undefined,
-            });
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_MAP_SQUARE)))
             return fail("clearMapSquareDomain", { domain: RUNTIME_BLOB_DOMAIN_MAP_SQUARE });
         const provider = createSceneBuildCacheProviderForBuild(sceneBuildInput);

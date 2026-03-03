@@ -57,6 +57,75 @@ static inline Status tryGetTypeEntryBytesSpan(
     return input.tryGetTypeEntryBytes(input.typeEntryBytesCtx, kind, id, out);
 }
 
+// Texture helpers (runtime-cached, lazy, TS-parity oriented).
+//
+// We avoid TS-uploaded global texture id lists by treating `kind=4` (domain=104) as the
+// per-texture definition blob:
+// - Non-empty blob => texture exists / SD-eligible.
+// - Empty blob => known-missing texture (runtime should treat as non-SD).
+// - NotFound => optimistic SD (keeps geometry) but runtime may record missing and trigger a follow-up pass.
+static inline bool isTextureSdFromRuntimeDefs(
+    const SceneCommandBuildInput& input,
+    i32 textureId) noexcept {
+    if (textureId < 0) {
+        return false;
+    }
+    Span<const u8> bytes{};
+    const Status s = tryGetTypeEntryBytesSpan(input, /*kind=*/4, textureId, &bytes);
+    if (ok(s)) {
+        return bytes.size() > 0;
+    }
+    // Optimistic default: treat as SD so geometry stays intact, and let the runtime request
+    // missing blobs when supported (Dat2).
+    return true;
+}
+
+static inline bool isTextureTransparentFromRuntimeDefs(
+    const SceneCommandBuildInput& input,
+    i32 textureId) noexcept {
+    if (textureId < 0) {
+        return false;
+    }
+    Span<const u8> bytes{};
+    const Status s = tryGetTypeEntryBytesSpan(input, /*kind=*/4, textureId, &bytes);
+    if (!ok(s) || bytes.size() <= 0) {
+        return false;
+    }
+
+    // Dat2 sprite texture definition format (matches TS SpriteTextureLoader.TextureDefinition):
+    //   u16 averageHsl
+    //   u8 opaque (1/0)
+    //   u8 spriteCount (1..4)
+    //   u16 spriteIds[spriteCount]
+    //   (spriteCount>1) u8 spriteTypes[spriteCount-1]
+    //   (spriteCount>1) u8 unused[spriteCount-1]
+    //   i32 transforms[spriteCount]
+    //   u8 animationDirection
+    //   u8 animationSpeed
+    if (bytes.size() < 4) {
+        return false;
+    }
+    const u8 opaque = bytes[2];
+    const u8 spriteCount = bytes[3];
+    if (spriteCount < 1 || spriteCount > 4) {
+        return false;
+    }
+    const std::size_t expectedLen = static_cast<std::size_t>(8 * spriteCount + 4);
+    if (bytes.size() != expectedLen) {
+        return false;
+    }
+    return opaque == 0;
+}
+
+static inline i32 filterSdTextureIdFromRuntimeDefs(
+    const SceneCommandBuildInput& input,
+    i32 textureId) noexcept {
+    if (textureId < 0) {
+        return -1;
+    }
+    return isTextureSdFromRuntimeDefs(input, textureId) ? textureId : -1;
+}
+
 // Loc animation helpers (classic seq frames) shared between build and debug tooling.
 // Implemented in `LocEmit.cpp`.
 Status tryDecodeBridgeSeqFrameFromBlob(

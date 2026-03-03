@@ -28,7 +28,7 @@ export class SpriteTextureLoader implements TextureLoader {
         const errors = new Map<number, DecodeError>();
 
         if (!textureDefinitionSource) {
-            return new SpriteTextureLoader(spriteSource, [], definitions, errors);
+            return new SpriteTextureLoader(undefined, spriteSource, [], definitions, errors);
         }
         const textureIds = Array.from(textureDefinitionSource.getIds());
         for (let i = 0; i < textureIds.length; i++) {
@@ -47,10 +47,17 @@ export class SpriteTextureLoader implements TextureLoader {
             }
         }
 
-        return new SpriteTextureLoader(spriteSource, textureIds, definitions, errors);
+        return new SpriteTextureLoader(
+            textureDefinitionSource,
+            spriteSource,
+            textureIds,
+            definitions,
+            errors,
+        );
     }
 
     constructor(
+        readonly textureDefinitionSource: BytesProvider<number> | undefined,
         readonly spriteSource: BytesProvider,
         readonly textureIds: number[],
         readonly definitions: Map<number, TextureDefinition>,
@@ -69,6 +76,10 @@ export class SpriteTextureLoader implements TextureLoader {
 
     getTextureIndex(id: number): number {
         return this.idIndexMap.get(id) ?? -1;
+    }
+
+    tryLoadBytes(id: number): Uint8Array | undefined {
+        return this.textureDefinitionSource?.getBytes(id) ?? undefined;
     }
 
     isSd(id: number): boolean {

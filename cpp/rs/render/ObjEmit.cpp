@@ -546,9 +546,7 @@ static Status planObjCommandsFromPackedSpawns(
         TerrainTileSample tileSample{};
         const Status ss = sampleTerrainTile(
             scene,
-            input.cacheGame,
-            input.cacheRevision,
-            input.textureIds,
+            input,
             samplerProvider,
             level,
             tileX,

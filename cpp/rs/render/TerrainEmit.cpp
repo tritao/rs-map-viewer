@@ -94,9 +94,7 @@ Status analyzeTerrainLowDetailTileFlags(
                 TerrainTileSample tileSample{};
                 const Status sampleStatus = sampleTerrainTile(
                     scene,
-                    input.cacheGame,
-                    input.cacheRevision,
-                    input.textureIds,
+                    input,
                     samplerProvider,
                     level,
                     x,
@@ -300,9 +298,7 @@ Status appendTerrainFallbackGeometryForLevel(
             TerrainTileSample tileSample{};
             const Status sampleStatus = sampleTerrainTile(
                 scene,
-                input.cacheGame,
-                input.cacheRevision,
-                input.textureIds,
+                input,
                 samplerProvider,
                 level,
                 x,

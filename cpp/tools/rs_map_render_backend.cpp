@@ -732,12 +732,11 @@ static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_NPC_BUILD_DEBUG_LENGTH = 12;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_LOC = 101;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT = 102;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL = 103;
-static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT = 104;
+static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF = 104;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE = 105;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME = 106;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_NPC = 107;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_BAS = 108;
-static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS = 109;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY = 110;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY = 111;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_OBJ = 112;
@@ -1369,7 +1368,7 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
     //   frame-map blobs (domain=3).
     // Avoid recording (domain=100+kind,group=0,file=id) as missing for these cache types, otherwise
     // the worker/parity upload loop will spin trying to upload unfulfillable entries.
-    if (kind == 3 || kind == 6) {
+    if (kind == 3 || kind == 6 || kind == 4) {
         rs::CacheInfo cacheInfo{};
         cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
         cacheInfo.revision = runtime->cache.cacheRevision;
@@ -1378,6 +1377,12 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
             return rs::Status::NotFound;
         }
         if (kind == 6 && (cacheType == rs::CacheType::Legacy || cacheType == rs::CacheType::Dat)) {
+            return rs::Status::NotFound;
+        }
+        // Texture definition bytes (kind=4) are only available for Dat2 caches. Other cache types
+        // would require multi-file sprite inputs (e.g. index.dat) and aren't currently supported
+        // in the runtime-cache v2 seam.
+        if (kind == 4 && cacheType != rs::CacheType::Dat2) {
             return rs::Status::NotFound;
         }
     }
@@ -1397,10 +1402,10 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
             id);
         return rs::Status::NotFound;
     }
-    // Treat empty bytes as NotFound for real type decode paths.
+    // Treat empty bytes as NotFound for real type decode paths, except:
+    // - kind=4 (texture def): empty means "known missing", used to avoid rebuild loops for invalid ids.
     if (payload->empty() &&
-        kind != 4 && // textureTransparent presence
-        kind != 9) { // textureIds presence
+        kind != 4) {
         if (kind == 13) {
             return rs::Status::NotFound;
         }
@@ -1720,14 +1725,6 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     const auto prepareInputStart = CommandClock::now();
     const bool includeLocs = loadLocs != 0;
 
-    // Texture id lists are uploaded by TS as a packed i32 list payload (preferred) or legacy
-    // presence keys (fallback). We collect directly from the blob-store to keep the
-    // SceneCommandBuilder API minimal.
-    std::vector<rs::i32> textureTransparentIds{};
-    std::vector<rs::i32> textureIds{};
-    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT, &textureTransparentIds);
-    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
-
     rs::SceneCommandBuildInput input{};
     input.baseX = baseX;
     input.baseY = baseY;
@@ -1778,12 +1775,6 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
         runtime->cache.varps.size());
     input.typeEntryBytesCtx = runtime;
     input.tryGetTypeEntryBytes = runtimeTryGetTypeEntryBytesFromRuntimeCtx;
-    input.textureTransparentIds = rs::Span<const rs::i32>(
-        !textureTransparentIds.empty() ? textureTransparentIds.data() : nullptr,
-        textureTransparentIds.size());
-    input.textureIds = rs::Span<const rs::i32>(
-        !textureIds.empty() ? textureIds.data() : nullptr,
-        textureIds.size());
     rs::CacheInfo cacheInfo{};
     cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
     cacheInfo.revision = runtime->cache.cacheRevision;

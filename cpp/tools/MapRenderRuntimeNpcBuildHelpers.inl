@@ -341,8 +341,8 @@ static rs::Status tryDecodeModelDataFromRuntime(
 }
 
 static rs::Status appendNpcModelGeometry(
+    MapRenderRuntimeState* runtime,
     const rs::ModelData& model,
-    const std::vector<rs::i32>& textureSdIds,
     const rs::i32 sceneTileX,
     const rs::i32 sceneTileY,
     std::vector<rs::u8>* outVertices,
@@ -367,10 +367,19 @@ static rs::Status appendNpcModelGeometry(
         if (model.hasFaceTextures && fi < static_cast<rs::i32>(model.faceTextures.size())) {
             textureId = static_cast<rs::i32>(model.faceTextures[static_cast<std::size_t>(fi)]);
         }
-        const rs::i32 textureIdSd =
-            (textureId >= 0 && std::binary_search(textureSdIds.begin(), textureSdIds.end(), textureId))
-                ? textureId
-                : -1;
+        rs::i32 textureIdSd = -1;
+        if (textureId >= 0 && runtime) {
+            rs::Span<const rs::u8> texBytes{};
+            const rs::Status ts = runtimeTryGetTypeEntryBytesFromRuntimeCtx(
+                runtime,
+                /*kind=*/4,
+                textureId,
+                &texBytes);
+            // Match SCB behavior: optimistic SD when missing (records missing key for follow-up pass),
+            // but treat empty bytes as known-missing.
+            const bool isSd = rs::ok(ts) ? (texBytes.size() > 0) : true;
+            textureIdSd = isSd ? textureId : -1;
+        }
 
         rs::i32 alpha = 0xff;
         if (model.hasFaceAlphas && textureId == -1 && fi < static_cast<rs::i32>(model.faceAlphas.size())) {
@@ -550,8 +559,6 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
     std::vector<DecodedVarBitTypeCacheEntry> varbitCache{};
     varbitCache.reserve(64);
     std::unordered_map<std::uint64_t, rs::i32> npcTupleOccurrences{};
-    std::vector<rs::i32> textureSdIds{};
-    collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureSdIds);
 
     const rs::i32 mapBaseX = mapX * kMapSquareSize;
     const rs::i32 mapBaseY = mapY * kMapSquareSize;
@@ -620,8 +627,8 @@ static rs::i32 tryBuildNpcGeometryForMapSquareIntoPayloadFromCache(
 
             rs::i32 modelIndexCount = 0;
             const rs::Status gs = appendNpcModelGeometry(
+                runtime,
                 model,
-                textureSdIds,
                 sceneTileX,
                 sceneTileY,
                 &payload->npcVertices,
