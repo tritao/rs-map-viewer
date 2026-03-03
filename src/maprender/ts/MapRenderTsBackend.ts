@@ -479,7 +479,7 @@ export class MapRenderTsBackend {
             loadLocs,
             smoothTerrain,
             minimizeDrawCalls,
-            loadedTextureIdsPacked,
+            loadedTextureIds,
         }: SdMapLoaderInput,
         options?: BuildMapDataOptions,
     ): Promise<BuildMapDataBridgeInputResult> {
@@ -782,7 +782,7 @@ export class MapRenderTsBackend {
 
         const includeLoadedTextures = options?.includeLoadedTextures !== false;
         const loadedTextures = new Map<number, Int32Array>();
-        const loadedTextureIdSet = new Set<number>(loadedTextureIdsPacked);
+        const loadedTextureIdSet = new Set<number>(loadedTextureIds);
         if (includeLoadedTextures) {
             const loadTexturesStart = performance.now();
             let missingTextureCount = 0;

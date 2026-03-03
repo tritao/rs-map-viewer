@@ -15,6 +15,7 @@ precision highp float;
 layout(std140, column_major) uniform;
 
 uniform highp isampler2D u_textureMaterials;
+uniform highp usampler2D u_textureSlotLut;
 
 #include "./includes/scene-uniforms.glsl";
 
@@ -34,6 +35,8 @@ out vec4 v_color;
 out vec2 v_texCoord;
 flat out uint v_texId0;
 flat out uint v_texId1;
+flat out uint v_texSlot0;
+flat out uint v_texSlot1;
 out float v_texBlend;
 flat out float v_alphaCutOff;
 out float v_fogAmount;
@@ -79,6 +82,11 @@ ModelInfo decodeModelInfo(int offset) {
     return info;
 }
 
+uint lookupTextureSlot(uint textureId) {
+    ivec2 coord = ivec2(int(textureId & 255u), int((textureId >> 8u) & 255u));
+    return texelFetch(u_textureSlotLut, coord, 0).r;
+}
+
 void main() {
     int offset = int(texelFetch(u_modelInfoTexture, getDataTexCoordFromIndex(DRAW_ID + u_drawIdOffset), 0).r);
 
@@ -96,6 +104,8 @@ void main() {
     }
     v_texId0 = vertex.textureId;
     v_texId1 = vertex.textureId1;
+    v_texSlot0 = lookupTextureSlot(vertex.textureId);
+    v_texSlot1 = lookupTextureSlot(vertex.textureId1);
     v_texBlend = vertex.texBlend;
 
     Material material1 = getMaterial(vertex.textureId1);

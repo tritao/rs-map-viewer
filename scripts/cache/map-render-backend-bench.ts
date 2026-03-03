@@ -614,7 +614,7 @@ async function main(): Promise<void> {
         loadLocs: args.loadLocs,
         smoothTerrain: false,
         minimizeDrawCalls: false,
-        loadedTextureIdsPacked: new Int32Array(0),
+        loadedTextureIds: new Int32Array(0),
     }));
 
     async function runTs(collectStages: boolean): Promise<number> {

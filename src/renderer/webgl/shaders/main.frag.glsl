@@ -7,12 +7,13 @@ layout(std140, column_major) uniform;
 #include "./includes/scene-uniforms.glsl";
 
 uniform highp sampler2DArray u_textures;
-uniform highp usampler2D u_textureSlotLut;
 
 in vec4 v_color;
 in vec2 v_texCoord;
 flat in uint v_texId0;
 flat in uint v_texId1;
+flat in uint v_texSlot0;
+flat in uint v_texSlot1;
 in float v_texBlend;
 flat in float v_alphaCutOff;
 in float v_fogAmount;
@@ -21,14 +22,9 @@ flat in vec4 v_interactId;
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 interactId;
 
-uint lookupTextureSlot(uint textureId) {
-    ivec2 coord = ivec2(int(textureId & 255u), int((textureId >> 8u) & 255u));
-    return texelFetch(u_textureSlotLut, coord, 0).r;
-}
-
 void main() {
-    uint slot0 = lookupTextureSlot(v_texId0);
-    uint slot1 = lookupTextureSlot(v_texId1);
+    uint slot0 = v_texSlot0;
+    uint slot1 = v_texSlot1;
 
     vec4 textureColor0 = texture(u_textures, vec3(v_texCoord, float(slot0))).bgra;
     vec4 textureColor1 = texture(u_textures, vec3(v_texCoord, float(slot1))).bgra;

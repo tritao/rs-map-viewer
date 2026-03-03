@@ -82,7 +82,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             loadLocs: r.loadLocs,
             smoothTerrain: r.smoothTerrain,
             minimizeDrawCalls: !r.hasMultiDraw,
-            loadedTextureIdsPacked: Int32Array.from(r.loadedTextureIds),
+            loadedTextureIds: Int32Array.from(r.loadedTextureIds),
         };
         return await this.workerPool.queueSdMapData(input);
     }

@@ -108,7 +108,7 @@ export type SdMapLoaderInput = {
 
     minimizeDrawCalls: boolean;
 
-    loadedTextureIdsPacked: Int32Array;
+    loadedTextureIds: Int32Array;
 };
 
 export function sdMapDataTransferables(data: SdMapData): Transferable[] {

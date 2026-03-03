@@ -8325,7 +8325,7 @@ async function main(): Promise<void> {
                 loadLocs: profile.loadLocs,
                 smoothTerrain: false,
                 minimizeDrawCalls: false,
-                loadedTextureIdsPacked: new Int32Array(0),
+                loadedTextureIds: new Int32Array(0),
             };
             const debugTransparencyTexIds =
                 args.debugStage === "commandStream" ? ([239, 407, 235] as const) : undefined;

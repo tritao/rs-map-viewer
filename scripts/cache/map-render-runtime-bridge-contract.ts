@@ -151,7 +151,7 @@ async function buildRuntimeLifecycleFixture(): Promise<
             loadLocs: true,
             smoothTerrain: false,
             minimizeDrawCalls: false,
-            loadedTextureIdsPacked: new Int32Array(0),
+            loadedTextureIds: new Int32Array(0),
         },
         {
             cacheGame: loadedCache.info.game,
