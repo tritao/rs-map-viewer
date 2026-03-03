@@ -98,6 +98,8 @@
     "rs:worker-map-sim-lifecycle-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-map-sim-lifecycle-regression.ts",
     "rs:npc-lifecycle-packet-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/npc-lifecycle-packet-regression.ts",
     "rs:wasm-tick-npc-path-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/wasm-tick-npc-path-regression.ts",
+    "rs:frame-packet-ready-set-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/frame-packet-ready-set-regression.ts",
+    "rs:worker-npc-lifecycle-no-static-rebuild-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-npc-lifecycle-no-static-rebuild-regression.ts",
     "rs:map-render-runtime-cache-v2-parity": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-runtime-cache-v2-parity.ts",
     "rs:map-render-runtime-cache-v2-models-parity": "npm run -s rs:map-render-runtime-cache-v2-parity -- --mode models-targeted --limit 4",
     "rs:map-render-backend-bench": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/map-render-backend-bench.ts",
