@@ -4,21 +4,21 @@ import { sdMapDataTransferables } from "./MapRenderPayload";
 import type { BackendKind } from "../util/BackendKind";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
-import { WasmMapRenderDataBackend } from "./wasm/WasmMapRenderDataBackend";
+import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
 
 export type RenderDataResult<T> = Readonly<{
     data: T;
     transferables: Transferable[];
 }>;
 
-export type MapRenderDataBackendKind = BackendKind;
+export type MapRenderBackendKind = BackendKind;
 
-export type MapRenderDataBackendOptions = Readonly<{
+export type MapRenderBackendOptions = Readonly<{
     telemetry?: boolean;
 }>;
 
-export interface MapRenderDataBackend {
-    readonly kind: MapRenderDataBackendKind;
+export interface MapRenderBackend {
+    readonly kind: MapRenderBackendKind;
     buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>>;
     reset(): void;
     // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
@@ -26,8 +26,8 @@ export interface MapRenderDataBackend {
     getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
 }
 
-class TsMapRenderDataBackend implements MapRenderDataBackend {
-    readonly kind: MapRenderDataBackendKind = "ts";
+class TsMapRenderBackend implements MapRenderBackend {
+    readonly kind: MapRenderBackendKind = "ts";
     private readonly backend: MapRenderTsBackend;
 
     constructor(deps: MapRenderBuildDeps) {
@@ -47,15 +47,15 @@ class TsMapRenderDataBackend implements MapRenderDataBackend {
     }
 }
 
-export function createMapRenderDataBackend(
-    kind: MapRenderDataBackendKind,
+export function createMapRenderBackend(
+    kind: MapRenderBackendKind,
     deps: MapRenderBuildDeps,
-    options?: MapRenderDataBackendOptions,
-): MapRenderDataBackend {
+    options?: MapRenderBackendOptions,
+): MapRenderBackend {
     if (kind === "cpp-wasm") {
-        return new WasmMapRenderDataBackend(deps, options);
+        return new WasmMapRenderBackend(deps, options);
     }
-    return new TsMapRenderDataBackend({
+    return new TsMapRenderBackend({
         ...deps,
         telemetry: options?.telemetry,
     });

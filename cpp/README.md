@@ -107,8 +107,8 @@ Map-render backend wasm module (for TS worker bridge):
 
 -   `npm run -s rs:cpp-map-render-wasm`
 -   outputs copied to:
-    -   `src/wasm/rs_map_render_backend.js`
-    -   `src/wasm/rs_map_render_backend.wasm`
+    -   `src/wasm/rs_map_runtime.js`
+    -   `src/wasm/rs_map_runtime.wasm`
 -   parity smoke:
     -   `npm run -s rs:map-render-wasm-parity -- --iterations 20`
 -   runtime parity (TS vs wasm runtime cache-v2 build):

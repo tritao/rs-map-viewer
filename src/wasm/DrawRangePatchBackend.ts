@@ -1,4 +1,4 @@
-import { mapRenderRuntimeBridge } from "./rs_map_render_backend_bridge.mjs";
+import { mapRenderRuntimeBridge } from "./rs_map_runtime_bridge.mjs";
 
 import type { DrawRangeTickStateInput } from "./DrawRangeTickState";
 import { summarizeI32, validateTickStateInput } from "./DrawRangePatchValidation";

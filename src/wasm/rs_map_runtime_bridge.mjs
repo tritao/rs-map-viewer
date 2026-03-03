@@ -26,14 +26,20 @@ const RUNTIME_BUILD_STAGE_TIMINGS_LENGTH = 32;
 
 
 function createWasmModuleLocator(path) {
+    if (typeof path === "string" && path.endsWith(".wasm")) {
+        return new URL("./rs_map_runtime.wasm", import.meta.url).href;
+    }
     return new URL(path, import.meta.url).href;
 }
 
 function createWasmModuleLocatorDebug(path) {
-    // Emscripten backend always asks for `rs_map_render_backend.wasm`. For debug builds we output
-    // `rs_map_render_backend_debug.wasm`, so remap here.
+    // Emscripten backend asks for the wasm filename baked into the JS module. We remap to our
+    // runtime artifact names here.
+    //
+    // For debug builds we output
+    // `rs_map_runtime_debug.wasm`, so remap here.
     if (typeof path === "string" && path.endsWith(".wasm")) {
-        return new URL("./rs_map_render_backend_debug.wasm", import.meta.url).href;
+        return new URL("./rs_map_runtime_debug.wasm", import.meta.url).href;
     }
     return createWasmModuleLocator(path);
 }
@@ -57,8 +63,8 @@ export async function tryLoadBackendModule() {
         try {
             const wantDebug = wantDebugBackendModule();
             const mod = wantDebug
-                ? await import("./rs_map_render_backend_debug.js")
-                : await import("./rs_map_render_backend.js");
+                ? await import("./rs_map_runtime_debug.js")
+                : await import("./rs_map_runtime.js");
             const createModule = mod.default;
             if (typeof createModule !== "function") {
                 console.warn("[map-render-backend] wasm module factory export missing");

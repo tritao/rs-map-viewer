@@ -8,11 +8,11 @@
 // and building the debug wasm target:
 //   `npm run -s rs:cpp-map-render-wasm-debug`
 //
-// The debug wasm build is written to `src/wasm/rs_map_render_backend_debug.js/.wasm`.
+// The debug wasm build is written to `src/wasm/rs_map_runtime_debug.js/.wasm`.
 //
 // We intentionally reuse the main bridge loader so scripts and debug helpers share the same
 // wasm module instance (otherwise runtime handles would not be valid across modules).
-import { tryLoadBackendModule } from "./rs_map_render_backend_bridge.mjs";
+import { tryLoadBackendModule } from "./rs_map_runtime_bridge.mjs";
 import { MAP_RENDER_RUNTIME_STATUS_OK } from "./MapRenderRuntimeStatus.mjs";
 
 export { tryLoadBackendModule };
@@ -653,7 +653,7 @@ export function runtimeDebugDecodeLocTypeWithWasm(backendModule, runtimeHandle, 
     if (typeof decode !== "function") {
         return undefined;
     }
-    // Keep in sync with RS_MAP_RENDER_DEBUG_LOC_TYPE_FIELDS in cpp/tools/rs_map_render_backend.cpp
+    // Keep in sync with RS_MAP_RENDER_DEBUG_LOC_TYPE_FIELDS in cpp/tools/rs_map_runtime.cpp
     const outPtr = mallocI32(backendModule, 56);
     if (!outPtr) {
         return undefined;

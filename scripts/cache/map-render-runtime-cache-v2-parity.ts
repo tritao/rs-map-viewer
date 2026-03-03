@@ -101,7 +101,7 @@ import {
     runtimeDebugSetWorldHeightProbeLocFilterWithWasm,
     runtimeDebugSetPackedVertexProbeIndexWithWasm,
     tryLoadBackendModule,
-} from "../../src/wasm/rs_map_render_backend_debug.mjs";
+} from "../../src/wasm/rs_map_runtime_debug.mjs";
 import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     runtimePacketToPayloadOverlay,
@@ -8217,7 +8217,7 @@ async function main(): Promise<void> {
     const tsBackend = new SdMapRenderDataTsBackend(deps);
 
     const bridgeUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_runtime_bridge.mjs"),
     ).href;
     const bridgeModule = (await import(bridgeUrl)) as Record<string, unknown>;
     const baseBridge = bridgeModule.mapRenderRuntimeBridge as RuntimeBridge;

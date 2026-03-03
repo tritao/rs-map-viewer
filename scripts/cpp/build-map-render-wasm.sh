@@ -7,15 +7,15 @@ BUILD_DIR="${BUILD_DIR:-"$CPP_DIR/build-wasm-map-render"}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 OUT_DIR="${OUT_DIR:-"$ROOT_DIR/src/wasm"}"
 EXPORT_PROFILE="${EXPORT_PROFILE:-prod}"
-OUT_BASENAME="${OUT_BASENAME:-rs_map_render_backend}"
+OUT_BASENAME="${OUT_BASENAME:-rs_map_runtime}"
 
 if [[ "$EXPORT_PROFILE" != "prod" && "$EXPORT_PROFILE" != "debug" ]]; then
     echo "Invalid EXPORT_PROFILE=$EXPORT_PROFILE (expected prod|debug)" >&2
     exit 1
 fi
 
-if [[ "$EXPORT_PROFILE" == "debug" && "${OUT_BASENAME}" == "rs_map_render_backend" ]]; then
-    OUT_BASENAME="rs_map_render_backend_debug"
+if [[ "$EXPORT_PROFILE" == "debug" && "${OUT_BASENAME}" == "rs_map_runtime" ]]; then
+    OUT_BASENAME="rs_map_runtime_debug"
 fi
 
 mkdir -p "$BUILD_DIR"

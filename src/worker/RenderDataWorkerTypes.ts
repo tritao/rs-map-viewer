@@ -8,9 +8,9 @@ import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import type { SceneBuilder } from "../rs/scene/SceneBuilder";
 import type { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import type {
-    MapRenderDataBackend,
-    MapRenderDataBackendKind,
-} from "../maprender/MapRenderDataBackend";
+    MapRenderBackend,
+    MapRenderBackendKind,
+} from "../maprender/MapRenderBackend";
 
 export type WorkerState = {
     session: CacheSession;
@@ -21,14 +21,14 @@ export type WorkerState = {
     npcModelLoader: NpcModelLoader;
 
     sceneBuilder: SceneBuilder;
-    mapRenderDataBackend: MapRenderDataBackend;
+    mapRenderBackend: MapRenderBackend;
 
     mapImageRenderer: MapImageRenderer;
     mapImageCache: Cache;
 };
 
 export type WorkerRuntimeOptions = Readonly<{
-    mapRenderBackend?: MapRenderDataBackendKind;
+    mapRenderBackend?: MapRenderBackendKind;
     mapRenderTelemetry?: boolean;
 }>;
 

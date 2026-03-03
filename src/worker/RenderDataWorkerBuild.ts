@@ -22,7 +22,7 @@ import { SpriteLoader } from "../rs/sprite/SpriteLoader";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
-import { createMapRenderDataBackend } from "../maprender/MapRenderDataBackend";
+import { createMapRenderBackend } from "../maprender/MapRenderBackend";
 import { MinimapData, loadMinimapBlob } from "../maprender/ts/MinimapData";
 import type { SdMapData } from "../maprender/MapRenderPayload";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
@@ -100,7 +100,7 @@ async function initWorker(
         mapScenes,
         mapFunctions,
     );
-    const mapRenderDataBackend = createMapRenderDataBackend(
+    const mapRenderBackend = createMapRenderBackend(
         mapRenderBackendKind,
         {
             session,
@@ -128,7 +128,7 @@ async function initWorker(
         objModelLoader,
         npcModelLoader,
         sceneBuilder,
-        mapRenderDataBackend,
+        mapRenderBackend,
         mapImageRenderer,
         mapImageCache,
     };
@@ -272,7 +272,7 @@ export class RenderDataWorkerBuild {
         input: SdMapLoaderInput,
     ): Promise<TransferDescriptor<SdMapData | undefined>> {
         const workerState = await this.requireWorkerState();
-        const { data, transferables } = await workerState.mapRenderDataBackend.buildMapData(input);
+        const { data, transferables } = await workerState.mapRenderBackend.buildMapData(input);
         return data
             ? Transfer<SdMapData | undefined>(data, transferables)
             : Transfer<SdMapData | undefined>(undefined, []);

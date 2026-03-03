@@ -21,8 +21,8 @@ import { Scene } from "../../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
-import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
-import type { MapRenderDataBackend } from "../../maprender/MapRenderDataBackend";
+import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
+import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
@@ -43,7 +43,7 @@ type TickWorkerState = Readonly<{
     session: CacheSession;
     mapBytesProvider: MapBytesProvider;
     sceneBuilder: SceneBuilder;
-    mapRenderDataBackend: MapRenderDataBackend;
+    mapRenderBackend: MapRenderBackend;
 }>;
 
 type TickFrameInputs = Readonly<{
@@ -329,7 +329,7 @@ export class WorkerTickRuntime {
         safeClientTicks: number,
     ): Promise<WasmTickStreams> {
         const isEnabled =
-            workerState.mapRenderDataBackend.kind === "cpp-wasm" &&
+            workerState.mapRenderBackend.kind === "cpp-wasm" &&
             typeof tickWasmBridge.tickMapsEmitPatchStreams === "function";
         if (!isEnabled) {
             return {
@@ -339,7 +339,7 @@ export class WorkerTickRuntime {
             };
         }
 
-        const handle = workerState.mapRenderDataBackend.getCppWasmRuntimeHandle?.();
+        const handle = workerState.mapRenderBackend.getCppWasmRuntimeHandle?.();
         if (handle === undefined) {
             throw new Error("[map-render][tick][cpp-wasm] map-render runtime handle missing");
         }
@@ -424,7 +424,7 @@ export class WorkerTickRuntime {
         }
 
         const workerState = await this.getWorkerState();
-        const backendKind = workerState.mapRenderDataBackend.kind ?? "unknown";
+        const backendKind = workerState.mapRenderBackend.kind ?? "unknown";
         const inputs = this.normalizeTickFrameInputs(
             frameCount,
             ticksElapsed,

@@ -136,7 +136,7 @@ function flattenFlags(flags: Uint8Array[]): { flat: Uint8Array; width: number } 
 async function loadWasmBackendModule(): Promise<WasmBackendModule> {
     const root = process.cwd();
     const wasmDir = path.resolve(root, process.env.RS_MAP_RENDER_WASM_DIR ?? "src/wasm");
-    const moduleUrl = pathToFileURL(path.join(wasmDir, "rs_map_render_backend.js")).href;
+    const moduleUrl = pathToFileURL(path.join(wasmDir, "rs_map_runtime.js")).href;
     const mod = (await import(moduleUrl)) as { default: (opts: any) => Promise<WasmBackendModule> };
     const createModule = mod.default;
     const module = await createModule({

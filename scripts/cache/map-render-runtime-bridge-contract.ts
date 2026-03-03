@@ -209,7 +209,7 @@ async function buildMapPacketWithPreparedRuntime(
 
 async function main(): Promise<void> {
     const runtimeBridgeModuleUrl = pathToFileURL(
-        path.resolve(process.cwd(), "src/wasm/rs_map_render_backend_bridge.mjs"),
+        path.resolve(process.cwd(), "src/wasm/rs_map_runtime_bridge.mjs"),
     ).href;
     const runtimeMod = (await import(runtimeBridgeModuleUrl)) as Record<string, unknown>;
     assert.deepEqual(

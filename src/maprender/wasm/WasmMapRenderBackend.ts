@@ -2,11 +2,11 @@ import type { SdMapData, SdMapLoaderInput } from "../MapRenderPayload";
 import { sdMapDataTransferables } from "../MapRenderPayload";
 import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
 import type {
-    MapRenderDataBackend,
-    MapRenderDataBackendKind,
-    MapRenderDataBackendOptions,
+    MapRenderBackend,
+    MapRenderBackendKind,
+    MapRenderBackendOptions,
     RenderDataResult,
-} from "../MapRenderDataBackend";
+} from "../MapRenderBackend";
 import { errorToString } from "../../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
@@ -14,7 +14,7 @@ import type {
     MapRenderRuntimeHandle,
     MapRenderRuntimePacket,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
-import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
+import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
@@ -24,10 +24,10 @@ import { runtimePacketToPayloadOverlay } from "./WasmPacketOverlay";
 
 type WasmMapRenderDataBridge = MapRenderRuntimeBridgeV2;
 
-export class WasmMapRenderDataBackend implements MapRenderDataBackend {
+export class WasmMapRenderBackend implements MapRenderBackend {
     private static readonly MAP_SQUARE_SIZE = 64;
 
-    readonly kind: MapRenderDataBackendKind = "cpp-wasm";
+    readonly kind: MapRenderBackendKind = "cpp-wasm";
     private readonly bridge: WasmMapRenderDataBridge = mapRenderRuntimeBridge;
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
@@ -36,7 +36,7 @@ export class WasmMapRenderDataBackend implements MapRenderDataBackend {
 
     constructor(
         private readonly deps: MapRenderBuildDeps,
-        private readonly options: MapRenderDataBackendOptions | undefined,
+        private readonly options: MapRenderBackendOptions | undefined,
     ) {}
 
     private static createRuntimeCacheBuildRequest(
@@ -47,14 +47,14 @@ export class WasmMapRenderDataBackend implements MapRenderDataBackend {
         if (sizeX <= 0 || sizeY <= 0) {
             return undefined;
         }
-        const borderX = ((sizeX - WasmMapRenderDataBackend.MAP_SQUARE_SIZE) / 2) | 0;
-        const borderY = ((sizeY - WasmMapRenderDataBackend.MAP_SQUARE_SIZE) / 2) | 0;
+        const borderX = ((sizeX - WasmMapRenderBackend.MAP_SQUARE_SIZE) / 2) | 0;
+        const borderY = ((sizeY - WasmMapRenderBackend.MAP_SQUARE_SIZE) / 2) | 0;
         if (
             borderX < 0 ||
             borderY < 0 ||
             borderX !== borderY ||
-            sizeX !== WasmMapRenderDataBackend.MAP_SQUARE_SIZE + borderX * 2 ||
-            sizeY !== WasmMapRenderDataBackend.MAP_SQUARE_SIZE + borderY * 2
+            sizeX !== WasmMapRenderBackend.MAP_SQUARE_SIZE + borderX * 2 ||
+            sizeY !== WasmMapRenderBackend.MAP_SQUARE_SIZE + borderY * 2
         ) {
             return undefined;
         }
@@ -219,7 +219,7 @@ export class WasmMapRenderDataBackend implements MapRenderDataBackend {
         input: SdMapLoaderInput,
         byteDrivenSceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     ): Promise<SdMapData | undefined> {
-        const request = WasmMapRenderDataBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
+        const request = WasmMapRenderBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
         if (!request) {
             return undefined;
         }
@@ -261,7 +261,7 @@ export class WasmMapRenderDataBackend implements MapRenderDataBackend {
         const levels = packet.levels | 0;
         const sizeX = packet.sizeX | 0;
         const sizeY = packet.sizeY | 0;
-        const npcPayload = WasmMapRenderDataBackend.selectNpcPayload(packet, input);
+        const npcPayload = WasmMapRenderBackend.selectNpcPayload(packet, input);
 
         return {
             mapX: input.mapX | 0,
@@ -273,7 +273,7 @@ export class WasmMapRenderDataBackend implements MapRenderDataBackend {
             loadLocs: input.loadLocs === true,
             smoothTerrain: input.smoothTerrain === true,
             borderSize: request.borderSize | 0,
-            tileRenderFlags: WasmMapRenderDataBackend.createEmptyTileRenderFlags(levels, sizeX, sizeY),
+            tileRenderFlags: WasmMapRenderBackend.createEmptyTileRenderFlags(levels, sizeX, sizeY),
             minimapBlob: new Blob(),
             vertices: packet.vertices,
             indices: packet.indices,
