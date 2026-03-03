@@ -6,7 +6,6 @@ import {
 } from "../maprender/payload/SdRenderableData";
 import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
 import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
-import type { MapRenderRuntimePacket } from "../maprender/MapRenderDataContract";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";
 import type {
@@ -14,6 +13,7 @@ import type {
     MapRenderRuntimeBuildRequest,
     MapRenderRuntimeCreateConfig,
     MapRenderRuntimeHandle,
+    MapRenderRuntimePacket,
 } from "../wasm/MapRenderRuntimeBridgeAbi";
 import {
     MAP_RENDER_RUNTIME_STATUS_NOT_FOUND,
