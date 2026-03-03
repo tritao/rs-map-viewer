@@ -33,7 +33,6 @@ import {
 import { NpcDataTextureRing } from "./NpcDataTextureRing";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import {
-    FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     FRAME_RENDER_LIST_STRIDE,
@@ -58,7 +57,8 @@ const DRAW_RANGE_INSTANCES_INDEX = 2;
 type FrameRenderMap = {
     mapId: number;
     map: WebGLMapSquare;
-    hasNpcs: boolean;
+    npcRangeStart: number;
+    npcRangeCount: number;
     isInteract: boolean;
     isLod: boolean;
 };
@@ -77,7 +77,6 @@ export class WebGLMapRenderer
     private hoveredMapIdsPackedScratch = new Int32Array(0);
     private readonly frameRenderMapsScratch: FrameRenderMap[] = [];
     private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
-    private readonly warnedNpcMissingPacketOffsetMapIds = new Set<number>();
     private readonly warnedNpcMissingGeometryOrRangesMapIds = new Set<number>();
 
     app!: PicoApp;
@@ -213,7 +212,6 @@ export class WebGLMapRenderer
         const cache = this.session.cache;
         this.isNewTextureAnim =
             cache.info.game === GameType.Runescape && cache.info.revision >= 681;
-        this.warnedNpcMissingPacketOffsetMapIds.clear();
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
 
         if (this.app) {
@@ -417,12 +415,13 @@ export class WebGLMapRenderer
         if (this.loadNpcs) {
             for (let i = 0; i < totalMaps; i++) {
                 const entry = frameRenderMaps[i]!;
-                if (!entry.hasNpcs) {
+                if ((entry.npcRangeCount | 0) <= 0) {
                     continue;
                 }
                 this.renderNpcMapPass(
                     entry.map,
-                    entry.mapId,
+                    entry.npcRangeStart | 0,
+                    entry.npcRangeCount | 0,
                     false,
                     npcDataTexture,
                 );
@@ -442,12 +441,13 @@ export class WebGLMapRenderer
         if (this.loadNpcs) {
             for (let i = totalMaps - 1; i >= 0; i--) {
                 const entry = frameRenderMaps[i]!;
-                if (!entry.hasNpcs) {
+                if ((entry.npcRangeCount | 0) <= 0) {
                     continue;
                 }
                 this.renderNpcMapPass(
                     entry.map,
-                    entry.mapId,
+                    entry.npcRangeStart | 0,
+                    entry.npcRangeCount | 0,
                     true,
                     npcDataTexture,
                 );
@@ -476,11 +476,17 @@ export class WebGLMapRenderer
 
     private renderNpcMapPass(
         map: WebGLMapSquare,
-        mapId: number,
+        npcRangeStart: number,
+        npcRangeCount: number,
         isAlpha: boolean,
         npcDataTexture: Texture | undefined,
     ): void {
-        const drawData = this.getNpcMapDrawCall(map, mapId, npcDataTexture);
+        const drawData = this.getNpcMapDrawCall(
+            map,
+            npcRangeStart | 0,
+            npcRangeCount | 0,
+            npcDataTexture,
+        );
         if (!drawData) {
             return;
         }
@@ -594,8 +600,13 @@ export class WebGLMapRenderer
             const off = (i * FRAME_RENDER_LIST_STRIDE) | 0;
             const mapId = packed[off + 0] | 0;
             const flags = packed[off + 1] | 0;
+            if (!this.framePacketState.isMapReady(mapId)) {
+                throw new Error(
+                    `[map-render][strict-frame-packet] renderListMapNotReady mapId=${mapId | 0}`,
+                );
+            }
             const map = this.loadedMaps.get(mapId);
-            if (!map || !map.canRender(this.stats.frameCount)) {
+            if (!map) {
                 continue;
             }
             let item = out[write];
@@ -603,7 +614,8 @@ export class WebGLMapRenderer
                 item = {
                     mapId,
                     map,
-                    hasNpcs: (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0,
+                    npcRangeStart: 0,
+                    npcRangeCount: 0,
                     isInteract: (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0,
                     isLod: (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0,
                 };
@@ -611,10 +623,17 @@ export class WebGLMapRenderer
             } else {
                 item.mapId = mapId;
                 item.map = map;
-                item.hasNpcs = (flags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0;
                 item.isInteract = (flags & FRAME_RENDER_LIST_FLAG_IS_INTERACT) !== 0;
                 item.isLod = (flags & FRAME_RENDER_LIST_FLAG_IS_LOD) !== 0;
             }
+            const npcDataRange = this.framePacketState.getNpcDataRangeForCurrentRing(mapId);
+            if (!npcDataRange) {
+                throw new Error(
+                    `[map-render][strict-frame-packet] missingNpcRangeForMap mapId=${mapId | 0}`,
+                );
+            }
+            item.npcRangeStart = npcDataRange.start | 0;
+            item.npcRangeCount = npcDataRange.count | 0;
             write = (write + 1) | 0;
         }
         out.length = write;
@@ -658,7 +677,6 @@ export class WebGLMapRenderer
 
         this.framePacketState.reset();
         this.npcDataTexture = undefined;
-        this.warnedNpcMissingPacketOffsetMapIds.clear();
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
         this.clearMaps();
         console.log("Renderer cleaned up");
@@ -701,39 +719,27 @@ export class WebGLMapRenderer
 
     private getNpcMapDrawCall(
         map: WebGLMapSquare,
-        mapId: number,
+        npcRangeStart: number,
+        npcRangeCount: number,
         npcDataTexture: Texture | undefined,
     ): Readonly<{ drawCall: DrawCall; drawRangesPacked: Int32Array }> | undefined {
         if (!npcDataTexture) {
             return undefined;
         }
+        if ((npcRangeCount | 0) <= 0) {
+            return undefined;
+        }
         const { drawCall, drawRangesPacked } = map.drawCallNpc;
         const hasNpcDrawRanges = (drawRangesPacked.length | 0) > 0;
         const hasNpcGeometry = map.npcVertexArray !== undefined;
-        const packetOffset = this.framePacketState.getNpcDataOffsetForCurrentRing(mapId);
-        const dataOffset = packetOffset !== undefined ? packetOffset | 0 : -1;
-        if (dataOffset === -1) {
-            if (
-                hasNpcDrawRanges &&
-                hasNpcGeometry &&
-                !this.warnedNpcMissingPacketOffsetMapIds.has(mapId | 0)
-            ) {
-                this.warnedNpcMissingPacketOffsetMapIds.add(mapId | 0);
-                console.warn(
-                    `[map-render][npc] missing frame packet offset for mapId=${mapId | 0} ` +
-                        `(drawRanges=${(drawRangesPacked.length / 3) | 0})`,
-                );
-            }
-            return undefined;
-        }
         if (
             (!hasNpcDrawRanges || !hasNpcGeometry) &&
-            !this.warnedNpcMissingGeometryOrRangesMapIds.has(mapId | 0)
+            !this.warnedNpcMissingGeometryOrRangesMapIds.has(map.id | 0)
         ) {
-            this.warnedNpcMissingGeometryOrRangesMapIds.add(mapId | 0);
+            this.warnedNpcMissingGeometryOrRangesMapIds.add(map.id | 0);
             console.warn(
-                `[map-render][npc] frame packet has offset but map has no npc geometry/ranges ` +
-                    `(mapId=${mapId | 0} drawRangesInts=${drawRangesPacked.length | 0} hasNpcGeometry=${
+                `[map-render][npc] frame packet has npc range but map has no npc geometry/ranges ` +
+                    `(mapId=${map.id | 0} drawRangesInts=${drawRangesPacked.length | 0} hasNpcGeometry=${
                         hasNpcGeometry ? 1 : 0
                     })`,
             );
@@ -741,7 +747,7 @@ export class WebGLMapRenderer
         if (!hasNpcDrawRanges || !hasNpcGeometry) {
             return undefined;
         }
-        drawCall.uniform("u_npcDataOffset", dataOffset);
+        drawCall.uniform("u_npcDataOffset", npcRangeStart | 0);
         drawCall.texture("u_npcDataTexture", npcDataTexture);
         return { drawCall, drawRangesPacked };
     }

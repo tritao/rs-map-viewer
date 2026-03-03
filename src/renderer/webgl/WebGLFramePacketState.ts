@@ -7,12 +7,13 @@ import {
 } from "../../runtime/contracts/FramePacket";
 
 export class WebGLFramePacketState {
-    private readonly npcDataOffsetsByMapIdByRing: Map<number, number>[] = Array.from(
+    private readonly npcDataRangesByMapIdByRing: Map<number, Readonly<{ start: number; count: number }>>[] = Array.from(
         { length: NPC_DATA_TEXTURE_RING_SIZE },
-        () => new Map<number, number>(),
+        () => new Map<number, Readonly<{ start: number; count: number }>>(),
     );
     private npcDataRingIndex: number = 0;
     private npcGpuFrameData: NpcGpuFrameData | undefined;
+    private readyMapIds: ReadonlySet<number> = new Set<number>();
     private frameTickPatches: ParsedFrameTickPatches | undefined;
     private frameRenderListPacked: Int32Array | undefined;
     private lastAppliedFramePacketFrameCount: number = -1;
@@ -36,10 +37,11 @@ export class WebGLFramePacketState {
 
     reset(): void {
         this.lastAppliedFramePacketFrameCount = -1;
-        this.clearNpcOffsetRing();
+        this.clearNpcRangeRing();
         this.frameTickPatches = undefined;
         this.frameRenderListPacked = undefined;
         this.npcGpuFrameData = undefined;
+        this.readyMapIds = new Set<number>();
         this.npcDataTextureDirty = false;
     }
 
@@ -53,6 +55,10 @@ export class WebGLFramePacketState {
 
     getNpcGpuFrameData(): NpcGpuFrameData | undefined {
         return this.npcGpuFrameData;
+    }
+
+    isMapReady(mapId: number): boolean {
+        return this.readyMapIds.has(mapId | 0);
     }
 
     isNpcDataTextureDirty(): boolean {
@@ -73,29 +79,30 @@ export class WebGLFramePacketState {
             NPC_DATA_TEXTURE_RING_SIZE;
     }
 
-    getNpcDataOffsetForCurrentRing(mapId: number): number | undefined {
-        const ringOffsets = this.npcDataOffsetsByMapIdByRing[this.npcDataRingIndex | 0];
-        return ringOffsets?.get(mapId | 0);
+    getNpcDataRangeForCurrentRing(mapId: number): Readonly<{ start: number; count: number }> | undefined {
+        const ringRanges = this.npcDataRangesByMapIdByRing[this.npcDataRingIndex | 0];
+        return ringRanges?.get(mapId | 0);
     }
 
     private applyParsedFramePacket(packet: ParsedFramePacket): void {
         this.npcGpuFrameData = packet.npcGpuFrameData;
+        this.readyMapIds = packet.readyMapIds;
         this.frameTickPatches = packet.tickPatches;
         this.frameRenderListPacked = packet.renderListPacked;
         this.setNpcDataRingIndex(packet.npcRingWriteIndex);
 
-        const ringOffsets = this.npcDataOffsetsByMapIdByRing[this.npcDataRingIndex]!;
-        ringOffsets.clear();
-        for (const [mapId, dataOffset] of packet.npcOffsetsByMapId.entries()) {
-            ringOffsets.set(mapId, dataOffset);
+        const ringRanges = this.npcDataRangesByMapIdByRing[this.npcDataRingIndex]!;
+        ringRanges.clear();
+        for (const [mapId, dataRange] of packet.npcRangesByMapId.entries()) {
+            ringRanges.set(mapId, dataRange);
         }
         this.npcDataTextureDirty = true;
     }
 
-    private clearNpcOffsetRing(): void {
+    private clearNpcRangeRing(): void {
         this.npcDataRingIndex = 0;
-        for (let i = 0; i < this.npcDataOffsetsByMapIdByRing.length; i++) {
-            this.npcDataOffsetsByMapIdByRing[i]!.clear();
+        for (let i = 0; i < this.npcDataRangesByMapIdByRing.length; i++) {
+            this.npcDataRangesByMapIdByRing[i]!.clear();
         }
     }
 }
