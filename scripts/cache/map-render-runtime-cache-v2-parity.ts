@@ -8007,9 +8007,9 @@ async function main(): Promise<void> {
                     : undefined;
             const jsInputDigest = digestJsMapInput(sceneBuildInput);
             const request = buildRuntimeRequest(sceneBuildInput);
-            const uploaded =
+            const prepared =
                 !!request &&
-                (await cacheUploader.uploadRuntimeCacheForBuildRequest(
+                (await cacheUploader.prepareRuntimeForBuildRequest(
                     bridge,
                     runtimeHandle,
                     request,
@@ -8017,86 +8017,42 @@ async function main(): Promise<void> {
                 ));
             const cacheBlobStatsAfterUpload = undefined;
             cacheInputDigest =
-                uploaded && typeof bridge.debugCollectCachedMapInputDigest === "function"
+                prepared && typeof bridge.debugCollectCachedMapInputDigest === "function"
                     ? await bridge.debugCollectCachedMapInputDigest(runtimeHandle, sceneBuildInput)
                     : undefined;
             let packetRaw: MapRenderRuntimePacket | undefined;
             let packet: MapRenderRuntimePacket | undefined;
             let cache: RuntimeOverlay | undefined;
-            if (uploaded && request) {
-                // Mirror the worker behavior: build once, and if C++ reports missing blobs (or
-                // returned an incomplete packet), upload the missing blobs and retry.
-                for (let pass = 0; pass < 12; pass++) {
-                    const raw = (await bridge.buildMapPacketFromCache(runtimeHandle, request)) as
-                        | MapRenderRuntimePacket
-                        | undefined;
-                    const overlay = raw ? runtimePacketToPayloadOverlay(raw) : undefined;
-                    const hasGeometry =
-                        overlay &&
-                        raw?.vertices instanceof Uint8Array &&
-                        raw.vertices.length > 0 &&
-                        raw?.indices instanceof Int32Array &&
-                        raw.indices.length > 0 &&
-                        raw?.usedTextureIds instanceof Int32Array;
-                    const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-                    if (
-                        process.env.RS_DEBUG_RUNTIME_MISSING_BLOBS === "1" &&
-                        missing &&
-                        (missing.domains.length | 0) > 0 &&
-                        !args.quiet
-                    ) {
-                        const n = missing.domains.length | 0;
-                        const sampleN = Math.min(8, n) | 0;
-                        const sample: Array<[number, number, number]> = [];
-                        for (let i = 0; i < sampleN; i++) {
-                            sample.push([
-                                missing.domains[i] | 0,
-                                missing.groups[i] | 0,
-                                missing.files[i] | 0,
-                            ]);
-                        }
-                        console.warn("[parity][missing-blobs]", {
-                            pass: pass | 0,
-                            count: n,
-                            sample,
-                        });
+            if (prepared && request) {
+                const raw = (await bridge.buildMapPacketFromCache(runtimeHandle, request)) as
+                    | MapRenderRuntimePacket
+                    | undefined;
+                const overlay = raw ? runtimePacketToPayloadOverlay(raw) : undefined;
+                const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                if (
+                    process.env.RS_DEBUG_RUNTIME_MISSING_BLOBS === "1" &&
+                    missing &&
+                    (missing.domains.length | 0) > 0 &&
+                    !args.quiet
+                ) {
+                    const n = missing.domains.length | 0;
+                    const sampleN = Math.min(8, n) | 0;
+                    const sample: Array<[number, number, number]> = [];
+                    for (let i = 0; i < sampleN; i++) {
+                        sample.push([
+                            missing.domains[i] | 0,
+                            missing.groups[i] | 0,
+                            missing.files[i] | 0,
+                        ]);
                     }
-                    if (!missing || (missing.domains.length | 0) <= 0) {
-                        if (hasGeometry) {
-                            packetRaw = raw;
-                            packet = cloneRuntimePacketGeometry(raw);
-                            cache = overlay;
-                            break;
-                        }
-                        packetRaw = raw;
-                        packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
-                        cache = overlay;
-                        break;
-                    }
-                    const okMissing = await cacheUploader.uploadMissingBlobEntriesForBuildRequest(
-                        bridge,
-                        runtimeHandle,
-                        missing,
-                        sceneBuildInput,
-                    );
-                    if (
-                        process.env.RS_DEBUG_RUNTIME_MISSING_BLOBS === "1" &&
-                        !args.quiet &&
-                        missing &&
-                        (missing.domains.length | 0) > 0
-                    ) {
-                        console.warn("[parity][missing-blobs-upload]", {
-                            pass: pass | 0,
-                            okMissing: !!okMissing,
-                        });
-                    }
-                    if (!okMissing) {
-                        packetRaw = raw;
-                        packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
-                        cache = overlay;
-                        break;
-                    }
+                    console.warn("[parity][missing-blobs-after-prepare]", {
+                        count: n,
+                        sample,
+                    });
                 }
+                packetRaw = raw;
+                packet = raw ? cloneRuntimePacketGeometry(raw) : undefined;
+                cache = overlay;
             }
             const cacheLoadedHeightHashAfter =
                 typeof bridge.debugGetRuntimeLoadedHeightHash === "function"

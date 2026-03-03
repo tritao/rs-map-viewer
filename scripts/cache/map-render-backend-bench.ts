@@ -21,7 +21,7 @@ import type {
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     createByteDrivenSceneBuildInput,
-    uploadRuntimeCacheForBuildRequest,
+    MapRenderRuntimeCacheV2Uploader,
 } from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import type { MapRenderRuntimePacket } from "../../src/maprender/MapRenderDataContract";
 import {
@@ -36,6 +36,10 @@ type Args = Readonly<{
     warmup: number;
     iterations: number;
     backend: "ts" | "cpp-wasm" | "both";
+    loadLocs: boolean;
+    loadObjs: boolean;
+    loadNpcs: boolean;
+    stages: boolean;
 }>;
 
 type Square = Readonly<{
@@ -52,6 +56,13 @@ type WasmBridge = RuntimeBridge &
     Readonly<{
         runtimeHandle: number;
     }>;
+
+type CppPreparedInput = Readonly<{
+    input: SdMapLoaderInput;
+    sceneBuildInput: ReturnType<typeof createByteDrivenSceneBuildInput>;
+    request: MapRenderRuntimeBuildRequest;
+    runtimeHandle: number;
+}>;
 
 function buildRuntimeRequest(
     sceneBuildInput: Record<string, unknown>,
@@ -98,6 +109,11 @@ function parseArgs(argv: string[]): Args {
     let warmup = 1;
     let iterations = 3;
     let backend: "ts" | "cpp-wasm" | "both" = "both";
+    let loadLocs = true;
+    let loadObjs = true;
+    // Default off in Node bench mode to avoid fallback fetch-path variance/noise.
+    let loadNpcs = false;
+    let stages = false;
 
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
@@ -126,6 +142,20 @@ function parseArgs(argv: string[]): Args {
             } else {
                 throw new Error("Invalid --backend (expected ts|cpp-wasm|both)");
             }
+        } else if (arg === "--loadNpcs") {
+            loadNpcs = true;
+        } else if (arg === "--no-loadNpcs") {
+            loadNpcs = false;
+        } else if (arg === "--loadObjs") {
+            loadObjs = true;
+        } else if (arg === "--no-loadObjs") {
+            loadObjs = false;
+        } else if (arg === "--loadLocs") {
+            loadLocs = true;
+        } else if (arg === "--no-loadLocs") {
+            loadLocs = false;
+        } else if (arg === "--stages") {
+            stages = true;
         }
     }
 
@@ -146,7 +176,238 @@ function parseArgs(argv: string[]): Args {
         warmup: warmup | 0,
         iterations: iterations | 0,
         backend,
+        loadLocs,
+        loadObjs,
+        loadNpcs,
+        stages,
     };
+}
+
+function addStageSample(samplesByStage: Map<string, number[]>, stage: string, valueMs: number): void {
+    const v = Number(valueMs);
+    if (!Number.isFinite(v) || v < 0) {
+        return;
+    }
+    const list = samplesByStage.get(stage);
+    if (list) {
+        list.push(v);
+        return;
+    }
+    samplesByStage.set(stage, [v]);
+}
+
+function printStageSummary(name: string, samplesByStage: Map<string, number[]>): void {
+    if (samplesByStage.size <= 0) {
+        return;
+    }
+    const rows = Array.from(samplesByStage.entries()).map(([stage, samples]) => {
+        const total = samples.reduce((acc, x) => acc + x, 0);
+        const mean = total / samples.length;
+        return {
+            stage,
+            samples: samples.length | 0,
+            mean,
+        };
+    });
+    rows.sort((a, b) => b.mean - a.mean);
+    console.log(`map-render-backend-bench ${name} stageMeanMs:`);
+    for (const row of rows) {
+        console.log(
+            `  ${row.stage}=${row.mean.toFixed(1)}ms samples=${row.samples}`,
+        );
+    }
+}
+
+function addCppInternalStageSamples(
+    samplesByStage: Map<string, number[]>,
+    timings:
+        | Readonly<{
+              totalUs: number;
+              collectMapInputUs: number;
+              seedHashUs: number;
+              buildCommandStreamUs: number;
+              registerTickStateUs: number;
+              planPayloadUs: number;
+              buildPayloadUs: number;
+              storePayloadUs: number;
+              buildNpcUs: number;
+              deriveUsedTextureIdsUs: number;
+              finalizePayloadUs: number;
+              commandPrepareInputUs: number;
+              commandCoreBuildUs: number;
+              commandValidateUs: number;
+              commandCopyBuffersUs: number;
+              commandCopyDebugUs: number;
+              commandSetupUs: number;
+              commandSceneBuildUs: number;
+              commandTerrainUs: number;
+              commandLocUs: number;
+              commandObjUs: number;
+              commandFinalizeUs: number;
+              commandLocPlanUs: number;
+              commandLocPlanSortUs: number;
+              commandLocPlanMergeNormalsUs: number;
+              commandLocPlanPlacementLoopUs: number;
+              commandLocPlanRenderPlanUs: number;
+              commandLocPlanAnimatedOrderUs: number;
+              commandLocExecuteUs: number;
+              commandLocExecuteInstancedUs: number;
+              commandLocExecuteMergedUs: number;
+              commandFinalizeAnimatedLocUs: number;
+          }>
+        | undefined,
+): void {
+    if (!timings) {
+        return;
+    }
+    addStageSample(samplesByStage, "cppCore.total", (timings.totalUs | 0) / 1000);
+    addStageSample(
+        samplesByStage,
+        "cppCore.collectMapInput",
+        (timings.collectMapInputUs | 0) / 1000,
+    );
+    addStageSample(samplesByStage, "cppCore.seedHash", (timings.seedHashUs | 0) / 1000);
+    addStageSample(
+        samplesByStage,
+        "cppCore.buildCommandStream",
+        (timings.buildCommandStreamUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.registerTickState",
+        (timings.registerTickStateUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.planPayload",
+        (timings.planPayloadUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.buildPayload",
+        (timings.buildPayloadUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.storePayload",
+        (timings.storePayloadUs | 0) / 1000,
+    );
+    addStageSample(samplesByStage, "cppCore.buildNpc", (timings.buildNpcUs | 0) / 1000);
+    addStageSample(
+        samplesByStage,
+        "cppCore.deriveUsedTextureIds",
+        (timings.deriveUsedTextureIdsUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.finalizePayload",
+        (timings.finalizePayloadUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.prepareInput",
+        (timings.commandPrepareInputUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.coreBuild",
+        (timings.commandCoreBuildUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.validate",
+        (timings.commandValidateUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.copyBuffers",
+        (timings.commandCopyBuffersUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.copyDebug",
+        (timings.commandCopyDebugUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.setup",
+        (timings.commandSetupUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.sceneBuild",
+        (timings.commandSceneBuildUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.terrain",
+        (timings.commandTerrainUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc",
+        (timings.commandLocUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.obj",
+        (timings.commandObjUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.finalize",
+        (timings.commandFinalizeUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.plan",
+        (timings.commandLocPlanUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.plan.sortPlacements",
+        (timings.commandLocPlanSortUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.plan.mergeNormals",
+        (timings.commandLocPlanMergeNormalsUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.plan.placementLoop",
+        (timings.commandLocPlanPlacementLoopUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.plan.renderPlan",
+        (timings.commandLocPlanRenderPlanUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.plan.animatedOrder",
+        (timings.commandLocPlanAnimatedOrderUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.execute",
+        (timings.commandLocExecuteUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.execute.instanced",
+        (timings.commandLocExecuteInstancedUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.loc.execute.merged",
+        (timings.commandLocExecuteMergedUs | 0) / 1000,
+    );
+    addStageSample(
+        samplesByStage,
+        "cppCore.command.finalize.animatedLoc",
+        (timings.commandFinalizeAnimatedLocUs | 0) / 1000,
+    );
 }
 
 function pickCache(caches: CacheInfo[], cacheName?: string): CacheInfo {
@@ -315,6 +576,9 @@ async function main(): Promise<void> {
         varProvider,
         objSpawns,
     });
+    const cacheUploader = new MapRenderRuntimeCacheV2Uploader();
+    const tsStageSamples = new Map<string, number[]>();
+    const cppStageSamples = new Map<string, number[]>();
 
     const squares = pickSquares(loaders.mapFileLoader.mapFileIndex, args.square, args.limit);
     if (squares.length === 0) {
@@ -325,26 +589,87 @@ async function main(): Promise<void> {
         mapX: square.mapX,
         mapY: square.mapY,
         maxLevel: 3,
-        loadObjs: true,
-        loadNpcs: true,
-        loadLocs: true,
+        loadObjs: args.loadObjs,
+        loadNpcs: args.loadNpcs,
+        loadLocs: args.loadLocs,
         smoothTerrain: false,
         minimizeDrawCalls: false,
         loadedTextureIdsPacked: new Int32Array(0),
     }));
 
-    async function runTs(): Promise<void> {
+    async function runTs(collectStages: boolean): Promise<number> {
+        let measuredTotalMs = 0;
         for (const input of inputs) {
-            const result = await tsBackend.buildMapData(input, {
+            const tTotal = performance.now();
+            const bridgeInput = await tsBackend.buildMapDataBridgeInput(input, {
                 includeMinimapBlob: false,
+                debugIncludeStageProfile: args.stages && collectStages,
             });
-            if (!result) {
+            if (!bridgeInput.data) {
                 throw new Error(`TS backend returned no data at ${input.mapX},${input.mapY}`);
             }
+            if (args.stages && collectStages) {
+                const profile = bridgeInput.debugStageProfile;
+                if (profile) {
+                    for (const [stage, ms] of Object.entries(profile)) {
+                        addStageSample(tsStageSamples, stage, ms);
+                    }
+                }
+                const totalMs =
+                    bridgeInput.debugTotalMs ?? (performance.now() - tTotal);
+                addStageSample(tsStageSamples, "TOTAL", totalMs);
+            }
+            measuredTotalMs += performance.now() - tTotal;
+        }
+        return measuredTotalMs;
+    }
+
+    const runtimeHandlesToDestroy = new Set<number>();
+    runtimeHandlesToDestroy.add(wasmBridge.runtimeHandle | 0);
+    let defaultRuntimeClaimed = false;
+
+    async function allocateRuntimeHandle(
+        sceneBuildInput: ReturnType<typeof createByteDrivenSceneBuildInput>,
+    ): Promise<number> {
+        if (!defaultRuntimeClaimed) {
+            defaultRuntimeClaimed = true;
+            return wasmBridge.runtimeHandle | 0;
+        }
+        const createConfig: MapRenderRuntimeCreateConfig = {
+            cacheGame: (sceneBuildInput.cacheGame as number) | 0,
+            cacheRevision: (sceneBuildInput.cacheRevision as number) | 0,
+            sceneLevels: ((sceneBuildInput.maxLevel as number) | 0) + 1,
+            unitsTileHeightBasis: (sceneBuildInput.unitsTileHeightBasis as number) | 0,
+        };
+        const runtimeHandle =
+            typeof wasmBridge.createRuntimeWithConfig === "function"
+                ? await wasmBridge.createRuntimeWithConfig(createConfig)
+                : typeof wasmBridge.createRuntime === "function"
+                ? await wasmBridge.createRuntime()
+                : undefined;
+        if (runtimeHandle === undefined) {
+            throw new Error("Failed to allocate cpp-wasm runtime handle for benchmark");
+        }
+        runtimeHandlesToDestroy.add(runtimeHandle | 0);
+        return runtimeHandle | 0;
+    }
+
+    async function primeCppRuntimeInput(prepared: CppPreparedInput): Promise<void> {
+        const preparedOk = await cacheUploader.prepareRuntimeForBuildRequest(
+            wasmBridge as unknown as MapRenderRuntimeBridgeV2,
+            prepared.runtimeHandle,
+            prepared.request,
+            prepared.sceneBuildInput,
+        );
+        if (!preparedOk) {
+            throw new Error(
+                `Failed to prepare runtime cache at ${prepared.input.mapX},${prepared.input.mapY}`,
+            );
         }
     }
 
-    async function runCppWasm(): Promise<void> {
+    async function prepareCppInputs(): Promise<ReadonlyArray<CppPreparedInput>> {
+        const out: CppPreparedInput[] = [];
         for (const input of inputs) {
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
                 mapBytesProvider,
@@ -361,38 +686,76 @@ async function main(): Promise<void> {
                 cacheRevision: cacheInfo.revision,
             });
             const request = buildRuntimeRequest(sceneBuildInput);
-            const uploaded =
-                !!request &&
-                (await uploadRuntimeCacheForBuildRequest(
-                    wasmBridge as unknown as MapRenderRuntimeBridgeV2,
-                    wasmBridge.runtimeHandle,
-                    request,
-                    sceneBuildInput,
-                ));
-            const packet =
-                uploaded && request
-                    ? await wasmBridge.buildMapPacketFromCache(wasmBridge.runtimeHandle, request)
-                    : undefined;
-            const overlay = runtimePacketToPayloadOverlay(packet);
-            // Packets are now deep-copied out of the wasm heap and released before returning.
-            void packet;
-            if (!overlay) {
-                throw new Error(
-                    `WASM bridge returned no runtime packet/overlay at ${input.mapX},${input.mapY}`,
-                );
+            if (!request) {
+                throw new Error(`Failed to build runtime request at ${input.mapX},${input.mapY}`);
             }
+            const runtimeHandle = await allocateRuntimeHandle(sceneBuildInput);
+            out.push({
+                input,
+                sceneBuildInput,
+                request,
+                runtimeHandle,
+            });
         }
+        return out;
     }
 
-    async function runBench(name: string, fn: () => Promise<void>): Promise<void> {
+    let preparedCppInputs: ReadonlyArray<CppPreparedInput> = [];
+
+    async function runCppWasm(collectStages: boolean): Promise<number> {
+        let measuredTotalMs = 0;
+        for (const prepared of preparedCppInputs) {
+            // Prime the runtime state (base upload + missing blob backfill) outside
+            // timed stage attribution so measured build stages reflect steady-state command build.
+            await primeCppRuntimeInput(prepared);
+            const tTotal = performance.now();
+            const tBuildPacket = performance.now();
+            const packet = (await wasmBridge.buildMapPacketFromCache(
+                prepared.runtimeHandle,
+                prepared.request,
+            )) as MapRenderRuntimePacket | undefined;
+            const buildPacketTotalMs = performance.now() - tBuildPacket;
+            const tOverlay = performance.now();
+            const overlay = runtimePacketToPayloadOverlay(packet);
+            const overlayTotalMs = performance.now() - tOverlay;
+            const missing = await wasmBridge.getLastMissingBlobEntries(prepared.runtimeHandle);
+            if (missing && (missing.domains.length | 0) > 0) {
+                throw new Error(
+                    `Unexpected missing blob entries in timed run at ${prepared.input.mapX},${prepared.input.mapY}; rerun preflight`,
+                );
+            }
+            if (!overlay) {
+                throw new Error(
+                    `WASM bridge returned no runtime packet/overlay at ${prepared.input.mapX},${prepared.input.mapY}`,
+                );
+            }
+
+            if (args.stages && collectStages) {
+                const timings =
+                    typeof wasmBridge.debugGetLastBuildStageTimings === "function"
+                        ? await wasmBridge.debugGetLastBuildStageTimings(prepared.runtimeHandle)
+                        : undefined;
+                addCppInternalStageSamples(cppStageSamples, timings);
+                addStageSample(cppStageSamples, "buildMapPacketFromCache(total)", buildPacketTotalMs);
+                addStageSample(cppStageSamples, "runtimePacketToPayloadOverlay(total)", overlayTotalMs);
+                addStageSample(cppStageSamples, "TOTAL", performance.now() - tTotal);
+            }
+            measuredTotalMs += performance.now() - tTotal;
+        }
+        return measuredTotalMs;
+    }
+
+    async function runBench(
+        name: string,
+        fn: (collectStages: boolean) => Promise<number>,
+    ): Promise<void> {
         for (let i = 0; i < args.warmup; i++) {
-            await fn();
+            await fn(false);
         }
         const samples: number[] = [];
         for (let i = 0; i < args.iterations; i++) {
-            const t0 = performance.now();
-            await fn();
-            samples.push(performance.now() - t0);
+            const measuredMs = await fn(true);
+            samples.push(measuredMs);
         }
         const total = samples.reduce((acc, v) => acc + v, 0);
         const mean = total / samples.length;
@@ -406,11 +769,28 @@ async function main(): Promise<void> {
         );
     }
 
-    if (args.backend === "ts" || args.backend === "both") {
-        await runBench("ts", runTs);
-    }
-    if (args.backend === "cpp-wasm" || args.backend === "both") {
-        await runBench("cpp-wasm", runCppWasm);
+    try {
+        if (args.backend === "ts" || args.backend === "both") {
+            await runBench("ts", runTs);
+            if (args.stages) {
+                printStageSummary("ts", tsStageSamples);
+            }
+        }
+        if (args.backend === "cpp-wasm" || args.backend === "both") {
+            preparedCppInputs = await prepareCppInputs();
+            await runBench("cpp-wasm", runCppWasm);
+            if (args.stages) {
+                printStageSummary("cpp-wasm", cppStageSamples);
+            }
+        }
+    } finally {
+        for (const handle of runtimeHandlesToDestroy) {
+            try {
+                wasmBridge.destroyRuntime(handle | 0);
+            } catch {
+                // ignore cleanup failures in bench script
+            }
+        }
     }
 }
 

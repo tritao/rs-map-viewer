@@ -188,7 +188,7 @@ function assertNpcSlotMetadataContract(
     );
 }
 
-async function buildMapPacketWithMissingBlobRetries(
+async function buildMapPacketWithPreparedRuntime(
     bridge: RuntimeBridge,
     cacheUploader: MapRenderRuntimeCacheV2Uploader,
     runtimeHandle: number,
@@ -196,29 +196,17 @@ async function buildMapPacketWithMissingBlobRetries(
     sceneBuildInput: ReturnType<typeof createByteDrivenSceneBuildInput>,
     label: string,
 ): Promise<MapRenderRuntimePacket | undefined> {
-    for (let pass = 0; pass < 12; pass++) {
-        const packet = (await bridge.buildMapPacketFromCache(
-            runtimeHandle,
-            request,
-        )) as MapRenderRuntimePacket | undefined;
-        const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-        if (missing && (missing.domains.length | 0) > 0) {
-            const uploadedMissing = await cacheUploader.uploadMissingBlobEntriesForBuildRequest(
-                bridge,
-                runtimeHandle,
-                missing,
-                sceneBuildInput,
-            );
-            assert.equal(
-                uploadedMissing,
-                true,
-                `${label}: expected missing-blob upload to succeed on pass ${pass + 1}`,
-            );
-            continue;
-        }
-        return packet;
-    }
-    return undefined;
+    const prepared = await cacheUploader.prepareRuntimeForBuildRequest(
+        bridge,
+        runtimeHandle,
+        request,
+        sceneBuildInput,
+        12,
+    );
+    assert.equal(prepared, true, `${label}: expected runtime prepare to succeed`);
+    return (await bridge.buildMapPacketFromCache(runtimeHandle, request)) as
+        | MapRenderRuntimePacket
+        | undefined;
 }
 
 async function main(): Promise<void> {
@@ -509,7 +497,7 @@ async function main(): Promise<void> {
     );
     assert.equal(uploadedLifecycle, true, "expected lifecycle cache upload to succeed");
 
-    const packetA = await buildMapPacketWithMissingBlobRetries(
+    const packetA = await buildMapPacketWithPreparedRuntime(
         bridge,
         lifecycleCacheUploader,
         lifecycleHandle,
@@ -520,7 +508,7 @@ async function main(): Promise<void> {
     assert.ok(packetA, "expected first lifecycle packet");
     assertNpcSlotMetadataContract(packetA as MapRenderRuntimePacket, "packetA");
 
-    const packetB = await buildMapPacketWithMissingBlobRetries(
+    const packetB = await buildMapPacketWithPreparedRuntime(
         bridge,
         lifecycleCacheUploader,
         lifecycleHandle,
@@ -531,7 +519,7 @@ async function main(): Promise<void> {
     assert.ok(packetB, "expected second lifecycle packet");
     assertNpcSlotMetadataContract(packetB as MapRenderRuntimePacket, "packetB");
 
-    const packetC = await buildMapPacketWithMissingBlobRetries(
+    const packetC = await buildMapPacketWithPreparedRuntime(
         bridge,
         lifecycleCacheUploader,
         lifecycleHandle,
@@ -542,7 +530,7 @@ async function main(): Promise<void> {
     assert.ok(packetC, "expected third lifecycle packet");
     assertNpcSlotMetadataContract(packetC as MapRenderRuntimePacket, "packetC");
 
-    const packetD = await buildMapPacketWithMissingBlobRetries(
+    const packetD = await buildMapPacketWithPreparedRuntime(
         bridge,
         lifecycleCacheUploader,
         lifecycleHandle,
@@ -560,7 +548,7 @@ async function main(): Promise<void> {
         lifecycleFixture.sceneBuildInput,
     );
     assert.equal(uploadedAfterReset, true, "expected cache upload to succeed after reset");
-    const packetE = await buildMapPacketWithMissingBlobRetries(
+    const packetE = await buildMapPacketWithPreparedRuntime(
         bridge,
         lifecycleCacheUploader,
         lifecycleHandle,

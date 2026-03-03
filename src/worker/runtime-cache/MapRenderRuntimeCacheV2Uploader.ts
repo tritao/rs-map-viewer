@@ -19,8 +19,10 @@ import type {
     TypeEntryLoaderLike,
     VarProviderLike,
 } from "../../maprender/MapRenderSceneBuildLoaders";
-
-const RUNTIME_STATUS_OK = 1;
+import {
+    MAP_RENDER_RUNTIME_STATUS_NOT_FOUND,
+    MAP_RENDER_RUNTIME_STATUS_OK,
+} from "../../wasm/MapRenderRuntimeStatus.mjs";
 
 type RuntimeCacheFeeder = Readonly<{
     setBuildConfig(request: MapRenderRuntimeBuildRequest): Promise<boolean>;
@@ -44,10 +46,13 @@ function createRuntimeCacheFeeder(
 ): RuntimeCacheFeeder {
     return {
         setBuildConfig: async (request: MapRenderRuntimeBuildRequest) => {
-            return (await bridge.cacheSetBuildConfig(runtimeHandle, request)) === RUNTIME_STATUS_OK;
+            return (
+                (await bridge.cacheSetBuildConfig(runtimeHandle, request)) ===
+                MAP_RENDER_RUNTIME_STATUS_OK
+            );
         },
         setVarps: async (varps: Int32Array) => {
-            return (await bridge.cacheSetVarps(runtimeHandle, varps)) === RUNTIME_STATUS_OK;
+            return (await bridge.cacheSetVarps(runtimeHandle, varps)) === MAP_RENDER_RUNTIME_STATUS_OK;
         },
         putBlob: async (domain: number, group: number, file: number, bytes: Uint8Array) => {
             return (
@@ -59,7 +64,7 @@ function createRuntimeCacheFeeder(
                     Int32Array.of(0),
                     Int32Array.of(bytes.length | 0),
                     bytes,
-                )) === RUNTIME_STATUS_OK
+                )) === MAP_RENDER_RUNTIME_STATUS_OK
             );
         },
         putBlobBatch: async (
@@ -79,16 +84,17 @@ function createRuntimeCacheFeeder(
                     offsets,
                     lengths,
                     bytes,
-                )) === RUNTIME_STATUS_OK
+                )) === MAP_RENDER_RUNTIME_STATUS_OK
             );
         },
         clearBlobDomain: async (domain: number) => {
             return (
-                (await bridge.cacheClearBlobDomain(runtimeHandle, domain | 0)) === RUNTIME_STATUS_OK
+                (await bridge.cacheClearBlobDomain(runtimeHandle, domain | 0)) ===
+                MAP_RENDER_RUNTIME_STATUS_OK
             );
         },
         clearAllBlobs: async () => {
-            return (await bridge.cacheClearAllBlobs(runtimeHandle)) === RUNTIME_STATUS_OK;
+            return (await bridge.cacheClearAllBlobs(runtimeHandle)) === MAP_RENDER_RUNTIME_STATUS_OK;
         },
     };
 }
@@ -1504,6 +1510,61 @@ export class MapRenderRuntimeCacheV2Uploader {
             }
         }
         return true;
+    }
+
+    async prepareRuntimeForBuildRequest(
+        bridge: MapRenderRuntimeBridgeV2,
+        runtimeHandle: MapRenderRuntimeHandle,
+        request: MapRenderRuntimeBuildRequest,
+        sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
+        maxPasses = 12,
+    ): Promise<boolean> {
+        const uploadedBase = await this.uploadRuntimeCacheForBuildRequest(
+            bridge,
+            runtimeHandle,
+            request,
+            sceneBuildInput,
+        );
+        if (!uploadedBase) {
+            return false;
+        }
+
+        const passes = Math.max(1, maxPasses | 0);
+        for (let pass = 0; pass < passes; pass++) {
+            let status = MAP_RENDER_RUNTIME_STATUS_OK;
+            if (typeof bridge.probeBuildMapPacketFromCacheStatus === "function") {
+                status = (await bridge.probeBuildMapPacketFromCacheStatus(
+                    runtimeHandle,
+                    request,
+                )) | 0;
+            } else {
+                const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+                status = packet
+                    ? MAP_RENDER_RUNTIME_STATUS_OK
+                    : MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
+            }
+
+            const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
+            if (missing && (missing.domains.length | 0) > 0) {
+                const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
+                    bridge,
+                    runtimeHandle,
+                    missing,
+                    sceneBuildInput,
+                );
+                if (!okMissing) {
+                    return false;
+                }
+                continue;
+            }
+
+            if (status === MAP_RENDER_RUNTIME_STATUS_OK) {
+                return true;
+            }
+            return false;
+        }
+
+        return false;
     }
 }
 

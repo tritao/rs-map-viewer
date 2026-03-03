@@ -103,6 +103,21 @@ RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_build_failure(
     return RS_MAP_RENDER_STATUS_OK;
 }
 
+RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_build_stage_timings(
+    const rs::i32 runtimeHandle,
+    rs::i32* outTimingsUs,
+    const rs::i32 outTimingsUsLength) {
+    const MapRenderRuntimeState* runtime = getMapRenderRuntimeConst(runtimeHandle);
+    if (!runtime || !outTimingsUs || outTimingsUsLength < RS_MAP_RENDER_RUNTIME_BUILD_STAGE_TIMINGS_LENGTH) {
+        return RS_MAP_RENDER_STATUS_INVALID_ARG;
+    }
+    std::memcpy(
+        outTimingsUs,
+        runtime->debugLastBuildStageTimingsUs.data(),
+        static_cast<std::size_t>(RS_MAP_RENDER_RUNTIME_BUILD_STAGE_TIMINGS_LENGTH) * sizeof(rs::i32));
+    return RS_MAP_RENDER_STATUS_OK;
+}
+
 RS_WASM_KEEPALIVE rs::i32 rs_map_render_runtime_debug_get_last_collect_map_input(
     const rs::i32 runtimeHandle,
     rs::i32* outState,

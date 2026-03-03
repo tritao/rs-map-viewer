@@ -31,6 +31,7 @@
 #include "MapRenderRuntimeStore.hpp"
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -44,6 +45,42 @@ namespace {
 static constexpr rs::i32 RS_TICK_STATE_PACKED_VERSION = 1;
 static constexpr rs::i32 RS_TICK_STATE_PACKED_VERSION_V2_COMPACT = 2;
 static constexpr rs::i32 RS_TICK_STATE_OUTPUT_PACKED_VERSION = 1;
+static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_BUILD_STAGE_TIMINGS_LENGTH = 32;
+
+enum MapRenderRuntimeBuildStageTimingIndex : rs::i32 {
+    kBuildTimingTotalUs = 0,
+    kBuildTimingCollectMapInputUs = 1,
+    kBuildTimingSeedHashUs = 2,
+    kBuildTimingBuildCommandStreamUs = 3,
+    kBuildTimingRegisterTickStateUs = 4,
+    kBuildTimingPlanPayloadUs = 5,
+    kBuildTimingBuildPayloadUs = 6,
+    kBuildTimingStorePayloadUs = 7,
+    kBuildTimingBuildNpcUs = 8,
+    kBuildTimingDeriveUsedTextureIdsUs = 9,
+    kBuildTimingFinalizePayloadUs = 10,
+    kBuildTimingCommandPrepareInputUs = 11,
+    kBuildTimingCommandCoreBuildUs = 12,
+    kBuildTimingCommandValidateUs = 13,
+    kBuildTimingCommandCopyBuffersUs = 14,
+    kBuildTimingCommandCopyDebugUs = 15,
+    kBuildTimingCommandSetupUs = 16,
+    kBuildTimingCommandSceneBuildUs = 17,
+    kBuildTimingCommandTerrainUs = 18,
+    kBuildTimingCommandLocUs = 19,
+    kBuildTimingCommandObjUs = 20,
+    kBuildTimingCommandFinalizeUs = 21,
+    kBuildTimingCommandLocPlanUs = 22,
+    kBuildTimingCommandLocPlanSortUs = 23,
+    kBuildTimingCommandLocPlanMergeNormalsUs = 24,
+    kBuildTimingCommandLocPlanPlacementLoopUs = 25,
+    kBuildTimingCommandLocPlanRenderPlanUs = 26,
+    kBuildTimingCommandLocPlanAnimatedOrderUs = 27,
+    kBuildTimingCommandLocExecuteUs = 28,
+    kBuildTimingCommandLocExecuteInstancedUs = 29,
+    kBuildTimingCommandLocExecuteMergedUs = 30,
+    kBuildTimingCommandFinalizeAnimatedLocUs = 31,
+};
 
 enum TickStateFieldIndex : rs::i32 {
     TICK_FIELD_LOC_FRAME_IDS = 0,
@@ -583,6 +620,8 @@ struct MapRenderRuntimeState {
     rs::i32 debugLastNpcDrawRangeCount = 0;
     rs::i32 debugLastNpcVertexBytes = 0;
     rs::i32 debugLastNpcIndexCount = 0;
+    std::array<rs::i32, RS_MAP_RENDER_RUNTIME_BUILD_STAGE_TIMINGS_LENGTH>
+        debugLastBuildStageTimingsUs{};
 };
 
 struct MapRenderPacketHandleState final {
@@ -1626,6 +1665,41 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
         *outBuildStatus = rs::Status::Ok;
     }
 
+    using CommandClock = std::chrono::steady_clock;
+    const auto elapsedUs = [](const CommandClock::time_point start) noexcept -> rs::i32 {
+        const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+            CommandClock::now() - start);
+        if (us.count() > static_cast<long long>(std::numeric_limits<rs::i32>::max())) {
+            return std::numeric_limits<rs::i32>::max();
+        }
+        if (us.count() < 0) {
+            return 0;
+        }
+        return static_cast<rs::i32>(us.count());
+    };
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandPrepareInputUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandCoreBuildUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandValidateUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandCopyBuffersUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandCopyDebugUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandSetupUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandSceneBuildUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandTerrainUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandObjUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandFinalizeUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanSortUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanMergeNormalsUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanPlacementLoopUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanRenderPlanUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanAnimatedOrderUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocExecuteUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocExecuteInstancedUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocExecuteMergedUs)] = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandFinalizeAnimatedLocUs)] = 0;
+
+    const auto prepareInputStart = CommandClock::now();
     const bool includeLocs = loadLocs != 0;
 
     // Texture id lists are presence-only domains uploaded by TS (empty bytes payloads).
@@ -1648,6 +1722,7 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     input.cacheGame = runtime->cache.cacheGame;
     input.cacheRevision = runtime->cache.cacheRevision;
     input.unitsTileHeightBasis = runtime->cache.unitsTileHeightBasis;
+    input.enableExpensiveDebugStats = false;
     input.debugTerrainDigestSampleStartVertex =
         runtime->debugTerrainDigestSampleStartVertex > 0 ? runtime->debugTerrainDigestSampleStartVertex : 0;
     input.debugTerrainProbeLevel = runtime->debugTerrainProbeLevel;
@@ -1709,6 +1784,10 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     rs::Allocator& alloc = rs::defaultAllocator();
     rs::SceneCommandStream nativeStream{};
     rs::Status buildStatus = rs::Status::Ok;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandPrepareInputUs)] =
+        elapsedUs(prepareInputStart);
+
+    const auto coreBuildStart = CommandClock::now();
     if (planOnly) {
         buildStatus = rs::buildSceneCommandPlanOnly(input, &nativeStream, alloc);
     } else if (outLocTickInit) {
@@ -1726,6 +1805,42 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     } else {
         buildStatus = rs::buildSceneCommandStream(input, &nativeStream, alloc);
     }
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandCoreBuildUs)] =
+        elapsedUs(coreBuildStart);
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandSetupUs)] =
+        nativeStream.debugBuildSetupUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandSceneBuildUs)] =
+        nativeStream.debugBuildSceneBuildUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandTerrainUs)] =
+        nativeStream.debugBuildTerrainUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocUs)] =
+        nativeStream.debugBuildLocUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandObjUs)] =
+        nativeStream.debugBuildObjUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandFinalizeUs)] =
+        nativeStream.debugBuildFinalizeUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanUs)] =
+        nativeStream.debugLocPlanTotalUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanSortUs)] =
+        nativeStream.debugLocPlanSortPlacementsUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanMergeNormalsUs)] =
+        nativeStream.debugLocPlanMergeNormalsUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanPlacementLoopUs)] =
+        nativeStream.debugLocPlanPlacementLoopUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanRenderPlanUs)] =
+        nativeStream.debugLocPlanRenderPlanUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocPlanAnimatedOrderUs)] =
+        nativeStream.debugLocPlanAnimatedOrderUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocExecuteUs)] =
+        nativeStream.debugLocExecuteTotalUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocExecuteInstancedUs)] =
+        nativeStream.debugLocExecuteInstancedUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandLocExecuteMergedUs)] =
+        nativeStream.debugLocExecuteMergedUs;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandFinalizeAnimatedLocUs)] =
+        nativeStream.debugBuildFinalizeAnimatedLocUs;
+
+    const auto validateStart = CommandClock::now();
     if (!rs::ok(buildStatus)) {
         if (outBuildStatus) {
             *outBuildStatus = buildStatus;
@@ -1744,6 +1859,10 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
         runtime->debugLastCommandStreamCoreStatus = static_cast<rs::i32>(rs::Status::SizeMismatch);
         return RuntimeCommandStreamBuildResult::Failed;
     }
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandValidateUs)] =
+        elapsedUs(validateStart);
+
+    const auto copyBuffersStart = CommandClock::now();
     outStream->clear();
     if (totalCmdCount > 0) {
         outStream->cmdBucketIndices.assign(
@@ -1774,6 +1893,10 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
             nativeStream.indices.data(),
             nativeStream.indices.data() + nativeStream.indices.size());
     }
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandCopyBuffersUs)] =
+        elapsedUs(copyBuffersStart);
+
+    const auto copyDebugStart = CommandClock::now();
     outStream->debugTerrainTilesConsidered = nativeStream.debugTerrainTilesConsidered;
     outStream->debugTerrainTilesEmitted = nativeStream.debugTerrainTilesEmitted;
     outStream->debugTerrainFacesEmitted = nativeStream.debugTerrainFacesEmitted;
@@ -1976,6 +2099,8 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     outStream->sizeY = sizeY;
     outStream->locLoadType = locLoadType;
     outStream->loaded = true;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCommandCopyDebugUs)] =
+        elapsedUs(copyDebugStart);
     return RuntimeCommandStreamBuildResult::Built;
 }
 

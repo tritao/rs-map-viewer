@@ -3,6 +3,7 @@
 #include "../config/loctype/LocType.hpp"
 #include "../config/seqtype/SeqType.hpp"
 #include "../config/vartype/VarBitType.hpp"
+#include "../core/HashIndex.hpp"
 #include "../map/LocPlacementsDecode.hpp"
 #include "../map/TerrainConstants.hpp"
 #include "../model/ModelData.hpp"
@@ -13,8 +14,24 @@
 #include "../scene/SceneData.hpp"
 #include "../util/HeightCalc.hpp"
 
+#include <chrono>
+#include <limits>
+
 namespace rs {
 namespace scb {
+
+using LocBuildClock = std::chrono::steady_clock;
+
+static i32 locElapsedUs(const LocBuildClock::time_point start) noexcept {
+    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(LocBuildClock::now() - start);
+    if (us.count() > static_cast<long long>(std::numeric_limits<i32>::max())) {
+        return std::numeric_limits<i32>::max();
+    }
+    if (us.count() < 0) {
+        return 0;
+    }
+    return static_cast<i32>(us.count());
+}
 
 static Status tryDecodeSeqBaseFromBlob(
     const SceneCommandBuildInput& input,
@@ -737,63 +754,104 @@ struct LocCommandGroup final {
           placementOrders(alloc) {}
 };
 
-static i32 findLocCommandGroupIndex(
-    Span<const LocCommandGroup> groups,
-    i32 modelSignature,
-    i32 modelIdsHash,
-    i32 placementType,
-    i32 rotation,
-    i32 level,
-    i32 priority,
-    bool forceMerge,
-    bool contourSensitive,
-    i32 contourSceneHeight,
-    i32 contourSceneX,
-    i32 contourSceneZ,
-    i32 contourGround,
-    i32 contourProfileHash) noexcept {
-    const SceneLocCommandGroupKey candidate{
-        .modelSignature = modelSignature,
-        .modelIdsHash = modelIdsHash,
-        .placementType = placementType,
-        .rotation = rotation,
-        .level = level,
-        .priority = priority,
-        .forceMerge = forceMerge,
-        .contourSensitive = contourSensitive,
-        .contourSceneHeight = contourSceneHeight,
-        .contourSceneX = contourSceneX,
-        .contourSceneZ = contourSceneZ,
-        .contourGround = contourGround,
-        .contourProfileHash = contourProfileHash,
-    };
-
-    for (std::size_t i = 0; i < groups.size(); i++) {
-        const LocCommandGroup& group = groups[i];
-        const SceneLocCommandGroupKey existing{
-            .modelSignature = group.modelSignature,
-            .modelIdsHash = group.modelIdsHash,
-            .placementType = group.placementType,
-            .rotation = group.rotation,
-            .level = group.level,
-            .priority = group.priority,
-            .forceMerge = group.forceMerge,
-            .contourSensitive = group.contourSensitive,
-            .contourSceneHeight = group.contourKeySceneHeight,
-            .contourSceneX = group.contourKeySceneX,
-            .contourSceneZ = group.contourKeySceneZ,
-            .contourGround = group.contourKeyGround,
-            .contourProfileHash = group.contourKeyProfileHash,
+struct SceneLocCommandGroupKeyHasher final {
+    std::size_t operator()(const SceneLocCommandGroupKey& key) const noexcept {
+        const auto mix = [](u32 hash, i32 value) noexcept -> u32 {
+            return (hash ^ static_cast<u32>(value)) * 16777619u;
         };
-        if (sceneLocCommandGroupKeysEqual(existing, candidate)) {
-            if (i > static_cast<std::size_t>(2147483647)) {
-                return -1;
+
+        // Hash must follow sceneLocCommandGroupKeysEqual semantics exactly:
+        // contourSceneX/contourSceneZ only participate when forceMerge=true.
+        u32 h = 2166136261u;
+        h = mix(h, key.modelSignature);
+        h = mix(h, key.modelIdsHash);
+        h = mix(h, key.placementType);
+        h = mix(h, key.rotation);
+        h = mix(h, key.level);
+        h = mix(h, key.priority);
+        h = mix(h, key.forceMerge ? 1 : 0);
+        h = mix(h, key.contourSensitive ? 1 : 0);
+        if (key.contourSensitive) {
+            h = mix(h, key.contourSceneHeight);
+            if (key.forceMerge) {
+                h = mix(h, key.contourSceneX);
+                h = mix(h, key.contourSceneZ);
             }
-            return static_cast<i32>(i);
+            h = mix(h, key.contourGround);
+            h = mix(h, key.contourProfileHash);
         }
+
+        h ^= h >> 16;
+        h *= 0x7feb352du;
+        h ^= h >> 15;
+        h *= 0x846ca68bu;
+        h ^= h >> 16;
+        return static_cast<std::size_t>(h);
     }
-    return -1;
-}
+};
+
+struct SceneLocCommandGroupKeyEquals final {
+    bool operator()(
+        const SceneLocCommandGroupKey& a,
+        const SceneLocCommandGroupKey& b) const noexcept {
+        return sceneLocCommandGroupKeysEqual(a, b);
+    }
+};
+
+using LocCommandGroupLookupIndex =
+    HashIndex<SceneLocCommandGroupKey, i32, SceneLocCommandGroupKeyHasher, SceneLocCommandGroupKeyEquals>;
+
+struct LocMergeBucketKey final {
+    bool transparent = false;
+    bool includeLod = false;
+    i32 level = 0;
+    i32 priority = 0;
+};
+
+struct LocMergeBucketKeyHasher final {
+    std::size_t operator()(const LocMergeBucketKey& key) const noexcept {
+        u32 h = 2166136261u;
+        h = (h ^ static_cast<u32>(key.transparent ? 1 : 0)) * 16777619u;
+        h = (h ^ static_cast<u32>(key.includeLod ? 1 : 0)) * 16777619u;
+        h = (h ^ static_cast<u32>(key.level)) * 16777619u;
+        h = (h ^ static_cast<u32>(key.priority)) * 16777619u;
+        h ^= h >> 16;
+        return static_cast<std::size_t>(h);
+    }
+};
+
+struct LocMergeBucketKeyEquals final {
+    bool operator()(const LocMergeBucketKey& a, const LocMergeBucketKey& b) const noexcept {
+        return a.transparent == b.transparent &&
+               a.includeLod == b.includeLod &&
+               a.level == b.level &&
+               a.priority == b.priority;
+    }
+};
+
+using LocMergeBucketLookupIndex =
+    HashIndex<LocMergeBucketKey, i32, LocMergeBucketKeyHasher, LocMergeBucketKeyEquals>;
+
+struct I32KeyHasher final {
+    std::size_t operator()(i32 value) const noexcept {
+        u32 h = static_cast<u32>(value);
+        h ^= h >> 16;
+        h *= 0x7feb352du;
+        h ^= h >> 15;
+        h *= 0x846ca68bu;
+        h ^= h >> 16;
+        return static_cast<std::size_t>(h);
+    }
+};
+
+struct I32KeyEquals final {
+    bool operator()(i32 a, i32 b) const noexcept {
+        return a == b;
+    }
+};
+
+using I32LookupIndex = HashIndex<i32, unsigned char, I32KeyHasher, I32KeyEquals>;
+using I32ToI32LookupIndex = HashIndex<i32, i32, I32KeyHasher, I32KeyEquals>;
 
 struct LocMergeBucketEntry final {
     i32 groupIndex = -1;
@@ -813,27 +871,6 @@ struct LocMergeBucket final {
 
     explicit LocMergeBucket(Allocator& alloc) noexcept : entries(alloc) {}
 };
-
-static i32 findLocMergeBucketIndex(
-    Span<const LocMergeBucket> buckets,
-    bool transparent,
-    bool includeLod,
-    i32 level,
-    i32 priority) noexcept {
-    for (std::size_t i = 0; i < buckets.size(); i++) {
-        const LocMergeBucket& bucket = buckets[i];
-        if (bucket.transparent == transparent &&
-            bucket.includeLod == includeLod &&
-            bucket.level == level &&
-            bucket.priority == priority) {
-            if (i > static_cast<std::size_t>(2147483647)) {
-                return -1;
-            }
-            return static_cast<i32>(i);
-        }
-    }
-    return -1;
-}
 
 // TS-style loc command planning: first decide instanced vs merged-bucket emission (and record
 // plan-digest ops), then execute instanced ops, then execute merged buckets. This mirrors the
@@ -1358,6 +1395,13 @@ static Status buildLocRenderCommandPlan(
     };
     Vec<OrderedInst> orderedInstances(alloc);
     Vec<OrderedMergeEntry> orderedMergeEntries(alloc);
+    LocMergeBucketLookupIndex mergeBucketLookup(alloc);
+    {
+        auto rrReserveBuckets = mergeBucketLookup.reserveForExpectedCount(groups.size() + 16);
+        if (!rrReserveBuckets.isOk()) {
+            return rrReserveBuckets.status();
+        }
+    }
 
     const auto addInstanceToMergeBuckets = [&](i32 groupIndex,
                                                i32 instanceIndex,
@@ -1367,13 +1411,15 @@ static Status buildLocRenderCommandPlan(
         const bool includeLod = group.includeLodFlags[static_cast<std::size_t>(instanceIndex)] != 0;
         const i32 instanceLevel = group.mergedInstances[static_cast<std::size_t>(instanceIndex)].level;
         const i32 instancePriority = group.mergedInstances[static_cast<std::size_t>(instanceIndex)].priority;
+        const LocMergeBucketKey bucketKey{
+            .transparent = transparent,
+            .includeLod = includeLod,
+            .level = instanceLevel,
+            .priority = instancePriority,
+        };
 
-        i32 bucketIndex = findLocMergeBucketIndex(
-            Span<const LocMergeBucket>(outMergeBuckets->data(), outMergeBuckets->size()),
-            transparent,
-            includeLod,
-            instanceLevel,
-            instancePriority);
+        i32 bucketIndex = -1;
+        (void)mergeBucketLookup.find(bucketKey, &bucketIndex);
         if (bucketIndex < 0) {
             LocMergeBucket bucket(alloc);
             bucket.transparent = transparent;
@@ -1387,6 +1433,10 @@ static Status buildLocRenderCommandPlan(
                 return rrBucket.status();
             }
             bucketIndex = static_cast<i32>(outMergeBuckets->size() - 1);
+            auto rrInsertBucket = mergeBucketLookup.insertIfMissing(bucketKey, bucketIndex);
+            if (!rrInsertBucket.isOk()) {
+                return rrInsertBucket.status();
+            }
         }
         if (bucketIndex < 0 || bucketIndex >= static_cast<i32>(outMergeBuckets->size())) {
             return Status::OutOfRange;
@@ -1960,6 +2010,153 @@ static Status executeLocMergeBuckets(
     if (!buffer || !scratchModelIds || !indexCount || !locTypeCache) {
         return Status::InvalidArgument;
     }
+    (void)scratchModelIds;
+
+    struct PreparedLocGroupModel final {
+        i32 groupIndex = -1;
+        ModelData model;
+        ModelFaceLightingState lighting;
+
+        explicit PreparedLocGroupModel(Allocator& alloc_) noexcept
+            : model(alloc_),
+              lighting(alloc_) {}
+    };
+
+    Vec<PreparedLocGroupModel> preparedGroups(alloc);
+    I32ToI32LookupIndex preparedGroupLookup(alloc);
+    constexpr i32 kPreparedGroupSkip = -1;
+    {
+        auto rrPreparedReserve = preparedGroupLookup.reserveForExpectedCount(groups.size() + 1);
+        if (!rrPreparedReserve.isOk()) {
+            return rrPreparedReserve.status();
+        }
+        auto rrPreparedVec = preparedGroups.reserve(groups.size() / 2 + 8);
+        if (!rrPreparedVec.isOk()) {
+            return rrPreparedVec.status();
+        }
+    }
+
+    i32 cachedGroupIndex = -1;
+    const LocType* cachedResolved = nullptr;
+    const MergeNormalsEntry* cachedMergeEntry = nullptr;
+    bool cachedSkipGroup = false;
+    Vec<i32> cachedModelIds(alloc);
+    bool cachedPreparedModelReady = false;
+    const ModelData* cachedPreparedModel = nullptr;
+    const ModelFaceLightingState* cachedPreparedLighting = nullptr;
+    const auto refreshGroupCache =
+        [&](i32 groupIndex, const LocCommandGroup& group) noexcept -> Status {
+            cachedGroupIndex = groupIndex;
+            cachedResolved = nullptr;
+            cachedMergeEntry = nullptr;
+            cachedSkipGroup = false;
+            cachedModelIds.clear();
+            cachedPreparedModelReady = false;
+            cachedPreparedModel = nullptr;
+            cachedPreparedLighting = nullptr;
+
+            const Status ts = tryDecodeLocTypeFromBlob(
+                input,
+                locTypeCache,
+                group.locTypeId,
+                &cachedResolved,
+                alloc);
+            if (!ok(ts) || !cachedResolved) {
+                cachedSkipGroup = true;
+                return Status::Ok;
+            }
+            if (group.mergeNormalsEntryIndex >= 0 &&
+                group.mergeNormalsEntryIndex < static_cast<i32>(mergeNormalsEntries.size())) {
+                const MergeNormalsEntry& candidate =
+                    mergeNormalsEntries[static_cast<std::size_t>(group.mergeNormalsEntryIndex)];
+                if (candidate.locTypeId == group.locTypeId &&
+                    candidate.placementType == group.placementType &&
+                    candidate.rotation == group.rotation) {
+                    cachedMergeEntry = &candidate;
+                }
+            }
+            if (cachedMergeEntry) {
+                return Status::Ok;
+            }
+
+            i32 preparedEntryIndex = -2;
+            if (preparedGroupLookup.find(groupIndex, &preparedEntryIndex)) {
+                if (preparedEntryIndex == kPreparedGroupSkip) {
+                    cachedSkipGroup = true;
+                    return Status::Ok;
+                }
+                if (preparedEntryIndex >= 0 &&
+                    static_cast<std::size_t>(preparedEntryIndex) < preparedGroups.size()) {
+                    const PreparedLocGroupModel& prepared =
+                        preparedGroups[static_cast<std::size_t>(preparedEntryIndex)];
+                    cachedPreparedModel = &prepared.model;
+                    cachedPreparedLighting = &prepared.lighting;
+                    cachedPreparedModelReady = true;
+                    return Status::Ok;
+                }
+            }
+
+            if (!collectLocTypeModelIdsForVariant(
+                    *cachedResolved,
+                    group.placementType,
+                    &cachedModelIds) ||
+                cachedModelIds.empty()) {
+                cachedSkipGroup = true;
+                return Status::Ok;
+            }
+
+            // Hot path optimization: for single-model variants, decode+light once per group
+            // for the merged pass and reuse whenever this group reappears.
+            if (cachedModelIds.size() == 1) {
+                ModelData preparedModel(alloc);
+                const Status ms = decodeLocModelFromBlobForPlacement(
+                    input,
+                    *cachedResolved,
+                    group.placementType,
+                    group.rotation,
+                    cachedModelIds[0],
+                    &preparedModel,
+                    /*applyDiagonalNormalVariantRotation=*/true,
+                    alloc);
+                if (!ok(ms)) {
+                    cachedSkipGroup = true;
+                    auto rrSkip = preparedGroupLookup.insertIfMissing(groupIndex, kPreparedGroupSkip);
+                    if (!rrSkip.isOk()) {
+                        return rrSkip.status();
+                    }
+                    return Status::Ok;
+                }
+                ModelFaceLightingState preparedLighting(alloc);
+                const Status ls = initModelFaceLightingState(preparedModel, &preparedLighting, alloc);
+                if (!ok(ls)) {
+                    cachedSkipGroup = true;
+                    auto rrSkip = preparedGroupLookup.insertIfMissing(groupIndex, kPreparedGroupSkip);
+                    if (!rrSkip.isOk()) {
+                        return rrSkip.status();
+                    }
+                    return Status::Ok;
+                }
+                PreparedLocGroupModel prepared(alloc);
+                prepared.groupIndex = groupIndex;
+                prepared.model = rs::move(preparedModel);
+                prepared.lighting = rs::move(preparedLighting);
+                auto rrPushPrepared = preparedGroups.pushBack(rs::move(prepared));
+                if (!rrPushPrepared.isOk()) {
+                    return rrPushPrepared.status();
+                }
+                const i32 preparedIndex = static_cast<i32>(preparedGroups.size() - 1);
+                auto rrMarkPrepared = preparedGroupLookup.insertIfMissing(groupIndex, preparedIndex);
+                if (!rrMarkPrepared.isOk()) {
+                    return rrMarkPrepared.status();
+                }
+                const PreparedLocGroupModel& finalPrepared =
+                    preparedGroups[static_cast<std::size_t>(preparedIndex)];
+                cachedPreparedModel = &finalPrepared.model;
+                cachedPreparedLighting = &finalPrepared.lighting;
+                cachedPreparedModelReady = true;
+            }
+            return Status::Ok;
+        };
 
     for (std::size_t bi = 0; bi < mergeBuckets.size(); bi++) {
         LocMergeBucket& bucket = mergeBuckets[bi];
@@ -1976,6 +2173,15 @@ static Status executeLocMergeBuckets(
                 return Status::OutOfRange;
             }
             LocCommandGroup& group = groups[static_cast<std::size_t>(entry.groupIndex)];
+            if (cachedGroupIndex != entry.groupIndex) {
+                const Status cs = refreshGroupCache(entry.groupIndex, group);
+                if (!ok(cs)) {
+                    return cs;
+                }
+            }
+            if (cachedSkipGroup || !cachedResolved) {
+                continue;
+            }
             const DebugCommandProvenance mergeBucketProvenance = makeLocCommandProvenance(
                 DebugCommandSourceKind::LocMergeBucket,
                 group.locTypeId,
@@ -2011,33 +2217,12 @@ static Status executeLocMergeBuckets(
                 }
                 continue;
             }
-
-            const LocType* resolved = nullptr;
-            const Status ts = tryDecodeLocTypeFromBlob(
-                input,
-                locTypeCache,
-                group.locTypeId,
-                &resolved,
-                alloc);
-            if (!ok(ts) || !resolved) {
-                continue;
-            }
-            const MergeNormalsEntry* mergeEntry = nullptr;
-            if (group.mergeNormalsEntryIndex >= 0 &&
-                group.mergeNormalsEntryIndex < static_cast<i32>(mergeNormalsEntries.size())) {
-                const MergeNormalsEntry& candidate =
-                    mergeNormalsEntries[static_cast<std::size_t>(group.mergeNormalsEntryIndex)];
-                if (candidate.locTypeId == group.locTypeId &&
-                    candidate.placementType == group.placementType &&
-                    candidate.rotation == group.rotation) {
-                    mergeEntry = &candidate;
-                }
-            }
+            const LocType* resolved = cachedResolved;
+            const MergeNormalsEntry* mergeEntry = cachedMergeEntry;
             // ContourGroundType.AlignToSlope (type==3) is supported in applyContourToModelForPlacement now,
             // so allow mergeNormals planning to include these entries for TS parity.
             if (!mergeEntry) {
-                if (!collectLocTypeModelIdsForVariant(*resolved, group.placementType, scratchModelIds) ||
-                    scratchModelIds->empty()) {
+                if (!cachedPreparedModelReady && cachedModelIds.empty()) {
                     continue;
                 }
             }
@@ -2089,24 +2274,46 @@ static Status executeLocMergeBuckets(
                     &generatedElements,
                     alloc);
             } else {
-                gs = appendLocPlacementGeometry(
-                    input,
-                    scene,
-                    *resolved,
-                    placement,
-                    mergedInst.sceneX,
-                    mergedInst.sceneZ,
-                    contourSceneX,
-                    contourSceneZ,
-                    mergedSceneHeight,
-                    applyContour,
-                    Span<const i32>(scratchModelIds->data(), scratchModelIds->size()),
-                    bucket.transparent,
-                    debugOut,
-                    &buffer->vertices,
-                    &buffer->indices,
-                    &generatedElements,
-                    alloc);
+                if (cachedPreparedModelReady) {
+                    gs = appendLocPlacementGeometryFromDecodedModelWithLightingState(
+                        input,
+                        scene,
+                        *resolved,
+                        placement,
+                        mergedInst.sceneX,
+                        mergedInst.sceneZ,
+                        contourSceneX,
+                        contourSceneZ,
+                        mergedSceneHeight,
+                        applyContour,
+                        *cachedPreparedModel,
+                        *cachedPreparedLighting,
+                        bucket.transparent,
+                        debugOut,
+                        &buffer->vertices,
+                        &buffer->indices,
+                        &generatedElements,
+                        alloc);
+                } else {
+                    gs = appendLocPlacementGeometry(
+                        input,
+                        scene,
+                        *resolved,
+                        placement,
+                        mergedInst.sceneX,
+                        mergedInst.sceneZ,
+                        contourSceneX,
+                        contourSceneZ,
+                        mergedSceneHeight,
+                        applyContour,
+                        Span<const i32>(cachedModelIds.data(), cachedModelIds.size()),
+                        bucket.transparent,
+                        debugOut,
+                        &buffer->vertices,
+                        &buffer->indices,
+                        &generatedElements,
+                        alloc);
+                }
             }
             if (!ok(gs)) {
                 return gs;
@@ -2433,6 +2640,18 @@ static Status planLocCommandsFromMapLocBytes(
     if (!outPlan || !locTypeCache || !varbitCache || !seqTypeCache || !modelCache) {
         return Status::InvalidArgument;
     }
+    i32 sortPlacementsUs = 0;
+    i32 mergeNormalsUs = 0;
+    i32 placementLoopUs = 0;
+    i32 renderPlanUs = 0;
+    i32 animatedOrderUs = 0;
+    if (debugOut) {
+        debugOut->debugLocPlanSortPlacementsUs = 0;
+        debugOut->debugLocPlanMergeNormalsUs = 0;
+        debugOut->debugLocPlanPlacementLoopUs = 0;
+        debugOut->debugLocPlanRenderPlanUs = 0;
+        debugOut->debugLocPlanAnimatedOrderUs = 0;
+    }
     outPlan->groups.clear();
     outPlan->mergeBuckets.clear();
     outPlan->instancedOps.clear();
@@ -2440,6 +2659,13 @@ static Status planLocCommandsFromMapLocBytes(
     outPlan->animatedGroups.clear();
     Vec<LocModelVariantRef> modelRefs(alloc);
     Vec<LocCommandGroup> groups(alloc);
+    LocCommandGroupLookupIndex groupLookup(alloc);
+    {
+        auto rrReserveIndex = groupLookup.reserveForExpectedCount(scene.locPlacements.size());
+        if (!rrReserveIndex.isOk()) {
+            return rrReserveIndex.status();
+        }
+    }
     Vec<LocAnimatedPlaceholder> animatedEntries(alloc);
     Vec<LocAnimatedGroupPlan> animatedGroups(alloc);
     const i32 border = inferTerrainBorderSize(input.sizeX, input.sizeY);
@@ -2453,6 +2679,7 @@ static Status planLocCommandsFromMapLocBytes(
 
     Vec<i32> locPlacementOrder(alloc);
     {
+        const auto sortPlacementsStart = LocBuildClock::now();
         auto rr = locPlacementOrder.reserve(scene.locPlacements.size());
         if (!rr.isOk()) {
             return rr.status();
@@ -2465,36 +2692,38 @@ static Status planLocCommandsFromMapLocBytes(
         }
         // TS parity: SceneLocs walks level -> tileX -> tileY and then emits
         // floor/wall/wallDecoration/loc categories for each tile.
-        for (std::size_t i = 1; i < locPlacementOrder.size(); i++) {
-            const i32 cur = locPlacementOrder[i];
-            std::size_t j = i;
-            while (j > 0) {
-                const i32 prev = locPlacementOrder[j - 1];
-                const SceneLocPlacement& a = scene.locPlacements[static_cast<std::size_t>(cur)];
-                const SceneLocPlacement& b = scene.locPlacements[static_cast<std::size_t>(prev)];
+        sortInPlace(
+            locPlacementOrder.data(),
+            locPlacementOrder.size(),
+            [&](const i32 aIdx, const i32 bIdx) noexcept -> bool {
+                if (aIdx == bIdx) {
+                    return false;
+                }
+                if (aIdx < 0) {
+                    return true;
+                }
+                if (bIdx < 0) {
+                    return false;
+                }
+                const SceneLocPlacement& a = scene.locPlacements[static_cast<std::size_t>(aIdx)];
+                const SceneLocPlacement& b = scene.locPlacements[static_cast<std::size_t>(bIdx)];
                 const i32 catA = locPlacementCategoryForSceneOrder(a.type);
                 const i32 catB = locPlacementCategoryForSceneOrder(b.type);
-
-                bool less = false;
                 if (a.level != b.level) {
-                    less = a.level < b.level;
-                } else if (a.tileX != b.tileX) {
-                    less = a.tileX < b.tileX;
-                } else if (a.tileY != b.tileY) {
-                    less = a.tileY < b.tileY;
-                } else if (catA != catB) {
-                    less = catA < catB;
-                } else {
-                    less = cur < prev;
+                    return a.level < b.level;
                 }
-                if (!less) {
-                    break;
+                if (a.tileX != b.tileX) {
+                    return a.tileX < b.tileX;
                 }
-                locPlacementOrder[j] = locPlacementOrder[j - 1];
-                j--;
-            }
-            locPlacementOrder[j] = cur;
-        }
+                if (a.tileY != b.tileY) {
+                    return a.tileY < b.tileY;
+                }
+                if (catA != catB) {
+                    return catA < catB;
+                }
+                return aIdx < bIdx;
+            });
+        sortPlacementsUs = locElapsedUs(sortPlacementsStart);
     }
     i32 placementSerial = 0;
 
@@ -2516,6 +2745,7 @@ static Status planLocCommandsFromMapLocBytes(
 
     // Merge-normals preprocessing (TS Scene.light): build per-placement model stats/modelHash for
     // LocType.mergeNormals placements by merging vertex normals with neighbors and hiding occluded faces.
+    const auto mergeNormalsStart = LocBuildClock::now();
     outPlan->mergeNormalsEntries.clear();
     outPlan->mergeNormalsEntry0ByPlacement.clear();
     outPlan->mergeNormalsEntry1ByPlacement.clear();
@@ -2533,17 +2763,34 @@ static Status planLocCommandsFromMapLocBytes(
             outPlan->mergeNormalsEntry1ByPlacement[pi] = -1;
         }
 
-        // Helper: TS Scene.getCenterHeight.
+        // Helper: TS Scene.getCenterHeight. Precompute once for mergeNormals phase since
+        // this value is sampled repeatedly during neighborhood walks.
+        const std::size_t centerHeightCount =
+            static_cast<std::size_t>(scene.levels) *
+            static_cast<std::size_t>(scene.sizeX) *
+            static_cast<std::size_t>(scene.sizeY);
+        Vec<i32> centerHeights(alloc);
+        auto rrCenter = centerHeights.resize(centerHeightCount);
+        if (!rrCenter.isOk()) {
+            return rrCenter.status();
+        }
+        for (i32 level = 0; level < scene.levels; level++) {
+            for (i32 tileX = 0; tileX < scene.sizeX; tileX++) {
+                for (i32 tileY = 0; tileY < scene.sizeY; tileY++) {
+                    const i32 h00 = scene.height(level, tileX, tileY);
+                    const i32 h01 = scene.height(level, tileX, tileY + 1);
+                    const i32 h10 = scene.height(level, tileX + 1, tileY);
+                    const i32 h11 = scene.height(level, tileX + 1, tileY + 1);
+                    centerHeights[scene.tileIdx(level, tileX, tileY)] = (h00 + h01 + h10 + h11) >> 2;
+                }
+            }
+        }
         const auto centerHeightForTile = [&](i32 level, i32 tileX, i32 tileY) noexcept -> i32 {
             if (level < 0 || level >= scene.levels ||
                 tileX < 0 || tileY < 0 || tileX >= scene.sizeX || tileY >= scene.sizeY) {
                 return 0;
             }
-            const i32 h00 = scene.height(level, tileX, tileY);
-            const i32 h01 = scene.height(level, tileX, tileY + 1);
-            const i32 h10 = scene.height(level, tileX + 1, tileY);
-            const i32 h11 = scene.height(level, tileX + 1, tileY + 1);
-            return (h00 + h01 + h10 + h11) >> 2;
+            return centerHeights[scene.tileIdx(level, tileX, tileY)];
         };
 
         const auto computeBoundsForEntry = [&](MergeNormalsEntry* e) noexcept {
@@ -3853,6 +4100,9 @@ static Status planLocCommandsFromMapLocBytes(
         }
     }
 
+    mergeNormalsUs = locElapsedUs(mergeNormalsStart);
+
+    const auto placementLoopStart = LocBuildClock::now();
     for (std::size_t i = 0; i < locPlacementOrder.size(); i++) {
         const i32 placementIndex = locPlacementOrder[i];
         if (placementIndex < 0 || placementIndex >= static_cast<i32>(scene.locPlacements.size())) {
@@ -4641,22 +4891,23 @@ static Status planLocCommandsFromMapLocBytes(
 	                            tryMatchMergeNormalsEntryIndex(mergeNormalsEntryIndex0);
 	                            tryMatchMergeNormalsEntryIndex(mergeNormalsEntryIndex1);
 	                            const bool canUseMergeNormalsEntry = mergeNormalsEntryIndex >= 0;
-
-	                            const i32 groupIndex = findLocCommandGroupIndex(
-	                                Span<const LocCommandGroup>(groups.data(), groups.size()),
-	                                variantSignature,
-                                modelIdsHash,
-                                variantType,
-                                variantRotation,
-                                p.level,
-                                priority,
-                                forceMerge,
-                                contourSensitive,
-                                mergedSceneHeight,
-                                contourSceneX,
-                                contourSceneZ,
-                                mergedContour,
-                                contourProfileHash);
+                                const SceneLocCommandGroupKey groupKey{
+                                    .modelSignature = variantSignature,
+                                    .modelIdsHash = modelIdsHash,
+                                    .placementType = variantType,
+                                    .rotation = variantRotation,
+                                    .level = p.level,
+                                    .priority = priority,
+                                    .forceMerge = forceMerge,
+                                    .contourSensitive = contourSensitive,
+                                    .contourSceneHeight = mergedSceneHeight,
+                                    .contourSceneX = contourSceneX,
+                                    .contourSceneZ = contourSceneZ,
+                                    .contourGround = mergedContour,
+                                    .contourProfileHash = contourProfileHash,
+                                };
+                                i32 groupIndex = -1;
+                                (void)groupLookup.find(groupKey, &groupIndex);
 
                             i32 targetGroupIndex = groupIndex;
                             bool createdNewGroup = false;
@@ -4711,6 +4962,10 @@ static Status planLocCommandsFromMapLocBytes(
                                 }
                                 targetGroupIndex = static_cast<i32>(groups.size() - 1);
                                 createdNewGroup = true;
+                                auto rrInsertIndex = groupLookup.insertIfMissing(groupKey, targetGroupIndex);
+                                if (!rrInsertIndex.isOk()) {
+                                    return rrInsertIndex.status();
+                                }
                             }
 
                             if (targetGroupIndex < 0 ||
@@ -4892,12 +5147,14 @@ static Status planLocCommandsFromMapLocBytes(
                     debugOut->debugLocPlacementsQueuedAnyModel++;
                 }
         }
+    placementLoopUs = locElapsedUs(placementLoopStart);
 
     Vec<LocMergeBucket> mergeBuckets(alloc);
     Vec<LocInstancedOp> instancedOps(alloc);
     Vec<ModelInfo> instancedInstancesPool(alloc);
     Vec<ModelInfo> instancedLodInstancesPool(alloc);
 
+    const auto renderPlanStart = LocBuildClock::now();
     const Status planStatus = buildLocRenderCommandPlan(
         input,
         Span<const LocCommandGroup>(groups.data(), groups.size()),
@@ -4908,6 +5165,7 @@ static Status planLocCommandsFromMapLocBytes(
         &instancedLodInstancesPool,
         debugOut,
         alloc);
+    renderPlanUs = locElapsedUs(renderPlanStart);
     if (!ok(planStatus)) {
         return planStatus;
     }
@@ -4917,6 +5175,7 @@ static Status planLocCommandsFromMapLocBytes(
     // Our planning loop encounters placements in tile-scan order, but stores placeholders in a flat
     // list. Reorder them to the TS group-major order and reorder groups accordingly so frame-geometry
     // append order matches as well.
+    const auto animatedOrderStart = LocBuildClock::now();
     if (!animatedEntries.empty()) {
         Vec<LocAnimatedPlaceholder> sortedEntries(alloc);
         auto rrSorted = sortedEntries.resize(animatedEntries.size());
@@ -4934,24 +5193,28 @@ static Status planLocCommandsFromMapLocBytes(
             });
 
         Vec<i32> orderedGroupKeys(alloc);
+        I32LookupIndex seenGroupKeys(alloc);
         // At most one group per placeholder in the worst case.
         auto rrKeys = orderedGroupKeys.reserve(sortedEntries.size());
         if (!rrKeys.isOk()) {
             return rrKeys.status();
         }
+        auto rrSeenKeys = seenGroupKeys.reserveForExpectedCount(sortedEntries.size() + 1);
+        if (!rrSeenKeys.isOk()) {
+            return rrSeenKeys.status();
+        }
         for (std::size_t ei = 0; ei < sortedEntries.size(); ei++) {
             const i32 key = sortedEntries[ei].groupKey;
-            bool seen = false;
-            for (std::size_t ki = 0; ki < orderedGroupKeys.size(); ki++) {
-                if (orderedGroupKeys[ki] == key) {
-                    seen = true;
-                    break;
-                }
-            }
+            unsigned char seenValue = 0;
+            const bool seen = seenGroupKeys.find(key, &seenValue);
             if (!seen) {
                 auto rrKey = orderedGroupKeys.pushBack(key);
                 if (!rrKey.isOk()) {
                     return rrKey.status();
+                }
+                auto rrInsertKey = seenGroupKeys.insertIfMissing(key, static_cast<unsigned char>(1));
+                if (!rrInsertKey.isOk()) {
+                    return rrInsertKey.status();
                 }
             }
         }
@@ -5011,6 +5274,15 @@ static Status planLocCommandsFromMapLocBytes(
         animatedEntries = rs::move(orderedEntries);
     }
 
+    animatedOrderUs = locElapsedUs(animatedOrderStart);
+    if (debugOut) {
+        debugOut->debugLocPlanSortPlacementsUs = sortPlacementsUs;
+        debugOut->debugLocPlanMergeNormalsUs = mergeNormalsUs;
+        debugOut->debugLocPlanPlacementLoopUs = placementLoopUs;
+        debugOut->debugLocPlanRenderPlanUs = renderPlanUs;
+        debugOut->debugLocPlanAnimatedOrderUs = animatedOrderUs;
+    }
+
     outPlan->groups = rs::move(groups);
     outPlan->mergeBuckets = rs::move(mergeBuckets);
     outPlan->instancedOps = rs::move(instancedOps);
@@ -5035,27 +5307,39 @@ static Status executeLocCommandsFromPlan(
         return Status::InvalidArgument;
     }
     (void)seqTypeCache; // animated frames are appended later, after static scene geometry.
+    i32 executeInstancedUs = 0;
+    i32 executeMergedUs = 0;
+    if (debugOut) {
+        debugOut->debugLocExecuteInstancedUs = 0;
+        debugOut->debugLocExecuteMergedUs = 0;
+    }
 
     Vec<i32> groupModelIds(alloc);
 
-	    const Status instancedStatus = executeLocInstancedOps(
-	        input,
-	        scene,
-	        Span<LocCommandGroup>(plan->groups.data(), plan->groups.size()),
-	        Span<const LocInstancedOp>(plan->instancedOps.data(), plan->instancedOps.size()),
-	        Span<const ModelInfo>(plan->instancedInstancesPool.data(), plan->instancedInstancesPool.size()),
-	        Span<const ModelInfo>(plan->instancedLodInstancesPool.data(), plan->instancedLodInstancesPool.size()),
-	        Span<const MergeNormalsEntry>(plan->mergeNormalsEntries.data(), plan->mergeNormalsEntries.size()),
-	        buffer,
-	        &groupModelIds,
-	        indexCount,
-	        locTypeCache,
+    const auto executeInstancedStart = LocBuildClock::now();
+    const Status instancedStatus = executeLocInstancedOps(
+        input,
+        scene,
+        Span<LocCommandGroup>(plan->groups.data(), plan->groups.size()),
+        Span<const LocInstancedOp>(plan->instancedOps.data(), plan->instancedOps.size()),
+        Span<const ModelInfo>(plan->instancedInstancesPool.data(), plan->instancedInstancesPool.size()),
+        Span<const ModelInfo>(plan->instancedLodInstancesPool.data(), plan->instancedLodInstancesPool.size()),
+        Span<const MergeNormalsEntry>(plan->mergeNormalsEntries.data(), plan->mergeNormalsEntries.size()),
+        buffer,
+        &groupModelIds,
+        indexCount,
+        locTypeCache,
         debugOut,
         alloc);
+    executeInstancedUs = locElapsedUs(executeInstancedStart);
+    if (debugOut) {
+        debugOut->debugLocExecuteInstancedUs = executeInstancedUs;
+    }
     if (!ok(instancedStatus)) {
         return instancedStatus;
     }
 
+    const auto executeMergedStart = LocBuildClock::now();
     const Status mergedStatus = executeLocMergeBuckets(
         input,
         scene,
@@ -5068,6 +5352,10 @@ static Status executeLocCommandsFromPlan(
         locTypeCache,
         debugOut,
         alloc);
+    executeMergedUs = locElapsedUs(executeMergedStart);
+    if (debugOut) {
+        debugOut->debugLocExecuteMergedUs = executeMergedUs;
+    }
     if (!ok(mergedStatus)) {
         return mergedStatus;
     }
@@ -5589,8 +5877,13 @@ Status emitLocCommandsFromMapLocBytes(
     if (outAnimatedEntries) {
         outAnimatedEntries->clear();
     }
+    if (debugOut) {
+        debugOut->debugLocPlanTotalUs = 0;
+        debugOut->debugLocExecuteTotalUs = 0;
+    }
 
     LocCommandPlan plan(alloc);
+    const auto locPlanStart = LocBuildClock::now();
     const Status ps = planLocCommandsFromMapLocBytes(
         input,
         scene,
@@ -5603,6 +5896,10 @@ Status emitLocCommandsFromMapLocBytes(
         debugOut,
         &plan,
         alloc);
+    const i32 locPlanUs = locElapsedUs(locPlanStart);
+    if (debugOut) {
+        debugOut->debugLocPlanTotalUs = locPlanUs;
+    }
     if (!ok(ps)) {
         return ps;
     }
@@ -5613,7 +5910,8 @@ Status emitLocCommandsFromMapLocBytes(
     if (outAnimatedEntries) {
         *outAnimatedEntries = rs::move(plan.animatedEntries);
     }
-    return executeLocCommandsFromPlan(
+    const auto locExecuteStart = LocBuildClock::now();
+    const Status execStatus = executeLocCommandsFromPlan(
         input,
         scene,
         buffer,
@@ -5623,6 +5921,11 @@ Status emitLocCommandsFromMapLocBytes(
         &plan,
         debugOut,
         alloc);
+    const i32 locExecuteUs = locElapsedUs(locExecuteStart);
+    if (debugOut) {
+        debugOut->debugLocExecuteTotalUs = locExecuteUs;
+    }
+    return execStatus;
 }
 
 Status emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(

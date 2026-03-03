@@ -1,3 +1,5 @@
+import { MAP_RENDER_RUNTIME_STATUS_OK } from "./MapRenderRuntimeStatus.mjs";
+
 let backendModulePromise;
 let backendModuleInstance;
 const runtimeTickOutputByHandle = new Map();
@@ -18,9 +20,9 @@ const TICK_FIELD_LOC_ANIM_MAYA_DURATIONS = 4;
 const TICK_FIELD_LOC_FRAME_LENGTH_OFFSETS = 5;
 const TICK_FIELD_LOC_FRAME_LENGTH_COUNTS = 6;
 const TICK_FIELD_LOC_FRAME_LENGTHS_PACKED = 7;
-const RUNTIME_STATUS_OK = 1;
 const RUNTIME_PACKET_META_LENGTH = 46;
 const RUNTIME_PACKET_VERSION = 3;
+const RUNTIME_BUILD_STAGE_TIMINGS_LENGTH = 32;
 
 
 function createWasmModuleLocator(path) {
@@ -191,6 +193,10 @@ function getRuntimeCacheClearAllBlobsExport(backendModule) {
 
 function getRuntimeDebugGetLastBuildFailureExport(backendModule) {
     return backendModule._rs_map_render_runtime_debug_get_last_build_failure;
+}
+
+function getRuntimeDebugGetLastBuildStageTimingsExport(backendModule) {
+    return backendModule._rs_map_render_runtime_debug_get_last_build_stage_timings;
 }
 
 function getRuntimeDebugGetLastCollectMapInputExport(backendModule) {
@@ -1469,7 +1475,7 @@ function runtimeDebugGetLastBuildFailureWithWasm(backendModule, runtimeHandle) {
     }
     try {
         const status = fn(runtimeHandle | 0, outPtr, 4) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 4);
@@ -1478,6 +1484,63 @@ function runtimeDebugGetLastBuildFailureWithWasm(backendModule, runtimeHandle) {
             status: out[1] | 0,
             detail0: out[2] | 0,
             detail1: out[3] | 0,
+        };
+    } finally {
+        backendModule._free(outPtr);
+    }
+}
+
+function runtimeDebugGetLastBuildStageTimingsWithWasm(backendModule, runtimeHandle) {
+    const fn = getRuntimeDebugGetLastBuildStageTimingsExport(backendModule);
+    if (typeof fn !== "function") {
+        return undefined;
+    }
+    const outPtr = mallocI32(backendModule, RUNTIME_BUILD_STAGE_TIMINGS_LENGTH);
+    if (!outPtr) {
+        return undefined;
+    }
+    try {
+        const status = fn(runtimeHandle | 0, outPtr, RUNTIME_BUILD_STAGE_TIMINGS_LENGTH) | 0;
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
+            return undefined;
+        }
+        const out = backendModule.HEAP32.slice(
+            outPtr >> 2,
+            (outPtr >> 2) + RUNTIME_BUILD_STAGE_TIMINGS_LENGTH,
+        );
+        return {
+            totalUs: out[0] | 0,
+            collectMapInputUs: out[1] | 0,
+            seedHashUs: out[2] | 0,
+            buildCommandStreamUs: out[3] | 0,
+            registerTickStateUs: out[4] | 0,
+            planPayloadUs: out[5] | 0,
+            buildPayloadUs: out[6] | 0,
+            storePayloadUs: out[7] | 0,
+            buildNpcUs: out[8] | 0,
+            deriveUsedTextureIdsUs: out[9] | 0,
+            finalizePayloadUs: out[10] | 0,
+            commandPrepareInputUs: out[11] | 0,
+            commandCoreBuildUs: out[12] | 0,
+            commandValidateUs: out[13] | 0,
+            commandCopyBuffersUs: out[14] | 0,
+            commandCopyDebugUs: out[15] | 0,
+            commandSetupUs: out[16] | 0,
+            commandSceneBuildUs: out[17] | 0,
+            commandTerrainUs: out[18] | 0,
+            commandLocUs: out[19] | 0,
+            commandObjUs: out[20] | 0,
+            commandFinalizeUs: out[21] | 0,
+            commandLocPlanUs: out[22] | 0,
+            commandLocPlanSortUs: out[23] | 0,
+            commandLocPlanMergeNormalsUs: out[24] | 0,
+            commandLocPlanPlacementLoopUs: out[25] | 0,
+            commandLocPlanRenderPlanUs: out[26] | 0,
+            commandLocPlanAnimatedOrderUs: out[27] | 0,
+            commandLocExecuteUs: out[28] | 0,
+            commandLocExecuteInstancedUs: out[29] | 0,
+            commandLocExecuteMergedUs: out[30] | 0,
+            commandFinalizeAnimatedLocUs: out[31] | 0,
         };
     } finally {
         backendModule._free(outPtr);
@@ -1495,7 +1558,7 @@ function runtimeDebugGetLastCollectMapInputWithWasm(backendModule, runtimeHandle
     }
     try {
         const status = fn(runtimeHandle | 0, outPtr, 12) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 12);
@@ -1529,7 +1592,7 @@ function runtimeDebugGetLastCommandStreamStatusWithWasm(backendModule, runtimeHa
     }
     try {
         const status = fn(runtimeHandle | 0, outPtr, 1) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         return backendModule.HEAP32[outPtr >> 2] | 0;
@@ -1549,7 +1612,7 @@ function runtimeDebugGetLastLegacyModelLoadWithWasm(backendModule, runtimeHandle
     }
     try {
         const status = fn(runtimeHandle | 0, outPtr, 3) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 3);
@@ -1574,7 +1637,7 @@ function runtimeDebugGetLastMissingTypeWithWasm(backendModule, runtimeHandle) {
     }
     try {
         const status = fn(runtimeHandle | 0, outPtr, 2) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 2);
@@ -1598,7 +1661,7 @@ function runtimeDebugGetLastNpcBuildStatsWithWasm(backendModule, runtimeHandle) 
     }
     try {
         const status = fn(runtimeHandle | 0, outPtr, 12) | 0;
-        if (status !== RUNTIME_STATUS_OK) {
+        if (status !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         const out = backendModule.HEAP32.slice(outPtr >> 2, (outPtr >> 2) + 12);
@@ -1628,7 +1691,7 @@ function runtimeCacheSetBuildConfigWithWasm(
 ) {
     const setBuildConfig = getRuntimeCacheSetBuildConfigExport(backendModule);
     if (typeof setBuildConfig !== "function") {
-        return RUNTIME_STATUS_OK;
+        return MAP_RENDER_RUNTIME_STATUS_OK;
     }
     const unitsTileHeightBasis =
         (sceneBuildInput?.unitsTileHeightBasis | 0) > 0
@@ -1789,37 +1852,15 @@ function runtimeBuildMapPacketFromCacheWithWasm(backendModule, runtimeHandle, re
             request?.loadNpcs === false ? 0 : 1,
             outHandlePtr,
         ) | 0;
-        if (buildStatus !== 1) {
-            console.warn("[map-render-backend] buildMapPacketFromCache failed", {
-                runtimeHandle: runtimeHandle | 0,
-                mapX: request?.mapX | 0,
-                mapY: request?.mapY | 0,
-                borderSize: request?.borderSize | 0,
-                sizeX: request?.sizeX | 0,
-                sizeY: request?.sizeY | 0,
-                buildStatus,
-            });
+        if (buildStatus !== MAP_RENDER_RUNTIME_STATUS_OK) {
             return undefined;
         }
         packetHandle = backendModule.HEAP32[outHandlePtr >> 2] | 0;
         if (packetHandle <= 0) {
-            console.warn("[map-render-backend] buildMapPacketFromCache produced invalid packet handle", {
-                runtimeHandle: runtimeHandle | 0,
-                mapX: request?.mapX | 0,
-                mapY: request?.mapY | 0,
-                packetHandle,
-            });
             return undefined;
         }
         const metaStatus = getPacketMeta(packetHandle | 0, metaPtr, metaLength) | 0;
-        if (metaStatus !== 1) {
-            console.warn("[map-render-backend] buildMapPacketFromCache getPacketMeta failed", {
-                runtimeHandle: runtimeHandle | 0,
-                mapX: request?.mapX | 0,
-                mapY: request?.mapY | 0,
-                packetHandle,
-                metaStatus,
-            });
+        if (metaStatus !== MAP_RENDER_RUNTIME_STATUS_OK) {
             releasePacket(packetHandle | 0);
             return undefined;
         }
@@ -1829,14 +1870,6 @@ function runtimeBuildMapPacketFromCacheWithWasm(backendModule, runtimeHandle, re
         // before returning to the caller.
         releasePacket(packetHandle | 0);
         packetHandle = 0;
-        if (!parsed) {
-            console.warn("[map-render-backend] buildMapPacketFromCache failed to parse packet meta", {
-                runtimeHandle: runtimeHandle | 0,
-                mapX: request?.mapX | 0,
-                mapY: request?.mapY | 0,
-                packetHandle,
-            });
-        }
         return parsed;
     } finally {
         if ((packetHandle | 0) > 0) {
@@ -1844,6 +1877,53 @@ function runtimeBuildMapPacketFromCacheWithWasm(backendModule, runtimeHandle, re
         }
         backendModule._free(outHandlePtr);
         backendModule._free(metaPtr);
+    }
+}
+
+function runtimeProbeBuildMapPacketFromCacheStatusWithWasm(backendModule, runtimeHandle, request) {
+    const buildMapPacketHandleFromCache = getRuntimeBuildMapPacketHandleFromCacheExport(backendModule);
+    const releasePacket = getRuntimeReleasePacketExport(backendModule);
+    if (
+        typeof buildMapPacketHandleFromCache !== "function" ||
+        typeof releasePacket !== "function"
+    ) {
+        return -1;
+    }
+
+    const outHandlePtr = mallocI32(backendModule, 1);
+    if (!outHandlePtr) {
+        return -1;
+    }
+    let packetHandle = 0;
+    try {
+        const status = buildMapPacketHandleFromCache(
+            runtimeHandle | 0,
+            request?.mapX | 0,
+            request?.mapY | 0,
+            request?.borderSize | 0,
+            request?.sizeX | 0,
+            request?.sizeY | 0,
+            request?.smoothTerrain ? 1 : 0,
+            request?.locLoadType | 0,
+            request?.minimizeDrawCalls === true ? 1 : 0,
+            request?.loadLocs === false ? 0 : 1,
+            request?.loadObjs === false ? 0 : 1,
+            request?.loadNpcs === false ? 0 : 1,
+            outHandlePtr,
+        ) | 0;
+        if (status === MAP_RENDER_RUNTIME_STATUS_OK) {
+            packetHandle = backendModule.HEAP32[outHandlePtr >> 2] | 0;
+            if (packetHandle > 0) {
+                releasePacket(packetHandle | 0);
+                packetHandle = 0;
+            }
+        }
+        return status | 0;
+    } finally {
+        if ((packetHandle | 0) > 0) {
+            releasePacket(packetHandle | 0);
+        }
+        backendModule._free(outHandlePtr);
     }
 }
 export const mapRenderRuntimeBridge = {
@@ -1942,6 +2022,13 @@ export const mapRenderRuntimeBridge = {
         }
         return runtimeDebugGetLastBuildFailureWithWasm(backendModule, runtimeHandle);
     },
+    async debugGetLastBuildStageTimings(runtimeHandle) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return undefined;
+        }
+        return runtimeDebugGetLastBuildStageTimingsWithWasm(backendModule, runtimeHandle);
+    },
     async debugGetLastCollectMapInput(runtimeHandle) {
         const backendModule = await tryLoadBackendModule();
         if (!backendModule) {
@@ -2004,6 +2091,17 @@ export const mapRenderRuntimeBridge = {
             return undefined;
         }
         return runtimeBuildMapPacketFromCacheWithWasm(backendModule, runtimeHandle, request);
+    },
+    async probeBuildMapPacketFromCacheStatus(runtimeHandle, request) {
+        const backendModule = await tryLoadBackendModule();
+        if (!backendModule) {
+            return -1;
+        }
+        return runtimeProbeBuildMapPacketFromCacheStatusWithWasm(
+            backendModule,
+            runtimeHandle,
+            request,
+        );
     },
     setTickState(runtimeHandle, stateKey, input) {
         if (!backendModuleInstance) {

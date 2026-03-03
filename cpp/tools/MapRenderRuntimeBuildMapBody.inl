@@ -19,6 +19,32 @@ runtime->debugLastBuildFailureStage = kBuildFailNone;
 runtime->debugLastBuildFailureStatus = 0;
 runtime->debugLastBuildFailureDetail0 = 0;
 runtime->debugLastBuildFailureDetail1 = 0;
+runtime->debugLastBuildStageTimingsUs.fill(0);
+
+using BuildClock = std::chrono::steady_clock;
+const auto buildStart = BuildClock::now();
+const auto elapsedUs = [](const BuildClock::time_point start) noexcept -> rs::i32 {
+    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+        BuildClock::now() - start);
+    if (us.count() > static_cast<long long>(std::numeric_limits<rs::i32>::max())) {
+        return std::numeric_limits<rs::i32>::max();
+    }
+    if (us.count() < 0) {
+        return 0;
+    }
+    return static_cast<rs::i32>(us.count());
+};
+const auto recordTotalTiming = [&]() noexcept {
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingTotalUs)] =
+        elapsedUs(buildStart);
+};
+const auto failBuild = [&](const rs::i32 stage,
+                           const rs::i32 status,
+                           const rs::i32 detail0 = 0,
+                           const rs::i32 detail1 = 0) noexcept -> rs::i32 {
+    recordTotalTiming();
+    return recordBuildFailure(runtime, stage, status, detail0, detail1);
+};
 
 const rs::i32 baseX = mapX * kMapSquareSize - borderSize;
 const rs::i32 baseY = mapY * kMapSquareSize - borderSize;
@@ -32,6 +58,7 @@ std::vector<rs::i32> locLengths;
 std::vector<rs::u8> locBytes;
 CollectRuntimeCachedMapInputDebug collectDebug{};
 
+const auto collectStart = BuildClock::now();
 const rs::i32 collectStatus = collectRuntimeCachedMapInput(
     *runtime,
     baseX,
@@ -58,11 +85,12 @@ runtime->debugLastCollectMapInputSquaresWithTerrain = collectDebug.squaresWithTe
 runtime->debugLastCollectMapInputSquaresWithLoc = collectDebug.squaresWithLoc;
 runtime->debugLastCollectMapInputFirstPresentMapSquareId = collectDebug.firstPresentMapSquareId;
 runtime->debugLastCollectMapInputFirstMissingMapSquareId = collectDebug.firstMissingMapSquareId;
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingCollectMapInputUs)] =
+    elapsedUs(collectStart);
 if (collectStatus != RS_MAP_RENDER_STATUS_OK &&
     !(collectStatus == RS_MAP_RENDER_STATUS_NOT_FOUND &&
       collectDebug.reason == kCollectMapInputReasonNoSquaresInWindow)) {
-    return recordBuildFailure(
-        runtime,
+    return failBuild(
         kBuildFailCollectMapInput,
         collectStatus,
         collectDebug.reason,
@@ -70,6 +98,7 @@ if (collectStatus != RS_MAP_RENDER_STATUS_OK &&
 }
 
 rs::i32 cacheSeedHash = 0;
+const auto seedHashStart = BuildClock::now();
 const rs::i32 cacheSeedStatus = computeSeedTileHeightsHashFromMapInput(
     baseX,
     baseY,
@@ -93,64 +122,68 @@ const rs::i32 cacheSeedStatus = computeSeedTileHeightsHashFromMapInput(
 if (cacheSeedStatus == RS_MAP_RENDER_STATUS_OK) {
     runtime->debugLastMapInputHashCache = cacheSeedHash;
 }
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingSeedHashUs)] =
+    elapsedUs(seedHashStart);
 
-	MapRenderCachedCommandStream commandStream{};
-	rs::SceneLocAnimatedTickInit locTickInit{};
-	rs::Status commandStreamStatus = rs::Status::Ok;
-	const RuntimeCommandStreamBuildResult nativeBuildResult =
-	    tryBuildRuntimeCommandStreamFromBytes(
-	        runtime,
-	        baseX,
-	        baseY,
-	        sizeX,
-	        sizeY,
-	        smoothTerrain,
-	        locLoadType,
-	        minimizeDrawCalls,
-	        loadLocs,
-	        loadObjs,
-	        mapSquareIds,
-	        terrainOffsets,
-	        terrainLengths,
-	        terrainBytes,
-	        locOffsets,
-	        locLengths,
-	        locBytes,
-	        !buildPayload,
-	        &commandStream,
-	        &commandStreamStatus,
-	        buildPayload ? &locTickInit : nullptr);
-	if (nativeBuildResult != RuntimeCommandStreamBuildResult::Built || !commandStream.loaded) {
-	    runtime->lastBuiltCommandStream.clear();
-	    return recordBuildFailure(
-	        runtime,
+MapRenderCachedCommandStream commandStream{};
+rs::SceneLocAnimatedTickInit locTickInit{};
+rs::Status commandStreamStatus = rs::Status::Ok;
+const auto commandStreamStart = BuildClock::now();
+const RuntimeCommandStreamBuildResult nativeBuildResult =
+    tryBuildRuntimeCommandStreamFromBytes(
+        runtime,
+        baseX,
+        baseY,
+        sizeX,
+        sizeY,
+        smoothTerrain,
+        locLoadType,
+        minimizeDrawCalls,
+        loadLocs,
+        loadObjs,
+        mapSquareIds,
+        terrainOffsets,
+        terrainLengths,
+        terrainBytes,
+        locOffsets,
+        locLengths,
+        locBytes,
+        !buildPayload,
+        &commandStream,
+        &commandStreamStatus,
+        buildPayload ? &locTickInit : nullptr);
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingBuildCommandStreamUs)] =
+    elapsedUs(commandStreamStart);
+if (nativeBuildResult != RuntimeCommandStreamBuildResult::Built || !commandStream.loaded) {
+    runtime->lastBuiltCommandStream.clear();
+    return failBuild(
         kBuildFailCommandStream,
         RS_MAP_RENDER_STATUS_STATE,
         static_cast<rs::i32>(commandStreamStatus),
         static_cast<rs::i32>(nativeBuildResult));
-	}
-	runtime->lastBuiltCommandStream = commandStream;
-	if (buildPayload) {
-	    runtime->lastBuiltCommandStreamFull = commandStream;
-	}
+}
+runtime->lastBuiltCommandStream = commandStream;
+if (buildPayload) {
+    runtime->lastBuiltCommandStreamFull = commandStream;
+}
 
-	// If any resource lookups recorded missing blob keys (legacy model/seq files, type-entry bytes, etc),
-	// treat this as "not found" so the worker/parity loop can upload the missing blobs and retry.
-	// Otherwise we'll silently build an incomplete scene (skipping mergeNormals/geometry) and diverge
-	// from the TS path that has the bytes available.
-	if (!runtime->lastMissingBlobTriples.empty()) {
-	    runtime->lastBuiltCommandStream.clear();
-	    return recordBuildFailure(
-	        runtime,
-	        kBuildFailCommandStream,
-	        RS_MAP_RENDER_STATUS_NOT_FOUND,
-	        static_cast<rs::i32>(runtime->lastMissingBlobTriples.size() / 3U),
-	        0);
-	}
+// If any resource lookups recorded missing blob keys (legacy model/seq files, type-entry bytes, etc),
+// treat this as "not found" so the worker/parity loop can upload the missing blobs and retry.
+// Otherwise we'll silently build an incomplete scene (skipping mergeNormals/geometry) and diverge
+// from the TS path that has the bytes available.
+if (!runtime->lastMissingBlobTriples.empty()) {
+    runtime->lastBuiltCommandStream.clear();
+    return failBuild(
+        kBuildFailCommandStream,
+        RS_MAP_RENDER_STATUS_NOT_FOUND,
+        static_cast<rs::i32>(runtime->lastMissingBlobTriples.size() / 3U),
+        0);
+}
 
-	// If loc-animation tick init data was captured, register per-map tick state directly in the
-	// runtime so TS does not need to pre-pack tick state fields.
-	{
+// If loc-animation tick init data was captured, register per-map tick state directly in the
+// runtime so TS does not need to pre-pack tick state fields.
+const auto registerTickStart = BuildClock::now();
+{
 	    const rs::i32 mapId = (((mapX | 0) & 0xff) << 8) | ((mapY | 0) & 0xff);
 	    const std::size_t locCount = locTickInit.locSeqIds.size();
 	    MapRenderTickState tickState{};
@@ -272,22 +305,34 @@ if (cacheSeedStatus == RS_MAP_RENDER_STATUS_OK) {
 	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAME_COUNTS_ALPHA)] = copyRsVec(locTickInit.locAnimFrameCountsAlpha);
 	    tickState.fields[static_cast<std::size_t>(TICK_FIELD_LOC_ANIM_FRAMES_ALPHA_PACKED)] = copyRsVec(locTickInit.locAnimFramesAlphaPacked);
 
-	    runtime->tickStates[mapId] = std::move(tickState);
-	}
+    runtime->tickStates[mapId] = std::move(tickState);
+}
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingRegisterTickStateUs)] =
+    elapsedUs(registerTickStart);
 
-	if (!buildPayload) {
-	    runtime->mapPayload.clear();
-	    runtime->payloadGeneration++;
-	    clearPacketHandlesForRuntime(runtimeHandle);
+if (!buildPayload) {
+    const auto finalizeStart = BuildClock::now();
+    runtime->mapPayload.clear();
+    runtime->payloadGeneration++;
+    clearPacketHandlesForRuntime(runtimeHandle);
     runtime->debugLastBuildFailureStage = kBuildFailNone;
+    runtime->debugLastBuildFailureStatus = 0;
+    runtime->debugLastBuildFailureDetail0 = 0;
+    runtime->debugLastBuildFailureDetail1 = 0;
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingFinalizePayloadUs)] =
+        elapsedUs(finalizeStart);
+    recordTotalTiming();
     return RS_MAP_RENDER_STATUS_OK;
 }
 
+const auto planPayloadStart = BuildClock::now();
 const rs::i32 totalCmdCount = static_cast<rs::i32>(commandStream.cmdOffsets.size());
 if (commandStream.cmdBucketIndices.size() != commandStream.cmdOffsets.size() ||
     commandStream.cmdElements.size() != commandStream.cmdOffsets.size() ||
     commandStream.cmdInstanceCounts.size() != commandStream.cmdOffsets.size()) {
-    return recordBuildFailure(runtime, kBuildFailPlanPayload, RS_MAP_RENDER_STATUS_STATE);
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingPlanPayloadUs)] =
+        elapsedUs(planPayloadStart);
+    return failBuild(kBuildFailPlanPayload, RS_MAP_RENDER_STATUS_STATE);
 }
 
 std::array<rs::i32, kRuntimeDrawBucketCount> runtimeScratchBucketCmdCounts{};
@@ -303,8 +348,9 @@ const rs::i32 planStatus = planCommandStreamBucketsAndModelInfo(
     static_cast<rs::i32>(runtimeScratchBucketModelInfoLengths.size()),
     &runtimeScratchPlannedTotalModelInfoLength);
 if (planStatus != RS_MAP_RENDER_STATUS_OK || runtimeScratchPlannedTotalModelInfoLength < 0) {
-    return recordBuildFailure(
-        runtime,
+    runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingPlanPayloadUs)] =
+        elapsedUs(planPayloadStart);
+    return failBuild(
         kBuildFailPlanPayload,
         RS_MAP_RENDER_STATUS_STATE,
         planStatus,
@@ -322,7 +368,10 @@ std::vector<rs::i16> runtimeScratchHeightMap(
 std::vector<rs::i32> runtimeScratchDrawRanges(
     static_cast<std::size_t>(totalCmdCount) * 3U);
 rs::i32 runtimeScratchTotalModelInfoLength = 0;
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingPlanPayloadUs)] =
+    elapsedUs(planPayloadStart);
 
+const auto buildPayloadStart = BuildClock::now();
 const rs::i32 buildStatus =
     rs_build_map_payload_from_map_squares_and_command_stream_internal(
         baseX,
@@ -361,11 +410,13 @@ const rs::i32 buildStatus =
         static_cast<rs::i32>(runtimeScratchModelInfoTextureConcat.size()),
         runtimeScratchHeightMap.data(),
         static_cast<rs::i32>(runtimeScratchHeightMap.size()));
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingBuildPayloadUs)] =
+    elapsedUs(buildPayloadStart);
 if (buildStatus != RS_MAP_RENDER_STATUS_OK) {
     runtime->mapPayload.clear();
     runtime->payloadGeneration++;
     clearPacketHandlesForRuntime(runtimeHandle);
-    return recordBuildFailure(runtime, kBuildFailBuildPayload, buildStatus);
+    return failBuild(kBuildFailBuildPayload, buildStatus);
 }
 // Geometry is expected to come from the cached command stream.
 const rs::u8* runtimeGeometryVertices =
@@ -377,6 +428,7 @@ const rs::i32* runtimeGeometryIndices =
 const rs::i32 runtimeGeometryIndicesLength =
     static_cast<rs::i32>(commandStream.indices.size());
 
+const auto storePayloadStart = BuildClock::now();
 const rs::i32 storeStatus = rs::tooling::storeLoadedPayload(
     &runtime->mapPayload,
     runtimeScratchBucketCmdCounts.data(),
@@ -400,11 +452,13 @@ const rs::i32 storeStatus = rs::tooling::storeLoadedPayload(
     sizeX,
     sizeY,
     runtime->cache.unitsTileHeightBasis);
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingStorePayloadUs)] =
+    elapsedUs(storePayloadStart);
 if (storeStatus != 1) {
     runtime->mapPayload.clear();
     runtime->payloadGeneration++;
     clearPacketHandlesForRuntime(runtimeHandle);
-    return recordBuildFailure(runtime, kBuildFailStorePayload, RS_MAP_RENDER_STATUS_STATE, storeStatus, 0);
+    return failBuild(kBuildFailStorePayload, RS_MAP_RENDER_STATUS_STATE, storeStatus, 0);
 }
 
 runtime->debugLastNpcBuildStatus = 0;
@@ -419,6 +473,7 @@ runtime->debugLastNpcSpawnsWithGeometry = 0;
 runtime->debugLastNpcDrawRangeCount = 0;
 runtime->debugLastNpcVertexBytes = 0;
 runtime->debugLastNpcIndexCount = 0;
+const auto buildNpcStart = BuildClock::now();
 if ((loadNpcs | 0) != 0) {
     rs::CacheInfo cacheInfo{};
     cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
@@ -441,6 +496,8 @@ if ((loadNpcs | 0) != 0) {
         runtime->mapPayload.npcOrderKeys.clear();
     }
 }
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingBuildNpcUs)] =
+    elapsedUs(buildNpcStart);
 
 // Derive used texture ids from packed vertices so TS can drive texture residency without
 // building a full TS SceneBuffer scaffold.
@@ -448,6 +505,7 @@ if ((loadNpcs | 0) != 0) {
 // Vertex format stores 0-based indices into the runtime `textureIds` list; shader adds +1.
 // Decode both primary and blended texture ids and map back to raw texture ids using the
 // uploaded SD texture id list (domain=109).
+const auto deriveTexturesStart = BuildClock::now();
 {
     std::vector<rs::i32> textureIds{};
     collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, &textureIds);
@@ -500,6 +558,9 @@ if ((loadNpcs | 0) != 0) {
         }
     }
 }
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingDeriveUsedTextureIdsUs)] =
+    elapsedUs(deriveTexturesStart);
+const auto finalizeStart = BuildClock::now();
 runtime->payloadGeneration++;
 clearPacketHandlesForRuntime(runtimeHandle);
 runtime->debugLastCacheScratchHeightHash = static_cast<rs::i32>(
@@ -508,5 +569,8 @@ runtime->debugLastBuildFailureStage = kBuildFailNone;
 runtime->debugLastBuildFailureStatus = 0;
 runtime->debugLastBuildFailureDetail0 = 0;
 runtime->debugLastBuildFailureDetail1 = 0;
+runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingFinalizePayloadUs)] =
+    elapsedUs(finalizeStart);
+recordTotalTiming();
 
 return RS_MAP_RENDER_STATUS_OK;

@@ -13,10 +13,11 @@
 // We intentionally reuse the main bridge loader so scripts and debug helpers share the same
 // wasm module instance (otherwise runtime handles would not be valid across modules).
 import { tryLoadBackendModule } from "./rs_map_render_backend_bridge.mjs";
+import { MAP_RENDER_RUNTIME_STATUS_OK } from "./MapRenderRuntimeStatus.mjs";
 
 export { tryLoadBackendModule };
 
-const RUNTIME_STATUS_OK = 1;
+const RUNTIME_STATUS_OK = MAP_RENDER_RUNTIME_STATUS_OK;
 const RUNTIME_BUILD_DEBUG_STATS_LENGTH = 65;
 
 function mallocI32(backendModule, length) {

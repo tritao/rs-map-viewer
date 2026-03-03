@@ -23,13 +23,28 @@
 #include "TerrainTileBuilder.hpp"
 #include "TerrainTileSampler.hpp"
 
+#include <chrono>
 #include <cstdio>
+#include <limits>
 
 #include "../../third_party/xxhash/xxhash.h"
 
 namespace rs {
 
 namespace scb {
+
+using BuildClock = std::chrono::steady_clock;
+
+static i32 elapsedUs(const BuildClock::time_point start) noexcept {
+    const auto us = std::chrono::duration_cast<std::chrono::microseconds>(BuildClock::now() - start);
+    if (us.count() > static_cast<long long>(std::numeric_limits<i32>::max())) {
+        return std::numeric_limits<i32>::max();
+    }
+    if (us.count() < 0) {
+        return 0;
+    }
+    return static_cast<i32>(us.count());
+}
 
 static Status tryDecodeModelDataById(
     const SceneCommandBuildInput& input,
@@ -4334,6 +4349,59 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
     const i32 contourX = contourPxX;
     const i32 contourZ = contourPxZ;
 
+    struct TextureLookupCacheEntry final {
+        i32 textureId = -1;
+        i32 packedTextureId = -1;
+        u8 hasTexture = 0;
+        u8 textureAlpha = 0;
+    };
+    constexpr i32 kTextureLookupCacheCapacity = 64;
+    TextureLookupCacheEntry textureLookupCache[kTextureLookupCacheCapacity];
+    i32 textureLookupCount = 0;
+    const auto resolveTextureLookup =
+        [&](i32 textureId, bool* outHasTexture, bool* outTextureAlpha, i32* outPackedTextureId) noexcept -> Status {
+            if (!outHasTexture || !outTextureAlpha || !outPackedTextureId) {
+                return Status::InvalidArgument;
+            }
+            if (textureId < 0) {
+                *outHasTexture = false;
+                *outTextureAlpha = false;
+                *outPackedTextureId = -1;
+                return Status::Ok;
+            }
+            for (i32 i = 0; i < textureLookupCount; i++) {
+                const TextureLookupCacheEntry& e = textureLookupCache[static_cast<std::size_t>(i)];
+                if (e.textureId == textureId) {
+                    *outHasTexture = e.hasTexture != 0;
+                    *outTextureAlpha = e.textureAlpha != 0;
+                    *outPackedTextureId = e.packedTextureId;
+                    return Status::Ok;
+                }
+            }
+
+            const i32 sdIndex = findTypeBlobIndex(input.textureIds, textureId);
+            const bool hasTexture = sdIndex >= 0;
+            const i32 packedTextureId =
+                hasTexture && sdIndex < RS_SD_TEXTURE_PACK_LIMIT ? sdIndex : -1;
+            const bool textureAlpha =
+                hasTexture &&
+                findTypeBlobIndex(input.textureTransparentIds, textureId) >= 0;
+
+            if (textureLookupCount < kTextureLookupCacheCapacity) {
+                TextureLookupCacheEntry& entry =
+                    textureLookupCache[static_cast<std::size_t>(textureLookupCount++)];
+                entry.textureId = textureId;
+                entry.packedTextureId = packedTextureId;
+                entry.hasTexture = static_cast<u8>(hasTexture ? 1 : 0);
+                entry.textureAlpha = static_cast<u8>(textureAlpha ? 1 : 0);
+            }
+
+            *outHasTexture = hasTexture;
+            *outTextureAlpha = textureAlpha;
+            *outPackedTextureId = packedTextureId;
+            return Status::Ok;
+        };
+
     Vec<i32> contourVerticesY(alloc);
     const Vec<i32>* modelVerticesY = &model.verticesY;
     bool doContour = applyContour;
@@ -4577,11 +4645,59 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
         }
     }
 
+    bool needsAdvancedTextureScales = false;
+    if (model.textureFaceCount > 0 &&
+        model.hasTextureCoords &&
+        model.hasFaceTextures &&
+        !model.faceTextures.empty() &&
+        !model.textureRenderTypes.empty()) {
+        for (i32 fi = 0; fi < model.faceCount; fi++) {
+            const i32 textureId = modelFaceRawTextureId(model, fi);
+            bool hasTexture = false;
+            bool textureAlpha = false;
+            i32 packedTextureId = -1;
+            const Status rs = resolveTextureLookup(
+                textureId,
+                &hasTexture,
+                &textureAlpha,
+                &packedTextureId);
+            if (!ok(rs)) {
+                return rs;
+            }
+            (void)textureAlpha;
+            (void)packedTextureId;
+            if (!hasTexture) {
+                continue;
+            }
+            i32 texCoord = -1;
+            if (fi >= 0 &&
+                model.hasTextureCoords &&
+                fi < static_cast<i32>(model.textureCoords.size())) {
+                texCoord = static_cast<i32>(model.textureCoords[static_cast<std::size_t>(fi)]);
+            }
+            if (texCoord == -1) {
+                continue;
+            }
+            const i32 tc = texCoord & 0xff;
+            if (tc < 0 || tc >= static_cast<i32>(model.textureRenderTypes.size())) {
+                continue;
+            }
+            const i32 textureRenderType =
+                static_cast<i32>(model.textureRenderTypes[static_cast<std::size_t>(tc)]) & 0xff;
+            if (textureRenderType != 0) {
+                needsAdvancedTextureScales = true;
+                break;
+            }
+        }
+    }
+
     ModelTextureScales texScales(alloc);
-    const Status tss = computeModelTextureScales(model, &texScales, alloc);
-    // UV mapping is best-effort; if scale computation fails, fall back to type0 UVs only.
-    if (!ok(tss)) {
-        texScales.ready = false;
+    if (needsAdvancedTextureScales) {
+        const Status tss = computeModelTextureScales(model, &texScales, alloc);
+        // UV mapping is best-effort; if scale computation fails, fall back to type0 UVs only.
+        if (!ok(tss)) {
+            texScales.ready = false;
+        }
     }
 
 	    for (i32 fi = 0; fi < model.faceCount; fi++) {
@@ -4595,11 +4711,17 @@ Status appendLocPlacementGeometryFromDecodedModelWithLightingState(
 	            faceType = 2;
 	        }
 
-	        const bool hasTexture = isTextureSd(input.textureIds, textureId);
-        i32 packedTextureId = hasTexture ? mapTextureIdToPackedIndex(input.textureIds, textureId) : -1;
-        const bool textureAlpha =
-            hasTexture &&
-            isTextureTransparent(input.textureTransparentIds, textureId);
+            bool hasTexture = false;
+            bool textureAlpha = false;
+            i32 packedTextureId = -1;
+            const Status rs = resolveTextureLookup(
+                textureId,
+                &hasTexture,
+                &textureAlpha,
+                &packedTextureId);
+            if (!ok(rs)) {
+                return rs;
+            }
 
         i32 alpha = 0xff;
         if (!hasTexture &&
@@ -5722,6 +5844,47 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
     if (outTickInit) {
         outTickInit->clear();
     }
+    i32 buildSetupUs = 0;
+    i32 buildSceneBuildUs = 0;
+    i32 buildTerrainUs = 0;
+    i32 buildLocUs = 0;
+    i32 buildObjUs = 0;
+    i32 buildFinalizeUs = 0;
+    const auto buildTotalStart = BuildClock::now();
+    struct BuildTimingCommit final {
+        SceneCommandStream* out = nullptr;
+        const BuildClock::time_point* totalStart = nullptr;
+        const i32* setupUs = nullptr;
+        const i32* sceneBuildUs = nullptr;
+        const i32* terrainUs = nullptr;
+        const i32* locUs = nullptr;
+        const i32* objUs = nullptr;
+        const i32* finalizeUs = nullptr;
+
+        ~BuildTimingCommit() {
+            if (!out || !totalStart) {
+                return;
+            }
+            out->debugBuildSetupUs = setupUs ? *setupUs : 0;
+            out->debugBuildSceneBuildUs = sceneBuildUs ? *sceneBuildUs : 0;
+            out->debugBuildTerrainUs = terrainUs ? *terrainUs : 0;
+            out->debugBuildLocUs = locUs ? *locUs : 0;
+            out->debugBuildObjUs = objUs ? *objUs : 0;
+            out->debugBuildFinalizeUs = finalizeUs ? *finalizeUs : 0;
+            out->debugBuildTotalUs = elapsedUs(*totalStart);
+        }
+    } buildTimingCommit{
+        out,
+        &buildTotalStart,
+        &buildSetupUs,
+        &buildSceneBuildUs,
+        &buildTerrainUs,
+        &buildLocUs,
+        &buildObjUs,
+        &buildFinalizeUs,
+    };
+    (void)buildTimingCommit;
+    const auto setupStart = BuildClock::now();
     // `out` is allocated+cleared in buildSceneCommandStream(); keep this function phase-focused.
     const bool emitGeometry = mode == SceneCommandBuildMode::FullStream;
 
@@ -5983,6 +6146,9 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         input.sizeY,
         sceneLocLoadType);
 
+    buildSetupUs = elapsedUs(setupStart);
+
+    const auto sceneBuildStart = BuildClock::now();
     SceneData scene{};
     const Status sceneStatus = buildSceneFromMapBytesProvider(
         services,
@@ -5990,6 +6156,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         context,
         &scene,
         alloc);
+    buildSceneBuildUs = elapsedUs(sceneBuildStart);
     if (!ok(sceneStatus)) {
         return sceneStatus;
     }
@@ -6171,6 +6338,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         tileHasValidFaceColorsAForLowDetail[i] = 0;
     }
 
+    const auto terrainStart = BuildClock::now();
     if (!emitGeometry) {
         const Status ts = scb::analyzeTerrainLowDetailTileFlags(
             input,
@@ -6261,6 +6429,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             indexCount += levelElements;
         }
     }
+    buildTerrainUs = elapsedUs(terrainStart);
 
     Vec<LocAnimatedGroupPlan> locAnimatedGroups(alloc);
     Vec<LocAnimatedPlaceholder> locAnimatedEntries(alloc);
@@ -6271,6 +6440,7 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
 
     const bool shouldEmitLocs =
         input.locLoadType == 0 && input.loadLocs && hasLocPlacements;
+    const auto locStart = BuildClock::now();
     if (shouldEmitLocs) {
         Status ls = Status::Ok;
         if (emitGeometry) {
@@ -6306,7 +6476,9 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             return ls;
         }
     }
+    buildLocUs = elapsedUs(locStart);
 
+    const auto objStart = BuildClock::now();
     if (input.loadObjs) {
         // Obj-spawn bytes are optional (runtime kind=13). If absent, obj commands are skipped.
         DecodedObjTypeCache objTypeCache(cacheInfo, alloc);
@@ -6337,10 +6509,14 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             return os;
         }
     }
+    buildObjUs = elapsedUs(objStart);
 
+    const auto finalizeStart = BuildClock::now();
+    i32 finalizeAnimatedLocUs = 0;
     // TS buffer layout: animated loc frame geometry is appended after *all* static scene geometry
     // (locs + objs), and placeholders are appended after the frames.
     if (emitGeometry && shouldEmitLocs && (!locAnimatedGroups.empty() || !locAnimatedEntries.empty())) {
+        const auto finalizeAnimatedLocStart = BuildClock::now();
         const Status as = scb::emitLocAnimatedFramesAndPlaceholdersFromPlannedGroups(
             input,
             scene,
@@ -6352,10 +6528,12 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
             &seqTypeCache,
             outTickInit,
             alloc);
+        finalizeAnimatedLocUs = elapsedUs(finalizeAnimatedLocStart);
         if (!ok(as)) {
             return as;
         }
     }
+    out->debugBuildFinalizeAnimatedLocUs = finalizeAnimatedLocUs;
 
     if (emitGeometry) {
         const SceneBufferBucketsDigest bucketsDigest = debugDigestSceneBufferBuckets(buffer);
@@ -6405,9 +6583,10 @@ static Status buildSceneCommandStreamFromBytesNoSeed(
         out->debugTerrainTileFaceCountsBorder = terrainFaceGrid.border;
     }
 
-    if (emitGeometry) {
+    if (emitGeometry && input.enableExpensiveDebugStats) {
         recomputeLocMergedDummyDebugStatsFromPackedCommands(out);
     }
+    buildFinalizeUs = elapsedUs(finalizeStart);
 
     return Status::Ok;
 }

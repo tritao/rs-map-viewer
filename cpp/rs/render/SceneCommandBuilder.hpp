@@ -29,6 +29,8 @@ struct SceneCommandBuildInput final {
     i32 cacheGame = 0;
     i32 cacheRevision = 0;
     i32 unitsTileHeightBasis = 0;
+    // Keep expensive debug-only post passes disabled in runtime hot paths.
+    bool enableExpensiveDebugStats = true;
     // Debug only: when collecting terrain digest samples, skip this many vertices
     // (hash still includes skipped vertices; this only affects which 512 vertices are captured).
     i32 debugTerrainDigestSampleStartVertex = 0;
@@ -285,6 +287,16 @@ struct SceneCommandStream final {
     i32 debugGeometryElementMismatchSampleTypeId = 0;
     i32 debugGeometryElementMismatchSamplePlacementType = 0;
     i32 debugGeometryElementMismatchSampleRotation = 0;
+    i32 debugLocPlanTotalUs = 0;
+    i32 debugLocPlanSortPlacementsUs = 0;
+    i32 debugLocPlanMergeNormalsUs = 0;
+    i32 debugLocPlanPlacementLoopUs = 0;
+    i32 debugLocPlanRenderPlanUs = 0;
+    i32 debugLocPlanAnimatedOrderUs = 0;
+    i32 debugLocExecuteTotalUs = 0;
+    i32 debugLocExecuteInstancedUs = 0;
+    i32 debugLocExecuteMergedUs = 0;
+    i32 debugBuildFinalizeAnimatedLocUs = 0;
 
     Vec<u8> debugTerrainTileFaceCounts{};
     Vec<i32> debugLocPreMergeGroupKeySignatures{};
@@ -309,6 +321,13 @@ struct SceneCommandStream final {
     i32 debugTerrainTileFaceCountsWidth = 0;
     i32 debugTerrainTileFaceCountsHeight = 0;
     i32 debugTerrainTileFaceCountsBorder = 0;
+    i32 debugBuildSetupUs = 0;
+    i32 debugBuildSceneBuildUs = 0;
+    i32 debugBuildTerrainUs = 0;
+    i32 debugBuildLocUs = 0;
+    i32 debugBuildObjUs = 0;
+    i32 debugBuildFinalizeUs = 0;
+    i32 debugBuildTotalUs = 0;
 
     Result<void> init(Allocator& alloc) noexcept {
         cmdBucketIndices = Vec<i32>(alloc);
@@ -353,6 +372,13 @@ struct SceneCommandStream final {
         debugTerrainTileFaceCountsWidth = 0;
         debugTerrainTileFaceCountsHeight = 0;
         debugTerrainTileFaceCountsBorder = 0;
+        debugBuildSetupUs = 0;
+        debugBuildSceneBuildUs = 0;
+        debugBuildTerrainUs = 0;
+        debugBuildLocUs = 0;
+        debugBuildObjUs = 0;
+        debugBuildFinalizeUs = 0;
+        debugBuildTotalUs = 0;
 
         debugTerrainTilesConsidered = 0;
         debugTerrainTilesEmitted = 0;
@@ -476,6 +502,16 @@ struct SceneCommandStream final {
         debugGeometryElementMismatchSampleTypeId = 0;
         debugGeometryElementMismatchSamplePlacementType = 0;
         debugGeometryElementMismatchSampleRotation = 0;
+        debugLocPlanTotalUs = 0;
+        debugLocPlanSortPlacementsUs = 0;
+        debugLocPlanMergeNormalsUs = 0;
+        debugLocPlanPlacementLoopUs = 0;
+        debugLocPlanRenderPlanUs = 0;
+        debugLocPlanAnimatedOrderUs = 0;
+        debugLocExecuteTotalUs = 0;
+        debugLocExecuteInstancedUs = 0;
+        debugLocExecuteMergedUs = 0;
+        debugBuildFinalizeAnimatedLocUs = 0;
     }
 };
 

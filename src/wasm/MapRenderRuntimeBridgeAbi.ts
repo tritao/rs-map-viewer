@@ -113,6 +113,41 @@ export type MapRenderRuntimeLastBuildStats = Readonly<{
     locPreMergeGroupKeysHash: number;
 }>;
 
+export type MapRenderRuntimeBuildStageTimings = Readonly<{
+    totalUs: number;
+    collectMapInputUs: number;
+    seedHashUs: number;
+    buildCommandStreamUs: number;
+    registerTickStateUs: number;
+    planPayloadUs: number;
+    buildPayloadUs: number;
+    storePayloadUs: number;
+    buildNpcUs: number;
+    deriveUsedTextureIdsUs: number;
+    finalizePayloadUs: number;
+    commandPrepareInputUs: number;
+    commandCoreBuildUs: number;
+    commandValidateUs: number;
+    commandCopyBuffersUs: number;
+    commandCopyDebugUs: number;
+    commandSetupUs: number;
+    commandSceneBuildUs: number;
+    commandTerrainUs: number;
+    commandLocUs: number;
+    commandObjUs: number;
+    commandFinalizeUs: number;
+    commandLocPlanUs: number;
+    commandLocPlanSortUs: number;
+    commandLocPlanMergeNormalsUs: number;
+    commandLocPlanPlacementLoopUs: number;
+    commandLocPlanRenderPlanUs: number;
+    commandLocPlanAnimatedOrderUs: number;
+    commandLocExecuteUs: number;
+    commandLocExecuteInstancedUs: number;
+    commandLocExecuteMergedUs: number;
+    commandFinalizeAnimatedLocUs: number;
+}>;
+
 export type MapRenderRuntimeBridgeV2 = Readonly<{
     initRuntime(): Promise<boolean>;
     createRuntimeWithConfig(
@@ -137,6 +172,9 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
     ): Promise<
         Readonly<{ stage: number; status: number; detail0: number; detail1: number }> | undefined
     >;
+    debugGetLastBuildStageTimings?(
+        runtimeHandle: MapRenderRuntimeHandle,
+    ): Promise<MapRenderRuntimeBuildStageTimings | undefined>;
     debugGetLastCollectMapInput?(runtimeHandle: MapRenderRuntimeHandle): Promise<
         | Readonly<{
               status: number;
@@ -207,6 +245,10 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,
     ): Promise<MapRenderRuntimePacket | undefined>;
+    probeBuildMapPacketFromCacheStatus?(
+        runtimeHandle: MapRenderRuntimeHandle,
+        request: MapRenderRuntimeBuildRequest,
+    ): Promise<number>;
     setTickState(runtimeHandle: MapRenderRuntimeHandle, stateKey: number, input: unknown): boolean;
     setTickStatePacked?(
         runtimeHandle: MapRenderRuntimeHandle,
