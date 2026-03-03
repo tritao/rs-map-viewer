@@ -5,7 +5,7 @@ import {
     collectRuntimeDrawCommandBuckets,
 } from "../../src/runtime/build/SceneCommandBuilder";
 import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
-import { createSdTexturePacking } from "../../src/maprender/payload/SdTexturePacking";
+import { createSdTexturePacking } from "../../src/maprender/ts/TexturePacking";
 import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";

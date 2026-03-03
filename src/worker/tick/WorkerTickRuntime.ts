@@ -96,7 +96,7 @@ function isWasmTickEmitResult(value: unknown): value is WasmTickEmitResult {
     );
 }
 
-class WorkerMapSimLifecycle {
+export class WorkerMapSimLifecycle {
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private readonly warnedMissingTickStateMapIds = new Set<number>();
 

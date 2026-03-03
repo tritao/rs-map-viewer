@@ -1,8 +1,8 @@
-import type { SdMapData } from "../../src/maprender/payload/SdMapData";
+import type { SdMapData } from "../../src/maprender/MapRenderPayload";
 import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type MapRenderDrawBucketKey,
-} from "../../src/maprender/payload/SdRenderableData";
+} from "../../src/maprender/MapRenderPayload";
 import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 
 type OverlayFailure = Readonly<{
@@ -138,4 +138,3 @@ export function runtimePacketToPayloadOverlayDiagnostic(
     }
     return { overlay: runtimePacketToPayloadOverlay(packet) };
 }
-

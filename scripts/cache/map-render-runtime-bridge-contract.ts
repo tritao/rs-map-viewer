@@ -6,16 +6,17 @@ import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHand
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
+import {
+    WasmCacheUploader,
+    createByteDrivenSceneBuildInput,
+    createSceneBuildCacheProvider,
+    uploadRuntimeCacheForBuildRequest,
+} from "../../src/maprender/wasm/WasmCacheUploader";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
-import {
-    createByteDrivenSceneBuildInput,
-    MapRenderRuntimeCacheV2Uploader,
-    uploadRuntimeCacheForBuildRequest,
-} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 import { loadCache, loadCacheInfos } from "./load-util";
 
@@ -119,6 +120,27 @@ async function buildRuntimeLifecycleFixture(): Promise<
         loadedCache.xteas as any,
     );
     const varProvider = new VarManagerProvider(session.varManager);
+    const cacheProvider = createSceneBuildCacheProvider({
+        mapBytesProvider,
+        locTypeLoader: session.loaders.locTypeLoader,
+        objTypeLoader: session.loaders.objTypeLoader,
+        modelLoader: session.loaders.modelLoader,
+        seqTypeLoader: session.loaders.seqTypeLoader,
+        seqFrameLoader: session.loaders.seqFrameLoader,
+        skeletalSeqLoader: session.loaders.skeletalSeqLoader,
+        npcTypeLoader: session.loaders.npcTypeLoader,
+        basTypeLoader: session.loaders.basTypeLoader,
+        underlayTypeLoader: session.loaders.underlayTypeLoader,
+        overlayTypeLoader: session.loaders.overlayTypeLoader,
+        varbitLoader: session.varManager.varbitLoader,
+    });
+    const allTextureIds = session.loaders.textureLoader.getTextureIds();
+    const textureIdLists = {
+        sdTextureIds: allTextureIds.filter((id) => session.loaders.textureLoader.isSd(id | 0)),
+        transparentTextureIds: allTextureIds.filter((id) =>
+            session.loaders.textureLoader.isTransparent(id | 0),
+        ),
+    };
     const sceneBuildInput = createByteDrivenSceneBuildInput(
         {
             mapX: square.mapX,
@@ -132,21 +154,11 @@ async function buildRuntimeLifecycleFixture(): Promise<
             loadedTextureIdsPacked: new Int32Array(0),
         },
         {
-            mapBytesProvider,
-            locTypeLoader: session.loaders.locTypeLoader,
-            locModelLoader: {
-                modelLoader: session.loaders.modelLoader,
-                textureLoader: session.loaders.textureLoader,
-                seqTypeLoader: session.loaders.seqTypeLoader,
-                seqFrameLoader: session.loaders.seqFrameLoader,
-            },
-            seqTypeLoader: session.loaders.seqTypeLoader,
-            seqFrameLoader: session.loaders.seqFrameLoader,
-            skeletalSeqLoader: session.loaders.skeletalSeqLoader,
-            textureLoader: session.loaders.textureLoader,
-            varProvider,
             cacheGame: loadedCache.info.game,
             cacheRevision: loadedCache.info.revision,
+            cacheProvider,
+            textureIdLists,
+            varpValues: new Int32Array(varProvider.varManager.values),
         },
     );
     const request = buildRuntimeRequest(sceneBuildInput);
@@ -188,23 +200,20 @@ function assertNpcSlotMetadataContract(
 
 async function buildMapPacketWithPreparedRuntime(
     bridge: RuntimeBridge,
-    cacheUploader: MapRenderRuntimeCacheV2Uploader,
+    cacheUploader: WasmCacheUploader,
     runtimeHandle: number,
     request: MapRenderRuntimeBuildRequest,
     sceneBuildInput: ReturnType<typeof createByteDrivenSceneBuildInput>,
     label: string,
 ): Promise<MapRenderRuntimePacket | undefined> {
-    const prepared = await cacheUploader.prepareRuntimeForBuildRequest(
+    const prepared = await cacheUploader.prepareAndBuildMapPacketFromCacheDetailed(
         bridge,
         runtimeHandle,
         request,
         sceneBuildInput,
-        12,
     );
-    assert.equal(prepared, true, `${label}: expected runtime prepare to succeed`);
-    return (await bridge.buildMapPacketFromCache(runtimeHandle, request)) as
-        | MapRenderRuntimePacket
-        | undefined;
+    assert.equal(prepared.ok, true, `${label}: expected runtime prepare to succeed`);
+    return prepared.packet;
 }
 
 async function main(): Promise<void> {
@@ -486,7 +495,7 @@ async function main(): Promise<void> {
         "lifecycle createRuntime did not return a valid runtime handle",
     );
     const lifecycleHandle = lifecycleRuntimeHandle as number;
-    const lifecycleCacheUploader = new MapRenderRuntimeCacheV2Uploader();
+    const lifecycleCacheUploader = new WasmCacheUploader();
     const uploadedLifecycle = await uploadRuntimeCacheForBuildRequest(
         bridge,
         lifecycleHandle,

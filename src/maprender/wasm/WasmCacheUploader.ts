@@ -668,6 +668,17 @@ export class WasmCacheUploader {
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     ): Promise<boolean> {
         const key = runtimeHandle | 0;
+        const fail = (
+            stage: string,
+            detail?: Readonly<Record<string, number | boolean | string | undefined>>,
+        ): false => {
+            console.warn("[runtime-cache-v2] texture list upload failed", {
+                stage,
+                runtimeHandle: key,
+                ...detail,
+            });
+            return false;
+        };
         if (this.uploadedTextureListsForRuntime.has(key)) {
             return true;
         }
@@ -676,10 +687,16 @@ export class WasmCacheUploader {
         if (!lists) {
             // Without texture lists we can't seed the runtime's texture packing lists.
             // Still proceed: map builds can continue (render will just be missing textures).
-            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS)))
-                return false;
-            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT)))
-                return false;
+            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS))) {
+                return fail("clear.texture_ids.without_lists", {
+                    domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
+                });
+            }
+            if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT))) {
+                return fail("clear.texture_transparent.without_lists", {
+                    domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+                });
+            }
             this.uploadedTextureListsForRuntime.add(key);
             return true;
         }
@@ -703,21 +720,37 @@ export class WasmCacheUploader {
         }
 
         // Re-seed the domains so C++ sees an exact TS-consistent list.
-        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS)))
-            return false;
-        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT)))
-            return false;
+        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS))) {
+            return fail("clear.texture_ids.with_lists", {
+                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
+                sdCount: sdTextureIds.length | 0,
+                transparentCount: transparentTextureIds.length | 0,
+            });
+        }
+        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT))) {
+            return fail("clear.texture_transparent.with_lists", {
+                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+                sdCount: sdTextureIds.length | 0,
+                transparentCount: transparentTextureIds.length | 0,
+            });
+        }
 
         // Prefer a single packed list payload; runtime can fall back to presence keys if needed.
         if (!(await this.uploadPackedI32List(feeder, RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, sdTextureIds))) {
-            return false;
+            return fail("put.texture_ids.packed_list", {
+                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS,
+                sdCount: sdTextureIds.length | 0,
+            });
         }
         if (!(await this.uploadPackedI32List(
             feeder,
             RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
             transparentTextureIds,
         ))) {
-            return false;
+            return fail("put.texture_transparent.packed_list", {
+                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+                transparentCount: transparentTextureIds.length | 0,
+            });
         }
 
         this.uploadedTextureListsForRuntime.add(key);
@@ -852,12 +885,32 @@ export class WasmCacheUploader {
         request: MapRenderRuntimeBuildRequest,
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     ): Promise<boolean> {
-        const feeder = createRuntimeCacheFeeder(bridge, runtimeHandle);
-        if (!(await feeder.setBuildConfig(request))) return false;
-        if (!(await feeder.setVarps(sceneBuildInput.varpValues))) return false;
-        if (!(await this.ensureTextureListsUploaded(feeder, runtimeHandle, sceneBuildInput)))
+        const fail = (
+            stage: string,
+            detail?: Readonly<Record<string, number | boolean | string | undefined>>,
+        ): false => {
+            console.warn("[runtime-cache-v2] upload base failed", {
+                stage,
+                runtimeHandle: runtimeHandle | 0,
+                mapX: request.mapX | 0,
+                mapY: request.mapY | 0,
+                borderSize: request.borderSize | 0,
+                sizeX: request.sizeX | 0,
+                sizeY: request.sizeY | 0,
+                ...detail,
+            });
             return false;
-        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_MAP_SQUARE))) return false;
+        };
+        const feeder = createRuntimeCacheFeeder(bridge, runtimeHandle);
+        if (!(await feeder.setBuildConfig(request))) return fail("setBuildConfig");
+        if (!(await feeder.setVarps(sceneBuildInput.varpValues)))
+            return fail("setVarps", { varpCount: sceneBuildInput.varpValues.length | 0 });
+        if (!(await this.ensureTextureListsUploaded(feeder, runtimeHandle, sceneBuildInput)))
+            return fail("ensureTextureListsUploaded", {
+                hasTextureIdLists: sceneBuildInput.textureIdLists !== undefined,
+            });
+        if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_MAP_SQUARE)))
+            return fail("clearMapSquareDomain", { domain: RUNTIME_BLOB_DOMAIN_MAP_SQUARE });
         const provider = createSceneBuildCacheProviderForBuild(sceneBuildInput);
         const bounds = computeSceneBuildMapBounds(
             sceneBuildInput.baseX | 0,
@@ -920,7 +973,12 @@ export class WasmCacheUploader {
             off += chunk.length;
         }
         if (groups.length <= 0) {
-            return false;
+            return fail("mapSquareBatch.empty", {
+                mapStartX: bounds.mapStartX | 0,
+                mapStartY: bounds.mapStartY | 0,
+                mapEndX: bounds.mapEndX | 0,
+                mapEndY: bounds.mapEndY | 0,
+            });
         }
         const okBatch = await feeder.putBlobBatch(
             RUNTIME_BLOB_DOMAIN_MAP_SQUARE,
@@ -931,10 +989,16 @@ export class WasmCacheUploader {
             bytes,
         );
         if (!okBatch) {
-            return false;
+            return fail("mapSquareBatch.putBlobBatch", {
+                domain: RUNTIME_BLOB_DOMAIN_MAP_SQUARE,
+                entryCount: groups.length | 0,
+                payloadBytes: bytes.length | 0,
+            });
         }
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS)))
-            return false;
+            return fail("clearObjSpawnDomain", {
+                domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
+            });
         {
             const groups: number[] = [];
             const files: number[] = [];
@@ -980,7 +1044,11 @@ export class WasmCacheUploader {
                     bytes,
                 );
                 if (!ok) {
-                    return false;
+                    return fail("objSpawnBatch.putBlobBatch", {
+                        domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
+                        entryCount: groups.length | 0,
+                        payloadBytes: bytes.length | 0,
+                    });
                 }
             }
         }

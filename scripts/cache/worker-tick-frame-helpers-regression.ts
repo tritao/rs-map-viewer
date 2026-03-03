@@ -6,7 +6,7 @@ import type { NpcSimMapState } from "../../src/runtime/sim/NpcSimStateStore";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "../../src/worker/runtime/TickPatchStreamsBuilder";
+} from "../../src/runtime/sim/TickPatchStreamsBuilder";
 
 function makeCountsForOneMap(mapId: number): Int32Array {
     const out = new Int32Array(1 + TICK_PATCH_STREAM_COUNT);

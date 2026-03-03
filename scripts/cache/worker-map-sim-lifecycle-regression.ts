@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { WorkerMapSimLifecycle } from "../../src/worker/runtime/WorkerTickRuntime";
+import { WorkerMapSimLifecycle } from "../../src/worker/tick/WorkerTickRuntime";
 
 function testTokenGuards(): void {
     const lifecycle = new WorkerMapSimLifecycle();

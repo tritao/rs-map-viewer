@@ -17,11 +17,15 @@ import {
 import { collectRuntimeDrawCommandBuckets } from "../../src/runtime/build/SceneCommandBuilder";
 import type { SceneCommandPlanDigest } from "../../src/runtime/build/SceneCommandPlan";
 import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
-import type { SdMapData } from "../../src/maprender/payload/SdMapData";
-import { SdMapLoaderInput } from "../../src/maprender/payload/SdMapLoaderInput";
-import { SdMapRenderDataTsBackend } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
-import type { SdMapRenderDataTsBackendDeps } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
-import { createSdTexturePacking } from "../../src/maprender/payload/SdTexturePacking";
+import type { SdMapData, SdMapLoaderInput } from "../../src/maprender/MapRenderPayload";
+import { MapRenderTsBackend } from "../../src/maprender/ts/MapRenderTsBackend";
+import type { MapRenderTsBackendDeps } from "../../src/maprender/ts/MapRenderTsBackend";
+import { createSdTexturePacking } from "../../src/maprender/ts/TexturePacking";
+import {
+    WasmCacheUploader,
+    createByteDrivenSceneBuildInput,
+    createSceneBuildCacheProvider,
+} from "../../src/maprender/wasm/WasmCacheUploader";
 import { isLowDetail } from "../../src/runtime/build/SceneLocs";
 import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import {
@@ -107,10 +111,6 @@ import {
     runtimePacketToPayloadOverlay,
     runtimePacketToPayloadOverlayDiagnostic,
 } from "./runtimePacketOverlay";
-import {
-    MapRenderRuntimeCacheV2Uploader,
-    createByteDrivenSceneBuildInput,
-} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
@@ -946,7 +946,7 @@ function debugDescribeTsObjSpawnGatingForSquare(params: Readonly<{
         return lines;
     }
 
-    // Build a minimal scene so we can evaluate bridge flags + tile-model faces like SdMapRenderDataTsBackend does.
+    // Build a minimal scene so we can evaluate bridge flags + tile-model faces like MapRenderTsBackend does.
     const scene = buildSceneFromMapBytesProvider(
         params.sceneBuilder,
         params.mapBytesProvider,
@@ -8108,7 +8108,7 @@ function toRuntimeOverlay(payload: SdMapData): RuntimeOverlay {
 }
 
 function createSceneBuildInput(
-    deps: SdMapRenderDataTsBackendDeps,
+    deps: MapRenderTsBackendDeps,
     cacheInfo: CacheInfo,
     input: SdMapLoaderInput,
     runtimePath: "direct" | "cache",
@@ -8202,7 +8202,7 @@ async function main(): Promise<void> {
         loaders.mapFunctions,
     );
 
-    const deps: SdMapRenderDataTsBackendDeps = {
+    const deps: MapRenderTsBackendDeps = {
         session,
         sceneBuilder,
         mapBytesProvider,
@@ -8214,7 +8214,7 @@ async function main(): Promise<void> {
         objSpawns,
         fallbackNpcSpawns: npcSpawns,
     };
-    const tsBackend = new SdMapRenderDataTsBackend(deps);
+    const tsBackend = new MapRenderTsBackend(deps);
 
     const bridgeUrl = pathToFileURL(
         path.resolve(process.cwd(), "src/wasm/rs_map_runtime_bridge.mjs"),
@@ -8250,7 +8250,28 @@ async function main(): Promise<void> {
             ? await bridge.createRuntime()
             : undefined) ?? 0;
     if (runtimeHandle <= 0) throw new Error("failed to create runtime");
-    const cacheUploader = new MapRenderRuntimeCacheV2Uploader();
+    const cacheUploader = new WasmCacheUploader();
+    const cacheProvider = createSceneBuildCacheProvider({
+        mapBytesProvider,
+        locTypeLoader: loaders.locTypeLoader,
+        objTypeLoader: loaders.objTypeLoader,
+        modelLoader: loaders.modelLoader,
+        seqTypeLoader: loaders.seqTypeLoader,
+        seqFrameLoader: loaders.seqFrameLoader,
+        skeletalSeqLoader: loaders.skeletalSeqLoader,
+        npcTypeLoader: loaders.npcTypeLoader,
+        basTypeLoader: loaders.basTypeLoader,
+        underlayTypeLoader: loaders.underlayTypeLoader,
+        overlayTypeLoader: loaders.overlayTypeLoader,
+        varbitLoader: session.varManager.varbitLoader,
+    });
+    const allTextureIds = loaders.textureLoader.getTextureIds();
+    const textureIdLists = {
+        sdTextureIds: allTextureIds.filter((id) => loaders.textureLoader.isSd(id | 0)),
+        transparentTextureIds: allTextureIds.filter((id) =>
+            loaders.textureLoader.isTransparent(id | 0),
+        ),
+    };
     const transparentTextureIds = collectTransparentTextureIdSet(
         sceneBuilder.services.textureLoader,
     );
@@ -8289,8 +8310,10 @@ async function main(): Promise<void> {
     );
 
     let totalMismatches = 0;
+    let totalPrepareFailures = 0;
     for (const profile of profiles) {
         let mismatches = 0;
+        let prepareFailures = 0;
         const stageFailures = createStageFailureCounter();
         const stageFailuresGating = createStageFailureCounter();
         const stageFailureSquares = args.listFailingSquares
@@ -8348,28 +8371,12 @@ async function main(): Promise<void> {
             bridge.resetRuntime(runtimeHandle);
             cacheUploader.reset();
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
-                mapBytesProvider,
-                locTypeLoader: loaders.locTypeLoader,
-                objTypeLoader: loaders.objTypeLoader,
-                locModelLoader: {
-                    modelLoader: loaders.modelLoader,
-                    textureLoader: loaders.textureLoader,
-                    seqTypeLoader: loaders.seqTypeLoader,
-                    seqFrameLoader: loaders.seqFrameLoader,
-                    skeletalSeqLoader: loaders.skeletalSeqLoader,
-                },
-                seqTypeLoader: loaders.seqTypeLoader,
-                seqFrameLoader: loaders.seqFrameLoader,
-                skeletalSeqLoader: loaders.skeletalSeqLoader,
-                textureLoader: loaders.textureLoader,
-                npcTypeLoader: loaders.npcTypeLoader,
-                basTypeLoader: loaders.basTypeLoader,
-                underlayTypeLoader: loaders.underlayTypeLoader,
-                overlayTypeLoader: loaders.overlayTypeLoader,
-                varProvider,
                 objSpawns,
                 cacheGame: cacheInfo.game,
                 cacheRevision: cacheInfo.revision,
+                cacheProvider,
+                textureIdLists,
+                varpValues: snapshotVarpValues(varProvider),
             });
             // This digest is meaningful only after the cache inputs have been uploaded into the runtime.
             let cacheInputDigest: unknown = undefined;
@@ -8402,14 +8409,26 @@ async function main(): Promise<void> {
                     : undefined;
             const jsInputDigest = digestJsMapInput(sceneBuildInput);
             const request = buildRuntimeRequest(sceneBuildInput);
-            const prepared =
-                !!request &&
-                (await cacheUploader.prepareRuntimeForBuildRequest(
-                    bridge,
-                    runtimeHandle,
-                    request,
-                    sceneBuildInput,
-                ));
+            const preparedResult = request
+                ? await cacheUploader.prepareAndBuildMapPacketFromCacheDetailed(
+                      bridge,
+                      runtimeHandle,
+                      request,
+                      sceneBuildInput,
+                )
+                : undefined;
+            const prepared = preparedResult?.ok === true;
+            if (!prepared && preparedResult) {
+                console.warn("[map-render-backend] prepare-and-build-failed", {
+                    mapX: square.mapX | 0,
+                    mapY: square.mapY | 0,
+                    reason: preparedResult.reason,
+                    status: preparedResult.status | 0,
+                    passesTried: preparedResult.passesTried | 0,
+                    missingCount: preparedResult.missingCount | 0,
+                    lastBuildFailure: preparedResult.lastBuildFailure,
+                });
+            }
             const cacheBlobStatsAfterUpload = undefined;
             cacheInputDigest =
                 prepared && typeof bridge.debugCollectCachedMapInputDigest === "function"
@@ -8419,9 +8438,7 @@ async function main(): Promise<void> {
             let packet: MapRenderRuntimePacket | undefined;
             let cache: RuntimeOverlay | undefined;
             if (prepared && request) {
-                const raw = (await bridge.buildMapPacketFromCache(runtimeHandle, request)) as
-                    | MapRenderRuntimePacket
-                    | undefined;
+                const raw = preparedResult?.packet as MapRenderRuntimePacket | undefined;
                 const overlay = raw ? runtimePacketToPayloadOverlay(raw) : undefined;
                 const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
                 if (
@@ -8613,8 +8630,17 @@ async function main(): Promise<void> {
                 // Scene-type init debugging was removed with the type-entry byte-provider path.
                 // Packets are now deep-copied out of the wasm heap and released before returning.
                 void packetRaw;
-                mismatches++;
-                console.error(`missing bridge packet/overlay at ${square.mapX},${square.mapY}`);
+                if (!prepared) {
+                    prepareFailures++;
+                    console.error(
+                        `runtime prepare/build failed at ${square.mapX},${square.mapY} reason=${
+                            preparedResult?.reason ?? "no_request"
+                        }`,
+                    );
+                } else {
+                    mismatches++;
+                    console.error(`missing bridge packet/overlay at ${square.mapX},${square.mapY}`);
+                }
                 continue;
             }
             const expected = digestPacketPayload(tsData);
@@ -9272,7 +9298,7 @@ async function main(): Promise<void> {
 
                                                                             // Compare the TS-resolved loc type for the C++ writer id (quick sanity check).
                                                                             try {
-                                                                                const lr = (sceneBuildInput
+                                                                                const lr = (loaders
                                                                                     .locTypeLoader as any)?.tryLoad?.(
                                                                                     writerOriginalId,
                                                                                 );
@@ -18049,7 +18075,7 @@ async function main(): Promise<void> {
                                                                                         varProvider,
                                                                                     },
                                                                                 );
-                                                                            const depsProbe: SdMapRenderDataTsBackendDeps =
+                                                                            const depsProbe: MapRenderTsBackendDeps =
                                                                                 {
                                                                                     ...deps,
                                                                                     sceneBuilder:
@@ -18058,7 +18084,7 @@ async function main(): Promise<void> {
                                                                                         freshLocModelLoader,
                                                                                 };
                                                                             const tsBackendProbe =
-                                                                                new SdMapRenderDataTsBackend(
+                                                                                new MapRenderTsBackend(
                                                                                     depsProbe,
                                                                                 );
                                                                             await tsBackendProbe.buildMapDataBridgeInput(
@@ -19380,9 +19406,10 @@ async function main(): Promise<void> {
             }
         }
 
+        totalPrepareFailures += prepareFailures;
         totalMismatches += mismatches;
         logSummary(
-            `map-render-runtime-cache-v2-parity: profile=${profile.name} cache=${cacheInfo.name} squares=${squares.length} mismatches=${mismatches}`,
+            `map-render-runtime-cache-v2-parity: profile=${profile.name} cache=${cacheInfo.name} squares=${squares.length} mismatches=${mismatches} prepareFailures=${prepareFailures}`,
         );
         if (mismatchSquares && mismatchSquares.length > 0) {
             const preview = mismatchSquares.slice(0, 50);
@@ -19422,7 +19449,7 @@ async function main(): Promise<void> {
     }
 
     bridge.destroyRuntime(runtimeHandle);
-    if (totalMismatches > 0) process.exit(1);
+    if (totalMismatches > 0 || totalPrepareFailures > 0) process.exit(1);
 }
 
 function dumpUnhandled(e: unknown): void {

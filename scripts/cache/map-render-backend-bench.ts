@@ -2,8 +2,13 @@ import path from "path";
 import { pathToFileURL } from "url";
 
 import type { ObjSpawn } from "../../src/data/obj/ObjSpawn";
-import { SdMapLoaderInput } from "../../src/maprender/payload/SdMapLoaderInput";
-import { SdMapRenderDataTsBackend } from "../../src/maprender/backend/SdMapRenderDataTsBackend";
+import type { SdMapLoaderInput } from "../../src/maprender/MapRenderPayload";
+import { MapRenderTsBackend } from "../../src/maprender/ts/MapRenderTsBackend";
+import {
+    WasmCacheUploader,
+    createByteDrivenSceneBuildInput,
+    createSceneBuildCacheProvider,
+} from "../../src/maprender/wasm/WasmCacheUploader";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
@@ -20,10 +25,6 @@ import type {
     MapRenderRuntimeCreateConfig,
     MapRenderRuntimePacket,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
-import {
-    createByteDrivenSceneBuildInput,
-    MapRenderRuntimeCacheV2Uploader,
-} from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
 import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 import { loadCache, loadCacheInfos } from "./load-util";
 
@@ -563,7 +564,7 @@ async function main(): Promise<void> {
     const wasmBridge = await loadWasmBridge();
     const objSpawns: ObjSpawn[] = [];
 
-    const tsBackend = new SdMapRenderDataTsBackend({
+    const tsBackend = new MapRenderTsBackend({
         session,
         sceneBuilder,
         mapBytesProvider,
@@ -574,7 +575,28 @@ async function main(): Promise<void> {
         varProvider,
         objSpawns,
     });
-    const cacheUploader = new MapRenderRuntimeCacheV2Uploader();
+    const cacheUploader = new WasmCacheUploader();
+    const cacheProvider = createSceneBuildCacheProvider({
+        mapBytesProvider,
+        locTypeLoader: loaders.locTypeLoader,
+        objTypeLoader: loaders.objTypeLoader,
+        modelLoader: loaders.modelLoader,
+        seqTypeLoader: loaders.seqTypeLoader,
+        seqFrameLoader: loaders.seqFrameLoader,
+        skeletalSeqLoader: loaders.skeletalSeqLoader,
+        npcTypeLoader: loaders.npcTypeLoader,
+        basTypeLoader: loaders.basTypeLoader,
+        underlayTypeLoader: loaders.underlayTypeLoader,
+        overlayTypeLoader: loaders.overlayTypeLoader,
+        varbitLoader: session.varManager.varbitLoader,
+    });
+    const allTextureIds = loaders.textureLoader.getTextureIds();
+    const textureIdLists = {
+        sdTextureIds: allTextureIds.filter((id) => loaders.textureLoader.isSd(id | 0)),
+        transparentTextureIds: allTextureIds.filter((id) =>
+            loaders.textureLoader.isTransparent(id | 0),
+        ),
+    };
     const tsStageSamples = new Map<string, number[]>();
     const cppStageSamples = new Map<string, number[]>();
 
@@ -653,15 +675,15 @@ async function main(): Promise<void> {
     }
 
     async function primeCppRuntimeInput(prepared: CppPreparedInput): Promise<void> {
-        const preparedOk = await cacheUploader.prepareRuntimeForBuildRequest(
+        const preparedResult = await cacheUploader.prepareAndBuildMapPacketFromCacheDetailed(
             wasmBridge as unknown as MapRenderRuntimeBridgeV2,
             prepared.runtimeHandle,
             prepared.request,
             prepared.sceneBuildInput,
         );
-        if (!preparedOk) {
+        if (!preparedResult.ok) {
             throw new Error(
-                `Failed to prepare runtime cache at ${prepared.input.mapX},${prepared.input.mapY}`,
+                `Failed to prepare runtime cache at ${prepared.input.mapX},${prepared.input.mapY} reason=${preparedResult.reason}`,
             );
         }
     }
@@ -670,18 +692,11 @@ async function main(): Promise<void> {
         const out: CppPreparedInput[] = [];
         for (const input of inputs) {
             const sceneBuildInput = createByteDrivenSceneBuildInput(input, {
-                mapBytesProvider,
-                locTypeLoader: loaders.locTypeLoader,
-                locModelLoader,
-                seqTypeLoader: loaders.seqTypeLoader,
-                seqFrameLoader: loaders.seqFrameLoader,
-                skeletalSeqLoader: loaders.skeletalSeqLoader,
-                textureLoader: loaders.textureLoader,
-                underlayTypeLoader: loaders.underlayTypeLoader,
-                overlayTypeLoader: loaders.overlayTypeLoader,
-                varProvider,
                 cacheGame: cacheInfo.game,
                 cacheRevision: cacheInfo.revision,
+                cacheProvider,
+                textureIdLists,
+                varpValues: new Int32Array(varProvider.varManager.values),
             });
             const request = buildRuntimeRequest(sceneBuildInput);
             if (!request) {
