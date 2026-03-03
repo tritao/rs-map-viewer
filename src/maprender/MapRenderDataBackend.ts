@@ -1,24 +1,24 @@
-import type { SdMapData } from "../payload/SdMapData";
-import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
-import { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "../payload/SdRenderableData";
-import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
-import type { BackendKind } from "../../util/BackendKind";
-import { errorToString } from "../../util/ErrorUtil";
+import type { SdMapData } from "./payload/SdMapData";
+import { SdMapLoaderInput } from "./payload/SdMapLoaderInput";
+import { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "./payload/SdRenderableData";
+import type { MapRenderBuildDeps } from "./MapRenderBuildDeps";
+import type { BackendKind } from "../util/BackendKind";
+import { errorToString } from "../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
     MapRenderRuntimeHandle,
     MapRenderRuntimePacket,
-} from "../../wasm/MapRenderRuntimeBridgeAbi";
+} from "../wasm/MapRenderRuntimeBridgeAbi";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
-import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
+import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
 import {
     MapRenderByteDrivenSceneBuildInput,
-    MapRenderRuntimeCacheUploader,
+    WasmRuntimeCacheUploader,
     createByteDrivenSceneBuildInput,
-} from "./MapRenderRuntimeCacheUploader";
-import { runtimePacketToPayloadOverlay } from "./CppWasmRuntimePacketOverlay";
-import { SdMapRenderDataTsBackend } from "./SdMapRenderDataTsBackend";
+} from "./wasm/WasmRuntimeCacheUploader";
+import { runtimePacketToPayloadOverlay } from "./wasm/WasmRuntimePacketOverlay";
+import { SdMapRenderDataTsBackend } from "./ts/SdMapRenderDataTsBackend";
 
 export type RenderDataResult<T> = Readonly<{
     data: T;
@@ -109,7 +109,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
-    private readonly cacheUploader = new MapRenderRuntimeCacheUploader();
+    private readonly cacheUploader = new WasmRuntimeCacheUploader();
 
     constructor(
         private readonly deps: MapRenderBuildDeps,

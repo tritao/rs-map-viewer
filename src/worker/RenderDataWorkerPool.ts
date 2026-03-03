@@ -2,7 +2,7 @@ import { ModuleThread, Pool, spawn } from "threads";
 
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
-import { MinimapData } from "../maprender/MinimapData";
+import { MinimapData } from "../maprender/ts/MinimapData";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";

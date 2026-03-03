@@ -21,7 +21,7 @@ import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build";
-import { loadMinimapBlob } from "../MinimapData";
+import { loadMinimapBlob } from "./MinimapData";
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
 import { InteractType } from "../../renderer/InteractType";

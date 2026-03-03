@@ -22,7 +22,7 @@ import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
-import type { MapRenderDataBackend } from "../../maprender/backend/MapRenderDataBackend";
+import type { MapRenderDataBackend } from "../../maprender/MapRenderDataBackend";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,

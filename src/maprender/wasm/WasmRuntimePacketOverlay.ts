@@ -72,4 +72,3 @@ export function runtimePacketToPayloadOverlay(
         modelInfoTextures: modelInfoTextures as SdMapData["modelInfoTextures"],
     };
 }
-

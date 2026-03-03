@@ -10,7 +10,7 @@ import type { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
 import type {
     MapRenderDataBackend,
     MapRenderDataBackendKind,
-} from "../maprender/backend/MapRenderDataBackend";
+} from "../maprender/MapRenderDataBackend";
 
 export type WorkerState = {
     session: CacheSession;

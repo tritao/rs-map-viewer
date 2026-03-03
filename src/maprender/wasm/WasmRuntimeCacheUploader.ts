@@ -869,7 +869,7 @@ function createObjSpawnTypeEntriesBytesForBuild(
     return out.length > 0 ? out : undefined;
 }
 
-export class MapRenderRuntimeCacheUploader {
+export class WasmRuntimeCacheUploader {
     // Avoid re-uploading large dat seq-frame map blobs across retry passes.
     private readonly uploadedDatSeqFrameMapIds: Set<number> = new Set();
     // Upload the texture packing presence-lists once per runtime handle.
@@ -1804,7 +1804,7 @@ export async function uploadRuntimeCacheForBuildRequest(
     request: MapRenderRuntimeBuildRequest,
     sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
 ): Promise<boolean> {
-    const uploader = new MapRenderRuntimeCacheUploader();
+    const uploader = new WasmRuntimeCacheUploader();
     return uploader.uploadRuntimeCacheForBuildRequest(
         bridge,
         runtimeHandle,

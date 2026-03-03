@@ -22,8 +22,8 @@ import { SpriteLoader } from "../rs/sprite/SpriteLoader";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
-import { createMapRenderDataBackend } from "../maprender/backend/MapRenderDataBackend";
-import { MinimapData, loadMinimapBlob } from "../maprender/MinimapData";
+import { createMapRenderDataBackend } from "../maprender/MapRenderDataBackend";
+import { MinimapData, loadMinimapBlob } from "../maprender/ts/MinimapData";
 import type { SdMapData } from "../maprender/payload/SdMapData";
 import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
 import type {
