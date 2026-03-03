@@ -100,11 +100,11 @@ import {
     runtimeDebugSetWorldHeightProbeWithWasm,
     tryLoadBackendModule,
 } from "../../src/wasm/rs_map_render_backend_debug.mjs";
+import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     runtimePacketToPayloadOverlay,
     runtimePacketToPayloadOverlayDiagnostic,
-} from "../../src/maprender/MapRenderDataContract";
-import type { MapRenderRuntimePacket } from "../../src/maprender/MapRenderDataContract";
+} from "./runtimePacketOverlay";
 import {
     MapRenderRuntimeCacheV2Uploader,
     createByteDrivenSceneBuildInput,
@@ -7824,6 +7824,7 @@ async function main(): Promise<void> {
         mapImageRenderer,
         varProvider,
         objSpawns,
+        fallbackNpcSpawns: npcSpawns,
     };
     const tsBackend = new SdMapRenderDataTsBackend(deps);
 
@@ -7962,7 +7963,13 @@ async function main(): Promise<void> {
                 mapBytesProvider,
                 locTypeLoader: loaders.locTypeLoader,
                 objTypeLoader: loaders.objTypeLoader,
-                locModelLoader,
+                locModelLoader: {
+                    modelLoader: loaders.modelLoader,
+                    textureLoader: loaders.textureLoader,
+                    seqTypeLoader: loaders.seqTypeLoader,
+                    seqFrameLoader: loaders.seqFrameLoader,
+                    skeletalSeqLoader: loaders.skeletalSeqLoader,
+                },
                 seqTypeLoader: loaders.seqTypeLoader,
                 seqFrameLoader: loaders.seqFrameLoader,
                 skeletalSeqLoader: loaders.skeletalSeqLoader,

@@ -18,15 +18,13 @@ import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
     MapRenderRuntimeCreateConfig,
+    MapRenderRuntimePacket,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     createByteDrivenSceneBuildInput,
     MapRenderRuntimeCacheV2Uploader,
 } from "../../src/worker/runtime-cache/MapRenderRuntimeCacheV2Uploader";
-import type { MapRenderRuntimePacket } from "../../src/maprender/MapRenderDataContract";
-import {
-    runtimePacketToPayloadOverlay,
-} from "../../src/maprender/MapRenderDataContract";
+import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
