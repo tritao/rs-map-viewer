@@ -11,7 +11,8 @@ import type { NpcGpuFrameData } from "./NpcGpuFrame";
 export type FramePacketMapEntry = Readonly<{
     mapId: number;
     renderFlags: number;
-    npcOffset: number;
+    npcRangeStart: number;
+    npcRangeCount: number;
     tickPatchCounts: ArrayLike<number>;
     tickPatchStreams: readonly (Int32Array | undefined)[];
 }>;
@@ -22,8 +23,8 @@ export type BuildFramePacketMapEntryInput = Readonly<{
     cameraMapY: number;
     lodDistance: number;
     hoveredMapIds: ReadonlySet<number>;
-    hasNpcs: boolean;
-    npcOffset: number;
+    npcRangeStart: number;
+    npcRangeCount: number;
     tickPatchCounts: ArrayLike<number>;
     tickPatchStreams: readonly (Int32Array | undefined)[];
 }>;
@@ -41,7 +42,7 @@ export function computeFrameRenderFlags(
     cameraMapY: number,
     lodDistance: number,
     hoveredMapIds: ReadonlySet<number>,
-    hasNpcs: boolean,
+    npcRangeCount: number,
 ): number {
     const mapX = (mapId | 0) >> 8;
     const mapY = (mapId | 0) & 0xff;
@@ -56,7 +57,7 @@ export function computeFrameRenderFlags(
     if (hoveredMapIds.has(mapId | 0)) {
         flags |= FRAME_RENDER_LIST_FLAG_IS_INTERACT;
     }
-    if (hasNpcs) {
+    if ((npcRangeCount | 0) > 0) {
         flags |= FRAME_RENDER_LIST_FLAG_HAS_NPCS;
     }
     return flags | 0;
@@ -73,9 +74,10 @@ export function buildFramePacketMapEntry(
             input.cameraMapY | 0,
             input.lodDistance | 0,
             input.hoveredMapIds,
-            !!input.hasNpcs,
+            input.npcRangeCount | 0,
         ),
-        npcOffset: input.npcOffset | 0,
+        npcRangeStart: input.npcRangeStart | 0,
+        npcRangeCount: input.npcRangeCount | 0,
         tickPatchCounts: input.tickPatchCounts,
         tickPatchStreams: input.tickPatchStreams,
     };
@@ -85,7 +87,8 @@ export function buildFramePacketFromMapEntries(
     input: BuildFramePacketFromMapEntriesInput,
 ): FramePacket {
     const entryCount = input.entries.length | 0;
-    const npcOffsetsByMapIdPairs = new Int32Array((entryCount | 0) * 2);
+    const readyMapIdsPacked = buildReadyMapIdsPacked(input.entries);
+    const npcRangesByMapIdPacked = new Int32Array((entryCount | 0) * 3);
     const renderListPacked = new Int32Array((entryCount | 0) * 2);
     const tickPatchCountsByMapId = new Int32Array(
         (entryCount | 0) * (1 + TICK_PATCH_STREAM_COUNT),
@@ -95,11 +98,12 @@ export function buildFramePacketFromMapEntries(
     for (let i = 0; i < entryCount; i++) {
         const entry = input.entries[i]!;
         const mapId = entry.mapId | 0;
-        const pairOff = (i | 0) * 2;
+        const pairOff = (i | 0) * 3;
         const renderOff = (i | 0) * 2;
         const metaOff = (i | 0) * (1 + TICK_PATCH_STREAM_COUNT);
-        npcOffsetsByMapIdPairs[pairOff + 0] = mapId;
-        npcOffsetsByMapIdPairs[pairOff + 1] = entry.npcOffset | 0;
+        npcRangesByMapIdPacked[pairOff + 0] = mapId;
+        npcRangesByMapIdPacked[pairOff + 1] = entry.npcRangeStart | 0;
+        npcRangesByMapIdPacked[pairOff + 2] = entry.npcRangeCount | 0;
         renderListPacked[renderOff + 0] = mapId;
         renderListPacked[renderOff + 1] = entry.renderFlags | 0;
         tickPatchCountsByMapId[metaOff + 0] = mapId;
@@ -114,9 +118,35 @@ export function buildFramePacketFromMapEntries(
         frameCount: input.frameCount | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
-        npcOffsetsByMapIdPairs,
+        readyMapIdsPacked,
+        npcRangesByMapIdPacked,
         renderListPacked,
         tickPatchCountsByMapId,
         tickPatchStreamsByMap,
     });
+}
+
+function buildReadyMapIdsPacked(entries: readonly FramePacketMapEntry[]): Int32Array {
+    const entryCount = entries.length | 0;
+    if ((entryCount | 0) <= 0) {
+        return new Int32Array(0);
+    }
+
+    const sorted = new Int32Array(entryCount | 0);
+    for (let i = 0; i < entryCount; i++) {
+        sorted[i] = entries[i]!.mapId | 0;
+    }
+    sorted.sort();
+
+    let uniqueCount = 0;
+    for (let i = 0; i < entryCount; i++) {
+        const mapId = sorted[i] | 0;
+        if ((i | 0) > 0 && (mapId | 0) === (sorted[i - 1] | 0)) {
+            continue;
+        }
+        sorted[uniqueCount] = mapId;
+        uniqueCount = (uniqueCount + 1) | 0;
+    }
+
+    return sorted.slice(0, uniqueCount | 0);
 }
