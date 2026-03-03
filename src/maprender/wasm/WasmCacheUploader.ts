@@ -33,9 +33,13 @@ const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY = 110;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY = 111;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ = 112;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS = 113;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_ALPHA_HINT = 114;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE = 115;
 const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ = 116;
+// For list-like type-entry domains, prefer a single packed payload:
+// (domain, group=1, file=0) -> bytes: little-endian i32 ids.
+// Legacy fallback: (domain, group=0, file=id) presence keys with empty payload.
+const RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_GROUP = 1;
+const RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_FILE = 0;
 // Domain for map-square bytes: (domain=2, group=mapSquareId, file=<map-square file id>).
 const RUNTIME_BLOB_DOMAIN_MAP_SQUARE = 2;
 const RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN = 0;
@@ -169,7 +173,6 @@ export type SceneBuildCacheProvider = Readonly<{
 
 type SceneBuildCacheProviderImpl = SceneBuildCacheProvider &
     Readonly<{
-        tryGetSeqAlphaHintBytes(seqId: number): Uint8Array;
         tryCollectTextureIds(): ReadonlyArray<number> | undefined;
         isTextureTransparent(id: number): boolean;
         isTextureSd(id: number): boolean;
@@ -287,24 +290,6 @@ function toUint8ArrayView(data: unknown): Uint8Array | undefined {
     return undefined;
 }
 
-function tryLoadDecoded(loader: TypeEntryLoaderLike | undefined, id: number): unknown {
-    if (!loader) {
-        return undefined;
-    }
-    if (typeof loader.tryLoad !== "function") {
-        return undefined;
-    }
-    try {
-        const result = loader.tryLoad(id | 0);
-        if (result?.ok) {
-            return result.value;
-        }
-    } catch {
-        return undefined;
-    }
-    return undefined;
-}
-
 function tryLoadTypeBytes(loader: TypeEntryLoaderLike | undefined, id: number): Uint8Array | undefined {
     if (!loader) {
         return undefined;
@@ -321,92 +306,6 @@ function tryLoadTypeBytes(loader: TypeEntryLoaderLike | undefined, id: number): 
     }
     return undefined;
 }
-
-function tryGetSkeletalSeqFromLoader(
-    skeletalSeqLoader: SkeletalSeqLoaderLike | undefined,
-    seqId: number,
-): unknown {
-    if (!skeletalSeqLoader || seqId < 0 || typeof skeletalSeqLoader !== "object") {
-        return undefined;
-    }
-    if (typeof skeletalSeqLoader.tryGet === "function") {
-        try {
-            const seq = skeletalSeqLoader.tryGet(seqId | 0) as
-                | { ok?: boolean; value?: unknown }
-                | undefined;
-            if (seq?.ok) {
-                return seq.value;
-            }
-            if (seq && typeof seq === "object" && !("ok" in seq)) {
-                return seq;
-            }
-        } catch {
-            return undefined;
-        }
-    }
-    return undefined;
-}
-
-function tryGetSeqFrameFromLoader(
-    seqFrameLoader: SeqFrameLoaderLike | undefined,
-    frameId: number,
-): unknown {
-    if (!seqFrameLoader || frameId < 0 || typeof seqFrameLoader !== "object") {
-        return undefined;
-    }
-    if (typeof seqFrameLoader.tryGet === "function") {
-        try {
-            const frame = seqFrameLoader.tryGet(frameId | 0) as
-                | { ok?: boolean; value?: unknown }
-                | undefined;
-            if (frame?.ok) {
-                return frame.value;
-            }
-            if (frame && typeof frame === "object" && !("ok" in frame)) {
-                return frame;
-            }
-        } catch {
-            // fall through to tryLoad path
-        }
-    }
-    if (typeof seqFrameLoader.tryLoad === "function") {
-        try {
-            const loaded = seqFrameLoader.tryLoad(frameId | 0) as
-                | { ok?: boolean; value?: unknown }
-                | undefined;
-            if (loaded?.ok) {
-                return loaded.value;
-            }
-            if (loaded && typeof loaded === "object" && !("ok" in loaded)) {
-                return loaded;
-            }
-        } catch {
-            return undefined;
-        }
-    }
-    return undefined;
-}
-
-function getFrameIdsArrayLike(seqType: unknown): ArrayLike<number> | undefined {
-    if (!seqType || typeof seqType !== "object") {
-        return undefined;
-    }
-    const frameIds = (seqType as { frameIds?: unknown }).frameIds;
-    if (Array.isArray(frameIds)) {
-        return frameIds;
-    }
-    if (
-        frameIds &&
-        typeof frameIds === "object" &&
-        typeof (frameIds as { length?: unknown }).length === "number"
-    ) {
-        return frameIds as ArrayLike<number>;
-    }
-    return undefined;
-}
-
-const SEQ_ALPHA_HINT_FALSE = Uint8Array.of(0);
-const SEQ_ALPHA_HINT_TRUE = Uint8Array.of(1);
 
 export function createSceneBuildCacheProvider(
     loaders: SceneBuildCacheProviderLoaders,
@@ -426,7 +325,6 @@ export function createSceneBuildCacheProvider(
     const seqFrameLoader = loaders.seqFrameLoader ?? locModelLoader?.seqFrameLoader;
     const skeletalSeqLoader = loaders.skeletalSeqLoader ?? locModelLoader?.skeletalSeqLoader;
     const seqBaseLoader = skeletalSeqLoader?.baseLoader ?? seqFrameLoader?.baseLoader;
-    const seqAlphaHintBySeqId = new Map<number, Uint8Array>();
     const legacyModelFilesByFileId = new Map<number, Uint8Array>();
     const legacySeqFilesByFileId = new Map<number, Uint8Array>();
 
@@ -487,56 +385,6 @@ export function createSceneBuildCacheProvider(
                 return undefined;
         }
     };
-
-    const tryGetSeqAlphaHintBytes = (seqId: number): Uint8Array => {
-            const key = seqId | 0;
-            const cached = seqAlphaHintBySeqId.get(key);
-            if (cached) {
-                return cached;
-            }
-
-            const seqType = tryLoadDecoded(seqTypeLoader, key) as
-                | { hasAnimMayaSeq?: () => boolean; animMayaId?: number; frameIds?: unknown }
-                | undefined;
-
-            let hasAlphaTransform = false;
-            if (seqType) {
-                const hasAnimMaya =
-                    typeof seqType.hasAnimMayaSeq === "function"
-                        ? (() => {
-                              try {
-                                  return seqType.hasAnimMayaSeq() === true;
-                              } catch {
-                                  return (seqType.animMayaId ?? -1) >= 0;
-                              }
-                          })()
-                        : (seqType.animMayaId ?? -1) >= 0;
-                if (hasAnimMaya) {
-                    const animMayaId = (seqType.animMayaId ?? -1) | 0;
-                    const skeletalSeq = tryGetSkeletalSeqFromLoader(skeletalSeqLoader, animMayaId) as
-                        | { hasAlphaTransform?: boolean }
-                        | undefined;
-                    hasAlphaTransform = skeletalSeq?.hasAlphaTransform === true;
-                } else {
-                    const frameIds = getFrameIdsArrayLike(seqType);
-                    const frameCount = frameIds ? frameIds.length | 0 : 0;
-                    for (let f = 0; f < frameCount; f++) {
-                        const frameId = Number(frameIds![f]) | 0;
-                        const seqFrame = tryGetSeqFrameFromLoader(seqFrameLoader, frameId) as
-                            | { hasAlphaTransform?: boolean }
-                            | undefined;
-                        if (seqFrame?.hasAlphaTransform === true) {
-                            hasAlphaTransform = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            const bytes = hasAlphaTransform ? SEQ_ALPHA_HINT_TRUE : SEQ_ALPHA_HINT_FALSE;
-            seqAlphaHintBySeqId.set(key, bytes);
-            return bytes;
-        };
 
     const tryCollectTextureIds = (): ReadonlyArray<number> | undefined => {
             if (!textureLoader || typeof textureLoader.getTextureIds !== "function") return undefined;
@@ -648,17 +496,12 @@ export function createSceneBuildCacheProvider(
             return undefined;
         }
 
-        if (d === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_ALPHA_HINT) {
-            if (g !== 0) return undefined;
-            return tryGetSeqAlphaHintBytes(f);
-        }
         if (g !== 0) return undefined;
         return tryGetTypeEntryBytes(d, f);
     };
 
     const out: SceneBuildCacheProviderImpl = {
         tryGetBlobBytes,
-        tryGetSeqAlphaHintBytes,
         tryCollectTextureIds,
         isTextureTransparent,
         isTextureSd,
@@ -846,49 +689,25 @@ function createSceneBuildCacheProviderForBuild(
 }
 
 export class WasmCacheUploader {
-    // Upload the texture packing presence-lists once per runtime handle.
+    // Upload the texture packing lists once per runtime handle.
     private readonly uploadedTextureListsForRuntime: Set<number> = new Set();
 
     reset(): void {
         this.uploadedTextureListsForRuntime.clear();
     }
 
-    private async uploadPresenceList(
+    private async uploadPackedI32List(
         feeder: RuntimeCacheFeeder,
         domain: number,
         ids: ReadonlyArray<number>,
     ): Promise<boolean> {
-        const seen = new Set<number>();
-        const kept: number[] = [];
-        for (let i = 0; i < ids.length; i++) {
-            const id = ids[i] | 0;
-            if (id < 0) continue;
-            if (seen.has(id)) continue;
-            seen.add(id);
-            kept.push(id);
-        }
-        if (kept.length <= 0) {
-            return true;
-        }
-        const n = kept.length | 0;
-        const groups = new Int32Array(n);
-        const files = new Int32Array(n);
-        const offsets = new Int32Array(n);
-        const lengths = new Int32Array(n);
-        for (let i = 0; i < n; i++) {
-            groups[i] = 0;
-            files[i] = kept[i] | 0;
-            offsets[i] = 0;
-            lengths[i] = 0;
-        }
-        // Empty payload: presence is encoded by the blob key itself (domain/group/file).
-        return await feeder.putBlobBatch(
+        const kept = sortedUniqueTypeIds(ids);
+        const packed = Int32Array.from(kept);
+        return await feeder.putBlob(
             domain,
-            groups,
-            files,
-            offsets,
-            lengths,
-            new Uint8Array(0),
+            RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_GROUP,
+            RUNTIME_BLOB_TYPE_ENTRY_ID_LIST_FILE,
+            new Uint8Array(packed.buffer, packed.byteOffset, packed.byteLength),
         );
     }
 
@@ -949,18 +768,15 @@ export class WasmCacheUploader {
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT)))
             return false;
 
-        // Presence-list encoding: (domain=100+kind, group=0, file=id) with empty bytes.
-        // For dat/dat2 caches, texture ids are contiguous so sorting is a stable, TS-consistent order.
-        if (!(await this.uploadPresenceList(feeder, RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, sdTextureIds))) {
+        // Prefer a single packed list payload; runtime can fall back to presence keys if needed.
+        if (!(await this.uploadPackedI32List(feeder, RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS, sdTextureIds))) {
             return false;
         }
-        if (
-            !(await this.uploadPresenceList(
-                feeder,
-                RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
-                transparentTextureIds,
-            ))
-        ) {
+        if (!(await this.uploadPackedI32List(
+            feeder,
+            RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT,
+            transparentTextureIds,
+        ))) {
             return false;
         }
 

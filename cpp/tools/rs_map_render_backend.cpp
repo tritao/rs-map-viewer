@@ -806,6 +806,9 @@ static void collectBlobDomainGroup0IdsSortedUnique(
     outIds->erase(std::unique(outIds->begin(), outIds->end()), outIds->end());
 }
 
+static constexpr rs::i32 RS_MAP_RENDER_TYPE_ENTRY_ID_LIST_GROUP = 1;
+static constexpr rs::i32 RS_MAP_RENDER_TYPE_ENTRY_ID_LIST_FILE = 0;
+
 static void collectBlobDomainTypeListPreferPayloadOrKeys(
     const MapRenderRuntimeState* runtime,
     const rs::i32 domain,
@@ -813,6 +816,39 @@ static void collectBlobDomainTypeListPreferPayloadOrKeys(
     if (!runtime || !outIds) {
         return;
     }
+    // Prefer a single packed payload list:
+    // - (domain, group=1, file=0) -> bytes: little-endian i32 ids
+    // Fallback (legacy) is presence keys:
+    // - (domain, group=0, file=id) with empty payload (orderless)
+    MapRenderRuntimeCacheState::BlobKey key{};
+    key.domain = domain;
+    key.group = RS_MAP_RENDER_TYPE_ENTRY_ID_LIST_GROUP;
+    key.file = RS_MAP_RENDER_TYPE_ENTRY_ID_LIST_FILE;
+    const auto it = runtime->cache.blobEntries.find(key);
+    if (it != runtime->cache.blobEntries.end()) {
+        const std::vector<rs::u8>& bytes = it->second;
+        outIds->clear();
+        if (bytes.empty()) {
+            return;
+        }
+        if (bytes.size() % 4u != 0u) {
+            // Ignore malformed payloads and fall back to key scanning.
+        } else {
+            const auto readI32LE = [](const rs::u8* p) noexcept -> rs::i32 {
+                return static_cast<rs::i32>(static_cast<rs::u32>(p[0]) |
+                    (static_cast<rs::u32>(p[1]) << 8u) |
+                    (static_cast<rs::u32>(p[2]) << 16u) |
+                    (static_cast<rs::u32>(p[3]) << 24u));
+            };
+            const std::size_t n = bytes.size() / 4u;
+            outIds->reserve(n);
+            for (std::size_t i = 0; i < n; i++) {
+                outIds->push_back(readI32LE(bytes.data() + (i * 4u)));
+            }
+            return;
+        }
+    }
+
     // (domain, group=0, file=id) presence keys (orderless). For dat/dat2 caches texture ids are
     // contiguous, so sorting matches the TS packing order.
     collectBlobDomainGroup0IdsSortedUnique(runtime, domain, outIds);
@@ -1707,8 +1743,9 @@ static RuntimeCommandStreamBuildResult tryBuildRuntimeCommandStreamFromBytes(
     const auto prepareInputStart = CommandClock::now();
     const bool includeLocs = loadLocs != 0;
 
-    // Texture id lists are presence-only domains uploaded by TS (empty bytes payloads).
-    // We collect keys directly from the blob-store and keep the SceneCommandBuilder API minimal.
+    // Texture id lists are uploaded by TS as a packed i32 list payload (preferred) or legacy
+    // presence keys (fallback). We collect directly from the blob-store to keep the
+    // SceneCommandBuilder API minimal.
     std::vector<rs::i32> textureTransparentIds{};
     std::vector<rs::i32> textureIds{};
     collectBlobDomainTypeListPreferPayloadOrKeys(runtime, RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT, &textureTransparentIds);
