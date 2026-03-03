@@ -20,6 +20,8 @@ export interface SeqFrameLoader {
     tryLoad(id: number): Result<SeqFrame, DecodeError>;
     tryGet(id: number): SeqFrame | undefined;
     tryLoadBytes(id: number): Uint8Array | undefined;
+    // Dat seq frames use raw frame-map blobs (by map id) for wasm builds.
+    tryGetFrameMapBytesForMapId?(mapId: number): Uint8Array | undefined;
 
     clearCache(): void;
 }

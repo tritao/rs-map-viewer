@@ -165,13 +165,17 @@ export type MapRenderRuntimePrepareResult = Readonly<{
 
 export type SceneBuildCacheProvider = Readonly<{
     tryGetBlobBytes(domain: number, group: number, file: number): Uint8Array | undefined;
-    tryGetSeqAlphaHintBytes(seqId: number): Uint8Array;
-    tryCollectTextureIds(): ReadonlyArray<number> | undefined;
-    isTextureTransparent(id: number): boolean;
-    isTextureSd(id: number): boolean;
-    tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes | undefined;
-    tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes | undefined;
 }>;
+
+type SceneBuildCacheProviderImpl = SceneBuildCacheProvider &
+    Readonly<{
+        tryGetSeqAlphaHintBytes(seqId: number): Uint8Array;
+        tryCollectTextureIds(): ReadonlyArray<number> | undefined;
+        isTextureTransparent(id: number): boolean;
+        isTextureSd(id: number): boolean;
+        tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes | undefined;
+        tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes | undefined;
+    }>;
 
 export type SceneBuildCacheProviderLoaders = Readonly<{
     mapBytesProvider?: MapBytesProvider;
@@ -652,7 +656,7 @@ export function createSceneBuildCacheProvider(
         return tryGetTypeEntryBytes(d, f);
     };
 
-    return {
+    const out: SceneBuildCacheProviderImpl = {
         tryGetBlobBytes,
         tryGetSeqAlphaHintBytes,
         tryCollectTextureIds,
@@ -661,6 +665,7 @@ export function createSceneBuildCacheProvider(
         ...(tryGetLegacyModelFileBytes ? { tryGetLegacyModelFileBytes } : {}),
         ...(tryGetLegacySeqFrameFileBytes ? { tryGetLegacySeqFrameFileBytes } : {}),
     };
+    return out;
 }
 
 export type MapRenderByteDrivenSceneBuildInput = Readonly<{
@@ -874,7 +879,7 @@ export class WasmCacheUploader {
         if (this.uploadedTextureListsForRuntime.has(key)) {
             return true;
         }
-        const provider = sceneBuildInput.cacheProvider;
+        const provider = sceneBuildInput.cacheProvider as SceneBuildCacheProviderImpl;
         const allTextureIds = provider.tryCollectTextureIds();
         if (!allTextureIds) {
             // Without a texture loader we can't seed the runtime's texture packing lists.
