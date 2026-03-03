@@ -392,35 +392,39 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private createByteDrivenSceneBuildInput(
         input: SdMapLoaderInput,
     ): MapRenderByteDrivenSceneBuildInput {
-        const { session } = this.deps;
+        const { session, mapBytesProvider, objSpawns } = this.deps;
+        const loaders = session.loaders;
+        const varManager = session.varManager;
+        const seqTypeLoader = loaders.seqTypeLoader;
+        const seqFrameLoader = loaders.seqFrameLoader;
+        const skeletalSeqLoader = loaders.skeletalSeqLoader;
+        const values = varManager.values;
+        const varbitLoader = varManager.varbitLoader;
         return createByteDrivenSceneBuildInput(input, {
-            mapBytesProvider: this.deps.mapBytesProvider,
-            locTypeLoader: session.loaders.locTypeLoader,
-            objTypeLoader: session.loaders.objTypeLoader,
+            mapBytesProvider,
+            locTypeLoader: loaders.locTypeLoader,
+            objTypeLoader: loaders.objTypeLoader,
             locModelLoader: {
-                modelLoader: session.loaders.modelLoader,
-                textureLoader: session.loaders.textureLoader,
-                seqTypeLoader: session.loaders.seqTypeLoader,
-                seqFrameLoader: session.loaders.seqFrameLoader,
-                skeletalSeqLoader: session.loaders.skeletalSeqLoader,
+                modelLoader: loaders.modelLoader,
+                textureLoader: loaders.textureLoader,
+                seqTypeLoader,
+                seqFrameLoader,
+                skeletalSeqLoader,
             },
-            seqTypeLoader: session.loaders.seqTypeLoader,
-            seqFrameLoader: session.loaders.seqFrameLoader,
-            skeletalSeqLoader: session.loaders.skeletalSeqLoader,
+            seqTypeLoader,
+            seqFrameLoader,
+            skeletalSeqLoader,
             textureLoader: session.getTextureLoader(),
-            npcTypeLoader: session.loaders.npcTypeLoader,
-            basTypeLoader: session.loaders.basTypeLoader,
-            underlayTypeLoader: session.loaders.underlayTypeLoader,
-            overlayTypeLoader: session.loaders.overlayTypeLoader,
+            npcTypeLoader: loaders.npcTypeLoader,
+            basTypeLoader: loaders.basTypeLoader,
+            underlayTypeLoader: loaders.underlayTypeLoader,
+            overlayTypeLoader: loaders.overlayTypeLoader,
             varProvider: {
-                varManager: {
-                    values: session.varManager.values,
-                    varbitLoader: session.varManager.varbitLoader,
-                },
-                values: session.varManager.values,
-                varbitLoader: session.varManager.varbitLoader,
+                varManager,
+                values,
+                varbitLoader,
             },
-            objSpawns: this.deps.objSpawns,
+            objSpawns,
             cacheGame: session.cache.info.game,
             cacheRevision: session.cache.info.revision,
         });
