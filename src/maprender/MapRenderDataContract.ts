@@ -1,12 +1,4 @@
-import type { SdMapData } from "./payload/SdMapData";
-export {
-    MAP_RENDER_DRAW_BUCKET_KEYS,
-    type MapRenderDrawBucketKey,
-} from "./payload/SdRenderableData";
-
-export type MapRenderPayloadOverlay = Readonly<
-    Pick<SdMapData, "heightMapTextureData" | "drawRanges" | "modelInfoTextures">
->;
+export { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "./payload/SdRenderableData";
 
 export type MapRenderRuntimePacket = Readonly<{
     packetVersion: number;
