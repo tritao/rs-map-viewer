@@ -746,10 +746,10 @@ function computeSceneBuildMapBounds(baseX: number, baseY: number, sizeX: number,
     };
 }
 
-function createObjSpawnTypeEntriesBytesForBuild(
+function createObjSpawnBytesByMapIdForBuild(
     sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     requiredMapIds?: ReadonlyArray<number>,
-): ReadonlyArray<Readonly<{ typeId: number; bytes: Uint8Array }>> | undefined {
+): ReadonlyMap<number, Uint8Array> | undefined {
     if (sceneBuildInput.loadObjs !== true) {
         return undefined;
     }
@@ -807,8 +807,8 @@ function createObjSpawnTypeEntriesBytesForBuild(
         return undefined;
     }
 
-    const out: Array<Readonly<{ typeId: number; bytes: Uint8Array }>> = [];
     const sortedMapIds = Array.from(entriesByMapId.keys()).sort((a, b) => (a | 0) - (b | 0));
+    const out = new Map<number, Uint8Array>();
     for (let i = 0; i < sortedMapIds.length; i++) {
         const mapId = sortedMapIds[i] | 0;
         const entries = entriesByMapId.get(mapId);
@@ -818,9 +818,31 @@ function createObjSpawnTypeEntriesBytesForBuild(
         const packed = Int32Array.from(entries);
         const bytes = new Uint8Array(packed.byteLength);
         bytes.set(new Uint8Array(packed.buffer));
-        out.push({ typeId: mapId | 0, bytes });
+        out.set(mapId | 0, bytes);
     }
-    return out.length > 0 ? out : undefined;
+    return out.size > 0 ? out : undefined;
+}
+
+function createSceneBuildCacheProviderForBuild(
+    sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
+): SceneBuildCacheProvider {
+    const baseProvider = sceneBuildInput.cacheProvider;
+    let objSpawnBytesByMapId: ReadonlyMap<number, Uint8Array> | undefined | null = undefined;
+    return {
+        tryGetBlobBytes: (domain, group, file) => {
+            const d = domain | 0;
+            const g = group | 0;
+            const f = file | 0;
+            if (d === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS && g === 0) {
+                if (objSpawnBytesByMapId === undefined) {
+                    objSpawnBytesByMapId =
+                        createObjSpawnBytesByMapIdForBuild(sceneBuildInput) ?? null;
+                }
+                return objSpawnBytesByMapId ? objSpawnBytesByMapId.get(f) : undefined;
+            }
+            return baseProvider.tryGetBlobBytes(d, g, f);
+        },
+    };
 }
 
 export class WasmCacheUploader {
@@ -953,7 +975,7 @@ export class WasmCacheUploader {
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     ): Promise<boolean> {
         const feeder = createRuntimeCacheFeeder(bridge, runtimeHandle);
-        const provider = sceneBuildInput.cacheProvider;
+        const provider = createSceneBuildCacheProviderForBuild(sceneBuildInput);
         const domains = missing.domains;
         const groups = missing.groups;
         const files = missing.files;
@@ -964,7 +986,6 @@ export class WasmCacheUploader {
 
         // Group missing entries by domain+group for stable batching.
         const byDomain = new Map<number, Map<number, Set<number>>>();
-        const objSpawnMapIds: number[] = [];
         for (let i = 0; i < n; i++) {
             const domain = domains[i] | 0;
             const group = groups[i] | 0;
@@ -975,14 +996,6 @@ export class WasmCacheUploader {
             // extend the packing lists beyond the TS-configured set and break parity.
             if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_IDS) continue;
             if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_TRANSPARENT) continue;
-
-            // Obj spawns is an ephemeral domain built from the worker's input list (not cache bytes).
-            if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS) {
-                if (group === 0 && file >= 0) {
-                    objSpawnMapIds.push(file | 0);
-                }
-                continue;
-            }
 
             let byGroup = byDomain.get(domain);
             if (!byGroup) {
@@ -1047,52 +1060,6 @@ export class WasmCacheUploader {
             );
             if (!ok) {
                 return false;
-            }
-        }
-
-        const requiredObjSpawnMapIds = sortedUniqueTypeIds(objSpawnMapIds);
-        if (requiredObjSpawnMapIds.length > 0) {
-            const entries = createObjSpawnTypeEntriesBytesForBuild(
-                sceneBuildInput,
-                requiredObjSpawnMapIds,
-            );
-            if (entries && entries.length > 0) {
-                const outGroups: number[] = [];
-                const outFiles: number[] = [];
-                const outOffsets: number[] = [];
-                const outLengths: number[] = [];
-                const chunks: Uint8Array[] = [];
-                let totalBytes = 0;
-                for (let i = 0; i < entries.length; i++) {
-                    const e = entries[i];
-                    if (!(e.bytes instanceof Uint8Array) || e.bytes.length <= 0) continue;
-                    outGroups.push(0);
-                    outFiles.push(e.typeId | 0);
-                    outOffsets.push(totalBytes);
-                    outLengths.push(e.bytes.length | 0);
-                    chunks.push(e.bytes);
-                    totalBytes += e.bytes.length | 0;
-                }
-                if (outGroups.length > 0) {
-                    const bytes = new Uint8Array(totalBytes);
-                    let off = 0;
-                    for (let i = 0; i < chunks.length; i++) {
-                        const chunk = chunks[i];
-                        bytes.set(chunk, off);
-                        off += chunk.length;
-                    }
-                    const ok = await feeder.putBlobBatch(
-                        RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
-                        Int32Array.from(outGroups),
-                        Int32Array.from(outFiles),
-                        Int32Array.from(outOffsets),
-                        Int32Array.from(outLengths),
-                        bytes,
-                    );
-                    if (!ok) {
-                        return false;
-                    }
-                }
             }
         }
 
@@ -1188,23 +1155,25 @@ export class WasmCacheUploader {
         }
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS)))
             return false;
-        const objSpawnEntries = createObjSpawnTypeEntriesBytesForBuild(sceneBuildInput);
-        if (objSpawnEntries && objSpawnEntries.length > 0) {
+        const objSpawnBytesByMapId = createObjSpawnBytesByMapIdForBuild(sceneBuildInput);
+        if (objSpawnBytesByMapId && objSpawnBytesByMapId.size > 0) {
+            const mapIds = Array.from(objSpawnBytesByMapId.keys()).sort((a, b) => (a | 0) - (b | 0));
             const groups: number[] = [];
             const files: number[] = [];
             const offsets: number[] = [];
             const lengths: number[] = [];
             const chunks: Uint8Array[] = [];
             let totalBytes = 0;
-            for (let i = 0; i < objSpawnEntries.length; i++) {
-                const e = objSpawnEntries[i];
-                if (!(e.bytes instanceof Uint8Array) || e.bytes.length <= 0) continue;
+            for (let i = 0; i < mapIds.length; i++) {
+                const mapId = mapIds[i] | 0;
+                const bytes = objSpawnBytesByMapId.get(mapId);
+                if (!(bytes instanceof Uint8Array) || bytes.length <= 0) continue;
                 groups.push(0);
-                files.push(e.typeId | 0);
+                files.push(mapId | 0);
                 offsets.push(totalBytes);
-                lengths.push(e.bytes.length | 0);
-                chunks.push(e.bytes);
-                totalBytes += e.bytes.length | 0;
+                lengths.push(bytes.length | 0);
+                chunks.push(bytes);
+                totalBytes += bytes.length | 0;
             }
             if (groups.length > 0) {
                 const bytes = new Uint8Array(totalBytes);
