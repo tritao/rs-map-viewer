@@ -1,12 +1,12 @@
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import type { DrawRange } from "../../runtime/contracts/DrawRange";
-import { NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
+import type { DrawRange } from "../contracts/DrawRange";
+import { NULL_DRAW_RANGE } from "../contracts/DrawRange";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../../runtime/contracts/FramePacket";
-import type { NpcSimMapState } from "../../runtime/sim/NpcSimStateStore";
+} from "../contracts/FramePacket";
+import type { NpcSimMapState } from "./NpcSimStateStore";
 
 function emitTickPatch(
     outPacked: Int32Array,

@@ -1,5 +1,5 @@
 import type { ObjSpawn } from "../../data/obj/ObjSpawn";
-import { SdMapLoaderInput } from "../../maprender/payload/SdMapLoaderInput";
+import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Scene } from "../../rs/scene/Scene";
 import type { Result } from "../../util/Result";
@@ -9,6 +9,7 @@ import type {
     MapRenderRuntimeHandle,
     MapRenderRuntimeMapSquareEntry,
     MapRenderRuntimeMissingBlobEntries,
+    MapRenderRuntimePacket,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import {
     MAP_RENDER_RUNTIME_STATUS_INVALID_ARG,
@@ -868,7 +869,7 @@ function createObjSpawnTypeEntriesBytesForBuild(
     return out.length > 0 ? out : undefined;
 }
 
-export class MapRenderRuntimeCacheV2Uploader {
+export class MapRenderRuntimeCacheUploader {
     // Avoid re-uploading large dat seq-frame map blobs across retry passes.
     private readonly uploadedDatSeqFrameMapIds: Set<number> = new Set();
     // Upload the texture packing presence-lists once per runtime handle.
@@ -1610,13 +1611,13 @@ export class MapRenderRuntimeCacheV2Uploader {
         return true;
     }
 
-    async prepareRuntimeForBuildRequestDetailed(
+    async prepareAndBuildMapPacketFromCacheDetailed(
         bridge: MapRenderRuntimeBridgeV2,
         runtimeHandle: MapRenderRuntimeHandle,
         request: MapRenderRuntimeBuildRequest,
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
         maxPasses = 12,
-    ): Promise<MapRenderRuntimePrepareResult> {
+    ): Promise<(MapRenderRuntimePrepareResult & Readonly<{ packet?: MapRenderRuntimePacket }>)> {
         const uploadedBase = await this.uploadRuntimeCacheForBuildRequest(
             bridge,
             runtimeHandle,
@@ -1638,16 +1639,15 @@ export class MapRenderRuntimeCacheV2Uploader {
         for (let pass = 0; pass < passes; pass++) {
             let status = MAP_RENDER_RUNTIME_STATUS_OK;
             const hasProbe = typeof bridge.probeBuildMapPacketFromCacheStatus === "function";
+            let packet: MapRenderRuntimePacket | undefined;
             if (hasProbe) {
                 status = (await bridge.probeBuildMapPacketFromCacheStatus(
                     runtimeHandle,
                     request,
                 )) | 0;
             } else {
-                const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
-                status = packet
-                    ? MAP_RENDER_RUNTIME_STATUS_OK
-                    : MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
+                packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+                status = packet ? MAP_RENDER_RUNTIME_STATUS_OK : MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
             }
             lastStatus = status | 0;
 
@@ -1674,12 +1674,48 @@ export class MapRenderRuntimeCacheV2Uploader {
             }
 
             if (status === MAP_RENDER_RUNTIME_STATUS_OK) {
+                if (!packet) {
+                    packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+                    if (!packet) {
+                        return {
+                            ok: false,
+                            reason: "status_non_ok",
+                            status,
+                            passesTried: (pass + 1) | 0,
+                            missingCount: 0,
+                            lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+                        };
+                    }
+                    const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                    if (missingAfterBuild && (missingAfterBuild.domains.length | 0) > 0) {
+                        const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
+                            bridge,
+                            runtimeHandle,
+                            missingAfterBuild,
+                            sceneBuildInput,
+                        );
+                        if (!okMissing) {
+                            return {
+                                ok: false,
+                                reason: "upload_missing_failed",
+                                status,
+                                passesTried: (pass + 1) | 0,
+                                missingCount: missingAfterBuild.domains.length | 0,
+                                lastBuildFailure: await bridge.debugGetLastBuildFailure?.(
+                                    runtimeHandle,
+                                ),
+                            };
+                        }
+                        continue;
+                    }
+                }
                 return {
                     ok: true,
                     reason: "ok",
                     status,
                     passesTried: (pass + 1) | 0,
                     missingCount: 0,
+                    packet,
                 };
             }
 
@@ -1687,14 +1723,37 @@ export class MapRenderRuntimeCacheV2Uploader {
             // entries. Fall back to one full build attempt to surface missing blobs (or to
             // confirm a successful build).
             if (hasProbe) {
-                const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+                packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
                 if (packet) {
+                    const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                    if (missingAfterBuild && (missingAfterBuild.domains.length | 0) > 0) {
+                        const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
+                            bridge,
+                            runtimeHandle,
+                            missingAfterBuild,
+                            sceneBuildInput,
+                        );
+                        if (!okMissing) {
+                            return {
+                                ok: false,
+                                reason: "upload_missing_failed",
+                                status,
+                                passesTried: (pass + 1) | 0,
+                                missingCount: missingAfterBuild.domains.length | 0,
+                                lastBuildFailure: await bridge.debugGetLastBuildFailure?.(
+                                    runtimeHandle,
+                                ),
+                            };
+                        }
+                        continue;
+                    }
                     return {
                         ok: true,
                         reason: "ok",
                         status: MAP_RENDER_RUNTIME_STATUS_OK,
                         passesTried: (pass + 1) | 0,
                         missingCount: 0,
+                        packet,
                     };
                 }
                 const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
@@ -1737,23 +1796,6 @@ export class MapRenderRuntimeCacheV2Uploader {
             lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
         };
     }
-
-    async prepareRuntimeForBuildRequest(
-        bridge: MapRenderRuntimeBridgeV2,
-        runtimeHandle: MapRenderRuntimeHandle,
-        request: MapRenderRuntimeBuildRequest,
-        sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-        maxPasses = 12,
-    ): Promise<boolean> {
-        const result = await this.prepareRuntimeForBuildRequestDetailed(
-            bridge,
-            runtimeHandle,
-            request,
-            sceneBuildInput,
-            maxPasses,
-        );
-        return result.ok;
-    }
 }
 
 export async function uploadRuntimeCacheForBuildRequest(
@@ -1762,7 +1804,7 @@ export async function uploadRuntimeCacheForBuildRequest(
     request: MapRenderRuntimeBuildRequest,
     sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
 ): Promise<boolean> {
-    const uploader = new MapRenderRuntimeCacheV2Uploader();
+    const uploader = new MapRenderRuntimeCacheUploader();
     return uploader.uploadRuntimeCacheForBuildRequest(
         bridge,
         runtimeHandle,

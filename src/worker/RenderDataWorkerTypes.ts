@@ -7,7 +7,10 @@ import type { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import type { SceneBuilder } from "../rs/scene/SceneBuilder";
 import type { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
-import type { MapRenderDataBackend, MapRenderDataBackendKind } from "./MapRenderDataBackend";
+import type {
+    MapRenderDataBackend,
+    MapRenderDataBackendKind,
+} from "../maprender/backend/MapRenderDataBackend";
 
 export type WorkerState = {
     session: CacheSession;

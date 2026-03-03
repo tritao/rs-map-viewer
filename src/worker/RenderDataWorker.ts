@@ -7,7 +7,7 @@ import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
-import { WorkerTickRuntime } from "./runtime/WorkerTickRuntime";
+import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SdMapData } from "../maprender/payload/SdMapData";
 import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";

@@ -1,26 +1,24 @@
-import type { SdMapData } from "../maprender/payload/SdMapData";
-import { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
-import {
-    MAP_RENDER_DRAW_BUCKET_KEYS,
-    type MapRenderDrawBucketKey,
-} from "../maprender/payload/SdRenderableData";
-import { SdMapRenderDataTsBackend } from "../maprender/backend/SdMapRenderDataTsBackend";
-import type { MapRenderBuildDeps } from "../maprender/MapRenderBuildDeps";
-import type { BackendKind } from "../util/BackendKind";
-import { errorToString } from "../util/ErrorUtil";
+import type { SdMapData } from "../payload/SdMapData";
+import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
+import { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "../payload/SdRenderableData";
+import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
+import type { BackendKind } from "../../util/BackendKind";
+import { errorToString } from "../../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
     MapRenderRuntimeHandle,
     MapRenderRuntimePacket,
-} from "../wasm/MapRenderRuntimeBridgeAbi";
+} from "../../wasm/MapRenderRuntimeBridgeAbi";
 // Import the runtime surface directly. The wasm module is still loaded lazily via initRuntime().
-import { mapRenderRuntimeBridge } from "../wasm/rs_map_render_backend_bridge.mjs";
+import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
 import {
     MapRenderByteDrivenSceneBuildInput,
-    MapRenderRuntimeCacheV2Uploader,
+    MapRenderRuntimeCacheUploader,
     createByteDrivenSceneBuildInput,
-} from "./runtime-cache/MapRenderRuntimeCacheV2Uploader";
+} from "./MapRenderRuntimeCacheUploader";
+import { runtimePacketToPayloadOverlay } from "./CppWasmRuntimePacketOverlay";
+import { SdMapRenderDataTsBackend } from "./SdMapRenderDataTsBackend";
 
 export type RenderDataResult<T> = Readonly<{
     data: T;
@@ -40,125 +38,6 @@ export interface MapRenderDataBackend {
     // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
     // This allows the worker tick path to use the same runtime instance that built the map packets.
     getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
-}
-
-type MapRenderPayloadOverlay = Readonly<
-    Pick<SdMapData, "heightMapTextureData" | "drawRanges" | "modelInfoTextures">
->;
-
-type ValidatedOverlayInput = Readonly<{
-    bucketCmdCounts: Int32Array;
-    bucketModelInfoLengths: Int32Array;
-    drawRangesPacked: Int32Array;
-    modelInfoTextureBuckets: ReadonlyArray<Uint16Array>;
-    heightMapTextureData: Int16Array;
-}>;
-
-const MAP_RENDER_DRAW_BUCKET_COUNT = MAP_RENDER_DRAW_BUCKET_KEYS.length;
-const EMPTY_I32_ARRAY = new Int32Array(0);
-const EMPTY_U16_ARRAY = new Uint16Array(0);
-
-function validateRuntimePacketForOverlay(
-    packet: MapRenderRuntimePacket,
-): ValidatedOverlayInput | undefined {
-    const packetVersion = packet.packetVersion | 0;
-    if (packetVersion !== 1 && packetVersion !== 2 && packetVersion !== 3) {
-        return undefined;
-    }
-    const bucketCmdCounts = packet.bucketCmdCounts;
-    const bucketModelInfoLengths = packet.bucketModelInfoLengths;
-    const drawRangesPacked = packet.drawRangesPacked;
-    const modelInfoTextureBuckets = packet.modelInfoTextureBuckets;
-    const heightMapTextureData = packet.heightMapTextureData;
-
-    if (
-        bucketCmdCounts.length !== MAP_RENDER_DRAW_BUCKET_COUNT ||
-        bucketModelInfoLengths.length !== MAP_RENDER_DRAW_BUCKET_COUNT
-    ) {
-        return undefined;
-    }
-
-    let totalCmdCount = 0;
-    let totalModelInfoLength = 0;
-    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
-        const cmdCount = bucketCmdCounts[i] | 0;
-        const modelInfoLength = bucketModelInfoLengths[i] | 0;
-        if (cmdCount < 0 || modelInfoLength < 0) {
-            return undefined;
-        }
-        totalCmdCount += cmdCount;
-        totalModelInfoLength += modelInfoLength;
-    }
-    if ((packet.totalModelInfoLength | 0) !== totalModelInfoLength) {
-        return undefined;
-    }
-    if (
-        !(drawRangesPacked instanceof Int32Array) ||
-        drawRangesPacked.length !== totalCmdCount * 3
-    ) {
-        return undefined;
-    }
-    if (
-        !Array.isArray(modelInfoTextureBuckets) ||
-        modelInfoTextureBuckets.length !== MAP_RENDER_DRAW_BUCKET_COUNT
-    ) {
-        return undefined;
-    }
-
-    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
-        const modelInfoLength = bucketModelInfoLengths[i] | 0;
-        const packetBucketModelInfo = modelInfoTextureBuckets[i];
-        if (
-            !(packetBucketModelInfo instanceof Uint16Array) ||
-            packetBucketModelInfo.length !== modelInfoLength
-        ) {
-            return undefined;
-        }
-    }
-    return {
-        bucketCmdCounts,
-        bucketModelInfoLengths,
-        drawRangesPacked,
-        modelInfoTextureBuckets,
-        heightMapTextureData,
-    };
-}
-
-function buildOverlayFromValidatedRuntimePacket(input: ValidatedOverlayInput): MapRenderPayloadOverlay {
-    const drawRanges = {} as Record<MapRenderDrawBucketKey, Int32Array>;
-    const modelInfoTextures = {} as Record<MapRenderDrawBucketKey, Uint16Array>;
-
-    let drawRangeCursor = 0;
-    for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
-        const key = MAP_RENDER_DRAW_BUCKET_KEYS[i];
-        const cmdCount = input.bucketCmdCounts[i] | 0;
-        const bucketRangeLen = cmdCount * 3;
-        drawRanges[key] =
-            bucketRangeLen > 0
-                ? input.drawRangesPacked.slice(drawRangeCursor, drawRangeCursor + bucketRangeLen)
-                : EMPTY_I32_ARRAY;
-        drawRangeCursor += bucketRangeLen;
-
-        const modelInfoLength = input.bucketModelInfoLengths[i] | 0;
-        const packetBucketModelInfo = input.modelInfoTextureBuckets[i];
-        modelInfoTextures[key] = modelInfoLength > 0 ? packetBucketModelInfo : EMPTY_U16_ARRAY;
-    }
-
-    return {
-        heightMapTextureData: input.heightMapTextureData,
-        drawRanges: drawRanges as SdMapData["drawRanges"],
-        modelInfoTextures: modelInfoTextures as SdMapData["modelInfoTextures"],
-    };
-}
-
-function runtimePacketToPayloadOverlay(
-    packet: MapRenderRuntimePacket | undefined,
-): MapRenderPayloadOverlay | undefined {
-    if (!packet) {
-        return undefined;
-    }
-    const validated = validateRuntimePacketForOverlay(packet);
-    return validated ? buildOverlayFromValidatedRuntimePacket(validated) : undefined;
 }
 
 function sdMapDataTransferables(data: SdMapData): Transferable[] {
@@ -230,7 +109,7 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
-    private readonly cacheUploader = new MapRenderRuntimeCacheV2Uploader();
+    private readonly cacheUploader = new MapRenderRuntimeCacheUploader();
 
     constructor(
         private readonly deps: MapRenderBuildDeps,
@@ -424,33 +303,29 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         if (!request) {
             return undefined;
         }
-        const prepareResult = await this.cacheUploader.prepareRuntimeForBuildRequestDetailed(
+        const buildResult = await this.cacheUploader.prepareAndBuildMapPacketFromCacheDetailed(
             bridge,
             runtimeHandle,
             request,
             byteDrivenSceneBuildInput,
         );
-        if (!prepareResult.ok) {
-            console.warn("[map-render][cpp-wasm] prepareRuntimeForBuildRequest failed", {
+        if (!buildResult.ok) {
+            console.warn("[map-render][cpp-wasm] prepareAndBuildMapPacketFromCache failed", {
                 square: `${input.mapX}:${input.mapY}`,
-                reason: prepareResult.reason,
-                status: prepareResult.status,
-                passesTried: prepareResult.passesTried,
-                missingCount: prepareResult.missingCount,
-                lastBuildFailure: prepareResult.lastBuildFailure,
+                reason: buildResult.reason,
+                status: buildResult.status,
+                passesTried: buildResult.passesTried,
+                missingCount: buildResult.missingCount,
+                lastBuildFailure: buildResult.lastBuildFailure,
             });
             return undefined;
         }
-        const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
+        const packet = buildResult.packet;
         if (!packet) {
             return undefined;
         }
         const overlay = runtimePacketToPayloadOverlay(packet);
         if (!overlay) {
-            return undefined;
-        }
-        const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-        if (missing && (missing.domains.length | 0) > 0) {
             return undefined;
         }
         if (

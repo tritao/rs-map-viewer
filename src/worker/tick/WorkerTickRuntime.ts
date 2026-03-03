@@ -22,13 +22,13 @@ import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_render_backend_bridge.mjs";
-import type { MapRenderDataBackend } from "../MapRenderDataBackend";
+import type { MapRenderDataBackend } from "../../maprender/backend/MapRenderDataBackend";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "./TickPatchStreamsBuilder";
+} from "../../runtime/sim/TickPatchStreamsBuilder";
 import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
-import { NpcGpuFrameBuilder } from "./NpcGpuFrameBuilder";
+import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
 import {
     NpcSimStateStore,
     type NpcSimStateStoreDeps,
@@ -96,7 +96,7 @@ function isWasmTickEmitResult(value: unknown): value is WasmTickEmitResult {
     );
 }
 
-export class WorkerMapSimLifecycle {
+class WorkerMapSimLifecycle {
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private readonly warnedMissingTickStateMapIds = new Set<number>();
 
