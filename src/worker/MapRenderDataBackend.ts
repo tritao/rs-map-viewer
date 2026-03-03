@@ -265,70 +265,6 @@ const CPP_WASM_OUTCOME_KEYS = [
 type CppWasmBuildOutcome = (typeof CPP_WASM_OUTCOME_KEYS)[number];
 type CppWasmBuildOutcomeStats = Record<CppWasmBuildOutcome, number>;
 
-function createCppWasmBuildOutcomeStats(): CppWasmBuildOutcomeStats {
-    return {
-        success: 0,
-        bridgeMissing: 0,
-        bridgeReturnedEmpty: 0,
-        bridgeError: 0,
-    };
-}
-
-const MAP_SQUARE_SIZE = 64;
-
-function createRuntimeCacheBuildRequest(
-    sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-): MapRenderRuntimeBuildRequest | undefined {
-    const sizeX = sceneBuildInput.sizeX | 0;
-    const sizeY = sceneBuildInput.sizeY | 0;
-    if (sizeX <= 0 || sizeY <= 0) {
-        return undefined;
-    }
-    const borderX = ((sizeX - MAP_SQUARE_SIZE) / 2) | 0;
-    const borderY = ((sizeY - MAP_SQUARE_SIZE) / 2) | 0;
-    if (
-        borderX < 0 ||
-        borderY < 0 ||
-        borderX !== borderY ||
-        sizeX !== MAP_SQUARE_SIZE + borderX * 2 ||
-        sizeY !== MAP_SQUARE_SIZE + borderY * 2
-    ) {
-        return undefined;
-    }
-    const borderSize = borderX;
-    return {
-        mapX: sceneBuildInput.mapX | 0,
-        mapY: sceneBuildInput.mapY | 0,
-        borderSize,
-        sizeX,
-        sizeY,
-        cacheGame: sceneBuildInput.cacheGame | 0,
-        cacheRevision: sceneBuildInput.cacheRevision | 0,
-        unitsTileHeightBasis: sceneBuildInput.unitsTileHeightBasis | 0,
-        smoothTerrain: sceneBuildInput.smoothTerrain,
-        locLoadType: sceneBuildInput.locLoadType | 0,
-        minimizeDrawCalls: sceneBuildInput.minimizeDrawCalls,
-        loadLocs: sceneBuildInput.loadLocs,
-        loadObjs: sceneBuildInput.loadObjs,
-        loadNpcs: sceneBuildInput.loadNpcs,
-    };
-}
-
-function createEmptyTileRenderFlags(levels: number, sizeX: number, sizeY: number): Uint8Array[][] {
-    const lv = Math.max(0, levels | 0);
-    const sx = Math.max(0, sizeX | 0);
-    const sy = Math.max(0, sizeY | 0);
-    const out: Uint8Array[][] = new Array(lv);
-    for (let l = 0; l < lv; l++) {
-        const cols: Uint8Array[] = new Array(sx);
-        for (let x = 0; x < sx; x++) {
-            cols[x] = new Uint8Array(sy);
-        }
-        out[l] = cols;
-    }
-    return out;
-}
-
 class TsMapRenderDataBackend implements MapRenderDataBackend {
     readonly kind: MapRenderDataBackendKind = "ts";
     private readonly backend: SdMapRenderDataTsBackend;
@@ -353,12 +289,19 @@ class TsMapRenderDataBackend implements MapRenderDataBackend {
 type CppWasmMapRenderDataBridge = MapRenderRuntimeBridgeV2;
 
 class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
+    private static readonly MAP_SQUARE_SIZE = 64;
+
     readonly kind: MapRenderDataBackendKind = "cpp-wasm";
     private readonly bridge: CppWasmMapRenderDataBridge = mapRenderRuntimeBridge;
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
-    private readonly outcomeStats: CppWasmBuildOutcomeStats = createCppWasmBuildOutcomeStats();
+    private readonly outcomeStats: CppWasmBuildOutcomeStats = {
+        success: 0,
+        bridgeMissing: 0,
+        bridgeReturnedEmpty: 0,
+        bridgeError: 0,
+    };
     private readonly cacheUploader = new MapRenderRuntimeCacheV2Uploader();
     private buildCalls = 0;
 
@@ -366,6 +309,62 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         private readonly deps: MapRenderDataBackendDeps,
         private readonly options: MapRenderDataBackendOptions | undefined,
     ) {}
+
+    private static createRuntimeCacheBuildRequest(
+        sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
+    ): MapRenderRuntimeBuildRequest | undefined {
+        const sizeX = sceneBuildInput.sizeX | 0;
+        const sizeY = sceneBuildInput.sizeY | 0;
+        if (sizeX <= 0 || sizeY <= 0) {
+            return undefined;
+        }
+        const borderX = ((sizeX - CppWasmMapRenderDataBackend.MAP_SQUARE_SIZE) / 2) | 0;
+        const borderY = ((sizeY - CppWasmMapRenderDataBackend.MAP_SQUARE_SIZE) / 2) | 0;
+        if (
+            borderX < 0 ||
+            borderY < 0 ||
+            borderX !== borderY ||
+            sizeX !== CppWasmMapRenderDataBackend.MAP_SQUARE_SIZE + borderX * 2 ||
+            sizeY !== CppWasmMapRenderDataBackend.MAP_SQUARE_SIZE + borderY * 2
+        ) {
+            return undefined;
+        }
+        return {
+            mapX: sceneBuildInput.mapX | 0,
+            mapY: sceneBuildInput.mapY | 0,
+            borderSize: borderX,
+            sizeX,
+            sizeY,
+            cacheGame: sceneBuildInput.cacheGame | 0,
+            cacheRevision: sceneBuildInput.cacheRevision | 0,
+            unitsTileHeightBasis: sceneBuildInput.unitsTileHeightBasis | 0,
+            smoothTerrain: sceneBuildInput.smoothTerrain,
+            locLoadType: sceneBuildInput.locLoadType | 0,
+            minimizeDrawCalls: sceneBuildInput.minimizeDrawCalls,
+            loadLocs: sceneBuildInput.loadLocs,
+            loadObjs: sceneBuildInput.loadObjs,
+            loadNpcs: sceneBuildInput.loadNpcs,
+        };
+    }
+
+    private static createEmptyTileRenderFlags(
+        levels: number,
+        sizeX: number,
+        sizeY: number,
+    ): Uint8Array[][] {
+        const lv = Math.max(0, levels | 0);
+        const sx = Math.max(0, sizeX | 0);
+        const sy = Math.max(0, sizeY | 0);
+        const out: Uint8Array[][] = new Array(lv);
+        for (let l = 0; l < lv; l++) {
+            const cols: Uint8Array[] = new Array(sx);
+            for (let x = 0; x < sx; x++) {
+                cols[x] = new Uint8Array(sy);
+            }
+            out[l] = cols;
+        }
+        return out;
+    }
 
     private async ensureRuntimeInitialized(): Promise<boolean> {
         if (!this.runtimeInitPromise) {
@@ -394,7 +393,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         input: SdMapLoaderInput,
     ): MapRenderByteDrivenSceneBuildInput {
         const { session } = this.deps;
-        const sceneBuildLoaders = {
+        return createByteDrivenSceneBuildInput(input, {
+            mapBytesProvider: this.deps.mapBytesProvider,
             locTypeLoader: session.loaders.locTypeLoader,
             objTypeLoader: session.loaders.objTypeLoader,
             locModelLoader: {
@@ -420,10 +420,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 values: session.varManager.values,
                 varbitLoader: session.varManager.varbitLoader,
             },
-        };
-        return createByteDrivenSceneBuildInput(input, {
-            mapBytesProvider: this.deps.mapBytesProvider,
-            ...sceneBuildLoaders,
             objSpawns: this.deps.objSpawns,
             cacheGame: session.cache.info.game,
             cacheRevision: session.cache.info.revision,
@@ -436,7 +432,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         input: SdMapLoaderInput,
         byteDrivenSceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     ): Promise<SdMapData | undefined> {
-        const request = createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
+        const request =
+            CppWasmMapRenderDataBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
         if (!request) {
             return undefined;
         }
@@ -458,7 +455,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             return undefined;
         }
         const packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
-        const overlay = runtimePacketToPayloadOverlay(packet);
         if (this.options?.telemetry) {
             const npcVerticesLen =
                 packet?.npcVertices instanceof Uint8Array ? packet.npcVertices.length | 0 : -1;
@@ -486,19 +482,24 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
                 npcOrderKeysLen,
             });
         }
+        if (!packet) {
+            return undefined;
+        }
+        const overlay = runtimePacketToPayloadOverlay(packet);
+        if (!overlay) {
+            return undefined;
+        }
         const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
         if (missing && (missing.domains.length | 0) > 0) {
             return undefined;
         }
-
-        const hasGeometry =
-            overlay &&
-            packet?.vertices instanceof Uint8Array &&
-            packet.vertices.length > 0 &&
-            packet?.indices instanceof Int32Array &&
-            packet.indices.length > 0 &&
-            packet?.usedTextureIds instanceof Int32Array;
-        if (!hasGeometry) {
+        if (
+            !(packet.vertices instanceof Uint8Array) ||
+            packet.vertices.length <= 0 ||
+            !(packet.indices instanceof Int32Array) ||
+            packet.indices.length <= 0 ||
+            !(packet.usedTextureIds instanceof Int32Array)
+        ) {
             return undefined;
         }
 
@@ -554,31 +555,35 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         }
 
         return {
-                mapX: input.mapX | 0,
-                mapY: input.mapY | 0,
-                cacheName: this.deps.session.cache.info.name,
-                maxLevel: input.maxLevel | 0,
-                loadObjs: input.loadObjs === true,
-                loadNpcs: input.loadNpcs === true,
-                loadLocs: input.loadLocs === true,
-                smoothTerrain: input.smoothTerrain === true,
-                borderSize: request.borderSize | 0,
-                tileRenderFlags: createEmptyTileRenderFlags(levels, sizeX, sizeY),
-                minimapBlob: new Blob(),
-                vertices: packet.vertices,
-                indices: packet.indices,
-                modelInfoTextures: overlay.modelInfoTextures,
-                heightMapTextureData: overlay.heightMapTextureData,
-                drawRanges: overlay.drawRanges,
-                locsAnimated: [],
-                usedTextureIds: packet.usedTextureIds,
-                loadedTextures: new Map(),
-                npcDrawRangesBase: keepNpcPayload ? npcDrawRangesBase : undefined,
-                npcDrawRangesAlpha: keepNpcPayload ? npcDrawRangesAlpha : undefined,
-                npcVertices: keepNpcPayload ? npcVertices : undefined,
-                npcIndices: keepNpcPayload ? npcIndices : undefined,
-                npcOrderKeys: keepNpcPayload ? npcOrderKeys : undefined,
-            };
+            mapX: input.mapX | 0,
+            mapY: input.mapY | 0,
+            cacheName: this.deps.session.cache.info.name,
+            maxLevel: input.maxLevel | 0,
+            loadObjs: input.loadObjs === true,
+            loadNpcs: input.loadNpcs === true,
+            loadLocs: input.loadLocs === true,
+            smoothTerrain: input.smoothTerrain === true,
+            borderSize: request.borderSize | 0,
+            tileRenderFlags: CppWasmMapRenderDataBackend.createEmptyTileRenderFlags(
+                levels,
+                sizeX,
+                sizeY,
+            ),
+            minimapBlob: new Blob(),
+            vertices: packet.vertices,
+            indices: packet.indices,
+            modelInfoTextures: overlay.modelInfoTextures,
+            heightMapTextureData: overlay.heightMapTextureData,
+            drawRanges: overlay.drawRanges,
+            locsAnimated: [],
+            usedTextureIds: packet.usedTextureIds,
+            loadedTextures: new Map(),
+            npcDrawRangesBase: keepNpcPayload ? npcDrawRangesBase : undefined,
+            npcDrawRangesAlpha: keepNpcPayload ? npcDrawRangesAlpha : undefined,
+            npcVertices: keepNpcPayload ? npcVertices : undefined,
+            npcIndices: keepNpcPayload ? npcIndices : undefined,
+            npcOrderKeys: keepNpcPayload ? npcOrderKeys : undefined,
+        };
     }
 
     private trackOutcome(
@@ -605,10 +610,8 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
         }
     }
 
-    private async buildMapDataActive(
-        input: SdMapLoaderInput,
-        t0: number | undefined,
-    ): Promise<RenderDataResult<SdMapData | undefined>> {
+    async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
+        const t0 = this.options?.telemetry ? performance.now() : undefined;
         const bridge = this.bridge;
         if (!(await this.ensureRuntimeInitialized())) {
             this.trackOutcome(
@@ -665,11 +668,6 @@ class CppWasmMapRenderDataBackend implements MapRenderDataBackend {
             );
             return { data: undefined, transferables: [] };
         }
-    }
-
-    async buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>> {
-        const t0 = this.options?.telemetry ? performance.now() : undefined;
-        return this.buildMapDataActive(input, t0);
     }
 
     getCppWasmRuntimeHandle(): MapRenderRuntimeHandle | undefined {
