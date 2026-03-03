@@ -1122,18 +1122,3 @@ export class WasmCacheUploader {
         };
     }
 }
-
-export async function uploadRuntimeCacheForBuildRequest(
-    bridge: MapRenderRuntimeBridgeV2,
-    runtimeHandle: MapRenderRuntimeHandle,
-    request: MapRenderRuntimeBuildRequest,
-    sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-): Promise<boolean> {
-    const uploader = new WasmCacheUploader();
-    return uploader.uploadRuntimeCacheForBuildRequest(
-        bridge,
-        runtimeHandle,
-        request,
-        sceneBuildInput,
-    );
-}

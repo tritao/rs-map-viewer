@@ -10,7 +10,6 @@ import {
     WasmCacheUploader,
     createByteDrivenSceneBuildInput,
     createSceneBuildCacheProvider,
-    uploadRuntimeCacheForBuildRequest,
 } from "../../src/maprender/wasm/WasmCacheUploader";
 import type {
     MapRenderRuntimeBridgeV2,
@@ -489,7 +488,7 @@ async function main(): Promise<void> {
     );
     const lifecycleHandle = lifecycleRuntimeHandle as number;
     const lifecycleCacheUploader = new WasmCacheUploader();
-    const uploadedLifecycle = await uploadRuntimeCacheForBuildRequest(
+    const uploadedLifecycle = await lifecycleCacheUploader.uploadRuntimeCacheForBuildRequest(
         bridge,
         lifecycleHandle,
         lifecycleFixture.request,
@@ -541,7 +540,7 @@ async function main(): Promise<void> {
     assert.ok(packetD, "expected packet before reset");
     assertNpcSlotMetadataContract(packetD as MapRenderRuntimePacket, "packetD");
     bridge.resetRuntime(lifecycleHandle);
-    const uploadedAfterReset = await uploadRuntimeCacheForBuildRequest(
+    const uploadedAfterReset = await lifecycleCacheUploader.uploadRuntimeCacheForBuildRequest(
         bridge,
         lifecycleHandle,
         lifecycleFixture.request,
