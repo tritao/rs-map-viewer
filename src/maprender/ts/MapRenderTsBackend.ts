@@ -47,10 +47,11 @@ import {
     type SceneCommandPlanDigest,
 } from "../../runtime/build";
 import { createNpcBootstrapData } from "../../runtime/sim/NpcBootstrapData";
-import type { SdMapData } from "../payload/SdMapData";
-import { SdMapLoaderInput } from "../payload/SdMapLoaderInput";
-import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../payload/SdRenderableData";
-import { createSdTexturePacking } from "../payload/SdTexturePacking";
+import type { SdMapData } from "../MapRenderPayload";
+import { SdMapLoaderInput } from "../MapRenderPayload";
+import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../MapRenderPayload";
+import { MAP_RENDER_DRAW_BUCKET_KEYS } from "../MapRenderPayload";
+import { createSdTexturePacking } from "./TexturePacking";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 

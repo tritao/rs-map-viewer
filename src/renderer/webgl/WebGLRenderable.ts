@@ -8,7 +8,7 @@ import PicoGL, {
 } from "picogl";
 
 import { Scene } from "../../rs/scene/Scene";
-import { SdRenderableData } from "../../maprender/payload/SdRenderableData";
+import { SdRenderableData } from "../../maprender/MapRenderPayload";
 
 const FRAME_RENDER_DELAY = 3;
 

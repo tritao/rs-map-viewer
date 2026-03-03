@@ -8,8 +8,8 @@ import type { RenderDataWorker } from "./RenderDataWorker";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { SdMapData } from "../maprender/payload/SdMapData";
-import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
+import type { SdMapData } from "../maprender/MapRenderPayload";
+import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 type WorkerDescriptorLike = Readonly<{ init: Promise<RenderDataWorkerThread> }>;

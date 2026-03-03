@@ -1,6 +1,6 @@
-import type { SdMapData } from "./payload/SdMapData";
-import { SdMapLoaderInput } from "./payload/SdMapLoaderInput";
-import { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "./payload/SdRenderableData";
+import type { SdMapData } from "./MapRenderPayload";
+import { SdMapLoaderInput } from "./MapRenderPayload";
+import { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "./MapRenderPayload";
 import type { MapRenderBuildDeps } from "./MapRenderBuildDeps";
 import type { BackendKind } from "../util/BackendKind";
 import { errorToString } from "../util/ErrorUtil";

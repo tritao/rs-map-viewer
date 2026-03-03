@@ -1,5 +1,5 @@
 import { MapRenderer, type MapSquareRenderable } from "../renderer/MapRenderer";
-import type { MapData } from "../maprender/payload/MapData";
+import type { MapData } from "../maprender/MapRenderPayload";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { Camera } from "./Camera";

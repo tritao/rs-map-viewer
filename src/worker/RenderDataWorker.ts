@@ -9,8 +9,8 @@ import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import type { SdMapData } from "../maprender/payload/SdMapData";
-import type { SdMapLoaderInput } from "../maprender/payload/SdMapLoaderInput";
+import type { SdMapData } from "../maprender/MapRenderPayload";
+import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 const buildService = new RenderDataWorkerBuild();

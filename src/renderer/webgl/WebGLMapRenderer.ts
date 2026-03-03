@@ -17,7 +17,7 @@ import { Camera } from "../../mapviewer/Camera";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import { MapRenderer, TextureFilterMode } from "../MapRenderer";
 import { FrameStats, RendererStats } from "../Renderer";
-import type { SdMapData } from "../../maprender/payload/SdMapData";
+import type { SdMapData } from "../../maprender/MapRenderPayload";
 import { PostProcessPass } from "./PostProcessPass";
 import { RenderTargets } from "./RenderTargets";
 import { WebGLInteractionSystem, type InteractionsCallback } from "./WebGLInteractionSystem";

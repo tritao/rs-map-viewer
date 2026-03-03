@@ -1,4 +1,5 @@
-import { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 
 export const MAP_RENDER_DRAW_BUCKET_KEYS = [
     "base",
@@ -62,3 +63,51 @@ export type SdRenderableData = {
     readonly npcIndices?: Int32Array;
     readonly npcOrderKeys?: Int32Array;
 };
+
+export interface MapData {
+    mapX: number;
+    mapY: number;
+
+    cacheName: string;
+
+    maxLevel: number;
+    loadObjs: boolean;
+    loadNpcs: boolean;
+    loadLocs: boolean;
+
+    smoothTerrain: boolean;
+
+    minimapBlob: Blob;
+}
+
+export type SdMapData = MapData &
+    SdRenderableData & {
+        readonly mapX: number;
+        readonly mapY: number;
+
+        readonly loadLocs: boolean;
+
+        readonly minimapBlob: Blob;
+        readonly heightMapTextureData: Int16Array;
+        readonly usedTextureIds: Int32Array;
+        // Maps NpcType -> animation frame drawRanges within this map's npc geometry buffers.
+        // Used by the worker tick pipeline to patch npc draw ranges per-frame.
+        readonly npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
+    };
+
+export type SdMapLoaderInput = {
+    mapX: number;
+    mapY: number;
+
+    maxLevel: number;
+    loadObjs: boolean;
+    loadNpcs: boolean;
+    loadLocs: boolean;
+
+    smoothTerrain: boolean;
+
+    minimizeDrawCalls: boolean;
+
+    loadedTextureIdsPacked: Int32Array;
+};
+

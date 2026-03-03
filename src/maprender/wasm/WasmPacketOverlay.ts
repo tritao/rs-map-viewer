@@ -1,8 +1,8 @@
-import type { SdMapData } from "../payload/SdMapData";
+import type { SdMapData } from "../MapRenderPayload";
 import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type MapRenderDrawBucketKey,
-} from "../payload/SdRenderableData";
+} from "../MapRenderPayload";
 import type { MapRenderRuntimePacket } from "../../wasm/MapRenderRuntimeBridgeAbi";
 
 export type MapRenderPayloadOverlay = Readonly<
