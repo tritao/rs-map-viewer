@@ -23,6 +23,7 @@ import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMap
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
+import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
@@ -43,7 +44,12 @@ type TickWorkerState = Readonly<{
     session: CacheSession;
     mapBytesProvider: MapBytesProvider;
     sceneBuilder: SceneBuilder;
-    mapRenderBackend: MapRenderBackend;
+    // Tick runtime intentionally only sees the tick-safe backend surface.
+    // Static map build entrypoints stay outside this layer.
+    mapRenderBackend: Readonly<{
+        kind: MapRenderBackend["kind"];
+        getCppWasmRuntimeHandle?: () => MapRenderRuntimeHandle | undefined;
+    }>;
 }>;
 
 type TickFrameInputs = Readonly<{
@@ -199,12 +205,53 @@ export class WorkerTickRuntime {
         );
     }
 
-    async registerMapNpcSimState(
+    private emitNpcBootstrapWarnings(
         mapId: number,
         maxLevel: number,
         borderSize: number,
+        resolvedBootstrap: ResolvedNpcBootstrapData,
+        deps: NpcSimStateStoreDeps,
+    ): void {
+        if (this.warnedEmptyNpcBootstrapMapIds.has(mapId | 0)) {
+            return;
+        }
+        const state = this.npcSimStateStore.getMap(mapId | 0);
+        const npcBootstrapData = resolvedBootstrap.data;
+        const spawnEventCount = npcBootstrapData.spawnEvents.length | 0;
+        const npcCount = state ? (state.npcs.length | 0) : 0;
+        if (spawnEventCount <= 0) {
+            this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
+            console.warn(
+                `[map-render][npc] empty bootstrap for mapId=${mapId | 0} ` +
+                    `(source=${resolvedBootstrap.source} maxLevel=${maxLevel | 0} border=${
+                        borderSize | 0
+                    } decoded=${resolvedBootstrap.decodedSpawnsCount ?? -1} ` +
+                    `fallbackKey=${resolvedBootstrap.fallbackCacheKey ?? "n/a"} ` +
+                    `fallbackUrl=${resolvedBootstrap.fallbackUrl ?? "n/a"} ` +
+                    `fallbackTotal=${resolvedBootstrap.fallbackTotalSpawns ?? -1} ` +
+                    `fallbackMap=${resolvedBootstrap.fallbackMapSpawnsCount ?? -1} ` +
+                    `fallbackMapAllLvls=${resolvedBootstrap.fallbackMapSpawnsAllLevelsCount ?? -1})`,
+            );
+            return;
+        }
+        if (npcCount > 0) {
+            return;
+        }
+        this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
+        const firstTypeId = npcBootstrapData.spawnEvents[0]!.npcTypeId | 0;
+        const npcTypeOk = deps.npcTypeLoader.tryLoad(firstTypeId).ok ? 1 : 0;
+        const npcTypeCount = deps.npcTypeLoader.getCount?.() ?? -1;
+        console.warn(
+            `[map-render][npc] bootstrap events produced 0 npc instances for mapId=${mapId | 0} ` +
+                `(source=${resolvedBootstrap.source} events=${spawnEventCount} firstType=${firstTypeId} ` +
+                `npcTypeOk=${npcTypeOk} npcTypeCount=${npcTypeCount | 0})`,
+        );
+    }
+
+    async registerMapNpcSimState(
+        mapId: number,
+        borderSize: number,
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
@@ -214,16 +261,7 @@ export class WorkerTickRuntime {
         const workerState = await this.getWorkerState();
         const simScene = this.buildMapSimScene(workerState, mapId, borderSize);
         const tileRenderFlagsLevel1 = simScene.tileRenderFlags[1] ?? [];
-        const resolvedBootstrap = await this.resolveNpcBootstrapData(
-            workerState,
-            mapId,
-            maxLevel,
-            borderSize,
-            tileRenderFlagsLevel1,
-            npcOrderKeys,
-        );
         const deps = createNpcSimStateStoreDeps(workerState);
-        const npcBootstrapData = resolvedBootstrap.data;
         this.npcSimStateStore.registerMap(
             {
                 mapId,
@@ -235,41 +273,46 @@ export class WorkerTickRuntime {
             },
             deps,
         );
+        this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
+        this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
+    }
+
+    async bootstrapMapNpcLifecycle(
+        mapId: number,
+        maxLevel: number,
+        npcOrderKeys: Int32Array,
+        mapSimToken?: number,
+    ): Promise<void> {
+        if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
+            return;
+        }
+        const state = this.npcSimStateStore.getMap(mapId | 0);
+        if (!state) {
+            return;
+        }
+        const workerState = await this.getWorkerState();
+        const resolvedBootstrap = await this.resolveNpcBootstrapData(
+            workerState,
+            mapId,
+            maxLevel,
+            state.borderSize | 0,
+            state.tileRenderFlagsLevel1,
+            npcOrderKeys,
+        );
+        const deps = createNpcSimStateStoreDeps(workerState);
         this.npcSimStateStore.applyMapNpcLifecycleEvents(
             mapId | 0,
-            npcBootstrapData.spawnEvents,
+            resolvedBootstrap.data.spawnEvents,
             deps,
             true,
         );
-        const state = this.npcSimStateStore.getMap(mapId | 0);
-        const spawnEventCount = npcBootstrapData.spawnEvents.length | 0;
-        const npcCount = state ? (state.npcs.length | 0) : 0;
-        if (!this.warnedEmptyNpcBootstrapMapIds.has(mapId | 0)) {
-            if (spawnEventCount <= 0) {
-                this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
-                console.warn(
-                    `[map-render][npc] empty bootstrap for mapId=${mapId | 0} ` +
-                        `(source=${resolvedBootstrap.source} maxLevel=${maxLevel | 0} border=${
-                            borderSize | 0
-                        } decoded=${resolvedBootstrap.decodedSpawnsCount ?? -1} ` +
-                        `fallbackKey=${resolvedBootstrap.fallbackCacheKey ?? "n/a"} ` +
-                        `fallbackUrl=${resolvedBootstrap.fallbackUrl ?? "n/a"} ` +
-                        `fallbackTotal=${resolvedBootstrap.fallbackTotalSpawns ?? -1} ` +
-                        `fallbackMap=${resolvedBootstrap.fallbackMapSpawnsCount ?? -1} ` +
-                        `fallbackMapAllLvls=${resolvedBootstrap.fallbackMapSpawnsAllLevelsCount ?? -1})`,
-                );
-            } else if (npcCount <= 0) {
-                this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
-                const firstTypeId = npcBootstrapData.spawnEvents[0]!.npcTypeId | 0;
-                const npcTypeOk = deps.npcTypeLoader.tryLoad(firstTypeId).ok ? 1 : 0;
-                const npcTypeCount = deps.npcTypeLoader.getCount?.() ?? -1;
-                console.warn(
-                    `[map-render][npc] bootstrap events produced 0 npc instances for mapId=${mapId | 0} ` +
-                        `(source=${resolvedBootstrap.source} events=${spawnEventCount} firstType=${firstTypeId} ` +
-                        `npcTypeOk=${npcTypeOk} npcTypeCount=${npcTypeCount | 0})`,
-                );
-            }
-        }
+        this.emitNpcBootstrapWarnings(
+            mapId | 0,
+            maxLevel | 0,
+            state.borderSize | 0,
+            resolvedBootstrap,
+            deps,
+        );
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     }
 
@@ -384,8 +427,8 @@ export class WorkerTickRuntime {
             cameraMapY,
             lodDistance: safeLodDistance,
             hoveredMapIds,
-            hasNpcs: false,
-            npcOffset: -1,
+            npcRangeStart: 0,
+            npcRangeCount: 0,
             tickPatchCounts: EMPTY_TICK_PATCH_COUNTS,
             tickPatchStreams: EMPTY_TICK_PATCH_STREAMS,
         });
@@ -469,8 +512,6 @@ export class WorkerTickRuntime {
                 );
                 continue;
             }
-            const hasNpcs = (state.npcs.length | 0) > 0;
-
             applyNpcMovementStep(
                 state,
                 this.npcSimPathfinder,
@@ -480,7 +521,7 @@ export class WorkerTickRuntime {
                 seqFrameLoader,
             );
 
-            const npcOffset = this.npcGpuFrameBuilder.addMapNpcs(
+            const npcRange = this.npcGpuFrameBuilder.addMapNpcs(
                 state.npcs,
                 state.borderSize,
                 state.tileRenderFlagsLevel1,
@@ -504,8 +545,8 @@ export class WorkerTickRuntime {
                 cameraMapY,
                 lodDistance: inputs.safeLodDistance,
                 hoveredMapIds: inputs.hoveredMapIds,
-                hasNpcs,
-                npcOffset: npcOffset | 0,
+                npcRangeStart: npcRange.start | 0,
+                npcRangeCount: npcRange.count | 0,
                 tickPatchCounts: tickPatchesForMap.streamCounts,
                 tickPatchStreams: tickPatchesForMap.streamsForMap,
             });

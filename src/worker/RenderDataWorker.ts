@@ -48,20 +48,29 @@ const worker = {
     },
     async registerMapNpcSimState(
         mapId: number,
-        maxLevel: number,
         borderSize: number,
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
         await tickRuntime.registerMapNpcSimState(
             mapId,
-            maxLevel,
             borderSize,
             locsAnimated,
-            npcOrderKeys,
             npcTypeAnimationTable,
+            mapSimToken,
+        );
+    },
+    async bootstrapMapNpcLifecycle(
+        mapId: number,
+        maxLevel: number,
+        npcOrderKeys: Int32Array,
+        mapSimToken?: number,
+    ): Promise<void> {
+        await tickRuntime.bootstrapMapNpcLifecycle(
+            mapId,
+            maxLevel,
+            npcOrderKeys,
             mapSimToken,
         );
     },

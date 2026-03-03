@@ -14,12 +14,13 @@ export class NpcGpuFrameBuilder {
         npcs: ReadonlyArray<Npc>,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
-    ): number {
+    ): Readonly<{ start: number; count: number }> {
+        const start = this.count | 0;
+        const count = npcs.length | 0;
         if (npcs.length === 0) {
-            return -1;
+            return { start, count: 0 };
         }
 
-        const offset = this.count | 0;
         const border = borderSize | 0;
 
         for (const npc of npcs) {
@@ -38,7 +39,7 @@ export class NpcGpuFrameBuilder {
 
             this.pushNpc(npc.x, npc.y, (npc.rotation << 2) | renderPlane, npc.npcType.id);
         }
-        return offset;
+        return { start, count };
     }
 
     flushPacked(): NpcGpuFrameData {

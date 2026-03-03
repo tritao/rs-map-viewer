@@ -181,11 +181,15 @@ export class MapViewerRenderer extends RendererMainLoop {
                 try {
                     await this.workerPool.registerMapNpcSimState(
                         mapId,
-                        sdMapData.maxLevel,
                         sdMapData.borderSize,
                         sdMapData.locsAnimated,
-                        npcOrderKeys,
                         npcTypeAnimationTable,
+                        mapSimToken,
+                    );
+                    await this.workerPool.bootstrapMapNpcLifecycle(
+                        mapId,
+                        sdMapData.maxLevel,
+                        npcOrderKeys,
                         mapSimToken,
                     );
                 } catch (e) {

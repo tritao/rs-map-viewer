@@ -149,21 +149,33 @@ export class RenderDataWorkerPool {
 
     registerMapNpcSimState(
         mapId: number,
-        maxLevel: number,
         borderSize: number,
         locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcOrderKeys: Int32Array,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
         return this.withTickWorker((w) =>
             w.registerMapNpcSimState(
                 mapId,
-                maxLevel,
                 borderSize,
                 locsAnimated,
-                npcOrderKeys,
                 npcTypeAnimationTable,
+                mapSimToken,
+            ),
+        );
+    }
+
+    bootstrapMapNpcLifecycle(
+        mapId: number,
+        maxLevel: number,
+        npcOrderKeys: Int32Array,
+        mapSimToken?: number,
+    ): Promise<void> {
+        return this.withTickWorker((w) =>
+            w.bootstrapMapNpcLifecycle(
+                mapId,
+                maxLevel,
+                npcOrderKeys,
                 mapSimToken,
             ),
         );
