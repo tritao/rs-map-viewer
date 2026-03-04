@@ -7,6 +7,10 @@ import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWor
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 type WorkerDescriptorLike = Readonly<{ init: Promise<RenderDataWorkerThread> }>;
@@ -127,6 +131,69 @@ export class RenderDataWorkerPool {
 
     exportTextures(): Promise<Blob> {
         return this.queue((w) => w.exportTexturesToZip());
+    }
+
+    // Dedicated render-frame worker for NPC render state + frame packet build.
+    private getFrameWorker(): Promise<RenderDataWorkerThread> {
+        const desc = this.workers[0];
+        if (!desc) {
+            throw new Error("RenderDataWorkerPool has no workers");
+        }
+        return desc.init;
+    }
+
+    private async withFrameWorker<T>(task: (w: RenderDataWorkerThread) => Promise<T>): Promise<T> {
+        await this.awaitInitCache();
+        const worker = await this.getFrameWorker();
+        return task(worker);
+    }
+
+    registerMapNpcRenderState(
+        mapId: number,
+        borderSize: number,
+        locsAnimated: ReadonlyArray<LocAnimatedData>,
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
+        mapSimToken?: number,
+    ): Promise<void> {
+        return this.withFrameWorker((w) =>
+            w.registerMapNpcRenderState(
+                mapId,
+                borderSize,
+                locsAnimated,
+                npcTypeAnimationTable,
+                mapSimToken,
+            ),
+        );
+    }
+
+    unregisterMapNpcRenderState(mapId: number, mapSimToken?: number): Promise<void> {
+        return this.withFrameWorker((w) => w.unregisterMapNpcRenderState(mapId, mapSimToken));
+    }
+
+    setFrameTickMapIds(mapIds: Int32Array): Promise<void> {
+        return this.withFrameWorker((w) => w.setFrameTickMapIds(mapIds));
+    }
+
+    setFrameTickViewState(
+        cameraMapX: number,
+        cameraMapY: number,
+        lodDistance: number,
+    ): Promise<void> {
+        return this.withFrameWorker((w) =>
+            w.setFrameTickViewState(cameraMapX, cameraMapY, lodDistance),
+        );
+    }
+
+    setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
+        return this.withFrameWorker((w) => w.setFrameTickHoveredMapIds(hoveredMapIdsPacked));
+    }
+
+    applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
+        return this.withFrameWorker((w) => w.applyNpcStateDeltaPacket(deltaPacket));
+    }
+
+    buildFramePacketFromRenderState(frameCount: number, cycleNow: number): Promise<FramePacket | undefined> {
+        return this.withFrameWorker((w) => w.buildFramePacketFromRenderState(frameCount, cycleNow));
     }
 
     terminate(): Promise<void> {

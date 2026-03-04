@@ -4,9 +4,9 @@ import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SimWorker } from "./SimWorker";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 
 type SimWorkerThread = ModuleThread<SimWorker>;
 
@@ -137,15 +137,15 @@ export class SimWorkerPool {
         return this.withWorker((w) => w.setTickHoveredMapIds(hoveredMapIdsPacked));
     }
 
-    tickFrame(
+    tickSim(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
         hoveredMapIdsPacked?: Int32Array,
-    ): Promise<FramePacket | undefined> {
+    ): Promise<NpcStateDeltaPacket | undefined> {
         return this.withWorker((w) =>
-            w.tickFrame(
+            w.tickSim(
                 frameCount,
                 ticksElapsed,
                 clientTicksElapsed,

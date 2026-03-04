@@ -38,7 +38,8 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
     };
     let tickMapIdsVersion = 0;
     let tickViewStateVersion = 0;
-    let tickFrameCalls = 0;
+    let tickSimCalls = 0;
+    let buildFramePacketCalls = 0;
     let setTickMapCalls = 0;
     const simWorkerPool = {
         setTickMapIds: async (_mapIds: Int32Array) => {
@@ -49,18 +50,36 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
             tickViewStateVersion = (tickViewStateVersion + 1) | 0;
         },
         setTickHoveredMapIds: async (_hovered: Int32Array) => {},
-        tickFrame: async (
+        tickSim: async (
             frameCount: number,
             _ticksElapsed: number,
             _clientTicksElapsed: number,
             _cycle: number,
+            _hovered: Int32Array,
         ) => {
-            tickFrameCalls = (tickFrameCalls + 1) | 0;
+            tickSimCalls = (tickSimCalls + 1) | 0;
+            return {
+                frameCount: frameCount | 0,
+                tickMapIdsVersion: tickMapIdsVersion | 0,
+                tickViewStateVersion: tickViewStateVersion | 0,
+                eventCount: 0,
+                lifecyclePacketBytes: new Uint8Array(0),
+            };
+        },
+    };
+    const renderWorkerPool = {
+        setFrameTickMapIds: async (_mapIds: Int32Array) => {},
+        setFrameTickViewState: async (_x: number, _y: number, _lod: number) => {},
+        setFrameTickHoveredMapIds: async (_hovered: Int32Array) => {},
+        applyNpcStateDeltaPacket: async (_packet: unknown) => 0,
+        buildFramePacketFromRenderState: async (frameCount: number, _cycle: number) => {
+            buildFramePacketCalls = (buildFramePacketCalls + 1) | 0;
             return makePacket(frameCount | 0, tickMapIdsVersion | 0, tickViewStateVersion | 0);
         },
     };
     const source = new WorkerMapViewerFramePacketSource({
         simWorkerPool: simWorkerPool as any,
+        renderWorkerPool: renderWorkerPool as any,
         getLodDistance: () => 4,
         getHoveredMapIdsPacked: () => new Int32Array(0),
         getMapManager: () => mapManager as any,
@@ -70,14 +89,16 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
     source.nextPacket({ frameCount: 1, cycle: 0, ticksElapsed: 0, clientTicksElapsed: 0 });
     await flushAsync();
     source.nextPacket({ frameCount: 1, cycle: 0, ticksElapsed: 0, clientTicksElapsed: 0 });
-    assert.equal(tickFrameCalls, 1);
+    assert.equal(tickSimCalls, 1);
+    assert.equal(buildFramePacketCalls, 1);
     assert.equal(setTickMapCalls, 1);
 
     visibleMaps[0]!.mapId = 13107;
     source.nextPacket({ frameCount: 2, cycle: 0, ticksElapsed: 0, clientTicksElapsed: 0 });
     await flushAsync();
     source.nextPacket({ frameCount: 2, cycle: 0, ticksElapsed: 0, clientTicksElapsed: 0 });
-    assert.equal(tickFrameCalls, 2);
+    assert.equal(tickSimCalls, 2);
+    assert.equal(buildFramePacketCalls, 2);
     assert.equal(setTickMapCalls, 2);
 }
 
@@ -102,12 +123,28 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
             tickViewStateVersion = (tickViewStateVersion + 1) | 0;
         },
         setTickHoveredMapIds: async (_hovered: Int32Array) => {},
-        tickFrame: async (
+        tickSim: async (
             frameCount: number,
             _ticksElapsed: number,
             _clientTicksElapsed: number,
             _cycle: number,
+            _hovered: Int32Array,
         ) => {
+            return {
+                frameCount: frameCount | 0,
+                tickMapIdsVersion: tickMapIdsVersion | 0,
+                tickViewStateVersion: tickViewStateVersion | 0,
+                eventCount: 0,
+                lifecyclePacketBytes: new Uint8Array(0),
+            };
+        },
+    };
+    const renderWorkerPool = {
+        setFrameTickMapIds: async (_mapIds: Int32Array) => {},
+        setFrameTickViewState: async (_x: number, _y: number, _lod: number) => {},
+        setFrameTickHoveredMapIds: async (_hovered: Int32Array) => {},
+        applyNpcStateDeltaPacket: async (_packet: unknown) => 0,
+        buildFramePacketFromRenderState: async (frameCount: number, _cycle: number) => {
             const shouldEmitStale = staleViewOnce && (frameCount | 0) >= 2;
             const packetViewVersion = shouldEmitStale
                 ? ((tickViewStateVersion - 1) | 0)
@@ -120,6 +157,7 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
     };
     const source = new WorkerMapViewerFramePacketSource({
         simWorkerPool: simWorkerPool as any,
+        renderWorkerPool: renderWorkerPool as any,
         getLodDistance: () => 4,
         getHoveredMapIdsPacked: () => new Int32Array(0),
         getMapManager: () => mapManager as any,

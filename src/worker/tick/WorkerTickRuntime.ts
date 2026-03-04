@@ -1,7 +1,10 @@
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
+import {
+    decodeNpcLifecyclePacket,
+    encodeNpcLifecyclePacketFromEvents,
+} from "../../runtime/contracts/NpcLifecyclePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
@@ -39,6 +42,11 @@ import {
     NpcBootstrapResolver,
     type ResolvedNpcBootstrapData,
 } from "../../runtime/sim/NpcBootstrapResolver";
+import type { NpcEvent } from "../../runtime/sim/NpcEvents";
+import {
+    buildNpcStateDeltaPacket,
+    type NpcStateDeltaPacket,
+} from "../../runtime/contracts/NpcStateDeltaPacket";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
@@ -74,6 +82,20 @@ type WasmTickStreams = Readonly<{
 type WasmTickEmitResult = Readonly<{
     tickPatchCountsByMapId: Int32Array;
     tickPatchPacked: Int32Array;
+}>;
+
+type NpcSnapshot = Readonly<{
+    mapId: number;
+    npcInstanceId: number;
+    npcTypeId: number;
+    tileX: number;
+    tileY: number;
+    x: number;
+    y: number;
+    level: number;
+    orientation: number;
+    rotation: number;
+    orderKey?: number;
 }>;
 
 const tickWasmBridge = mapRenderRuntimeBridge;
@@ -148,6 +170,8 @@ export class WorkerTickRuntime {
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
+    private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
+    private readonly npcSeqByInstanceId = new Map<number, number>();
     private tickMapIds: Int32Array = new Int32Array(0);
     private tickMapIdsVersion: number = 0;
     private tickViewStateVersion: number = 0;
@@ -165,6 +189,8 @@ export class WorkerTickRuntime {
         this.npcBootstrapResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
+        this.npcSnapshotByMapId.clear();
+        this.npcSeqByInstanceId.clear();
         this.tickMapIds = new Int32Array(0);
         this.tickMapIdsVersion = 0;
         this.tickViewStateVersion = 0;
@@ -177,6 +203,8 @@ export class WorkerTickRuntime {
         this.npcBootstrapResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
+        this.npcSnapshotByMapId.clear();
+        this.npcSeqByInstanceId.clear();
         this.tickMapIds = new Int32Array(0);
         this.tickMapIdsVersion = 0;
         this.tickViewStateVersion = 0;
@@ -378,6 +406,13 @@ export class WorkerTickRuntime {
         if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
+        const prevSnapshots = this.npcSnapshotByMapId.get(mapId | 0);
+        if (prevSnapshots) {
+            for (const instanceId of prevSnapshots.keys()) {
+                this.npcSeqByInstanceId.delete(instanceId | 0);
+            }
+        }
+        this.npcSnapshotByMapId.delete(mapId | 0);
         this.npcSimStateStore.unregisterMap(mapId);
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
@@ -399,6 +434,205 @@ export class WorkerTickRuntime {
                 0;
         }
         return applied | 0;
+    }
+
+    private nextNpcSeq(npcInstanceId: number): number {
+        const id = npcInstanceId | 0;
+        const next = ((this.npcSeqByInstanceId.get(id) ?? 0) + 1) | 0;
+        this.npcSeqByInstanceId.set(id, next);
+        return next;
+    }
+
+    private snapshotNpc(mapId: number, npc: {
+        instanceId?: number;
+        npcType: { id: number };
+        pathX: ArrayLike<number>;
+        pathY: ArrayLike<number>;
+        x: number;
+        y: number;
+        level: number;
+        orientation: number;
+        rotation: number;
+        orderKey?: number;
+    }): NpcSnapshot | undefined {
+        const npcInstanceId = npc.instanceId;
+        if (npcInstanceId === undefined) {
+            return undefined;
+        }
+        return {
+            mapId: mapId | 0,
+            npcInstanceId: npcInstanceId | 0,
+            npcTypeId: npc.npcType.id | 0,
+            tileX: npc.pathX[0] | 0,
+            tileY: npc.pathY[0] | 0,
+            x: npc.x | 0,
+            y: npc.y | 0,
+            level: npc.level | 0,
+            orientation: npc.orientation | 0,
+            rotation: npc.rotation | 0,
+            orderKey: npc.orderKey !== undefined ? (npc.orderKey | 0) : undefined,
+        };
+    }
+
+    private areNpcSnapshotsEqual(a: NpcSnapshot, b: NpcSnapshot): boolean {
+        return (
+            (a.mapId | 0) === (b.mapId | 0) &&
+            (a.npcInstanceId | 0) === (b.npcInstanceId | 0) &&
+            (a.npcTypeId | 0) === (b.npcTypeId | 0) &&
+            (a.tileX | 0) === (b.tileX | 0) &&
+            (a.tileY | 0) === (b.tileY | 0) &&
+            (a.x | 0) === (b.x | 0) &&
+            (a.y | 0) === (b.y | 0) &&
+            (a.level | 0) === (b.level | 0) &&
+            (a.orientation | 0) === (b.orientation | 0) &&
+            (a.rotation | 0) === (b.rotation | 0) &&
+            ((a.orderKey ?? 0) | 0) === ((b.orderKey ?? 0) | 0)
+        );
+    }
+
+    private collectNpcDeltaEventsForMap(
+        mapId: number,
+        npcs: ReadonlyArray<{
+            instanceId?: number;
+            npcType: { id: number };
+            pathX: ArrayLike<number>;
+            pathY: ArrayLike<number>;
+            x: number;
+            y: number;
+            level: number;
+            orientation: number;
+            rotation: number;
+            orderKey?: number;
+        }>,
+        outEvents: NpcEvent[],
+    ): number {
+        const id = mapId | 0;
+        const prevSnapshots = this.npcSnapshotByMapId.get(id) ?? new Map<number, NpcSnapshot>();
+        const nextSnapshots = new Map<number, NpcSnapshot>();
+        let emitted = 0;
+
+        for (let i = 0; i < npcs.length; i++) {
+            const snapshot = this.snapshotNpc(id, npcs[i]!);
+            if (!snapshot) {
+                continue;
+            }
+            const instanceId = snapshot.npcInstanceId | 0;
+            nextSnapshots.set(instanceId, snapshot);
+            const prev = prevSnapshots.get(instanceId);
+            if (!prev) {
+                outEvents.push({
+                    kind: "spawn",
+                    mapId: id,
+                    npcInstanceId: instanceId,
+                    npcTypeId: snapshot.npcTypeId | 0,
+                    tileX: snapshot.tileX | 0,
+                    tileY: snapshot.tileY | 0,
+                    level: snapshot.level | 0,
+                    orderKey: snapshot.orderKey,
+                });
+                emitted = (emitted + 1) | 0;
+                continue;
+            }
+            if (!this.areNpcSnapshotsEqual(prev, snapshot)) {
+                outEvents.push({
+                    kind: "update",
+                    mapId: id,
+                    npcInstanceId: instanceId,
+                    seq: this.nextNpcSeq(instanceId),
+                    delta: {
+                        clearServerPath: true,
+                        snapTileX: snapshot.tileX | 0,
+                        snapTileY: snapshot.tileY | 0,
+                        snapWorldX: snapshot.x | 0,
+                        snapWorldY: snapshot.y | 0,
+                        orientation: snapshot.orientation | 0,
+                        rotation: snapshot.rotation | 0,
+                    },
+                });
+                emitted = (emitted + 1) | 0;
+            }
+        }
+
+        for (const [instanceId] of prevSnapshots.entries()) {
+            if (nextSnapshots.has(instanceId | 0)) {
+                continue;
+            }
+            outEvents.push({
+                kind: "despawn",
+                mapId: id,
+                npcInstanceId: instanceId | 0,
+                seq: this.nextNpcSeq(instanceId | 0),
+            });
+            this.npcSeqByInstanceId.delete(instanceId | 0);
+            emitted = (emitted + 1) | 0;
+        }
+
+        this.npcSnapshotByMapId.set(id, nextSnapshots);
+        return emitted | 0;
+    }
+
+    async tickSim(
+        frameCount: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+        _cycleNow: number,
+        hoveredMapIdsPacked?: Int32Array,
+    ): Promise<NpcStateDeltaPacket | undefined> {
+        const mapIds = this.tickMapIds;
+        if (!(mapIds instanceof Int32Array) || mapIds.length === 0) {
+            return undefined;
+        }
+        if (hoveredMapIdsPacked instanceof Int32Array) {
+            this.setTickHoveredMapIds(hoveredMapIdsPacked);
+        }
+        const workerState = await this.getWorkerState();
+        const inputs = this.normalizeTickFrameInputs(
+            frameCount,
+            ticksElapsed,
+            clientTicksElapsed,
+            this.tickHoveredMapIdsPacked,
+        );
+        const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
+        const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
+        const events: NpcEvent[] = [];
+        let eventCount = 0;
+
+        for (let i = 0; i < mapIds.length; i++) {
+            const mapId = mapIds[i] | 0;
+            const state = this.npcSimStateStore.getMap(mapId);
+            if (!state) {
+                this.npcSnapshotByMapId.delete(mapId | 0);
+                continue;
+            }
+            applyNpcMovementStep(
+                state,
+                this.npcSimPathfinder,
+                inputs.safeTicksElapsed,
+                inputs.safeClientTicks,
+                seqTypeLoader,
+                seqFrameLoader,
+            );
+            eventCount =
+                (eventCount +
+                    (this.collectNpcDeltaEventsForMap(
+                        mapId,
+                        state.npcs,
+                        events,
+                    ) | 0)) |
+                0;
+        }
+
+        const lifecyclePacketBytes =
+            (eventCount | 0) > 0
+                ? encodeNpcLifecyclePacketFromEvents(events)
+                : new Uint8Array(0);
+        return buildNpcStateDeltaPacket({
+            frameCount: frameCount | 0,
+            tickMapIdsVersion: this.tickMapIdsVersion | 0,
+            tickViewStateVersion: this.tickViewStateVersion | 0,
+            eventCount: eventCount | 0,
+            lifecyclePacketBytes,
+        });
     }
 
     private normalizeTickFrameInputs(
@@ -507,11 +741,12 @@ export class WorkerTickRuntime {
         }
     }
 
-    async tickFrame(
+    private async buildFramePacketInternal(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
+        advanceNpcSim: boolean,
         hoveredMapIdsPacked?: Int32Array,
     ): Promise<FramePacket | undefined> {
         const mapIds = this.tickMapIds;
@@ -568,14 +803,16 @@ export class WorkerTickRuntime {
                 );
                 continue;
             }
-            applyNpcMovementStep(
-                state,
-                this.npcSimPathfinder,
-                inputs.safeTicksElapsed,
-                inputs.safeClientTicks,
-                seqTypeLoader,
-                seqFrameLoader,
-            );
+            if (advanceNpcSim) {
+                applyNpcMovementStep(
+                    state,
+                    this.npcSimPathfinder,
+                    inputs.safeTicksElapsed,
+                    inputs.safeClientTicks,
+                    seqTypeLoader,
+                    seqFrameLoader,
+                );
+            }
 
             const npcRange = this.npcGpuFrameBuilder.addMapNpcs(
                 state.npcs,
@@ -618,5 +855,37 @@ export class WorkerTickRuntime {
             npcGpuFrameData,
             entries,
         });
+    }
+
+    async buildFramePacketFromCurrentState(
+        frameCount: number,
+        cycleNow: number,
+        hoveredMapIdsPacked?: Int32Array,
+    ): Promise<FramePacket | undefined> {
+        return this.buildFramePacketInternal(
+            frameCount,
+            0,
+            0,
+            cycleNow,
+            false,
+            hoveredMapIdsPacked,
+        );
+    }
+
+    async tickFrame(
+        frameCount: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+        cycleNow: number,
+        hoveredMapIdsPacked?: Int32Array,
+    ): Promise<FramePacket | undefined> {
+        return this.buildFramePacketInternal(
+            frameCount,
+            ticksElapsed,
+            clientTicksElapsed,
+            cycleNow,
+            true,
+            hoveredMapIdsPacked,
+        );
     }
 }

@@ -64,6 +64,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
         this.framePacketSource = new WorkerMapViewerFramePacketSource({
             simWorkerPool: this.simWorkerPool,
+            renderWorkerPool: this.renderWorkerPool,
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
@@ -189,6 +190,13 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const npcTypeAnimationTable =
                     mapData.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
                 try {
+                    await this.renderWorkerPool.registerMapNpcRenderState(
+                        mapId,
+                        mapData.borderSize,
+                        mapData.locsAnimated,
+                        npcTypeAnimationTable,
+                        mapSimToken,
+                    );
                     await this.simWorkerPool.registerMapNpcSimState(
                         mapId,
                         mapData.borderSize,
@@ -203,6 +211,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         mapSimToken,
                     );
                 } catch (e) {
+                    void this.renderWorkerPool.unregisterMapNpcRenderState(mapId, mapSimToken);
                     console.warn(
                         `[map-render] failed to register worker sim state for ${mapData.mapX},${mapData.mapY}`,
                         e,
@@ -260,6 +269,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.staticMapPacketsByMapId.delete(mapInfo.mapId | 0);
         const mapSimToken = this.invalidateMapSimToken(mapInfo.mapId);
         void this.simWorkerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
+        void this.renderWorkerPool.unregisterMapNpcRenderState(mapInfo.mapId, mapSimToken);
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {

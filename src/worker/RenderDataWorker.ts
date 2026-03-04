@@ -1,14 +1,24 @@
 import { TransferDescriptor } from "threads";
-import { expose } from "threads/worker";
+import { Transfer, expose } from "threads/worker";
 
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
+import { framePacketTransferables } from "../runtime/contracts/FramePacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
+import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 const buildService = new RenderDataWorkerBuild();
+const frameRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
+let frameTickMapIdsVersion = 0;
+let frameTickViewStateVersion = 0;
+let lastAppliedDeltaFrameCount = -1;
 
 const worker = {
     async initCache(
@@ -16,6 +26,10 @@ const worker = {
         spawnBootstrap: WorkerSpawnBootstrap,
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
+        frameRuntime.resetForCache();
+        frameTickMapIdsVersion = 0;
+        frameTickViewStateVersion = 0;
+        lastAppliedDeltaFrameCount = -1;
         await buildService.initCache(cache, spawnBootstrap, options);
     },
     async loadStaticMapPacket(
@@ -38,6 +52,68 @@ const worker = {
         drawMapFunctions: boolean,
     ) {
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
+    },
+    async registerMapNpcRenderState(
+        mapId: number,
+        borderSize: number,
+        locsAnimated: ReadonlyArray<LocAnimatedData>,
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
+        mapSimToken?: number,
+    ): Promise<void> {
+        await frameRuntime.registerMapNpcSimState(
+            mapId,
+            borderSize,
+            locsAnimated,
+            npcTypeAnimationTable,
+            mapSimToken,
+        );
+    },
+    unregisterMapNpcRenderState(mapId: number, mapSimToken?: number): void {
+        frameRuntime.unregisterMapNpcSimState(mapId, mapSimToken);
+    },
+    setFrameTickMapIds(mapIds: Int32Array): void {
+        frameRuntime.setTickMapIds(mapIds);
+        frameTickMapIdsVersion = (frameTickMapIdsVersion + 1) | 0;
+    },
+    setFrameTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+        frameRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
+        frameTickViewStateVersion = (frameTickViewStateVersion + 1) | 0;
+    },
+    setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
+        frameRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
+    },
+    async applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
+        if (
+            ((deltaPacket.tickMapIdsVersion | 0) !== (frameTickMapIdsVersion | 0)) ||
+            ((deltaPacket.tickViewStateVersion | 0) !== (frameTickViewStateVersion | 0))
+        ) {
+            return 0;
+        }
+        const deltaFrameCount = deltaPacket.frameCount | 0;
+        if (deltaFrameCount < (lastAppliedDeltaFrameCount | 0)) {
+            return 0;
+        }
+        const bytes = deltaPacket.lifecyclePacketBytes;
+        if (!(bytes instanceof Uint8Array) || (bytes.length | 0) <= 0) {
+            return 0;
+        }
+        const applied = await frameRuntime.applyNpcLifecyclePacketBytes(bytes);
+        if ((applied | 0) > 0) {
+            lastAppliedDeltaFrameCount = deltaFrameCount;
+        }
+        return applied | 0;
+    },
+    async buildFramePacketFromRenderState(
+        frameCount: number,
+        cycleNow: number,
+    ): Promise<TransferDescriptor<FramePacket | undefined>> {
+        const packet = await frameRuntime.buildFramePacketFromCurrentState(
+            frameCount,
+            cycleNow,
+        );
+        return packet
+            ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
+            : Transfer<FramePacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
         await buildService.setVars(values);

@@ -2,9 +2,9 @@ import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
-import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import { npcStateDeltaPacketTransferables } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
@@ -65,14 +65,14 @@ const worker = {
     setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
         tickRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
     },
-    async tickFrame(
+    async tickSim(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
         hoveredMapIdsPacked?: Int32Array,
-    ): Promise<TransferDescriptor<FramePacket | undefined>> {
-        const packet = await tickRuntime.tickFrame(
+    ): Promise<TransferDescriptor<NpcStateDeltaPacket | undefined>> {
+        const packet = await tickRuntime.tickSim(
             frameCount,
             ticksElapsed,
             clientTicksElapsed,
@@ -80,8 +80,11 @@ const worker = {
             hoveredMapIdsPacked,
         );
         return packet
-            ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
-            : Transfer<FramePacket | undefined>(undefined, []);
+            ? Transfer<NpcStateDeltaPacket | undefined>(
+                  packet,
+                  npcStateDeltaPacketTransferables(packet),
+              )
+            : Transfer<NpcStateDeltaPacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
         await buildService.setVars(values);

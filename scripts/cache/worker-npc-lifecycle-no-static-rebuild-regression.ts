@@ -79,6 +79,33 @@ function getNpcCountForMap(packet: unknown, mapId: number): number {
     return range ? (range.count | 0) : 0;
 }
 
+function captureNpcSnapshot(runtime: WorkerTickRuntime, mapId: number): Readonly<{
+    x: number;
+    y: number;
+    level: number;
+    orientation: number;
+    rotation: number;
+    pathX0: number;
+    pathY0: number;
+    pathLength: number;
+}> {
+    const store = (runtime as any).npcSimStateStore;
+    const state = store.getMap(mapId | 0);
+    assert.ok(state, "expected map sim state");
+    const npc = state.npcs[0];
+    assert.ok(npc, "expected one npc instance");
+    return {
+        x: npc.x | 0,
+        y: npc.y | 0,
+        level: npc.level | 0,
+        orientation: npc.orientation | 0,
+        rotation: npc.rotation | 0,
+        pathX0: npc.pathX[0] | 0,
+        pathY0: npc.pathY[0] | 0,
+        pathLength: npc.pathLength | 0,
+    };
+}
+
 async function main(): Promise<void> {
     const staticBuildCounterRef = { count: 0 };
     const workerState = createFakeWorkerState(staticBuildCounterRef);
@@ -113,6 +140,22 @@ async function main(): Promise<void> {
     assert.ok(packetAfterSpawn, "expected frame packet after spawn");
     assert.equal(getNpcCountForMap(packetAfterSpawn, mapId), 1);
     assert.equal(staticBuildCounterRef.count | 0, 0);
+
+    const beforePackOnly = captureNpcSnapshot(runtime, mapId);
+    const packOnlyA = await runtime.buildFramePacketFromCurrentState(1, 0, new Int32Array(0));
+    const packOnlyB = await runtime.buildFramePacketFromCurrentState(1, 0, new Int32Array(0));
+    assert.ok(packOnlyA, "expected pack-only frame packet A");
+    assert.ok(packOnlyB, "expected pack-only frame packet B");
+    assert.deepEqual(
+        Array.from(packOnlyA.npcGpuFrameData.data),
+        Array.from(packOnlyB.npcGpuFrameData.data),
+        "pack-only frame build must be deterministic for same frame input",
+    );
+    assert.deepEqual(
+        captureNpcSnapshot(runtime, mapId),
+        beforePackOnly,
+        "pack-only frame build must not mutate npc sim state",
+    );
 
     const despawnEvents: NpcEvent[] = [
         {
