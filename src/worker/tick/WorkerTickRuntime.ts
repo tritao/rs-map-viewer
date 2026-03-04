@@ -258,6 +258,7 @@ export class WorkerTickRuntime {
             {
                 mapBytesProvider: workerState.mapBytesProvider,
                 cacheInfo: workerState.session.cache.info,
+                npcTypeLoader: workerState.session.loaders.npcTypeLoader as NpcTypeLoader,
                 fallbackNpcSpawns: workerState.fallbackNpcSpawns,
             },
             {
