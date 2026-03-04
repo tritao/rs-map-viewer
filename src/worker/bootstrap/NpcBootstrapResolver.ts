@@ -2,7 +2,7 @@ import { type NpcSpawn, fetchNpcSpawns, getNpcSpawnsUrl } from "../../data/npc/N
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
-import { type NpcBootstrapData, createNpcBootstrapDataFromSpawns } from "./NpcBootstrapData";
+import { type NpcBootstrapData, createNpcBootstrapDataFromSpawns } from "../../runtime/sim/NpcBootstrapData";
 
 type ResolveNpcBootstrapDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;

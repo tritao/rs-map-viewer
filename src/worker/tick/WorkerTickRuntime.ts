@@ -27,10 +27,6 @@ import {
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
-import {
-    NpcBootstrapResolver,
-    type ResolvedNpcBootstrapData,
-} from "../../runtime/sim/NpcBootstrapResolver";
 import type { NpcEvent } from "../../runtime/sim/NpcEvents";
 import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
@@ -41,6 +37,10 @@ import {
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
+import {
+    NpcBootstrapResolver,
+    type ResolvedNpcBootstrapData,
+} from "../bootstrap/NpcBootstrapResolver";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
