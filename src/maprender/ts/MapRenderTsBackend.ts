@@ -1,9 +1,4 @@
-import {
-    NpcSpawn,
-    fetchNpcSpawns,
-    getMapNpcSpawns,
-    getNpcSpawnsUrl,
-} from "../../data/npc/NpcSpawn";
+import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
 import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { InteractType } from "../../renderer/InteractType";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
@@ -18,7 +13,6 @@ import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocLoadType } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
-import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
@@ -290,16 +284,6 @@ type LocAnimatedGroupBuild = {
     locs: SceneLocEntity[];
 };
 
-type ResolveNpcSpawnsInput = Readonly<{
-    loadNpcs: boolean;
-    mapX: number;
-    mapY: number;
-    maxLevel: number;
-    borderSize: number;
-    tileRenderFlagsLevel1: Uint8Array[];
-    npcTypeLoader: NpcTypeLoader;
-}>;
-
 function pushLocEntityRenderData(
     locAnimatedGroupMap: Map<number, LocAnimatedGroupBuild>,
     locModelLoader: LocModelLoader,
@@ -399,9 +383,7 @@ function addLocEntities(
 
 export class MapRenderTsBackend {
     modelHashBuf?: ModelHashBuffer;
-    private cachedNpcLoginScreenPropsById?: Uint8Array;
-    private cachedNpcLoginScreenPropsCacheName?: string;
-    private fallbackNpcSpawnsPromise?: Promise<NpcSpawn[]>;
+    private readonly npcSpawnResolver = new NpcSpawnResolver();
 
     constructor(private readonly deps: MapRenderBuildDeps) {}
 
@@ -409,131 +391,6 @@ export class MapRenderTsBackend {
         if (!this.modelHashBuf) {
             this.modelHashBuf = new ModelHashBuffer(5000);
         }
-    }
-
-    private getNpcLoginScreenPropsById(
-        npcTypeLoader: NpcTypeLoader,
-        cacheName: string,
-    ): Uint8Array {
-        if (
-            this.cachedNpcLoginScreenPropsById &&
-            this.cachedNpcLoginScreenPropsCacheName === cacheName
-        ) {
-            return this.cachedNpcLoginScreenPropsById;
-        }
-
-        const count = npcTypeLoader.getCount() | 0;
-        const props = new Uint8Array(count);
-        for (let id = 0; id < count; id++) {
-            const npcResult = npcTypeLoader.tryLoad(id);
-            if (npcResult.ok) {
-                props[id] = npcResult.value.loginScreenProps & 0xff;
-            }
-        }
-
-        this.cachedNpcLoginScreenPropsById = props;
-        this.cachedNpcLoginScreenPropsCacheName = cacheName;
-        return props;
-    }
-
-    private async getFallbackNpcSpawns(): Promise<NpcSpawn[]> {
-        if (this.fallbackNpcSpawnsPromise) {
-            return this.fallbackNpcSpawnsPromise;
-        }
-        if (this.deps.fallbackNpcSpawns) {
-            const fromDeps = this.deps.fallbackNpcSpawns as NpcSpawn[];
-            this.fallbackNpcSpawnsPromise = Promise.resolve(fromDeps);
-            return this.fallbackNpcSpawnsPromise;
-        }
-        const url = getNpcSpawnsUrl(this.deps.session.cache.info);
-        this.fallbackNpcSpawnsPromise = fetchNpcSpawns(url).catch((error: unknown) => {
-            this.fallbackNpcSpawnsPromise = undefined;
-            throw error;
-        });
-        return this.fallbackNpcSpawnsPromise;
-    }
-
-    private static matchesRenderableNpcType(
-        npcTypeLoader: NpcTypeLoader,
-        spawn: NpcSpawn,
-    ): boolean {
-        const npcResult = npcTypeLoader.tryLoad(spawn.id);
-        if (!npcResult.ok) {
-            return false;
-        }
-        return (npcResult.value.loginScreenProps & 0x1) > 0;
-    }
-
-    private static matchesFallbackNpcName(
-        npcTypeLoader: NpcTypeLoader,
-        spawn: NpcSpawn,
-    ): boolean {
-        const npcResult = npcTypeLoader.tryLoad(spawn.id);
-        if (!npcResult.ok) {
-            return false;
-        }
-        if (spawn.name === undefined) {
-            return true;
-        }
-        return spawn.name === npcResult.value.name;
-    }
-
-    private async resolveNpcSpawns(input: ResolveNpcSpawnsInput): Promise<NpcSpawn[]> {
-        if (!input.loadNpcs) {
-            return [];
-        }
-        const npcSpawnBytes = this.deps.mapBytesProvider.getNpcSpawnBytes(input.mapX, input.mapY);
-        let cacheNpcSpawns: NpcSpawn[] | undefined;
-        if (npcSpawnBytes) {
-            const decodeStart = performance.now();
-            const npcLoginScreenPropsById = this.deps.npcSpawnDecodeBackend
-                ? this.getNpcLoginScreenPropsById(
-                      input.npcTypeLoader,
-                      this.deps.session.cache.info.name,
-                  )
-                : undefined;
-            cacheNpcSpawns = this.deps.npcSpawnDecodeBackend
-                ? await this.deps.npcSpawnDecodeBackend.decodeNpcSpawnsFromBytes(
-                      input.tileRenderFlagsLevel1,
-                      input.borderSize,
-                      input.mapX,
-                      input.mapY,
-                      npcSpawnBytes,
-                      npcLoginScreenPropsById,
-                      0x1,
-                  )
-                : decodeNpcSpawnsFromBytes(
-                      input.tileRenderFlagsLevel1,
-                      input.borderSize,
-                      input.mapX,
-                      input.mapY,
-                      npcSpawnBytes,
-                  );
-            if (this.deps.telemetry) {
-                const decodeMs = performance.now() - decodeStart;
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} npcDecodeBackend=${
-                        this.deps.npcSpawnDecodeBackend?.name ?? "ts"
-                    } decoded=${cacheNpcSpawns?.length ?? 0} ms=${decodeMs.toFixed(1)}`,
-                );
-            }
-        }
-        if (cacheNpcSpawns) {
-            if (this.deps.npcSpawnDecodeBackend?.filtersLoginScreenProps) {
-                return cacheNpcSpawns;
-            }
-            return cacheNpcSpawns.filter((spawn) =>
-                MapRenderTsBackend.matchesRenderableNpcType(input.npcTypeLoader, spawn),
-            );
-        }
-
-        const fallbackNpcSpawns = await this.getFallbackNpcSpawns();
-        return getMapNpcSpawns(
-            fallbackNpcSpawns,
-            input.maxLevel,
-            input.mapX,
-            input.mapY,
-        ).filter((spawn) => MapRenderTsBackend.matchesFallbackNpcName(input.npcTypeLoader, spawn));
     }
 
     async buildMapDataBridgeInput(
@@ -695,15 +552,24 @@ export class MapRenderTsBackend {
         }
 
         const npcSpawns = await timeStepAsync("resolveNpcSpawns", () =>
-            this.resolveNpcSpawns({
-                loadNpcs,
-                mapX,
-                mapY,
-                maxLevel,
-                borderSize,
-                tileRenderFlagsLevel1: scene.tileRenderFlags[1],
-                npcTypeLoader,
-            }),
+            this.npcSpawnResolver.resolveSpawns(
+                {
+                    mapBytesProvider: this.deps.mapBytesProvider,
+                    cacheInfo: this.deps.session.cache.info,
+                    npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
+                    fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
+                    telemetry: this.deps.telemetry,
+                },
+                {
+                    loadNpcs,
+                    mapX,
+                    mapY,
+                    maxLevel,
+                    borderSize,
+                    tileRenderFlagsLevel1: scene.tileRenderFlags[1],
+                    npcTypeLoader,
+                },
+            ),
         );
         const npcGeometry = timeStep("buildNpcGeometry", () =>
             buildNpcGeometry({
@@ -882,7 +748,6 @@ export class MapRenderTsBackend {
 
     reset(): void {
         this.modelHashBuf = undefined;
-        this.cachedNpcLoginScreenPropsById = undefined;
-        this.cachedNpcLoginScreenPropsCacheName = undefined;
+        this.npcSpawnResolver.reset();
     }
 }
