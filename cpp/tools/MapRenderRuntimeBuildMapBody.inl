@@ -473,6 +473,40 @@ runtime->debugLastNpcSpawnsWithGeometry = 0;
 runtime->debugLastNpcDrawRangeCount = 0;
 runtime->debugLastNpcVertexBytes = 0;
 runtime->debugLastNpcIndexCount = 0;
+const auto clearNpcPayload = [&]() noexcept {
+    runtime->mapPayload.npcDrawRangesBase.clear();
+    runtime->mapPayload.npcDrawRangesAlpha.clear();
+    runtime->mapPayload.npcVertices.clear();
+    runtime->mapPayload.npcIndices.clear();
+    runtime->mapPayload.npcOrderKeys.clear();
+};
+const auto hasValidNpcPayloadShape = [&]() noexcept -> bool {
+    const std::size_t baseRangeInts = runtime->mapPayload.npcDrawRangesBase.size();
+    const std::size_t alphaRangeInts = runtime->mapPayload.npcDrawRangesAlpha.size();
+    if ((baseRangeInts % 3U) != 0U) {
+        return false;
+    }
+    if (!runtime->mapPayload.npcDrawRangesAlpha.empty()) {
+        if ((alphaRangeInts % 3U) != 0U || alphaRangeInts != baseRangeInts) {
+            return false;
+        }
+    }
+    const std::size_t slotCount = baseRangeInts / 3U;
+    if (runtime->mapPayload.npcOrderKeys.size() != slotCount) {
+        return false;
+    }
+    const bool hasNpcVertices = !runtime->mapPayload.npcVertices.empty();
+    const bool hasNpcIndices = !runtime->mapPayload.npcIndices.empty();
+    if (hasNpcVertices != hasNpcIndices) {
+        return false;
+    }
+    const bool hasNpcRanges = baseRangeInts > 0U;
+    const bool hasNpcGeometry = hasNpcVertices;
+    if (hasNpcRanges != hasNpcGeometry) {
+        return false;
+    }
+    return true;
+};
 const auto buildNpcStart = BuildClock::now();
 if ((loadNpcs | 0) != 0) {
     rs::CacheInfo cacheInfo{};
@@ -489,12 +523,11 @@ if ((loadNpcs | 0) != 0) {
         &runtime->mapPayload);
     if (npcStatus != RS_MAP_RENDER_STATUS_OK) {
         // NPCs are optional; don't fail the base packet build.
-        runtime->mapPayload.npcDrawRangesBase.clear();
-        runtime->mapPayload.npcDrawRangesAlpha.clear();
-        runtime->mapPayload.npcVertices.clear();
-        runtime->mapPayload.npcIndices.clear();
-        runtime->mapPayload.npcOrderKeys.clear();
+        clearNpcPayload();
     }
+}
+if (!hasValidNpcPayloadShape()) {
+    clearNpcPayload();
 }
 runtime->debugLastBuildStageTimingsUs[static_cast<std::size_t>(kBuildTimingBuildNpcUs)] =
     elapsedUs(buildNpcStart);

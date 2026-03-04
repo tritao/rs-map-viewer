@@ -3,7 +3,6 @@ import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
     MapRenderRuntimeHandle,
-    MapRenderRuntimePacket,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import type {
@@ -156,64 +155,6 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         });
     }
 
-    private static selectNpcPayload(
-        packet: MapRenderRuntimePacket,
-        input: SdMapLoaderInput,
-    ): Readonly<{
-        npcDrawRangesBase?: Int32Array;
-        npcDrawRangesAlpha?: Int32Array;
-        npcVertices?: Uint8Array;
-        npcIndices?: Int32Array;
-        npcOrderKeys?: Int32Array;
-    }> {
-        const npcDrawRangesBase =
-            packet.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase : undefined;
-        const npcDrawRangesAlpha =
-            packet.npcDrawRangesAlpha instanceof Int32Array ? packet.npcDrawRangesAlpha : undefined;
-        const npcVertices =
-            packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
-        const npcIndices = packet.npcIndices instanceof Int32Array ? packet.npcIndices : undefined;
-        const npcOrderKeys =
-            packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
-
-        const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
-        const npcSlotCount = npcRangesLen > 0 ? (npcRangesLen / 3) | 0 : 0;
-        const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
-        const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
-        const npcOrderKeysLen = npcOrderKeys ? npcOrderKeys.length | 0 : 0;
-
-        const hasNpcRangeStride = npcRangesLen % 3 === 0;
-        const hasNpcRanges = npcRangesLen > 0;
-        const hasNpcGeometry = npcVerticesLen > 0 && npcIndicesLen > 0;
-        const hasNpcOrderKeysAligned =
-            hasNpcRanges && hasNpcRangeStride && npcOrderKeysLen === npcSlotCount;
-        const keepNpcPayload = hasNpcRanges && hasNpcGeometry && hasNpcOrderKeysAligned;
-
-        const hasAnyNpcPayloadField =
-            hasNpcRanges ||
-            hasNpcGeometry ||
-            npcOrderKeysLen > 0 ||
-            npcVerticesLen > 0 ||
-            npcIndicesLen > 0;
-        if (hasAnyNpcPayloadField && (hasNpcRanges !== hasNpcGeometry || !hasNpcOrderKeysAligned)) {
-            console.warn(
-                `[map-render][cpp-wasm] dropping inconsistent npc payload for ${input.mapX},${input.mapY} ` +
-                    `(ranges=${npcRangesLen} verts=${npcVerticesLen} indices=${npcIndicesLen} ` +
-                    `slots=${npcSlotCount} orderKeys=${npcOrderKeysLen})`,
-            );
-        }
-
-        return keepNpcPayload
-            ? {
-                  npcDrawRangesBase,
-                  npcDrawRangesAlpha,
-                  npcVertices,
-                  npcIndices,
-                  npcOrderKeys,
-              }
-            : {};
-    }
-
     private async buildWithBridge(
         bridge: WasmMapRenderDataBridge,
         runtimeHandle: MapRenderRuntimeHandle,
@@ -263,7 +204,6 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const levels = packet.levels | 0;
         const sizeX = packet.sizeX | 0;
         const sizeY = packet.sizeY | 0;
-        const npcPayload = WasmMapRenderBackend.selectNpcPayload(packet, input);
 
         return {
             mapX: input.mapX | 0,
@@ -285,7 +225,11 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             locsAnimated: [],
             usedTextureIds: packet.usedTextureIds,
             loadedTextures: new Map(),
-            ...npcPayload,
+            npcDrawRangesBase: packet.npcDrawRangesBase,
+            npcDrawRangesAlpha: packet.npcDrawRangesAlpha,
+            npcVertices: packet.npcVertices,
+            npcIndices: packet.npcIndices,
+            npcOrderKeys: packet.npcOrderKeys,
         };
     }
 
