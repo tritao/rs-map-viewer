@@ -24,6 +24,28 @@ type NpcStateDeltaPacketInput = Readonly<{
     despawnsPacked: Int32Array;
 }>;
 
+export type NpcStateDeltaPacketCounts = Readonly<{
+    spawnCount: number;
+    updateCount: number;
+    despawnCount: number;
+    eventCount: number;
+}>;
+
+function assertPackedStride(
+    name: string,
+    packed: Int32Array,
+    stride: number,
+): void {
+    const len = packed.length | 0;
+    const expectedStride = stride | 0;
+    if (expectedStride <= 0 || (len % expectedStride) !== 0) {
+        throw new Error(
+            `[map-render][npc-state-delta] invalid ${name} length: ` +
+                `len=${len} stride=${expectedStride}`,
+        );
+    }
+}
+
 export type NpcStateDeltaPacket = Readonly<{
     frameCount: number;
     tickMapIdsVersion: number;
@@ -34,7 +56,42 @@ export type NpcStateDeltaPacket = Readonly<{
     despawnsPacked: Int32Array;
 }>;
 
+export function getNpcStateDeltaPacketCounts(packet: NpcStateDeltaPacket): NpcStateDeltaPacketCounts {
+    const spawnCount = Math.floor((packet.spawnsPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
+    const updateCount = Math.floor(
+        (packet.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE,
+    );
+    const despawnCount = Math.floor(
+        (packet.despawnsPacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE,
+    );
+    return {
+        spawnCount: spawnCount | 0,
+        updateCount: updateCount | 0,
+        despawnCount: despawnCount | 0,
+        eventCount: (spawnCount + updateCount + despawnCount) | 0,
+    };
+}
+
+export function validateNpcStateDeltaPacket(packet: NpcStateDeltaPacket): NpcStateDeltaPacketCounts {
+    assertPackedStride("spawnsPacked", packet.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
+    assertPackedStride("updatesPacked", packet.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
+    assertPackedStride("despawnsPacked", packet.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
+    const counts = getNpcStateDeltaPacketCounts(packet);
+    if ((packet.eventCount | 0) !== (counts.eventCount | 0)) {
+        throw new Error(
+            `[map-render][npc-state-delta] invalid eventCount: ` +
+                `eventCount=${packet.eventCount | 0} expected=${counts.eventCount | 0} ` +
+                `spawns=${counts.spawnCount | 0} updates=${counts.updateCount | 0} ` +
+                `despawns=${counts.despawnCount | 0}`,
+        );
+    }
+    return counts;
+}
+
 export function buildNpcStateDeltaPacket(input: NpcStateDeltaPacketInput): NpcStateDeltaPacket {
+    assertPackedStride("spawnsPacked", input.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
+    assertPackedStride("updatesPacked", input.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
+    assertPackedStride("despawnsPacked", input.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
     const spawnCount = Math.floor((input.spawnsPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
     const updateCount = Math.floor((input.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE);
     const despawnCount = Math.floor((input.despawnsPacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE);
@@ -155,7 +212,11 @@ export function buildNpcStateDeltaPacketFromEvents(input: Readonly<{
     });
 }
 
-function decodeUpdateDelta(flags: number, packed: Int32Array, off: number): NpcUpdateDelta {
+export function decodeNpcStateDeltaUpdate(
+    flags: number,
+    packed: Int32Array,
+    off: number,
+): NpcUpdateDelta {
     const delta: {
         clearServerPath?: boolean;
         snapTileX?: number;
@@ -215,10 +276,11 @@ function ensureMapEvents(out: Map<number, NpcEvent[]>, mapId: number): NpcEvent[
 export function decodeNpcStateDeltaPacketEvents(
     packet: NpcStateDeltaPacket,
 ): ReadonlyMap<number, NpcEvent[]> {
+    const counts = validateNpcStateDeltaPacket(packet);
     const out = new Map<number, NpcEvent[]>();
 
     const spawnPacked = packet.spawnsPacked;
-    const spawnCount = Math.floor((spawnPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
+    const spawnCount = counts.spawnCount | 0;
     for (let i = 0; i < spawnCount; i++) {
         const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
         const mapId = spawnPacked[off + 0] | 0;
@@ -238,7 +300,7 @@ export function decodeNpcStateDeltaPacketEvents(
     }
 
     const updatePacked = packet.updatesPacked;
-    const updateCount = Math.floor((updatePacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE);
+    const updateCount = counts.updateCount | 0;
     for (let i = 0; i < updateCount; i++) {
         const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
         const mapId = updatePacked[off + 0] | 0;
@@ -249,13 +311,13 @@ export function decodeNpcStateDeltaPacketEvents(
             mapId,
             npcInstanceId: updatePacked[off + 1] | 0,
             seq: updatePacked[off + 2] | 0,
-            delta: decodeUpdateDelta(flags, updatePacked, off),
+            delta: decodeNpcStateDeltaUpdate(flags, updatePacked, off),
         };
         events.push(event);
     }
 
     const despawnPacked = packet.despawnsPacked;
-    const despawnCount = Math.floor((despawnPacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE);
+    const despawnCount = counts.despawnCount | 0;
     for (let i = 0; i < despawnCount; i++) {
         const off = (i | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE;
         const mapId = despawnPacked[off + 0] | 0;

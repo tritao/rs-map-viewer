@@ -16,10 +16,7 @@ import {
     type FramePacketMapEntry,
 } from "../../runtime/contracts/FramePacketBuilder";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
-import {
-    decodeNpcStateDeltaPacketEvents,
-    type NpcStateDeltaPacket,
-} from "../../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcStateDeltaPacket } from "../../runtime/contracts/NpcStateDeltaPacket";
 import {
     NpcSimStateStore,
     type NpcSimStateStoreDeps,
@@ -202,24 +199,12 @@ export class WorkerFramePacketRuntime {
     }
 
     async applyNpcStateDeltaPacket(packet: NpcStateDeltaPacket): Promise<number> {
-        const eventsByMapId = decodeNpcStateDeltaPacketEvents(packet);
-        if (eventsByMapId.size <= 0) {
+        if ((packet.eventCount | 0) <= 0) {
             return 0;
         }
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
-        let applied = 0;
-        for (const [mapId, events] of eventsByMapId.entries()) {
-            applied =
-                (applied +
-                    (this.npcSimStateStore.applyMapNpcLifecycleEvents(
-                        mapId | 0,
-                        events,
-                        deps,
-                    ) | 0)) |
-                0;
-        }
-        return applied | 0;
+        return this.npcSimStateStore.applyNpcStateDeltaPacket(packet, deps) | 0;
     }
 
     private normalizeTickFrameInputs(

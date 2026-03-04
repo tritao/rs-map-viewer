@@ -162,6 +162,14 @@ async function main(): Promise<void> {
         assert.notEqual(updateEvent.delta.movementFrameTick, undefined);
     }
 
+    await assert.rejects(
+        frameRuntime.applyNpcStateDeltaPacket({
+            ...deltaPacket,
+            eventCount: ((deltaPacket.eventCount | 0) + 1) | 0,
+        }),
+        /invalid eventCount/,
+    );
+
     await frameRuntime.applyNpcStateDeltaPacket(deltaPacket);
     const updatedPacket = await frameRuntime.buildFramePacketFromCurrentState(2, 0);
     assert.ok(updatedPacket, "expected updated packet");

@@ -2,9 +2,21 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
-import { applyNpcUpdateDeltas } from "./NpcSimMovement";
+import {
+    applyNpcUpdateDelta,
+    applyNpcUpdateDeltas,
+    type NpcUpdateDelta,
+} from "./NpcSimMovement";
 import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "./NpcEvents";
 import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
+import {
+    decodeNpcStateDeltaUpdate,
+    NPC_STATE_DELTA_DESPAWN_STRIDE,
+    type NpcStateDeltaPacket,
+    NPC_STATE_DELTA_SPAWN_STRIDE,
+    NPC_STATE_DELTA_UPDATE_STRIDE,
+    validateNpcStateDeltaPacket,
+} from "../contracts/NpcStateDeltaPacket";
 import { LocAnimated } from "../entities/LocAnimated";
 import type { LocAnimatedData } from "../entities/LocAnimatedData";
 import { Npc } from "../entities/Npc";
@@ -196,33 +208,55 @@ export class NpcSimStateStore {
         return key;
     }
 
-    private createNpcFromSpawnEvent(
-        event: NpcSpawnEvent,
+    private createNpcFromSpawnData(
+        npcInstanceId: number,
+        npcTypeId: number,
+        tileX: number,
+        tileY: number,
+        level: number,
+        orderKey: number | undefined,
         state: NpcSimMapState,
         deps: NpcSimStateStoreDeps,
     ): Npc | undefined {
-        const npcTypeId = event.npcTypeId | 0;
-        const npcTypeResult = deps.npcTypeLoader.tryLoad(npcTypeId);
+        const typeId = npcTypeId | 0;
+        const npcTypeResult = deps.npcTypeLoader.tryLoad(typeId);
         if (!npcTypeResult.ok) {
             return undefined;
         }
         const npcType = npcTypeResult.value;
         const idleSeqId = npcType.getIdleSeqId(deps.basTypeLoader);
         const walkSeqId = npcType.getWalkSeqId(deps.basTypeLoader);
-        const anim = state.npcTypeAnimationByNpcTypeId.get(npcTypeId);
-        const instanceId = event.npcInstanceId | 0;
-        const orderKey = event.orderKey ?? this.allocateSyntheticOrderKey(state);
+        const anim = state.npcTypeAnimationByNpcTypeId.get(typeId);
+        const instanceId = npcInstanceId | 0;
+        const order = orderKey ?? this.allocateSyntheticOrderKey(state);
         return new Npc(
-            event.tileX | 0,
-            event.tileY | 0,
-            event.level | 0,
+            tileX | 0,
+            tileY | 0,
+            level | 0,
             anim?.idleAnim,
             anim?.walkAnim,
             npcType,
             idleSeqId | 0,
             walkSeqId | 0,
             instanceId,
-            orderKey,
+            order,
+        );
+    }
+
+    private createNpcFromSpawnEvent(
+        event: NpcSpawnEvent,
+        state: NpcSimMapState,
+        deps: NpcSimStateStoreDeps,
+    ): Npc | undefined {
+        return this.createNpcFromSpawnData(
+            event.npcInstanceId | 0,
+            event.npcTypeId | 0,
+            event.tileX | 0,
+            event.tileY | 0,
+            event.level | 0,
+            event.orderKey,
+            state,
+            deps,
         );
     }
 
@@ -249,6 +283,47 @@ export class NpcSimStateStore {
         }
         state.lastSeqByInstanceId.set(instanceId, nextSeq);
         return true;
+    }
+
+    private upsertSpawnedNpc(state: NpcSimMapState, npc: Npc, npcInstanceId: number): void {
+        state.lastSeqByInstanceId.delete(npcInstanceId | 0);
+        const instanceId = npc.instanceId;
+        if (instanceId !== undefined) {
+            const existingIndex = state.npcIndexByInstanceId.get(instanceId | 0);
+            if (existingIndex !== undefined) {
+                state.npcs[existingIndex | 0] = npc;
+                state.seededNpcFlags = false;
+                return;
+            }
+        }
+        const orderKey = npc.orderKey;
+        if (orderKey !== undefined) {
+            const existingOrderIndex = state.npcIndexByOrderKey.get(orderKey | 0);
+            if (existingOrderIndex !== undefined) {
+                state.npcs[existingOrderIndex | 0] = npc;
+            } else {
+                state.npcs.push(npc);
+            }
+        } else {
+            state.npcs.push(npc);
+        }
+        state.seededNpcFlags = false;
+    }
+
+    private refreshNpcTickPatchScratch(
+        state: NpcSimMapState,
+        npcCountBefore: number,
+        deps: NpcSimStateStoreDeps,
+    ): void {
+        const npcCount = state.npcs.length | 0;
+        if (npcCount === (npcCountBefore | 0)) {
+            return;
+        }
+        state.npcTickPatchesByVariant = this.createNpcTickPatchBuffers(
+            npcCount,
+            deps.tickPatchEntryStride,
+        );
+        state.npcTickPatchCountsByVariant = new Int32Array(2);
     }
 
     private applyLifecycleEventsToState(
@@ -278,28 +353,7 @@ export class NpcSimStateStore {
                 if (!npc) {
                     continue;
                 }
-                state.lastSeqByInstanceId.delete(event.npcInstanceId | 0);
-                const instanceId = npc.instanceId;
-                if (instanceId !== undefined) {
-                    const existingIndex = state.npcIndexByInstanceId.get(instanceId | 0);
-                    if (existingIndex !== undefined) {
-                        state.npcs[existingIndex | 0] = npc;
-                        state.seededNpcFlags = false;
-                        continue;
-                    }
-                }
-                const orderKey = npc.orderKey;
-                if (orderKey !== undefined) {
-                    const existingOrderIndex = state.npcIndexByOrderKey.get(orderKey | 0);
-                    if (existingOrderIndex !== undefined) {
-                        state.npcs[existingOrderIndex | 0] = npc;
-                    } else {
-                        state.npcs.push(npc);
-                    }
-                } else {
-                    state.npcs.push(npc);
-                }
-                state.seededNpcFlags = false;
+                this.upsertSpawnedNpc(state, npc, event.npcInstanceId | 0);
                 continue;
             }
             if (event.kind === "despawn") {
@@ -327,13 +381,120 @@ export class NpcSimStateStore {
             deltas,
             state.npcIndexByInstanceId,
         );
-        const npcCount = state.npcs.length | 0;
-        if (replaceSnapshot || npcCount !== npcCountBefore) {
+        if (replaceSnapshot) {
             state.npcTickPatchesByVariant = this.createNpcTickPatchBuffers(
-                npcCount,
+                state.npcs.length | 0,
                 deps.tickPatchEntryStride,
             );
             state.npcTickPatchCountsByVariant = new Int32Array(2);
+        } else {
+            this.refreshNpcTickPatchScratch(state, npcCountBefore, deps);
+        }
+        return applied | 0;
+    }
+
+    applyNpcStateDeltaPacket(
+        packet: NpcStateDeltaPacket,
+        deps: NpcSimStateStoreDeps,
+    ): number {
+        const counts = validateNpcStateDeltaPacket(packet);
+        if ((counts.eventCount | 0) <= 0) {
+            return 0;
+        }
+
+        const mapNpcCountsBefore = new Map<number, number>();
+        const changedMaps = new Set<number>();
+        const trackMapNpcCountBefore = (mapId: number, state: NpcSimMapState): void => {
+            const id = mapId | 0;
+            if (!mapNpcCountsBefore.has(id)) {
+                mapNpcCountsBefore.set(id, state.npcs.length | 0);
+            }
+        };
+
+        const spawnsPacked = packet.spawnsPacked;
+        for (let i = 0; i < (counts.spawnCount | 0); i++) {
+            const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
+            const mapId = spawnsPacked[off + 0] | 0;
+            const state = this.maps.get(mapId);
+            if (!state) {
+                continue;
+            }
+            const hasOrderKey = (spawnsPacked[off + 6] | 0) !== 0;
+            const npc = this.createNpcFromSpawnData(
+                spawnsPacked[off + 1] | 0,
+                spawnsPacked[off + 2] | 0,
+                spawnsPacked[off + 3] | 0,
+                spawnsPacked[off + 4] | 0,
+                spawnsPacked[off + 5] | 0,
+                hasOrderKey ? (spawnsPacked[off + 7] | 0) : undefined,
+                state,
+                deps,
+            );
+            if (!npc) {
+                continue;
+            }
+            trackMapNpcCountBefore(mapId, state);
+            this.upsertSpawnedNpc(state, npc, spawnsPacked[off + 1] | 0);
+            changedMaps.add(mapId);
+        }
+
+        const despawnsPacked = packet.despawnsPacked;
+        for (let i = 0; i < (counts.despawnCount | 0); i++) {
+            const off = (i | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE;
+            const mapId = despawnsPacked[off + 0] | 0;
+            const state = this.maps.get(mapId);
+            if (!state) {
+                continue;
+            }
+            const npcInstanceId = despawnsPacked[off + 1] | 0;
+            const seq = despawnsPacked[off + 2] | 0;
+            if (!this.shouldApplySeq(state, npcInstanceId, seq)) {
+                continue;
+            }
+            trackMapNpcCountBefore(mapId, state);
+            this.removeNpcByEventTarget(state, npcInstanceId);
+            state.seededNpcFlags = false;
+            changedMaps.add(mapId);
+        }
+
+        for (const mapId of changedMaps) {
+            const state = this.maps.get(mapId | 0);
+            if (!state) {
+                continue;
+            }
+            this.rebuildNpcIndexMap(state);
+            const npcCountBefore = mapNpcCountsBefore.get(mapId | 0);
+            if (npcCountBefore !== undefined) {
+                this.refreshNpcTickPatchScratch(state, npcCountBefore | 0, deps);
+            }
+        }
+
+        const updatesPacked = packet.updatesPacked;
+        let applied = 0;
+        for (let i = 0; i < (counts.updateCount | 0); i++) {
+            const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
+            const mapId = updatesPacked[off + 0] | 0;
+            const state = this.maps.get(mapId);
+            if (!state) {
+                continue;
+            }
+            const npcInstanceId = updatesPacked[off + 1] | 0;
+            const seq = updatesPacked[off + 2] | 0;
+            if (!this.shouldApplySeq(state, npcInstanceId, seq)) {
+                continue;
+            }
+            const npcIndex = state.npcIndexByInstanceId.get(npcInstanceId);
+            if (npcIndex === undefined) {
+                continue;
+            }
+            const npc = state.npcs[npcIndex | 0];
+            if (!npc) {
+                continue;
+            }
+            const flags = updatesPacked[off + 3] | 0;
+            const delta: NpcUpdateDelta = decodeNpcStateDeltaUpdate(flags, updatesPacked, off);
+            applyNpcUpdateDelta(npc, delta);
+            applied = (applied + 1) | 0;
         }
         return applied | 0;
     }
