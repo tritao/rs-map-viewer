@@ -18153,8 +18153,6 @@ async function main(): Promise<void> {
                                                                                         false,
                                                                                     debugIncludeSceneCommandPlanOpsPacked:
                                                                                         false,
-                                                                                    preferWasmPacking:
-                                                                                        false,
                                                                                 },
                                                                             );
                                                                             const after =

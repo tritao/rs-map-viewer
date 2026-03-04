@@ -7,7 +7,6 @@ import {
 import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { InteractType } from "../../renderer/InteractType";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
@@ -17,10 +16,9 @@ import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
-import { LocLoadType, SceneBuilder } from "../../rs/scene/SceneBuilder";
+import { LocLoadType } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
-import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
@@ -47,13 +45,11 @@ import {
     summarizeSceneCommandPlan,
 } from "../../runtime/build";
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
-import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
+import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
 import { createNpcBootstrapData } from "../../runtime/sim/NpcBootstrapData";
-import type { MapRenderBuildDeps, NpcSpawnDecodeBackend } from "../MapRenderBuildDeps";
+import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
 import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";
-import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../MapRenderPayload";
-import { MAP_RENDER_DRAW_BUCKET_KEYS } from "../MapRenderPayload";
 import { loadMinimapBlob } from "./MinimapData";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
@@ -61,7 +57,6 @@ export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 export type BuildMapDataOptions = Readonly<{
     includeRuntimeCommandStreamInput?: boolean;
     includeRuntimeSceneTileHeights?: boolean;
-    preferWasmPacking?: boolean;
     includeMinimapBlob?: boolean;
     includeLoadedTextures?: boolean;
     includeNpcAnimationFrames?: boolean;
@@ -118,32 +113,6 @@ function loadHeightMapTextureData(scene: Scene): Int16Array {
     }
 
     return heightMapTextureData;
-}
-
-function createEmptyDrawRanges(): SdRenderableDrawRanges {
-    return {
-        base: new Int32Array(0),
-        alpha: new Int32Array(0),
-        lod: new Int32Array(0),
-        lodAlpha: new Int32Array(0),
-        interact: new Int32Array(0),
-        interactAlpha: new Int32Array(0),
-        interactLod: new Int32Array(0),
-        interactLodAlpha: new Int32Array(0),
-    };
-}
-
-function createEmptyModelInfoTextures(): SdRenderableModelInfoTextures {
-    return {
-        base: new Uint16Array(0),
-        alpha: new Uint16Array(0),
-        lod: new Uint16Array(0),
-        lodAlpha: new Uint16Array(0),
-        interact: new Uint16Array(0),
-        interactAlpha: new Uint16Array(0),
-        interactLod: new Uint16Array(0),
-        interactLodAlpha: new Uint16Array(0),
-    };
 }
 
 function flattenSceneTileHeights(scene: Scene): Int32Array {
@@ -213,7 +182,7 @@ function createObjSceneModel(
 
     const model = objModelLoader.getModel(spawn.id, spawn.count);
     if (!model) {
-        return undefined;
+        return;
     }
 
     let renderLevel = spawn.plane;
@@ -226,7 +195,7 @@ function createObjSceneModel(
     let heightOffset = 0;
     const tile = scene.tiles[renderLevel][tileX][tileY];
     if (!tile || !tile.tileModel || tile.tileModel.faces.length === 0) {
-        return undefined;
+        return;
     }
     if (tile) {
         for (const loc of tile.locs) {
@@ -320,6 +289,16 @@ type LocAnimatedGroupBuild = {
     locType: LocType;
     locs: SceneLocEntity[];
 };
+
+type ResolveNpcSpawnsInput = Readonly<{
+    loadNpcs: boolean;
+    mapX: number;
+    mapY: number;
+    maxLevel: number;
+    borderSize: number;
+    tileRenderFlagsLevel1: Uint8Array[];
+    npcTypeLoader: NpcTypeLoader;
+}>;
 
 function pushLocEntityRenderData(
     locAnimatedGroupMap: Map<number, LocAnimatedGroupBuild>,
@@ -474,6 +453,89 @@ export class MapRenderTsBackend {
         return this.fallbackNpcSpawnsPromise;
     }
 
+    private static matchesRenderableNpcType(
+        npcTypeLoader: NpcTypeLoader,
+        spawn: NpcSpawn,
+    ): boolean {
+        const npcResult = npcTypeLoader.tryLoad(spawn.id);
+        if (!npcResult.ok) {
+            return false;
+        }
+        return (npcResult.value.loginScreenProps & 0x1) > 0;
+    }
+
+    private static matchesFallbackNpcName(
+        npcTypeLoader: NpcTypeLoader,
+        spawn: NpcSpawn,
+    ): boolean {
+        const npcResult = npcTypeLoader.tryLoad(spawn.id);
+        if (!npcResult.ok) {
+            return false;
+        }
+        if (spawn.name === undefined) {
+            return true;
+        }
+        return spawn.name === npcResult.value.name;
+    }
+
+    private async resolveNpcSpawns(input: ResolveNpcSpawnsInput): Promise<NpcSpawn[]> {
+        if (!input.loadNpcs) {
+            return [];
+        }
+        const npcSpawnBytes = this.deps.mapBytesProvider.getNpcSpawnBytes(input.mapX, input.mapY);
+        let cacheNpcSpawns: NpcSpawn[] | undefined;
+        if (npcSpawnBytes) {
+            const decodeStart = performance.now();
+            const npcLoginScreenPropsById = this.deps.npcSpawnDecodeBackend
+                ? this.getNpcLoginScreenPropsById(
+                      input.npcTypeLoader,
+                      this.deps.session.cache.info.name,
+                  )
+                : undefined;
+            cacheNpcSpawns = this.deps.npcSpawnDecodeBackend
+                ? await this.deps.npcSpawnDecodeBackend.decodeNpcSpawnsFromBytes(
+                      input.tileRenderFlagsLevel1,
+                      input.borderSize,
+                      input.mapX,
+                      input.mapY,
+                      npcSpawnBytes,
+                      npcLoginScreenPropsById,
+                      0x1,
+                  )
+                : decodeNpcSpawnsFromBytes(
+                      input.tileRenderFlagsLevel1,
+                      input.borderSize,
+                      input.mapX,
+                      input.mapY,
+                      npcSpawnBytes,
+                  );
+            if (this.deps.telemetry) {
+                const decodeMs = performance.now() - decodeStart;
+                console.log(
+                    `[map-render] square=${input.mapX},${input.mapY} npcDecodeBackend=${
+                        this.deps.npcSpawnDecodeBackend?.name ?? "ts"
+                    } decoded=${cacheNpcSpawns?.length ?? 0} ms=${decodeMs.toFixed(1)}`,
+                );
+            }
+        }
+        if (cacheNpcSpawns) {
+            if (this.deps.npcSpawnDecodeBackend?.filtersLoginScreenProps) {
+                return cacheNpcSpawns;
+            }
+            return cacheNpcSpawns.filter((spawn) =>
+                MapRenderTsBackend.matchesRenderableNpcType(input.npcTypeLoader, spawn),
+            );
+        }
+
+        const fallbackNpcSpawns = await this.getFallbackNpcSpawns();
+        return getMapNpcSpawns(
+            fallbackNpcSpawns,
+            input.maxLevel,
+            input.mapX,
+            input.mapY,
+        ).filter((spawn) => MapRenderTsBackend.matchesFallbackNpcName(input.npcTypeLoader, spawn));
+    }
+
     async buildMapDataBridgeInput(
         {
             mapX,
@@ -490,15 +552,23 @@ export class MapRenderTsBackend {
     ): Promise<BuildMapDataBridgeInputResult> {
         this.init();
 
+        const telemetryEnabled = this.deps.telemetry === true;
+        const captureStageProfile = options?.debugIncludeStageProfile === true || telemetryEnabled;
         const profileStart = performance.now();
         const profile: Record<string, number> = {};
         const timeStep = <T>(name: string, fn: () => T): T => {
+            if (!captureStageProfile) {
+                return fn();
+            }
             const t0 = performance.now();
             const result = fn();
             profile[name] = performance.now() - t0;
             return result;
         };
         const timeStepAsync = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+            if (!captureStageProfile) {
+                return fn();
+            }
             const t0 = performance.now();
             const result = await fn();
             profile[name] = performance.now() - t0;
@@ -618,79 +688,23 @@ export class MapRenderTsBackend {
                 }
 
                 locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
-                console.log(`animated locs: ${locsAnimated.length}`);
+                if (telemetryEnabled) {
+                    console.log(`animated locs: ${locsAnimated.length}`);
+                }
             }
         }
 
-        // Npcs
-
-        let npcSpawns: NpcSpawn[] = [];
-        if (loadNpcs) {
-            const npcSpawnBytes = this.deps.mapBytesProvider.getNpcSpawnBytes(mapX, mapY);
-            let cacheNpcSpawns: NpcSpawn[] | undefined;
-            if (npcSpawnBytes) {
-                const decodeStart = performance.now();
-                const npcLoginScreenPropsById = this.deps.npcSpawnDecodeBackend
-                    ? this.getNpcLoginScreenPropsById(
-                          npcTypeLoader,
-                          this.deps.session.cache.info.name,
-                      )
-                    : undefined;
-                cacheNpcSpawns = this.deps.npcSpawnDecodeBackend
-                    ? await this.deps.npcSpawnDecodeBackend.decodeNpcSpawnsFromBytes(
-                          scene.tileRenderFlags[1],
-                          borderSize,
-                          mapX,
-                          mapY,
-                          npcSpawnBytes,
-                          npcLoginScreenPropsById,
-                          0x1,
-                      )
-                    : decodeNpcSpawnsFromBytes(
-                          scene.tileRenderFlags[1],
-                          borderSize,
-                          mapX,
-                          mapY,
-                          npcSpawnBytes,
-                      );
-                if (this.deps.telemetry) {
-                    const decodeMs = performance.now() - decodeStart;
-                    console.log(
-                        `[map-render] square=${mapX},${mapY} npcDecodeBackend=${
-                            this.deps.npcSpawnDecodeBackend?.name ?? "ts"
-                        } decoded=${cacheNpcSpawns?.length ?? 0} ms=${decodeMs.toFixed(1)}`,
-                    );
-                }
-            }
-            if (cacheNpcSpawns) {
-                if (this.deps.npcSpawnDecodeBackend?.filtersLoginScreenProps) {
-                    npcSpawns = cacheNpcSpawns;
-                } else {
-                    npcSpawns = cacheNpcSpawns.filter((spawn) => {
-                        const npcResult = npcTypeLoader.tryLoad(spawn.id);
-                        if (!npcResult.ok) {
-                            return false;
-                        }
-                        return (npcResult.value.loginScreenProps & 0x1) > 0;
-                    });
-                }
-            } else {
-                const fallbackNpcSpawns = await timeStepAsync("fetchFallbackNpcSpawns", () =>
-                    this.getFallbackNpcSpawns(),
-                );
-                npcSpawns = getMapNpcSpawns(fallbackNpcSpawns, maxLevel, mapX, mapY);
-                npcSpawns = npcSpawns.filter((spawn) => {
-                    const npcResult = npcTypeLoader.tryLoad(spawn.id);
-                    if (!npcResult.ok) {
-                        return false;
-                    }
-                    if (spawn.name === undefined) {
-                        return true;
-                    }
-                    return spawn.name === npcResult.value.name;
-                });
-            }
-        }
+        const npcSpawns = await timeStepAsync("resolveNpcSpawns", () =>
+            this.resolveNpcSpawns({
+                loadNpcs,
+                mapX,
+                mapY,
+                maxLevel,
+                borderSize,
+                tileRenderFlagsLevel1: scene.tileRenderFlags[1],
+                npcTypeLoader,
+            }),
+        );
         const npcGeometry = timeStep("buildNpcGeometry", () =>
             buildNpcGeometry({
                 loadNpcs,
@@ -720,34 +734,23 @@ export class MapRenderTsBackend {
                 : undefined;
         const npcTypeAnimationTable = npcBootstrap?.npcTypeAnimationTable;
 
-        const preferWasmPacking = options?.preferWasmPacking === true;
         const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
         const includeRuntimeSceneTileHeights = options?.includeRuntimeSceneTileHeights !== false;
-        const useWasmDrawPacking = preferWasmPacking;
-        const useWasmHeightMapPacking = preferWasmPacking;
+        const runtimeDrawCommandBuckets = timeStep("collectRuntimeDrawCommandBuckets", () =>
+            collectRuntimeDrawCommandBuckets(sceneBuf),
+        );
 
-        const runtimeDrawCommandBuckets =
-            includeRuntimeCommandStreamInput || !useWasmDrawPacking
-                ? timeStep("collectRuntimeDrawCommandBuckets", () =>
-                      collectRuntimeDrawCommandBuckets(sceneBuf),
-                  )
-                : undefined;
+        const drawRanges = timeStep("getDrawRanges", () =>
+            buildDrawRangesFromBuckets(runtimeDrawCommandBuckets),
+        );
 
-        const drawRanges = useWasmDrawPacking
-            ? createEmptyDrawRanges()
-            : timeStep("getDrawRanges", () =>
-                  buildDrawRangesFromBuckets(runtimeDrawCommandBuckets!),
-              );
+        const modelInfoTextures = timeStep("getModelInfoTextures", () =>
+            buildModelInfoTexturesFromBuckets(runtimeDrawCommandBuckets),
+        );
 
-        const modelInfoTextures = useWasmDrawPacking
-            ? createEmptyModelInfoTextures()
-            : timeStep("getModelInfoTextures", () =>
-                  buildModelInfoTexturesFromBuckets(runtimeDrawCommandBuckets!),
-              );
-
-        const heightMapTextureData = useWasmHeightMapPacking
-            ? new Int16Array(0)
-            : timeStep("loadHeightMapTextureData", () => loadHeightMapTextureData(scene));
+        const heightMapTextureData = timeStep("loadHeightMapTextureData", () =>
+            loadHeightMapTextureData(scene),
+        );
 
         const runtimeSceneTileHeights =
             includeRuntimeCommandStreamInput && includeRuntimeSceneTileHeights
@@ -764,7 +767,7 @@ export class MapRenderTsBackend {
                           sizeY: scene.sizeY,
                           unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
                       },
-                      runtimeDrawCommandBuckets!,
+                      runtimeDrawCommandBuckets,
                   ),
               )
             : undefined;
@@ -783,7 +786,7 @@ export class MapRenderTsBackend {
         for (const textureId of npcGeometry.usedTextureIds) {
             usedTextureIdSet.add(textureId);
         }
-        const usedTextureIds = Int32Array.from(usedTextureIdSet);
+        const usedTextureIds = Int32Array.from([...usedTextureIdSet].sort((a, b) => a - b));
 
         const includeLoadedTextures = options?.includeLoadedTextures !== false;
         const loadedTextures = new Map<number, Int32Array>();
@@ -801,8 +804,10 @@ export class MapRenderTsBackend {
                 }
             }
             const loadTexturesMs = performance.now() - loadTexturesStart;
-            profile.loadMissingTextures = loadTexturesMs;
-            if (loadTexturesMs > 250) {
+            if (captureStageProfile) {
+                profile.loadMissingTextures = loadTexturesMs;
+            }
+            if (telemetryEnabled && loadTexturesMs > 250) {
                 console.log(
                     `load map ${mapX},${mapY}: textures used=${
                         usedTextureIdSet.size
@@ -814,7 +819,7 @@ export class MapRenderTsBackend {
         }
 
         const totalMs = performance.now() - profileStart;
-        if (totalMs > 5000) {
+        if (telemetryEnabled && totalMs > 5000) {
             const parts = Object.entries(profile)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 10)
