@@ -84,6 +84,7 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
         renderWorkerPool: renderWorkerPool as any,
         getLodDistance: () => 4,
         getHoveredMapIdsPacked: () => new Int32Array(0),
+        isSeamTelemetryEnabled: () => false,
         getMapManager: () => mapManager as any,
         getCamera: () => camera as any,
     });
@@ -164,6 +165,7 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
         renderWorkerPool: renderWorkerPool as any,
         getLodDistance: () => 4,
         getHoveredMapIdsPacked: () => new Int32Array(0),
+        isSeamTelemetryEnabled: () => false,
         getMapManager: () => mapManager as any,
         getCamera: () => camera as any,
     });

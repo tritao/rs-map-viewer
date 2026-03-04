@@ -68,6 +68,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
+            isSeamTelemetryEnabled: () => !!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry,
             getMapManager: () => this.mapManager,
             getCamera: () => this.camera,
         });

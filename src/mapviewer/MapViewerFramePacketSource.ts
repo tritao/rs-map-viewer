@@ -23,6 +23,7 @@ type WorkerMapViewerFramePacketSourceDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
     getLodDistance(): number;
     getHoveredMapIdsPacked(): Int32Array | undefined;
+    isSeamTelemetryEnabled(): boolean;
     getMapManager(): MapManager;
     getCamera(): Camera;
 }>;
@@ -35,6 +36,12 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
     private tickMapIdsVersion: number = 0;
     private tickViewStateVersion: number = 0;
     private lastTickHoveredMapIds: Int32Array = EMPTY_INT32;
+    private seamSampleCount: number = 0;
+    private seamSimMsTotal: number = 0;
+    private seamApplyMsTotal: number = 0;
+    private seamPackMsTotal: number = 0;
+    private seamTotalMsTotal: number = 0;
+    private seamEventCountTotal: number = 0;
     private lastTickViewState:
         | Readonly<{ cameraMapX: number; cameraMapY: number; lodDistance: number }>
         | undefined;
@@ -73,6 +80,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                 this.lastTickHoveredMapIds,
             );
             const runTickFrame = async () => {
+                const seamStart = performance.now();
                 const deltaPacket = await this.deps.simWorkerPool.tickSim(
                     input.frameCount,
                     input.ticksElapsed,
@@ -80,13 +88,24 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                     input.cycle,
                     hoveredMapIdsPacked,
                 );
+                const afterSim = performance.now();
                 if (deltaPacket) {
                     await this.deps.renderWorkerPool.applyNpcStateDeltaPacket(deltaPacket);
                 }
-                return await this.deps.renderWorkerPool.buildFramePacketFromRenderState(
+                const afterApply = performance.now();
+                const packet = await this.deps.renderWorkerPool.buildFramePacketFromRenderState(
                     input.frameCount,
                     input.cycle,
                 );
+                const seamEnd = performance.now();
+                this.recordSeamTiming(
+                    afterSim - seamStart,
+                    afterApply - afterSim,
+                    seamEnd - afterApply,
+                    seamEnd - seamStart,
+                    deltaPacket?.eventCount ?? 0,
+                );
+                return packet;
             };
             const updatePromises = this.syncTickRuntimeState({
                 mapIds,
@@ -145,6 +164,12 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
         this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
         this.lastTickHoveredMapIds = EMPTY_INT32;
+        this.seamSampleCount = 0;
+        this.seamSimMsTotal = 0;
+        this.seamApplyMsTotal = 0;
+        this.seamPackMsTotal = 0;
+        this.seamTotalMsTotal = 0;
+        this.seamEventCountTotal = 0;
         this.lastTickViewState = undefined;
         void Promise.all([
             this.deps.simWorkerPool.setTickMapIds(EMPTY_INT32),
@@ -229,5 +254,41 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
             );
         }
         return updatePromises;
+    }
+
+    private recordSeamTiming(
+        simMs: number,
+        applyMs: number,
+        packMs: number,
+        totalMs: number,
+        eventCount: number,
+    ): void {
+        if (!this.deps.isSeamTelemetryEnabled()) {
+            return;
+        }
+        this.seamSampleCount = (this.seamSampleCount + 1) | 0;
+        this.seamSimMsTotal += simMs;
+        this.seamApplyMsTotal += applyMs;
+        this.seamPackMsTotal += packMs;
+        this.seamTotalMsTotal += totalMs;
+        this.seamEventCountTotal += eventCount | 0;
+        if ((this.seamSampleCount | 0) < 120) {
+            return;
+        }
+        const count = this.seamSampleCount | 0;
+        console.log("[map-render][frame-seam] avg", {
+            samples: count,
+            simMs: this.seamSimMsTotal / count,
+            applyMs: this.seamApplyMsTotal / count,
+            packMs: this.seamPackMsTotal / count,
+            totalMs: this.seamTotalMsTotal / count,
+            eventsPerFrame: this.seamEventCountTotal / count,
+        });
+        this.seamSampleCount = 0;
+        this.seamSimMsTotal = 0;
+        this.seamApplyMsTotal = 0;
+        this.seamPackMsTotal = 0;
+        this.seamTotalMsTotal = 0;
+        this.seamEventCountTotal = 0;
     }
 }
