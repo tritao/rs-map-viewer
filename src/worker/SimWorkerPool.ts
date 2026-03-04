@@ -1,12 +1,12 @@
 import { ModuleThread, Thread, spawn } from "threads";
 
-import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SimWorker } from "./SimWorker";
+import { ensureWorkerSpawnBootstrap } from "./SpawnBootstrapLoader";
 
 type SimWorkerThread = ModuleThread<SimWorker>;
 
@@ -20,24 +20,11 @@ export class SimWorkerPool {
         return new SimWorkerPool();
     }
 
-    private readonly spawnBootstrapByCacheKey = new Map<string, Promise<WorkerSpawnBootstrap>>();
     private initPromise: Promise<void> | undefined;
     private workerPromise: Promise<SimWorkerThread> | undefined;
 
-    private getSpawnBootstrapCacheKey(cache: LoadedCache): string {
-        const info = cache.info;
-        return `${info.game}:${info.revision}:${info.name}`;
-    }
-
     private ensureSpawnBootstrap(cache: LoadedCache): Promise<WorkerSpawnBootstrap> {
-        const key = this.getSpawnBootstrapCacheKey(cache);
-        const cached = this.spawnBootstrapByCacheKey.get(key);
-        if (cached) {
-            return cached;
-        }
-        const promise = fetchObjSpawns().then((objSpawns) => ({ objSpawns }));
-        this.spawnBootstrapByCacheKey.set(key, promise);
-        return promise;
+        return ensureWorkerSpawnBootstrap(cache);
     }
 
     private getWorker(): Promise<SimWorkerThread> {

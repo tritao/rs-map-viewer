@@ -1,4 +1,5 @@
 import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
+import type { NpcSpawn } from "../../data/npc/NpcSpawn";
 import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
@@ -45,6 +46,7 @@ import {
 type TickWorkerState = Readonly<{
     session: CacheSession;
     mapBytesProvider: MapBytesProvider;
+    fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
     sceneBuilder: SceneBuilder;
     // Tick runtime intentionally only sees the tick-safe backend surface.
     // Static map build entrypoints stay outside this layer.
@@ -256,6 +258,7 @@ export class WorkerTickRuntime {
             {
                 mapBytesProvider: workerState.mapBytesProvider,
                 cacheInfo: workerState.session.cache.info,
+                fallbackNpcSpawns: workerState.fallbackNpcSpawns,
             },
             {
                 mapId,
@@ -300,8 +303,7 @@ export class WorkerTickRuntime {
             return;
         }
         const state = this.npcSimStateStore.getMap(mapId | 0);
-        const npcBootstrapData = resolvedBootstrap.data;
-        const spawnEventCount = npcBootstrapData.spawnEvents.length | 0;
+        const spawnEventCount = resolvedBootstrap.spawnEvents.length | 0;
         const npcCount = state ? state.npcs.length | 0 : 0;
         if (spawnEventCount <= 0) {
             this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
@@ -324,7 +326,7 @@ export class WorkerTickRuntime {
             return;
         }
         this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
-        const firstTypeId = npcBootstrapData.spawnEvents[0]!.npcTypeId | 0;
+        const firstTypeId = resolvedBootstrap.spawnEvents[0]!.npcTypeId | 0;
         const npcTypeOk = deps.npcTypeLoader.tryLoad(firstTypeId).ok ? 1 : 0;
         const npcTypeCount = deps.npcTypeLoader.getCount?.() ?? -1;
         console.warn(
@@ -388,7 +390,7 @@ export class WorkerTickRuntime {
         const deps = createNpcSimStateStoreDeps(workerState);
         this.npcSimStateStore.applyMapNpcLifecycleEvents(
             mapId | 0,
-            resolvedBootstrap.data.spawnEvents,
+            resolvedBootstrap.spawnEvents,
             deps,
             true,
         );

@@ -1,6 +1,5 @@
 import { ModuleThread, Pool, Thread, spawn } from "threads";
 
-import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MinimapData } from "../maprender/ts/MinimapData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
@@ -11,6 +10,7 @@ import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
+import { ensureWorkerSpawnBootstrap } from "./SpawnBootstrapLoader";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 type WorkerDescriptorLike = Readonly<{ init: Promise<RenderDataWorkerThread> }>;
@@ -34,25 +34,10 @@ export class RenderDataWorkerPool {
         readonly frameWorkerPromise: Promise<RenderDataWorkerThread>,
     ) {}
 
-    private readonly spawnBootstrapByCacheKey = new Map<string, Promise<WorkerSpawnBootstrap>>();
     private initPromise: Promise<void> | undefined;
 
-    private getSpawnBootstrapCacheKey(cache: LoadedCache): string {
-        const info = cache.info;
-        return `${info.game}:${info.revision}:${info.name}`;
-    }
-
     private ensureSpawnBootstrap(cache: LoadedCache): Promise<WorkerSpawnBootstrap> {
-        const key = this.getSpawnBootstrapCacheKey(cache);
-        const cached = this.spawnBootstrapByCacheKey.get(key);
-        if (cached) {
-            return cached;
-        }
-        const promise = fetchObjSpawns().then((objSpawns) => ({
-            objSpawns,
-        }));
-        this.spawnBootstrapByCacheKey.set(key, promise);
-        return promise;
+        return ensureWorkerSpawnBootstrap(cache);
     }
 
     private runInit(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {

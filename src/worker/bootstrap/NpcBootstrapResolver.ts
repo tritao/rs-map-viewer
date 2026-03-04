@@ -1,12 +1,14 @@
-import { type NpcSpawn, fetchNpcSpawns, getNpcSpawnsUrl } from "../../data/npc/NpcSpawn";
+import { type NpcSpawn, getNpcSpawnsUrl } from "../../data/npc/NpcSpawn";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
-import { type NpcBootstrapData, createNpcBootstrapDataFromSpawns } from "../../runtime/sim/NpcBootstrapData";
+import { createNpcBootstrapDataFromSpawns } from "../../runtime/sim/NpcBootstrapData";
+import type { NpcSpawnEvent } from "../../runtime/sim/NpcEvents";
 
 type ResolveNpcBootstrapDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;
     cacheInfo: CacheInfo;
+    fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
 }>;
 
 type ResolveNpcBootstrapInput = Readonly<{
@@ -20,7 +22,7 @@ type ResolveNpcBootstrapInput = Readonly<{
 export type NpcBootstrapSource = "mapBytes" | "fallbackDataset";
 
 export type ResolvedNpcBootstrapData = Readonly<{
-    data: NpcBootstrapData;
+    spawnEvents: NpcSpawnEvent[];
     source: NpcBootstrapSource;
     decodedSpawnsCount?: number;
     fallbackUrl?: string;
@@ -63,35 +65,8 @@ function tryHydrateNpcBootstrapFromMapBytes(
 }
 
 export class NpcBootstrapResolver {
-    private fallbackNpcSpawnsPromise: Promise<NpcSpawn[]> | undefined;
-    private fallbackNpcSpawnsCacheKey: string | undefined;
-
     reset(): void {
-        this.fallbackNpcSpawnsPromise = undefined;
-        this.fallbackNpcSpawnsCacheKey = undefined;
-    }
-
-    private getFallbackNpcSpawns(cacheInfo: CacheInfo): Promise<NpcSpawn[]> {
-        const cacheKey = `${cacheInfo.game}:${cacheInfo.revision}:${cacheInfo.name}`;
-        if (this.fallbackNpcSpawnsPromise && this.fallbackNpcSpawnsCacheKey === cacheKey) {
-            return this.fallbackNpcSpawnsPromise;
-        }
-        const url = getNpcSpawnsUrl(cacheInfo);
-        const promise = fetchNpcSpawns(url).catch((error: unknown) => {
-            console.error("[map-render][npc-spawns] failed to fetch fallback spawn dataset", {
-                cacheKey,
-                url,
-                error,
-            });
-            if (this.fallbackNpcSpawnsCacheKey === cacheKey) {
-                this.fallbackNpcSpawnsPromise = undefined;
-                this.fallbackNpcSpawnsCacheKey = undefined;
-            }
-            return [];
-        });
-        this.fallbackNpcSpawnsPromise = promise;
-        this.fallbackNpcSpawnsCacheKey = cacheKey;
-        return promise;
+        // no-op: fallback spawns are injected from worker bootstrap, not fetched here
     }
 
     async resolve(
@@ -100,12 +75,13 @@ export class NpcBootstrapResolver {
     ): Promise<ResolvedNpcBootstrapData> {
         const fromMapBytes = tryHydrateNpcBootstrapFromMapBytes(deps, input);
         if (fromMapBytes) {
+            const bootstrapData = createNpcBootstrapDataFromSpawns(
+                input.mapId | 0,
+                fromMapBytes.spawns,
+                input.npcOrderKeys,
+            );
             return {
-                data: createNpcBootstrapDataFromSpawns(
-                    input.mapId | 0,
-                    fromMapBytes.spawns,
-                    input.npcOrderKeys,
-                ),
+                spawnEvents: bootstrapData.spawnEvents,
                 source: "mapBytes",
                 decodedSpawnsCount: fromMapBytes.decodedSpawnsCount | 0,
             };
@@ -114,7 +90,7 @@ export class NpcBootstrapResolver {
         const { mapX, mapY } = decodeMapSquareFromId(input.mapId | 0);
         const fallbackCacheKey = `${deps.cacheInfo.game}:${deps.cacheInfo.revision}:${deps.cacheInfo.name}`;
         const fallbackUrl = getNpcSpawnsUrl(deps.cacheInfo);
-        const fallbackSpawns = await this.getFallbackNpcSpawns(deps.cacheInfo);
+        const fallbackSpawns = deps.fallbackNpcSpawns;
         const mapSpawns: NpcSpawn[] = [];
         let mapSpawnsAllLevelsCount = 0;
         for (let i = 0; i < fallbackSpawns.length; i++) {
@@ -131,10 +107,7 @@ export class NpcBootstrapResolver {
         }
         if ((mapSpawns.length | 0) <= 0) {
             return {
-                data: {
-                    spawnEvents: [],
-                    npcTypeAnimationTable: [],
-                },
+                spawnEvents: [],
                 source: "fallbackDataset",
                 fallbackUrl,
                 fallbackCacheKey,
@@ -143,8 +116,13 @@ export class NpcBootstrapResolver {
                 fallbackMapSpawnsAllLevelsCount: mapSpawnsAllLevelsCount | 0,
             };
         }
+        const bootstrapData = createNpcBootstrapDataFromSpawns(
+            input.mapId | 0,
+            mapSpawns,
+            input.npcOrderKeys,
+        );
         return {
-            data: createNpcBootstrapDataFromSpawns(input.mapId | 0, mapSpawns, input.npcOrderKeys),
+            spawnEvents: bootstrapData.spawnEvents,
             source: "fallbackDataset",
             fallbackUrl,
             fallbackCacheKey,
