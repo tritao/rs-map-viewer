@@ -2,7 +2,7 @@ import type { NpcDespawnEvent, NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from ".
 import type { NpcUpdateDelta } from "../sim/NpcSimMovement";
 
 export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
-export const NPC_STATE_DELTA_UPDATE_STRIDE = 10;
+export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;
 export const NPC_STATE_DELTA_DESPAWN_STRIDE = 3;
 
 const UPDATE_FLAG_CLEAR_SERVER_PATH = 1 << 0;
@@ -10,6 +10,10 @@ const UPDATE_FLAG_HAS_SNAP_TILE = 1 << 1;
 const UPDATE_FLAG_HAS_SNAP_WORLD = 1 << 2;
 const UPDATE_FLAG_HAS_ORIENTATION = 1 << 3;
 const UPDATE_FLAG_HAS_ROTATION = 1 << 4;
+const UPDATE_FLAG_HAS_MOVEMENT_SEQ_ID = 1 << 5;
+const UPDATE_FLAG_HAS_MOVEMENT_FRAME = 1 << 6;
+const UPDATE_FLAG_HAS_MOVEMENT_FRAME_TICK = 1 << 7;
+const UPDATE_FLAG_HAS_MOVEMENT_LOOP = 1 << 8;
 
 type NpcStateDeltaPacketInput = Readonly<{
     frameCount: number;
@@ -61,6 +65,18 @@ function updateFlagsFromDelta(delta: NpcUpdateDelta): number {
     }
     if (delta.rotation !== undefined) {
         flags |= UPDATE_FLAG_HAS_ROTATION;
+    }
+    if (delta.movementSeqId !== undefined) {
+        flags |= UPDATE_FLAG_HAS_MOVEMENT_SEQ_ID;
+    }
+    if (delta.movementFrame !== undefined) {
+        flags |= UPDATE_FLAG_HAS_MOVEMENT_FRAME;
+    }
+    if (delta.movementFrameTick !== undefined) {
+        flags |= UPDATE_FLAG_HAS_MOVEMENT_FRAME_TICK;
+    }
+    if (delta.movementLoop !== undefined) {
+        flags |= UPDATE_FLAG_HAS_MOVEMENT_LOOP;
     }
     return flags | 0;
 }
@@ -118,6 +134,10 @@ export function buildNpcStateDeltaPacketFromEvents(input: Readonly<{
             updatesPacked[updateOff++] = event.delta.snapWorldY ?? 0;
             updatesPacked[updateOff++] = event.delta.orientation ?? 0;
             updatesPacked[updateOff++] = event.delta.rotation ?? 0;
+            updatesPacked[updateOff++] = event.delta.movementSeqId ?? 0;
+            updatesPacked[updateOff++] = event.delta.movementFrame ?? 0;
+            updatesPacked[updateOff++] = event.delta.movementFrameTick ?? 0;
+            updatesPacked[updateOff++] = event.delta.movementLoop ?? 0;
             continue;
         }
         despawnsPacked[despawnOff++] = event.mapId | 0;
@@ -144,6 +164,10 @@ function decodeUpdateDelta(flags: number, packed: Int32Array, off: number): NpcU
         snapWorldY?: number;
         orientation?: number;
         rotation?: number;
+        movementSeqId?: number;
+        movementFrame?: number;
+        movementFrameTick?: number;
+        movementLoop?: number;
     } = {};
     if ((flags & UPDATE_FLAG_CLEAR_SERVER_PATH) !== 0) {
         delta.clearServerPath = true;
@@ -161,6 +185,18 @@ function decodeUpdateDelta(flags: number, packed: Int32Array, off: number): NpcU
     }
     if ((flags & UPDATE_FLAG_HAS_ROTATION) !== 0) {
         delta.rotation = packed[off + 9] | 0;
+    }
+    if ((flags & UPDATE_FLAG_HAS_MOVEMENT_SEQ_ID) !== 0) {
+        delta.movementSeqId = packed[off + 10] | 0;
+    }
+    if ((flags & UPDATE_FLAG_HAS_MOVEMENT_FRAME) !== 0) {
+        delta.movementFrame = packed[off + 11] | 0;
+    }
+    if ((flags & UPDATE_FLAG_HAS_MOVEMENT_FRAME_TICK) !== 0) {
+        delta.movementFrameTick = packed[off + 12] | 0;
+    }
+    if ((flags & UPDATE_FLAG_HAS_MOVEMENT_LOOP) !== 0) {
+        delta.movementLoop = packed[off + 13] | 0;
     }
     return delta;
 }

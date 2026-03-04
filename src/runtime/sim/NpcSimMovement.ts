@@ -21,6 +21,10 @@ export type NpcServerMovementLike = {
     y: number;
     orientation: number;
     rotation: number;
+    movementSeqId: number;
+    movementFrame: number;
+    movementFrameTick: number;
+    movementLoop: number;
     pathX: number[];
     pathY: number[];
     pathLength: number;
@@ -49,6 +53,10 @@ export type NpcUpdateDelta = Readonly<{
     snapWorldY?: number;
     orientation?: number;
     rotation?: number;
+    movementSeqId?: number;
+    movementFrame?: number;
+    movementFrameTick?: number;
+    movementLoop?: number;
     path?: NpcUpdatePathDelta;
 }>;
 
@@ -101,6 +109,18 @@ export function applyNpcUpdateDelta(npc: NpcServerMovementLike, delta: NpcUpdate
     }
     if (isFiniteNumber(delta.rotation)) {
         npc.rotation = (delta.rotation | 0) & 2047;
+    }
+    if (isFiniteNumber(delta.movementSeqId)) {
+        npc.movementSeqId = delta.movementSeqId | 0;
+    }
+    if (isFiniteNumber(delta.movementFrame)) {
+        npc.movementFrame = Math.max(0, delta.movementFrame | 0);
+    }
+    if (isFiniteNumber(delta.movementFrameTick)) {
+        npc.movementFrameTick = Math.max(0, delta.movementFrameTick | 0);
+    }
+    if (isFiniteNumber(delta.movementLoop)) {
+        npc.movementLoop = Math.max(0, delta.movementLoop | 0);
     }
 }
 

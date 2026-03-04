@@ -92,6 +92,10 @@ type NpcSnapshot = Readonly<{
     level: number;
     orientation: number;
     rotation: number;
+    movementSeqId: number;
+    movementFrame: number;
+    movementFrameTick: number;
+    movementLoop: number;
     orderKey?: number;
 }>;
 
@@ -450,6 +454,10 @@ export class WorkerTickRuntime {
         level: number;
         orientation: number;
         rotation: number;
+        movementSeqId: number;
+        movementFrame: number;
+        movementFrameTick: number;
+        movementLoop: number;
         orderKey?: number;
     }): NpcSnapshot | undefined {
         const npcInstanceId = npc.instanceId;
@@ -467,6 +475,10 @@ export class WorkerTickRuntime {
             level: npc.level | 0,
             orientation: npc.orientation | 0,
             rotation: npc.rotation | 0,
+            movementSeqId: npc.movementSeqId | 0,
+            movementFrame: npc.movementFrame | 0,
+            movementFrameTick: npc.movementFrameTick | 0,
+            movementLoop: npc.movementLoop | 0,
             orderKey: npc.orderKey !== undefined ? (npc.orderKey | 0) : undefined,
         };
     }
@@ -483,6 +495,10 @@ export class WorkerTickRuntime {
             (a.level | 0) === (b.level | 0) &&
             (a.orientation | 0) === (b.orientation | 0) &&
             (a.rotation | 0) === (b.rotation | 0) &&
+            (a.movementSeqId | 0) === (b.movementSeqId | 0) &&
+            (a.movementFrame | 0) === (b.movementFrame | 0) &&
+            (a.movementFrameTick | 0) === (b.movementFrameTick | 0) &&
+            (a.movementLoop | 0) === (b.movementLoop | 0) &&
             ((a.orderKey ?? 0) | 0) === ((b.orderKey ?? 0) | 0)
         );
     }
@@ -499,6 +515,10 @@ export class WorkerTickRuntime {
             level: number;
             orientation: number;
             rotation: number;
+            movementSeqId: number;
+            movementFrame: number;
+            movementFrameTick: number;
+            movementLoop: number;
             orderKey?: number;
         }>,
         outEvents: NpcEvent[],
@@ -544,6 +564,10 @@ export class WorkerTickRuntime {
                         snapWorldY: snapshot.y | 0,
                         orientation: snapshot.orientation | 0,
                         rotation: snapshot.rotation | 0,
+                        movementSeqId: snapshot.movementSeqId | 0,
+                        movementFrame: snapshot.movementFrame | 0,
+                        movementFrameTick: snapshot.movementFrameTick | 0,
+                        movementLoop: snapshot.movementLoop | 0,
                     },
                 });
                 emitted = (emitted + 1) | 0;
