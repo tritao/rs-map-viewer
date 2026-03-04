@@ -1,5 +1,4 @@
 import type { ObjSpawn } from "../../data/obj/ObjSpawn";
-import { SdMapLoaderInput } from "../MapRenderPayload";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { Scene } from "../../rs/scene/Scene";
 import type {
@@ -14,6 +13,7 @@ import {
     MAP_RENDER_RUNTIME_STATUS_NOT_FOUND,
     MAP_RENDER_RUNTIME_STATUS_OK,
 } from "../../wasm/MapRenderRuntimeStatus.mjs";
+import { SdMapLoaderInput } from "../MapRenderPayload";
 
 const MAP_SQUARE_SIZE = 64;
 
@@ -106,28 +106,27 @@ type LegacySeqFrameFileBytes = Readonly<{
     frameDelBytes: Uint8Array;
 }>;
 
-type ModelLoaderLike = TypeEntryLoaderLike & Readonly<{
-    tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes;
-}>;
+type ModelLoaderLike = TypeEntryLoaderLike &
+    Readonly<{
+        tryGetLegacyModelFileBytes?: () => LegacyModelFileBytes;
+    }>;
 
-type SeqFrameLoaderLike = TypeEntryLoaderLike & Readonly<{
-    baseLoader?: TypeEntryLoaderLike;
-    tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
-    tryGetFrameMapBytesForMapId?: (mapId: number) => Uint8Array | undefined;
-}>;
+type SeqFrameLoaderLike = TypeEntryLoaderLike &
+    Readonly<{
+        baseLoader?: TypeEntryLoaderLike;
+        tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
+        tryGetFrameMapBytesForMapId?: (mapId: number) => Uint8Array | undefined;
+    }>;
 
-type SkeletalSeqLoaderLike = TypeEntryLoaderLike & Readonly<{
-    baseLoader?: TypeEntryLoaderLike;
-}>;
+type SkeletalSeqLoaderLike = TypeEntryLoaderLike &
+    Readonly<{
+        baseLoader?: TypeEntryLoaderLike;
+    }>;
 
 type MapRenderSceneBuildInputDeps = Readonly<
     Pick<
         MapRenderByteDrivenSceneBuildInput,
-        | "objSpawns"
-        | "cacheGame"
-        | "cacheRevision"
-        | "cacheProvider"
-        | "varpValues"
+        "objSpawns" | "cacheGame" | "cacheRevision" | "cacheProvider" | "varpValues"
     >
 >;
 
@@ -170,7 +169,6 @@ export type SceneBuildCacheProviderLoaders = Readonly<{
 type RuntimeCacheFeeder = Readonly<{
     setBuildConfig(request: MapRenderRuntimeBuildRequest): Promise<boolean>;
     setVarps(varps: Int32Array): Promise<boolean>;
-    putBlob(domain: number, group: number, file: number, bytes: Uint8Array): Promise<boolean>;
     putBlobBatch(
         domain: number,
         groups: Int32Array,
@@ -180,7 +178,6 @@ type RuntimeCacheFeeder = Readonly<{
         bytes: Uint8Array,
     ): Promise<boolean>;
     clearBlobDomain(domain: number): Promise<boolean>;
-    clearAllBlobs(): Promise<boolean>;
 }>;
 
 function createRuntimeCacheFeeder(
@@ -195,19 +192,8 @@ function createRuntimeCacheFeeder(
             );
         },
         setVarps: async (varps: Int32Array) => {
-            return (await bridge.cacheSetVarps(runtimeHandle, varps)) === MAP_RENDER_RUNTIME_STATUS_OK;
-        },
-        putBlob: async (domain: number, group: number, file: number, bytes: Uint8Array) => {
             return (
-                (await bridge.cachePutBlobBatch(
-                    runtimeHandle,
-                    domain | 0,
-                    Int32Array.of(group | 0),
-                    Int32Array.of(file | 0),
-                    Int32Array.of(0),
-                    Int32Array.of(bytes.length | 0),
-                    bytes,
-                )) === MAP_RENDER_RUNTIME_STATUS_OK
+                (await bridge.cacheSetVarps(runtimeHandle, varps)) === MAP_RENDER_RUNTIME_STATUS_OK
             );
         },
         putBlobBatch: async (
@@ -236,38 +222,29 @@ function createRuntimeCacheFeeder(
                 MAP_RENDER_RUNTIME_STATUS_OK
             );
         },
-        clearAllBlobs: async () => {
-            return (await bridge.cacheClearAllBlobs(runtimeHandle)) === MAP_RENDER_RUNTIME_STATUS_OK;
-        },
     };
 }
 
-function sortedUniqueTypeIds(ids: ReadonlyArray<number> | undefined): number[] {
-    if (!Array.isArray(ids) || ids.length <= 0) {
-        return [];
-    }
-    return Array.from(new Set(ids.map((v) => v | 0)))
-        .filter((v) => v >= 0)
-        .sort((a, b) => a - b);
-}
-
-function toUint8ArrayView(data: unknown): Uint8Array | undefined {
+function toUint8View(data: unknown): Uint8Array | undefined {
     if (data instanceof Uint8Array) {
         return data;
     }
-    if (data instanceof Int8Array) {
+    if (ArrayBuffer.isView(data)) {
         return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     }
     return undefined;
 }
 
-function tryLoadTypeBytes(loader: TypeEntryLoaderLike | undefined, id: number): Uint8Array | undefined {
+function tryLoadTypeBytes(
+    loader: TypeEntryLoaderLike | undefined,
+    id: number,
+): Uint8Array | undefined {
     if (!loader) {
         return undefined;
     }
     if (typeof loader.tryLoadBytes === "function") {
         try {
-            const bytes = toUint8ArrayView(loader.tryLoadBytes(id | 0));
+            const bytes = toUint8View(loader.tryLoadBytes(id | 0));
             if (bytes) {
                 return bytes;
             }
@@ -328,37 +305,41 @@ export function createSceneBuildCacheProvider(
         if (typeId < 0) return undefined;
         switch (d) {
             case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC:
-                    return tryLoadTypeBytes(locTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ:
-                    return tryLoadTypeBytes(objTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC:
-                    return tryLoadTypeBytes(npcTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS:
-                    return tryLoadTypeBytes(basTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF:
-                    return tryLoadTypeBytes(textureLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY:
-                    return tryLoadTypeBytes(underlayTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY:
-                    return tryLoadTypeBytes(overlayTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT:
-                    return tryLoadTypeBytes(varbitLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL:
-                    return tryLoadTypeBytes(modelLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE:
-                    return tryLoadTypeBytes(seqTypeLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME:
-                    return tryLoadTypeBytes(seqFrameLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ:
-                    return tryLoadTypeBytes(skeletalSeqLoader, typeId);
-                case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE:
-                    return tryLoadTypeBytes(seqBaseLoader, typeId);
+                return tryLoadTypeBytes(locTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ:
+                return tryLoadTypeBytes(objTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC:
+                return tryLoadTypeBytes(npcTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS:
+                return tryLoadTypeBytes(basTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF:
+                return tryLoadTypeBytes(textureLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY:
+                return tryLoadTypeBytes(underlayTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY:
+                return tryLoadTypeBytes(overlayTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT:
+                return tryLoadTypeBytes(varbitLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL:
+                return tryLoadTypeBytes(modelLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE:
+                return tryLoadTypeBytes(seqTypeLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME:
+                return tryLoadTypeBytes(seqFrameLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ:
+                return tryLoadTypeBytes(skeletalSeqLoader, typeId);
+            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE:
+                return tryLoadTypeBytes(seqBaseLoader, typeId);
             default:
                 return undefined;
         }
     };
 
-    const tryGetBlobBytes = (domain: number, group: number, file: number): Uint8Array | undefined => {
+    const tryGetBlobBytes = (
+        domain: number,
+        group: number,
+        file: number,
+    ): Uint8Array | undefined => {
         const d = domain | 0;
         const g = group | 0;
         const f = file | 0;
@@ -513,16 +494,6 @@ export function createByteDrivenSceneBuildInput(
     };
 }
 
-function toUint8View(data: unknown): Uint8Array | undefined {
-    if (data instanceof Uint8Array) {
-        return data;
-    }
-    if (ArrayBuffer.isView(data)) {
-        return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    }
-    return undefined;
-}
-
 function computeSceneBuildMapBounds(baseX: number, baseY: number, sizeX: number, sizeY: number) {
     return {
         mapStartX: Math.floor(baseX / MAP_SQUARE_SIZE),
@@ -631,6 +602,78 @@ function createSceneBuildCacheProviderForBuild(
     };
 }
 
+type BlobBatchBuilder = {
+    groups: number[];
+    files: number[];
+    offsets: number[];
+    lengths: number[];
+    chunks: Uint8Array[];
+    totalBytes: number;
+};
+
+type FinalizedBlobBatch = Readonly<{
+    groups: Int32Array;
+    files: Int32Array;
+    offsets: Int32Array;
+    lengths: Int32Array;
+    bytes: Uint8Array;
+}>;
+
+function createBlobBatchBuilder(): BlobBatchBuilder {
+    return {
+        groups: [],
+        files: [],
+        offsets: [],
+        lengths: [],
+        chunks: [],
+        totalBytes: 0,
+    };
+}
+
+function addBlobBatchEntry(
+    builder: BlobBatchBuilder,
+    group: number,
+    file: number,
+    bytes: Uint8Array | undefined,
+    allowEmpty = false,
+): void {
+    if (!(bytes instanceof Uint8Array) || bytes.length <= 0) {
+        if (allowEmpty) {
+            builder.groups.push(group | 0);
+            builder.files.push(file | 0);
+            builder.offsets.push(builder.totalBytes);
+            builder.lengths.push(0);
+        }
+        return;
+    }
+    builder.groups.push(group | 0);
+    builder.files.push(file | 0);
+    builder.offsets.push(builder.totalBytes);
+    builder.lengths.push(bytes.length | 0);
+    builder.chunks.push(bytes);
+    builder.totalBytes += bytes.length | 0;
+}
+
+function finalizeBlobBatch(builder: BlobBatchBuilder): FinalizedBlobBatch | undefined {
+    if (builder.groups.length <= 0) {
+        return undefined;
+    }
+    const bytes = new Uint8Array(builder.totalBytes);
+    let offset = 0;
+    for (let i = 0; i < builder.chunks.length; i++) {
+        const chunk = builder.chunks[i];
+        bytes.set(chunk, offset);
+        offset += chunk.length | 0;
+    }
+    return {
+        groups: Int32Array.from(builder.groups),
+        files: Int32Array.from(builder.files),
+        offsets: Int32Array.from(builder.offsets),
+        lengths: Int32Array.from(builder.lengths),
+        bytes,
+    };
+}
+
 export class WasmCacheUploader {
     reset(): void {
         // No-op: texture lists are no longer uploaded. Texture SD/transparent classification is
@@ -666,9 +709,7 @@ export class WasmCacheUploader {
 
             // Fail fast if we can't satisfy the runtime's request; otherwise we'd just spin passes.
             // (The actual upload batching below will fetch bytes again; this is just a guard.)
-            const allowEmpty =
-                domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF &&
-                group === 0;
+            const allowEmpty = domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF && group === 0;
             const maybe = provider.tryGetBlobBytes(domain, group, file);
             if ((!maybe || maybe.length <= 0) && !allowEmpty) {
                 unsatisfiedCount++;
@@ -702,13 +743,7 @@ export class WasmCacheUploader {
 
         for (const [domain, byGroup] of byDomain.entries()) {
             const sortedGroups = Array.from(byGroup.keys()).sort((a, b) => (a | 0) - (b | 0));
-
-            const outGroups: number[] = [];
-            const outFiles: number[] = [];
-            const outOffsets: number[] = [];
-            const outLengths: number[] = [];
-            const chunks: Uint8Array[] = [];
-            let totalBytes = 0;
+            const batch = createBlobBatchBuilder();
 
             for (let gi = 0; gi < sortedGroups.length; gi++) {
                 const group = sortedGroups[gi] | 0;
@@ -718,43 +753,28 @@ export class WasmCacheUploader {
                 for (let fi = 0; fi < sortedFiles.length; fi++) {
                     const file = sortedFiles[fi] | 0;
                     const bytes = provider.tryGetBlobBytes(domain, group, file);
-                    if (!(bytes instanceof Uint8Array) || bytes.length <= 0) {
-                        if (domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF && group === 0) {
-                            outGroups.push(group);
-                            outFiles.push(file);
-                            outOffsets.push(totalBytes);
-                            outLengths.push(0);
-                        }
-                        continue;
-                    }
-                    outGroups.push(group);
-                    outFiles.push(file);
-                    outOffsets.push(totalBytes);
-                    outLengths.push(bytes.length | 0);
-                    chunks.push(bytes);
-                    totalBytes += bytes.length | 0;
+                    addBlobBatchEntry(
+                        batch,
+                        group,
+                        file,
+                        bytes,
+                        domain === RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF && group === 0,
+                    );
                 }
             }
 
-            if (outGroups.length <= 0) {
+            const finalized = finalizeBlobBatch(batch);
+            if (!finalized) {
                 continue;
-            }
-
-            const packedBytes = new Uint8Array(totalBytes);
-            let writeOff = 0;
-            for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
-                packedBytes.set(chunk, writeOff);
-                writeOff += chunk.length | 0;
             }
 
             const ok = await feeder.putBlobBatch(
                 domain,
-                Int32Array.from(outGroups),
-                Int32Array.from(outFiles),
-                Int32Array.from(outOffsets),
-                Int32Array.from(outLengths),
-                packedBytes,
+                finalized.groups,
+                finalized.files,
+                finalized.offsets,
+                finalized.lengths,
+                finalized.bytes,
             );
             if (!ok) {
                 return false;
@@ -799,25 +819,12 @@ export class WasmCacheUploader {
             sceneBuildInput.sizeX | 0,
             sceneBuildInput.sizeY | 0,
         );
-        const groups: number[] = [];
-        const files: number[] = [];
-        const offsets: number[] = [];
-        const lengths: number[] = [];
-        const chunks: Uint8Array[] = [];
-        let totalBytes = 0;
-        const push = (mapId: number, fileId: number, bytes: Uint8Array | undefined) => {
-            if (!(bytes instanceof Uint8Array) || bytes.length <= 0) return;
-            groups.push(mapId);
-            files.push(fileId | 0);
-            offsets.push(totalBytes);
-            lengths.push(bytes.length | 0);
-            chunks.push(bytes);
-            totalBytes += bytes.length | 0;
-        };
+        const mapSquareBatch = createBlobBatchBuilder();
         for (let mapX = bounds.mapStartX; mapX < bounds.mapEndX; mapX++) {
             for (let mapY = bounds.mapStartY; mapY < bounds.mapEndY; mapY++) {
                 const mapId = (((mapX | 0) & 0xff) << 8) | ((mapY | 0) & 0xff);
-                push(
+                addBlobBatchEntry(
+                    mapSquareBatch,
                     mapId,
                     RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN,
                     provider.tryGetBlobBytes(
@@ -826,7 +833,8 @@ export class WasmCacheUploader {
                         RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN,
                     ),
                 );
-                push(
+                addBlobBatchEntry(
+                    mapSquareBatch,
                     mapId,
                     RUNTIME_BLOB_MAP_SQUARE_FILE_LOC,
                     provider.tryGetBlobBytes(
@@ -835,7 +843,8 @@ export class WasmCacheUploader {
                         RUNTIME_BLOB_MAP_SQUARE_FILE_LOC,
                     ),
                 );
-                push(
+                addBlobBatchEntry(
+                    mapSquareBatch,
                     mapId,
                     RUNTIME_BLOB_MAP_SQUARE_FILE_NPC,
                     provider.tryGetBlobBytes(
@@ -846,14 +855,8 @@ export class WasmCacheUploader {
                 );
             }
         }
-        const bytes = new Uint8Array(totalBytes);
-        let off = 0;
-        for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            bytes.set(chunk, off);
-            off += chunk.length;
-        }
-        if (groups.length <= 0) {
+        const finalizedMapSquareBatch = finalizeBlobBatch(mapSquareBatch);
+        if (!finalizedMapSquareBatch) {
             return fail("mapSquareBatch.empty", {
                 mapStartX: bounds.mapStartX | 0,
                 mapStartY: bounds.mapStartY | 0,
@@ -863,17 +866,17 @@ export class WasmCacheUploader {
         }
         const okBatch = await feeder.putBlobBatch(
             RUNTIME_BLOB_DOMAIN_MAP_SQUARE,
-            Int32Array.from(groups),
-            Int32Array.from(files),
-            Int32Array.from(offsets),
-            Int32Array.from(lengths),
-            bytes,
+            finalizedMapSquareBatch.groups,
+            finalizedMapSquareBatch.files,
+            finalizedMapSquareBatch.offsets,
+            finalizedMapSquareBatch.lengths,
+            finalizedMapSquareBatch.bytes,
         );
         if (!okBatch) {
             return fail("mapSquareBatch.putBlobBatch", {
                 domain: RUNTIME_BLOB_DOMAIN_MAP_SQUARE,
-                entryCount: groups.length | 0,
-                payloadBytes: bytes.length | 0,
+                entryCount: finalizedMapSquareBatch.groups.length | 0,
+                payloadBytes: finalizedMapSquareBatch.bytes.length | 0,
             });
         }
         if (!(await feeder.clearBlobDomain(RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS)))
@@ -881,12 +884,7 @@ export class WasmCacheUploader {
                 domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
             });
         {
-            const groups: number[] = [];
-            const files: number[] = [];
-            const offsets: number[] = [];
-            const lengths: number[] = [];
-            const chunks: Uint8Array[] = [];
-            let totalBytes = 0;
+            const objSpawnBatch = createBlobBatchBuilder();
 
             for (let mapX = bounds.mapStartX; mapX < bounds.mapEndX; mapX++) {
                 for (let mapY = bounds.mapStartY; mapY < bounds.mapEndY; mapY++) {
@@ -896,39 +894,25 @@ export class WasmCacheUploader {
                         0,
                         mapId,
                     );
-                    if (!(spawnBytes instanceof Uint8Array) || spawnBytes.length <= 0) {
-                        continue;
-                    }
-                    groups.push(0);
-                    files.push(mapId | 0);
-                    offsets.push(totalBytes);
-                    lengths.push(spawnBytes.length | 0);
-                    chunks.push(spawnBytes);
-                    totalBytes += spawnBytes.length | 0;
+                    addBlobBatchEntry(objSpawnBatch, 0, mapId, spawnBytes);
                 }
             }
 
-            if (groups.length > 0) {
-                const bytes = new Uint8Array(totalBytes);
-                let off = 0;
-                for (let i = 0; i < chunks.length; i++) {
-                    const chunk = chunks[i];
-                    bytes.set(chunk, off);
-                    off += chunk.length;
-                }
+            const finalizedObjSpawnBatch = finalizeBlobBatch(objSpawnBatch);
+            if (finalizedObjSpawnBatch) {
                 const ok = await feeder.putBlobBatch(
                     RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
-                    Int32Array.from(groups),
-                    Int32Array.from(files),
-                    Int32Array.from(offsets),
-                    Int32Array.from(lengths),
-                    bytes,
+                    finalizedObjSpawnBatch.groups,
+                    finalizedObjSpawnBatch.files,
+                    finalizedObjSpawnBatch.offsets,
+                    finalizedObjSpawnBatch.lengths,
+                    finalizedObjSpawnBatch.bytes,
                 );
                 if (!ok) {
                     return fail("objSpawnBatch.putBlobBatch", {
                         domain: RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS,
-                        entryCount: groups.length | 0,
-                        payloadBytes: bytes.length | 0,
+                        entryCount: finalizedObjSpawnBatch.groups.length | 0,
+                        payloadBytes: finalizedObjSpawnBatch.bytes.length | 0,
                     });
                 }
             }
@@ -942,7 +926,41 @@ export class WasmCacheUploader {
         request: MapRenderRuntimeBuildRequest,
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
         maxPasses = 12,
-    ): Promise<(MapRenderRuntimePrepareResult & Readonly<{ packet?: MapRenderRuntimePacket }>)> {
+    ): Promise<MapRenderRuntimePrepareResult & Readonly<{ packet?: MapRenderRuntimePacket }>> {
+        const uploadMissingOrGetFailure = async (
+            status: number,
+            passIndex: number,
+            missing: MapRenderRuntimeMissingBlobEntries | undefined,
+        ): Promise<
+            | (MapRenderRuntimePrepareResult & Readonly<{ packet?: MapRenderRuntimePacket }>)
+            | undefined
+        > => {
+            if (!missing) {
+                return undefined;
+            }
+            const missingCount = missing.domains.length | 0;
+            if (missingCount <= 0) {
+                return undefined;
+            }
+            const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
+                bridge,
+                runtimeHandle,
+                missing,
+                sceneBuildInput,
+            );
+            if (okMissing) {
+                return undefined;
+            }
+            return {
+                ok: false,
+                reason: "upload_missing_failed",
+                status,
+                passesTried: (passIndex + 1) | 0,
+                missingCount,
+                lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+            };
+        };
+
         const uploadedBase = await this.uploadRuntimeCacheForBuildRequest(
             bridge,
             runtimeHandle,
@@ -966,35 +984,22 @@ export class WasmCacheUploader {
             const hasProbe = typeof bridge.probeBuildMapPacketFromCacheStatus === "function";
             let packet: MapRenderRuntimePacket | undefined;
             if (hasProbe) {
-                status = (await bridge.probeBuildMapPacketFromCacheStatus(
-                    runtimeHandle,
-                    request,
-                )) | 0;
+                status =
+                    (await bridge.probeBuildMapPacketFromCacheStatus(runtimeHandle, request)) | 0;
             } else {
                 packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
-                status = packet ? MAP_RENDER_RUNTIME_STATUS_OK : MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
+                status = packet
+                    ? MAP_RENDER_RUNTIME_STATUS_OK
+                    : MAP_RENDER_RUNTIME_STATUS_NOT_FOUND;
             }
             lastStatus = status | 0;
 
             const missing = await bridge.getLastMissingBlobEntries(runtimeHandle);
-            const missingCount = missing ? missing.domains.length | 0 : 0;
+            const missingFailure = await uploadMissingOrGetFailure(status, pass, missing);
+            if (missingFailure) {
+                return missingFailure;
+            }
             if (missing && (missing.domains.length | 0) > 0) {
-                const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
-                    bridge,
-                    runtimeHandle,
-                    missing,
-                    sceneBuildInput,
-                );
-                if (!okMissing) {
-                    return {
-                        ok: false,
-                        reason: "upload_missing_failed",
-                        status,
-                        passesTried: (pass + 1) | 0,
-                        missingCount,
-                        lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
-                    };
-                }
                 continue;
             }
 
@@ -1008,29 +1013,20 @@ export class WasmCacheUploader {
                             status,
                             passesTried: (pass + 1) | 0,
                             missingCount: 0,
-                            lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
+                            lastBuildFailure:
+                                await bridge.debugGetLastBuildFailure?.(runtimeHandle),
                         };
                     }
                     const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                    const missingAfterBuildFailure = await uploadMissingOrGetFailure(
+                        status,
+                        pass,
+                        missingAfterBuild,
+                    );
+                    if (missingAfterBuildFailure) {
+                        return missingAfterBuildFailure;
+                    }
                     if (missingAfterBuild && (missingAfterBuild.domains.length | 0) > 0) {
-                        const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
-                            bridge,
-                            runtimeHandle,
-                            missingAfterBuild,
-                            sceneBuildInput,
-                        );
-                        if (!okMissing) {
-                            return {
-                                ok: false,
-                                reason: "upload_missing_failed",
-                                status,
-                                passesTried: (pass + 1) | 0,
-                                missingCount: missingAfterBuild.domains.length | 0,
-                                lastBuildFailure: await bridge.debugGetLastBuildFailure?.(
-                                    runtimeHandle,
-                                ),
-                            };
-                        }
                         continue;
                     }
                 }
@@ -1051,25 +1047,15 @@ export class WasmCacheUploader {
                 packet = await bridge.buildMapPacketFromCache(runtimeHandle, request);
                 if (packet) {
                     const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                    const missingAfterBuildFailure = await uploadMissingOrGetFailure(
+                        status,
+                        pass,
+                        missingAfterBuild,
+                    );
+                    if (missingAfterBuildFailure) {
+                        return missingAfterBuildFailure;
+                    }
                     if (missingAfterBuild && (missingAfterBuild.domains.length | 0) > 0) {
-                        const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
-                            bridge,
-                            runtimeHandle,
-                            missingAfterBuild,
-                            sceneBuildInput,
-                        );
-                        if (!okMissing) {
-                            return {
-                                ok: false,
-                                reason: "upload_missing_failed",
-                                status,
-                                passesTried: (pass + 1) | 0,
-                                missingCount: missingAfterBuild.domains.length | 0,
-                                lastBuildFailure: await bridge.debugGetLastBuildFailure?.(
-                                    runtimeHandle,
-                                ),
-                            };
-                        }
                         continue;
                     }
                     return {
@@ -1082,23 +1068,15 @@ export class WasmCacheUploader {
                     };
                 }
                 const missingAfterBuild = await bridge.getLastMissingBlobEntries(runtimeHandle);
+                const missingAfterBuildFailure = await uploadMissingOrGetFailure(
+                    status,
+                    pass,
+                    missingAfterBuild,
+                );
+                if (missingAfterBuildFailure) {
+                    return missingAfterBuildFailure;
+                }
                 if (missingAfterBuild && (missingAfterBuild.domains.length | 0) > 0) {
-                    const okMissing = await this.uploadMissingBlobEntriesForBuildRequest(
-                        bridge,
-                        runtimeHandle,
-                        missingAfterBuild,
-                        sceneBuildInput,
-                    );
-                    if (!okMissing) {
-                        return {
-                            ok: false,
-                            reason: "upload_missing_failed",
-                            status,
-                            passesTried: (pass + 1) | 0,
-                            missingCount: missingAfterBuild.domains.length | 0,
-                            lastBuildFailure: await bridge.debugGetLastBuildFailure?.(runtimeHandle),
-                        };
-                    }
                     continue;
                 }
             }
