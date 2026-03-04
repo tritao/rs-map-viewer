@@ -410,6 +410,12 @@ export class MapRenderTsBackend {
         this.init();
 
         const telemetryEnabled = this.deps.telemetry === true;
+        const npcSpawnTelemetry = telemetryEnabled
+            ? {
+                  now: () => performance.now(),
+                  log: (message: string) => console.log(message),
+              }
+            : undefined;
         const captureStageProfile = options?.debugIncludeStageProfile === true || telemetryEnabled;
         const profileStart = performance.now();
         const profile: Record<string, number> = {};
@@ -558,7 +564,7 @@ export class MapRenderTsBackend {
                     cacheInfo: this.deps.session.cache.info,
                     npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
                     fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
-                    telemetry: this.deps.telemetry,
+                    telemetry: npcSpawnTelemetry,
                 },
                 {
                     loadNpcs,

@@ -23,12 +23,17 @@ type NpcSpawnDecodeBackendLike = Readonly<{
     ): Promise<NpcSpawn[] | undefined>;
 }>;
 
+export type NpcSpawnTelemetry = Readonly<{
+    now(): number;
+    log(message: string): void;
+}>;
+
 export type ResolveNpcSpawnsDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;
     cacheInfo: CacheInfo;
     npcSpawnDecodeBackend?: NpcSpawnDecodeBackendLike;
     fallbackNpcSpawns?: ReadonlyArray<NpcSpawn>;
-    telemetry?: boolean;
+    telemetry?: NpcSpawnTelemetry;
 }>;
 
 export type ResolveNpcSpawnsInput = Readonly<{
@@ -39,6 +44,7 @@ export type ResolveNpcSpawnsInput = Readonly<{
     borderSize: number;
     tileRenderFlagsLevel1: Uint8Array[];
     npcTypeLoader: NpcTypeLoader;
+    fallbackOnEmptyCacheDecode?: boolean;
 }>;
 
 function matchesRenderableNpcType(npcTypeLoader: NpcTypeLoader, spawn: NpcSpawn): boolean {
@@ -128,53 +134,63 @@ export class NpcSpawnResolver {
         return this.fallbackNpcSpawnsPromise;
     }
 
-    async resolveSpawns(deps: ResolveNpcSpawnsDeps, input: ResolveNpcSpawnsInput): Promise<NpcSpawn[]> {
-        if (!input.loadNpcs) {
-            return [];
-        }
-
+    async tryDecodeCacheSpawns(
+        deps: ResolveNpcSpawnsDeps,
+        input: ResolveNpcSpawnsInput,
+    ): Promise<Readonly<{ decodedSpawnsCount: number; spawns: NpcSpawn[] }> | undefined> {
         const npcSpawnBytes = deps.mapBytesProvider.getNpcSpawnBytes(input.mapX, input.mapY);
-        let cacheNpcSpawns: NpcSpawn[] | undefined;
-        if (npcSpawnBytes) {
-            const decodeStart = performance.now();
-            const cacheKey = NpcSpawnResolver.createCacheKey(deps.cacheInfo);
-            const npcLoginScreenPropsById = deps.npcSpawnDecodeBackend
-                ? this.getNpcLoginScreenPropsById(input.npcTypeLoader, cacheKey)
-                : undefined;
-            cacheNpcSpawns = deps.npcSpawnDecodeBackend
-                ? await deps.npcSpawnDecodeBackend.decodeNpcSpawnsFromBytes(
-                      input.tileRenderFlagsLevel1,
-                      input.borderSize,
-                      input.mapX,
-                      input.mapY,
-                      npcSpawnBytes,
-                      npcLoginScreenPropsById,
-                      0x1,
-                  )
-                : decodeNpcSpawnsFromBytes(
-                      input.tileRenderFlagsLevel1,
-                      input.borderSize,
-                      input.mapX,
-                      input.mapY,
-                      npcSpawnBytes,
-                  );
-            if (deps.telemetry) {
-                const decodeMs = performance.now() - decodeStart;
-                console.log(
-                    `[map-render] square=${input.mapX},${input.mapY} npcDecodeBackend=${
-                        deps.npcSpawnDecodeBackend?.name ?? "ts"
-                    } decoded=${cacheNpcSpawns?.length ?? 0} ms=${decodeMs.toFixed(1)}`,
-                );
-            }
+        if (!(npcSpawnBytes instanceof Uint8Array) || npcSpawnBytes.length === 0) {
+            return undefined;
         }
 
-        if (cacheNpcSpawns) {
-            if (deps.npcSpawnDecodeBackend?.filtersLoginScreenProps) {
-                return cacheNpcSpawns;
-            }
-            return cacheNpcSpawns.filter((spawn) => matchesRenderableNpcType(input.npcTypeLoader, spawn));
+        const decodeStart = deps.telemetry?.now() ?? 0;
+        const cacheKey = NpcSpawnResolver.createCacheKey(deps.cacheInfo);
+        const npcLoginScreenPropsById = deps.npcSpawnDecodeBackend
+            ? this.getNpcLoginScreenPropsById(input.npcTypeLoader, cacheKey)
+            : undefined;
+        const decoded = deps.npcSpawnDecodeBackend
+            ? await deps.npcSpawnDecodeBackend.decodeNpcSpawnsFromBytes(
+                  input.tileRenderFlagsLevel1,
+                  input.borderSize,
+                  input.mapX,
+                  input.mapY,
+                  npcSpawnBytes,
+                  npcLoginScreenPropsById,
+                  0x1,
+              )
+            : decodeNpcSpawnsFromBytes(
+                  input.tileRenderFlagsLevel1,
+                  input.borderSize,
+                  input.mapX,
+                  input.mapY,
+                  npcSpawnBytes,
+              );
+
+        const decodedSpawnsCount = decoded ? decoded.length | 0 : 0;
+        if (deps.telemetry) {
+            const decodeMs = deps.telemetry.now() - decodeStart;
+            deps.telemetry.log(
+                `[map-render] square=${input.mapX},${input.mapY} npcDecodeBackend=${
+                    deps.npcSpawnDecodeBackend?.name ?? "ts"
+                } decoded=${decodedSpawnsCount} ms=${decodeMs.toFixed(1)}`,
+            );
         }
 
+        if (!decoded) {
+            return undefined;
+        }
+
+        const spawns = deps.npcSpawnDecodeBackend?.filtersLoginScreenProps
+            ? decoded
+            : decoded.filter((spawn) => matchesRenderableNpcType(input.npcTypeLoader, spawn));
+
+        return { decodedSpawnsCount, spawns };
+    }
+
+    async resolveFallbackSpawns(
+        deps: ResolveNpcSpawnsDeps,
+        input: ResolveNpcSpawnsInput,
+    ): Promise<NpcSpawn[]> {
         const fallbackNpcSpawns = await this.getFallbackNpcSpawns(
             deps.cacheInfo,
             deps.fallbackNpcSpawns,
@@ -183,5 +199,23 @@ export class NpcSpawnResolver {
             (spawn) => matchesFallbackNpcName(input.npcTypeLoader, spawn),
         );
     }
-}
 
+    async resolveSpawns(deps: ResolveNpcSpawnsDeps, input: ResolveNpcSpawnsInput): Promise<NpcSpawn[]> {
+        if (!input.loadNpcs) {
+            return [];
+        }
+
+        const cacheDecoded = await this.tryDecodeCacheSpawns(deps, input);
+        if (cacheDecoded) {
+            if (
+                input.fallbackOnEmptyCacheDecode === true &&
+                (cacheDecoded.decodedSpawnsCount | 0) <= 0
+            ) {
+                return this.resolveFallbackSpawns(deps, input);
+            }
+            return cacheDecoded.spawns;
+        }
+
+        return this.resolveFallbackSpawns(deps, input);
+    }
+}
