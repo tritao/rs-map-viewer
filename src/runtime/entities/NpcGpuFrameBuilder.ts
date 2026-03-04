@@ -1,6 +1,6 @@
 import { TileRenderFlag } from "../../rs/scene/Scene";
-import type { Npc } from "./Npc";
 import type { NpcGpuFrameData } from "../contracts/NpcGpuFrame";
+import type { Npc } from "./Npc";
 
 export class NpcGpuFrameBuilder {
     private count = 0;
@@ -29,11 +29,8 @@ export class NpcGpuFrameBuilder {
 
             let renderPlane = npc.level;
             const col = tileRenderFlagsLevel1[(tileX + border) | 0];
-            const flag = col ? (col[(tileY + border) | 0] | 0) : 0;
-            if (
-                renderPlane < 3 &&
-                (flag & TileRenderFlag.Bridge) !== 0
-            ) {
+            const flag = col ? col[(tileY + border) | 0] | 0 : 0;
+            if (renderPlane < 3 && (flag & TileRenderFlag.Bridge) !== 0) {
                 renderPlane++;
             }
 

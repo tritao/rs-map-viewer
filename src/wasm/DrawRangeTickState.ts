@@ -84,4 +84,3 @@ export type DrawRangeTickStateInput = Readonly<{
     npcNullAlphaFrameOffset: number;
     outNpcAlphaPatchesPacked: Int32Array;
 }>;
-

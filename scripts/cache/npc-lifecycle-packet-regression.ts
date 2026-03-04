@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 
-import { MovementType } from "../../src/runtime/entities/Npc";
-import type { NpcEvent } from "../../src/runtime/sim/NpcEvents";
 import {
     decodeNpcLifecyclePacket,
     encodeNpcLifecyclePacketFromEvents,
 } from "../../src/runtime/contracts/NpcLifecyclePacket";
+import { MovementType } from "../../src/runtime/entities/Npc";
+import type { NpcEvent } from "../../src/runtime/sim/NpcEvents";
 
 function testRoundtrip(): void {
     const events: NpcEvent[] = [

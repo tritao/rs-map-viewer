@@ -198,12 +198,7 @@ export function loadXteas(cache: CacheInfo): XteaMap {
     return new Map(
         Object.keys(data).map((key) => {
             const raw = data[key] ?? [];
-            const xtea: XteaKey = [
-                raw[0] ?? 0,
-                raw[1] ?? 0,
-                raw[2] ?? 0,
-                raw[3] ?? 0,
-            ];
+            const xtea: XteaKey = [raw[0] ?? 0, raw[1] ?? 0, raw[2] ?? 0, raw[3] ?? 0];
             return [parseInt(key), xtea];
         }),
     );

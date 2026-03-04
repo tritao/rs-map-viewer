@@ -31,14 +31,10 @@ export type NpcStateDeltaPacketCounts = Readonly<{
     eventCount: number;
 }>;
 
-function assertPackedStride(
-    name: string,
-    packed: Int32Array,
-    stride: number,
-): void {
+function assertPackedStride(name: string, packed: Int32Array, stride: number): void {
     const len = packed.length | 0;
     const expectedStride = stride | 0;
-    if (expectedStride <= 0 || (len % expectedStride) !== 0) {
+    if (expectedStride <= 0 || len % expectedStride !== 0) {
         throw new Error(
             `[map-render][npc-state-delta] invalid ${name} length: ` +
                 `len=${len} stride=${expectedStride}`,
@@ -56,7 +52,9 @@ export type NpcStateDeltaPacket = Readonly<{
     despawnsPacked: Int32Array;
 }>;
 
-export function getNpcStateDeltaPacketCounts(packet: NpcStateDeltaPacket): NpcStateDeltaPacketCounts {
+export function getNpcStateDeltaPacketCounts(
+    packet: NpcStateDeltaPacket,
+): NpcStateDeltaPacketCounts {
     const spawnCount = Math.floor((packet.spawnsPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
     const updateCount = Math.floor(
         (packet.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE,
@@ -72,7 +70,9 @@ export function getNpcStateDeltaPacketCounts(packet: NpcStateDeltaPacket): NpcSt
     };
 }
 
-export function validateNpcStateDeltaPacket(packet: NpcStateDeltaPacket): NpcStateDeltaPacketCounts {
+export function validateNpcStateDeltaPacket(
+    packet: NpcStateDeltaPacket,
+): NpcStateDeltaPacketCounts {
     assertPackedStride("spawnsPacked", packet.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
     assertPackedStride("updatesPacked", packet.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
     assertPackedStride("despawnsPacked", packet.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
@@ -93,8 +93,12 @@ export function buildNpcStateDeltaPacket(input: NpcStateDeltaPacketInput): NpcSt
     assertPackedStride("updatesPacked", input.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
     assertPackedStride("despawnsPacked", input.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
     const spawnCount = Math.floor((input.spawnsPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
-    const updateCount = Math.floor((input.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE);
-    const despawnCount = Math.floor((input.despawnsPacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE);
+    const updateCount = Math.floor(
+        (input.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE,
+    );
+    const despawnCount = Math.floor(
+        (input.despawnsPacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE,
+    );
     return {
         frameCount: input.frameCount | 0,
         tickMapIdsVersion: input.tickMapIdsVersion | 0,
@@ -138,12 +142,14 @@ function updateFlagsFromDelta(delta: NpcUpdateDelta): number {
     return flags | 0;
 }
 
-export function buildNpcStateDeltaPacketFromEvents(input: Readonly<{
-    frameCount: number;
-    tickMapIdsVersion: number;
-    tickViewStateVersion: number;
-    events: ReadonlyArray<NpcEvent>;
-}>): NpcStateDeltaPacket {
+export function buildNpcStateDeltaPacketFromEvents(
+    input: Readonly<{
+        frameCount: number;
+        tickMapIdsVersion: number;
+        tickViewStateVersion: number;
+        events: ReadonlyArray<NpcEvent>;
+    }>,
+): NpcStateDeltaPacket {
     const events = input.events;
     let spawnCount = 0;
     let updateCount = 0;
@@ -294,7 +300,7 @@ export function decodeNpcStateDeltaPacketEvents(
             tileX: spawnPacked[off + 3] | 0,
             tileY: spawnPacked[off + 4] | 0,
             level: spawnPacked[off + 5] | 0,
-            orderKey: hasOrderKey ? (spawnPacked[off + 7] | 0) : undefined,
+            orderKey: hasOrderKey ? spawnPacked[off + 7] | 0 : undefined,
         };
         events.push(event);
     }

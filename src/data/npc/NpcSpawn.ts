@@ -25,7 +25,9 @@ export function getNpcSpawnsUrl(cacheInfo: CacheInfo): string {
 export async function fetchNpcSpawns(url: string): Promise<NpcSpawn[]> {
     const response = await fetch(url);
     if (!response.ok) {
-        throw new Error(`[map-render][npc-spawns] fetch failed status=${response.status} url=${url}`);
+        throw new Error(
+            `[map-render][npc-spawns] fetch failed status=${response.status} url=${url}`,
+        );
     }
     const json = await response.json();
     if (!Array.isArray(json)) {

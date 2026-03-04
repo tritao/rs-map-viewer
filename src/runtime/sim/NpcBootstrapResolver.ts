@@ -1,11 +1,8 @@
+import { type NpcSpawn, fetchNpcSpawns, getNpcSpawnsUrl } from "../../data/npc/NpcSpawn";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import { decodeNpcSpawnsFromBytes } from "../../rs/scene/decodeNpcSpawns";
-import { fetchNpcSpawns, getNpcSpawnsUrl, type NpcSpawn } from "../../data/npc/NpcSpawn";
-import {
-    createNpcBootstrapDataFromSpawns,
-    type NpcBootstrapData,
-} from "./NpcBootstrapData";
+import { type NpcBootstrapData, createNpcBootstrapDataFromSpawns } from "./NpcBootstrapData";
 
 type ResolveNpcBootstrapDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;

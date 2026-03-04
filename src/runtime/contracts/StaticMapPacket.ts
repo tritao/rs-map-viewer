@@ -1,7 +1,4 @@
-import {
-    type SdMapData,
-    sdMapDataTransferables,
-} from "../../maprender/MapRenderPayload";
+import { type SdMapData, sdMapDataTransferables } from "../../maprender/MapRenderPayload";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 
 export type StaticMapPacket = Readonly<{

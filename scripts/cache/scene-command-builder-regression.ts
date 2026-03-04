@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 
 import {
+    buildRuntimeCommandStreamFromBuckets,
     buildRuntimeCommandStreamInput,
     buildRuntimeCommandStreamInputFromBuckets,
-    buildRuntimeCommandStreamFromBuckets,
     collectRuntimeDrawCommandBuckets,
 } from "../../src/runtime/build/SceneCommandBuilder";
 

@@ -1,12 +1,3 @@
-import type { SdMapData, SdMapLoaderInput } from "../MapRenderPayload";
-import { sdMapDataTransferables } from "../MapRenderPayload";
-import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
-import type {
-    MapRenderBackend,
-    MapRenderBackendKind,
-    MapRenderBackendOptions,
-    RenderDataResult,
-} from "../MapRenderBackend";
 import { errorToString } from "../../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
@@ -15,11 +6,20 @@ import type {
     MapRenderRuntimePacket,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
+import type {
+    MapRenderBackend,
+    MapRenderBackendKind,
+    MapRenderBackendOptions,
+    RenderDataResult,
+} from "../MapRenderBackend";
+import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
+import type { SdMapData, SdMapLoaderInput } from "../MapRenderPayload";
+import { sdMapDataTransferables } from "../MapRenderPayload";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
-    createSceneBuildCacheProvider,
     createByteDrivenSceneBuildInput,
+    createSceneBuildCacheProvider,
 } from "./WasmCacheUploader";
 import { runtimePacketToPayloadOverlay } from "./WasmPacketOverlay";
 
@@ -138,11 +138,15 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         return runtimeHandle;
     }
 
-    private createByteDrivenSceneBuildInput(input: SdMapLoaderInput): MapRenderByteDrivenSceneBuildInput {
+    private createByteDrivenSceneBuildInput(
+        input: SdMapLoaderInput,
+    ): MapRenderByteDrivenSceneBuildInput {
         const { session, objSpawns } = this.deps;
         const varManager = session.varManager;
         const varpValues =
-            varManager.values instanceof Int32Array ? new Int32Array(varManager.values) : new Int32Array(0);
+            varManager.values instanceof Int32Array
+                ? new Int32Array(varManager.values)
+                : new Int32Array(0);
         return createByteDrivenSceneBuildInput(input, {
             objSpawns,
             varpValues,
@@ -166,17 +170,19 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             packet.npcDrawRangesBase instanceof Int32Array ? packet.npcDrawRangesBase : undefined;
         const npcDrawRangesAlpha =
             packet.npcDrawRangesAlpha instanceof Int32Array ? packet.npcDrawRangesAlpha : undefined;
-        const npcVertices = packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
+        const npcVertices =
+            packet.npcVertices instanceof Uint8Array ? packet.npcVertices : undefined;
         const npcIndices = packet.npcIndices instanceof Int32Array ? packet.npcIndices : undefined;
-        const npcOrderKeys = packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
+        const npcOrderKeys =
+            packet.npcOrderKeys instanceof Int32Array ? packet.npcOrderKeys : undefined;
 
         const npcRangesLen = npcDrawRangesBase ? npcDrawRangesBase.length | 0 : 0;
-        const npcSlotCount = npcRangesLen > 0 ? ((npcRangesLen / 3) | 0) : 0;
+        const npcSlotCount = npcRangesLen > 0 ? (npcRangesLen / 3) | 0 : 0;
         const npcVerticesLen = npcVertices ? npcVertices.length | 0 : 0;
         const npcIndicesLen = npcIndices ? npcIndices.length | 0 : 0;
         const npcOrderKeysLen = npcOrderKeys ? npcOrderKeys.length | 0 : 0;
 
-        const hasNpcRangeStride = (npcRangesLen % 3) === 0;
+        const hasNpcRangeStride = npcRangesLen % 3 === 0;
         const hasNpcRanges = npcRangesLen > 0;
         const hasNpcGeometry = npcVerticesLen > 0 && npcIndicesLen > 0;
         const hasNpcOrderKeysAligned =
@@ -214,7 +220,8 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         input: SdMapLoaderInput,
         byteDrivenSceneBuildInput: MapRenderByteDrivenSceneBuildInput,
     ): Promise<SdMapData | undefined> {
-        const request = WasmMapRenderBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
+        const request =
+            WasmMapRenderBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
         if (!request) {
             return undefined;
         }

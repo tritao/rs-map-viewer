@@ -4,11 +4,11 @@ import { Leva, button, buttonGroup, folder, useControls } from "leva";
 import { ButtonGroupOpts, Schema } from "leva/dist/declarations/src/types";
 import { memo, useEffect, useRef, useState } from "react";
 
-import { CameraView, ProjectionType } from "./Camera";
 import { MapRenderer, TextureFilterMode } from "../renderer/MapRenderer";
+import type { BackendKind } from "../util/BackendKind";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
-import type { BackendKind } from "../util/BackendKind";
+import { CameraView, ProjectionType } from "./Camera";
 import { MapViewer } from "./MapViewer";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
@@ -480,7 +480,9 @@ export const MapViewerControls = memo(
                             value: devOnly5050,
                             onChange: (v: boolean) => {
                                 setDevOnly5050(v);
-                                mapViewer.setDevFixedMapSquare(v ? { mapX: 50, mapY: 50 } : undefined);
+                                mapViewer.setDevFixedMapSquare(
+                                    v ? { mapX: 50, mapY: 50 } : undefined,
+                                );
                             },
                         },
                         "Map Backend": {

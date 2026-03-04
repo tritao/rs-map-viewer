@@ -3,20 +3,7 @@ import path from "path";
 import { pathToFileURL } from "url";
 
 import type { NpcSpawn } from "../../src/data/npc/NpcSpawn";
-import { getWindowObjSpawns, type ObjSpawn } from "../../src/data/obj/ObjSpawn";
-import { ModelHashBuffer, getModelHash } from "../../src/runtime/build/ModelHashBuffer";
-import {
-    SceneBuffer,
-    collectTerrainTileVertexRecords,
-    getModelFaces,
-    isModelFaceTransparent,
-    splitModelFacesByTransparency,
-    summarizeModelFaces,
-    summarizeTerrainGeometry,
-} from "../../src/runtime/build/SceneBuffer";
-import { collectRuntimeDrawCommandBuckets } from "../../src/runtime/build/SceneCommandBuilder";
-import type { SceneCommandPlanDigest } from "../../src/runtime/build/SceneCommandPlan";
-import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
+import { type ObjSpawn, getWindowObjSpawns } from "../../src/data/obj/ObjSpawn";
 import type { SdMapData, SdMapLoaderInput } from "../../src/maprender/MapRenderPayload";
 import { MapRenderTsBackend } from "../../src/maprender/ts/MapRenderTsBackend";
 import type { MapRenderTsBackendDeps } from "../../src/maprender/ts/MapRenderTsBackend";
@@ -25,12 +12,6 @@ import {
     createByteDrivenSceneBuildInput,
     createSceneBuildCacheProvider,
 } from "../../src/maprender/wasm/WasmCacheUploader";
-import { isLowDetail } from "../../src/runtime/build/SceneLocs";
-import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
-import {
-    createLocAnimatedGroupKey,
-    resolveLocRenderPlacement,
-} from "../../src/runtime/build/LocRenderPlacementResolver";
 import { CacheInfo, GameType, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
@@ -58,7 +39,27 @@ import { getIdFromTag } from "../../src/rs/scene/entity/EntityTag";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../src/rs/scene/model/ObjModelLoader";
+import {
+    createLocAnimatedGroupKey,
+    resolveLocRenderPlacement,
+} from "../../src/runtime/build/LocRenderPlacementResolver";
+import { ModelHashBuffer, getModelHash } from "../../src/runtime/build/ModelHashBuffer";
+import {
+    SceneBuffer,
+    collectTerrainTileVertexRecords,
+    getModelFaces,
+    isModelFaceTransparent,
+    splitModelFacesByTransparency,
+    summarizeModelFaces,
+    summarizeTerrainGeometry,
+} from "../../src/runtime/build/SceneBuffer";
+import { collectRuntimeDrawCommandBuckets } from "../../src/runtime/build/SceneCommandBuilder";
+import type { SceneCommandPlanDigest } from "../../src/runtime/build/SceneCommandPlan";
+import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
+import { isLowDetail } from "../../src/runtime/build/SceneLocs";
+import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import type { MapRenderRuntimeBridgeV2 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
+import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import {
     runtimeDebugBuildMapPlanFromCacheWithWasm,
     runtimeDebugCollectMapInputDigestWithWasm,
@@ -98,19 +99,18 @@ import {
     runtimeDebugGetModelVerticesDigestWithWasm,
     runtimeDebugGetModelVerticesSampleRangeWithWasm,
     runtimeDebugGetModelVerticesSampleWithWasm,
+    runtimeDebugSetPackedVertexProbeIndexWithWasm,
     runtimeDebugSetTerrainDigestSampleStartVertexWithWasm,
     runtimeDebugSetTerrainProbeWithWasm,
-    runtimeDebugSetWorldHeightProbeWithWasm,
     runtimeDebugSetWorldHeightProbeLocFilterWithWasm,
-    runtimeDebugSetPackedVertexProbeIndexWithWasm,
+    runtimeDebugSetWorldHeightProbeWithWasm,
     tryLoadBackendModule,
 } from "../../src/wasm/rs_map_runtime_debug.mjs";
-import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
+import { loadCache, loadCacheInfos } from "./load-util";
 import {
     runtimePacketToPayloadOverlay,
     runtimePacketToPayloadOverlayDiagnostic,
 } from "./runtimePacketOverlay";
-import { loadCache, loadCacheInfos } from "./load-util";
 
 type Args = Readonly<{
     cacheName?: string;
@@ -491,22 +491,14 @@ function createScriptDebugWrappers(): Partial<RuntimeBridge> {
         async debugSetWorldHeightProbeLocFilter(runtimeHandle: number, locId: number) {
             return (
                 (await withBackendModule((m) =>
-                    runtimeDebugSetWorldHeightProbeLocFilterWithWasm(
-                        m,
-                        runtimeHandle,
-                        locId,
-                    ),
+                    runtimeDebugSetWorldHeightProbeLocFilterWithWasm(m, runtimeHandle, locId),
                 )) ?? false
             );
         },
         async debugSetPackedVertexProbeIndex(runtimeHandle: number, vertexIndex: number) {
             return (
                 (await withBackendModule((m) =>
-                    runtimeDebugSetPackedVertexProbeIndexWithWasm(
-                        m,
-                        runtimeHandle,
-                        vertexIndex,
-                    ),
+                    runtimeDebugSetPackedVertexProbeIndexWithWasm(m, runtimeHandle, vertexIndex),
                 )) ?? false
             );
         },
@@ -921,17 +913,19 @@ function formatStageFailureSummary(stageFailures: Record<StageKey, number>): str
     return STAGE_KEYS.map((key) => `${key}=${stageFailures[key] | 0}`).join(" ");
 }
 
-function debugDescribeTsObjSpawnGatingForSquare(params: Readonly<{
-    cacheInfo: CacheInfo;
-    sceneBuilder: SceneBuilder;
-    mapBytesProvider: MapFileBytesProvider;
-    objSpawns: readonly ObjSpawn[];
-    objTypeLoader: { tryLoad(id: number): { ok: boolean; value?: unknown } };
-    objModelLoader: ObjModelLoader;
-    square: Square;
-    maxLevel: number;
-    smoothTerrain: boolean;
-}>): string[] {
+function debugDescribeTsObjSpawnGatingForSquare(
+    params: Readonly<{
+        cacheInfo: CacheInfo;
+        sceneBuilder: SceneBuilder;
+        mapBytesProvider: MapFileBytesProvider;
+        objSpawns: readonly ObjSpawn[];
+        objTypeLoader: { tryLoad(id: number): { ok: boolean; value?: unknown } };
+        objModelLoader: ObjModelLoader;
+        square: Square;
+        maxLevel: number;
+        smoothTerrain: boolean;
+    }>,
+): string[] {
     const borderSize = 6;
     const mapSquareSize = 64;
     const baseX = (params.square.mapX * mapSquareSize - borderSize) | 0;
@@ -939,8 +933,17 @@ function debugDescribeTsObjSpawnGatingForSquare(params: Readonly<{
     const size = (mapSquareSize + borderSize * 2) | 0;
 
     const lines: string[] = [];
-    const windowSpawns = getWindowObjSpawns(params.objSpawns as ObjSpawn[], params.maxLevel, baseX, baseY, size, size);
-    lines.push(`  objSpawnGating: windowSpawns=${windowSpawns.length} base=${baseX},${baseY} size=${size}`);
+    const windowSpawns = getWindowObjSpawns(
+        params.objSpawns as ObjSpawn[],
+        params.maxLevel,
+        baseX,
+        baseY,
+        size,
+        size,
+    );
+    lines.push(
+        `  objSpawnGating: windowSpawns=${windowSpawns.length} base=${baseX},${baseY} size=${size}`,
+    );
     if (windowSpawns.length === 0) {
         return lines;
     }
@@ -969,14 +972,14 @@ function debugDescribeTsObjSpawnGatingForSquare(params: Readonly<{
             (params.mapBytesProvider as any).getTerrainBytes?.(spawnMapX, spawnMapY)?.length ?? -1;
         const tileX = ((spawn.x | 0) - baseX) | 0;
         const tileY = ((spawn.y | 0) - baseY) | 0;
-        if (!(tileX > 0 && tileY > 0 && tileX < (size - 1) && tileY < (size - 1))) {
+        if (!(tileX > 0 && tileY > 0 && tileX < size - 1 && tileY < size - 1)) {
             continue;
         }
 
         const typeRes = params.objTypeLoader.tryLoad(spawn.id | 0);
         const type = typeRes.ok ? (typeRes as any).value : undefined;
         const name = typeof type?.name === "string" ? type.name : undefined;
-        const modelId = typeof type?.model === "number" ? (type.model | 0) : undefined;
+        const modelId = typeof type?.model === "number" ? type.model | 0 : undefined;
 
         let renderLevel = spawn.plane | 0;
         // TileRenderFlag.Bridge = 0x2
@@ -1000,10 +1003,14 @@ function debugDescribeTsObjSpawnGatingForSquare(params: Readonly<{
 
         printed++;
         lines.push(
-            `  objSpawnGating[${printed}] id=${spawn.id | 0} cnt=${spawn.count | 0} plane=${spawn.plane | 0}` +
+            `  objSpawnGating[${printed}] id=${spawn.id | 0} cnt=${spawn.count | 0} plane=${
+                spawn.plane | 0
+            }` +
                 ` map=${spawnMapX},${spawnMapY} terrainLen=${terrainLen | 0}` +
                 ` tile=${tileX},${tileY} lvl=${renderLevel} faces=${faceLen | 0}` +
-                ` typeOk=${typeOk ? 1 : 0} name=${name ?? "<missing>"} modelId=${modelId ?? "<missing>"}` +
+                ` typeOk=${typeOk ? 1 : 0} name=${name ?? "<missing>"} modelId=${
+                    modelId ?? "<missing>"
+                }` +
                 ` hasModel=${modelOk ? 1 : 0}`,
         );
     }
@@ -1077,7 +1084,7 @@ function comparePacketDigests(
     const tsNpcRanges = tsPayload.npcDrawRangesBase;
     const tsNpcOrderKeys = tsPayload.npcOrderKeys;
     if (tsNpcRanges instanceof Int32Array && (tsNpcRanges.length | 0) > 0) {
-        if ((tsNpcRanges.length % 3) !== 0) {
+        if (tsNpcRanges.length % 3 !== 0) {
             return {
                 key: "packet",
                 ok: false,
@@ -1101,7 +1108,7 @@ function comparePacketDigests(
     const cacheNpcRanges = cachePacket.npcDrawRangesBase;
     const cacheNpcOrderKeys = cachePacket.npcOrderKeys;
     if (cacheNpcRanges instanceof Int32Array && (cacheNpcRanges.length | 0) > 0) {
-        if ((cacheNpcRanges.length % 3) !== 0) {
+        if (cacheNpcRanges.length % 3 !== 0) {
             return {
                 key: "packet",
                 ok: false,
@@ -1722,9 +1729,7 @@ function digestSceneLightRenderFromScene(
         }
     }
     const verticesUsedLength =
-        maxIndex >= 0
-            ? Math.min(vertices.length, (maxIndex + 1) * PACKED_VERTEX_SIZE_BYTES)
-            : 0;
+        maxIndex >= 0 ? Math.min(vertices.length, (maxIndex + 1) * PACKED_VERTEX_SIZE_BYTES) : 0;
     return {
         verticesLength: verticesUsedLength | 0,
         verticesHash: hashVertexPrefixFromIndexRanges(vertices, indices, merged),
@@ -2009,8 +2014,8 @@ function computeSceneLightStageDebugFromRuntimeCommandArrays(input: {
         verticesUsedLength: verticesUsedLength | 0,
         maxIndex: maxIndex | 0,
         maxIndexPos: maxIndexPos | 0,
-        runtimeCmdIndex: runtimeCmdIndex >= 0 ? (runtimeCmdIndex | 0) : undefined,
-        runtimeBucketIndex: runtimeCmdIndex >= 0 ? (runtimeBucketIndex | 0) : undefined,
+        runtimeCmdIndex: runtimeCmdIndex >= 0 ? runtimeCmdIndex | 0 : undefined,
+        runtimeBucketIndex: runtimeCmdIndex >= 0 ? runtimeBucketIndex | 0 : undefined,
         runtimeInstHead,
     };
 }
@@ -2087,7 +2092,8 @@ function computeSceneLightStageDebugFromSceneBuffer(sceneBuf: SceneBuffer): Scen
                     tsBucketIndex = bucketIndex;
                     tsBucketKey = String(bucket);
                     tsCmdIndexInBucket = i;
-                    const inst = cmd.instances && cmd.instances.length > 0 ? cmd.instances[0] : undefined;
+                    const inst =
+                        cmd.instances && cmd.instances.length > 0 ? cmd.instances[0] : undefined;
                     if (inst) {
                         tsInstHead = [
                             inst.sceneX | 0,
@@ -2113,8 +2119,8 @@ function computeSceneLightStageDebugFromSceneBuffer(sceneBuf: SceneBuffer): Scen
         maxIndex: maxIndex | 0,
         maxIndexPos: maxIndexPos | 0,
         tsBucketKey,
-        tsBucketIndex: tsBucketIndex >= 0 ? (tsBucketIndex | 0) : undefined,
-        tsCmdIndexInBucket: tsCmdIndexInBucket >= 0 ? (tsCmdIndexInBucket | 0) : undefined,
+        tsBucketIndex: tsBucketIndex >= 0 ? tsBucketIndex | 0 : undefined,
+        tsCmdIndexInBucket: tsCmdIndexInBucket >= 0 ? tsCmdIndexInBucket | 0 : undefined,
         tsInstHead,
     };
 }
@@ -8039,8 +8045,8 @@ function decodePackedVertexDebug(bytes: Uint8Array, vertexIndex: number): Packed
         z: (((v2 >>> 17) & 0x7fff) - 0x4000) | 0,
         hsl,
         isTextured,
-        textureId: isTextured && tex0Plus1 > 0 ? ((tex0Plus1 - 1) | 0) : -1,
-        textureId1: hasBlend && tex1Plus1 > 0 ? ((tex1Plus1 - 1) | 0) : -1,
+        textureId: isTextured && tex0Plus1 > 0 ? (tex0Plus1 - 1) | 0 : -1,
+        textureId1: hasBlend && tex1Plus1 > 0 ? (tex1Plus1 - 1) | 0 : -1,
         hasBlend,
         blend,
         alpha,
@@ -8236,11 +8242,11 @@ async function main(): Promise<void> {
     const runtimeHandle =
         (typeof bridge.createRuntimeWithConfig === "function"
             ? await bridge.createRuntimeWithConfig({
-	          cacheGame: cacheInfo.game,
-	          cacheRevision: cacheInfo.revision,
-	          sceneLevels: 4,
-	          unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
-	      })
+                  cacheGame: cacheInfo.game,
+                  cacheRevision: cacheInfo.revision,
+                  sceneLevels: 4,
+                  unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
+              })
             : typeof bridge.createRuntime === "function"
             ? await bridge.createRuntime()
             : undefined) ?? 0;
@@ -8344,9 +8350,11 @@ async function main(): Promise<void> {
                 ]);
                 if (String(debugTransparencyBefore) !== String(after)) {
                     console.error(
-                        `textureLoader.isTransparent changed during build square=${square.mapX}:${square.mapY} before=${JSON.stringify(
-                            debugTransparencyBefore,
-                        )} after=${JSON.stringify(after)}`,
+                        `textureLoader.isTransparent changed during build square=${square.mapX}:${
+                            square.mapY
+                        } before=${JSON.stringify(debugTransparencyBefore)} after=${JSON.stringify(
+                            after,
+                        )}`,
                     );
                 }
             }
@@ -8403,7 +8411,7 @@ async function main(): Promise<void> {
                       runtimeHandle,
                       request,
                       sceneBuildInput,
-                )
+                  )
                 : undefined;
             const prepared = preparedResult?.ok === true;
             if (!prepared && preparedResult) {
@@ -8987,15 +8995,8 @@ async function main(): Promise<void> {
                                     dbgScene.light(sceneBuilder.textureLoader, -50, -10, -50);
 
                                     const textureLoader = sceneBuilder.services.textureLoader;
-                                    const dbgBuf = new SceneBuffer(
-                                        textureLoader as any,
-                                        100000,
-                                    );
-                                    dbgBuf.addTerrain(
-                                        dbgScene,
-                                        borderSize | 0,
-                                        input.maxLevel | 0,
-                                    );
+                                    const dbgBuf = new SceneBuffer(textureLoader as any, 100000);
+                                    dbgBuf.addTerrain(dbgScene, borderSize | 0, input.maxLevel | 0);
                                     const sceneLocs = getSceneLocs(
                                         sceneBuilder.services.locTypeLoader as any,
                                         dbgScene,
@@ -9281,28 +9282,41 @@ async function main(): Promise<void> {
 
                                                                             // Compare the TS-resolved loc type for the C++ writer id (quick sanity check).
                                                                             try {
-                                                                                const lr = (loaders
-                                                                                    .locTypeLoader as any)?.tryLoad?.(
+                                                                                const lr = (
+                                                                                    loaders.locTypeLoader as any
+                                                                                )?.tryLoad?.(
                                                                                     writerOriginalId,
                                                                                 );
                                                                                 const lt =
-                                                                                    lr && typeof lr === "object" && (lr as any).ok
-                                                                                        ? (lr as any).value
+                                                                                    lr &&
+                                                                                    typeof lr ===
+                                                                                        "object" &&
+                                                                                    (lr as any).ok
+                                                                                        ? (
+                                                                                              lr as any
+                                                                                          ).value
                                                                                         : undefined;
                                                                                 console.log(
                                                                                     `[terrainDigestStage][probe-ts-writer-loctype] id=${writerOriginalId} ok=${!!lt} clipped=${
-                                                                                        lt?.clipped ?? -1
+                                                                                        lt?.clipped ??
+                                                                                        -1
                                                                                     } mergeNormals=${
-                                                                                        lt?.mergeNormals ?? -1
+                                                                                        lt?.mergeNormals ??
+                                                                                        -1
                                                                                     } lightOcclusion=${
-                                                                                        lt?.lightOcclusion ?? -1
+                                                                                        lt?.lightOcclusion ??
+                                                                                        -1
                                                                                     } seqId=${
-                                                                                        lt?.seqId ?? -1
+                                                                                        lt?.seqId ??
+                                                                                        -1
                                                                                     } transformsLen=${
                                                                                         Array.isArray(
                                                                                             lt?.transforms,
                                                                                         )
-                                                                                            ? lt.transforms.length | 0
+                                                                                            ? lt
+                                                                                                  .transforms
+                                                                                                  .length |
+                                                                                              0
                                                                                             : -1
                                                                                     }`,
                                                                                 );
@@ -9322,7 +9336,8 @@ async function main(): Promise<void> {
                                                                                     : undefined;
                                                                                 console.log(
                                                                                     `[terrainDigestStage][probe-cpp-writer-loctype] id=${writerOriginalId} ${JSON.stringify(
-                                                                                        decoded ?? null,
+                                                                                        decoded ??
+                                                                                            null,
                                                                                     )}`,
                                                                                 );
                                                                             } catch {
@@ -9348,12 +9363,15 @@ async function main(): Promise<void> {
                                                                                 let matches = 0;
                                                                                 let ctor =
                                                                                     "unknown";
-                                                                                let matchXz: number | null =
-                                                                                    null;
-                                                                                let matchType: number | null =
-                                                                                    null;
-                                                                                let matchRot: number | null =
-                                                                                    null;
+                                                                                let matchXz:
+                                                                                    | number
+                                                                                    | null = null;
+                                                                                let matchType:
+                                                                                    | number
+                                                                                    | null = null;
+                                                                                let matchRot:
+                                                                                    | number
+                                                                                    | null = null;
                                                                                 for (
                                                                                     let i = 0;
                                                                                     i < locs.length;
@@ -9391,16 +9409,20 @@ async function main(): Promise<void> {
                                                                                                 "unknown";
                                                                                             try {
                                                                                                 const flags =
-                                                                                                    (loc as any)
+                                                                                                    (
+                                                                                                        loc as any
+                                                                                                    )
                                                                                                         ?.flags ??
                                                                                                     0;
                                                                                                 matchType =
                                                                                                     getLocPlacementType(
-                                                                                                        flags | 0,
+                                                                                                        flags |
+                                                                                                            0,
                                                                                                     );
                                                                                                 matchRot =
                                                                                                     getLocPlacementRotation(
-                                                                                                        flags | 0,
+                                                                                                        flags |
+                                                                                                            0,
                                                                                                     );
                                                                                             } catch {
                                                                                                 matchType =
@@ -9410,8 +9432,7 @@ async function main(): Promise<void> {
                                                                                             }
                                                                                             try {
                                                                                                 const e =
-                                                                                                    loc
-                                                                                                        .entity;
+                                                                                                    loc.entity;
                                                                                                 matchXz =
                                                                                                     e &&
                                                                                                     typeof e.tryGetXZRadius ===
@@ -10293,8 +10314,10 @@ async function main(): Promise<void> {
                                                                                                         0;
                                                                                                     // Important: don't force i32 here. TS bounds math is done in JS Numbers.
                                                                                                     const r =
-                                                                                                        x * x +
-                                                                                                        z * z;
+                                                                                                        x *
+                                                                                                            x +
+                                                                                                        z *
+                                                                                                            z;
                                                                                                     if (
                                                                                                         r >
                                                                                                         tsXzRadiusSq
@@ -10549,29 +10572,29 @@ async function main(): Promise<void> {
                 key: "locMergeNormalsTraceStage",
                 ok: true,
             };
-	            if (
-	                args.debugStage === "locMergeNormalsTraceStage" &&
-	                profile.loadLocs &&
-	                cacheLocMergeNormalsTraceEntriesPacked instanceof Int32Array
-	            ) {
-	                try {
-	                    const runtimeTrace = parseRuntimeLocMergeNormalsTraceEntriesPacked(
-	                        cacheLocMergeNormalsTraceEntriesPacked,
-	                    );
-	                    if (!runtimeTrace) {
-	                        locMergeNormalsTraceStageResult = {
-	                            key: "locMergeNormalsTraceStage",
-	                            ok: false,
-	                            detail: "runtimeTrace=<missing/invalid>",
-	                        };
-	                        throw new Error("runtimeTrace missing/invalid (packed stride mismatch?)");
-	                    }
-	                    const tsTrace = captureTsMergeNormalsTraceForSquare(
-	                        sceneBuilder,
-	                        mapBytesProvider,
-	                        sceneBuildInput,
-	                        [],
-	                    );
+            if (
+                args.debugStage === "locMergeNormalsTraceStage" &&
+                profile.loadLocs &&
+                cacheLocMergeNormalsTraceEntriesPacked instanceof Int32Array
+            ) {
+                try {
+                    const runtimeTrace = parseRuntimeLocMergeNormalsTraceEntriesPacked(
+                        cacheLocMergeNormalsTraceEntriesPacked,
+                    );
+                    if (!runtimeTrace) {
+                        locMergeNormalsTraceStageResult = {
+                            key: "locMergeNormalsTraceStage",
+                            ok: false,
+                            detail: "runtimeTrace=<missing/invalid>",
+                        };
+                        throw new Error("runtimeTrace missing/invalid (packed stride mismatch?)");
+                    }
+                    const tsTrace = captureTsMergeNormalsTraceForSquare(
+                        sceneBuilder,
+                        mapBytesProvider,
+                        sceneBuildInput,
+                        [],
+                    );
                     locMergeNormalsTraceStageResult = compareLocMergeNormalsTraceStage(
                         tsTrace,
                         runtimeTrace,
@@ -10579,7 +10602,10 @@ async function main(): Promise<void> {
                     if (!locMergeNormalsTraceStageResult.ok) {
                         // Quick sanity: prove both sides even see the same early floor-decoration anchor.
                         const ts754 = tsTrace.filter(
-                            (e) => (e.aLocTypeId | 0) === 754 && (e.aTileX | 0) === 12 && (e.aTileY | 0) === 6,
+                            (e) =>
+                                (e.aLocTypeId | 0) === 754 &&
+                                (e.aTileX | 0) === 12 &&
+                                (e.aTileY | 0) === 6,
                         ).length;
                         const rt754 = (runtimeTrace ?? []).filter(
                             (e) =>
@@ -10588,7 +10614,9 @@ async function main(): Promise<void> {
                                 (e.aTileY | 0) === 6,
                         ).length;
                         console.error(
-                            `  mergeNormals-trace anchor aLoc=754 tile=12,6 counts: ts=${ts754 | 0} rt=${rt754 | 0}`,
+                            `  mergeNormals-trace anchor aLoc=754 tile=12,6 counts: ts=${
+                                ts754 | 0
+                            } rt=${rt754 | 0}`,
                         );
                         if (runtimeTrace && runtimeTrace.length > 0) {
                             const sample = runtimeTrace
@@ -10638,11 +10666,11 @@ async function main(): Promise<void> {
                             const k = toKeyTs(tsTrace[i]);
                             tsCounts.set(k, ((tsCounts.get(k) ?? 0) + 1) | 0);
                         }
-	                        const rtCounts = new Map<string, number>();
-	                        for (let i = 0; i < runtimeTrace.length; i++) {
-	                            const k = toKeyRt(runtimeTrace[i]);
-	                            rtCounts.set(k, ((rtCounts.get(k) ?? 0) + 1) | 0);
-	                        }
+                        const rtCounts = new Map<string, number>();
+                        for (let i = 0; i < runtimeTrace.length; i++) {
+                            const k = toKeyRt(runtimeTrace[i]);
+                            rtCounts.set(k, ((rtCounts.get(k) ?? 0) + 1) | 0);
+                        }
                         let diffKeys = 0;
                         const examples: string[] = [];
                         for (const [k, tsN] of tsCounts.entries()) {
@@ -10737,7 +10765,9 @@ async function main(): Promise<void> {
                                 localY,
                             );
                             console.error(
-                                `  objSpawnGating[runtimeTerrain] id=${s.id | 0} map=${mapX},${mapY} local=${localX},${localY} cell=${JSON.stringify(
+                                `  objSpawnGating[runtimeTerrain] id=${
+                                    s.id | 0
+                                } map=${mapX},${mapY} local=${localX},${localY} cell=${JSON.stringify(
                                     cell ?? null,
                                 )}`,
                             );
@@ -10969,7 +10999,9 @@ async function main(): Promise<void> {
                 }
                 if (cacheSceneCommandPlanOpProvenancePacked instanceof Int32Array) {
                     const stride = 8;
-                    const opCount = Math.floor(cacheSceneCommandPlanOpProvenancePacked.length / stride);
+                    const opCount = Math.floor(
+                        cacheSceneCommandPlanOpProvenancePacked.length / stride,
+                    );
                     const maxDump = Math.min(opCount, 8);
                     for (let i = 0; i < maxDump; i++) {
                         const base = i * stride;
@@ -10988,7 +11020,9 @@ async function main(): Promise<void> {
                         );
                     }
                     if (opCount > maxDump) {
-                        console.error(`  cache plan-op provenance: ... (${opCount - maxDump} more)`);
+                        console.error(
+                            `  cache plan-op provenance: ... (${opCount - maxDump} more)`,
+                        );
                     }
                 }
                 if (args.quiet) {
@@ -11305,11 +11339,9 @@ async function main(): Promise<void> {
                                                                     ? "cache"
                                                                     : "ts";
                                                             const probeX =
-                                                                (cacheVertex?.x ?? tsVertex.x) |
-                                                                0;
+                                                                (cacheVertex?.x ?? tsVertex.x) | 0;
                                                             const probeZ =
-                                                                (cacheVertex?.z ?? tsVertex.z) |
-                                                                0;
+                                                                (cacheVertex?.z ?? tsVertex.z) | 0;
                                                             const hasPackedVertexProbe =
                                                                 typeof (bridge as any)
                                                                     .debugSetPackedVertexProbeIndex ===
@@ -11341,7 +11373,7 @@ async function main(): Promise<void> {
                                                                 // 2) Re-run with the old (pre-dedupe) vertex index to capture UV mapping inputs.
                                                                 const finalIndex = vertexIndex | 0;
                                                                 const encodedFinal =
-                                                                    (-(finalIndex + 1)) | 0;
+                                                                    -(finalIndex + 1) | 0;
                                                                 await (
                                                                     bridge as any
                                                                 ).debugSetPackedVertexProbeIndex(
@@ -11366,11 +11398,9 @@ async function main(): Promise<void> {
                                                                 if (
                                                                     probeMap?.packed instanceof
                                                                         Int32Array &&
-                                                                    ((probeMap.packed[0] |
-                                                                        0) ===
+                                                                    ((probeMap.packed[0] | 0) ===
                                                                         5 ||
-                                                                        (probeMap.packed[0] |
-                                                                            0) ===
+                                                                        (probeMap.packed[0] | 0) ===
                                                                             4)
                                                                 ) {
                                                                     oldIndex =
@@ -11424,9 +11454,9 @@ async function main(): Promise<void> {
                                                                 0;
                                                             const borderSize =
                                                                 ((Math.min(sizeX, sizeY) - 64) >>
-                                                                    1) | 0;
-                                                            const borderPx =
-                                                                (borderSize * 128) | 0;
+                                                                    1) |
+                                                                0;
+                                                            const borderPx = (borderSize * 128) | 0;
                                                             const smoothUnderlays =
                                                                 !!sceneBuildInput.smoothTerrain;
                                                             const tsScene =
@@ -11493,18 +11523,11 @@ async function main(): Promise<void> {
                                                                 const p = probe.packed;
                                                                 const marker = p[0] | 0;
                                                                 if (marker === 2) {
-                                                                    const uPack =
-                                                                        p[22] | 0;
-                                                                    const vPack =
-                                                                        p[23] | 0;
-                                                                    const unpackFloat11Debug =
-                                                                        (
-                                                                            packed: number,
-                                                                        ) =>
-                                                                            (1024 -
-                                                                                (packed |
-                                                                                    0)) /
-                                                                            64;
+                                                                    const uPack = p[22] | 0;
+                                                                    const vPack = p[23] | 0;
+                                                                    const unpackFloat11Debug = (
+                                                                        packed: number,
+                                                                    ) => (1024 - (packed | 0)) / 64;
                                                                     console.error(
                                                                         `  cpp vertex-probe packed=${JSON.stringify(
                                                                             {
@@ -11520,36 +11543,26 @@ async function main(): Promise<void> {
                                                                                 sceneHeight:
                                                                                     p[6] | 0,
                                                                                 outY: p[7] | 0,
-                                                                                contourX:
-                                                                                    p[8] | 0,
-                                                                                contourZ:
-                                                                                    p[9] | 0,
-                                                                                sampleX:
-                                                                                    p[10] | 0,
-                                                                                sampleZ:
-                                                                                    p[11] | 0,
+                                                                                contourX: p[8] | 0,
+                                                                                contourZ: p[9] | 0,
+                                                                                sampleX: p[10] | 0,
+                                                                                sampleZ: p[11] | 0,
                                                                                 sampledOk:
-                                                                                    (p[12] |
-                                                                                        0) !==
+                                                                                    (p[12] | 0) !==
                                                                                     0,
-                                                                                sampledH:
-                                                                                    p[13] | 0,
-                                                                                modelId:
-                                                                                    p[14] | 0,
+                                                                                sampledH: p[13] | 0,
+                                                                                modelId: p[14] | 0,
                                                                                 contouredY:
-                                                                                    (p[15] |
-                                                                                        0) !==
+                                                                                    (p[15] | 0) !==
                                                                                     0,
                                                                                 // Extended UV diagnostics (debug-only; filled by the C++ vertex probe).
                                                                                 faceIndex:
                                                                                     p[16] | 0,
-                                                                                texCoord:
-                                                                                    p[17] | 0,
+                                                                                texCoord: p[17] | 0,
                                                                                 textureRenderType:
                                                                                     p[18] | 0,
                                                                                 texScalesReady:
-                                                                                    (p[19] |
-                                                                                        0) !==
+                                                                                    (p[19] | 0) !==
                                                                                     0,
                                                                                 texScalesStatus:
                                                                                     p[20] | 0,
@@ -11565,8 +11578,7 @@ async function main(): Promise<void> {
                                                                                     unpackFloat11Debug(
                                                                                         vPack,
                                                                                     ),
-                                                                                tc:
-                                                                                    p[24] | 0,
+                                                                                tc: p[24] | 0,
                                                                                 textureFaceCount:
                                                                                     p[25] | 0,
                                                                                 modelTextureRenderType:
@@ -11605,12 +11617,10 @@ async function main(): Promise<void> {
                                                                                 textureId1:
                                                                                     p[12] | 0,
                                                                                 hasOverlay:
-                                                                                    (p[13] |
-                                                                                        0) !==
+                                                                                    (p[13] | 0) !==
                                                                                     0,
                                                                                 hasUnderlay:
-                                                                                    (p[14] |
-                                                                                        0) !==
+                                                                                    (p[14] | 0) !==
                                                                                     0,
                                                                             },
                                                                         )}`,
@@ -11620,28 +11630,28 @@ async function main(): Promise<void> {
                                                                     const tz = p[2] | 0;
                                                                     const h00 = p[5] | 0;
                                                                     const h10 = p[6] | 0;
-                                                                const h01 = p[7] | 0;
-                                                                const h11 = p[8] | 0;
-                                                                const hCpp = p[14] | 0;
-                                                                const ts00 =
-                                                                    tsScene.tileHeights[level]?.[
-                                                                        tx
-                                                                    ]?.[tz] ?? 0;
-                                                                const ts10 =
-                                                                    tsScene.tileHeights[level]?.[
-                                                                        tx + 1
-                                                                    ]?.[tz] ?? 0;
-                                                                const ts01 =
-                                                                    tsScene.tileHeights[level]?.[
-                                                                        tx
-                                                                    ]?.[tz + 1] ?? 0;
-                                                                const ts11 =
-                                                                    tsScene.tileHeights[level]?.[
-                                                                        tx + 1
-                                                                    ]?.[tz + 1] ?? 0;
-                                                                console.error(
-                                                                    `  height-corners tx=${tx} tz=${tz} ts=[${ts00},${ts10},${ts01},${ts11}] cpp=[${h00},${h10},${h01},${h11}] hTs=${hTs} hCpp=${hCpp}`,
-                                                                );
+                                                                    const h01 = p[7] | 0;
+                                                                    const h11 = p[8] | 0;
+                                                                    const hCpp = p[14] | 0;
+                                                                    const ts00 =
+                                                                        tsScene.tileHeights[
+                                                                            level
+                                                                        ]?.[tx]?.[tz] ?? 0;
+                                                                    const ts10 =
+                                                                        tsScene.tileHeights[
+                                                                            level
+                                                                        ]?.[tx + 1]?.[tz] ?? 0;
+                                                                    const ts01 =
+                                                                        tsScene.tileHeights[
+                                                                            level
+                                                                        ]?.[tx]?.[tz + 1] ?? 0;
+                                                                    const ts11 =
+                                                                        tsScene.tileHeights[
+                                                                            level
+                                                                        ]?.[tx + 1]?.[tz + 1] ?? 0;
+                                                                    console.error(
+                                                                        `  height-corners tx=${tx} tz=${tz} ts=[${ts00},${ts10},${ts01},${ts11}] cpp=[${h00},${h10},${h01},${h11}] hTs=${hTs} hCpp=${hCpp}`,
+                                                                    );
                                                                 }
                                                             }
                                                         }
@@ -13183,9 +13193,10 @@ async function main(): Promise<void> {
                             .map((s) => {
                                 // Example:
                                 // "inst|t=0|h=-1046058061|f=66|i=2|lod=2: ts=1 cache=0 delta=-1"
-                                const m = /^inst\\|t=(\\d+)\\|h=(-?\\d+)\\|f=(\\d+)\\|i=(\\d+)\\|lod=(\\d+):\\s*ts=(\\d+)\\s*cache=(\\d+)\\s*delta=(-?\\d+)\\s*$/.exec(
-                                    s,
-                                );
+                                const m =
+                                    /^inst\\|t=(\\d+)\\|h=(-?\\d+)\\|f=(\\d+)\\|i=(\\d+)\\|lod=(\\d+):\\s*ts=(\\d+)\\s*cache=(\\d+)\\s*delta=(-?\\d+)\\s*$/.exec(
+                                        s,
+                                    );
                                 if (!m) return undefined;
                                 return {
                                     transparent: (Number(m[1]) | 0) === 1,
@@ -13202,26 +13213,24 @@ async function main(): Promise<void> {
                                 (v): v is NonNullable<typeof v> =>
                                     !!v && (v.delta | 0) < 0 && (v.tsCount | 0) > 0,
                             );
-                        const packedMergeDecisions =
-                            ((): Int32Array | undefined => {
-                                const raw: any = cacheLocMergeDecisionEntriesPacked as any;
-                                if (raw instanceof Int32Array) {
-                                    return raw;
-                                }
-                                if (raw instanceof Uint32Array) {
-                                    return new Int32Array(
-                                        raw.buffer,
-                                        raw.byteOffset,
-                                        (raw.byteLength / 4) | 0,
-                                    );
-                                }
-                                return undefined;
-                            })();
+                        const packedMergeDecisions = ((): Int32Array | undefined => {
+                            const raw: any = cacheLocMergeDecisionEntriesPacked as any;
+                            if (raw instanceof Int32Array) {
+                                return raw;
+                            }
+                            if (raw instanceof Uint32Array) {
+                                return new Int32Array(
+                                    raw.buffer,
+                                    raw.byteOffset,
+                                    (raw.byteLength / 4) | 0,
+                                );
+                            }
+                            return undefined;
+                        })();
                         if (missingInst.length > 0 && packedMergeDecisions) {
                             const runtimeMergeEntries =
-                                parseRuntimeLocMergeDecisionEntriesPacked(
-                                    packedMergeDecisions,
-                                ) ?? [];
+                                parseRuntimeLocMergeDecisionEntriesPacked(packedMergeDecisions) ??
+                                [];
                             const seen = new Set<number>();
                             for (let mi = 0; mi < missingInst.length; mi++) {
                                 const miss = missingInst[mi];
@@ -13285,14 +13294,26 @@ async function main(): Promise<void> {
                                 );
                                 if (missOpaque) {
                                     console.error(
-                                        `    missing-inst opaque tsFaceCount=${missOpaque.faceCount} tsElements=${(missOpaque.faceCount * 3) | 0} (op.instances=${missOpaque.instanceCount}, lod=${missOpaque.lodInstanceCount}) runtimeOpaqueElementsPerInstanceCounts=${fmtElems(
+                                        `    missing-inst opaque tsFaceCount=${
+                                            missOpaque.faceCount
+                                        } tsElements=${
+                                            (missOpaque.faceCount * 3) | 0
+                                        } (op.instances=${missOpaque.instanceCount}, lod=${
+                                            missOpaque.lodInstanceCount
+                                        }) runtimeOpaqueElementsPerInstanceCounts=${fmtElems(
                                             elemsOpaque,
                                         )}`,
                                     );
                                 }
                                 if (missAlpha) {
                                     console.error(
-                                        `    missing-inst alpha tsFaceCount=${missAlpha.faceCount} tsElements=${(missAlpha.faceCount * 3) | 0} (op.instances=${missAlpha.instanceCount}, lod=${missAlpha.lodInstanceCount}) runtimeAlphaElementsPerInstanceCounts=${fmtElems(
+                                        `    missing-inst alpha tsFaceCount=${
+                                            missAlpha.faceCount
+                                        } tsElements=${
+                                            (missAlpha.faceCount * 3) | 0
+                                        } (op.instances=${missAlpha.instanceCount}, lod=${
+                                            missAlpha.lodInstanceCount
+                                        }) runtimeAlphaElementsPerInstanceCounts=${fmtElems(
                                             elemsAlpha,
                                         )}`,
                                     );
@@ -13309,7 +13330,9 @@ async function main(): Promise<void> {
                             }
                         }
                     } catch (e) {
-                        console.error(`  missing-inst runtime merge-entry debug failed: ${String(e)}`);
+                        console.error(
+                            `  missing-inst runtime merge-entry debug failed: ${String(e)}`,
+                        );
                     }
 
                     const shapeMultisetDiff = diffSceneCommandPlanOpsPackedShapeMultiset(
@@ -17480,16 +17503,15 @@ async function main(): Promise<void> {
                                                             cmdPackedInstances[off + 3] | 0;
                                                         const contour =
                                                             cmdPackedInstances[off + 4] | 0;
-                                                        const pri =
-                                                            cmdPackedInstances[off + 5] | 0;
+                                                        const pri = cmdPackedInstances[off + 5] | 0;
                                                         const interactType =
                                                             cmdPackedInstances[off + 6] | 0;
                                                         const interactId =
                                                             cmdPackedInstances[off + 7] >>> 0;
                                                         if (
                                                             interactType !== 1 /*LOC*/ ||
-                                                            (interactId >>> 0) !==
-                                                                (wantInteractId >>> 0) ||
+                                                            interactId >>> 0 !==
+                                                                wantInteractId >>> 0 ||
                                                             (sceneX | 0) !== (wantSceneX | 0) ||
                                                             (sceneZ | 0) !== (wantSceneZ | 0) ||
                                                             (level | 0) !== (wantLevel | 0) ||
@@ -17555,7 +17577,11 @@ async function main(): Promise<void> {
                                                 bucketIndex: number,
                                             ): number => {
                                                 let instanceBase = 0;
-                                                for (let ci = 0; ci < cmdBucketIndices.length; ci++) {
+                                                for (
+                                                    let ci = 0;
+                                                    ci < cmdBucketIndices.length;
+                                                    ci++
+                                                ) {
                                                     const b = cmdBucketIndices[ci] | 0;
                                                     const ic =
                                                         ci < cmdInstanceCounts.length
@@ -17581,8 +17607,7 @@ async function main(): Promise<void> {
                                                         cmdPackedInstances[off + 7] >>> 0;
                                                     if (
                                                         interactType === 1 /*LOC*/ &&
-                                                        (interactId >>> 0) ===
-                                                            (wantInteractId >>> 0) &&
+                                                        interactId >>> 0 === wantInteractId >>> 0 &&
                                                         (sceneX | 0) === (wantSceneX | 0) &&
                                                         (sceneZ | 0) === (wantSceneZ | 0) &&
                                                         (level | 0) === (wantLevel | 0) &&
@@ -17614,18 +17639,22 @@ async function main(): Promise<void> {
                                                             (v?.drawRangeIndex | 0) ===
                                                             (tsBaseCmdIndex | 0),
                                                     );
-                                                    const hasAlpha =
-                                                        !!(la as any)?.anim?.framesAlpha;
-                                                    const alpha0 =
-                                                        (la as any)?.anim?.framesAlpha?.[0];
+                                                    const hasAlpha = !!(la as any)?.anim
+                                                        ?.framesAlpha;
+                                                    const alpha0 = (la as any)?.anim
+                                                        ?.framesAlpha?.[0];
                                                     const base0 = (la as any)?.anim?.frames?.[0];
                                                     console.error(
                                                         `  animated-placeholder probe tsLocsAnimatedAtBaseCmd cmd=${tsBaseCmdIndex} found=${
                                                             la ? 1 : 0
-                                                        } seqId=${(la as any)?.seqId ?? "<none>"} hasAlpha=${
-                                                            hasAlpha ? 1 : 0
-                                                        } base0=${base0 ? JSON.stringify(base0) : "<none>"} alpha0=${
-                                                            alpha0 ? JSON.stringify(alpha0) : "<none>"
+                                                        } seqId=${
+                                                            (la as any)?.seqId ?? "<none>"
+                                                        } hasAlpha=${hasAlpha ? 1 : 0} base0=${
+                                                            base0 ? JSON.stringify(base0) : "<none>"
+                                                        } alpha0=${
+                                                            alpha0
+                                                                ? JSON.stringify(alpha0)
+                                                                : "<none>"
                                                         }`,
                                                     );
                                                 } else {
@@ -17695,13 +17724,18 @@ async function main(): Promise<void> {
                                                             borderSize,
                                                             input.maxLevel | 0,
                                                         );
-                                                        const keyFirstSeq = new Map<number, number>();
+                                                        const keyFirstSeq = new Map<
+                                                            number,
+                                                            number
+                                                        >();
                                                         const keySeqCounts = new Map<
                                                             number,
                                                             Map<number, number>
                                                         >();
-                                                        let targetKey: number | undefined = undefined;
-                                                        let targetResolvedLocType: any | undefined = undefined;
+                                                        let targetKey: number | undefined =
+                                                            undefined;
+                                                        let targetResolvedLocType: any | undefined =
+                                                            undefined;
                                                         let targetSeqId: number = -1;
                                                         let targetPt: number = -1;
                                                         let targetRot: number = -1;
@@ -17710,11 +17744,12 @@ async function main(): Promise<void> {
                                                             i < sceneLocs.locEntities.length;
                                                             i++
                                                         ) {
-                                                            const le: any = sceneLocs.locEntities[i];
+                                                            const le: any =
+                                                                sceneLocs.locEntities[i];
                                                             const ent: any = le?.entity;
                                                             const entSeqId =
                                                                 ent && typeof ent.seqId === "number"
-                                                                    ? (ent.seqId | 0)
+                                                                    ? ent.seqId | 0
                                                                     : -1;
                                                             if (entSeqId === -1) {
                                                                 continue;
@@ -17730,8 +17765,9 @@ async function main(): Promise<void> {
                                                             if (!resolved) continue;
                                                             const key = createLocAnimatedGroupKey(
                                                                 (resolved.rotation as number) | 0,
-                                                                (resolved.type as number) as any,
-                                                                (resolved.locType?.id as number) | 0,
+                                                                resolved.type as number as any,
+                                                                (resolved.locType?.id as number) |
+                                                                    0,
                                                             );
                                                             if (!keyFirstSeq.has(key)) {
                                                                 keyFirstSeq.set(key, entSeqId);
@@ -17739,36 +17775,49 @@ async function main(): Promise<void> {
                                                             const m =
                                                                 keySeqCounts.get(key) ??
                                                                 new Map<number, number>();
-                                                            m.set(entSeqId, (m.get(entSeqId) ?? 0) + 1);
+                                                            m.set(
+                                                                entSeqId,
+                                                                (m.get(entSeqId) ?? 0) + 1,
+                                                            );
                                                             keySeqCounts.set(key, m);
                                                             if (
-                                                                (resolved.locType?.id >>> 0) ===
-                                                                    (wantInteractId >>> 0) &&
-                                                                ((resolved.type | 0) ===
-                                                                    ((rec.placementType | 0) as number)) &&
-                                                                ((resolved.rotation | 0) ===
-                                                                    ((rec.placementRotation | 0) as number)) &&
-                                                                ((resolved.level | 0) ===
-                                                                    (rec.level | 0)) &&
-                                                                ((resolved.tileX | 0) ===
-                                                                    (rec.tileX | 0)) &&
-                                                                ((resolved.tileY | 0) ===
-                                                                    (rec.tileY | 0)) &&
-                                                                ((le.priority | 0) ===
-                                                                    (rec.priority | 0))
+                                                                resolved.locType?.id >>> 0 ===
+                                                                    wantInteractId >>> 0 &&
+                                                                (resolved.type | 0) ===
+                                                                    ((rec.placementType |
+                                                                        0) as number) &&
+                                                                (resolved.rotation | 0) ===
+                                                                    ((rec.placementRotation |
+                                                                        0) as number) &&
+                                                                (resolved.level | 0) ===
+                                                                    (rec.level | 0) &&
+                                                                (resolved.tileX | 0) ===
+                                                                    (rec.tileX | 0) &&
+                                                                (resolved.tileY | 0) ===
+                                                                    (rec.tileY | 0) &&
+                                                                (le.priority | 0) ===
+                                                                    (rec.priority | 0)
                                                             ) {
                                                                 targetKey = key;
-                                                                targetResolvedLocType = resolved.locType;
+                                                                targetResolvedLocType =
+                                                                    resolved.locType;
                                                                 targetSeqId = entSeqId | 0;
-                                                                targetPt = (resolved.type as number) | 0;
-                                                                targetRot = (resolved.rotation as number) | 0;
+                                                                targetPt =
+                                                                    (resolved.type as number) | 0;
+                                                                targetRot =
+                                                                    (resolved.rotation as number) |
+                                                                    0;
                                                             }
                                                         }
                                                         if (targetKey !== undefined) {
-                                                            const seqCounts = keySeqCounts.get(targetKey);
+                                                            const seqCounts =
+                                                                keySeqCounts.get(targetKey);
                                                             const seqCountsSorted = seqCounts
-                                                                ? Array.from(seqCounts.entries()).sort(
-                                                                      (a, b) => (b[1] | 0) - (a[1] | 0),
+                                                                ? Array.from(
+                                                                      seqCounts.entries(),
+                                                                  ).sort(
+                                                                      (a, b) =>
+                                                                          (b[1] | 0) - (a[1] | 0),
                                                                   )
                                                                 : [];
                                                             console.error(
@@ -17797,9 +17846,12 @@ async function main(): Promise<void> {
                                                                             (seqRes.value as any)
                                                                                 .frameIds,
                                                                         )
-                                                                            ? (((seqRes.value as any)
-                                                                                  .frameIds as any[])
-                                                                                  .length | 0)
+                                                                            ? (
+                                                                                  (
+                                                                                      seqRes.value as any
+                                                                                  )
+                                                                                      .frameIds as any[]
+                                                                              ).length | 0
                                                                             : 0;
                                                                     let alphaFramesNonEmpty = 0;
                                                                     let framesMissingModel = 0;
@@ -17854,7 +17906,10 @@ async function main(): Promise<void> {
                                                                             let texTrans = 0;
                                                                             let both = 0;
                                                                             const texCounts =
-                                                                                new Map<number, number>();
+                                                                                new Map<
+                                                                                    number,
+                                                                                    number
+                                                                                >();
                                                                             for (
                                                                                 let fi = 0;
                                                                                 fi < faces.length;
@@ -17868,7 +17923,8 @@ async function main(): Promise<void> {
                                                                                         : 0;
                                                                                 const t =
                                                                                     (f.textureId |
-                                                                                        0) !== -1 &&
+                                                                                        0) !==
+                                                                                        -1 &&
                                                                                     loaders.textureLoader.isTransparent(
                                                                                         f.textureId |
                                                                                             0,
@@ -17890,19 +17946,22 @@ async function main(): Promise<void> {
                                                                                 }
                                                                                 if (a && t) both++;
                                                                             }
-                                                                            const topTex = Array.from(
-                                                                                texCounts.entries(),
-                                                                            )
-                                                                                .sort(
-                                                                                    (x, y) =>
-                                                                                        (y[1] | 0) -
-                                                                                        (x[1] | 0),
+                                                                            const topTex =
+                                                                                Array.from(
+                                                                                    texCounts.entries(),
                                                                                 )
-                                                                                .slice(0, 5)
-                                                                                .map(
-                                                                                    ([id, c]) =>
-                                                                                        `${id}:${c}`,
-                                                                                );
+                                                                                    .sort(
+                                                                                        (x, y) =>
+                                                                                            (y[1] |
+                                                                                                0) -
+                                                                                            (x[1] |
+                                                                                                0),
+                                                                                    )
+                                                                                    .slice(0, 5)
+                                                                                    .map(
+                                                                                        ([id, c]) =>
+                                                                                            `${id}:${c}`,
+                                                                                    );
                                                                             console.error(
                                                                                 `  animated-placeholder probe tsLocAnimGroup frame0 transBreakdown alphaTrans=${alphaTrans} texTrans=${texTrans} both=${both} topTex=${JSON.stringify(
                                                                                     topTex,
@@ -17950,7 +18009,8 @@ async function main(): Promise<void> {
                                                                                     m,
                                                                                 );
                                                                             if (
-                                                                                split.transparentFaces
+                                                                                split
+                                                                                    .transparentFaces
                                                                                     .length > 0
                                                                             ) {
                                                                                 freshAlphaFramesNonEmpty++;
@@ -17963,77 +18023,90 @@ async function main(): Promise<void> {
                                                                         // Measure whether running the full TS build mutates the transparency
                                                                         // classification for this animated-loc.
                                                                         try {
-                                                                            const probeOnce = () => {
-                                                                                const model0 =
-                                                                                    freshLocModelLoader.getModelAnimated(
-                                                                                        targetResolvedLocType,
-                                                                                        targetPt as any,
-                                                                                        targetRot | 0,
-                                                                                        targetSeqId | 0,
-                                                                                        0,
-                                                                                    );
-                                                                                const split0 = model0
-                                                                                    ? splitModelFacesByTransparency(
-                                                                                          loaders.textureLoader,
-                                                                                          model0,
-                                                                                      )
-                                                                                    : undefined;
-                                                                                let alphaFramesNonEmpty2 = 0;
-                                                                                let framesMissingModel2 = 0;
-                                                                                for (
-                                                                                    let fi = 0;
-                                                                                    fi < frameCount;
-                                                                                    fi++
-                                                                                ) {
-                                                                                    const m =
+                                                                            const probeOnce =
+                                                                                () => {
+                                                                                    const model0 =
                                                                                         freshLocModelLoader.getModelAnimated(
                                                                                             targetResolvedLocType,
                                                                                             targetPt as any,
-                                                                                            targetRot | 0,
-                                                                                            targetSeqId | 0,
-                                                                                            fi | 0,
+                                                                                            targetRot |
+                                                                                                0,
+                                                                                            targetSeqId |
+                                                                                                0,
+                                                                                            0,
                                                                                         );
-                                                                                    if (!m) {
-                                                                                        framesMissingModel2++;
-                                                                                        continue;
-                                                                                    }
-                                                                                    const split =
-                                                                                        splitModelFacesByTransparency(
-                                                                                            loaders.textureLoader,
-                                                                                            m,
-                                                                                        );
-                                                                                    if (
-                                                                                        split
-                                                                                            .transparentFaces
-                                                                                            .length > 0
+                                                                                    const split0 =
+                                                                                        model0
+                                                                                            ? splitModelFacesByTransparency(
+                                                                                                  loaders.textureLoader,
+                                                                                                  model0,
+                                                                                              )
+                                                                                            : undefined;
+                                                                                    let alphaFramesNonEmpty2 = 0;
+                                                                                    let framesMissingModel2 = 0;
+                                                                                    for (
+                                                                                        let fi = 0;
+                                                                                        fi <
+                                                                                        frameCount;
+                                                                                        fi++
                                                                                     ) {
-                                                                                        alphaFramesNonEmpty2++;
+                                                                                        const m =
+                                                                                            freshLocModelLoader.getModelAnimated(
+                                                                                                targetResolvedLocType,
+                                                                                                targetPt as any,
+                                                                                                targetRot |
+                                                                                                    0,
+                                                                                                targetSeqId |
+                                                                                                    0,
+                                                                                                fi |
+                                                                                                    0,
+                                                                                            );
+                                                                                        if (!m) {
+                                                                                            framesMissingModel2++;
+                                                                                            continue;
+                                                                                        }
+                                                                                        const split =
+                                                                                            splitModelFacesByTransparency(
+                                                                                                loaders.textureLoader,
+                                                                                                m,
+                                                                                            );
+                                                                                        if (
+                                                                                            split
+                                                                                                .transparentFaces
+                                                                                                .length >
+                                                                                            0
+                                                                                        ) {
+                                                                                            alphaFramesNonEmpty2++;
+                                                                                        }
                                                                                     }
-                                                                                }
-                                                                                return {
-                                                                                    frameCount:
-                                                                                        frameCount | 0,
-                                                                                    frame0OpaqueFaces:
-                                                                                        split0
-                                                                                            ? (split0
-                                                                                                  .opaqueFaces
-                                                                                                  .length | 0)
-                                                                                            : -1,
-                                                                                    frame0TransparentFaces:
-                                                                                        split0
-                                                                                            ? (split0
-                                                                                                  .transparentFaces
-                                                                                                  .length | 0)
-                                                                                            : -1,
-                                                                                    alphaFramesNonEmpty:
-                                                                                        alphaFramesNonEmpty2 |
-                                                                                        0,
-                                                                                    framesMissingModel:
-                                                                                        framesMissingModel2 |
-                                                                                        0,
-                                                                                } as const;
-                                                                            };
-                                                                            const before = probeOnce();
+                                                                                    return {
+                                                                                        frameCount:
+                                                                                            frameCount |
+                                                                                            0,
+                                                                                        frame0OpaqueFaces:
+                                                                                            split0
+                                                                                                ? split0
+                                                                                                      .opaqueFaces
+                                                                                                      .length |
+                                                                                                  0
+                                                                                                : -1,
+                                                                                        frame0TransparentFaces:
+                                                                                            split0
+                                                                                                ? split0
+                                                                                                      .transparentFaces
+                                                                                                      .length |
+                                                                                                  0
+                                                                                                : -1,
+                                                                                        alphaFramesNonEmpty:
+                                                                                            alphaFramesNonEmpty2 |
+                                                                                            0,
+                                                                                        framesMissingModel:
+                                                                                            framesMissingModel2 |
+                                                                                            0,
+                                                                                    } as const;
+                                                                                };
+                                                                            const before =
+                                                                                probeOnce();
                                                                             const sceneBuilderProbe =
                                                                                 new SceneBuilder(
                                                                                     cacheInfo,
@@ -18084,7 +18157,8 @@ async function main(): Promise<void> {
                                                                                         false,
                                                                                 },
                                                                             );
-                                                                            const after = probeOnce();
+                                                                            const after =
+                                                                                probeOnce();
                                                                             console.error(
                                                                                 `  animated-placeholder probe tsAlphaMutationProbe before=${JSON.stringify(
                                                                                     before,
@@ -18209,8 +18283,9 @@ async function main(): Promise<void> {
                                                         );
                                                         try {
                                                             const seqId = entSeq ?? -1;
-                                                            const locsAnimated: any =
-                                                                (tsData as any)?.locsAnimated;
+                                                            const locsAnimated: any = (
+                                                                tsData as any
+                                                            )?.locsAnimated;
                                                             if (
                                                                 seqId >= 0 &&
                                                                 Array.isArray(locsAnimated)
@@ -18222,7 +18297,9 @@ async function main(): Promise<void> {
                                                                     i < locsAnimated.length;
                                                                     i++
                                                                 ) {
-                                                                    const la = locsAnimated[i] as any;
+                                                                    const la = locsAnimated[
+                                                                        i
+                                                                    ] as any;
                                                                     if (
                                                                         (la?.seqId | 0) !==
                                                                         (seqId | 0)
@@ -18273,11 +18350,12 @@ async function main(): Promise<void> {
                                                                         ? seqRes.value
                                                                         : undefined;
                                                                 const frameIds: any =
-                                                                    seqType && (seqType as any).frameIds;
+                                                                    seqType &&
+                                                                    (seqType as any).frameIds;
                                                                 const frameId0 =
                                                                     Array.isArray(frameIds) &&
                                                                     frameIds.length > 0
-                                                                        ? (frameIds[0] | 0)
+                                                                        ? frameIds[0] | 0
                                                                         : -1;
                                                                 if (frameId0 >= 0) {
                                                                     const baseLocRes =
@@ -18288,31 +18366,39 @@ async function main(): Promise<void> {
                                                                         baseLocRes && baseLocRes.ok
                                                                             ? baseLocRes.value
                                                                             : undefined;
-                                                                    const resolvedLoc: any = baseLoc;
-                                                                    const model0 =
-                                                                        (sceneBuildInput as any).locModelLoader.getModelAnimated?.(
-                                                                            resolvedLoc,
-                                                                            pt,
-                                                                            rot,
-                                                                            seqId,
-                                                                            0,
-                                                                        );
+                                                                    const resolvedLoc: any =
+                                                                        baseLoc;
+                                                                    const model0 = (
+                                                                        sceneBuildInput as any
+                                                                    ).locModelLoader.getModelAnimated?.(
+                                                                        resolvedLoc,
+                                                                        pt,
+                                                                        rot,
+                                                                        seqId,
+                                                                        0,
+                                                                    );
                                                                     const tsDigest = model0
                                                                         ? summarizeModelFaces(
-                                                                              (sceneBuildInput as any)
-                                                                                  .textureLoader,
+                                                                              (
+                                                                                  sceneBuildInput as any
+                                                                              ).textureLoader,
                                                                               model0,
                                                                           )
                                                                         : undefined;
                                                                     if (model0) {
                                                                         try {
                                                                             const faces =
-                                                                                getModelFaces(model0);
+                                                                                getModelFaces(
+                                                                                    model0,
+                                                                                );
                                                                             let alphaTrans = 0;
                                                                             let texTrans = 0;
                                                                             let both = 0;
                                                                             const texCounts =
-                                                                                new Map<number, number>();
+                                                                                new Map<
+                                                                                    number,
+                                                                                    number
+                                                                                >();
                                                                             for (
                                                                                 let fi = 0;
                                                                                 fi < faces.length;
@@ -18326,8 +18412,11 @@ async function main(): Promise<void> {
                                                                                         : 0;
                                                                                 const t =
                                                                                     (f.textureId |
-                                                                                        0) !== -1 &&
-                                                                                    (sceneBuildInput as any).textureLoader.isTransparent(
+                                                                                        0) !==
+                                                                                        -1 &&
+                                                                                    (
+                                                                                        sceneBuildInput as any
+                                                                                    ).textureLoader.isTransparent(
                                                                                         f.textureId |
                                                                                             0,
                                                                                     )
@@ -18348,19 +18437,22 @@ async function main(): Promise<void> {
                                                                                 }
                                                                                 if (a && t) both++;
                                                                             }
-                                                                            const topTex = Array.from(
-                                                                                texCounts.entries(),
-                                                                            )
-                                                                                .sort(
-                                                                                    (x, y) =>
-                                                                                        (y[1] | 0) -
-                                                                                        (x[1] | 0),
+                                                                            const topTex =
+                                                                                Array.from(
+                                                                                    texCounts.entries(),
                                                                                 )
-                                                                                .slice(0, 5)
-                                                                                .map(
-                                                                                    ([id, c]) =>
-                                                                                        `${id}:${c}`,
-                                                                                );
+                                                                                    .sort(
+                                                                                        (x, y) =>
+                                                                                            (y[1] |
+                                                                                                0) -
+                                                                                            (x[1] |
+                                                                                                0),
+                                                                                    )
+                                                                                    .slice(0, 5)
+                                                                                    .map(
+                                                                                        ([id, c]) =>
+                                                                                            `${id}:${c}`,
+                                                                                    );
                                                                             console.log(
                                                                                 `  animated-placeholder frame0 transBreakdown locType=${
                                                                                     wantInteractId |
@@ -18373,9 +18465,10 @@ async function main(): Promise<void> {
                                                                             // ignore
                                                                         }
                                                                     }
-                                                                    const frameCount = Array.isArray(frameIds)
-                                                                        ? (frameIds.length | 0)
-                                                                        : 0;
+                                                                    const frameCount =
+                                                                        Array.isArray(frameIds)
+                                                                            ? frameIds.length | 0
+                                                                            : 0;
                                                                     let alphaFramesNonEmpty = 0;
                                                                     let framesMissingModel = 0;
                                                                     if (frameCount > 0) {
@@ -18384,26 +18477,30 @@ async function main(): Promise<void> {
                                                                             fi < frameCount;
                                                                             fi++
                                                                         ) {
-                                                                            const m =
-                                                                                (sceneBuildInput as any).locModelLoader.getModelAnimated?.(
-                                                                                    resolvedLoc,
-                                                                                    pt,
-                                                                                    rot,
-                                                                                    seqId,
-                                                                                    fi,
-                                                                                );
+                                                                            const m = (
+                                                                                sceneBuildInput as any
+                                                                            ).locModelLoader.getModelAnimated?.(
+                                                                                resolvedLoc,
+                                                                                pt,
+                                                                                rot,
+                                                                                seqId,
+                                                                                fi,
+                                                                            );
                                                                             if (!m) {
                                                                                 framesMissingModel++;
                                                                                 continue;
                                                                             }
                                                                             const split =
                                                                                 splitModelFacesByTransparency(
-                                                                                    (sceneBuildInput as any)
-                                                                                        .textureLoader,
+                                                                                    (
+                                                                                        sceneBuildInput as any
+                                                                                    ).textureLoader,
                                                                                     m,
                                                                                 );
                                                                             if (
-                                                                                split.transparentFaces.length > 0
+                                                                                split
+                                                                                    .transparentFaces
+                                                                                    .length > 0
                                                                             ) {
                                                                                 alphaFramesNonEmpty++;
                                                                             }
@@ -18616,11 +18713,15 @@ async function main(): Promise<void> {
                                                             try {
                                                                 if (
                                                                     !hasMaya &&
-                                                                    Array.isArray((seq as any).frameIds) &&
+                                                                    Array.isArray(
+                                                                        (seq as any).frameIds,
+                                                                    ) &&
                                                                     (seq as any).frameIds.length > 0
                                                                 ) {
-                                                                    const frameId0 = ((seq as any)
-                                                                        .frameIds[0] as number) | 0;
+                                                                    const frameId0 =
+                                                                        ((seq as any)
+                                                                            .frameIds[0] as number) |
+                                                                        0;
                                                                     // Re-find the TS loc-record at this placeholder position so we can
                                                                     // pass the exact placementType/rotation into getModelAnimated.
                                                                     let pt = -1;
@@ -18629,18 +18730,27 @@ async function main(): Promise<void> {
                                                                         const recs =
                                                                             ensureTsSceneLocRecords() ??
                                                                             [];
-                                                                        for (let ri = 0; ri < recs.length; ri++) {
-                                                                            const r = recs[ri] as any;
+                                                                        for (
+                                                                            let ri = 0;
+                                                                            ri < recs.length;
+                                                                            ri++
+                                                                        ) {
+                                                                            const r = recs[
+                                                                                ri
+                                                                            ] as any;
                                                                             if (
-                                                                                (r.id >>> 0) ===
-                                                                                    (wantInteractId >>>
-                                                                                        0) &&
+                                                                                r.id >>> 0 ===
+                                                                                    wantInteractId >>>
+                                                                                        0 &&
                                                                                 (r.level | 0) ===
-                                                                                    (wantLevel | 0) &&
+                                                                                    (wantLevel |
+                                                                                        0) &&
                                                                                 (r.sceneX | 0) ===
-                                                                                    (wantSceneX | 0) &&
+                                                                                    (wantSceneX |
+                                                                                        0) &&
                                                                                 (r.sceneZ | 0) ===
-                                                                                    (wantSceneZ | 0) &&
+                                                                                    (wantSceneZ |
+                                                                                        0) &&
                                                                                 (r.priority | 0) ===
                                                                                     (wantPri | 0)
                                                                             ) {
@@ -18657,26 +18767,29 @@ async function main(): Promise<void> {
                                                                         // ignore
                                                                     }
                                                                     if (pt >= 0 && rot >= 0) {
-                                                                        const model0 =
-                                                                            (sceneBuildInput as any)
-                                                                                ?.locModelLoader?.getModelAnimated?.(
-                                                                                resolvedLoc,
-                                                                                pt | 0,
-                                                                                rot | 0,
-                                                                                seqId | 0,
-                                                                                0,
-                                                                            );
+                                                                        const model0 = (
+                                                                            sceneBuildInput as any
+                                                                        )?.locModelLoader?.getModelAnimated?.(
+                                                                            resolvedLoc,
+                                                                            pt | 0,
+                                                                            rot | 0,
+                                                                            seqId | 0,
+                                                                            0,
+                                                                        );
                                                                         const tsDigest = model0
                                                                             ? summarizeModelFaces(
                                                                                   loaders.textureLoader,
                                                                                   model0,
                                                                               )
                                                                             : undefined;
-                                                                        const frameIds = (seq as any)
-                                                                            .frameIds as number[];
-                                                                        const frameCount = Array.isArray(frameIds)
-                                                                            ? (frameIds.length | 0)
-                                                                            : 0;
+                                                                        const frameIds = (
+                                                                            seq as any
+                                                                        ).frameIds as number[];
+                                                                        const frameCount =
+                                                                            Array.isArray(frameIds)
+                                                                                ? frameIds.length |
+                                                                                  0
+                                                                                : 0;
                                                                         let alphaFramesNonEmpty = 0;
                                                                         let framesMissingModel = 0;
                                                                         if (frameCount > 0) {
@@ -18685,15 +18798,15 @@ async function main(): Promise<void> {
                                                                                 fi < frameCount;
                                                                                 fi++
                                                                             ) {
-                                                                                const m =
-                                                                                    (sceneBuildInput as any)
-                                                                                        ?.locModelLoader?.getModelAnimated?.(
-                                                                                        resolvedLoc,
-                                                                                        pt | 0,
-                                                                                        rot | 0,
-                                                                                        seqId | 0,
-                                                                                        fi,
-                                                                                    );
+                                                                                const m = (
+                                                                                    sceneBuildInput as any
+                                                                                )?.locModelLoader?.getModelAnimated?.(
+                                                                                    resolvedLoc,
+                                                                                    pt | 0,
+                                                                                    rot | 0,
+                                                                                    seqId | 0,
+                                                                                    fi,
+                                                                                );
                                                                                 if (!m) {
                                                                                     framesMissingModel++;
                                                                                     continue;
@@ -18718,7 +18831,8 @@ async function main(): Promise<void> {
                                                                             ? runtimeDebugGetLocClassicAnimFrameFacesDigestWithWasm(
                                                                                   bm,
                                                                                   runtimeHandle,
-                                                                                  resolvedLoc.id | 0,
+                                                                                  resolvedLoc.id |
+                                                                                      0,
                                                                                   pt | 0,
                                                                                   rot | 0,
                                                                                   frameId0,
@@ -18729,7 +18843,9 @@ async function main(): Promise<void> {
                                                                                 resolvedLoc.id | 0
                                                                             } pt=${pt | 0} rot=${
                                                                                 rot | 0
-                                                                            } seqId=${seqId | 0} frameId0=${frameId0} ts=${
+                                                                            } seqId=${
+                                                                                seqId | 0
+                                                                            } frameId0=${frameId0} ts=${
                                                                                 tsDigest
                                                                                     ? JSON.stringify(
                                                                                           tsDigest,
@@ -19267,7 +19383,9 @@ async function main(): Promise<void> {
                                 cache.modelInfoTextures[b],
                             );
                             // Help chase obj/loc mismatches: summarize interact types/ids for each bucket.
-                            const summarizeInteractTypes = (inst: ReturnType<typeof decodeModelInfoTextureInstances>) => {
+                            const summarizeInteractTypes = (
+                                inst: ReturnType<typeof decodeModelInfoTextureInstances>,
+                            ) => {
                                 const counts = new Map<number, number>();
                                 const objIds = new Set<number>();
                                 for (let i = 0; i < inst.length; i++) {
@@ -19278,37 +19396,53 @@ async function main(): Promise<void> {
                                     }
                                 }
                                 return {
-                                    counts: Array.from(counts.entries()).sort((a, c) => a[0] - c[0]),
-                                    objIds: Array.from(objIds).sort((a, c) => a - c).slice(0, 16),
+                                    counts: Array.from(counts.entries()).sort(
+                                        (a, c) => a[0] - c[0],
+                                    ),
+                                    objIds: Array.from(objIds)
+                                        .sort((a, c) => a - c)
+                                        .slice(0, 16),
                                 };
                             };
                             const tsSummary = summarizeInteractTypes(tsInst);
                             const cacheSummary = summarizeInteractTypes(cacheInst);
                             if (
-                                JSON.stringify(tsSummary.counts) !== JSON.stringify(cacheSummary.counts) ||
-                                JSON.stringify(tsSummary.objIds) !== JSON.stringify(cacheSummary.objIds)
+                                JSON.stringify(tsSummary.counts) !==
+                                    JSON.stringify(cacheSummary.counts) ||
+                                JSON.stringify(tsSummary.objIds) !==
+                                    JSON.stringify(cacheSummary.objIds)
                             ) {
                                 console.error(
                                     `  modelInfo bucket=${b} interactTypeCounts ts=${JSON.stringify(
                                         tsSummary.counts,
                                     )} cache=${JSON.stringify(cacheSummary.counts)} ` +
-                                        `objIds ts=${JSON.stringify(tsSummary.objIds)} cache=${JSON.stringify(
-                                            cacheSummary.objIds,
-                                        )}`,
+                                        `objIds ts=${JSON.stringify(
+                                            tsSummary.objIds,
+                                        )} cache=${JSON.stringify(cacheSummary.objIds)}`,
                                 );
                             }
                             const cacheCmdArraysForScan = cacheCmdArraysAfter;
-                            if (cacheSummary.objIds.length > 0 && b === "interact" && cacheCmdArraysForScan) {
+                            if (
+                                cacheSummary.objIds.length > 0 &&
+                                b === "interact" &&
+                                cacheCmdArraysForScan
+                            ) {
                                 try {
                                     const insts: any[] = [];
                                     let base = 0;
-                                    for (let ci = 0; ci < cacheCmdArraysForScan.cmdBucketIndices.length; ci++) {
-                                        const bucketKey = cacheCmdArraysForScan.cmdBucketIndices[ci] | 0;
+                                    for (
+                                        let ci = 0;
+                                        ci < cacheCmdArraysForScan.cmdBucketIndices.length;
+                                        ci++
+                                    ) {
+                                        const bucketKey =
+                                            cacheCmdArraysForScan.cmdBucketIndices[ci] | 0;
                                         const ic =
                                             ci < cacheCmdArraysForScan.cmdInstanceCounts.length
                                                 ? cacheCmdArraysForScan.cmdInstanceCounts[ci] | 0
                                                 : 0;
-                                        if (bucketKey !== 4) { // interact
+                                        if (bucketKey !== 4) {
+                                            // interact
                                             base += ic;
                                             continue;
                                         }
@@ -19329,7 +19463,9 @@ async function main(): Promise<void> {
                                     }
                                     if (insts.length > 0) {
                                         console.error(
-                                            `  cache interact OBJ instances(sample)=${JSON.stringify(insts)}`,
+                                            `  cache interact OBJ instances(sample)=${JSON.stringify(
+                                                insts,
+                                            )}`,
                                         );
                                     }
                                 } catch (e) {

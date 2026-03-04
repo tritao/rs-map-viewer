@@ -1,13 +1,19 @@
-import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "../../runtime/contracts/NpcGpuFrame";
 import {
-    parseFramePacket,
     type FramePacket,
     type ParsedFramePacket,
     type ParsedFrameTickPatches,
+    parseFramePacket,
 } from "../../runtime/contracts/FramePacket";
+import {
+    NPC_DATA_TEXTURE_RING_SIZE,
+    type NpcGpuFrameData,
+} from "../../runtime/contracts/NpcGpuFrame";
 
 export class WebGLFramePacketState {
-    private readonly npcDataRangesByMapIdByRing: Map<number, Readonly<{ start: number; count: number }>>[] = Array.from(
+    private readonly npcDataRangesByMapIdByRing: Map<
+        number,
+        Readonly<{ start: number; count: number }>
+    >[] = Array.from(
         { length: NPC_DATA_TEXTURE_RING_SIZE },
         () => new Map<number, Readonly<{ start: number; count: number }>>(),
     );
@@ -73,7 +79,9 @@ export class WebGLFramePacketState {
             NPC_DATA_TEXTURE_RING_SIZE;
     }
 
-    getNpcDataRangeForCurrentRing(mapId: number): Readonly<{ start: number; count: number }> | undefined {
+    getNpcDataRangeForCurrentRing(
+        mapId: number,
+    ): Readonly<{ start: number; count: number }> | undefined {
         const ringRanges = this.npcDataRangesByMapIdByRing[this.npcDataRingIndex | 0];
         return ringRanges?.get(mapId | 0);
     }

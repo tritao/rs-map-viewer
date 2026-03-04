@@ -1,12 +1,12 @@
 import { vec3 } from "gl-matrix";
 
+import { InteractType } from "../../renderer/InteractType";
 import { Model, computeTextureCoords } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { clamp } from "../../util/MathUtil";
 import { DrawRange, newDrawRange } from "../contracts/DrawRange";
-import { InteractType } from "../../renderer/InteractType";
 import { LocAnimatedData } from "../entities/LocAnimatedData";
 import { LocAnimatedGroup } from "../entities/LocAnimatedGroup";
 import { SceneLocEntity } from "./SceneLocEntity";
@@ -137,10 +137,8 @@ export function summarizeTerrainGeometry(
                     const v = vertices[i];
                     const id0 = v.textureId | 0;
                     const id1 = v.textureId1 | 0;
-                    const tex0 =
-                        id0 >= 0 && textureLoader && textureLoader.isSd(id0) ? id0 : -1;
-                    const tex1 =
-                        id1 >= 0 && textureLoader && textureLoader.isSd(id1) ? id1 : -1;
+                    const tex0 = id0 >= 0 && textureLoader && textureLoader.isSd(id0) ? id0 : -1;
+                    const tex1 = id1 >= 0 && textureLoader && textureLoader.isSd(id1) ? id1 : -1;
                     hash = fnv1a32UpdateInt(hash, v.x | 0);
                     hash = fnv1a32UpdateInt(hash, v.y | 0);
                     hash = fnv1a32UpdateInt(hash, v.z | 0);

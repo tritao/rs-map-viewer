@@ -2,26 +2,26 @@ import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { Camera, CameraView, ProjectionType } from "./Camera";
-import { MapManager } from "./MapManager";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { CacheInfo } from "../rs/cache/CacheInfo";
 import { DownloadProgress, ProgressListener } from "../rs/cache/platform/CacheLoader";
 import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
+import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
 import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
+import type { NpcEvent } from "../runtime/sim/NpcEvents";
+import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
-import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import type { BackendKind } from "../util/BackendKind";
-import type { NpcEvent } from "../runtime/sim/NpcEvents";
+import { Camera, CameraView, ProjectionType } from "./Camera";
+import { MapManager } from "./MapManager";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -55,8 +55,7 @@ function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRunti
 
 function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOptions): boolean {
     return (
-        a.mapRenderBackend === b.mapRenderBackend &&
-        a.mapRenderTelemetry === b.mapRenderTelemetry
+        a.mapRenderBackend === b.mapRenderBackend && a.mapRenderTelemetry === b.mapRenderTelemetry
     );
 }
 
@@ -297,7 +296,10 @@ export class MapViewer {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
         await Promise.all([
-            this.renderWorkerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions),
+            this.renderWorkerPool.initCacheAndWait(
+                this.cacheContext.loadedCache,
+                this.runtimeOptions,
+            ),
             this.simWorkerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions),
         ]);
         this.clearMapImageUrls();

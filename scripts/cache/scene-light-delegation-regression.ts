@@ -1,17 +1,9 @@
-import { ModelHashBuffer } from "../../src/runtime/build/ModelHashBuffer";
-import { SceneBuffer } from "../../src/runtime/build/SceneBuffer";
-import {
-    DRAW_BUCKET_KEYS,
-    collectRuntimeDrawCommandBuckets,
-} from "../../src/runtime/build/SceneCommandBuilder";
-import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
-import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { MergeNormalsScratch } from "../../src/rs/model/ModelData";
-import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { Scene } from "../../src/rs/scene/Scene";
 import {
     createSceneBuildContext,
@@ -22,6 +14,14 @@ import {
 import { LocLoadType, SceneBuilder } from "../../src/rs/scene/SceneBuilder";
 import { lightSceneModelData } from "../../src/rs/scene/SceneLighting";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
+import { ModelHashBuffer } from "../../src/runtime/build/ModelHashBuffer";
+import { SceneBuffer } from "../../src/runtime/build/SceneBuffer";
+import {
+    DRAW_BUCKET_KEYS,
+    collectRuntimeDrawCommandBuckets,
+} from "../../src/runtime/build/SceneCommandBuilder";
+import { emitSceneModelsToSceneBuffer } from "../../src/runtime/build/SceneCommandPlan";
+import { getSceneLocs } from "../../src/runtime/build/SceneLocs";
 import { loadCache, loadCacheInfos } from "./load-util";
 
 type Square = Readonly<{ mapX: number; mapY: number }>;

@@ -52,7 +52,9 @@ export abstract class Type {
             try {
                 this.decodeOpcode(opcode, buffer);
             } catch (cause) {
-                const error = new Error(`${this.constructor.name}: opcode ${opcode} failed`) as Error & {
+                const error = new Error(
+                    `${this.constructor.name}: opcode ${opcode} failed`,
+                ) as Error & {
                     opcode: number;
                     offset: number;
                     cause?: unknown;

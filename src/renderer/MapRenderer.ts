@@ -1,15 +1,15 @@
 import Denque from "denque";
 import { vec4 } from "gl-matrix";
 
-import { Scene } from "../rs/scene/Scene";
-import { LoadedCache } from "../util/Caches";
-import { FrameStats, Renderer, RendererStats } from "./Renderer";
 import { MapData } from "../maprender/MapRenderPayload";
+import { Scene } from "../rs/scene/Scene";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
 } from "../runtime/contracts/Interaction";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
+import { LoadedCache } from "../util/Caches";
+import { FrameStats, Renderer, RendererStats } from "./Renderer";
 
 type MapRemovalInfo = Readonly<{
     mapId: number;

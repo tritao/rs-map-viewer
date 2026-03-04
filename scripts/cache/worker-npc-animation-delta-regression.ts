@@ -2,13 +2,11 @@ import assert from "node:assert/strict";
 
 import type { RenderDataResult } from "../../src/maprender/MapRenderBackend";
 import type { SdMapData } from "../../src/maprender/MapRenderPayload";
+import { encodeNpcLifecyclePacketFromEvents } from "../../src/runtime/contracts/NpcLifecyclePacket";
 import {
     buildNpcStateDeltaPacketFromEvents,
     decodeNpcStateDeltaPacketEvents,
 } from "../../src/runtime/contracts/NpcStateDeltaPacket";
-import {
-    encodeNpcLifecyclePacketFromEvents,
-} from "../../src/runtime/contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "../../src/runtime/contracts/NpcTypeAnimationTable";
 import type { NpcEvent } from "../../src/runtime/sim/NpcEvents";
 import { WorkerFramePacketRuntime } from "../../src/worker/tick/WorkerFramePacketRuntime";
@@ -110,13 +108,7 @@ async function main(): Promise<void> {
     ];
 
     registerSimMapState(simRuntime, workerState, mapId, npcTypeAnimationTable);
-    await frameRuntime.registerMapNpcRenderState(
-        mapId,
-        0,
-        [],
-        [],
-        npcTypeAnimationTable,
-    );
+    await frameRuntime.registerMapNpcRenderState(mapId, 0, [], [], npcTypeAnimationTable);
     simRuntime.setTickMapIds(Int32Array.from([mapId]));
     simRuntime.setTickViewState(50, 50, 2);
     frameRuntime.setTickMapIds(Int32Array.from([mapId]));

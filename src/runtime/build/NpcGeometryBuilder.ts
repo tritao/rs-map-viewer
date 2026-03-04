@@ -182,10 +182,7 @@ export function buildNpcGeometry(input: BuildNpcGeometryInput): BuiltNpcGeometry
         };
     }
 
-    const sceneBuf = new SceneBuffer(
-        input.textureLoader,
-        NPC_SCENE_BUFFER_INIT_VERTEX_COUNT,
-    );
+    const sceneBuf = new SceneBuffer(input.textureLoader, NPC_SCENE_BUFFER_INIT_VERTEX_COUNT);
     const npcSpawnGroups = createNpcSpawnGroups(
         input.npcModelLoader,
         input.npcTypeLoader,
@@ -196,17 +193,19 @@ export function buildNpcGeometry(input: BuildNpcGeometryInput): BuiltNpcGeometry
     );
     const npcs = createNpcDatas(npcSpawnGroups);
 
-    const npcVertices =
-        sceneBuf.vertexCount() > 0 ? sceneBuf.vertexBuf.byteArray() : undefined;
-    const npcIndices =
-        sceneBuf.indices.length > 0 ? new Int32Array(sceneBuf.indices) : undefined;
+    const npcVertices = sceneBuf.vertexCount() > 0 ? sceneBuf.vertexBuf.byteArray() : undefined;
+    const npcIndices = sceneBuf.indices.length > 0 ? new Int32Array(sceneBuf.indices) : undefined;
     const hasNpcGeometry =
         npcVertices instanceof Uint8Array &&
         npcVertices.length > 0 &&
         npcIndices instanceof Int32Array &&
         npcIndices.length > 0;
-    const npcDrawRangesBase = hasNpcGeometry ? createDefaultNpcDrawRanges(npcs.length | 0) : undefined;
-    const npcDrawRangesAlpha = hasNpcGeometry ? createDefaultNpcDrawRanges(npcs.length | 0) : undefined;
+    const npcDrawRangesBase = hasNpcGeometry
+        ? createDefaultNpcDrawRanges(npcs.length | 0)
+        : undefined;
+    const npcDrawRangesAlpha = hasNpcGeometry
+        ? createDefaultNpcDrawRanges(npcs.length | 0)
+        : undefined;
 
     return {
         npcs,

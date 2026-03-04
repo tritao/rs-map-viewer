@@ -2,6 +2,9 @@ import JSZip from "jszip";
 import { TransferDescriptor } from "threads";
 import { Transfer } from "threads/worker";
 
+import { createMapRenderBackend } from "../maprender/MapRenderBackend";
+import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import { MinimapData, loadMinimapBlob } from "../maprender/ts/MinimapData";
 import { CacheType } from "../rs/cache/CacheType";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
@@ -19,17 +22,14 @@ import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { IndexedSprite } from "../rs/sprite/IndexedSprite";
 import { SpriteLoader } from "../rs/sprite/SpriteLoader";
+import {
+    type StaticMapPacket,
+    buildStaticMapPacket,
+    staticMapPacketTransferables,
+} from "../runtime/contracts/StaticMapPacket";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
-import { createMapRenderBackend } from "../maprender/MapRenderBackend";
-import { MinimapData, loadMinimapBlob } from "../maprender/ts/MinimapData";
-import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
-import {
-    buildStaticMapPacket,
-    staticMapPacketTransferables,
-    type StaticMapPacket,
-} from "../runtime/contracts/StaticMapPacket";
 import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
@@ -282,7 +282,8 @@ export class RenderDataWorkerBuild {
         }
         const packet = buildStaticMapPacket(data);
         const packetTransferables = staticMapPacketTransferables(packet);
-        const allTransferables = packetTransferables.length > 0 ? packetTransferables : transferables;
+        const allTransferables =
+            packetTransferables.length > 0 ? packetTransferables : transferables;
         return Transfer<StaticMapPacket | undefined>(packet, allTransferables);
     }
 

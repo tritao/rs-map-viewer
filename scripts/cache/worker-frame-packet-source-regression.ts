@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
-import { buildFramePacket, type FramePacket } from "../../src/runtime/contracts/FramePacket";
 import { WorkerMapViewerFramePacketSource } from "../../src/mapviewer/MapViewerFramePacketSource";
+import { type FramePacket, buildFramePacket } from "../../src/runtime/contracts/FramePacket";
 
 function makePacket(
     frameCount: number,
@@ -152,8 +152,8 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
         buildFramePacketFromRenderState: async (frameCount: number, _cycle: number) => {
             const shouldEmitStale = staleViewOnce && (frameCount | 0) >= 2;
             const packetViewVersion = shouldEmitStale
-                ? ((tickViewStateVersion - 1) | 0)
-                : (tickViewStateVersion | 0);
+                ? (tickViewStateVersion - 1) | 0
+                : tickViewStateVersion | 0;
             if (shouldEmitStale) {
                 staleViewOnce = false;
             }

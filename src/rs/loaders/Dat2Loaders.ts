@@ -160,11 +160,7 @@ export function tryCreateDat2LoaderSources(
     if (!modelsIndexResult.ok) {
         return modelsIndexResult;
     }
-    const skeletonsIndexResult = requireIndex(
-        cacheSystem,
-        Dat2IndexId.skeletons,
-        "dat2 skeletons",
-    );
+    const skeletonsIndexResult = requireIndex(cacheSystem, Dat2IndexId.skeletons, "dat2 skeletons");
     if (!skeletonsIndexResult.ok) {
         return skeletonsIndexResult;
     }
@@ -183,7 +179,11 @@ export function tryCreateDat2LoaderSources(
 
     let materialsBytes: Uint8Array | undefined;
     if (rules.texture.mode === "materials") {
-        const materialsIndexResult = requireIndex(cacheSystem, Rs2IndexId.materials, "rs2 materials");
+        const materialsIndexResult = requireIndex(
+            cacheSystem,
+            Rs2IndexId.materials,
+            "rs2 materials",
+        );
         if (!materialsIndexResult.ok) {
             return materialsIndexResult;
         }
@@ -300,7 +300,6 @@ export function tryCreateDat2LoadersFromSources(
     _cacheType: CacheType,
     sources: Dat2LoaderSources,
 ): Result<Loaders, InitError> {
-
     const rules = sources.rules;
     const configIndex = sources.configIndex;
     const spriteIndex = sources.spriteIndex;

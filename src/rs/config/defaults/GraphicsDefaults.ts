@@ -1,8 +1,8 @@
 import { Result, err, ok } from "../../../util/Result";
+import type { CacheIndex } from "../../cache/CacheIndex";
 import { CacheInfo, GameType } from "../../cache/CacheInfo";
 import { CacheSystem } from "../../cache/CacheSystem";
 import { Dat2IndexId, OsrsIndexId, Rs2IndexId } from "../../cache/IndexId";
-import type { CacheIndex } from "../../cache/CacheIndex";
 import { ByteBuffer } from "../../io/ByteBuffer";
 import { InitError, missingFile, missingIndex } from "../../loaders/InitError";
 import { Type } from "../Type";

@@ -3,9 +3,9 @@ import PicoGL, { App as PicoApp, Texture } from "picogl";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
+import { createTextureArray } from "./PicoTexture";
 import { TEXTURE_ID_LUT_HEIGHT, TEXTURE_ID_LUT_WIDTH } from "./texture/TextureIdLut";
 import { TextureResidencyPolicy } from "./texture/TextureResidencyPolicy";
-import { createTextureArray } from "./PicoTexture";
 
 const TEXTURE_SIZE = 128;
 const MAX_TEXTURE_SLOTS = 256;
@@ -67,7 +67,9 @@ export class WebGLTextureResidency {
         console.log(
             `texture debug: slots=${this.policy.textureSlotCount - 1} visible=${
                 this.policy.visibleTextureIds.size
-            } resident=${this.policy.textureIdToSlot.size} free=${this.policy.freeTextureSlots.length}`,
+            } resident=${this.policy.textureIdToSlot.size} free=${
+                this.policy.freeTextureSlots.length
+            }`,
         );
 
         const sampleIds: number[] = [];
@@ -83,7 +85,9 @@ export class WebGLTextureResidency {
             const slot = this.policy.textureIdToSlot.get(textureId) ?? 0;
             const pixels = this.policy.texturePixelCache.get(textureId);
             if (!pixels) {
-                console.log(`texture debug: id=${textureId} index=${index} slot=${slot} pixels=missing`);
+                console.log(
+                    `texture debug: id=${textureId} index=${index} slot=${slot} pixels=missing`,
+                );
                 continue;
             }
 
@@ -100,7 +104,9 @@ export class WebGLTextureResidency {
             }
             const p0 = pixels[0] | 0;
             console.log(
-                `texture debug: id=${textureId} index=${index} slot=${slot} chroma=${chroma}/${n} p0=0x${(p0 >>> 0)
+                `texture debug: id=${textureId} index=${index} slot=${slot} chroma=${chroma}/${n} p0=0x${(
+                    p0 >>> 0
+                )
                     .toString(16)
                     .padStart(8, "0")}`,
             );
@@ -154,11 +160,16 @@ export class WebGLTextureResidency {
             if (this.policy.textureIdToSlot.has(id)) {
                 continue;
             }
-            const result = this.policy.ensureTextureInSlot(id, pixels, this.policy.visibleTextureIds, {
-                tryLoadPixels: (textureId) =>
-                    this.textureLoader?.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0),
-                uploadToSlot: (_textureId, slot, px) => this.uploadTextureToSlot(slot, px),
-            });
+            const result = this.policy.ensureTextureInSlot(
+                id,
+                pixels,
+                this.policy.visibleTextureIds,
+                {
+                    tryLoadPixels: (textureId) =>
+                        this.textureLoader?.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0),
+                    uploadToSlot: (_textureId, slot, px) => this.uploadTextureToSlot(slot, px),
+                },
+            );
             lutDirty ||= result.lutDirty;
             updatedCount += result.updated ? 1 : 0;
         }
@@ -179,7 +190,12 @@ export class WebGLTextureResidency {
     ): void {
         this.policy.updateVisibleTextureIds(visibleUsedTextureIds, frameCount | 0);
 
-        if (!this.textureArray || !this.textureSlotLut || !this.policy.textureSlotLutData || !this.gl) {
+        if (
+            !this.textureArray ||
+            !this.textureSlotLut ||
+            !this.policy.textureSlotLutData ||
+            !this.gl
+        ) {
             return;
         }
 
@@ -227,9 +243,9 @@ export class WebGLTextureResidency {
             TEXTURE_ID_LUT_WIDTH,
             TEXTURE_ID_LUT_HEIGHT,
             {
-            internalFormat: PicoGL.R16UI,
-            minFilter: PicoGL.NEAREST,
-            magFilter: PicoGL.NEAREST,
+                internalFormat: PicoGL.R16UI,
+                minFilter: PicoGL.NEAREST,
+                magFilter: PicoGL.NEAREST,
             },
         );
     }
@@ -255,7 +271,9 @@ export class WebGLTextureResidency {
         pixels.fill(0xffffffff, 0, pixelCount);
 
         console.log(
-            `init texture slots: slots=${slotCount} maxLayers=${maxArrayLayers} textureIds=${this.policy.getTextureIds().length}`,
+            `init texture slots: slots=${slotCount} maxLayers=${maxArrayLayers} textureIds=${
+                this.policy.getTextureIds().length
+            }`,
         );
 
         if (this.policy.getTextureIds().length + 1 > slotCount) {
@@ -271,7 +289,12 @@ export class WebGLTextureResidency {
         for (let i = 0; i < maxPreloadTextures; i++) {
             const slot = i + 1;
             const textureId = textureIds[i];
-            const texturePixels = textureLoader.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0);
+            const texturePixels = textureLoader.tryGetPixelsArgb(
+                textureId,
+                TEXTURE_SIZE,
+                true,
+                1.0,
+            );
             if (texturePixels) {
                 pixels.set(texturePixels, slot * pixelCount);
             } else {

@@ -19,10 +19,7 @@ function testReadWasmPatchStreamsForMap(): void {
     const counts = makeCountsForOneMap(mapId);
     counts[1 + 0] = 1;
     counts[1 + 2] = 1;
-    const packed = new Int32Array([
-        10, 20, 30, 40,
-        50, 60, 70, 80,
-    ]);
+    const packed = new Int32Array([10, 20, 30, 40, 50, 60, 70, 80]);
 
     const ok = readWasmPatchStreamsForMap(mapId, 0, 0, counts, packed);
     assert.equal(ok.hasWasmCountsForMap, true);

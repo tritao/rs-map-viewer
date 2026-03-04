@@ -1,16 +1,13 @@
 import { vec2 } from "gl-matrix";
 import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 
+import type { SdMapData } from "../../maprender/MapRenderPayload";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
-import type { SdMapData } from "../../maprender/MapRenderPayload";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
-export class WebGLMapSquare
-    extends WebGLRenderable
-    implements MapSquareRenderable
-{
+export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
     drawCallNpc!: DrawCallRange;
 
     static load(
@@ -115,13 +112,7 @@ export class WebGLMapSquare
         readonly frameLoaded: number,
     ) {
         const mapId = getMapSquareId(mapX, mapY);
-        super(
-            mapId,
-            borderSize,
-            tileRenderFlags,
-            timeLoaded,
-            frameLoaded,
-        );
+        super(mapId, borderSize, tileRenderFlags, timeLoaded, frameLoaded);
     }
 
     getMapDistance(mapX: number, mapY: number): number {

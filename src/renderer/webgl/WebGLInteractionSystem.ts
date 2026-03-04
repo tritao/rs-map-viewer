@@ -1,6 +1,5 @@
-import type { App as PicoApp, Framebuffer } from "picogl";
+import type { Framebuffer, App as PicoApp } from "picogl";
 import PicoGL from "picogl";
-import { pixelRatio } from "../../util/DeviceUtil";
 
 import {
     INTERACTION_RADIUS,
@@ -8,6 +7,7 @@ import {
     type InteractionInput,
 } from "../../runtime/contracts/Interaction";
 import { InteractionState } from "../../runtime/interaction/InteractionState";
+import { pixelRatio } from "../../util/DeviceUtil";
 import type { RendererStats } from "../Renderer";
 import { InteractionsReadback } from "./InteractionsReadback";
 

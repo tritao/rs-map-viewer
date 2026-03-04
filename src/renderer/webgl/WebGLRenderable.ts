@@ -7,8 +7,8 @@ import PicoGL, {
     VertexBuffer,
 } from "picogl";
 
-import { Scene } from "../../rs/scene/Scene";
 import { SdRenderableData } from "../../maprender/MapRenderPayload";
+import { Scene } from "../../rs/scene/Scene";
 
 const FRAME_RENDER_DELAY = 3;
 
@@ -219,8 +219,12 @@ export class WebGLRenderable {
         let key = DrawCallKey.Base;
         if (isInteract) {
             key = isLod
-                ? (isAlpha ? DrawCallKey.InteractLodAlpha : DrawCallKey.InteractLod)
-                : (isAlpha ? DrawCallKey.InteractAlpha : DrawCallKey.Interact);
+                ? isAlpha
+                    ? DrawCallKey.InteractLodAlpha
+                    : DrawCallKey.InteractLod
+                : isAlpha
+                ? DrawCallKey.InteractAlpha
+                : DrawCallKey.Interact;
         } else if (isLod) {
             key = isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
         } else if (isAlpha) {

@@ -1,4 +1,7 @@
-import { applyInteractionReadbackToState, type InteractionState } from "../../runtime/interaction/InteractionState";
+import {
+    type InteractionState,
+    applyInteractionReadbackToState,
+} from "../../runtime/interaction/InteractionState";
 
 export class InteractionsReadback {
     interactSize: number;

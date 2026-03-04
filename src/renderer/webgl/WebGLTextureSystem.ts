@@ -3,8 +3,8 @@ import PicoGL, { type App as PicoApp, type Texture } from "picogl";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import type { TextureFilterMode } from "../MapRenderer";
-import { buildTextureMaterialsTable } from "./texture/TextureMaterialsTable";
 import { WebGLTextureResidency } from "./WebGLTextureResidency";
+import { buildTextureMaterialsTable } from "./texture/TextureMaterialsTable";
 
 export class WebGLTextureSystem {
     readonly residency: WebGLTextureResidency;
@@ -74,7 +74,10 @@ export class WebGLTextureSystem {
             this.materialsTexture = undefined;
         }
 
-        const { data, width, height } = buildTextureMaterialsTable(this.getTextureIds(), textureLoader);
+        const { data, width, height } = buildTextureMaterialsTable(
+            this.getTextureIds(),
+            textureLoader,
+        );
 
         this.materialsTexture = app.createTexture2D(data, width, height, {
             minFilter: PicoGL.NEAREST,

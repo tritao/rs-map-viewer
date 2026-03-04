@@ -1,12 +1,12 @@
 import { ModuleThread, Thread, spawn } from "threads";
 
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
+import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SimWorker } from "./SimWorker";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 
 type SimWorkerThread = ModuleThread<SimWorker>;
 
@@ -106,12 +106,7 @@ export class SimWorkerPool {
         mapSimToken?: number,
     ): Promise<void> {
         return this.withWorker((w) =>
-            w.bootstrapMapNpcLifecycle(
-                mapId,
-                maxLevel,
-                npcOrderKeys,
-                mapSimToken,
-            ),
+            w.bootstrapMapNpcLifecycle(mapId, maxLevel, npcOrderKeys, mapSimToken),
         );
     }
 
@@ -128,9 +123,7 @@ export class SimWorkerPool {
     }
 
     setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): Promise<void> {
-        return this.withWorker((w) =>
-            w.setTickViewState(cameraMapX, cameraMapY, lodDistance),
-        );
+        return this.withWorker((w) => w.setTickViewState(cameraMapX, cameraMapY, lodDistance));
     }
 
     setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
@@ -145,13 +138,7 @@ export class SimWorkerPool {
         hoveredMapIdsPacked?: Int32Array,
     ): Promise<NpcStateDeltaPacket | undefined> {
         return this.withWorker((w) =>
-            w.tickSim(
-                frameCount,
-                ticksElapsed,
-                clientTicksElapsed,
-                cycleNow,
-                hoveredMapIdsPacked,
-            ),
+            w.tickSim(frameCount, ticksElapsed, clientTicksElapsed, cycleNow, hoveredMapIdsPacked),
         );
     }
 

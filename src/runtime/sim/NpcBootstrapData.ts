@@ -1,8 +1,8 @@
 import type { NpcSpawn } from "../../data/npc/NpcSpawn";
-import { createNpcDatasFromSpawns, type NpcData } from "../entities/NpcData";
+import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
+import { type NpcData, createNpcDatasFromSpawns } from "../entities/NpcData";
 import { orderByPacketKeys } from "../entities/orderByPacketKeys";
 import type { NpcSpawnEvent } from "./NpcEvents";
-import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
 
 type NpcBootstrapInput = Readonly<{
     mapId: number;

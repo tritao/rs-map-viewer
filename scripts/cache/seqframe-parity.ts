@@ -6,9 +6,9 @@ import { Dat2IndexId } from "../../src/rs/cache/IndexId";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/loaders/CacheSession";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { SeqFrame } from "../../src/rs/model/seq/SeqFrame";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/loaders/CacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 

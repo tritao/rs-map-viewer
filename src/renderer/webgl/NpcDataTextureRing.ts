@@ -13,11 +13,7 @@ export class NpcDataTextureRing {
         this.textures = new Array(ringSize);
     }
 
-    write(
-        app: PicoApp,
-        index: number,
-        input: NpcDataTextureFlushInput,
-    ): number {
+    write(app: PicoApp, index: number, input: NpcDataTextureFlushInput): number {
         const ringSize = this.textures.length | 0;
         const safeIndex = (((index | 0) % ringSize) + ringSize) % ringSize;
         const existing = this.textures[safeIndex];

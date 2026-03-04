@@ -3,9 +3,7 @@ import assert from "node:assert/strict";
 import type { RenderDataResult } from "../../src/maprender/MapRenderBackend";
 import type { SdMapData } from "../../src/maprender/MapRenderPayload";
 import { parseFramePacket } from "../../src/runtime/contracts/FramePacket";
-import {
-    encodeNpcLifecyclePacketFromEvents,
-} from "../../src/runtime/contracts/NpcLifecyclePacket";
+import { encodeNpcLifecyclePacketFromEvents } from "../../src/runtime/contracts/NpcLifecyclePacket";
 import type { NpcEvent } from "../../src/runtime/sim/NpcEvents";
 import { WorkerTickRuntime } from "../../src/worker/tick/WorkerTickRuntime";
 
@@ -76,10 +74,13 @@ function encodePacket(events: NpcEvent[]): Uint8Array {
 function getNpcCountForMap(packet: unknown, mapId: number): number {
     const parsed = parseFramePacket(packet as any);
     const range = parsed?.npcRangesByMapId.get(mapId | 0);
-    return range ? (range.count | 0) : 0;
+    return range ? range.count | 0 : 0;
 }
 
-function captureNpcSnapshot(runtime: WorkerTickRuntime, mapId: number): Readonly<{
+function captureNpcSnapshot(
+    runtime: WorkerTickRuntime,
+    mapId: number,
+): Readonly<{
     x: number;
     y: number;
     level: number;
@@ -130,13 +131,7 @@ async function main(): Promise<void> {
     ];
     await runtime.applyNpcLifecyclePacketBytes(encodePacket(spawnEvents));
 
-    const packetAfterSpawn = await runtime.tickFrame(
-        1,
-        0,
-        0,
-        0,
-        new Int32Array(0),
-    );
+    const packetAfterSpawn = await runtime.tickFrame(1, 0, 0, 0, new Int32Array(0));
     assert.ok(packetAfterSpawn, "expected frame packet after spawn");
     assert.equal(getNpcCountForMap(packetAfterSpawn, mapId), 1);
     assert.equal(staticBuildCounterRef.count | 0, 0);
@@ -167,13 +162,7 @@ async function main(): Promise<void> {
     ];
     await runtime.applyNpcLifecyclePacketBytes(encodePacket(despawnEvents));
 
-    const packetAfterDespawn = await runtime.tickFrame(
-        2,
-        0,
-        0,
-        0,
-        new Int32Array(0),
-    );
+    const packetAfterDespawn = await runtime.tickFrame(2, 0, 0, 0, new Int32Array(0));
     assert.ok(packetAfterDespawn, "expected frame packet after despawn");
     assert.equal(getNpcCountForMap(packetAfterDespawn, mapId), 0);
     assert.equal(staticBuildCounterRef.count | 0, 0);

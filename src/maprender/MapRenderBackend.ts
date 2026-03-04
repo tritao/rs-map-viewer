@@ -1,8 +1,8 @@
+import type { BackendKind } from "../util/BackendKind";
+import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import type { MapRenderBuildDeps } from "./MapRenderBuildDeps";
 import type { SdMapData, SdMapLoaderInput } from "./MapRenderPayload";
 import { sdMapDataTransferables } from "./MapRenderPayload";
-import type { BackendKind } from "../util/BackendKind";
-import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
 

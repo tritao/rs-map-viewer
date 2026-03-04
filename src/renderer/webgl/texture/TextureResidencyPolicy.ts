@@ -76,7 +76,10 @@ export class TextureResidencyPolicy {
     }
 
     computeMaxPreloadTextures(cacheInfo: CacheInfo): number {
-        let maxPreloadTextures = Math.min(this.textureIds.length, Math.max(0, this.textureSlotCount - 1));
+        let maxPreloadTextures = Math.min(
+            this.textureIds.length,
+            Math.max(0, this.textureSlotCount - 1),
+        );
         if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 508) {
             maxPreloadTextures = 64;
         }
@@ -136,7 +139,10 @@ export class TextureResidencyPolicy {
         this.textureLastUsedFrame.set(textureId, this.frameCount);
     }
 
-    updateVisibleTextureIds(visibleUsedTextureIds: ReadonlyArray<Int32Array>, frameCount: number): void {
+    updateVisibleTextureIds(
+        visibleUsedTextureIds: ReadonlyArray<Int32Array>,
+        frameCount: number,
+    ): void {
         this.frameCount = frameCount | 0;
         this.visibleTextureIds.clear();
 
@@ -175,7 +181,12 @@ export class TextureResidencyPolicy {
             if (this.textureIdToSlot.has(textureId)) {
                 continue;
             }
-            const result = this.ensureTextureInSlot(textureId, undefined, this.visibleTextureIds, opts);
+            const result = this.ensureTextureInSlot(
+                textureId,
+                undefined,
+                this.visibleTextureIds,
+                opts,
+            );
             lutDirty ||= result.lutDirty;
             updatedCount += result.updated ? 1 : 0;
             if (result.status === EnsureTextureStatus.Oversubscribed) {
@@ -202,19 +213,34 @@ export class TextureResidencyPolicy {
         const existingSlot = this.textureIdToSlot.get(textureId);
         if (existingSlot !== undefined) {
             this.touchTexture(textureId);
-            return { slot: existingSlot, lutDirty: false, updated: false, status: EnsureTextureStatus.Ok };
+            return {
+                slot: existingSlot,
+                lutDirty: false,
+                updated: false,
+                status: EnsureTextureStatus.Ok,
+            };
         }
 
         const textureIdPlus1 = this.getTextureIdPlus1(textureId);
         if (textureIdPlus1 === undefined) {
-            return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.UnknownTexture };
+            return {
+                slot: 0,
+                lutDirty: false,
+                updated: false,
+                status: EnsureTextureStatus.UnknownTexture,
+            };
         }
 
         let slot = this.freeTextureSlots.pop();
         if (slot === undefined) {
             slot = this.evictTextureSlot(protectedTextureIds);
             if (slot === undefined) {
-                return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.Oversubscribed };
+                return {
+                    slot: 0,
+                    lutDirty: false,
+                    updated: false,
+                    status: EnsureTextureStatus.Oversubscribed,
+                };
             }
         }
 
@@ -225,7 +251,12 @@ export class TextureResidencyPolicy {
             pixels = opts.tryLoadPixels(textureId);
             if (!pixels) {
                 this.freeTextureSlots.push(slot);
-                return { slot: 0, lutDirty: false, updated: false, status: EnsureTextureStatus.DecodeFailed };
+                return {
+                    slot: 0,
+                    lutDirty: false,
+                    updated: false,
+                    status: EnsureTextureStatus.DecodeFailed,
+                };
             }
         }
 

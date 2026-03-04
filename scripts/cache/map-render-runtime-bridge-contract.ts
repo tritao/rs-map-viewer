@@ -2,22 +2,22 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
-import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
-import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
-import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import {
     WasmCacheUploader,
     createByteDrivenSceneBuildInput,
     createSceneBuildCacheProvider,
 } from "../../src/maprender/wasm/WasmCacheUploader";
+import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
+import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
+import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
 import type { MapRenderRuntimePacket } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
-import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 import { loadCache, loadCacheInfos } from "./load-util";
+import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 
 type RuntimeBridge = MapRenderRuntimeBridgeV2;
 
@@ -168,16 +168,13 @@ function assertFn(target: Record<string, unknown>, key: string): void {
     );
 }
 
-function assertNpcSlotMetadataContract(
-    packet: MapRenderRuntimePacket,
-    label: string,
-): void {
+function assertNpcSlotMetadataContract(packet: MapRenderRuntimePacket, label: string): void {
     const ranges = packet.npcDrawRangesBase;
     if (!(ranges instanceof Int32Array) || (ranges.length | 0) <= 0) {
         return;
     }
     assert.equal(
-        (ranges.length % 3) | 0,
+        ranges.length % 3 | 0,
         0,
         `${label}: npcDrawRangesBase length must be a multiple of 3`,
     );

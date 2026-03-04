@@ -3,23 +3,19 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import {
-    applyNpcUpdateDelta,
-    applyNpcUpdateDeltas,
-    type NpcUpdateDelta,
-} from "./NpcSimMovement";
-import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "./NpcEvents";
-import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
-import {
-    decodeNpcStateDeltaUpdate,
     NPC_STATE_DELTA_DESPAWN_STRIDE,
-    type NpcStateDeltaPacket,
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
+    type NpcStateDeltaPacket,
+    decodeNpcStateDeltaUpdate,
     validateNpcStateDeltaPacket,
 } from "../contracts/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
 import { LocAnimated } from "../entities/LocAnimated";
 import type { LocAnimatedData } from "../entities/LocAnimatedData";
 import { Npc } from "../entities/Npc";
+import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "./NpcEvents";
+import { type NpcUpdateDelta, applyNpcUpdateDelta, applyNpcUpdateDeltas } from "./NpcSimMovement";
 
 export type NpcSimMapState = {
     borderSize: number;
@@ -92,7 +88,10 @@ export class NpcSimStateStore {
         return locs;
     }
 
-    private createLocTickPatchBuffers(locCount: number, tickPatchEntryStride: number): Int32Array[] {
+    private createLocTickPatchBuffers(
+        locCount: number,
+        tickPatchEntryStride: number,
+    ): Int32Array[] {
         const out: Int32Array[] = [];
         for (let i = 0; i < 8; i++) {
             out.push(new Int32Array((locCount | 0) * (tickPatchEntryStride | 0)));
@@ -100,7 +99,10 @@ export class NpcSimStateStore {
         return out;
     }
 
-    private createNpcTickPatchBuffers(npcCount: number, tickPatchEntryStride: number): Int32Array[] {
+    private createNpcTickPatchBuffers(
+        npcCount: number,
+        tickPatchEntryStride: number,
+    ): Int32Array[] {
         return [
             new Int32Array((npcCount | 0) * (tickPatchEntryStride | 0)),
             new Int32Array((npcCount | 0) * (tickPatchEntryStride | 0)),
@@ -260,21 +262,14 @@ export class NpcSimStateStore {
         );
     }
 
-    private removeNpcByEventTarget(
-        state: NpcSimMapState,
-        npcInstanceId: number,
-    ): void {
+    private removeNpcByEventTarget(state: NpcSimMapState, npcInstanceId: number): void {
         const index = state.npcIndexByInstanceId.get(npcInstanceId | 0);
         if (index !== undefined) {
             state.npcs.splice(index | 0, 1);
         }
     }
 
-    private shouldApplySeq(
-        state: NpcSimMapState,
-        npcInstanceId: number,
-        seq: number,
-    ): boolean {
+    private shouldApplySeq(state: NpcSimMapState, npcInstanceId: number, seq: number): boolean {
         const instanceId = npcInstanceId | 0;
         const nextSeq = seq | 0;
         const prevSeq = state.lastSeqByInstanceId.get(instanceId);
@@ -376,11 +371,7 @@ export class NpcSimStateStore {
             npcInstanceId: entry.npcInstanceId | 0,
             delta: entry.delta,
         }));
-        const applied = applyNpcUpdateDeltas(
-            state.npcs,
-            deltas,
-            state.npcIndexByInstanceId,
-        );
+        const applied = applyNpcUpdateDeltas(state.npcs, deltas, state.npcIndexByInstanceId);
         if (replaceSnapshot) {
             state.npcTickPatchesByVariant = this.createNpcTickPatchBuffers(
                 state.npcs.length | 0,
@@ -393,10 +384,7 @@ export class NpcSimStateStore {
         return applied | 0;
     }
 
-    applyNpcStateDeltaPacket(
-        packet: NpcStateDeltaPacket,
-        deps: NpcSimStateStoreDeps,
-    ): number {
+    applyNpcStateDeltaPacket(packet: NpcStateDeltaPacket, deps: NpcSimStateStoreDeps): number {
         const counts = validateNpcStateDeltaPacket(packet);
         if ((counts.eventCount | 0) <= 0) {
             return 0;
@@ -426,7 +414,7 @@ export class NpcSimStateStore {
                 spawnsPacked[off + 3] | 0,
                 spawnsPacked[off + 4] | 0,
                 spawnsPacked[off + 5] | 0,
-                hasOrderKey ? (spawnsPacked[off + 7] | 0) : undefined,
+                hasOrderKey ? spawnsPacked[off + 7] | 0 : undefined,
                 state,
                 deps,
             );
@@ -528,10 +516,7 @@ export class NpcSimStateStore {
         return this.applyLifecycleEventsToState(mapId | 0, state, events, deps, replaceSnapshot);
     }
 
-    registerMap(
-        input: RegisterNpcSimMapInput,
-        deps: NpcSimStateStoreDeps,
-    ): void {
+    registerMap(input: RegisterNpcSimMapInput, deps: NpcSimStateStoreDeps): void {
         const mapId = input.mapId | 0;
         const state = this.maps.get(mapId) ?? this.createMapState(input, deps);
         this.setMapLocContext(state, input, deps);

@@ -1,49 +1,46 @@
+import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
+import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
+import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
+import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
+import type { CacheSession } from "../../rs/loaders/CacheSession";
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
-import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
+import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
+import { Scene } from "../../rs/scene/Scene";
+import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
 } from "../../runtime/contracts/FramePacket";
 import {
-    buildFramePacketMapEntry,
-    buildFramePacketFromMapEntries,
     type FramePacketMapEntry,
+    buildFramePacketFromMapEntries,
+    buildFramePacketMapEntry,
 } from "../../runtime/contracts/FramePacketBuilder";
-import type { CacheSession } from "../../rs/loaders/CacheSession";
-import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
-import { Scene } from "../../rs/scene/Scene";
-import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
-import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
-import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
-import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
-import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
-import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
+import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
 import {
-    buildTickPatchStreamsForMap,
-    readWasmPatchStreamsForMap,
-} from "../../runtime/sim/TickPatchStreamsBuilder";
-import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
-import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
-import {
-    NpcSimStateStore,
-    type NpcSimStateStoreDeps,
-} from "../../runtime/sim/NpcSimStateStore";
+    type NpcStateDeltaPacket,
+    buildNpcStateDeltaPacketFromEvents,
+} from "../../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
 import {
     NpcBootstrapResolver,
     type ResolvedNpcBootstrapData,
 } from "../../runtime/sim/NpcBootstrapResolver";
 import type { NpcEvent } from "../../runtime/sim/NpcEvents";
+import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
+import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
 import {
-    buildNpcStateDeltaPacketFromEvents,
-    type NpcStateDeltaPacket,
-} from "../../runtime/contracts/NpcStateDeltaPacket";
+    buildTickPatchStreamsForMap,
+    readWasmPatchStreamsForMap,
+} from "../../runtime/sim/TickPatchStreamsBuilder";
+import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
+import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
+import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
@@ -305,7 +302,7 @@ export class WorkerTickRuntime {
         const state = this.npcSimStateStore.getMap(mapId | 0);
         const npcBootstrapData = resolvedBootstrap.data;
         const spawnEventCount = npcBootstrapData.spawnEvents.length | 0;
-        const npcCount = state ? (state.npcs.length | 0) : 0;
+        const npcCount = state ? state.npcs.length | 0 : 0;
         if (spawnEventCount <= 0) {
             this.warnedEmptyNpcBootstrapMapIds.add(mapId | 0);
             console.warn(
@@ -317,7 +314,9 @@ export class WorkerTickRuntime {
                     `fallbackUrl=${resolvedBootstrap.fallbackUrl ?? "n/a"} ` +
                     `fallbackTotal=${resolvedBootstrap.fallbackTotalSpawns ?? -1} ` +
                     `fallbackMap=${resolvedBootstrap.fallbackMapSpawnsCount ?? -1} ` +
-                    `fallbackMapAllLvls=${resolvedBootstrap.fallbackMapSpawnsAllLevelsCount ?? -1})`,
+                    `fallbackMapAllLvls=${
+                        resolvedBootstrap.fallbackMapSpawnsAllLevelsCount ?? -1
+                    })`,
             );
             return;
         }
@@ -427,11 +426,8 @@ export class WorkerTickRuntime {
         for (const [mapId, events] of decoded.lifecycleEventsByMapId.entries()) {
             applied =
                 (applied +
-                    (this.npcSimStateStore.applyMapNpcLifecycleEvents(
-                        mapId | 0,
-                        events,
-                        deps,
-                    ) | 0)) |
+                    (this.npcSimStateStore.applyMapNpcLifecycleEvents(mapId | 0, events, deps) |
+                        0)) |
                 0;
         }
         return applied | 0;
@@ -444,22 +440,25 @@ export class WorkerTickRuntime {
         return next;
     }
 
-    private snapshotNpc(mapId: number, npc: {
-        instanceId?: number;
-        npcType: { id: number };
-        pathX: ArrayLike<number>;
-        pathY: ArrayLike<number>;
-        x: number;
-        y: number;
-        level: number;
-        orientation: number;
-        rotation: number;
-        movementSeqId: number;
-        movementFrame: number;
-        movementFrameTick: number;
-        movementLoop: number;
-        orderKey?: number;
-    }): NpcSnapshot | undefined {
+    private snapshotNpc(
+        mapId: number,
+        npc: {
+            instanceId?: number;
+            npcType: { id: number };
+            pathX: ArrayLike<number>;
+            pathY: ArrayLike<number>;
+            x: number;
+            y: number;
+            level: number;
+            orientation: number;
+            rotation: number;
+            movementSeqId: number;
+            movementFrame: number;
+            movementFrameTick: number;
+            movementLoop: number;
+            orderKey?: number;
+        },
+    ): NpcSnapshot | undefined {
         const npcInstanceId = npc.instanceId;
         if (npcInstanceId === undefined) {
             return undefined;
@@ -479,7 +478,7 @@ export class WorkerTickRuntime {
             movementFrame: npc.movementFrame | 0,
             movementFrameTick: npc.movementFrameTick | 0,
             movementLoop: npc.movementLoop | 0,
-            orderKey: npc.orderKey !== undefined ? (npc.orderKey | 0) : undefined,
+            orderKey: npc.orderKey !== undefined ? npc.orderKey | 0 : undefined,
         };
     }
 

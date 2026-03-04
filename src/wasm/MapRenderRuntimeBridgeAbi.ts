@@ -222,9 +222,7 @@ export type MapRenderRuntimeBridgeV2 = Readonly<{
     debugGetLastMissingType?(
         runtimeHandle: MapRenderRuntimeHandle,
     ): Promise<Readonly<{ kind: number; id: number }> | undefined>;
-    debugGetLastNpcBuildStats?(
-        runtimeHandle: MapRenderRuntimeHandle,
-    ): Promise<
+    debugGetLastNpcBuildStats?(runtimeHandle: MapRenderRuntimeHandle): Promise<
         | Readonly<{
               status: number;
               spawnBytesLen: number;

@@ -1,5 +1,5 @@
-import { readI32BE, readU16BE, readU24BE } from "./Endian";
 import { ByteReader } from "./ByteReader";
+import { readI32BE, readU16BE, readU24BE } from "./Endian";
 
 export class Uint8ArrayReader implements ByteReader {
     constructor(

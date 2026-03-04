@@ -1,32 +1,27 @@
 import { LoadedCache } from "../../util/Caches";
 import { Result, err, ok } from "../../util/Result";
-import { CacheInfo } from "../cache/CacheInfo";
-import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
 import { CacheIndex } from "../cache/CacheIndex";
-import { Dat2IndexId, DatIndexId } from "../cache/IndexId";
+import { CacheInfo } from "../cache/CacheInfo";
 import { CacheSystem } from "../cache/CacheSystem";
 import { CacheType, detectCacheType } from "../cache/CacheType";
+import { DatConfigArchiveId } from "../cache/ConfigArchiveId";
+import { Dat2IndexId, DatIndexId } from "../cache/IndexId";
 import { Archive } from "../cache/format/Archive";
 import { createCacheSystemFromFiles } from "../cache/platform/CacheStoreFromFiles";
 import { CompressionHandler } from "../compression/CompressionHandler";
 import { VarManager } from "../config/vartype/VarManager";
 import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../io/BytesProvider";
-import {
-    InitError,
-    createFailed,
-    initErrorToString,
-    unexpected,
-} from "../loaders/InitError";
+import { InitError, createFailed, initErrorToString, unexpected } from "../loaders/InitError";
 import {
     Loaders,
     clearLoaderCaches,
     getQuestTypeLoader,
     getSkeletalSeqLoader,
 } from "../loaders/Loaders";
+import { MapFileIndex } from "../map/MapFileIndex";
 import { tryCreateDat2LoaderSources, tryCreateDat2LoadersFromSources } from "./Dat2Loaders";
 import { tryCreateDatLoaderSources, tryCreateDatLoadersFromSources } from "./DatLoaders";
 import { tryCreateLegacyLoaderSources, tryCreateLegacyLoadersFromSources } from "./LegacyLoaders";
-import { MapFileIndex } from "../map/MapFileIndex";
 
 export type CacheSession = {
     cache: LoadedCache;
@@ -178,7 +173,11 @@ export function tryCreateCacheSessionFromSystem(
                 const sources = sourcesResult.value;
 
                 function createFromSources(): Result<CacheSession, InitError> {
-                    const loadersResult = tryCreateDatLoadersFromSources(cache.info, cacheType, sources);
+                    const loadersResult = tryCreateDatLoadersFromSources(
+                        cache.info,
+                        cacheType,
+                        sources,
+                    );
                     if (!loadersResult.ok) return loadersResult;
                     return createSessionFromLoaders(loadersResult.value, createFromSources);
                 }
@@ -191,7 +190,11 @@ export function tryCreateCacheSessionFromSystem(
                 const sources = sourcesResult.value;
 
                 function createFromSources(): Result<CacheSession, InitError> {
-                    const loadersResult = tryCreateDat2LoadersFromSources(cache.info, cacheType, sources);
+                    const loadersResult = tryCreateDat2LoadersFromSources(
+                        cache.info,
+                        cacheType,
+                        sources,
+                    );
                     if (!loadersResult.ok) return loadersResult;
                     return createSessionFromLoaders(loadersResult.value, createFromSources);
                 }

@@ -278,7 +278,10 @@ export function tryCreateDatLoadersFromSources(
         seqFrameLoader: DatSeqFrameLoader.create(sources.animationsIndex),
         skeletalSeqLoader: undefined,
 
-        mapFileLoader: new MapFileLoader(new CacheIndexMapBytesProvider(sources.mapIndex), mapFileIndex),
+        mapFileLoader: new MapFileLoader(
+            new CacheIndexMapBytesProvider(sources.mapIndex),
+            mapFileIndex,
+        ),
 
         mapScenes: loadMapScenes(mediaSource),
         mapFunctions: loadMapFunctions(mediaSource),

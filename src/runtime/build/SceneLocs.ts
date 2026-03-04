@@ -1,3 +1,4 @@
+import { InteractType } from "../../renderer/InteractType";
 import { loadOrNull } from "../../rs/config/TypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
@@ -8,9 +9,8 @@ import { SceneLoc } from "../../rs/scene/SceneLoc";
 import { getIdFromTag } from "../../rs/scene/entity/EntityTag";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { INVALID_HSL_COLOR } from "../../rs/util/ColorUtil";
-import { InteractType } from "../../renderer/InteractType";
-import { ContourGroundType, SceneModel } from "./SceneBuffer";
 import { SceneLocEntity } from "../build/SceneLocEntity";
+import { ContourGroundType, SceneModel } from "./SceneBuffer";
 
 export type SceneLocs = {
     locs: SceneModel[];

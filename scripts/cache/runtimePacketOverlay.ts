@@ -24,12 +24,18 @@ function valueTypeTag(value: unknown): string {
 
 function validatePacket(packet: MapRenderRuntimePacket): OverlayFailure | undefined {
     if (!(packet.bucketCmdCounts instanceof Int32Array)) {
-        return { reason: "invalid_bucket_cmd_counts", detail: { type: valueTypeTag(packet.bucketCmdCounts) } };
+        return {
+            reason: "invalid_bucket_cmd_counts",
+            detail: { type: valueTypeTag(packet.bucketCmdCounts) },
+        };
     }
     if ((packet.bucketCmdCounts.length | 0) !== MAP_RENDER_DRAW_BUCKET_COUNT) {
         return {
             reason: "invalid_bucket_cmd_counts_length",
-            detail: { length: packet.bucketCmdCounts.length | 0, expected: MAP_RENDER_DRAW_BUCKET_COUNT },
+            detail: {
+                length: packet.bucketCmdCounts.length | 0,
+                expected: MAP_RENDER_DRAW_BUCKET_COUNT,
+            },
         };
     }
     if (!(packet.bucketModelInfoLengths instanceof Int32Array)) {
@@ -41,11 +47,17 @@ function validatePacket(packet: MapRenderRuntimePacket): OverlayFailure | undefi
     if ((packet.bucketModelInfoLengths.length | 0) !== MAP_RENDER_DRAW_BUCKET_COUNT) {
         return {
             reason: "invalid_bucket_model_info_lengths_length",
-            detail: { length: packet.bucketModelInfoLengths.length | 0, expected: MAP_RENDER_DRAW_BUCKET_COUNT },
+            detail: {
+                length: packet.bucketModelInfoLengths.length | 0,
+                expected: MAP_RENDER_DRAW_BUCKET_COUNT,
+            },
         };
     }
     if (!(packet.drawRangesPacked instanceof Int32Array)) {
-        return { reason: "invalid_draw_ranges_packed", detail: { type: valueTypeTag(packet.drawRangesPacked) } };
+        return {
+            reason: "invalid_draw_ranges_packed",
+            detail: { type: valueTypeTag(packet.drawRangesPacked) },
+        };
     }
     if (!Array.isArray(packet.modelInfoTextureBuckets)) {
         return {
@@ -56,7 +68,10 @@ function validatePacket(packet: MapRenderRuntimePacket): OverlayFailure | undefi
     if ((packet.modelInfoTextureBuckets.length | 0) !== MAP_RENDER_DRAW_BUCKET_COUNT) {
         return {
             reason: "invalid_model_info_texture_buckets_length",
-            detail: { length: packet.modelInfoTextureBuckets.length | 0, expected: MAP_RENDER_DRAW_BUCKET_COUNT },
+            detail: {
+                length: packet.modelInfoTextureBuckets.length | 0,
+                expected: MAP_RENDER_DRAW_BUCKET_COUNT,
+            },
         };
     }
     for (let i = 0; i < MAP_RENDER_DRAW_BUCKET_COUNT; i++) {
@@ -82,7 +97,10 @@ function validatePacket(packet: MapRenderRuntimePacket): OverlayFailure | undefi
     if ((packet.drawRangesPacked.length | 0) !== (expectedDrawRangeLen | 0)) {
         return {
             reason: "invalid_draw_ranges_packed_length",
-            detail: { length: packet.drawRangesPacked.length | 0, expected: expectedDrawRangeLen | 0 },
+            detail: {
+                length: packet.drawRangesPacked.length | 0,
+                expected: expectedDrawRangeLen | 0,
+            },
         };
     }
 

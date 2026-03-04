@@ -1,28 +1,28 @@
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { Camera } from "./Camera";
-import { InteractType } from "../renderer/InteractType";
-import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
-import { MapManager, MapSquareInfo } from "./MapManager";
-import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { MapData } from "../maprender/MapRenderPayload";
-import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import { InteractType } from "../renderer/InteractType";
+import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
+import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
+import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
+import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import type { NpcEvent } from "../runtime/sim/NpcEvents";
-import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import { Camera } from "./Camera";
+import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
-import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
 import { WorkerMapViewerFramePacketSource } from "./MapViewerFramePacketSource";
+import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
 
 const DRAW_RANGE_STRIDE = 3;
 const EMPTY_NPC_ORDER_KEYS = new Int32Array(0);
@@ -68,7 +68,8 @@ export class MapViewerRenderer extends RendererMainLoop {
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
-            isSeamTelemetryEnabled: () => !!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry,
+            isSeamTelemetryEnabled: () =>
+                !!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry,
             getMapManager: () => this.mapManager,
             getCamera: () => this.camera,
         });
@@ -174,7 +175,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
-                if ((npcDrawRangeInts % DRAW_RANGE_STRIDE) !== 0) {
+                if (npcDrawRangeInts % DRAW_RANGE_STRIDE !== 0) {
                     throw new Error(
                         `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
                             `len=${npcDrawRangeInts} stride=${DRAW_RANGE_STRIDE}`,
@@ -221,7 +222,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                     this.mapManager.addInvalidMap(mapData.mapX, mapData.mapY);
                     return;
                 }
-                if ((this.loadEpoch | 0) !== queuedLoadEpoch || !this.hasMapSimToken(mapId, mapSimToken)) {
+                if (
+                    (this.loadEpoch | 0) !== queuedLoadEpoch ||
+                    !this.hasMapSimToken(mapId, mapSimToken)
+                ) {
                     return;
                 }
 
@@ -282,13 +286,15 @@ export class MapViewerRenderer extends RendererMainLoop {
         return this.applyNpcLifecyclePacketBytes(packet);
     }
 
-    private async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
+    private async applyNpcLifecyclePacketBytes(
+        packet: ArrayBuffer | ArrayBufferView,
+    ): Promise<number> {
         const bytes =
             packet instanceof Uint8Array
                 ? packet
                 : packet instanceof ArrayBuffer
-                  ? new Uint8Array(packet)
-                  : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
+                ? new Uint8Array(packet)
+                : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
         return await this.simWorkerPool.applyNpcLifecyclePacketBytes(bytes);
     }
 

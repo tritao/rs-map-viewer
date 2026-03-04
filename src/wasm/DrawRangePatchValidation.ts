@@ -119,15 +119,30 @@ export function validateTickStateInput(input: DrawRangeTickStateInput): string[]
         validateEqLen(issues, "locDrawRangeIndicesBase", input.locDrawRangeIndicesBase, locCount);
         validateEqLen(issues, "locDrawRangeIndicesAlpha", input.locDrawRangeIndicesAlpha, locCount);
         validateEqLen(issues, "locDrawRangeIndicesLod", input.locDrawRangeIndicesLod, locCount);
-        validateEqLen(issues, "locDrawRangeIndicesLodAlpha", input.locDrawRangeIndicesLodAlpha, locCount);
-        validateEqLen(issues, "locDrawRangeIndicesInteract", input.locDrawRangeIndicesInteract, locCount);
+        validateEqLen(
+            issues,
+            "locDrawRangeIndicesLodAlpha",
+            input.locDrawRangeIndicesLodAlpha,
+            locCount,
+        );
+        validateEqLen(
+            issues,
+            "locDrawRangeIndicesInteract",
+            input.locDrawRangeIndicesInteract,
+            locCount,
+        );
         validateEqLen(
             issues,
             "locDrawRangeIndicesInteractAlpha",
             input.locDrawRangeIndicesInteractAlpha,
             locCount,
         );
-        validateEqLen(issues, "locDrawRangeIndicesInteractLod", input.locDrawRangeIndicesInteractLod, locCount);
+        validateEqLen(
+            issues,
+            "locDrawRangeIndicesInteractLod",
+            input.locDrawRangeIndicesInteractLod,
+            locCount,
+        );
         validateEqLen(
             issues,
             "locDrawRangeIndicesInteractLodAlpha",
@@ -141,17 +156,42 @@ export function validateTickStateInput(input: DrawRangeTickStateInput): string[]
         validateEqLen(issues, "locAnimFrameCountsAlpha", input.locAnimFrameCountsAlpha, locCount);
 
         validatePatchBuffers(issues, "outLocPatchesPacked", input.outLocPatchesPacked, locCount);
-        validatePatchBuffers(issues, "outLocAlphaPatchesPacked", input.outLocAlphaPatchesPacked, locCount);
-        validatePatchBuffers(issues, "outLocLodPatchesPacked", input.outLocLodPatchesPacked, locCount);
-        validatePatchBuffers(issues, "outLocLodAlphaPatchesPacked", input.outLocLodAlphaPatchesPacked, locCount);
-        validatePatchBuffers(issues, "outLocInteractPatchesPacked", input.outLocInteractPatchesPacked, locCount);
+        validatePatchBuffers(
+            issues,
+            "outLocAlphaPatchesPacked",
+            input.outLocAlphaPatchesPacked,
+            locCount,
+        );
+        validatePatchBuffers(
+            issues,
+            "outLocLodPatchesPacked",
+            input.outLocLodPatchesPacked,
+            locCount,
+        );
+        validatePatchBuffers(
+            issues,
+            "outLocLodAlphaPatchesPacked",
+            input.outLocLodAlphaPatchesPacked,
+            locCount,
+        );
+        validatePatchBuffers(
+            issues,
+            "outLocInteractPatchesPacked",
+            input.outLocInteractPatchesPacked,
+            locCount,
+        );
         validatePatchBuffers(
             issues,
             "outLocInteractAlphaPatchesPacked",
             input.outLocInteractAlphaPatchesPacked,
             locCount,
         );
-        validatePatchBuffers(issues, "outLocInteractLodPatchesPacked", input.outLocInteractLodPatchesPacked, locCount);
+        validatePatchBuffers(
+            issues,
+            "outLocInteractLodPatchesPacked",
+            input.outLocInteractLodPatchesPacked,
+            locCount,
+        );
         validatePatchBuffers(
             issues,
             "outLocInteractLodAlphaPatchesPacked",
@@ -207,14 +247,24 @@ export function validateTickStateInput(input: DrawRangeTickStateInput): string[]
         validateEqLen(issues, "npcHasWalkAnim", input.npcHasWalkAnim, npcCount);
 
         if (input.npcPathXPacked.length !== npcCount * 10) {
-            issues.push(`npcPathXPacked length mismatch expected=${npcCount * 10} got=${input.npcPathXPacked.length}`);
+            issues.push(
+                `npcPathXPacked length mismatch expected=${npcCount * 10} got=${
+                    input.npcPathXPacked.length
+                }`,
+            );
         }
         if (input.npcPathYPacked.length !== npcCount * 10) {
-            issues.push(`npcPathYPacked length mismatch expected=${npcCount * 10} got=${input.npcPathYPacked.length}`);
+            issues.push(
+                `npcPathYPacked length mismatch expected=${npcCount * 10} got=${
+                    input.npcPathYPacked.length
+                }`,
+            );
         }
         if (input.npcPathMovementTypePacked.length !== npcCount * 10) {
             issues.push(
-                `npcPathMovementTypePacked length mismatch expected=${npcCount * 10} got=${input.npcPathMovementTypePacked.length}`,
+                `npcPathMovementTypePacked length mismatch expected=${npcCount * 10} got=${
+                    input.npcPathMovementTypePacked.length
+                }`,
             );
         }
 
@@ -224,37 +274,112 @@ export function validateTickStateInput(input: DrawRangeTickStateInput): string[]
 
         validateEqLen(issues, "npcIdleSeqValid", input.npcIdleSeqValid, npcCount);
         validateEqLen(issues, "npcIdleSeqHasAnimMaya", input.npcIdleSeqHasAnimMaya, npcCount);
-        validateEqLen(issues, "npcIdleSeqAnimMayaDurations", input.npcIdleSeqAnimMayaDurations, npcCount);
+        validateEqLen(
+            issues,
+            "npcIdleSeqAnimMayaDurations",
+            input.npcIdleSeqAnimMayaDurations,
+            npcCount,
+        );
         validateEqLen(issues, "npcIdleSeqFrameSteps", input.npcIdleSeqFrameSteps, npcCount);
         validateEqLen(issues, "npcIdleSeqLooping", input.npcIdleSeqLooping, npcCount);
         validateEqLen(issues, "npcIdleSeqMaxLoops", input.npcIdleSeqMaxLoops, npcCount);
         validateEqLen(issues, "npcIdleSeqFrameIdCounts", input.npcIdleSeqFrameIdCounts, npcCount);
-        validateEqLen(issues, "npcIdleSeqFrameLengthOffsets", input.npcIdleSeqFrameLengthOffsets, npcCount);
-        validateEqLen(issues, "npcIdleSeqFrameLengthCounts", input.npcIdleSeqFrameLengthCounts, npcCount);
+        validateEqLen(
+            issues,
+            "npcIdleSeqFrameLengthOffsets",
+            input.npcIdleSeqFrameLengthOffsets,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcIdleSeqFrameLengthCounts",
+            input.npcIdleSeqFrameLengthCounts,
+            npcCount,
+        );
 
         validateEqLen(issues, "npcWalkSeqValid", input.npcWalkSeqValid, npcCount);
         validateEqLen(issues, "npcWalkSeqHasAnimMaya", input.npcWalkSeqHasAnimMaya, npcCount);
-        validateEqLen(issues, "npcWalkSeqAnimMayaDurations", input.npcWalkSeqAnimMayaDurations, npcCount);
+        validateEqLen(
+            issues,
+            "npcWalkSeqAnimMayaDurations",
+            input.npcWalkSeqAnimMayaDurations,
+            npcCount,
+        );
         validateEqLen(issues, "npcWalkSeqFrameSteps", input.npcWalkSeqFrameSteps, npcCount);
         validateEqLen(issues, "npcWalkSeqLooping", input.npcWalkSeqLooping, npcCount);
         validateEqLen(issues, "npcWalkSeqMaxLoops", input.npcWalkSeqMaxLoops, npcCount);
         validateEqLen(issues, "npcWalkSeqFrameIdCounts", input.npcWalkSeqFrameIdCounts, npcCount);
-        validateEqLen(issues, "npcWalkSeqFrameLengthOffsets", input.npcWalkSeqFrameLengthOffsets, npcCount);
-        validateEqLen(issues, "npcWalkSeqFrameLengthCounts", input.npcWalkSeqFrameLengthCounts, npcCount);
+        validateEqLen(
+            issues,
+            "npcWalkSeqFrameLengthOffsets",
+            input.npcWalkSeqFrameLengthOffsets,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcWalkSeqFrameLengthCounts",
+            input.npcWalkSeqFrameLengthCounts,
+            npcCount,
+        );
 
         validateEqLen(issues, "npcDrawRangeIndices", input.npcDrawRangeIndices, npcCount);
 
-        validateEqLen(issues, "npcIdleAnimFrameOffsetsBase", input.npcIdleAnimFrameOffsetsBase, npcCount);
-        validateEqLen(issues, "npcIdleAnimFrameCountsBase", input.npcIdleAnimFrameCountsBase, npcCount);
-        validateEqLen(issues, "npcWalkAnimFrameOffsetsBase", input.npcWalkAnimFrameOffsetsBase, npcCount);
-        validateEqLen(issues, "npcWalkAnimFrameCountsBase", input.npcWalkAnimFrameCountsBase, npcCount);
-        validateEqLen(issues, "npcIdleAnimFrameOffsetsAlpha", input.npcIdleAnimFrameOffsetsAlpha, npcCount);
-        validateEqLen(issues, "npcIdleAnimFrameCountsAlpha", input.npcIdleAnimFrameCountsAlpha, npcCount);
-        validateEqLen(issues, "npcWalkAnimFrameOffsetsAlpha", input.npcWalkAnimFrameOffsetsAlpha, npcCount);
-        validateEqLen(issues, "npcWalkAnimFrameCountsAlpha", input.npcWalkAnimFrameCountsAlpha, npcCount);
+        validateEqLen(
+            issues,
+            "npcIdleAnimFrameOffsetsBase",
+            input.npcIdleAnimFrameOffsetsBase,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcIdleAnimFrameCountsBase",
+            input.npcIdleAnimFrameCountsBase,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcWalkAnimFrameOffsetsBase",
+            input.npcWalkAnimFrameOffsetsBase,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcWalkAnimFrameCountsBase",
+            input.npcWalkAnimFrameCountsBase,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcIdleAnimFrameOffsetsAlpha",
+            input.npcIdleAnimFrameOffsetsAlpha,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcIdleAnimFrameCountsAlpha",
+            input.npcIdleAnimFrameCountsAlpha,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcWalkAnimFrameOffsetsAlpha",
+            input.npcWalkAnimFrameOffsetsAlpha,
+            npcCount,
+        );
+        validateEqLen(
+            issues,
+            "npcWalkAnimFrameCountsAlpha",
+            input.npcWalkAnimFrameCountsAlpha,
+            npcCount,
+        );
 
         validatePatchBuffers(issues, "outNpcPatchesPacked", input.outNpcPatchesPacked, npcCount);
-        validatePatchBuffers(issues, "outNpcAlphaPatchesPacked", input.outNpcAlphaPatchesPacked, npcCount);
+        validatePatchBuffers(
+            issues,
+            "outNpcAlphaPatchesPacked",
+            input.outNpcAlphaPatchesPacked,
+            npcCount,
+        );
 
         validatePackedSlices(
             issues,
@@ -321,13 +446,17 @@ export function validateTickStateInput(input: DrawRangeTickStateInput): string[]
             issues.push(`npcNullAlphaFrameOffset must be finite`);
         } else if ((input.npcNullAlphaFrameOffset | 0) < 0) {
             issues.push(`npcNullAlphaFrameOffset must be >= 0`);
-        } else if ((input.npcNullAlphaFrameOffset | 0) + 3 > (input.npcAnimFramesAlphaPacked.length | 0)) {
+        } else if (
+            (input.npcNullAlphaFrameOffset | 0) + 3 >
+            (input.npcAnimFramesAlphaPacked.length | 0)
+        ) {
             issues.push(
-                `npcNullAlphaFrameOffset OOB offset=${input.npcNullAlphaFrameOffset | 0} packedLen=${input.npcAnimFramesAlphaPacked.length | 0}`,
+                `npcNullAlphaFrameOffset OOB offset=${
+                    input.npcNullAlphaFrameOffset | 0
+                } packedLen=${input.npcAnimFramesAlphaPacked.length | 0}`,
             );
         }
     }
 
     return issues;
 }
-

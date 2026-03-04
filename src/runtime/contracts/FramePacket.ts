@@ -129,7 +129,7 @@ export function buildTickPatchPackedFromCounts(
     getStreamPatches: TickPatchStreamSource,
 ): Int32Array {
     const totalInts = countsByMapId.length | 0;
-    if ((totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+    if (totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
                 `len=${totalInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
@@ -214,14 +214,12 @@ function validateFramePacketStrict(packet: FramePacket): void {
     }
 
     const gpu = packet.npcGpuFrameData;
-    if (
-        !(gpu.data instanceof Uint16Array) ||
-        (gpu.width | 0) <= 0 ||
-        (gpu.height | 0) <= 0
-    ) {
+    if (!(gpu.data instanceof Uint16Array) || (gpu.width | 0) <= 0 || (gpu.height | 0) <= 0) {
         throw new Error(
             `[map-render][frame-packet] npcGpuFrameData invalid: ` +
-                `width=${gpu.width} height=${gpu.height} data=${gpu.data?.constructor?.name ?? "null"}`,
+                `width=${gpu.width} height=${gpu.height} data=${
+                    gpu.data?.constructor?.name ?? "null"
+                }`,
         );
     }
     const expectedGpuLen = ((gpu.width | 0) * (gpu.height | 0) * 4) | 0;
@@ -233,14 +231,14 @@ function validateFramePacketStrict(packet: FramePacket): void {
     }
 
     const renderInts = packet.renderListPacked.length | 0;
-    if ((renderInts % FRAME_RENDER_LIST_STRIDE) !== 0) {
+    if (renderInts % FRAME_RENDER_LIST_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] renderListPacked length misaligned: ` +
                 `len=${renderInts} stride=${FRAME_RENDER_LIST_STRIDE}`,
         );
     }
     const rangeInts = packet.npcRangesByMapIdPacked.length | 0;
-    if ((rangeInts % NPC_RANGES_BY_MAP_ID_STRIDE) !== 0) {
+    if (rangeInts % NPC_RANGES_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] npcRangesByMapIdPacked length misaligned: ` +
                 `len=${rangeInts} stride=${NPC_RANGES_BY_MAP_ID_STRIDE}`,
@@ -248,7 +246,7 @@ function validateFramePacketStrict(packet: FramePacket): void {
     }
 
     const tickMetaInts = packet.tickPatchCountsByMapId.length | 0;
-    if ((tickMetaInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+    if (tickMetaInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
                 `len=${tickMetaInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
@@ -288,7 +286,9 @@ function validateFramePacketStrict(packet: FramePacket): void {
         if ((renderMapId | 0) !== (rangesMapId | 0) || (renderMapId | 0) !== (tickMapId | 0)) {
             throw new Error(
                 `[map-render][frame-packet] mapId order mismatch: ` +
-                    `entry=${i | 0} render=${renderMapId} npcRanges=${rangesMapId} tick=${tickMapId}`,
+                    `entry=${
+                        i | 0
+                    } render=${renderMapId} npcRanges=${rangesMapId} tick=${tickMapId}`,
             );
         }
         if (seenMapIds.has(renderMapId | 0)) {
@@ -298,14 +298,20 @@ function validateFramePacketStrict(packet: FramePacket): void {
             );
         }
         seenMapIds.add(renderMapId | 0);
-        if ((npcStart | 0) < 0 || (npcCount | 0) < 0 || ((npcStart + npcCount) | 0) > maxNpcEntries) {
+        if (
+            (npcStart | 0) < 0 ||
+            (npcCount | 0) < 0 ||
+            ((npcStart + npcCount) | 0) > maxNpcEntries
+        ) {
             throw new Error(
                 `[map-render][frame-packet] npc range invalid: ` +
-                    `entry=${i | 0} mapId=${renderMapId} start=${npcStart} count=${npcCount} max=${maxNpcEntries}`,
+                    `entry=${
+                        i | 0
+                    } mapId=${renderMapId} start=${npcStart} count=${npcCount} max=${maxNpcEntries}`,
             );
         }
         const hasNpcsFlag = (renderFlags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0;
-        if (hasNpcsFlag !== ((npcCount | 0) > 0)) {
+        if (hasNpcsFlag !== (npcCount | 0) > 0) {
             throw new Error(
                 `[map-render][frame-packet] npc flags/range mismatch: ` +
                     `entry=${i | 0} mapId=${renderMapId} flags=${renderFlags} count=${npcCount}`,
@@ -333,11 +339,9 @@ export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
     return packet;
 }
 
-export function parseFramePacketRenderList(
-    packed: Int32Array,
-): Int32Array {
+export function parseFramePacketRenderList(packed: Int32Array): Int32Array {
     const totalInts = packed.length | 0;
-    if ((totalInts % FRAME_RENDER_LIST_STRIDE) !== 0) {
+    if (totalInts % FRAME_RENDER_LIST_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] renderListPacked length misaligned: ` +
                 `len=${totalInts} stride=${FRAME_RENDER_LIST_STRIDE}`,
@@ -351,7 +355,7 @@ export function parseFramePacketTickPatches(
     patchesPacked: Int32Array,
 ): ParsedFrameTickPatches | undefined {
     const totalInts = countsByMapId.length | 0;
-    if ((totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE) !== 0) {
+    if (totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] tickPatchCountsByMapId length misaligned: ` +
                 `len=${totalInts} stride=${TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE}`,
@@ -406,11 +410,9 @@ export function parseFramePacketTickPatchesFromPacket(
     return parseFramePacketTickPatches(packet.tickPatchCountsByMapId, packet.tickPatchPacked);
 }
 
-export function parseFramePacketNpcRangesByMapId(
-    pairs: Int32Array,
-): ParsedFrameNpcRangesByMapId {
+export function parseFramePacketNpcRangesByMapId(pairs: Int32Array): ParsedFrameNpcRangesByMapId {
     const totalInts = pairs.length | 0;
-    if ((totalInts % NPC_RANGES_BY_MAP_ID_STRIDE) !== 0) {
+    if (totalInts % NPC_RANGES_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
             `[map-render][frame-packet] npcRangesByMapIdPacked length misaligned: ` +
                 `len=${totalInts} stride=${NPC_RANGES_BY_MAP_ID_STRIDE}`,

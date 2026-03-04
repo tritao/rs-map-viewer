@@ -7,8 +7,8 @@ import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheSto
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
 import { computeCacheRules } from "../../src/rs/loaders/CacheRules";
-import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { tryCreateCacheSessionFromSystem } from "../../src/rs/loaders/CacheSession";
+import { initErrorToString } from "../../src/rs/loaders/InitError";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 

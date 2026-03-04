@@ -1,14 +1,14 @@
 import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import { npcStateDeltaPacketTransferables } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
-import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
+import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 
 const buildService = new RenderDataWorkerBuild();
 const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
@@ -43,12 +43,7 @@ const worker = {
         npcOrderKeys: Int32Array,
         mapSimToken?: number,
     ): Promise<void> {
-        await tickRuntime.bootstrapMapNpcLifecycle(
-            mapId,
-            maxLevel,
-            npcOrderKeys,
-            mapSimToken,
-        );
+        await tickRuntime.bootstrapMapNpcLifecycle(mapId, maxLevel, npcOrderKeys, mapSimToken);
     },
     unregisterMapNpcSimState(mapId: number, mapSimToken?: number): void {
         tickRuntime.unregisterMapNpcSimState(mapId, mapSimToken);

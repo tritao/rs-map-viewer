@@ -5,9 +5,9 @@ import { CacheType, detectCacheType } from "../../src/rs/cache/CacheType";
 import { createCacheSystemFromFiles } from "../../src/rs/cache/platform/CacheStoreFromFiles";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import type { XteaKey } from "../../src/rs/crypto/Xtea";
+import { tryCreateCacheSessionFromSystem } from "../../src/rs/loaders/CacheSession";
 import { initErrorToString } from "../../src/rs/loaders/InitError";
 import { ModelData } from "../../src/rs/model/ModelData";
-import { tryCreateCacheSessionFromSystem } from "../../src/rs/loaders/CacheSession";
 import type { LoadedCache } from "../../src/util/Caches";
 import { loadCacheFiles, loadCacheInfos } from "./load-util";
 
@@ -307,7 +307,9 @@ async function main(): Promise<void> {
                         }
                     }
                 } else {
-                    console.error(`  (parts) TS re-load failed id=${ts.id}: ${loaded.error.message}`);
+                    console.error(
+                        `  (parts) TS re-load failed id=${ts.id}: ${loaded.error.message}`,
+                    );
                 }
             }
         }

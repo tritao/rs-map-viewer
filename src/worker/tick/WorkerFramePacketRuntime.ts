@@ -1,34 +1,31 @@
-import type { CacheSession } from "../../rs/loaders/CacheSession";
+import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
 import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
-import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
+import type { CacheSession } from "../../rs/loaders/CacheSession";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
 } from "../../runtime/contracts/FramePacket";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import {
-    buildFramePacketMapEntry,
-    buildFramePacketFromMapEntries,
     type FramePacketMapEntry,
+    buildFramePacketFromMapEntries,
+    buildFramePacketMapEntry,
 } from "../../runtime/contracts/FramePacketBuilder";
-import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import type { NpcStateDeltaPacket } from "../../runtime/contracts/NpcStateDeltaPacket";
-import {
-    NpcSimStateStore,
-    type NpcSimStateStoreDeps,
-} from "../../runtime/sim/NpcSimStateStore";
+import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
+import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
 } from "../../runtime/sim/TickPatchStreamsBuilder";
-import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
-import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
 import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
+import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
 import { WorkerMapSimLifecycle } from "./WorkerTickRuntime";
 
 type FrameWorkerState = Readonly<{
@@ -325,11 +322,7 @@ export class WorkerFramePacketRuntime {
         }
         const workerState = await this.getWorkerState();
         const backendKind = workerState.mapRenderBackend.kind ?? "unknown";
-        const inputs = this.normalizeTickFrameInputs(
-            frameCount,
-            0,
-            this.tickHoveredMapIdsPacked,
-        );
+        const inputs = this.normalizeTickFrameInputs(frameCount, 0, this.tickHoveredMapIdsPacked);
         const view = this.tickViewState;
         const wasmTick = await this.runWasmTickIfEnabled(
             workerState,

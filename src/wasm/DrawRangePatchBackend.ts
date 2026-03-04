@@ -1,7 +1,6 @@
-import { mapRenderRuntimeBridge } from "./rs_map_runtime_bridge.mjs";
-
-import type { DrawRangeTickStateInput } from "./DrawRangeTickState";
 import { summarizeI32, validateTickStateInput } from "./DrawRangePatchValidation";
+import type { DrawRangeTickStateInput } from "./DrawRangeTickState";
+import { mapRenderRuntimeBridge } from "./rs_map_runtime_bridge.mjs";
 
 type DrawRangePatchBridge = Readonly<{
     initRuntime(): Promise<boolean>;
@@ -165,11 +164,7 @@ export function registerDrawRangeTickState(
         return false;
     }
 
-    if (
-        !runtimeReady ||
-        runtimeHandle === undefined ||
-        typeof bridge.setTickState !== "function"
-    ) {
+    if (!runtimeReady || runtimeHandle === undefined || typeof bridge.setTickState !== "function") {
         logTickStateFailure("backend not ready", stateKey, input, undefined);
         return false;
     }
@@ -183,10 +178,7 @@ export function registerDrawRangeTickState(
 }
 
 export function unregisterDrawRangeTickState(stateKey: number): void {
-    if (
-        runtimeHandle === undefined ||
-        typeof bridge.clearTickState !== "function"
-    ) {
+    if (runtimeHandle === undefined || typeof bridge.clearTickState !== "function") {
         registeredTickStateKeys.delete(stateKey | 0);
         return;
     }

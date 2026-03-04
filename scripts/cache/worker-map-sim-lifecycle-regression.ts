@@ -9,7 +9,11 @@ function testTokenGuards(): void {
     assert.equal(lifecycle.tryAcceptMapSimToken(mapId, 1), true);
     assert.equal(lifecycle.tryAcceptMapSimToken(mapId, 0), false, "stale token should be rejected");
     assert.equal(lifecycle.tryAcceptMapSimToken(mapId, 2), true);
-    assert.equal(lifecycle.tryAcceptMapSimToken(mapId, 2), true, "duplicate token should be idempotent");
+    assert.equal(
+        lifecycle.tryAcceptMapSimToken(mapId, 2),
+        true,
+        "duplicate token should be idempotent",
+    );
 }
 
 function testMissingStateWarningDedupe(): void {
@@ -47,7 +51,7 @@ function testRapidLifecycleRaceStress(iterations: number): void {
         assert.equal(lifecycle.tryAcceptMapSimToken(mapId, unregisterToken), true);
         assert.equal(lifecycle.tryAcceptMapSimToken(mapId, registerToken), false);
 
-        if ((i % 97) === 0) {
+        if (i % 97 === 0) {
             lifecycle.reset();
         }
     }

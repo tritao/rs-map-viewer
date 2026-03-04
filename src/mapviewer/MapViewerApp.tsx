@@ -4,14 +4,14 @@ import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
+import type { BackendKind } from "../util/BackendKind";
 import { formatBytes } from "../util/BytesUtil";
 import { fetchCacheList } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
-import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import type { BackendKind } from "../util/BackendKind";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
 

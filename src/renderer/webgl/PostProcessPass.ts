@@ -39,4 +39,3 @@ export class PostProcessPass {
         frameDrawCall.draw();
     }
 }
-

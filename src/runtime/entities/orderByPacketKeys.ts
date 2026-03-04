@@ -36,4 +36,3 @@ export function orderByPacketKeys<T extends PacketKeyed>(
 
     return ordered.length > 0 ? ordered : (items as T[]);
 }
-

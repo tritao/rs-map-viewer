@@ -1,16 +1,16 @@
 import { ModuleThread, Pool, Thread, spawn } from "threads";
 
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
-import { LoadedCache } from "../util/Caches";
-import { MinimapData } from "../maprender/ts/MinimapData";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import type { RenderDataWorker } from "./RenderDataWorker";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import { MinimapData } from "../maprender/ts/MinimapData";
+import type { FramePacket } from "../runtime/contracts/FramePacket";
+import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
+import { LoadedCache } from "../util/Caches";
+import type { RenderDataWorker } from "./RenderDataWorker";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 type WorkerDescriptorLike = Readonly<{ init: Promise<RenderDataWorkerThread> }>;
@@ -199,7 +199,10 @@ export class RenderDataWorkerPool {
         return this.withFrameWorker((w) => w.applyNpcStateDeltaPacket(deltaPacket));
     }
 
-    buildFramePacketFromRenderState(frameCount: number, cycleNow: number): Promise<FramePacket | undefined> {
+    buildFramePacketFromRenderState(
+        frameCount: number,
+        cycleNow: number,
+    ): Promise<FramePacket | undefined> {
         return this.withFrameWorker((w) => w.buildFramePacketFromRenderState(frameCount, cycleNow));
     }
 

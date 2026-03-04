@@ -1,6 +1,6 @@
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { Camera } from "./Camera";
 import type { MapManager } from "./MapManager";
 
@@ -65,13 +65,11 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
 
         if (
             !this.pendingFramePacket &&
-            (
-                input.ticksElapsed > 0 ||
+            (input.ticksElapsed > 0 ||
                 input.clientTicksElapsed > 0 ||
                 !this.latestFramePacket ||
                 shouldUpdateTickMaps ||
-                shouldUpdateTickViewState
-            )
+                shouldUpdateTickViewState)
         ) {
             const epoch = this.packetEpoch | 0;
             const hoveredMapIdsPacked = this.deps.getHoveredMapIdsPacked() ?? EMPTY_INT32;
@@ -126,12 +124,9 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                     if ((this.packetEpoch | 0) === epoch) {
                         if (
                             nextPacket &&
-                            (
-                                (nextPacket.tickMapIdsVersion | 0) !==
-                                    (this.tickMapIdsVersion | 0) ||
+                            ((nextPacket.tickMapIdsVersion | 0) !== (this.tickMapIdsVersion | 0) ||
                                 (nextPacket.tickViewStateVersion | 0) !==
-                                    (this.tickViewStateVersion | 0)
-                            )
+                                    (this.tickViewStateVersion | 0))
                         ) {
                             this.latestFramePacket = undefined;
                             return undefined;
@@ -205,16 +200,18 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         return true;
     }
 
-    private syncTickRuntimeState(input: Readonly<{
-        mapIds: Int32Array;
-        shouldUpdateTickMaps: boolean;
-        cameraMapX: number;
-        cameraMapY: number;
-        lodDistance: number;
-        shouldUpdateTickViewState: boolean;
-        hoveredMapIdsPacked: Int32Array;
-        shouldUpdateHoveredMapIds: boolean;
-    }>): Promise<void>[] {
+    private syncTickRuntimeState(
+        input: Readonly<{
+            mapIds: Int32Array;
+            shouldUpdateTickMaps: boolean;
+            cameraMapX: number;
+            cameraMapY: number;
+            lodDistance: number;
+            shouldUpdateTickViewState: boolean;
+            hoveredMapIdsPacked: Int32Array;
+            shouldUpdateHoveredMapIds: boolean;
+        }>,
+    ): Promise<void>[] {
         const updatePromises = new Array<Promise<void>>();
         if (input.shouldUpdateTickMaps) {
             this.lastTickMapIds = input.mapIds;

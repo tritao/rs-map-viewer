@@ -9,29 +9,12 @@ import {
     VertexBuffer,
 } from "picogl";
 
-import { GameType } from "../../rs/cache/CacheInfo";
-import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { CacheSession } from "../../rs/loaders/CacheSession";
-import { isWebGL2Supported } from "../../util/DeviceUtil";
-import { Camera } from "../../mapviewer/Camera";
-import type { DrawRange } from "../../runtime/contracts/DrawRange";
-import { MapRenderer, TextureFilterMode } from "../MapRenderer";
-import { FrameStats, RendererStats } from "../Renderer";
 import type { SdMapData } from "../../maprender/MapRenderPayload";
-import { PostProcessPass } from "./PostProcessPass";
-import { RenderTargets } from "./RenderTargets";
-import { WebGLInteractionSystem, type InteractionsCallback } from "./WebGLInteractionSystem";
-import { WebGLTextureSystem } from "./WebGLTextureSystem";
-import { createWebGLDevice } from "./WebGLDevice";
-import { WebGLPrograms } from "./WebGLPrograms";
-import { WebGLMapSquare } from "./WebGLMapSquare";
-import {
-    type InteractionControllerRenderer,
-    type InteractionInput,
-    type InteractionSnapshotRenderer,
-} from "../../runtime/contracts/Interaction";
-import { NpcDataTextureRing } from "./NpcDataTextureRing";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
+import { Camera } from "../../mapviewer/Camera";
+import { GameType } from "../../rs/cache/CacheInfo";
+import { CacheSession } from "../../rs/loaders/CacheSession";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import {
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
@@ -42,12 +25,29 @@ import {
     getNpcTickPatchStreamIndex,
 } from "../../runtime/contracts/FramePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
-import { applyDrawRangePatches } from "./applyDrawRangePatches";
+import {
+    type InteractionControllerRenderer,
+    type InteractionInput,
+    type InteractionSnapshotRenderer,
+} from "../../runtime/contracts/Interaction";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
+import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
     ensureDrawRangePatchBackendInit,
     resetDrawRangePatchBackend,
 } from "../../wasm/DrawRangePatchBackend";
+import { MapRenderer, TextureFilterMode } from "../MapRenderer";
+import { FrameStats, RendererStats } from "../Renderer";
+import { NpcDataTextureRing } from "./NpcDataTextureRing";
+import { PostProcessPass } from "./PostProcessPass";
+import { RenderTargets } from "./RenderTargets";
+import { createWebGLDevice } from "./WebGLDevice";
 import { WebGLFramePacketState } from "./WebGLFramePacketState";
+import { type InteractionsCallback, WebGLInteractionSystem } from "./WebGLInteractionSystem";
+import { WebGLMapSquare } from "./WebGLMapSquare";
+import { WebGLPrograms } from "./WebGLPrograms";
+import { WebGLTextureSystem } from "./WebGLTextureSystem";
+import { applyDrawRangePatches } from "./applyDrawRangePatches";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
@@ -63,9 +63,7 @@ type FrameRenderMap = {
     isLod: boolean;
 };
 
-export class WebGLMapRenderer
-    extends MapRenderer<WebGLMapSquare, SdMapData>
-{
+export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     protected readonly textures: WebGLTextureSystem;
     private readonly interactions: WebGLInteractionSystem;
     protected readonly programs = new WebGLPrograms();
@@ -317,11 +315,7 @@ export class WebGLMapRenderer
                 data: new Uint16Array(16 * 4),
             };
             const ringIndex = this.framePacketState.getNpcDataRingIndex();
-            const writtenIndex = this.npcDataTextureRing.write(
-                this.app,
-                ringIndex,
-                packedNpcData,
-            );
+            const writtenIndex = this.npcDataTextureRing.write(this.app, ringIndex, packedNpcData);
             this.framePacketState.setNpcDataRingIndex(writtenIndex);
             this.npcDataTexture = this.npcDataTextureRing.get(writtenIndex);
             this.framePacketState.markNpcDataTextureClean();
@@ -365,8 +359,7 @@ export class WebGLMapRenderer
         this.isNewTextureAnimUni[0] = this.isNewTextureAnim ? 1 : 0;
         this.debugTextureModeUni[0] = this.debugTextureMode;
 
-        this.sceneUniformBuffer!
-            .set(0, this.camera.viewProjMatrix as Float32Array)
+        this.sceneUniformBuffer!.set(0, this.camera.viewProjMatrix as Float32Array)
             .set(1, this.camera.viewMatrix as Float32Array)
             .set(2, this.camera.projectionMatrix as Float32Array)
             .set(3, this.skyColor as Float32Array)
@@ -635,7 +628,9 @@ export class WebGLMapRenderer
         return out;
     }
 
-    private collectVisibleUsedTextureIds(frameRenderMaps: ReadonlyArray<FrameRenderMap>): Int32Array[] {
+    private collectVisibleUsedTextureIds(
+        frameRenderMaps: ReadonlyArray<FrameRenderMap>,
+    ): Int32Array[] {
         const out = this.visibleUsedTextureIdsScratch;
         let write = 0;
         for (let i = 0; i < frameRenderMaps.length; i++) {
@@ -734,9 +729,9 @@ export class WebGLMapRenderer
             this.warnedNpcMissingGeometryOrRangesMapIds.add(map.id | 0);
             console.warn(
                 `[map-render][npc] frame packet has npc range but map has no npc geometry/ranges ` +
-                    `(mapId=${map.id | 0} drawRangesInts=${drawRangesPacked.length | 0} hasNpcGeometry=${
-                        hasNpcGeometry ? 1 : 0
-                    })`,
+                    `(mapId=${map.id | 0} drawRangesInts=${
+                        drawRangesPacked.length | 0
+                    } hasNpcGeometry=${hasNpcGeometry ? 1 : 0})`,
             );
         }
         if (!hasNpcDrawRanges || !hasNpcGeometry) {

@@ -1,9 +1,6 @@
-import type { SdMapData } from "../MapRenderPayload";
-import {
-    MAP_RENDER_DRAW_BUCKET_KEYS,
-    type MapRenderDrawBucketKey,
-} from "../MapRenderPayload";
 import type { MapRenderRuntimePacket } from "../../wasm/MapRenderRuntimeBridgeAbi";
+import type { SdMapData } from "../MapRenderPayload";
+import { MAP_RENDER_DRAW_BUCKET_KEYS, type MapRenderDrawBucketKey } from "../MapRenderPayload";
 
 export type MapRenderPayloadOverlay = Readonly<
     Pick<SdMapData, "heightMapTextureData" | "drawRanges" | "modelInfoTextures">

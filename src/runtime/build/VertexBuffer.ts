@@ -64,8 +64,8 @@ export class VertexBuffer extends DataBuffer {
         }
 
         const blendClamped = clamp(textureBlend, 0, 1);
-        const tex0 = textureId !== -1 ? ((textureId + 1) | 0) : 0;
-        const tex1 = textureId1 !== -1 ? ((textureId1 + 1) | 0) : 0;
+        const tex0 = textureId !== -1 ? (textureId + 1) | 0 : 0;
+        const tex1 = textureId1 !== -1 ? (textureId1 + 1) | 0 : 0;
         const hasBlend = tex0 !== 0 && tex1 !== 0 && tex1 !== tex0 && blendClamped > 0;
         const isTextured = tex0 !== 0;
         if (isTextured) {
@@ -88,11 +88,7 @@ export class VertexBuffer extends DataBuffer {
 
         const v1 = yPos | (hsl << 15) | (Number(isTextured) << 31);
 
-        const v2 =
-            (zPos << 17) |
-            (alpha << 9) |
-            (priority << 6) |
-            (uPacked >> 6);
+        const v2 = (zPos << 17) | (alpha << 9) | (priority << 6) | (uPacked >> 6);
 
         const blend8 = hasBlend ? clamp(Math.round(blendClamped * 255), 0, 255) : 0;
 
@@ -101,9 +97,9 @@ export class VertexBuffer extends DataBuffer {
         // - tex0 high 7 bits in v3[19..25]
         // - tex1 low 10 bits in v3[0..9]
         // - tex1 high 6 bits in v3[26..31]
-        const tex0High7 = isTextured ? ((tex0 >> 9) & 0x7f) : 0;
-        const tex1Low10 = hasBlend ? (tex1 & 0x3ff) : 0;
-        const tex1High6 = hasBlend ? ((tex1 >> 10) & 0x3f) : 0;
+        const tex0High7 = isTextured ? (tex0 >> 9) & 0x7f : 0;
+        const tex1Low10 = hasBlend ? tex1 & 0x3ff : 0;
+        const tex1High6 = hasBlend ? (tex1 >> 10) & 0x3f : 0;
         const v3 =
             tex1Low10 |
             (Number(hasBlend) << 10) |

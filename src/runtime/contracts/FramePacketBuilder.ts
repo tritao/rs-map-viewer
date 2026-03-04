@@ -1,10 +1,10 @@
 import {
-    buildFramePacket,
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
-    TICK_PATCH_STREAM_COUNT,
     type FramePacket,
+    TICK_PATCH_STREAM_COUNT,
+    buildFramePacket,
 } from "./FramePacket";
 import type { NpcGpuFrameData } from "./NpcGpuFrame";
 
@@ -91,9 +91,7 @@ export function buildFramePacketFromMapEntries(
     const entryCount = input.entries.length | 0;
     const npcRangesByMapIdPacked = new Int32Array((entryCount | 0) * 3);
     const renderListPacked = new Int32Array((entryCount | 0) * 2);
-    const tickPatchCountsByMapId = new Int32Array(
-        (entryCount | 0) * (1 + TICK_PATCH_STREAM_COUNT),
-    );
+    const tickPatchCountsByMapId = new Int32Array((entryCount | 0) * (1 + TICK_PATCH_STREAM_COUNT));
     const tickPatchStreamsByMap = new Array<(Int32Array | undefined)[]>(entryCount | 0);
 
     for (let i = 0; i < entryCount; i++) {

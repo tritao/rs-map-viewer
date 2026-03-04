@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 
-import { resolveLocRenderPlacement } from "../../src/runtime/build";
-import type { SceneLocEntity } from "../../src/runtime/build";
 import { LocModelType } from "../../src/rs/config/loctype/LocModelType";
 import { LocEntity } from "../../src/rs/scene/entity/LocEntity";
+import { resolveLocRenderPlacement } from "../../src/runtime/build";
+import type { SceneLocEntity } from "../../src/runtime/build";
 
 function buildHeightMap(
     sizeX: number,

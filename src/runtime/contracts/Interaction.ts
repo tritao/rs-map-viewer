@@ -14,4 +14,3 @@ export interface InteractionControllerRenderer {
 export interface InteractionSnapshotRenderer {
     getHoveredMapIdsPacked(): Int32Array;
 }
-

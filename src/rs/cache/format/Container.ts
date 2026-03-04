@@ -5,8 +5,8 @@ import { Xtea, XteaKey } from "../../crypto/Xtea";
 import { ByteReader } from "../../io/ByteReader";
 import { ByteSource } from "../../io/ByteSource";
 import { ByteSourceReader } from "../../io/ByteSourceReader";
-import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 import { readU32BE } from "../../io/Endian";
+import { Uint8ArrayReader } from "../../io/Uint8ArrayReader";
 
 export class Container {
     static decodeFromBytes(

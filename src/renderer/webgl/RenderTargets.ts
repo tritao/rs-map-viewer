@@ -62,7 +62,12 @@ export class RenderTargets {
         }
 
         this.colorTarget = app.createRenderbuffer(app.width, app.height, PicoGL.RGBA8, samples);
-        this.interactTarget = app.createRenderbuffer(app.width, app.height, PicoGL.RGBA32F, samples);
+        this.interactTarget = app.createRenderbuffer(
+            app.width,
+            app.height,
+            PicoGL.RGBA32F,
+            samples,
+        );
         this.depthTarget = app.createRenderbuffer(
             app.width,
             app.height,
@@ -104,4 +109,3 @@ export class RenderTargets {
         this.interactColorTarget = undefined;
     }
 }
-

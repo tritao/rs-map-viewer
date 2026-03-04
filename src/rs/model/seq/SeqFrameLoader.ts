@@ -7,12 +7,7 @@ import { EnumeratingBytesProvider, IndexFileBytesProvider } from "../../io/Bytes
 import { EnumeratingGroupBytesProviderFactory } from "../../io/GroupBytesProviderFactory";
 import { ArchiveNamedBytesProvider } from "../../io/NamedBytesProvider";
 import { SeqBaseLoader } from "./SeqBaseLoader";
-import {
-    DatSeqFrame,
-    LegacySeqFrame,
-    SeqFrame,
-    SeqFrameDecodeScratch,
-} from "./SeqFrame";
+import { DatSeqFrame, LegacySeqFrame, SeqFrame, SeqFrameDecodeScratch } from "./SeqFrame";
 import { SeqFrameMap } from "./SeqFrameMap";
 import { decodeDat2SeqFrameMapFromSource } from "./decodeDat2SeqFrameMap";
 
@@ -117,7 +112,10 @@ export class DatSeqFrameLoader implements SeqFrameLoader {
             if (!bytes) {
                 continue;
             }
-            if (!DatSeqFrame.tryLoadResult(frames, bytes, scratch, frameMapId, frameMapIdByFrameId).ok) {
+            if (
+                !DatSeqFrame.tryLoadResult(frames, bytes, scratch, frameMapId, frameMapIdByFrameId)
+                    .ok
+            ) {
                 failedFrameMapIds.push(frameMapId);
             }
         }

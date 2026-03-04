@@ -1,5 +1,10 @@
 import type { TextureMaterial } from "../../../rs/texture/TextureMaterial";
-import { TEXTURE_ID_LUT_HEIGHT, TEXTURE_ID_LUT_SIZE, TEXTURE_ID_LUT_WIDTH, textureIdToLutIndex } from "./TextureIdLut";
+import {
+    TEXTURE_ID_LUT_HEIGHT,
+    TEXTURE_ID_LUT_SIZE,
+    TEXTURE_ID_LUT_WIDTH,
+    textureIdToLutIndex,
+} from "./TextureIdLut";
 
 export type TextureMaterialProvider = Readonly<{
     tryGetMaterial(id: number): TextureMaterial | undefined;

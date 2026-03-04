@@ -1,6 +1,11 @@
-import { NpcSpawn, fetchNpcSpawns, getMapNpcSpawns, getNpcSpawnsUrl } from "../../data/npc/NpcSpawn";
+import {
+    NpcSpawn,
+    fetchNpcSpawns,
+    getMapNpcSpawns,
+    getNpcSpawnsUrl,
+} from "../../data/npc/NpcSpawn";
 import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
-import type { MapRenderBuildDeps, NpcSpawnDecodeBackend } from "../MapRenderBuildDeps";
+import { InteractType } from "../../renderer/InteractType";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";
@@ -9,6 +14,7 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { LocLoadType, SceneBuilder } from "../../rs/scene/SceneBuilder";
@@ -18,38 +24,37 @@ import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
-import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build";
-import { loadMinimapBlob } from "./MinimapData";
-import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
-import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
-import { InteractType } from "../../renderer/InteractType";
 import {
     ContourGroundType,
-    createLocAnimatedGroupKey,
-    buildNpcGeometry,
-    emitSceneModelsToSceneBuffer,
-    getSceneLocs,
     LocAnimatedData,
     LocAnimatedGroup,
     ModelHashBuffer,
-    resolveLocRenderPlacement,
     SceneBuffer,
+    type SceneCommandPlan,
+    type SceneCommandPlanDigest,
     SceneLocEntity,
     SceneModel,
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
+    buildNpcGeometry,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
+    createLocAnimatedGroupKey,
+    emitSceneModelsToSceneBuffer,
+    getSceneLocs,
+    resolveLocRenderPlacement,
     summarizeSceneCommandPlan,
-    type SceneCommandPlan,
-    type SceneCommandPlanDigest,
 } from "../../runtime/build";
+import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
+import { type DrawRange, NULL_DRAW_RANGE, newDrawRange } from "../../runtime/contracts/DrawRange";
 import { createNpcBootstrapData } from "../../runtime/sim/NpcBootstrapData";
+import type { MapRenderBuildDeps, NpcSpawnDecodeBackend } from "../MapRenderBuildDeps";
 import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";
 import { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../MapRenderPayload";
 import { MAP_RENDER_DRAW_BUCKET_KEYS } from "../MapRenderPayload";
+import { loadMinimapBlob } from "./MinimapData";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 

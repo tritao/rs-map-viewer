@@ -1,17 +1,18 @@
 import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
-import { WorkerFramePacketRuntime } from "./tick/WorkerFramePacketRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
-import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import { WorkerFramePacketRuntime } from "./tick/WorkerFramePacketRuntime";
+
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 const buildService = new RenderDataWorkerBuild();
@@ -45,12 +46,7 @@ const worker = {
     ): Promise<TransferDescriptor<Int32Array>> {
         return buildService.loadTexture(id, size, flipH, brightness);
     },
-    async loadMapImage(
-        mapX: number,
-        mapY: number,
-        level: number,
-        drawMapFunctions: boolean,
-    ) {
+    async loadMapImage(mapX: number, mapY: number, level: number, drawMapFunctions: boolean) {
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
     },
     async registerMapNpcRenderState(
@@ -86,8 +82,8 @@ const worker = {
     },
     async applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         if (
-            ((deltaPacket.tickMapIdsVersion | 0) !== (frameTickMapIdsVersion | 0)) ||
-            ((deltaPacket.tickViewStateVersion | 0) !== (frameTickViewStateVersion | 0))
+            (deltaPacket.tickMapIdsVersion | 0) !== (frameTickMapIdsVersion | 0) ||
+            (deltaPacket.tickViewStateVersion | 0) !== (frameTickViewStateVersion | 0)
         ) {
             return 0;
         }
@@ -108,10 +104,7 @@ const worker = {
         frameCount: number,
         cycleNow: number,
     ): Promise<TransferDescriptor<FramePacket | undefined>> {
-        const packet = await frameRuntime.buildFramePacketFromCurrentState(
-            frameCount,
-            cycleNow,
-        );
+        const packet = await frameRuntime.buildFramePacketFromCurrentState(frameCount, cycleNow);
         return packet
             ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
             : Transfer<FramePacket | undefined>(undefined, []);

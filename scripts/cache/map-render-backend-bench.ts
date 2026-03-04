@@ -12,9 +12,9 @@ import {
 import { CacheInfo, getLatestCache } from "../../src/rs/cache/CacheInfo";
 import { JSCompressionHandler } from "../../src/rs/compression/JSCompressionHandler";
 import { VarManagerProvider } from "../../src/rs/config/vartype/VarProvider";
+import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { MapFileBytesProvider } from "../../src/rs/map/MapBytesProvider";
 import { MapImageRenderer } from "../../src/rs/render/minimap/MapImageRenderer";
-import { tryCreateCacheSession } from "../../src/rs/loaders/CacheSession";
 import { SceneBuilder } from "../../src/rs/scene/SceneBuilder";
 import { LocModelLoader } from "../../src/rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../src/rs/scene/model/NpcModelLoader";
@@ -25,8 +25,8 @@ import type {
     MapRenderRuntimeCreateConfig,
     MapRenderRuntimePacket,
 } from "../../src/wasm/MapRenderRuntimeBridgeAbi";
-import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 import { loadCache, loadCacheInfos } from "./load-util";
+import { runtimePacketToPayloadOverlay } from "./runtimePacketOverlay";
 
 type Args = Readonly<{
     cacheName?: string;
@@ -182,7 +182,11 @@ function parseArgs(argv: string[]): Args {
     };
 }
 
-function addStageSample(samplesByStage: Map<string, number[]>, stage: string, valueMs: number): void {
+function addStageSample(
+    samplesByStage: Map<string, number[]>,
+    stage: string,
+    valueMs: number,
+): void {
     const v = Number(valueMs);
     if (!Number.isFinite(v) || v < 0) {
         return;
@@ -211,9 +215,7 @@ function printStageSummary(name: string, samplesByStage: Map<string, number[]>):
     rows.sort((a, b) => b.mean - a.mean);
     console.log(`map-render-backend-bench ${name} stageMeanMs:`);
     for (const row of rows) {
-        console.log(
-            `  ${row.stage}=${row.mean.toFixed(1)}ms samples=${row.samples}`,
-        );
+        console.log(`  ${row.stage}=${row.mean.toFixed(1)}ms samples=${row.samples}`);
     }
 }
 
@@ -276,21 +278,9 @@ function addCppInternalStageSamples(
         "cppCore.registerTickState",
         (timings.registerTickStateUs | 0) / 1000,
     );
-    addStageSample(
-        samplesByStage,
-        "cppCore.planPayload",
-        (timings.planPayloadUs | 0) / 1000,
-    );
-    addStageSample(
-        samplesByStage,
-        "cppCore.buildPayload",
-        (timings.buildPayloadUs | 0) / 1000,
-    );
-    addStageSample(
-        samplesByStage,
-        "cppCore.storePayload",
-        (timings.storePayloadUs | 0) / 1000,
-    );
+    addStageSample(samplesByStage, "cppCore.planPayload", (timings.planPayloadUs | 0) / 1000);
+    addStageSample(samplesByStage, "cppCore.buildPayload", (timings.buildPayloadUs | 0) / 1000);
+    addStageSample(samplesByStage, "cppCore.storePayload", (timings.storePayloadUs | 0) / 1000);
     addStageSample(samplesByStage, "cppCore.buildNpc", (timings.buildNpcUs | 0) / 1000);
     addStageSample(
         samplesByStage,
@@ -327,11 +317,7 @@ function addCppInternalStageSamples(
         "cppCore.command.copyDebug",
         (timings.commandCopyDebugUs | 0) / 1000,
     );
-    addStageSample(
-        samplesByStage,
-        "cppCore.command.setup",
-        (timings.commandSetupUs | 0) / 1000,
-    );
+    addStageSample(samplesByStage, "cppCore.command.setup", (timings.commandSetupUs | 0) / 1000);
     addStageSample(
         samplesByStage,
         "cppCore.command.sceneBuild",
@@ -342,16 +328,8 @@ function addCppInternalStageSamples(
         "cppCore.command.terrain",
         (timings.commandTerrainUs | 0) / 1000,
     );
-    addStageSample(
-        samplesByStage,
-        "cppCore.command.loc",
-        (timings.commandLocUs | 0) / 1000,
-    );
-    addStageSample(
-        samplesByStage,
-        "cppCore.command.obj",
-        (timings.commandObjUs | 0) / 1000,
-    );
+    addStageSample(samplesByStage, "cppCore.command.loc", (timings.commandLocUs | 0) / 1000);
+    addStageSample(samplesByStage, "cppCore.command.obj", (timings.commandObjUs | 0) / 1000);
     addStageSample(
         samplesByStage,
         "cppCore.command.finalize",
@@ -629,8 +607,7 @@ async function main(): Promise<void> {
                         addStageSample(tsStageSamples, stage, ms);
                     }
                 }
-                const totalMs =
-                    bridgeInput.debugTotalMs ?? (performance.now() - tTotal);
+                const totalMs = bridgeInput.debugTotalMs ?? performance.now() - tTotal;
                 addStageSample(tsStageSamples, "TOTAL", totalMs);
             }
             measuredTotalMs += performance.now() - tTotal;
@@ -742,8 +719,16 @@ async function main(): Promise<void> {
                         ? await wasmBridge.debugGetLastBuildStageTimings(prepared.runtimeHandle)
                         : undefined;
                 addCppInternalStageSamples(cppStageSamples, timings);
-                addStageSample(cppStageSamples, "buildMapPacketFromCache(total)", buildPacketTotalMs);
-                addStageSample(cppStageSamples, "runtimePacketToPayloadOverlay(total)", overlayTotalMs);
+                addStageSample(
+                    cppStageSamples,
+                    "buildMapPacketFromCache(total)",
+                    buildPacketTotalMs,
+                );
+                addStageSample(
+                    cppStageSamples,
+                    "runtimePacketToPayloadOverlay(total)",
+                    overlayTotalMs,
+                );
                 addStageSample(cppStageSamples, "TOTAL", performance.now() - tTotal);
             }
             measuredTotalMs += performance.now() - tTotal;

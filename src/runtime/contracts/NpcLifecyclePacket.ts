@@ -1,6 +1,6 @@
-import { MovementType } from "../entities/Npc";
 import { ByteBuffer } from "../../rs/io/ByteBuffer";
-import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent, NpcDespawnEvent } from "../sim/NpcEvents";
+import { MovementType } from "../entities/Npc";
+import type { NpcDespawnEvent, NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "../sim/NpcEvents";
 import type { NpcUpdateDelta } from "../sim/NpcSimMovement";
 
 const LIFECYCLE_PACKET_VERSION = 2;
@@ -328,7 +328,7 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
                 tileY,
                 level,
                 orderKey:
-                    (flags & SPAWN_FLAG_HAS_ORDER_KEY) !== 0 ? (reader.readInt() | 0) : undefined,
+                    (flags & SPAWN_FLAG_HAS_ORDER_KEY) !== 0 ? reader.readInt() | 0 : undefined,
             };
             events.push(event);
             eventCount = (eventCount + 1) | 0;
