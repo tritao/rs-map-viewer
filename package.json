@@ -98,6 +98,7 @@
     "rs:worker-frame-packet-source-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-frame-packet-source-regression.ts",
     "rs:worker-map-sim-lifecycle-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-map-sim-lifecycle-regression.ts",
     "rs:worker-npc-bootstrap-resolver-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-npc-bootstrap-resolver-regression.ts",
+    "rs:npc-spawn-resolver-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/npc-spawn-resolver-regression.ts",
     "rs:worker-npc-animation-delta-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/worker-npc-animation-delta-regression.ts",
     "rs:npc-lifecycle-packet-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/npc-lifecycle-packet-regression.ts",
     "rs:wasm-tick-npc-path-regression": "TS_NODE_PROJECT=scripts/tsconfig.tsnode.json node --experimental-specifier-resolution=node --loader ts-node/esm scripts/cache/wasm-tick-npc-path-regression.ts",
