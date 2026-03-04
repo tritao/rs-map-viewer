@@ -63,7 +63,9 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
                 tickMapIdsVersion: tickMapIdsVersion | 0,
                 tickViewStateVersion: tickViewStateVersion | 0,
                 eventCount: 0,
-                lifecyclePacketBytes: new Uint8Array(0),
+                spawnsPacked: new Int32Array(0),
+                updatesPacked: new Int32Array(0),
+                despawnsPacked: new Int32Array(0),
             };
         },
     };
@@ -135,7 +137,9 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
                 tickMapIdsVersion: tickMapIdsVersion | 0,
                 tickViewStateVersion: tickViewStateVersion | 0,
                 eventCount: 0,
-                lifecyclePacketBytes: new Uint8Array(0),
+                spawnsPacked: new Int32Array(0),
+                updatesPacked: new Int32Array(0),
+                despawnsPacked: new Int32Array(0),
             };
         },
     };

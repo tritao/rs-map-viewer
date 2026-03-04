@@ -8,14 +8,14 @@ import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimatio
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
-import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
+import { WorkerFramePacketRuntime } from "./tick/WorkerFramePacketRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 const buildService = new RenderDataWorkerBuild();
-const frameRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
+const frameRuntime = new WorkerFramePacketRuntime(() => buildService.requireWorkerState());
 let frameTickMapIdsVersion = 0;
 let frameTickViewStateVersion = 0;
 let lastAppliedDeltaFrameCount = -1;
@@ -56,20 +56,22 @@ const worker = {
     async registerMapNpcRenderState(
         mapId: number,
         borderSize: number,
+        tileRenderFlagsLevel1: Uint8Array[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        await frameRuntime.registerMapNpcSimState(
+        await frameRuntime.registerMapNpcRenderState(
             mapId,
             borderSize,
+            tileRenderFlagsLevel1,
             locsAnimated,
             npcTypeAnimationTable,
             mapSimToken,
         );
     },
     unregisterMapNpcRenderState(mapId: number, mapSimToken?: number): void {
-        frameRuntime.unregisterMapNpcSimState(mapId, mapSimToken);
+        frameRuntime.unregisterMapNpcRenderState(mapId, mapSimToken);
     },
     setFrameTickMapIds(mapIds: Int32Array): void {
         frameRuntime.setTickMapIds(mapIds);
@@ -93,11 +95,10 @@ const worker = {
         if (deltaFrameCount < (lastAppliedDeltaFrameCount | 0)) {
             return 0;
         }
-        const bytes = deltaPacket.lifecyclePacketBytes;
-        if (!(bytes instanceof Uint8Array) || (bytes.length | 0) <= 0) {
+        if ((deltaPacket.eventCount | 0) <= 0) {
             return 0;
         }
-        const applied = await frameRuntime.applyNpcLifecyclePacketBytes(bytes);
+        const applied = await frameRuntime.applyNpcStateDeltaPacket(deltaPacket);
         if ((applied | 0) > 0) {
             lastAppliedDeltaFrameCount = deltaFrameCount;
         }

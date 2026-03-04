@@ -1,10 +1,7 @@
 import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import {
-    decodeNpcLifecyclePacket,
-    encodeNpcLifecyclePacketFromEvents,
-} from "../../runtime/contracts/NpcLifecyclePacket";
+import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
@@ -44,7 +41,7 @@ import {
 } from "../../runtime/sim/NpcBootstrapResolver";
 import type { NpcEvent } from "../../runtime/sim/NpcEvents";
 import {
-    buildNpcStateDeltaPacket,
+    buildNpcStateDeltaPacketFromEvents,
     type NpcStateDeltaPacket,
 } from "../../runtime/contracts/NpcStateDeltaPacket";
 
@@ -595,7 +592,6 @@ export class WorkerTickRuntime {
         const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
         const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
         const events: NpcEvent[] = [];
-        let eventCount = 0;
 
         for (let i = 0; i < mapIds.length; i++) {
             const mapId = mapIds[i] | 0;
@@ -612,26 +608,14 @@ export class WorkerTickRuntime {
                 seqTypeLoader,
                 seqFrameLoader,
             );
-            eventCount =
-                (eventCount +
-                    (this.collectNpcDeltaEventsForMap(
-                        mapId,
-                        state.npcs,
-                        events,
-                    ) | 0)) |
-                0;
+            this.collectNpcDeltaEventsForMap(mapId, state.npcs, events);
         }
 
-        const lifecyclePacketBytes =
-            (eventCount | 0) > 0
-                ? encodeNpcLifecyclePacketFromEvents(events)
-                : new Uint8Array(0);
-        return buildNpcStateDeltaPacket({
+        return buildNpcStateDeltaPacketFromEvents({
             frameCount: frameCount | 0,
             tickMapIdsVersion: this.tickMapIdsVersion | 0,
             tickViewStateVersion: this.tickViewStateVersion | 0,
-            eventCount: eventCount | 0,
-            lifecyclePacketBytes,
+            events,
         });
     }
 

@@ -193,6 +193,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     await this.renderWorkerPool.registerMapNpcRenderState(
                         mapId,
                         mapData.borderSize,
+                        mapData.tileRenderFlags[1] ?? [],
                         mapData.locsAnimated,
                         npcTypeAnimationTable,
                         mapSimToken,

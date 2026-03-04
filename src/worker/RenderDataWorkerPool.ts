@@ -1,4 +1,4 @@
-import { ModuleThread, Pool, spawn } from "threads";
+import { ModuleThread, Pool, Thread, spawn } from "threads";
 
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import { LoadedCache } from "../util/Caches";
@@ -24,13 +24,14 @@ export class RenderDataWorkerPool {
     static create(size: number): RenderDataWorkerPool {
         const pool = Pool(() => spawnWorker(), size);
         const workers = pool["workers"] as WorkerDescriptorLike[];
-        return new RenderDataWorkerPool(pool, workers, size);
+        return new RenderDataWorkerPool(pool, workers, size, spawnWorker());
     }
 
     constructor(
         readonly pool: Pool<RenderDataWorkerThread>,
         readonly workers: WorkerDescriptorLike[],
         readonly size: number,
+        readonly frameWorkerPromise: Promise<RenderDataWorkerThread>,
     ) {}
 
     private readonly spawnBootstrapByCacheKey = new Map<string, Promise<WorkerSpawnBootstrap>>();
@@ -57,7 +58,10 @@ export class RenderDataWorkerPool {
     private runInit(cache: LoadedCache, options?: WorkerRuntimeOptions): Promise<void> {
         return (async () => {
             const spawnBootstrap = await this.ensureSpawnBootstrap(cache);
-            await this.runAll((w) => w.initCache(cache, spawnBootstrap, options));
+            await Promise.all([
+                this.runAll((w) => w.initCache(cache, spawnBootstrap, options)),
+                this.frameWorkerPromise.then((w) => w.initCache(cache, spawnBootstrap, options)),
+            ]);
         })();
     }
 
@@ -118,7 +122,12 @@ export class RenderDataWorkerPool {
     }
 
     setVars(vars: Int32Array): Promise<void> {
-        return this.awaitInitCache().then(() => this.runAll((w) => w.setVars(vars)));
+        return this.awaitInitCache().then(async () => {
+            await Promise.all([
+                this.runAll((w) => w.setVars(vars)),
+                this.withFrameWorker((w) => w.setVars(vars)),
+            ]);
+        });
     }
 
     loadCachedMapImages(): Promise<Map<number, string>> {
@@ -135,11 +144,7 @@ export class RenderDataWorkerPool {
 
     // Dedicated render-frame worker for NPC render state + frame packet build.
     private getFrameWorker(): Promise<RenderDataWorkerThread> {
-        const desc = this.workers[0];
-        if (!desc) {
-            throw new Error("RenderDataWorkerPool has no workers");
-        }
-        return desc.init;
+        return this.frameWorkerPromise;
     }
 
     private async withFrameWorker<T>(task: (w: RenderDataWorkerThread) => Promise<T>): Promise<T> {
@@ -151,6 +156,7 @@ export class RenderDataWorkerPool {
     registerMapNpcRenderState(
         mapId: number,
         borderSize: number,
+        tileRenderFlagsLevel1: Uint8Array[],
         locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
@@ -159,6 +165,7 @@ export class RenderDataWorkerPool {
             w.registerMapNpcRenderState(
                 mapId,
                 borderSize,
+                tileRenderFlagsLevel1,
                 locsAnimated,
                 npcTypeAnimationTable,
                 mapSimToken,
@@ -196,7 +203,9 @@ export class RenderDataWorkerPool {
         return this.withFrameWorker((w) => w.buildFramePacketFromRenderState(frameCount, cycleNow));
     }
 
-    terminate(): Promise<void> {
-        return this.pool.terminate();
+    async terminate(): Promise<void> {
+        await this.pool.terminate();
+        const frameWorker = await this.frameWorkerPromise;
+        await Thread.terminate(frameWorker);
     }
 }
