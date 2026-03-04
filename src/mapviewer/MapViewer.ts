@@ -19,6 +19,7 @@ import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
 import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { MapViewerRenderer } from "./MapViewerRenderer";
@@ -133,7 +134,8 @@ export class MapViewer {
     private devFixedMapSquare: DevFixedMapSquare | undefined;
 
     static tryCreate(
-        workerPool: RenderDataWorkerPool,
+        renderWorkerPool: RenderDataWorkerPool,
+        simWorkerPool: SimWorkerPool,
         cacheList: CacheList,
         mapImageCache: Cache,
         context: CacheContext,
@@ -142,7 +144,8 @@ export class MapViewer {
     ): Result<MapViewer, string> {
         return ok(
             new MapViewer(
-                workerPool,
+                renderWorkerPool,
+                simWorkerPool,
                 cacheList,
                 mapImageCache,
                 context,
@@ -176,7 +179,8 @@ export class MapViewer {
     }
 
     private constructor(
-        readonly workerPool: RenderDataWorkerPool,
+        readonly renderWorkerPool: RenderDataWorkerPool,
+        readonly simWorkerPool: SimWorkerPool,
         readonly cacheList: CacheList,
         readonly mapImageCache: Cache,
         context: CacheContext,
@@ -191,11 +195,16 @@ export class MapViewer {
             this.applySearchParams(initialSearchParams);
         }
 
-        this.workerPool.initCache(context.loadedCache, this.runtimeOptions);
+        this.renderWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
+        this.simWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
         this.renderer.initCache();
         this.resetMenu();
         this.updateSearchParams();
+    }
+
+    get workerPool(): RenderDataWorkerPool {
+        return this.renderWorkerPool;
     }
 
     private runtimeOptions: MapViewerRuntimeOptions;
@@ -287,7 +296,10 @@ export class MapViewer {
         // (threads RPC / structured clone of cache inputs).
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
-        await this.workerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions);
+        await Promise.all([
+            this.renderWorkerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions),
+            this.simWorkerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions),
+        ]);
         this.clearMapImageUrls();
         await this.renderer.applyCacheContext();
         this.resetMenu();
@@ -385,7 +397,7 @@ export class MapViewer {
     }
 
     init(): void {
-        this.workerPool.loadCachedMapImages().then((mapImageUrls) => {
+        this.renderWorkerPool.loadCachedMapImages().then((mapImageUrls) => {
             mapImageUrls.forEach((value, key) => this.mapImageUrls.set(key, value));
         });
     }
@@ -435,7 +447,8 @@ export class MapViewer {
     private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
         this.cacheContext = context;
 
-        this.workerPool.initCache(context.loadedCache, this.runtimeOptions);
+        this.renderWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
+        this.simWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
 
         await this.renderer.applyCacheContext();
@@ -506,7 +519,8 @@ export class MapViewer {
     };
 
     updateVars(): void {
-        this.workerPool.setVars(this.session.varManager.values);
+        this.renderWorkerPool.setVars(this.session.varManager.values);
+        this.simWorkerPool.setVars(this.session.varManager.values);
     }
 
     static getCachedMapImageUrl(mapX: number, mapY: number): string {
@@ -517,7 +531,7 @@ export class MapViewer {
         const mapManager = this.renderer.mapManager;
         const mapId = getMapSquareId(mapX, mapY);
         if (
-            this.loadingMapImageIds.size > this.workerPool.size * 4 ||
+            this.loadingMapImageIds.size > this.renderWorkerPool.size * 4 ||
             this.mapImageUrls.has(mapId) ||
             this.loadingMapImageIds.has(mapId) ||
             mapManager.invalidMapIds.has(mapId) ||
@@ -527,7 +541,7 @@ export class MapViewer {
         }
         this.loadingMapImageIds.add(mapId);
 
-        const minimapData = await this.workerPool.queueMapImage(mapX, mapY, 0, true);
+        const minimapData = await this.renderWorkerPool.queueMapImage(mapX, mapY, 0, true);
         if (minimapData) {
             const url = URL.createObjectURL(minimapData.minimapBlob);
             this.setMapImageUrl(mapX, mapY, url, false);

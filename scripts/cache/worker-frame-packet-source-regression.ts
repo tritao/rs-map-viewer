@@ -40,7 +40,7 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
     let tickViewStateVersion = 0;
     let tickFrameCalls = 0;
     let setTickMapCalls = 0;
-    const workerPool = {
+    const simWorkerPool = {
         setTickMapIds: async (_mapIds: Int32Array) => {
             setTickMapCalls = (setTickMapCalls + 1) | 0;
             tickMapIdsVersion = (tickMapIdsVersion + 1) | 0;
@@ -60,7 +60,7 @@ async function testMapChangeTriggersTickWithZeroElapsed(): Promise<void> {
         },
     };
     const source = new WorkerMapViewerFramePacketSource({
-        workerPool: workerPool as any,
+        simWorkerPool: simWorkerPool as any,
         getLodDistance: () => 4,
         getHoveredMapIdsPacked: () => new Int32Array(0),
         getMapManager: () => mapManager as any,
@@ -94,7 +94,7 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
     let tickMapIdsVersion = 0;
     let tickViewStateVersion = 0;
     let staleViewOnce = true;
-    const workerPool = {
+    const simWorkerPool = {
         setTickMapIds: async (_mapIds: Int32Array) => {
             tickMapIdsVersion = (tickMapIdsVersion + 1) | 0;
         },
@@ -119,7 +119,7 @@ async function testStaleViewVersionPacketIsDropped(): Promise<void> {
         },
     };
     const source = new WorkerMapViewerFramePacketSource({
-        workerPool: workerPool as any,
+        simWorkerPool: simWorkerPool as any,
         getLodDistance: () => 4,
         getHoveredMapIdsPacked: () => new Int32Array(0),
         getMapManager: () => mapManager as any,

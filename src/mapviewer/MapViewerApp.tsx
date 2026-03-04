@@ -10,6 +10,7 @@ import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
 import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { BackendKind } from "../util/BackendKind";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
@@ -23,6 +24,7 @@ WebFont.load({
 const cachesPromise = fetchCacheList();
 
 const workerPool = RenderDataWorkerPool.create(isWallpaperEngine ? 1 : 4);
+const simWorkerPool = SimWorkerPool.create();
 
 function parseBackendKind(value: string | null): BackendKind {
     if (value === "cpp" || value === "cpp-wasm") {
@@ -78,6 +80,7 @@ function MapViewerApp() {
 
             const mapViewerResult = MapViewer.tryCreate(
                 workerPool,
+                simWorkerPool,
                 cacheList,
                 mapImageCache,
                 context,

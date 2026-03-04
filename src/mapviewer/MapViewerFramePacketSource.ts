@@ -1,5 +1,5 @@
 import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { Camera } from "./Camera";
 import type { MapManager } from "./MapManager";
 
@@ -18,7 +18,7 @@ export interface MapViewerFramePacketSource {
 }
 
 type WorkerMapViewerFramePacketSourceDeps = Readonly<{
-    workerPool: RenderDataWorkerPool;
+    simWorkerPool: SimWorkerPool;
     getLodDistance(): number;
     getHoveredMapIdsPacked(): Int32Array | undefined;
     getMapManager(): MapManager;
@@ -71,7 +71,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
                 this.lastTickHoveredMapIds,
             );
             const runTickFrame = () =>
-                this.deps.workerPool.tickFrame(
+                this.deps.simWorkerPool.tickFrame(
                     input.frameCount,
                     input.ticksElapsed,
                     input.clientTicksElapsed,
@@ -136,9 +136,9 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         this.lastTickHoveredMapIds = EMPTY_INT32;
         this.lastTickViewState = undefined;
         void Promise.all([
-            this.deps.workerPool.setTickMapIds(EMPTY_INT32),
-            this.deps.workerPool.setTickViewState(0, 0, 0),
-            this.deps.workerPool.setTickHoveredMapIds(EMPTY_INT32),
+            this.deps.simWorkerPool.setTickMapIds(EMPTY_INT32),
+            this.deps.simWorkerPool.setTickViewState(0, 0, 0),
+            this.deps.simWorkerPool.setTickHoveredMapIds(EMPTY_INT32),
         ]);
     }
 
@@ -180,7 +180,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         if (input.shouldUpdateTickMaps) {
             this.lastTickMapIds = input.mapIds;
             this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
-            updatePromises.push(this.deps.workerPool.setTickMapIds(input.mapIds));
+            updatePromises.push(this.deps.simWorkerPool.setTickMapIds(input.mapIds));
         }
         if (input.shouldUpdateTickViewState) {
             this.lastTickViewState = {
@@ -190,7 +190,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
             };
             this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
             updatePromises.push(
-                this.deps.workerPool.setTickViewState(
+                this.deps.simWorkerPool.setTickViewState(
                     input.cameraMapX | 0,
                     input.cameraMapY | 0,
                     input.lodDistance | 0,
@@ -200,7 +200,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         if (input.shouldUpdateHoveredMapIds) {
             this.lastTickHoveredMapIds = Int32Array.from(input.hoveredMapIdsPacked);
             updatePromises.push(
-                this.deps.workerPool.setTickHoveredMapIds(input.hoveredMapIdsPacked),
+                this.deps.simWorkerPool.setTickHoveredMapIds(input.hoveredMapIdsPacked),
             );
         }
         return updatePromises;

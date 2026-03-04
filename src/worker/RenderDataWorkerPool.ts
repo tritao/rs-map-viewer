@@ -5,9 +5,6 @@ import { LoadedCache } from "../util/Caches";
 import { MinimapData } from "../maprender/ts/MinimapData";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { RenderDataWorker } from "./RenderDataWorker";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 
@@ -130,95 +127,6 @@ export class RenderDataWorkerPool {
 
     exportTextures(): Promise<Blob> {
         return this.queue((w) => w.exportTexturesToZip());
-    }
-
-    // Dedicated worker for per-frame sim/tick packets. Keeping it sticky avoids state divergence.
-    private getTickWorker(): Promise<RenderDataWorkerThread> {
-        const desc = this.workers[0];
-        if (!desc) {
-            throw new Error("RenderDataWorkerPool has no workers");
-        }
-        return desc.init;
-    }
-
-    private async withTickWorker<T>(task: (w: RenderDataWorkerThread) => Promise<T>): Promise<T> {
-        await this.awaitInitCache();
-        const worker = await this.getTickWorker();
-        return task(worker);
-    }
-
-    registerMapNpcSimState(
-        mapId: number,
-        borderSize: number,
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
-        return this.withTickWorker((w) =>
-            w.registerMapNpcSimState(
-                mapId,
-                borderSize,
-                locsAnimated,
-                npcTypeAnimationTable,
-                mapSimToken,
-            ),
-        );
-    }
-
-    bootstrapMapNpcLifecycle(
-        mapId: number,
-        maxLevel: number,
-        npcOrderKeys: Int32Array,
-        mapSimToken?: number,
-    ): Promise<void> {
-        return this.withTickWorker((w) =>
-            w.bootstrapMapNpcLifecycle(
-                mapId,
-                maxLevel,
-                npcOrderKeys,
-                mapSimToken,
-            ),
-        );
-    }
-
-    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): Promise<void> {
-        return this.withTickWorker((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
-    }
-
-    applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
-        return this.withTickWorker((w) => w.applyNpcLifecyclePacketBytes(packet));
-    }
-
-    setTickMapIds(mapIds: Int32Array): Promise<void> {
-        return this.withTickWorker((w) => w.setTickMapIds(mapIds));
-    }
-
-    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): Promise<void> {
-        return this.withTickWorker((w) =>
-            w.setTickViewState(cameraMapX, cameraMapY, lodDistance),
-        );
-    }
-
-    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        return this.withTickWorker((w) => w.setTickHoveredMapIds(hoveredMapIdsPacked));
-    }
-
-    tickFrame(
-        frameCount: number,
-        ticksElapsed: number,
-        clientTicksElapsed: number,
-        cycleNow: number,
-        hoveredMapIdsPacked?: Int32Array,
-    ): Promise<FramePacket | undefined> {
-        return this.withTickWorker((w) =>
-            w.tickFrame(
-                frameCount,
-                ticksElapsed,
-                clientTicksElapsed,
-                cycleNow,
-                hoveredMapIdsPacked,
-            ),
-        );
     }
 
     terminate(): Promise<void> {

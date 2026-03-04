@@ -15,6 +15,7 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
@@ -29,7 +30,8 @@ const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
-    workerPool: RenderDataWorkerPool;
+    renderWorkerPool: RenderDataWorkerPool;
+    simWorkerPool: SimWorkerPool;
 
     camera: Camera;
 
@@ -49,7 +51,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     constructor(public mapViewer: MapViewer) {
         super();
         this.inputManager = mapViewer.inputManager;
-        this.workerPool = mapViewer.workerPool;
+        this.renderWorkerPool = mapViewer.renderWorkerPool;
+        this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
         this.renderer = new WebGLMapRenderer(
             mapViewer.session,
@@ -60,7 +63,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.checkInteractions.bind(this),
         );
         this.framePacketSource = new WorkerMapViewerFramePacketSource({
-            workerPool: this.workerPool,
+            simWorkerPool: this.simWorkerPool,
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
@@ -68,7 +71,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             getCamera: () => this.camera,
         });
         this.mapManager = new MapManager(
-            this.workerPool.size * 2,
+            this.renderWorkerPool.size * 2,
             this.queueLoadMap.bind(this),
             this.removeLoadedMap.bind(this),
         );
@@ -90,7 +93,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             minimizeDrawCalls: !r.hasMultiDraw,
             loadedTextureIds: Int32Array.from(r.loadedTextureIds),
         };
-        return await this.workerPool.queueStaticMapPacket(input);
+        return await this.renderWorkerPool.queueStaticMapPacket(input);
     }
 
     private reserveMapSimToken(mapId: number): number {
@@ -186,14 +189,14 @@ export class MapViewerRenderer extends RendererMainLoop {
                 const npcTypeAnimationTable =
                     mapData.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
                 try {
-                    await this.workerPool.registerMapNpcSimState(
+                    await this.simWorkerPool.registerMapNpcSimState(
                         mapId,
                         mapData.borderSize,
                         mapData.locsAnimated,
                         npcTypeAnimationTable,
                         mapSimToken,
                     );
-                    await this.workerPool.bootstrapMapNpcLifecycle(
+                    await this.simWorkerPool.bootstrapMapNpcLifecycle(
                         mapId,
                         mapData.maxLevel,
                         npcOrderKeys,
@@ -225,7 +228,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     );
                 } else {
                     // Active cpp-wasm map payload can omit minimap blob; load it on demand.
-                    void this.workerPool
+                    void this.renderWorkerPool
                         .queueMapImage(mapData.mapX, mapData.mapY, 0, false)
                         .then((minimapData) => {
                             if (!minimapData) {
@@ -256,7 +259,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderer.removeMap(mapInfo);
         this.staticMapPacketsByMapId.delete(mapInfo.mapId | 0);
         const mapSimToken = this.invalidateMapSimToken(mapInfo.mapId);
-        void this.workerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
+        void this.simWorkerPool.unregisterMapNpcSimState(mapInfo.mapId, mapSimToken);
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
@@ -274,7 +277,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 : packet instanceof ArrayBuffer
                   ? new Uint8Array(packet)
                   : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
-        return await this.workerPool.applyNpcLifecyclePacketBytes(bytes);
+        return await this.simWorkerPool.applyNpcLifecyclePacketBytes(bytes);
     }
 
     override async init() {
@@ -342,7 +345,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.checkInteractions.bind(this),
             );
             this.mapManager = new MapManager(
-                this.workerPool.size * 2,
+                this.renderWorkerPool.size * 2,
                 this.queueLoadMap.bind(this),
                 this.removeLoadedMap.bind(this),
             );

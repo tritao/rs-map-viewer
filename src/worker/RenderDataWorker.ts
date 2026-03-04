@@ -1,20 +1,14 @@
 import { TransferDescriptor } from "threads";
-import { Transfer, expose } from "threads/worker";
+import { expose } from "threads/worker";
 
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
-import { framePacketTransferables } from "../runtime/contracts/FramePacket";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
-import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
 const buildService = new RenderDataWorkerBuild();
-const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
 
 const worker = {
     async initCache(
@@ -22,7 +16,6 @@ const worker = {
         spawnBootstrap: WorkerSpawnBootstrap,
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
-        tickRuntime.resetForCache();
         await buildService.initCache(cache, spawnBootstrap, options);
     },
     async loadStaticMapPacket(
@@ -45,67 +38,6 @@ const worker = {
         drawMapFunctions: boolean,
     ) {
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
-    },
-    async registerMapNpcSimState(
-        mapId: number,
-        borderSize: number,
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
-        await tickRuntime.registerMapNpcSimState(
-            mapId,
-            borderSize,
-            locsAnimated,
-            npcTypeAnimationTable,
-            mapSimToken,
-        );
-    },
-    async bootstrapMapNpcLifecycle(
-        mapId: number,
-        maxLevel: number,
-        npcOrderKeys: Int32Array,
-        mapSimToken?: number,
-    ): Promise<void> {
-        await tickRuntime.bootstrapMapNpcLifecycle(
-            mapId,
-            maxLevel,
-            npcOrderKeys,
-            mapSimToken,
-        );
-    },
-    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): void {
-        tickRuntime.unregisterMapNpcSimState(mapId, mapSimToken);
-    },
-    async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
-        return tickRuntime.applyNpcLifecyclePacketBytes(packet);
-    },
-    setTickMapIds(mapIds: Int32Array): void {
-        tickRuntime.setTickMapIds(mapIds);
-    },
-    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
-        tickRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
-    },
-    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
-        tickRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
-    },
-    async tickFrame(
-        frameCount: number,
-        ticksElapsed: number,
-        clientTicksElapsed: number,
-        cycleNow: number,
-        hoveredMapIdsPacked?: Int32Array,
-    ): Promise<TransferDescriptor<FramePacket | undefined>> {
-        const packet = await tickRuntime.tickFrame(
-            frameCount,
-            ticksElapsed,
-            clientTicksElapsed,
-            cycleNow,
-            hoveredMapIdsPacked,
-        );
-        return packet
-            ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
-            : Transfer<FramePacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
         await buildService.setVars(values);
