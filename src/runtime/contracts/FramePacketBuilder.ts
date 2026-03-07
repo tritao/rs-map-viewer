@@ -37,7 +37,7 @@ export type BuildFramePacketFromMapEntriesInput = Readonly<{
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     entries: readonly FramePacketMapEntry[];
-    mapObjRenderPacket?: MapObjRenderPacket;
+    runtimeRenderUpdates?: MapObjRenderPacket;
 }>;
 
 export function computeFrameRenderFlags(
@@ -125,6 +125,6 @@ export function buildFramePacketFromMapEntries(
         renderListPacked,
         tickPatchCountsByMapId,
         tickPatchStreamsByMap,
-        mapObjRenderPacket: input.mapObjRenderPacket,
+        runtimeRenderUpdates: input.runtimeRenderUpdates,
     });
 }

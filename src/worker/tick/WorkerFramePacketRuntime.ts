@@ -443,7 +443,7 @@ export class WorkerFramePacketRuntime {
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,
-            mapObjRenderPacket: this.consumePendingMapObjRenderPacket(),
+            runtimeRenderUpdates: this.consumePendingMapObjRenderPacket(),
         });
     }
 }

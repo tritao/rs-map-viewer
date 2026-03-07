@@ -68,7 +68,7 @@ export type ParsedFramePacket = Readonly<{
     npcRangesByMapId: ParsedFrameNpcRangesByMapId;
     tickPatches: ParsedFrameTickPatches | undefined;
     renderListPacked: Int32Array;
-    mapObjRenderPacket: MapObjRenderPacket | undefined;
+    runtimeRenderUpdates: MapObjRenderPacket | undefined;
 }>;
 
 export type FramePacket = Readonly<{
@@ -92,7 +92,7 @@ export type FramePacket = Readonly<{
     tickPatchPacked: Int32Array;
 
     // Optional object runtime updates to apply on the renderer side.
-    mapObjRenderPacket?: MapObjRenderPacket;
+    runtimeRenderUpdates?: MapObjRenderPacket;
 }>;
 
 export function framePacketTransferables(packet: FramePacket): Transferable[] {
@@ -102,8 +102,8 @@ export function framePacketTransferables(packet: FramePacket): Transferable[] {
     out.push(packet.renderListPacked.buffer as Transferable);
     out.push(packet.tickPatchCountsByMapId.buffer as Transferable);
     out.push(packet.tickPatchPacked.buffer as Transferable);
-    if (packet.mapObjRenderPacket) {
-        out.push(...mapObjRenderPacketTransferables(packet.mapObjRenderPacket));
+    if (packet.runtimeRenderUpdates) {
+        out.push(...mapObjRenderPacketTransferables(packet.runtimeRenderUpdates));
     }
     return out;
 }
@@ -125,7 +125,7 @@ export type BuildFramePacketInput = Readonly<{
     renderListPacked: Int32Array;
     tickPatchCountsByMapId: Int32Array;
     tickPatchStreamsByMap: TickPatchStreamsByMap;
-    mapObjRenderPacket?: MapObjRenderPacket;
+    runtimeRenderUpdates?: MapObjRenderPacket;
 }>;
 
 export function createTickPatchStreamsByMap(mapEntryCount: number): TickPatchStreamsByMap {
@@ -346,7 +346,7 @@ export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
             input.tickPatchCountsByMapId,
             input.tickPatchStreamsByMap,
         ),
-        mapObjRenderPacket: input.mapObjRenderPacket,
+        runtimeRenderUpdates: input.runtimeRenderUpdates,
     };
     validateFramePacketStrict(packet);
     return packet;
@@ -460,6 +460,6 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
         npcRangesByMapId: parseFramePacketNpcRangesByMapId(packet.npcRangesByMapIdPacked),
         tickPatches: parseFramePacketTickPatchesFromPacket(packet),
         renderListPacked: parseFramePacketRenderList(packet.renderListPacked),
-        mapObjRenderPacket: packet.mapObjRenderPacket,
+        runtimeRenderUpdates: packet.runtimeRenderUpdates,
     };
 }

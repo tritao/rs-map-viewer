@@ -63,11 +63,7 @@ type FrameRenderMap = {
     isLod: boolean;
 };
 
-type SdMapRenderLoadData = SdMapData & {
-    objRenderData?: ObjRenderData;
-};
-
-export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoadData> {
+export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     protected readonly textures: WebGLTextureSystem;
     private readonly interactions: WebGLInteractionSystem;
     protected readonly programs = new WebGLPrograms();
@@ -146,8 +142,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
     }
 
     override applyFramePacket(packet: FramePacket | undefined): void {
-        if (packet?.mapObjRenderPacket) {
-            this.applyMapObjRenderPacket(packet.mapObjRenderPacket);
+        if (packet?.runtimeRenderUpdates) {
+            this.applyMapObjRenderPacket(packet.runtimeRenderUpdates);
         }
         this.framePacketState.apply(packet);
         if (!packet) {
@@ -281,7 +277,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
         this.textures.updateFiltering(this.textureFilterMode);
     }
 
-    loadMap(mapData: SdMapRenderLoadData, time: number): void {
+    loadMap(mapData: SdMapData, time: number): void {
         const { mapX, mapY } = mapData;
         const mapId = getMapSquareId(mapX, mapY);
         const textureArray = this.textures.getTextureArray();
@@ -290,9 +286,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
         if (!textureArray || !textureSlotLut || !textureMaterials || !this.sceneUniformBuffer) {
             return;
         }
-        const objRenderData = this.pendingObjRenderDataByMapId.has(mapId)
-            ? this.pendingObjRenderDataByMapId.get(mapId)
-            : mapData.objRenderData;
+        const objRenderData = this.pendingObjRenderDataByMapId.get(mapId);
 
         this.loadedMaps.set(
             mapId,
@@ -303,10 +297,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
                 textureMaterials,
                 textureSlotLut,
                 this.sceneUniformBuffer,
-                {
-                    ...mapData,
-                    objRenderData,
-                },
+                mapData,
+                objRenderData,
                 time,
                 this.stats.frameCount,
             ),
@@ -750,7 +742,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
         textureMaterials: Texture,
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
-        mapData: SdMapRenderLoadData,
+        mapData: SdMapData,
+        objRenderData: ObjRenderData | undefined,
         timeSec: number,
         frameCount: number,
     ): WebGLMapSquare {
@@ -764,7 +757,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
             textureSlotLut,
             sceneUniformBuffer,
             mapData,
-            mapData.objRenderData,
+            objRenderData,
             timeSec,
             frameCount,
         );
