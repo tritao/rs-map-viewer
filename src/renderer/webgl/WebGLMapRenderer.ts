@@ -441,61 +441,81 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         const totalMaps = frameRenderMaps.length | 0;
         this.app.disable(PicoGL.BLEND);
         const opaquePassStart = performance.now();
-        for (let i = 0; i < totalMaps; i++) {
-            const entry = frameRenderMaps[i]!;
-            this.renderLocMapPass(entry.map, false, entry.isInteract, entry.isLod);
-            if (this.loadObjs) {
-                this.renderObjMapPass(entry.map, false, entry.isInteract, entry.isLod);
-            }
-        }
+        this.renderStaticMapPasses(frameRenderMaps, totalMaps, false);
         this.rendererStats.opaquePassTime = performance.now() - opaquePassStart;
 
         const opaqueNpcPassStart = performance.now();
-        if (this.loadNpcs) {
-            for (let i = 0; i < totalMaps; i++) {
-                const entry = frameRenderMaps[i]!;
-                if ((entry.npcRangeCount | 0) <= 0) {
-                    continue;
-                }
-                this.renderNpcMapPass(
-                    entry.map,
-                    entry.npcRangeStart | 0,
-                    entry.npcRangeCount | 0,
-                    false,
-                    npcDataTexture,
-                );
-            }
-        }
+        this.renderNpcMapPasses(frameRenderMaps, totalMaps, false, npcDataTexture);
         this.rendererStats.opaqueNpcPassTime = performance.now() - opaqueNpcPassStart;
 
         this.app.enable(PicoGL.BLEND);
         const transparentPassStart = performance.now();
-        for (let i = totalMaps - 1; i >= 0; i--) {
-            const entry = frameRenderMaps[i]!;
-            this.renderLocMapPass(entry.map, true, entry.isInteract, entry.isLod);
-            if (this.loadObjs) {
-                this.renderObjMapPass(entry.map, true, entry.isInteract, entry.isLod);
-            }
-        }
+        this.renderStaticMapPasses(frameRenderMaps, totalMaps, true);
         this.rendererStats.transparentPassTime = performance.now() - transparentPassStart;
 
         const transparentNpcPassStart = performance.now();
-        if (this.loadNpcs) {
-            for (let i = totalMaps - 1; i >= 0; i--) {
-                const entry = frameRenderMaps[i]!;
-                if ((entry.npcRangeCount | 0) <= 0) {
-                    continue;
-                }
-                this.renderNpcMapPass(
-                    entry.map,
-                    entry.npcRangeStart | 0,
-                    entry.npcRangeCount | 0,
-                    true,
-                    npcDataTexture,
-                );
-            }
-        }
+        this.renderNpcMapPasses(frameRenderMaps, totalMaps, true, npcDataTexture);
         this.rendererStats.transparentNpcPassTime = performance.now() - transparentNpcPassStart;
+    }
+
+    private renderStaticMapPasses(
+        frameRenderMaps: ReadonlyArray<FrameRenderMap>,
+        totalMaps: number,
+        isAlpha: boolean,
+    ): void {
+        if (isAlpha) {
+            for (let i = totalMaps - 1; i >= 0; i--) {
+                this.renderStaticMapPass(frameRenderMaps[i]!, isAlpha);
+            }
+            return;
+        }
+        for (let i = 0; i < totalMaps; i++) {
+            this.renderStaticMapPass(frameRenderMaps[i]!, isAlpha);
+        }
+    }
+
+    private renderStaticMapPass(entry: FrameRenderMap, isAlpha: boolean): void {
+        this.renderLocMapPass(entry.map, isAlpha, entry.isInteract, entry.isLod);
+        if (this.loadObjs) {
+            this.renderObjMapPass(entry.map, isAlpha, entry.isInteract, entry.isLod);
+        }
+    }
+
+    private renderNpcMapPasses(
+        frameRenderMaps: ReadonlyArray<FrameRenderMap>,
+        totalMaps: number,
+        isAlpha: boolean,
+        npcDataTexture: Texture | undefined,
+    ): void {
+        if (!this.loadNpcs) {
+            return;
+        }
+        if (isAlpha) {
+            for (let i = totalMaps - 1; i >= 0; i--) {
+                this.renderNpcMapEntry(frameRenderMaps[i]!, isAlpha, npcDataTexture);
+            }
+            return;
+        }
+        for (let i = 0; i < totalMaps; i++) {
+            this.renderNpcMapEntry(frameRenderMaps[i]!, isAlpha, npcDataTexture);
+        }
+    }
+
+    private renderNpcMapEntry(
+        entry: FrameRenderMap,
+        isAlpha: boolean,
+        npcDataTexture: Texture | undefined,
+    ): void {
+        if ((entry.npcRangeCount | 0) <= 0) {
+            return;
+        }
+        this.renderNpcMapPass(
+            entry.map,
+            entry.npcRangeStart | 0,
+            entry.npcRangeCount | 0,
+            isAlpha,
+            npcDataTexture,
+        );
     }
 
     private renderLocMapPass(

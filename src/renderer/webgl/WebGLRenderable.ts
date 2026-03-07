@@ -55,6 +55,22 @@ export type CreateDrawCallFunction = (
     useObjGeometry?: boolean,
 ) => DrawCallRange;
 
+function resolveDrawCallKey(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallKey {
+    if (isInteract) {
+        return isLod
+            ? isAlpha
+                ? DrawCallKey.InteractLodAlpha
+                : DrawCallKey.InteractLod
+            : isAlpha
+            ? DrawCallKey.InteractAlpha
+            : DrawCallKey.Interact;
+    }
+    if (isLod) {
+        return isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
+    }
+    return isAlpha ? DrawCallKey.Alpha : DrawCallKey.Base;
+}
+
 export class WebGLRenderable {
     interleavedBuffer!: VertexBuffer;
     indexBuffer!: VertexBuffer;
@@ -242,17 +258,13 @@ export class WebGLRenderable {
         mainProgram: Program,
         mainAlphaProgram: Program,
     ) {
-        const drawRangeBuckets = WebGLRenderable.getDrawRangeBuckets(data.drawRanges);
-        const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
-        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
-            const key = i as DrawCallKey;
-            drawCalls[i] = createDrawCall(
-                WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
-                this.modelInfoTexturesByKey[i],
-                drawRangeBuckets[i]!,
-            );
-        }
-        this.drawCallsByKey = drawCalls;
+        this.drawCallsByKey = this.createBucketedDrawCalls(
+            WebGLRenderable.getDrawRangeBuckets(data.drawRanges),
+            this.modelInfoTexturesByKey,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+        );
     }
 
     createObjDrawCalls(
@@ -265,19 +277,14 @@ export class WebGLRenderable {
             this.objDrawCallsByKey = [];
             return;
         }
-        const drawRangeBuckets = WebGLRenderable.getDrawRangeBuckets(data.drawRanges);
-        const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
-        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
-            const key = i as DrawCallKey;
-            drawCalls[i] = createDrawCall(
-                WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
-                this.objModelInfoTexturesByKey[i],
-                drawRangeBuckets[i]!,
-                false,
-                true,
-            );
-        }
-        this.objDrawCallsByKey = drawCalls;
+        this.objDrawCallsByKey = this.createBucketedDrawCalls(
+            WebGLRenderable.getDrawRangeBuckets(data.drawRanges),
+            this.objModelInfoTexturesByKey,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+            true,
+        );
     }
 
     canRender(frameCount: number): boolean {
@@ -285,39 +292,35 @@ export class WebGLRenderable {
     }
 
     getDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange {
-        let key = DrawCallKey.Base;
-        if (isInteract) {
-            key = isLod
-                ? isAlpha
-                    ? DrawCallKey.InteractLodAlpha
-                    : DrawCallKey.InteractLod
-                : isAlpha
-                ? DrawCallKey.InteractAlpha
-                : DrawCallKey.Interact;
-        } else if (isLod) {
-            key = isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
-        } else if (isAlpha) {
-            key = DrawCallKey.Alpha;
-        }
+        const key = resolveDrawCallKey(isAlpha, isInteract, isLod);
         return this.drawCallsByKey[key as number] ?? this.drawCallsByKey[DrawCallKey.Base];
     }
 
     getObjDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange | undefined {
-        let key = DrawCallKey.Base;
-        if (isInteract) {
-            key = isLod
-                ? isAlpha
-                    ? DrawCallKey.InteractLodAlpha
-                    : DrawCallKey.InteractLod
-                : isAlpha
-                ? DrawCallKey.InteractAlpha
-                : DrawCallKey.Interact;
-        } else if (isLod) {
-            key = isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
-        } else if (isAlpha) {
-            key = DrawCallKey.Alpha;
-        }
+        const key = resolveDrawCallKey(isAlpha, isInteract, isLod);
         return this.objDrawCallsByKey[key as number];
+    }
+
+    private createBucketedDrawCalls(
+        drawRangeBuckets: ReadonlyArray<Int32Array>,
+        modelInfoTextures: ReadonlyArray<Texture>,
+        createDrawCall: CreateDrawCallFunction,
+        mainProgram: Program,
+        mainAlphaProgram: Program,
+        useObjGeometry: boolean = false,
+    ): DrawCallRange[] {
+        const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
+        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
+            const key = i as DrawCallKey;
+            drawCalls[i] = createDrawCall(
+                WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
+                modelInfoTextures[i],
+                drawRangeBuckets[i]!,
+                false,
+                useObjGeometry,
+            );
+        }
+        return drawCalls;
     }
 
     resetObjRenderData(): void {
