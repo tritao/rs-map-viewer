@@ -11,6 +11,8 @@ export type { MapRenderCommandStreamRuntimeInput } from "./SceneCommandBuilder";
 export { emitSceneModelsToSceneBuffer, summarizeSceneCommandPlan } from "./SceneCommandPlan";
 export { buildNpcGeometry } from "./NpcGeometryBuilder";
 export type { BuildNpcGeometryInput, BuiltNpcGeometry } from "./NpcGeometryBuilder";
+export { buildObjRenderData } from "./ObjRenderDataBuilder";
+export type { BuildObjRenderDataInput } from "./ObjRenderDataBuilder";
 export type { SceneCommandPlan, SceneCommandPlanDigest } from "./SceneCommandPlan";
 export { createLocAnimatedGroupKey, resolveLocRenderPlacement } from "./LocRenderPlacementResolver";
 export type { SceneLocEntity } from "./SceneLocEntity";

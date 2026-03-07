@@ -9,7 +9,7 @@ import {
     VertexBuffer,
 } from "picogl";
 
-import type { SdMapData } from "../../maprender/MapRenderPayload";
+import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
 import { Camera } from "../../mapviewer/Camera";
 import { GameType } from "../../rs/cache/CacheInfo";
 import { CacheSession } from "../../rs/loaders/CacheSession";
@@ -63,7 +63,11 @@ type FrameRenderMap = {
     isLod: boolean;
 };
 
-export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
+type SdMapRenderLoadData = SdMapData & {
+    objRenderData?: ObjRenderData;
+};
+
+export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoadData> {
     protected readonly textures: WebGLTextureSystem;
     private readonly interactions: WebGLInteractionSystem;
     protected readonly programs = new WebGLPrograms();
@@ -237,7 +241,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.textures.updateFiltering(this.textureFilterMode);
     }
 
-    loadMap(mapData: SdMapData, time: number): void {
+    loadMap(mapData: SdMapRenderLoadData, time: number): void {
         const { mapX, mapY } = mapData;
         const textureArray = this.textures.getTextureArray();
         const textureSlotLut = this.textures.getTextureSlotLut();
@@ -401,6 +405,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = 0; i < totalMaps; i++) {
             const entry = frameRenderMaps[i]!;
             this.renderLocMapPass(entry.map, false, entry.isInteract, entry.isLod);
+            if (this.loadObjs) {
+                this.renderObjMapPass(entry.map, false, entry.isInteract, entry.isLod);
+            }
         }
         this.rendererStats.opaquePassTime = performance.now() - opaquePassStart;
 
@@ -427,6 +434,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         for (let i = totalMaps - 1; i >= 0; i--) {
             const entry = frameRenderMaps[i]!;
             this.renderLocMapPass(entry.map, true, entry.isInteract, entry.isLod);
+            if (this.loadObjs) {
+                this.renderObjMapPass(entry.map, true, entry.isInteract, entry.isLod);
+            }
         }
         this.rendererStats.transparentPassTime = performance.now() - transparentPassStart;
 
@@ -464,6 +474,19 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             drawData.drawCall,
             drawData.drawRangesPacked,
         );
+        this.draw(drawData.drawCall, drawData.drawRangesPacked);
+    }
+
+    private renderObjMapPass(
+        map: WebGLMapSquare,
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): void {
+        const drawData = map.getObjDrawCall(isAlpha, isInteract, isLod);
+        if (!drawData) {
+            return;
+        }
         this.draw(drawData.drawCall, drawData.drawRangesPacked);
     }
 
@@ -679,7 +702,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         textureMaterials: Texture,
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
-        mapData: SdMapData,
+        mapData: SdMapRenderLoadData,
         timeSec: number,
         frameCount: number,
     ): WebGLMapSquare {
@@ -693,6 +716,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             textureSlotLut,
             sceneUniformBuffer,
             mapData,
+            mapData.objRenderData,
             timeSec,
             frameCount,
         );

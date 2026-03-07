@@ -7,7 +7,7 @@ import PicoGL, {
     VertexBuffer,
 } from "picogl";
 
-import { SdRenderableData } from "../../maprender/MapRenderPayload";
+import { ObjRenderData, SdRenderableData } from "../../maprender/MapRenderPayload";
 import { Scene } from "../../rs/scene/Scene";
 
 const FRAME_RENDER_DELAY = 3;
@@ -52,6 +52,7 @@ export type CreateDrawCallFunction = (
     modelInfoTexture: Texture | undefined,
     drawRangesPacked: Int32Array,
     useNpcGeometry?: boolean,
+    useObjGeometry?: boolean,
 ) => DrawCallRange;
 
 export class WebGLRenderable {
@@ -61,12 +62,17 @@ export class WebGLRenderable {
     npcInterleavedBuffer?: VertexBuffer;
     npcIndexBuffer?: VertexBuffer;
     npcVertexArray?: VertexArray;
+    objInterleavedBuffer?: VertexBuffer;
+    objIndexBuffer?: VertexBuffer;
+    objVertexArray?: VertexArray;
 
     private modelInfoTexturesByKey!: Texture[];
+    private objModelInfoTexturesByKey: Texture[] = [];
 
     heightMapTexture!: Texture;
 
     private drawCallsByKey!: DrawCallRange[];
+    private objDrawCallsByKey: DrawCallRange[] = [];
 
     private disposed = false;
 
@@ -144,6 +150,31 @@ export class WebGLRenderable {
             .indexBuffer(this.npcIndexBuffer);
     }
 
+    createObjGeometryBuffers(app: PicoApp, data: ObjRenderData | undefined) {
+        if (
+            !data ||
+            !(data.vertices instanceof Uint8Array) ||
+            !(data.indices instanceof Int32Array) ||
+            data.vertices.length === 0 ||
+            data.indices.length === 0
+        ) {
+            this.objInterleavedBuffer = undefined;
+            this.objIndexBuffer = undefined;
+            this.objVertexArray = undefined;
+            return;
+        }
+        this.objInterleavedBuffer = app.createInterleavedBuffer(16, data.vertices);
+        this.objIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.indices);
+        this.objVertexArray = app
+            .createVertexArray()
+            .vertexAttributeBuffer(
+                0,
+                this.objInterleavedBuffer,
+                createIntegerVertexAttributeOptions(PicoGL.UNSIGNED_INT, 4, 16),
+            )
+            .indexBuffer(this.objIndexBuffer);
+    }
+
     private static isAlphaKey(key: DrawCallKey): boolean {
         return (
             key === DrawCallKey.Alpha ||
@@ -192,6 +223,19 @@ export class WebGLRenderable {
         this.modelInfoTexturesByKey = textures;
     }
 
+    createObjModelInfoTextures(app: PicoApp, data: ObjRenderData | undefined) {
+        if (!data) {
+            this.objModelInfoTexturesByKey = [];
+            return;
+        }
+        const modelInfoBuckets = WebGLRenderable.getModelInfoBuckets(data.modelInfoTextures);
+        const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
+        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
+            textures[i] = createModelInfoTexture(app, modelInfoBuckets[i]!);
+        }
+        this.objModelInfoTexturesByKey = textures;
+    }
+
     createDrawCalls(
         data: SdRenderableData,
         createDrawCall: CreateDrawCallFunction,
@@ -209,6 +253,31 @@ export class WebGLRenderable {
             );
         }
         this.drawCallsByKey = drawCalls;
+    }
+
+    createObjDrawCalls(
+        data: ObjRenderData | undefined,
+        createDrawCall: CreateDrawCallFunction,
+        mainProgram: Program,
+        mainAlphaProgram: Program,
+    ) {
+        if (!data || !this.objVertexArray) {
+            this.objDrawCallsByKey = [];
+            return;
+        }
+        const drawRangeBuckets = WebGLRenderable.getDrawRangeBuckets(data.drawRanges);
+        const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
+        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
+            const key = i as DrawCallKey;
+            drawCalls[i] = createDrawCall(
+                WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
+                this.objModelInfoTexturesByKey[i],
+                drawRangeBuckets[i]!,
+                false,
+                true,
+            );
+        }
+        this.objDrawCallsByKey = drawCalls;
     }
 
     canRender(frameCount: number): boolean {
@@ -233,6 +302,24 @@ export class WebGLRenderable {
         return this.drawCallsByKey[key as number] ?? this.drawCallsByKey[DrawCallKey.Base];
     }
 
+    getObjDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange | undefined {
+        let key = DrawCallKey.Base;
+        if (isInteract) {
+            key = isLod
+                ? isAlpha
+                    ? DrawCallKey.InteractLodAlpha
+                    : DrawCallKey.InteractLod
+                : isAlpha
+                ? DrawCallKey.InteractAlpha
+                : DrawCallKey.Interact;
+        } else if (isLod) {
+            key = isAlpha ? DrawCallKey.LodAlpha : DrawCallKey.Lod;
+        } else if (isAlpha) {
+            key = DrawCallKey.Alpha;
+        }
+        return this.objDrawCallsByKey[key as number];
+    }
+
     delete() {
         if (this.disposed) {
             return;
@@ -245,17 +332,28 @@ export class WebGLRenderable {
         this.npcVertexArray?.delete();
         this.npcInterleavedBuffer?.delete();
         this.npcIndexBuffer?.delete();
+        this.objVertexArray?.delete();
+        this.objInterleavedBuffer?.delete();
+        this.objIndexBuffer?.delete();
 
         this.heightMapTexture.delete();
         for (const texture of this.modelInfoTexturesByKey ?? []) {
             texture.delete();
         }
+        for (const texture of this.objModelInfoTexturesByKey ?? []) {
+            texture.delete();
+        }
 
         this.modelInfoTexturesByKey = [];
+        this.objModelInfoTexturesByKey = [];
         this.drawCallsByKey = [];
+        this.objDrawCallsByKey = [];
         this.npcVertexArray = undefined;
         this.npcInterleavedBuffer = undefined;
         this.npcIndexBuffer = undefined;
+        this.objVertexArray = undefined;
+        this.objInterleavedBuffer = undefined;
+        this.objIndexBuffer = undefined;
         this.usedTextureIds = undefined;
     }
 }

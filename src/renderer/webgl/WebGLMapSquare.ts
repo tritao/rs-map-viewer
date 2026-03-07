@@ -1,7 +1,7 @@
 import { vec2 } from "gl-matrix";
 import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
 
-import type { SdMapData } from "../../maprender/MapRenderPayload";
+import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
@@ -9,6 +9,23 @@ import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLR
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
     drawCallNpc!: DrawCallRange;
+
+    static unionUsedTextureIds(
+        base: Int32Array,
+        extra: Int32Array | undefined,
+    ): Int32Array {
+        if (!(extra instanceof Int32Array) || extra.length <= 0) {
+            return base;
+        }
+        const merged = new Set<number>();
+        for (let i = 0; i < base.length; i++) {
+            merged.add(base[i] | 0);
+        }
+        for (let i = 0; i < extra.length; i++) {
+            merged.add(extra[i] | 0);
+        }
+        return Int32Array.from(merged);
+    }
 
     static load(
         app: PicoApp,
@@ -20,6 +37,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         data: SdMapData,
+        objRenderData: ObjRenderData | undefined,
         time: number,
         frame: number,
     ): WebGLMapSquare {
@@ -33,6 +51,7 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             modelInfoTexture: Texture | undefined,
             drawRangesPacked: Int32Array,
             useNpcGeometry?: boolean,
+            useObjGeometry?: boolean,
         ): DrawCallRange => {
             const drawRangeCount = (drawRangesPacked.length / 3) | 0;
             const drawRangeArgs = new Array<[number, number, number]>(drawRangeCount);
@@ -47,7 +66,9 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             const drawCall = app
                 .createDrawCall(
                     program,
-                    useNpcGeometry && renderable.npcVertexArray
+                    useObjGeometry && renderable.objVertexArray
+                        ? renderable.objVertexArray
+                        : useNpcGeometry && renderable.npcVertexArray
                         ? renderable.npcVertexArray
                         : renderable.vertexArray,
                 )
@@ -81,9 +102,12 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
         );
         renderable.createBuffers(app, data);
         renderable.createNpcGeometryBuffers(app, data);
+        renderable.createObjGeometryBuffers(app, objRenderData);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
+        renderable.createObjModelInfoTextures(app, objRenderData);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
+        renderable.createObjDrawCalls(objRenderData, createDrawCall, mainProgram, mainAlphaProgram);
         const npcDrawRanges =
             renderable.npcVertexArray !== undefined
                 ? data.npcDrawRangesBase
@@ -96,7 +120,10 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             npcDrawRanges,
             renderable.npcVertexArray !== undefined,
         );
-        renderable.usedTextureIds = data.usedTextureIds;
+        renderable.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
+            data.usedTextureIds,
+            objRenderData?.usedTextureIds,
+        );
 
         return renderable;
     }

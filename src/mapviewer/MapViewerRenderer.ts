@@ -195,7 +195,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
 
                 this.mapManager.addMap(mapData.mapX, mapData.mapY);
-                this.renderer.addMap(mapData as unknown as MapData);
+                this.renderer.addMap({
+                    ...(mapData as unknown as MapData),
+                    objRenderData: runtimeBootstrap.objRenderData,
+                } as MapData);
 
                 if (mapData.minimapBlob.size > 0) {
                     this.mapViewer.setMapImageUrl(

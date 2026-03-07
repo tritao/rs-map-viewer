@@ -1,5 +1,8 @@
 import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { errorToString } from "../../util/ErrorUtil";
+import { LocLoadType } from "../../rs/scene/SceneBuilder";
+import { Scene } from "../../rs/scene/Scene";
+import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
@@ -16,11 +19,13 @@ import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
+    ObjRenderData,
     SdMapData,
     SdMapLoaderInput,
 } from "../MapRenderPayload";
 import { buildMapRuntimeBootstrap, buildMapRuntimeRegistration } from "../MapRenderPayload";
 import { collectSdMapDataTransferables } from "../MapRenderTransferables";
+import { buildObjRenderData } from "../../runtime/build";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
@@ -175,8 +180,11 @@ export class WasmMapRenderBackend implements MapRenderBackend {
           }
         | undefined
     > {
-        const request =
-            WasmMapRenderBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
+        const staticBuildInput =
+            input.loadObjs === true
+                ? { ...byteDrivenSceneBuildInput, loadObjs: false }
+                : byteDrivenSceneBuildInput;
+        const request = WasmMapRenderBackend.createRuntimeCacheBuildRequest(staticBuildInput);
         if (!request) {
             return undefined;
         }
@@ -184,7 +192,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             bridge,
             runtimeHandle,
             request,
-            byteDrivenSceneBuildInput,
+            staticBuildInput,
         );
         if (!buildResult.ok) {
             console.warn("[map-render][cpp-wasm] prepareAndBuildMapPacketFromCache failed", {
@@ -257,6 +265,31 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                       WasmMapRenderBackend.MAP_SQUARE_SIZE + borderSize * 2,
                   )
                 : [];
+        let objRenderData: ObjRenderData | undefined;
+        if (objSpawns.length > 0) {
+            const scene = buildSceneFromMapBytesProvider(
+                this.deps.sceneBuilder,
+                this.deps.mapBytesProvider,
+                input.mapX * Scene.MAP_SQUARE_SIZE - borderSize,
+                input.mapY * Scene.MAP_SQUARE_SIZE - borderSize,
+                Scene.MAP_SQUARE_SIZE + borderSize * 2,
+                Scene.MAP_SQUARE_SIZE + borderSize * 2,
+                input.smoothTerrain === true,
+                input.loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+            );
+            objRenderData = buildObjRenderData({
+                loadObjs: true,
+                objTypeLoader: this.deps.session.loaders.objTypeLoader,
+                objModelLoader: this.deps.objModelLoader,
+                scene,
+                textureLoader: this.deps.session.loaders.textureLoader,
+                baseX: input.mapX * Scene.MAP_SQUARE_SIZE - borderSize,
+                baseY: input.mapY * Scene.MAP_SQUARE_SIZE - borderSize,
+                borderSize,
+                objSpawns,
+                minimizeDrawCalls: input.minimizeDrawCalls,
+            });
+        }
         return {
             data,
             runtimeRegistration: buildMapRuntimeRegistration({
@@ -269,6 +302,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 maxLevel: input.maxLevel | 0,
                 npcOrderKeys: packet.npcOrderKeys,
                 objSpawns,
+                objRenderData,
             }),
         };
     }

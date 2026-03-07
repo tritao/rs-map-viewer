@@ -30,6 +30,7 @@ import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
     buildNpcGeometry,
+    buildObjRenderData,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
     createLocAnimatedGroupKey,
@@ -510,20 +511,20 @@ export class MapRenderTsBackend {
                   getWindowObjSpawns(this.deps.objSpawns, maxLevel, baseX, baseY, mapSize, mapSize),
               )
             : [];
-        if (loadObjs) {
-            timeStep("createObjSceneModels", () =>
-                createObjSceneModels(
-                    objTypeLoader,
-                    objModelLoader,
-                    sceneModels,
-                    scene,
-                    baseX,
-                    baseY,
-                    borderSize,
-                    objSpawns,
-                ),
-            );
-        }
+        const objRenderData = timeStep("buildObjRenderData", () =>
+            buildObjRenderData({
+                loadObjs,
+                objTypeLoader,
+                objModelLoader,
+                scene,
+                textureLoader,
+                baseX,
+                baseY,
+                borderSize,
+                objSpawns,
+                minimizeDrawCalls,
+            }),
+        );
 
         let locsAnimated: LocAnimatedData[] = [];
         let debugSceneCommandPlanDigest: SceneCommandPlanDigest | undefined;
@@ -757,6 +758,7 @@ export class MapRenderTsBackend {
                 maxLevel,
                 npcOrderKeys,
                 objSpawns,
+                objRenderData,
             }),
             runtimeCommandStreamInput,
             debugSceneCommandPlanDigest,

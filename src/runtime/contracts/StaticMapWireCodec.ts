@@ -2,6 +2,7 @@ import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type MapRuntimeBootstrap,
     type MapRuntimeRegistration,
+    type ObjRenderData,
     type SdMapData,
     type SdRenderableDrawRanges,
 } from "../../maprender/MapRenderPayload";
@@ -22,7 +23,12 @@ export type StaticMapWirePacket = Readonly<{
         drawRangesPacked: Int32Array;
     };
     runtimeRegistration: MapRuntimeRegistration;
-    runtimeBootstrap: MapRuntimeBootstrap;
+    runtimeBootstrap: Omit<MapRuntimeBootstrap, "objRenderData"> & {
+        objRenderData?: Omit<ObjRenderData, "drawRanges"> & {
+            drawRangeBucketLengths: Int32Array;
+            drawRangesPacked: Int32Array;
+        };
+    };
 }>;
 
 function pushTransferableUnique(
@@ -70,25 +76,46 @@ export function encodeStaticMapWirePacket(
 ): StaticMapWirePacket {
     const { drawRanges, ...restMapData } = mapData;
     const packedDrawRanges = packDrawRanges(drawRanges);
+    const objRenderData = runtimeBootstrap.objRenderData;
     return {
         mapData: {
             ...restMapData,
             ...packedDrawRanges,
         },
         runtimeRegistration,
-        runtimeBootstrap,
+        runtimeBootstrap: {
+            ...runtimeBootstrap,
+            objRenderData: objRenderData
+                ? {
+                      ...objRenderData,
+                      ...packDrawRanges(objRenderData.drawRanges),
+                  }
+                : undefined,
+        },
     };
 }
 
 export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedStaticMapPacket {
     const { drawRangeBucketLengths, drawRangesPacked, ...restMapData } = packet.mapData;
+    const objRenderData = packet.runtimeBootstrap.objRenderData;
     return {
         mapData: {
             ...restMapData,
             drawRanges: unpackDrawRanges(drawRangeBucketLengths, drawRangesPacked),
         },
         runtimeRegistration: packet.runtimeRegistration,
-        runtimeBootstrap: packet.runtimeBootstrap,
+        runtimeBootstrap: {
+            ...packet.runtimeBootstrap,
+            objRenderData: objRenderData
+                ? {
+                      ...objRenderData,
+                      drawRanges: unpackDrawRanges(
+                          objRenderData.drawRangeBucketLengths,
+                          objRenderData.drawRangesPacked,
+                      ),
+                  }
+                : undefined,
+        },
     };
 }
 
@@ -150,5 +177,32 @@ export function collectStaticMapWirePacketTransferables(
         seen,
         packet.runtimeBootstrap.npcOrderKeys.buffer as Transferable,
     );
+    const objRenderData = packet.runtimeBootstrap.objRenderData;
+    if (objRenderData) {
+        pushTransferableUnique(transferables, seen, objRenderData.vertices.buffer as Transferable);
+        pushTransferableUnique(transferables, seen, objRenderData.indices.buffer as Transferable);
+        pushTransferableUnique(
+            transferables,
+            seen,
+            objRenderData.usedTextureIds.buffer as Transferable,
+        );
+        pushTransferableUnique(
+            transferables,
+            seen,
+            objRenderData.drawRangeBucketLengths.buffer as Transferable,
+        );
+        pushTransferableUnique(
+            transferables,
+            seen,
+            objRenderData.drawRangesPacked.buffer as Transferable,
+        );
+        for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
+            pushTransferableUnique(
+                transferables,
+                seen,
+                objRenderData.modelInfoTextures[key].buffer as Transferable,
+            );
+        }
+    }
     return transferables;
 }
