@@ -6,12 +6,35 @@ import { npcStateDeltaPacketTransferables } from "../runtime/contracts/NpcStateD
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import { WorkerTickRuntime } from "./tick/WorkerTickRuntime";
 
-const buildService = new RenderDataWorkerBuild();
-const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
+type SimWorkerServices = Readonly<{
+    buildService: import("./RenderDataWorkerBuild").RenderDataWorkerBuild;
+    tickRuntime: import("./tick/WorkerTickRuntime").WorkerTickRuntime;
+}>;
+
+let workerServicesPromise: Promise<SimWorkerServices> | undefined;
+
+async function getWorkerServices(): Promise<SimWorkerServices> {
+    const existing = workerServicesPromise;
+    if (existing) {
+        return await existing;
+    }
+    const created = (async () => {
+        const [{ RenderDataWorkerBuild }, { WorkerTickRuntime }] = await Promise.all([
+            import("./RenderDataWorkerBuild"),
+            import("./tick/WorkerTickRuntime"),
+        ]);
+        const buildService = new RenderDataWorkerBuild();
+        const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
+        return {
+            buildService,
+            tickRuntime,
+        };
+    })();
+    workerServicesPromise = created;
+    return await created;
+}
 
 const worker = {
     async initCache(
@@ -19,6 +42,7 @@ const worker = {
         spawnBootstrap: WorkerSpawnBootstrap,
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
+        const { buildService, tickRuntime } = await getWorkerServices();
         tickRuntime.resetForCache();
         await buildService.initCache(cache, spawnBootstrap, options);
     },
@@ -29,6 +53,7 @@ const worker = {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
+        const { tickRuntime } = await getWorkerServices();
         await tickRuntime.registerMapRuntime(
             mapId,
             borderSize,
@@ -43,21 +68,31 @@ const worker = {
         npcOrderKeys: Int32Array,
         mapSimToken?: number,
     ): Promise<void> {
+        const { tickRuntime } = await getWorkerServices();
         await tickRuntime.bootstrapMapRuntime(mapId, maxLevel, npcOrderKeys, mapSimToken);
     },
-    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
+    async unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+        const { tickRuntime } = await getWorkerServices();
         tickRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
-    setTickMapIds(mapIds: Int32Array): void {
+    async setTickMapIds(mapIds: Int32Array): Promise<void> {
+        const { tickRuntime } = await getWorkerServices();
         tickRuntime.setTickMapIds(mapIds);
     },
-    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+    async setTickViewState(
+        cameraMapX: number,
+        cameraMapY: number,
+        lodDistance: number,
+    ): Promise<void> {
+        const { tickRuntime } = await getWorkerServices();
         tickRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
     },
-    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
+    async setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
+        const { tickRuntime } = await getWorkerServices();
         tickRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
     },
     async tickSim(
@@ -67,6 +102,7 @@ const worker = {
         cycleNow: number,
         hoveredMapIdsPacked?: Int32Array,
     ): Promise<TransferDescriptor<NpcStateDeltaPacket | undefined>> {
+        const { tickRuntime } = await getWorkerServices();
         const packet = await tickRuntime.tickSim(
             frameCount,
             ticksElapsed,
@@ -82,6 +118,7 @@ const worker = {
             : Transfer<NpcStateDeltaPacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
+        const { buildService } = await getWorkerServices();
         await buildService.setVars(values);
     },
 };

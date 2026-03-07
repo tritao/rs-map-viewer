@@ -9,17 +9,40 @@ import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimatio
 import type { StaticMapWirePacket } from "../runtime/contracts/StaticMapWireCodec";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import { WorkerFramePacketRuntime } from "./tick/WorkerFramePacketRuntime";
 
 export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
 
-const buildService = new RenderDataWorkerBuild();
-const frameRuntime = new WorkerFramePacketRuntime(() => buildService.requireWorkerState());
+type RenderDataWorkerServices = Readonly<{
+    buildService: import("./RenderDataWorkerBuild").RenderDataWorkerBuild;
+    frameRuntime: import("./tick/WorkerFramePacketRuntime").WorkerFramePacketRuntime;
+}>;
+
+let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
 let frameTickMapIdsVersion = 0;
 let frameTickViewStateVersion = 0;
 let lastAppliedDeltaFrameCount = -1;
+
+async function getWorkerServices(): Promise<RenderDataWorkerServices> {
+    const existing = workerServicesPromise;
+    if (existing) {
+        return await existing;
+    }
+    const created = (async () => {
+        const [{ RenderDataWorkerBuild }, { WorkerFramePacketRuntime }] = await Promise.all([
+            import("./RenderDataWorkerBuild"),
+            import("./tick/WorkerFramePacketRuntime"),
+        ]);
+        const buildService = new RenderDataWorkerBuild();
+        const frameRuntime = new WorkerFramePacketRuntime(() => buildService.requireWorkerState());
+        return {
+            buildService,
+            frameRuntime,
+        };
+    })();
+    workerServicesPromise = created;
+    return await created;
+}
 
 const worker = {
     async initCache(
@@ -27,6 +50,7 @@ const worker = {
         spawnBootstrap: WorkerSpawnBootstrap,
         options?: WorkerRuntimeOptions,
     ): Promise<void> {
+        const { buildService, frameRuntime } = await getWorkerServices();
         frameRuntime.resetForCache();
         frameTickMapIdsVersion = 0;
         frameTickViewStateVersion = 0;
@@ -36,6 +60,7 @@ const worker = {
     async loadStaticMapPacket(
         input: SdMapLoaderInput,
     ): Promise<TransferDescriptor<StaticMapWirePacket | undefined>> {
+        const { buildService } = await getWorkerServices();
         return buildService.loadStaticMapPacket(input);
     },
     async loadTexture(
@@ -44,9 +69,11 @@ const worker = {
         flipH: boolean,
         brightness: number,
     ): Promise<TransferDescriptor<Int32Array>> {
+        const { buildService } = await getWorkerServices();
         return buildService.loadTexture(id, size, flipH, brightness);
     },
     async loadMapImage(mapX: number, mapY: number, level: number, drawMapFunctions: boolean) {
+        const { buildService } = await getWorkerServices();
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
     },
     async registerMapRuntime(
@@ -57,6 +84,7 @@ const worker = {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
+        const { frameRuntime } = await getWorkerServices();
         await frameRuntime.registerMapRuntime(
             mapId,
             borderSize,
@@ -66,21 +94,30 @@ const worker = {
             mapSimToken,
         );
     },
-    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
+    async unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+        const { frameRuntime } = await getWorkerServices();
         frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
-    setFrameTickMapIds(mapIds: Int32Array): void {
+    async setFrameTickMapIds(mapIds: Int32Array): Promise<void> {
+        const { frameRuntime } = await getWorkerServices();
         frameRuntime.setTickMapIds(mapIds);
         frameTickMapIdsVersion = (frameTickMapIdsVersion + 1) | 0;
     },
-    setFrameTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+    async setFrameTickViewState(
+        cameraMapX: number,
+        cameraMapY: number,
+        lodDistance: number,
+    ): Promise<void> {
+        const { frameRuntime } = await getWorkerServices();
         frameRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
         frameTickViewStateVersion = (frameTickViewStateVersion + 1) | 0;
     },
-    setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
+    async setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
+        const { frameRuntime } = await getWorkerServices();
         frameRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
     },
     async applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
+        const { frameRuntime } = await getWorkerServices();
         if (
             (deltaPacket.tickMapIdsVersion | 0) !== (frameTickMapIdsVersion | 0) ||
             (deltaPacket.tickViewStateVersion | 0) !== (frameTickViewStateVersion | 0)
@@ -104,21 +141,26 @@ const worker = {
         frameCount: number,
         cycleNow: number,
     ): Promise<TransferDescriptor<FramePacket | undefined>> {
+        const { frameRuntime } = await getWorkerServices();
         const packet = await frameRuntime.buildFramePacketFromCurrentState(frameCount, cycleNow);
         return packet
             ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
             : Transfer<FramePacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
+        const { buildService } = await getWorkerServices();
         await buildService.setVars(values);
     },
     async loadCachedMapImages(): Promise<Map<number, string>> {
+        const { buildService } = await getWorkerServices();
         return buildService.loadCachedMapImages();
     },
     async exportSpritesToZip(): Promise<Blob> {
+        const { buildService } = await getWorkerServices();
         return buildService.exportSpritesToZip();
     },
     async exportTexturesToZip(): Promise<Blob> {
+        const { buildService } = await getWorkerServices();
         return buildService.exportTexturesToZip();
     },
 };
