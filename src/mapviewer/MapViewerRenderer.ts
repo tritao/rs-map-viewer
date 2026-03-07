@@ -2,6 +2,7 @@ import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import {
     type MapData,
+    type ObjRenderData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
 import { InteractType } from "../renderer/InteractType";
@@ -195,10 +196,12 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
 
                 this.mapManager.addMap(mapData.mapX, mapData.mapY);
-                this.renderer.addMap({
-                    ...(mapData as unknown as MapData),
-                    objRenderData: runtimeBootstrap.objRenderData,
-                } as MapData);
+                this.renderer.addMap(mapData);
+                this.replaceMapObjRenderData(
+                    mapData.mapX,
+                    mapData.mapY,
+                    runtimeBootstrap.objRenderData,
+                );
 
                 if (mapData.minimapBlob.size > 0) {
                     this.mapViewer.setMapImageUrl(
@@ -248,6 +251,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         const packet = encodeNpcLifecyclePacketFromEvents(events);
         return this.applyNpcLifecyclePacketBytes(packet);
+    }
+
+    replaceMapObjRenderData(
+        mapX: number,
+        mapY: number,
+        objRenderData: ObjRenderData | undefined,
+    ): void {
+        this.renderer.replaceMapObjRenderData(getMapSquareId(mapX, mapY), objRenderData);
     }
 
     private async applyNpcLifecyclePacketBytes(

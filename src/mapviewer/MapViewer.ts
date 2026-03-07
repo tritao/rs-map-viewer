@@ -11,6 +11,7 @@ import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession"
 import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
+import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
@@ -280,6 +281,14 @@ export class MapViewer {
 
     applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
         return this.renderer.applyNpcLifecycleEvents(events);
+    }
+
+    replaceMapObjRenderData(
+        mapX: number,
+        mapY: number,
+        objRenderData: ObjRenderData | undefined,
+    ): void {
+        this.renderer.replaceMapObjRenderData(mapX, mapY, objRenderData);
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {

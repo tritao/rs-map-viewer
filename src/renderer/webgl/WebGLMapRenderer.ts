@@ -80,6 +80,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
     private readonly frameRenderMapsScratch: FrameRenderMap[] = [];
     private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
     private readonly warnedNpcMissingGeometryOrRangesMapIds = new Set<number>();
+    private readonly pendingObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -151,6 +152,41 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
         }
     }
 
+    override replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): void {
+        const normalizedMapId = mapId | 0;
+        this.pendingObjRenderDataByMapId.set(normalizedMapId, objRenderData);
+        const map = this.loadedMaps.get(normalizedMapId);
+        const textureArray = this.textures.getTextureArray();
+        const textureSlotLut = this.textures.getTextureSlotLut();
+        const textureMaterials = this.textures.getMaterialsTexture();
+        if (
+            !map ||
+            !textureArray ||
+            !textureSlotLut ||
+            !textureMaterials ||
+            !this.sceneUniformBuffer ||
+            !this.programs.mainProgram ||
+            !this.programs.mainAlphaProgram
+        ) {
+            return;
+        }
+        map.replaceObjRenderData(
+            this.app,
+            this.programs.mainProgram,
+            this.programs.mainAlphaProgram,
+            textureArray,
+            textureMaterials,
+            textureSlotLut,
+            this.sceneUniformBuffer,
+            objRenderData,
+        );
+        this.textures.updateVisibleResidency(
+            [map.usedTextureIds ?? new Int32Array(0)],
+            this.stats.frameCount,
+            this.debugTextureMode !== 0,
+        );
+    }
+
     setInteractionInput(input: InteractionInput): void {
         this.interactions.setInput(input);
     }
@@ -215,6 +251,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
         this.isNewTextureAnim =
             cache.info.game === GameType.Runescape && cache.info.revision >= 681;
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
+        this.pendingObjRenderDataByMapId.clear();
 
         if (this.app) {
             this.initTextures();
@@ -243,15 +280,19 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
 
     loadMap(mapData: SdMapRenderLoadData, time: number): void {
         const { mapX, mapY } = mapData;
+        const mapId = getMapSquareId(mapX, mapY);
         const textureArray = this.textures.getTextureArray();
         const textureSlotLut = this.textures.getTextureSlotLut();
         const textureMaterials = this.textures.getMaterialsTexture();
         if (!textureArray || !textureSlotLut || !textureMaterials || !this.sceneUniformBuffer) {
             return;
         }
+        const objRenderData = this.pendingObjRenderDataByMapId.has(mapId)
+            ? this.pendingObjRenderDataByMapId.get(mapId)
+            : mapData.objRenderData;
 
         this.loadedMaps.set(
-            getMapSquareId(mapX, mapY),
+            mapId,
             this.loadMapSquareRenderable(
                 this.app,
                 this.programs,
@@ -259,7 +300,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
                 textureMaterials,
                 textureSlotLut,
                 this.sceneUniformBuffer,
-                mapData,
+                {
+                    ...mapData,
+                    objRenderData,
+                },
                 time,
                 this.stats.frameCount,
             ),
@@ -691,6 +735,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
         this.framePacketState.reset();
         this.npcDataTexture = undefined;
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
+        this.pendingObjRenderDataByMapId.clear();
         this.clearMaps();
         console.log("Renderer cleaned up");
     }

@@ -9,6 +9,8 @@ import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLR
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
     drawCallNpc!: DrawCallRange;
+    private baseUsedTextureIds: Int32Array = new Int32Array(0);
+    private objUsedTextureIds: Int32Array | undefined;
 
     static unionUsedTextureIds(
         base: Int32Array,
@@ -120,9 +122,11 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             npcDrawRanges,
             renderable.npcVertexArray !== undefined,
         );
+        renderable.baseUsedTextureIds = data.usedTextureIds;
+        renderable.objUsedTextureIds = objRenderData?.usedTextureIds;
         renderable.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
-            data.usedTextureIds,
-            objRenderData?.usedTextureIds,
+            renderable.baseUsedTextureIds,
+            renderable.objUsedTextureIds,
         );
 
         return renderable;
@@ -144,5 +148,61 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
 
     getMapDistance(mapX: number, mapY: number): number {
         return Math.max(Math.abs(mapX - this.mapX), Math.abs(mapY - this.mapY));
+    }
+
+    replaceObjRenderData(
+        app: PicoApp,
+        mainProgram: Program,
+        mainAlphaProgram: Program,
+        textureArray: Texture,
+        textureMaterials: Texture,
+        textureSlotLut: Texture,
+        sceneUniformBuffer: UniformBuffer,
+        objRenderData: ObjRenderData | undefined,
+    ): void {
+        this.resetObjRenderData();
+        const createDrawCall: CreateDrawCallFunction = (
+            program: Program,
+            modelInfoTexture: Texture | undefined,
+            drawRangesPacked: Int32Array,
+            _useNpcGeometry?: boolean,
+            useObjGeometry?: boolean,
+        ): DrawCallRange => {
+            const drawRangeCount = (drawRangesPacked.length / 3) | 0;
+            const drawRangeArgs = new Array<[number, number, number]>(drawRangeCount);
+            for (let i = 0; i < drawRangeCount; i++) {
+                const off = i * 3;
+                drawRangeArgs[i] = [
+                    drawRangesPacked[off + 0] | 0,
+                    drawRangesPacked[off + 1] | 0,
+                    drawRangesPacked[off + 2] | 0,
+                ];
+            }
+            const drawCall = app
+                .createDrawCall(
+                    program,
+                    useObjGeometry && this.objVertexArray ? this.objVertexArray : this.vertexArray,
+                )
+                .uniformBlock("SceneUniforms", sceneUniformBuffer)
+                .uniform("u_timeLoaded", this.timeLoaded)
+                .uniform("u_mapPos", vec2.fromValues(this.mapX, this.mapY))
+                .texture("u_textures", textureArray)
+                .texture("u_textureMaterials", textureMaterials)
+                .texture("u_textureSlotLut", textureSlotLut)
+                .texture("u_heightMap", this.heightMapTexture)
+                .drawRanges(...drawRangeArgs);
+            if (modelInfoTexture) {
+                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
+            }
+            return { drawCall, drawRangesPacked };
+        };
+        this.createObjGeometryBuffers(app, objRenderData);
+        this.createObjModelInfoTextures(app, objRenderData);
+        this.createObjDrawCalls(objRenderData, createDrawCall, mainProgram, mainAlphaProgram);
+        this.objUsedTextureIds = objRenderData?.usedTextureIds;
+        this.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
+            this.baseUsedTextureIds,
+            this.objUsedTextureIds,
+        );
     }
 }

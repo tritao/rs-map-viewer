@@ -320,6 +320,20 @@ export class WebGLRenderable {
         return this.objDrawCallsByKey[key as number];
     }
 
+    resetObjRenderData(): void {
+        this.objVertexArray?.delete();
+        this.objInterleavedBuffer?.delete();
+        this.objIndexBuffer?.delete();
+        for (const texture of this.objModelInfoTexturesByKey ?? []) {
+            texture.delete();
+        }
+        this.objVertexArray = undefined;
+        this.objInterleavedBuffer = undefined;
+        this.objIndexBuffer = undefined;
+        this.objModelInfoTexturesByKey = [];
+        this.objDrawCallsByKey = [];
+    }
+
     delete() {
         if (this.disposed) {
             return;
@@ -332,28 +346,17 @@ export class WebGLRenderable {
         this.npcVertexArray?.delete();
         this.npcInterleavedBuffer?.delete();
         this.npcIndexBuffer?.delete();
-        this.objVertexArray?.delete();
-        this.objInterleavedBuffer?.delete();
-        this.objIndexBuffer?.delete();
+        this.resetObjRenderData();
 
         this.heightMapTexture.delete();
         for (const texture of this.modelInfoTexturesByKey ?? []) {
             texture.delete();
         }
-        for (const texture of this.objModelInfoTexturesByKey ?? []) {
-            texture.delete();
-        }
-
         this.modelInfoTexturesByKey = [];
-        this.objModelInfoTexturesByKey = [];
         this.drawCallsByKey = [];
-        this.objDrawCallsByKey = [];
         this.npcVertexArray = undefined;
         this.npcInterleavedBuffer = undefined;
         this.npcIndexBuffer = undefined;
-        this.objVertexArray = undefined;
-        this.objInterleavedBuffer = undefined;
-        this.objIndexBuffer = undefined;
         this.usedTextureIds = undefined;
     }
 }

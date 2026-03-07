@@ -1,7 +1,7 @@
 import Denque from "denque";
 import { vec4 } from "gl-matrix";
 
-import { MapData } from "../maprender/MapRenderPayload";
+import { MapData, ObjRenderData } from "../maprender/MapRenderPayload";
 import { Scene } from "../rs/scene/Scene";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type {
@@ -139,6 +139,9 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     // Optional capability: renderer instance can consume per-frame worker packets (npc gpu data +
     // tick patch streams). Default is a no-op so non-packet renderers don't need to implement it.
     applyFramePacket(_packet: FramePacket | undefined): void {}
+
+    // Optional capability: renderer instance can replace runtime-owned object render data for a map.
+    replaceMapObjRenderData(_mapId: number, _objRenderData: ObjRenderData | undefined): void {}
 
     addMap(mapData: U): void {
         this.mapsToLoad.push(mapData);

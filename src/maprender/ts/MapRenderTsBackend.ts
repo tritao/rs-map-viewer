@@ -1,24 +1,19 @@
 import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
-import { ObjSpawn, getWindowObjSpawns } from "../../data/obj/ObjSpawn";
-import { InteractType } from "../../renderer/InteractType";
+import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import { LocType } from "../../rs/config/loctype/LocType";
 import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
 import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import { Model } from "../../rs/model/Model";
-import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
+import { Scene } from "../../rs/scene/Scene";
 import { LocLoadType } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
-import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build";
 import {
-    ContourGroundType,
     LocAnimatedData,
     LocAnimatedGroup,
     ModelHashBuffer,
@@ -134,108 +129,6 @@ function flattenSceneTileHeights(scene: Scene): Int32Array {
         }
     }
     return sceneTileHeights;
-}
-
-function createObjSceneModels(
-    objTypeLoader: ObjTypeLoader,
-    objModelLoader: ObjModelLoader,
-    sceneModels: SceneModel[],
-    scene: Scene,
-    baseX: number,
-    baseY: number,
-    borderSize: number,
-    spawns: ObjSpawn[],
-): void {
-    for (const spawn of spawns) {
-        createObjSceneModel(
-            objTypeLoader,
-            objModelLoader,
-            sceneModels,
-            scene,
-            baseX,
-            baseY,
-            borderSize,
-            spawn,
-        );
-    }
-}
-
-function createObjSceneModel(
-    objTypeLoader: ObjTypeLoader,
-    objModelLoader: ObjModelLoader,
-    sceneModels: SceneModel[],
-    scene: Scene,
-    baseX: number,
-    baseY: number,
-    borderSize: number,
-    spawn: ObjSpawn,
-): void {
-    const objResult = objTypeLoader.tryLoad(spawn.id);
-    if (!objResult.ok) {
-        return;
-    }
-    const objType = objResult.value;
-    if (objType.name === "null") {
-        return;
-    }
-
-    // `spawns` are world coordinates; map them into the current scene window.
-    // This is intentionally window-relative (not `% 64`) so border-region spawns in adjacent
-    // map squares land on the correct tiles.
-    const tileX = (spawn.x - baseX) | 0;
-    const tileY = (spawn.y - baseY) | 0;
-
-    const model = objModelLoader.getModel(spawn.id, spawn.count);
-    if (!model) {
-        return;
-    }
-
-    let renderLevel = spawn.plane;
-    if (renderLevel < 3 && (scene.tileRenderFlags[1][tileX][tileY] & TileRenderFlag.Bridge) !== 0) {
-        renderLevel = spawn.plane + 1;
-    }
-
-    const sceneHeight = scene.getCenterHeight(renderLevel, tileX, tileY);
-
-    let heightOffset = 0;
-    const tile = scene.tiles[renderLevel][tileX][tileY];
-    if (!tile || !tile.tileModel || tile.tileModel.faces.length === 0) {
-        return;
-    }
-    if (tile) {
-        for (const loc of tile.locs) {
-            if ((loc.flags & 256) === 256 && loc.entity instanceof Model) {
-                const model = loc.entity;
-                model.calculateBoundsCylinder();
-                if (model.contourHeight > heightOffset) {
-                    heightOffset = model.contourHeight;
-                }
-            }
-        }
-    }
-
-    let contourGround = ContourGroundType.CENTER_TILE;
-
-    if (heightOffset !== 0) {
-        heightOffset -= sceneHeight;
-        contourGround = ContourGroundType.NONE;
-    }
-
-    sceneModels.push({
-        model,
-        lowDetail: false,
-        forceMerge: false,
-        sceneHeight,
-        // Scene-model coordinates are relative to the central map square (border excluded).
-        sceneX: (tileX - borderSize) * 128 + 64,
-        sceneZ: (tileY - borderSize) * 128 + 64,
-        heightOffset,
-        level: renderLevel,
-        contourGround,
-        priority: 10,
-        interactType: InteractType.OBJ,
-        interactId: spawn.id,
-    });
 }
 
 function addLocAnimationFrames(
