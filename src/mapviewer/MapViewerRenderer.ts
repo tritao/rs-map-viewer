@@ -12,12 +12,10 @@ import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
-import {
-    buildMapObjRenderPacket,
-    type MapObjRenderPacket,
-} from "../runtime/contracts/MapObjRenderPacket";
+import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
+import { createMapObjBootstrapPacket } from "../runtime/MapObjRuntime";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -202,12 +200,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.mapManager.addMap(mapData.mapX, mapData.mapY);
                 this.renderer.addMap(mapData);
                 this.applyMapObjRenderPacket(
-                    buildMapObjRenderPacket([
-                        {
-                            mapId,
-                            objRenderData: runtimeBootstrap.objRenderData,
-                        },
-                    ]),
+                    createMapObjBootstrapPacket(mapId, runtimeBootstrap.objRenderData),
                 );
 
                 if (mapData.minimapBlob.size > 0) {
@@ -266,12 +259,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         objRenderData: ObjRenderData | undefined,
     ): void {
         this.applyMapObjRenderPacket(
-            buildMapObjRenderPacket([
-                {
-                    mapId: getMapSquareId(mapX, mapY),
-                    objRenderData,
-                },
-            ]),
+            createMapObjBootstrapPacket(getMapSquareId(mapX, mapY), objRenderData),
         );
     }
 
