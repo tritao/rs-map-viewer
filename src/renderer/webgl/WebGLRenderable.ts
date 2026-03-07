@@ -343,15 +343,15 @@ export class WebGLRenderable {
         }
         this.disposed = true;
 
-        this.vertexArray.delete();
-        this.interleavedBuffer.delete();
-        this.indexBuffer.delete();
+        this.vertexArray?.delete();
+        this.interleavedBuffer?.delete();
+        this.indexBuffer?.delete();
         this.npcVertexArray?.delete();
         this.npcInterleavedBuffer?.delete();
         this.npcIndexBuffer?.delete();
         this.resetObjRenderData();
 
-        this.heightMapTexture.delete();
+        this.heightMapTexture?.delete();
         for (const texture of this.modelInfoTexturesByKey ?? []) {
             texture.delete();
         }

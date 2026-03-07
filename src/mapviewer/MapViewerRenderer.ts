@@ -207,11 +207,10 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async finalizeLoadedMap(packet: DecodedStaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         const mapId = mapData.mapId | 0;
+        const objRenderData = packet.runtimeBootstrap.objRenderData;
+        this.renderer.replaceMapObjRenderData(mapId, objRenderData);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
-        await this.pushMapObjRenderPacket(
-            createMapObjBootstrapPacket(mapId, packet.runtimeBootstrap.objRenderData),
-        );
         if (mapData.minimapBlob.size > 0) {
             this.mapViewer.setMapImageUrl(
                 mapData.mapX,

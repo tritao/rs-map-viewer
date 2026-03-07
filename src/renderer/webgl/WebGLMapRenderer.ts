@@ -180,11 +180,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.sceneUniformBuffer,
             objRenderData,
         );
-        this.textures.updateVisibleResidency(
-            [map.usedTextureIds ?? new Int32Array(0)],
-            this.stats.frameCount,
-            this.debugTextureMode !== 0,
-        );
     }
 
     setInteractionInput(input: InteractionInput): void {

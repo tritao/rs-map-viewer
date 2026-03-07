@@ -23,6 +23,17 @@ layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 interactId;
 
 void main() {
+    if (u_debugTextureMode > 4.5) {
+        fragColor = vec4(v_color.rgb, 1.0);
+        interactId = v_interactId;
+        return;
+    }
+    if (u_debugTextureMode > 2.5) {
+        fragColor = vec4(1.0, 0.85, 0.2, 1.0);
+        interactId = v_interactId;
+        return;
+    }
+
     uint slot0 = v_texSlot0;
     uint slot1 = v_texSlot1;
 

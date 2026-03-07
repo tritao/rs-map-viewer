@@ -167,7 +167,8 @@ export class WebGLTextureResidency {
                 {
                     tryLoadPixels: (textureId) =>
                         this.textureLoader?.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0),
-                    uploadToSlot: (_textureId, slot, px) => this.uploadTextureToSlot(slot, px),
+                    uploadToSlot: (textureId, slot, px) =>
+                        this.uploadTextureToSlot(textureId, slot, px),
                 },
             );
             lutDirty ||= result.lutDirty;
@@ -203,7 +204,8 @@ export class WebGLTextureResidency {
             this.policy.ensureVisibleTextures({
                 tryLoadPixels: (textureId) =>
                     this.textureLoader?.tryGetPixelsArgb(textureId, TEXTURE_SIZE, true, 1.0),
-                uploadToSlot: (_textureId, slot, px) => this.uploadTextureToSlot(slot, px),
+                uploadToSlot: (textureId, slot, px) =>
+                    this.uploadTextureToSlot(textureId, slot, px),
             });
 
         if (lutDirty) {
@@ -325,9 +327,15 @@ export class WebGLTextureResidency {
         console.timeEnd("load textures");
     }
 
-    private uploadTextureToSlot(slot: number, pixels: Int32Array): void {
+    private uploadTextureToSlot(textureId: number, slot: number, pixels: Int32Array): void {
         if (!this.textureArray || !this.gl) {
             throw new Error("Texture residency is not initialized");
+        }
+        const expectedPixels = TEXTURE_SIZE * TEXTURE_SIZE;
+        if (pixels.length !== expectedPixels) {
+            throw new Error(
+                `Invalid texture upload for texture ${textureId}: expected ${expectedPixels} pixels, got ${pixels.length}`,
+            );
         }
         this.textureArray.bind(0);
         this.gl.texSubImage3D(

@@ -1,5 +1,6 @@
 import frameFxaaFragShader from "./frame-fxaa.frag.glsl";
 import frameFxaaVertShader from "./frame-fxaa.vert.glsl";
+import entityVertShader from "./entity.vert.glsl";
 import frameFragShader from "./frame.frag.glsl";
 import frameVertShader from "./frame.vert.glsl";
 import mainFragShader from "./main.frag.glsl";
@@ -36,6 +37,10 @@ export function createProgram(
 
 export function createMainProgram(hasMultiDraw: boolean, discardAlpha: boolean): ProgramSource {
     return createProgram(mainVertShader, mainFragShader, hasMultiDraw, discardAlpha);
+}
+
+export function createEntityProgram(hasMultiDraw: boolean, discardAlpha: boolean): ProgramSource {
+    return createProgram(entityVertShader, mainFragShader, hasMultiDraw, discardAlpha);
 }
 
 export function createNpcProgram(hasMultiDraw: boolean, discardAlpha: boolean): ProgramSource {
