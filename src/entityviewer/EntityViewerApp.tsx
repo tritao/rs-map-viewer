@@ -44,11 +44,18 @@ function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
         count: Number.isFinite(count) ? Math.max(1, count | 0) : 1,
         rotation: Number.isFinite(rotation) ? rotation & 3 : 0,
         objMode: parseObjMode(searchParams.get("objMode")),
+        legacyIconMath: searchParams.get("legacyIconMath") === "1",
     };
 }
 
 function parseObjMode(value: string | null): EntityViewerObjMode {
-    return value === "world" ? "world" : "icon";
+    switch (value) {
+        case "world":
+        case "icon-viewer":
+            return value;
+        default:
+            return "icon";
+    }
 }
 
 function parseDebugMode(searchParams: URLSearchParams): EntityViewerDebugMode {
@@ -88,6 +95,9 @@ export default function EntityViewerApp(): JSX.Element {
     const [renderer, setRenderer] = useState<EntityViewerRenderer>();
     const [entityLabel, setEntityLabel] = useState<string>();
     const [resolvedEntity, setResolvedEntity] = useState<EntityViewerResolvedData>();
+    const [cameraYaw, setCameraYaw] = useState<number>(1024);
+    const [cameraPitch, setCameraPitch] = useState<number>(-180);
+    const [cameraDistance, setCameraDistance] = useState<number>(8);
     const request = useMemo(() => parseRequest(searchParams), [searchParams]);
     const debugMode = useMemo(() => parseDebugMode(searchParams), [searchParams]);
 
@@ -136,6 +146,9 @@ export default function EntityViewerApp(): JSX.Element {
             const services = createEntityViewerServices(renderer.session);
             const resolved = resolveEntityViewerData(services, request);
             renderer.setRenderData(resolved.renderData);
+            setCameraYaw(renderer.getYaw());
+            setCameraPitch(renderer.getPitch());
+            setCameraDistance(renderer.getOrbitDistance());
             setEntityLabel(resolved.label);
             setResolvedEntity(resolved);
             setErrorMessage(undefined);
@@ -166,6 +179,9 @@ export default function EntityViewerApp(): JSX.Element {
                 label={entityLabel}
                 errorMessage={renderer ? errorMessage : undefined}
                 iconSprite={resolvedEntity?.iconSprite}
+                cameraYaw={cameraYaw}
+                cameraPitch={cameraPitch}
+                cameraDistance={cameraDistance}
                 onRequestChange={(nextRequest) =>
                     setSearchParams(
                         updateSearchParams(searchParams, {
@@ -174,6 +190,10 @@ export default function EntityViewerApp(): JSX.Element {
                             count: nextRequest.count.toString(),
                             rotation: nextRequest.rotation.toString(),
                             objMode: nextRequest.kind === "obj" ? nextRequest.objMode : undefined,
+                            legacyIconMath:
+                                nextRequest.kind === "obj" && nextRequest.legacyIconMath
+                                    ? "1"
+                                    : undefined,
                         }),
                     )
                 }
@@ -184,12 +204,15 @@ export default function EntityViewerApp(): JSX.Element {
                     switch (field) {
                         case "yaw":
                             renderer.setYaw(value);
+                            setCameraYaw(value);
                             break;
                         case "pitch":
                             renderer.setPitch(value);
+                            setCameraPitch(value);
                             break;
                         case "distance":
                             renderer.setOrbitDistance(value);
+                            setCameraDistance(value);
                             break;
                     }
                 }}

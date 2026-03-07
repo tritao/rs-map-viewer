@@ -217,6 +217,18 @@ export class WebGLEntityRenderer implements Renderer {
         this.yaw = yaw | 0;
     }
 
+    getOrbitDistance(): number {
+        return this.orbitDistance;
+    }
+
+    getPitch(): number {
+        return this.pitch;
+    }
+
+    getYaw(): number {
+        return this.yaw;
+    }
+
     private resetCameraToFit(): void {
         const fitRadiusWorldUnits = this.fitRadius / 128;
         this.target[0] = 0;

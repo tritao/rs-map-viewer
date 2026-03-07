@@ -29,6 +29,18 @@ export class EntityViewerRenderer extends RendererMainLoop {
         this.renderer.setYaw(yaw);
     }
 
+    getOrbitDistance(): number {
+        return this.renderer.getOrbitDistance();
+    }
+
+    getPitch(): number {
+        return this.renderer.getPitch();
+    }
+
+    getYaw(): number {
+        return this.renderer.getYaw();
+    }
+
     setDebugMode(debugMode: EntityViewerDebugMode): void {
         this.renderer.setDebugMode(debugMode);
     }

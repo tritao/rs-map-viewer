@@ -10,10 +10,14 @@ import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { buildStandaloneRenderableData, type StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
-import { renderObjIconSprite, type ObjIconSprite } from "./ObjIconSpriteRenderer";
+import {
+    renderObjIconSprite,
+    renderLegacyObjIconSprite,
+    type ObjIconSprite,
+} from "./ObjIconSpriteRenderer";
 
 export type EntityViewerKind = "obj" | "npc" | "loc" | "model";
-export type EntityViewerObjMode = "icon" | "world";
+export type EntityViewerObjMode = "icon" | "icon-viewer" | "world";
 
 export type EntityViewerRequest = Readonly<{
     kind: EntityViewerKind;
@@ -21,6 +25,7 @@ export type EntityViewerRequest = Readonly<{
     count: number;
     rotation: number;
     objMode: EntityViewerObjMode;
+    legacyIconMath: boolean;
 }>;
 
 export type EntityViewerResolvedData = Readonly<{
@@ -80,22 +85,41 @@ function buildObjData(
         throw new Error(`Object ${request.id | 0} not found`);
     }
     const iconModelResult =
-        request.objMode === "icon"
+        request.objMode === "icon" || request.objMode === "icon-viewer"
             ? buildObjIconModel(services, request.id | 0, request.count | 0)
             : undefined;
     const model =
-        request.objMode === "icon"
+        request.objMode === "icon" || request.objMode === "icon-viewer"
             ? iconModelResult?.model
             : services.objModelLoader.getModel(request.id | 0, request.count | 0);
     if (!model) {
         throw new Error(`Object ${request.id | 0} has no renderable model`);
     }
     const iconSprite =
-        request.objMode === "icon"
-            ? renderObjIconSprite(model, iconModelResult?.zoom2d ?? 2000)
+        request.objMode === "icon" || request.objMode === "icon-viewer"
+            ? request.legacyIconMath
+                ? renderLegacyObjIconSprite(
+                      model,
+                      iconModelResult?.zoom2d ?? 2000,
+                      iconModelResult?.xan2d ?? 0,
+                      iconModelResult?.yan2d ?? 0,
+                      iconModelResult?.zan2d ?? 0,
+                      iconModelResult?.offsetX2d ?? 0,
+                      iconModelResult?.offsetY2d ?? 0,
+                  )
+                : renderObjIconSprite(
+                      model,
+                      iconModelResult?.zoom2d ?? 2000,
+                      iconModelResult?.xan2d ?? 0,
+                      iconModelResult?.yan2d ?? 0,
+                      iconModelResult?.zan2d ?? 0,
+                      iconModelResult?.offsetX2d ?? 0,
+                      iconModelResult?.offsetY2d ?? 0,
+                      request.objMode === "icon-viewer" ? "viewer" : "authentic",
+                  )
             : undefined;
     const renderData =
-        request.objMode === "icon"
+        request.objMode === "icon" || request.objMode === "icon-viewer"
             ? undefined
             : buildStandaloneRenderableData({
                   textureLoader: services.session.loaders.textureLoader,
@@ -103,7 +127,11 @@ function buildObjData(
                   interactType: InteractType.OBJ,
                   interactId: request.id | 0,
               });
-    if (request.objMode !== "icon" && !renderData) {
+    if (
+        request.objMode !== "icon" &&
+        request.objMode !== "icon-viewer" &&
+        !renderData
+    ) {
         throw new Error(`Failed to build object render data for ${request.id | 0}`);
     }
     return {
@@ -117,7 +145,15 @@ function buildObjIconModel(
     services: EntityViewerServices,
     id: number,
     count: number,
-): Readonly<{ model: Model; zoom2d: number }> | undefined {
+): Readonly<{
+    model: Model;
+    zoom2d: number;
+    xan2d: number;
+    yan2d: number;
+    zan2d: number;
+    offsetX2d: number;
+    offsetY2d: number;
+}> | undefined {
     const objResult = services.session.loaders.objTypeLoader.tryLoad(id);
     if (!objResult.ok) {
         return undefined;
@@ -163,9 +199,6 @@ function buildObjIconModel(
             modelData.retexture(resolvedType.retextureFrom[i], resolvedType.retextureTo[i]);
         }
     }
-    modelData.rotateX(resolvedType.xan2d & 2047);
-    modelData.rotate(resolvedType.yan2d & 2047);
-    modelData.rotateZ(resolvedType.zan2d & 2047);
     const model = modelData.light(
         services.session.loaders.textureLoader,
         resolvedType.ambient + 96,
@@ -174,15 +207,15 @@ function buildObjIconModel(
         -160,
         -96,
     );
-    if (resolvedType.offsetX2d !== 0 || resolvedType.offsetY2d !== 0) {
-        model.translate(resolvedType.offsetX2d, -resolvedType.offsetY2d, 0);
-    }
-    model.calculateBounds();
-    model.translate(0, -(model.minY + model.maxY) / 2, 0);
     model.calculateBoundsCylinder();
     return {
         model,
         zoom2d: resolvedType.zoom2d,
+        xan2d: resolvedType.xan2d,
+        yan2d: resolvedType.yan2d,
+        zan2d: resolvedType.zan2d,
+        offsetX2d: resolvedType.offsetX2d,
+        offsetY2d: resolvedType.offsetY2d,
     };
 }
 

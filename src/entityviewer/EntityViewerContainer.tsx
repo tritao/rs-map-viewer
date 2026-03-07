@@ -7,6 +7,9 @@ import type { EntityViewerKind, EntityViewerObjMode, EntityViewerRequest } from 
 import { EntityViewerRenderer } from "./EntityViewerRenderer";
 import type { ObjIconSprite } from "./ObjIconSpriteRenderer";
 
+const ICON_DISPLAY_SCALE = 8;
+const AUTHENTIC_ICON_WIDTH = 36;
+
 type EntityViewerContainerProps = Readonly<{
     cacheList: CacheList;
     selectedCache: CacheInfo;
@@ -15,6 +18,9 @@ type EntityViewerContainerProps = Readonly<{
     label?: string;
     errorMessage?: string;
     iconSprite?: ObjIconSprite;
+    cameraYaw: number;
+    cameraPitch: number;
+    cameraDistance: number;
     onRequestChange: (request: EntityViewerRequest) => void;
     onCacheChange: (cacheName: string) => void;
     onCameraChange: (field: "yaw" | "pitch" | "distance", value: number) => void;
@@ -22,19 +28,21 @@ type EntityViewerContainerProps = Readonly<{
 
 function SpriteCanvas({ sprite }: Readonly<{ sprite: ObjIconSprite }>): JSX.Element {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const pixelWidth = Math.max(1, sprite.width | 0);
+    const pixelHeight = Math.max(1, sprite.height | 0);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) {
             return;
         }
-        canvas.width = sprite.width;
-        canvas.height = sprite.height;
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
             return;
         }
-        const imageData = ctx.createImageData(sprite.width, sprite.height);
+        const imageData = ctx.createImageData(pixelWidth, pixelHeight);
         const out = imageData.data;
         for (let i = 0; i < sprite.pixels.length; i++) {
             const rgb = sprite.pixels[i] | 0;
@@ -45,7 +53,9 @@ function SpriteCanvas({ sprite }: Readonly<{ sprite: ObjIconSprite }>): JSX.Elem
             out[off + 3] = rgb === 0 ? 0 : 0xff;
         }
         ctx.putImageData(imageData, 0, 0);
-    }, [sprite]);
+    }, [pixelHeight, pixelWidth, sprite]);
+
+    const displayScale = pixelWidth <= AUTHENTIC_ICON_WIDTH ? ICON_DISPLAY_SCALE : 1;
 
     return (
         <div
@@ -61,8 +71,8 @@ function SpriteCanvas({ sprite }: Readonly<{ sprite: ObjIconSprite }>): JSX.Elem
             <canvas
                 ref={canvasRef}
                 style={{
-                    width: `${sprite.width * 4}px`,
-                    height: `${sprite.height * 4}px`,
+                    width: `${pixelWidth * displayScale}px`,
+                    height: `${pixelHeight * displayScale}px`,
                     imageRendering: "pixelated",
                     border: "1px solid rgba(255,255,255,0.12)",
                     background: "transparent",
@@ -72,12 +82,12 @@ function SpriteCanvas({ sprite }: Readonly<{ sprite: ObjIconSprite }>): JSX.Elem
     );
 }
 
-function parsePositiveInt(value: string, fallback: number): number {
-    const parsed = Number.parseInt(value, 10);
+function parseNonNegativeNumber(value: string, fallback: number): number {
+    const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed) || parsed < 0) {
         return fallback;
     }
-    return parsed | 0;
+    return parsed;
 }
 
 export const EntityViewerContainer = memo(function EntityViewerContainer({
@@ -88,6 +98,9 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
     label,
     errorMessage,
     iconSprite,
+    cameraYaw,
+    cameraPitch,
+    cameraDistance,
     onRequestChange,
     onCacheChange,
     onCameraChange,
@@ -102,16 +115,22 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
         updateRequest({ kind: event.target.value as EntityViewerKind });
 
     const onIdChange = (event: ChangeEvent<HTMLInputElement>) =>
-        updateRequest({ id: parsePositiveInt(event.target.value, request.id) });
+        updateRequest({ id: parseNonNegativeNumber(event.target.value, request.id) | 0 });
 
     const onCountChange = (event: ChangeEvent<HTMLInputElement>) =>
-        updateRequest({ count: Math.max(1, parsePositiveInt(event.target.value, request.count)) });
+        updateRequest({
+            count: Math.max(1, (parseNonNegativeNumber(event.target.value, request.count) | 0)),
+        });
 
     const onRotationChange = (event: ChangeEvent<HTMLInputElement>) =>
-        updateRequest({ rotation: parsePositiveInt(event.target.value, request.rotation) & 3 });
+        updateRequest({
+            rotation: (parseNonNegativeNumber(event.target.value, request.rotation) | 0) & 3,
+        });
 
     const onObjModeChange = (event: ChangeEvent<HTMLSelectElement>) =>
         updateRequest({ objMode: event.target.value as EntityViewerObjMode });
+
+    const showWorldCameraControls = !iconSprite;
 
     return (
         <div className="App max-height" style={{ display: "flex", flexDirection: "column" }}>
@@ -166,9 +185,24 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                             Mode{" "}
                             <select value={request.objMode} onChange={onObjModeChange}>
                                 <option value="icon">Icon</option>
+                                <option value="icon-viewer">Icon Viewer</option>
                                 <option value="world">World</option>
                             </select>
                         </label>
+                        {request.objMode !== "world" ? (
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={request.legacyIconMath}
+                                    onChange={(event) =>
+                                        updateRequest({
+                                            legacyIconMath: event.target.checked,
+                                        })
+                                    }
+                                />{" "}
+                                Legacy Math
+                            </label>
+                        ) : undefined}
                     </>
                 ) : undefined}
                 {request.kind === "loc" ? (
@@ -183,46 +217,59 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                         />
                     </label>
                 ) : undefined}
-                <label>
-                    Yaw{" "}
-                    <input
-                        type="range"
-                        min={0}
-                        max={2047}
-                        defaultValue={1024}
-                        onChange={(event) =>
-                            onCameraChange("yaw", parsePositiveInt(event.target.value, 1024))
-                        }
-                    />
-                </label>
-                <label>
-                    Pitch{" "}
-                    <input
-                        type="range"
-                        min={-512}
-                        max={512}
-                        defaultValue={-180}
-                        onChange={(event) =>
-                            onCameraChange("pitch", Number.parseInt(event.target.value, 10) || 0)
-                        }
-                    />
-                </label>
-                <label>
-                    Distance{" "}
-                    <input
-                        type="range"
-                        min={128}
-                        max={4096}
-                        step={16}
-                        defaultValue={768}
-                        onChange={(event) =>
-                            onCameraChange(
-                                "distance",
-                                parsePositiveInt(event.target.value, 768),
-                            )
-                        }
-                    />
-                </label>
+                {showWorldCameraControls ? (
+                    <>
+                        <label>
+                            Yaw{" "}
+                            <input
+                                type="range"
+                                min={0}
+                                max={2047}
+                                value={cameraYaw}
+                                onChange={(event) =>
+                                    onCameraChange(
+                                        "yaw",
+                                        parseNonNegativeNumber(event.target.value, cameraYaw) | 0,
+                                    )
+                                }
+                            />
+                        </label>
+                        <label>
+                            Pitch{" "}
+                            <input
+                                type="range"
+                                min={-512}
+                                max={512}
+                                value={cameraPitch}
+                                onChange={(event) =>
+                                    onCameraChange(
+                                        "pitch",
+                                        Number.parseInt(event.target.value, 10) || 0,
+                                    )
+                                }
+                            />
+                        </label>
+                        <label>
+                            Distance{" "}
+                            <input
+                                type="range"
+                                min={2}
+                                max={64}
+                                step={0.25}
+                                value={cameraDistance}
+                                onChange={(event) =>
+                                    onCameraChange(
+                                        "distance",
+                                        parseNonNegativeNumber(
+                                            event.target.value,
+                                            cameraDistance,
+                                        ),
+                                    )
+                                }
+                            />
+                        </label>
+                    </>
+                ) : undefined}
                 <span>{label ?? "No entity loaded"}</span>
                 {errorMessage ? <span style={{ color: "#ff9c9c" }}>{errorMessage}</span> : undefined}
             </div>
