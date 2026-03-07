@@ -1,4 +1,8 @@
 import { NPC_DATA_TEXTURE_RING_SIZE, type NpcGpuFrameData } from "./NpcGpuFrame";
+import {
+    type MapObjRenderPacket,
+    mapObjRenderPacketTransferables,
+} from "./MapObjRenderPacket";
 
 // Meta tuples: [mapId, npcDataStart, npcDataCount]
 export const NPC_RANGES_BY_MAP_ID_STRIDE = 3;
@@ -64,6 +68,7 @@ export type ParsedFramePacket = Readonly<{
     npcRangesByMapId: ParsedFrameNpcRangesByMapId;
     tickPatches: ParsedFrameTickPatches | undefined;
     renderListPacked: Int32Array;
+    mapObjRenderPacket: MapObjRenderPacket | undefined;
 }>;
 
 export type FramePacket = Readonly<{
@@ -85,6 +90,9 @@ export type FramePacket = Readonly<{
     // Patches are concatenated by map, and within each map by stream index [0..9].
     tickPatchCountsByMapId: Int32Array;
     tickPatchPacked: Int32Array;
+
+    // Optional object runtime updates to apply on the renderer side.
+    mapObjRenderPacket?: MapObjRenderPacket;
 }>;
 
 export function framePacketTransferables(packet: FramePacket): Transferable[] {
@@ -94,6 +102,9 @@ export function framePacketTransferables(packet: FramePacket): Transferable[] {
     out.push(packet.renderListPacked.buffer as Transferable);
     out.push(packet.tickPatchCountsByMapId.buffer as Transferable);
     out.push(packet.tickPatchPacked.buffer as Transferable);
+    if (packet.mapObjRenderPacket) {
+        out.push(...mapObjRenderPacketTransferables(packet.mapObjRenderPacket));
+    }
     return out;
 }
 
@@ -114,6 +125,7 @@ export type BuildFramePacketInput = Readonly<{
     renderListPacked: Int32Array;
     tickPatchCountsByMapId: Int32Array;
     tickPatchStreamsByMap: TickPatchStreamsByMap;
+    mapObjRenderPacket?: MapObjRenderPacket;
 }>;
 
 export function createTickPatchStreamsByMap(mapEntryCount: number): TickPatchStreamsByMap {
@@ -334,6 +346,7 @@ export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
             input.tickPatchCountsByMapId,
             input.tickPatchStreamsByMap,
         ),
+        mapObjRenderPacket: input.mapObjRenderPacket,
     };
     validateFramePacketStrict(packet);
     return packet;
@@ -447,5 +460,6 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
         npcRangesByMapId: parseFramePacketNpcRangesByMapId(packet.npcRangesByMapIdPacked),
         tickPatches: parseFramePacketTickPatchesFromPacket(packet),
         renderListPacked: parseFramePacketRenderList(packet.renderListPacked),
+        mapObjRenderPacket: packet.mapObjRenderPacket,
     };
 }

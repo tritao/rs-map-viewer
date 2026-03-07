@@ -16,7 +16,10 @@ import {
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import type { NpcStateDeltaPacket } from "../../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
+import type { MapObjRenderPacket } from "../../runtime/contracts/MapObjRenderPacket";
+import { buildMapObjRenderPacket } from "../../runtime/contracts/MapObjRenderPacket";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import type { ObjRenderData } from "../../maprender/MapRenderPayload";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
 import {
@@ -103,6 +106,7 @@ export class WorkerFramePacketRuntime {
         lodDistance: 0,
     };
     private tickHoveredMapIdsPacked: Int32Array = new Int32Array(0);
+    private readonly pendingObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
 
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
 
@@ -114,6 +118,7 @@ export class WorkerFramePacketRuntime {
         this.tickViewStateVersion = 0;
         this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.tickHoveredMapIdsPacked = new Int32Array(0);
+        this.pendingObjRenderDataByMapId.clear();
     }
 
     resetForLoaderReset(): void {
@@ -124,6 +129,43 @@ export class WorkerFramePacketRuntime {
         this.tickViewStateVersion = 0;
         this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.tickHoveredMapIdsPacked = new Int32Array(0);
+        this.pendingObjRenderDataByMapId.clear();
+    }
+
+    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): number {
+        if (!packet) {
+            return 0;
+        }
+        const updates = packet.updates;
+        let applied = 0;
+        for (let index = 0; index < updates.length; index++) {
+            const update = updates[index];
+            if (!update) {
+                continue;
+            }
+            this.pendingObjRenderDataByMapId.set(update.mapId | 0, update.objRenderData);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    private consumePendingMapObjRenderPacket(): MapObjRenderPacket | undefined {
+        if ((this.pendingObjRenderDataByMapId.size | 0) <= 0) {
+            return undefined;
+        }
+        const updates = new Array<{
+            mapId: number;
+            objRenderData?: ObjRenderData;
+        }>(this.pendingObjRenderDataByMapId.size | 0);
+        let write = 0;
+        for (const [mapId, objRenderData] of this.pendingObjRenderDataByMapId.entries()) {
+            updates[write++] = {
+                mapId: mapId | 0,
+                objRenderData,
+            };
+        }
+        this.pendingObjRenderDataByMapId.clear();
+        return buildMapObjRenderPacket(updates);
     }
 
     setTickMapIds(mapIds: Int32Array): void {
@@ -401,6 +443,7 @@ export class WorkerFramePacketRuntime {
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,
+            mapObjRenderPacket: this.consumePendingMapObjRenderPacket(),
         });
     }
 }

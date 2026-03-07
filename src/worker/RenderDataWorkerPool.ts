@@ -3,6 +3,7 @@ import { ModuleThread, Pool, Thread, spawn } from "threads";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MinimapData } from "../maprender/ts/MinimapData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
+import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import {
@@ -187,6 +188,10 @@ export class RenderDataWorkerPool {
 
     applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         return this.withFrameWorker((w) => w.applyNpcStateDeltaPacket(deltaPacket));
+    }
+
+    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
+        return this.withFrameWorker((w) => w.applyMapObjRenderPacket(packet));
     }
 
     buildFramePacketFromRenderState(

@@ -146,6 +146,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapRenderLoa
     }
 
     override applyFramePacket(packet: FramePacket | undefined): void {
+        if (packet?.mapObjRenderPacket) {
+            this.applyMapObjRenderPacket(packet.mapObjRenderPacket);
+        }
         this.framePacketState.apply(packet);
         if (!packet) {
             this.npcDataTexture = undefined;

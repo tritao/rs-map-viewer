@@ -4,6 +4,7 @@ import { Transfer, expose } from "threads/worker";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
+import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/contracts/StaticMapWireCodec";
@@ -136,6 +137,10 @@ const worker = {
             lastAppliedDeltaFrameCount = deltaFrameCount;
         }
         return applied | 0;
+    },
+    async applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
+        const { frameRuntime } = await getWorkerServices();
+        return frameRuntime.applyMapObjRenderPacket(packet);
     },
     async buildFramePacketFromRenderState(
         frameCount: number,

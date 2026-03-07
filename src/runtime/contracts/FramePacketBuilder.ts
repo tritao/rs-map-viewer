@@ -6,6 +6,7 @@ import {
     TICK_PATCH_STREAM_COUNT,
     buildFramePacket,
 } from "./FramePacket";
+import type { MapObjRenderPacket } from "./MapObjRenderPacket";
 import type { NpcGpuFrameData } from "./NpcGpuFrame";
 
 export type FramePacketMapEntry = Readonly<{
@@ -36,6 +37,7 @@ export type BuildFramePacketFromMapEntriesInput = Readonly<{
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     entries: readonly FramePacketMapEntry[];
+    mapObjRenderPacket?: MapObjRenderPacket;
 }>;
 
 export function computeFrameRenderFlags(
@@ -123,5 +125,6 @@ export function buildFramePacketFromMapEntries(
         renderListPacked,
         tickPatchCountsByMapId,
         tickPatchStreamsByMap,
+        mapObjRenderPacket: input.mapObjRenderPacket,
     });
 }

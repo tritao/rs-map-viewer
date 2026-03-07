@@ -16,6 +16,7 @@ export type TickFrameInput = Readonly<{
 export interface MapViewerFramePacketSource {
     nextPacket(input: TickFrameInput): FramePacket | undefined;
     reset(): void;
+    requestRefresh(): void;
 }
 
 type WorkerMapViewerFramePacketSourceDeps = Readonly<{
@@ -174,6 +175,10 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
             this.deps.renderWorkerPool.setFrameTickViewState(0, 0, 0),
             this.deps.renderWorkerPool.setFrameTickHoveredMapIds(EMPTY_INT32),
         ]);
+    }
+
+    requestRefresh(): void {
+        this.latestFramePacket = undefined;
     }
 
     private collectVisibleMapIds(mapManager: MapManager): Int32Array {

@@ -204,12 +204,12 @@ export class MapViewerRenderer extends RendererMainLoop {
         return { mapId, mapSimToken };
     }
 
-    private finalizeLoadedMap(packet: DecodedStaticMapPacket): void {
+    private async finalizeLoadedMap(packet: DecodedStaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         const mapId = mapData.mapId | 0;
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
-        this.applyMapObjRenderPacket(
+        await this.pushMapObjRenderPacket(
             createMapObjBootstrapPacket(mapId, packet.runtimeBootstrap.objRenderData),
         );
         if (mapData.minimapBlob.size > 0) {
@@ -282,7 +282,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         ) {
             return;
         }
-        this.finalizeLoadedMap(staticMapPacket);
+        await this.finalizeLoadedMap(staticMapPacket);
     }
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
@@ -309,13 +309,23 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        this.applyMapObjRenderPacket(
+        void this.pushMapObjRenderPacket(
             createMapObjBootstrapPacket(getMapSquareId(mapX, mapY), objRenderData),
         );
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        this.renderer.applyMapObjRenderPacket(packet);
+        void this.pushMapObjRenderPacket(packet);
+    }
+
+    private async pushMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<void> {
+        if (!packet) {
+            return;
+        }
+        const applied = await this.renderWorkerPool.applyMapObjRenderPacket(packet);
+        if ((applied | 0) > 0) {
+            this.framePacketSource.requestRefresh();
+        }
     }
 
     private async applyNpcLifecyclePacketBytes(
