@@ -8,6 +8,7 @@ import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
 } from "../runtime/contracts/Interaction";
+import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import { LoadedCache } from "../util/Caches";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 
@@ -142,6 +143,20 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     // Optional capability: renderer instance can replace runtime-owned object render data for a map.
     replaceMapObjRenderData(_mapId: number, _objRenderData: ObjRenderData | undefined): void {}
+
+    // Optional capability: renderer instance can consume object runtime packets.
+    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
+        if (!packet) {
+            return;
+        }
+        for (let index = 0; index < packet.updates.length; index++) {
+            const update = packet.updates[index];
+            if (!update) {
+                continue;
+            }
+            this.replaceMapObjRenderData(update.mapId | 0, update.objRenderData);
+        }
+    }
 
     addMap(mapData: U): void {
         this.mapsToLoad.push(mapData);

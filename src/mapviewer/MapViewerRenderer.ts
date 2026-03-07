@@ -12,6 +12,10 @@ import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
+import {
+    buildMapObjRenderPacket,
+    type MapObjRenderPacket,
+} from "../runtime/contracts/MapObjRenderPacket";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
@@ -197,10 +201,13 @@ export class MapViewerRenderer extends RendererMainLoop {
 
                 this.mapManager.addMap(mapData.mapX, mapData.mapY);
                 this.renderer.addMap(mapData);
-                this.replaceMapObjRenderData(
-                    mapData.mapX,
-                    mapData.mapY,
-                    runtimeBootstrap.objRenderData,
+                this.applyMapObjRenderPacket(
+                    buildMapObjRenderPacket([
+                        {
+                            mapId,
+                            objRenderData: runtimeBootstrap.objRenderData,
+                        },
+                    ]),
                 );
 
                 if (mapData.minimapBlob.size > 0) {
@@ -258,7 +265,18 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        this.renderer.replaceMapObjRenderData(getMapSquareId(mapX, mapY), objRenderData);
+        this.applyMapObjRenderPacket(
+            buildMapObjRenderPacket([
+                {
+                    mapId: getMapSquareId(mapX, mapY),
+                    objRenderData,
+                },
+            ]),
+        );
+    }
+
+    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
+        this.renderer.applyMapObjRenderPacket(packet);
     }
 
     private async applyNpcLifecyclePacketBytes(

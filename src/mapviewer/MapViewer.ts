@@ -12,6 +12,7 @@ import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
+import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
@@ -289,6 +290,10 @@ export class MapViewer {
         objRenderData: ObjRenderData | undefined,
     ): void {
         this.renderer.replaceMapObjRenderData(mapX, mapY, objRenderData);
+    }
+
+    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
+        this.renderer.applyMapObjRenderPacket(packet);
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
