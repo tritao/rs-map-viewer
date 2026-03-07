@@ -14,6 +14,7 @@ import {
     createEntityViewerServices,
     resolveEntityViewerData,
     type EntityViewerKind,
+    type EntityViewerResolvedData,
     type EntityViewerObjMode,
     type EntityViewerRequest,
 } from "./EntityViewerData";
@@ -21,24 +22,6 @@ import { EntityViewerRenderer } from "./EntityViewerRenderer";
 import type { EntityViewerDebugMode } from "../renderer/webgl/WebGLEntityRenderer";
 
 const cachesPromise = fetchCacheList();
-
-function decodeFirstVertexDebug(vertices: Uint8Array): Record<string, number> | undefined {
-    if (vertices.byteLength < 16) {
-        return undefined;
-    }
-    const u32 = new Uint32Array(vertices.buffer, vertices.byteOffset, 4);
-    const v0 = u32[0] >>> 0;
-    const v1 = u32[1] >>> 0;
-    const v2 = u32[2] >>> 0;
-    const v3 = u32[3] >>> 0;
-    return {
-        rawHsl: (v1 >>> 15) & 0xffff,
-        isTextured: (v1 >>> 31) & 0x1,
-        tex0: (((((v1 >>> 15) & 0xffff) >>> 7) & 0x1ff) | (((v3 >>> 19) & 0x7f) << 9)) >>> 0,
-        tex1: ((v3 & 0x3ff) | (((v3 >>> 26) & 0x3f) << 10)) >>> 0,
-        alpha: (v2 >>> 9) & 0xff,
-    };
-}
 
 function parseEntityViewerKind(value: string | null): EntityViewerKind {
     switch (value) {
@@ -104,6 +87,7 @@ export default function EntityViewerApp(): JSX.Element {
     const [cacheInfo, setCacheInfo] = useState<CacheInfo>();
     const [renderer, setRenderer] = useState<EntityViewerRenderer>();
     const [entityLabel, setEntityLabel] = useState<string>();
+    const [resolvedEntity, setResolvedEntity] = useState<EntityViewerResolvedData>();
     const request = useMemo(() => parseRequest(searchParams), [searchParams]);
     const debugMode = useMemo(() => parseDebugMode(searchParams), [searchParams]);
 
@@ -151,27 +135,14 @@ export default function EntityViewerApp(): JSX.Element {
             renderer.setDebugMode(debugMode);
             const services = createEntityViewerServices(renderer.session);
             const resolved = resolveEntityViewerData(services, request);
-            const debugData = {
-                request,
-                debugMode,
-                label: resolved.label,
-                vertices: resolved.renderData.vertices.length,
-                indices: resolved.renderData.indices.length,
-                drawRangesBase: resolved.renderData.drawRanges.base.length / 3,
-                drawRangesAlpha: resolved.renderData.drawRanges.alpha.length / 3,
-                baseRange: Array.from(resolved.renderData.drawRanges.base.slice(0, 3)),
-                alphaRange: Array.from(resolved.renderData.drawRanges.alpha.slice(0, 3)),
-                fitRadius: resolved.renderData.fitRadius,
-                firstVertex: decodeFirstVertexDebug(resolved.renderData.vertices),
-                sourceDebug: resolved.debug,
-            };
-            console.log("[entity-viewer] resolved render data", debugData);
             renderer.setRenderData(resolved.renderData);
             setEntityLabel(resolved.label);
+            setResolvedEntity(resolved);
             setErrorMessage(undefined);
         } catch (error) {
             renderer.setRenderData(undefined);
             setEntityLabel(undefined);
+            setResolvedEntity(undefined);
             setErrorMessage(errorToString(error));
         }
     }, [debugMode, renderer, request]);
@@ -194,6 +165,7 @@ export default function EntityViewerApp(): JSX.Element {
                 request={request}
                 label={entityLabel}
                 errorMessage={renderer ? errorMessage : undefined}
+                iconSprite={resolvedEntity?.iconSprite}
                 onRequestChange={(nextRequest) =>
                     setSearchParams(
                         updateSearchParams(searchParams, {

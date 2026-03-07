@@ -54,7 +54,7 @@ export class WebGLEntityRenderer implements Renderer {
     private readonly colorBandingUni = new Float32Array([255]);
     private readonly isNewTextureAnimUni = new Float32Array(1);
     private readonly debugTextureModeUni = new Float32Array(1);
-    private readonly skyColor = new Float32Array([0.08, 0.08, 0.1, 1]);
+    private readonly skyColor = new Float32Array([0.42, 0.42, 0.46, 1]);
     private readonly drawRangeScratch: DrawRange = [0, 0, 1];
     private readonly projectionMatrix = mat4.create();
     private readonly viewMatrix = mat4.create();
@@ -190,7 +190,7 @@ export class WebGLEntityRenderer implements Renderer {
         this.app.disable(PicoGL.CULL_FACE);
         this.app.disable(PicoGL.BLEND);
         this.app.enable(PicoGL.DEPTH_TEST);
-        this.app.clearColor(0.0, 0.0, 0.0, 1.0);
+        this.app.clearColor(this.skyColor[0], this.skyColor[1], this.skyColor[2], 1.0);
         this.app.clear();
         this.drawRenderable(false);
         this.app.enable(PicoGL.BLEND);
@@ -300,13 +300,6 @@ export class WebGLEntityRenderer implements Renderer {
         renderable.createDrawCalls(data, createDrawCall, this.mainProgram, this.mainAlphaProgram);
         renderable.usedTextureIds = this.renderData.usedTextureIds;
         this.renderable = renderable;
-        const baseDraw = renderable.getDrawCall(false, false, false);
-        console.log("[entity-viewer] draw setup", {
-            debugMode: this.debugMode,
-            usedTextures: this.renderData.usedTextureIds.length,
-            baseRange: baseDraw?.drawRangesPacked.slice(0, 3),
-            alphaRange: renderable.getDrawCall(true, false, false)?.drawRangesPacked.slice(0, 3),
-        });
     }
 
     private drawRenderable(isAlpha: boolean): void {

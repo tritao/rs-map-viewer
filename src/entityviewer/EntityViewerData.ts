@@ -1,4 +1,5 @@
 import { InteractType } from "../renderer/InteractType";
+import { GameType } from "../rs/cache/CacheInfo";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
 import { LocModelType } from "../rs/config/loctype/LocModelType";
 import type { CacheSession } from "../rs/loaders/CacheSession";
@@ -9,6 +10,7 @@ import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { buildStandaloneRenderableData, type StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
+import { renderObjIconSprite, type ObjIconSprite } from "./ObjIconSpriteRenderer";
 
 export type EntityViewerKind = "obj" | "npc" | "loc" | "model";
 export type EntityViewerObjMode = "icon" | "world";
@@ -23,8 +25,8 @@ export type EntityViewerRequest = Readonly<{
 
 export type EntityViewerResolvedData = Readonly<{
     label: string;
-    renderData: StandaloneRenderableData;
-    debug?: unknown;
+    renderData?: StandaloneRenderableData;
+    iconSprite?: ObjIconSprite;
 }>;
 
 export type EntityViewerServices = Readonly<{
@@ -88,22 +90,26 @@ function buildObjData(
     if (!model) {
         throw new Error(`Object ${request.id | 0} has no renderable model`);
     }
-    const renderData = buildStandaloneRenderableData({
-        textureLoader: services.session.loaders.textureLoader,
-        model,
-        interactType: InteractType.OBJ,
-        interactId: request.id | 0,
-    });
-    if (!renderData) {
+    const iconSprite =
+        request.objMode === "icon"
+            ? renderObjIconSprite(model, iconModelResult?.zoom2d ?? 2000)
+            : undefined;
+    const renderData =
+        request.objMode === "icon"
+            ? undefined
+            : buildStandaloneRenderableData({
+                  textureLoader: services.session.loaders.textureLoader,
+                  model,
+                  interactType: InteractType.OBJ,
+                  interactId: request.id | 0,
+              });
+    if (request.objMode !== "icon" && !renderData) {
         throw new Error(`Failed to build object render data for ${request.id | 0}`);
     }
     return {
         label: `obj:${request.id | 0} ${objResult.value.name} (${request.objMode})`,
         renderData,
-        debug:
-            request.objMode === "icon"
-                ? iconModelResult?.debug
-                : buildModelColorDebug(model),
+        iconSprite,
     };
 }
 
@@ -111,7 +117,7 @@ function buildObjIconModel(
     services: EntityViewerServices,
     id: number,
     count: number,
-): Readonly<{ model: Model; debug: unknown }> | undefined {
+): Readonly<{ model: Model; zoom2d: number }> | undefined {
     const objResult = services.session.loaders.objTypeLoader.tryLoad(id);
     if (!objResult.ok) {
         return undefined;
@@ -142,8 +148,14 @@ function buildObjIconModel(
         modelData.resize(resolvedType.resizeX, resolvedType.resizeY, resolvedType.resizeZ);
     }
     if (resolvedType.recolorFrom) {
+        const retextureOnRecolor =
+            resolvedType.cacheInfo.game === GameType.Runescape &&
+            resolvedType.cacheInfo.revision <= 377;
         for (let i = 0; i < resolvedType.recolorFrom.length; i++) {
             modelData.recolor(resolvedType.recolorFrom[i], resolvedType.recolorTo[i]);
+            if (retextureOnRecolor) {
+                modelData.retexture(resolvedType.recolorFrom[i], resolvedType.recolorTo[i]);
+            }
         }
     }
     if (resolvedType.retextureFrom) {
@@ -165,51 +177,12 @@ function buildObjIconModel(
     if (resolvedType.offsetX2d !== 0 || resolvedType.offsetY2d !== 0) {
         model.translate(resolvedType.offsetX2d, -resolvedType.offsetY2d, 0);
     }
-    model.calculateBoundsCylinder();
+    model.calculateBounds();
     model.translate(0, -(model.minY + model.maxY) / 2, 0);
+    model.calculateBoundsCylinder();
     return {
         model,
-        debug: {
-            objMode: "icon",
-            resolvedId,
-            modelId: resolvedType.model,
-            zoom2d: resolvedType.zoom2d,
-            xan2d: resolvedType.xan2d,
-            yan2d: resolvedType.yan2d,
-            zan2d: resolvedType.zan2d,
-            offsetX2d: resolvedType.offsetX2d,
-            offsetY2d: resolvedType.offsetY2d,
-            ambient: resolvedType.ambient,
-            contrast: resolvedType.contrast,
-            rawFaceColors: sampleArray(rawModelData.faceColors),
-            litFaceColors1: sampleArray(model.faceColors1),
-            litFaceColors2: sampleArray(model.faceColors2),
-            litFaceColors3: sampleArray(model.faceColors3),
-        },
-    };
-}
-
-function sampleArray(
-    values: ArrayLike<number> | undefined,
-    count: number = 8,
-): number[] | undefined {
-    if (!values) {
-        return undefined;
-    }
-    const out: number[] = [];
-    const n = Math.min(count, values.length);
-    for (let i = 0; i < n; i++) {
-        out.push(values[i] | 0);
-    }
-    return out;
-}
-
-function buildModelColorDebug(model: Model): unknown {
-    return {
-        litFaceColors1: sampleArray(model.faceColors1),
-        litFaceColors2: sampleArray(model.faceColors2),
-        litFaceColors3: sampleArray(model.faceColors3),
-        faceTextures: sampleArray(model.faceTextures),
+        zoom2d: resolvedType.zoom2d,
     };
 }
 

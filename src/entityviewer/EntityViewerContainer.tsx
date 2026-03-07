@@ -1,10 +1,11 @@
-import { ChangeEvent, memo } from "react";
+import { ChangeEvent, memo, useEffect, useRef } from "react";
 
 import { RendererCanvas } from "../components/renderer/RendererCanvas";
 import type { CacheInfo } from "../rs/cache/CacheInfo";
 import type { CacheList } from "../util/Caches";
 import type { EntityViewerKind, EntityViewerObjMode, EntityViewerRequest } from "./EntityViewerData";
 import { EntityViewerRenderer } from "./EntityViewerRenderer";
+import type { ObjIconSprite } from "./ObjIconSpriteRenderer";
 
 type EntityViewerContainerProps = Readonly<{
     cacheList: CacheList;
@@ -13,10 +14,63 @@ type EntityViewerContainerProps = Readonly<{
     request: EntityViewerRequest;
     label?: string;
     errorMessage?: string;
+    iconSprite?: ObjIconSprite;
     onRequestChange: (request: EntityViewerRequest) => void;
     onCacheChange: (cacheName: string) => void;
     onCameraChange: (field: "yaw" | "pitch" | "distance", value: number) => void;
 }>;
+
+function SpriteCanvas({ sprite }: Readonly<{ sprite: ObjIconSprite }>): JSX.Element {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) {
+            return;
+        }
+        canvas.width = sprite.width;
+        canvas.height = sprite.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return;
+        }
+        const imageData = ctx.createImageData(sprite.width, sprite.height);
+        const out = imageData.data;
+        for (let i = 0; i < sprite.pixels.length; i++) {
+            const rgb = sprite.pixels[i] | 0;
+            const off = i * 4;
+            out[off] = (rgb >> 16) & 0xff;
+            out[off + 1] = (rgb >> 8) & 0xff;
+            out[off + 2] = rgb & 0xff;
+            out[off + 3] = rgb === 0 ? 0 : 0xff;
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }, [sprite]);
+
+    return (
+        <div
+            style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#6f6f74",
+            }}
+        >
+            <canvas
+                ref={canvasRef}
+                style={{
+                    width: `${sprite.width * 4}px`,
+                    height: `${sprite.height * 4}px`,
+                    imageRendering: "pixelated",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "transparent",
+                }}
+            />
+        </div>
+    );
+}
 
 function parsePositiveInt(value: string, fallback: number): number {
     const parsed = Number.parseInt(value, 10);
@@ -33,6 +87,7 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
     request,
     label,
     errorMessage,
+    iconSprite,
     onRequestChange,
     onCacheChange,
     onCameraChange,
@@ -172,7 +227,7 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                 {errorMessage ? <span style={{ color: "#ff9c9c" }}>{errorMessage}</span> : undefined}
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-                <RendererCanvas renderer={renderer} />
+                {iconSprite ? <SpriteCanvas sprite={iconSprite} /> : <RendererCanvas renderer={renderer} />}
             </div>
         </div>
     );
