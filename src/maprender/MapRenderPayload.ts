@@ -1,4 +1,3 @@
-import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 
@@ -96,9 +95,7 @@ export type MapRuntimeRegistration = Readonly<{
 }>;
 
 export type MapRuntimeBootstrap = Readonly<{
-    maxLevel: number;
     npcOrderKeys: Int32Array;
-    objSpawns: ReadonlyArray<ObjSpawn>;
     objRenderData?: ObjRenderData;
 }>;
 
@@ -130,15 +127,11 @@ export function buildMapRuntimeRegistration(input: {
 }
 
 export function buildMapRuntimeBootstrap(input: {
-    maxLevel: number;
     npcOrderKeys?: Int32Array;
-    objSpawns?: ReadonlyArray<ObjSpawn>;
     objRenderData?: ObjRenderData;
 }): MapRuntimeBootstrap {
     return {
-        maxLevel: input.maxLevel | 0,
         npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        objSpawns: input.objSpawns ?? [],
         objRenderData: input.objRenderData,
     };
 }

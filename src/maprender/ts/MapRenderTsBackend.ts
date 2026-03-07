@@ -648,9 +648,7 @@ export class MapRenderTsBackend {
                 npcTypeAnimationTable,
             }),
             runtimeBootstrap: buildMapRuntimeBootstrap({
-                maxLevel,
                 npcOrderKeys,
-                objSpawns,
                 objRenderData,
             }),
             runtimeCommandStreamInput,

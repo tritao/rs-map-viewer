@@ -299,9 +299,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 npcTypeAnimationTable: [],
             }),
             runtimeBootstrap: buildMapRuntimeBootstrap({
-                maxLevel: input.maxLevel | 0,
                 npcOrderKeys: packet.npcOrderKeys,
-                objSpawns,
                 objRenderData,
             }),
         };

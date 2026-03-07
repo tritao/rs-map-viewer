@@ -171,7 +171,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             npcIndices: mapData.npcIndices?.length ?? 0,
             npcRangesBase: mapData.npcDrawRangesBase?.length ?? 0,
             npcOrderKeys: runtimeBootstrap.npcOrderKeys.length | 0,
-            objSpawns: runtimeBootstrap.objSpawns.length | 0,
             npcTypeAnimTable: runtimeRegistration.npcTypeAnimationTable.length,
         });
     }
@@ -196,6 +195,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             renderWorkerPool: this.renderWorkerPool,
             simWorkerPool: this.simWorkerPool,
             mapId,
+            maxLevel: packet.mapData.maxLevel,
             runtimeRegistration: packet.runtimeRegistration,
             runtimeBootstrap: packet.runtimeBootstrap,
             npcSlotCount: this.getNpcSlotCount(packet.mapData),

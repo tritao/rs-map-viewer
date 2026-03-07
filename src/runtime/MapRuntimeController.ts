@@ -10,6 +10,7 @@ export async function registerMapRuntime(input: Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
     simWorkerPool: SimWorkerPool;
     mapId: number;
+    maxLevel: number;
     runtimeRegistration: MapRuntimeRegistration;
     runtimeBootstrap: MapRuntimeBootstrap;
     npcSlotCount: number;
@@ -44,7 +45,7 @@ export async function registerMapRuntime(input: Readonly<{
         );
         await input.simWorkerPool.bootstrapMapRuntime(
             mapId,
-            input.runtimeBootstrap.maxLevel,
+            input.maxLevel,
             npcOrderKeys,
             mapSimToken,
         );
