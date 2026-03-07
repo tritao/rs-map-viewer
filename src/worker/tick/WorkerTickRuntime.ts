@@ -1,5 +1,6 @@
 import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
 import type { NpcSpawn } from "../../data/npc/NpcSpawn";
+import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
 import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
@@ -28,6 +29,10 @@ import {
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
+import {
+    type ResolvedBootstrapData,
+    resolveBootstrapData,
+} from "../../runtime/sim/NpcBootstrap";
 import type { NpcEvent } from "../../runtime/sim/NpcEvents";
 import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
@@ -38,10 +43,6 @@ import {
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
-import {
-    NpcBootstrapResolver,
-    type ResolvedNpcBootstrapData,
-} from "../bootstrap/NpcBootstrapResolver";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
@@ -164,7 +165,7 @@ export class WorkerMapSimLifecycle {
 }
 
 export class WorkerTickRuntime {
-    private readonly npcBootstrapResolver = new NpcBootstrapResolver();
+    private readonly npcSpawnResolver = new NpcSpawnResolver();
     private readonly npcSimStateStore = new NpcSimStateStore();
     private readonly npcSimPathfinder = new Pathfinder();
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
@@ -186,7 +187,7 @@ export class WorkerTickRuntime {
 
     resetForCache(): void {
         this.npcSimStateStore.resetForCache();
-        this.npcBootstrapResolver.reset();
+        this.npcSpawnResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.npcSnapshotByMapId.clear();
@@ -200,7 +201,7 @@ export class WorkerTickRuntime {
 
     resetForLoaderReset(): void {
         this.npcSimStateStore.resetForLoaderReset();
-        this.npcBootstrapResolver.reset();
+        this.npcSpawnResolver.reset();
         this.workerMapSimLifecycle.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.npcSnapshotByMapId.clear();
@@ -253,8 +254,9 @@ export class WorkerTickRuntime {
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
         npcOrderKeys: Int32Array,
-    ): Promise<ResolvedNpcBootstrapData> {
-        return this.npcBootstrapResolver.resolve(
+    ): Promise<ResolvedBootstrapData> {
+        return resolveBootstrapData(
+            this.npcSpawnResolver,
             {
                 mapBytesProvider: workerState.mapBytesProvider,
                 cacheInfo: workerState.session.cache.info,
@@ -297,7 +299,7 @@ export class WorkerTickRuntime {
         mapId: number,
         maxLevel: number,
         borderSize: number,
-        resolvedBootstrap: ResolvedNpcBootstrapData,
+        resolvedBootstrap: ResolvedBootstrapData,
         deps: NpcSimStateStoreDeps,
     ): void {
         if (this.warnedEmptyNpcBootstrapMapIds.has(mapId | 0)) {
@@ -337,7 +339,7 @@ export class WorkerTickRuntime {
         );
     }
 
-    async registerMapNpcSimState(
+    async registerMapRuntime(
         mapId: number,
         borderSize: number,
         locsAnimated: ReadonlyArray<LocAnimatedData>,
@@ -366,7 +368,7 @@ export class WorkerTickRuntime {
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     }
 
-    async bootstrapMapNpcLifecycle(
+    async bootstrapMapRuntime(
         mapId: number,
         maxLevel: number,
         npcOrderKeys: Int32Array,
@@ -405,7 +407,7 @@ export class WorkerTickRuntime {
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     }
 
-    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): void {
+    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
         if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }

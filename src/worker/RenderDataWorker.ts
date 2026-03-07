@@ -6,7 +6,7 @@ import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import type { SerializedStaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
@@ -35,7 +35,7 @@ const worker = {
     },
     async loadStaticMapPacket(
         input: SdMapLoaderInput,
-    ): Promise<TransferDescriptor<StaticMapPacket | undefined>> {
+    ): Promise<TransferDescriptor<SerializedStaticMapPacket | undefined>> {
         return buildService.loadStaticMapPacket(input);
     },
     async loadTexture(
@@ -49,7 +49,7 @@ const worker = {
     async loadMapImage(mapX: number, mapY: number, level: number, drawMapFunctions: boolean) {
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
     },
-    async registerMapNpcRenderState(
+    async registerMapRuntime(
         mapId: number,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
@@ -57,7 +57,7 @@ const worker = {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        await frameRuntime.registerMapNpcRenderState(
+        await frameRuntime.registerMapRuntime(
             mapId,
             borderSize,
             tileRenderFlagsLevel1,
@@ -66,8 +66,8 @@ const worker = {
             mapSimToken,
         );
     },
-    unregisterMapNpcRenderState(mapId: number, mapSimToken?: number): void {
-        frameRuntime.unregisterMapNpcRenderState(mapId, mapSimToken);
+    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
+        frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
     setFrameTickMapIds(mapIds: Int32Array): void {
         frameRuntime.setTickMapIds(mapIds);

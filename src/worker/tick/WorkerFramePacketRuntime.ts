@@ -160,7 +160,7 @@ export class WorkerFramePacketRuntime {
         this.tickHoveredMapIdsPacked = Int32Array.from(hoveredMapIdsPacked);
     }
 
-    async registerMapNpcRenderState(
+    async registerMapRuntime(
         mapId: number,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
@@ -187,7 +187,7 @@ export class WorkerFramePacketRuntime {
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     }
 
-    unregisterMapNpcRenderState(mapId: number, mapSimToken?: number): void {
+    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
         if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }

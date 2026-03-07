@@ -68,7 +68,7 @@ export class SimWorkerPool {
         await this.initPromise;
     }
 
-    registerMapNpcSimState(
+    registerMapRuntime(
         mapId: number,
         borderSize: number,
         locsAnimated: ReadonlyArray<LocAnimatedData>,
@@ -76,7 +76,7 @@ export class SimWorkerPool {
         mapSimToken?: number,
     ): Promise<void> {
         return this.withWorker((w) =>
-            w.registerMapNpcSimState(
+            w.registerMapRuntime(
                 mapId,
                 borderSize,
                 locsAnimated,
@@ -86,19 +86,17 @@ export class SimWorkerPool {
         );
     }
 
-    bootstrapMapNpcLifecycle(
+    bootstrapMapRuntime(
         mapId: number,
         maxLevel: number,
         npcOrderKeys: Int32Array,
         mapSimToken?: number,
     ): Promise<void> {
-        return this.withWorker((w) =>
-            w.bootstrapMapNpcLifecycle(mapId, maxLevel, npcOrderKeys, mapSimToken),
-        );
+        return this.withWorker((w) => w.bootstrapMapRuntime(mapId, maxLevel, npcOrderKeys, mapSimToken));
     }
 
-    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): Promise<void> {
-        return this.withWorker((w) => w.unregisterMapNpcSimState(mapId, mapSimToken));
+    unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+        return this.withWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
     applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {

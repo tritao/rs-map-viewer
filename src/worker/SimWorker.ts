@@ -22,14 +22,14 @@ const worker = {
         tickRuntime.resetForCache();
         await buildService.initCache(cache, spawnBootstrap, options);
     },
-    async registerMapNpcSimState(
+    async registerMapRuntime(
         mapId: number,
         borderSize: number,
         locsAnimated: ReadonlyArray<LocAnimatedData>,
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        await tickRuntime.registerMapNpcSimState(
+        await tickRuntime.registerMapRuntime(
             mapId,
             borderSize,
             locsAnimated,
@@ -37,16 +37,16 @@ const worker = {
             mapSimToken,
         );
     },
-    async bootstrapMapNpcLifecycle(
+    async bootstrapMapRuntime(
         mapId: number,
         maxLevel: number,
         npcOrderKeys: Int32Array,
         mapSimToken?: number,
     ): Promise<void> {
-        await tickRuntime.bootstrapMapNpcLifecycle(mapId, maxLevel, npcOrderKeys, mapSimToken);
+        await tickRuntime.bootstrapMapRuntime(mapId, maxLevel, npcOrderKeys, mapSimToken);
     },
-    unregisterMapNpcSimState(mapId: number, mapSimToken?: number): void {
-        tickRuntime.unregisterMapNpcSimState(mapId, mapSimToken);
+    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
+        tickRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);

@@ -80,6 +80,18 @@ export interface MapData {
     minimapBlob: Blob;
 }
 
+export type MapRuntimeRegistration = Readonly<{
+    borderSize: number;
+    tileRenderFlagsLevel1: Uint8Array[];
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
+    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
+}>;
+
+export type MapRuntimeBootstrap = Readonly<{
+    maxLevel: number;
+    npcOrderKeys: Int32Array;
+}>;
+
 export type SdMapData = MapData &
     SdRenderableData & {
         readonly mapX: number;
@@ -94,6 +106,34 @@ export type SdMapData = MapData &
         // Used by the worker tick pipeline to patch npc draw ranges per-frame.
         readonly npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
     };
+
+function pushTransferableUnique(
+    out: Transferable[],
+    seen: Set<Transferable>,
+    transferable: Transferable | undefined,
+): void {
+    if (!transferable || seen.has(transferable)) {
+        return;
+    }
+    seen.add(transferable);
+    out.push(transferable);
+}
+
+export function buildMapRuntimeRegistration(data: SdMapData): MapRuntimeRegistration {
+    return {
+        borderSize: data.borderSize | 0,
+        tileRenderFlagsLevel1: data.tileRenderFlags[1] ?? [],
+        locsAnimated: data.locsAnimated,
+        npcTypeAnimationTable: data.npcTypeAnimationTable ?? [],
+    };
+}
+
+export function buildMapRuntimeBootstrap(data: SdMapData): MapRuntimeBootstrap {
+    return {
+        maxLevel: data.maxLevel | 0,
+        npcOrderKeys: data.npcOrderKeys ?? new Int32Array(0),
+    };
+}
 
 export type SdMapLoaderInput = {
     mapX: number;
@@ -112,38 +152,43 @@ export type SdMapLoaderInput = {
 };
 
 export function sdMapDataTransferables(data: SdMapData): Transferable[] {
-    const loadedTextureBuffers = Array.from(data.loadedTextures.values()).map(
-        (pixels) => pixels.buffer as Transferable,
-    );
-    const transferables: Transferable[] = [
-        ...data.tileRenderFlags.flat().map((buf) => buf.buffer as Transferable),
-        ...loadedTextureBuffers,
-        data.vertices.buffer as Transferable,
-        data.indices.buffer as Transferable,
-        data.heightMapTextureData.buffer as Transferable,
-        data.usedTextureIds.buffer as Transferable,
-    ];
+    const transferables: Transferable[] = [];
+    const seen = new Set<Transferable>();
+    for (const tileFlags of data.tileRenderFlags.flat()) {
+        pushTransferableUnique(transferables, seen, tileFlags.buffer as Transferable);
+    }
+    for (const pixels of data.loadedTextures.values()) {
+        pushTransferableUnique(transferables, seen, pixels.buffer as Transferable);
+    }
+    pushTransferableUnique(transferables, seen, data.vertices.buffer as Transferable);
+    pushTransferableUnique(transferables, seen, data.indices.buffer as Transferable);
+    pushTransferableUnique(transferables, seen, data.heightMapTextureData.buffer as Transferable);
+    pushTransferableUnique(transferables, seen, data.usedTextureIds.buffer as Transferable);
     for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
-        transferables.push(
+        pushTransferableUnique(
+            transferables,
+            seen,
             data.modelInfoTextures[key].buffer as Transferable,
-            data.drawRanges[key].buffer as Transferable,
         );
+        pushTransferableUnique(transferables, seen, data.drawRanges[key].buffer as Transferable);
     }
     if (
         data.npcVertices instanceof Uint8Array &&
         data.npcIndices instanceof Int32Array &&
         data.npcDrawRangesBase instanceof Int32Array
     ) {
-        transferables.push(
-            data.npcVertices.buffer as Transferable,
-            data.npcIndices.buffer as Transferable,
-            data.npcDrawRangesBase.buffer as Transferable,
-        );
+        pushTransferableUnique(transferables, seen, data.npcVertices.buffer as Transferable);
+        pushTransferableUnique(transferables, seen, data.npcIndices.buffer as Transferable);
+        pushTransferableUnique(transferables, seen, data.npcDrawRangesBase.buffer as Transferable);
         if (data.npcDrawRangesAlpha) {
-            transferables.push(data.npcDrawRangesAlpha.buffer as Transferable);
+            pushTransferableUnique(
+                transferables,
+                seen,
+                data.npcDrawRangesAlpha.buffer as Transferable,
+            );
         }
         if (data.npcOrderKeys) {
-            transferables.push(data.npcOrderKeys.buffer as Transferable);
+            pushTransferableUnique(transferables, seen, data.npcOrderKeys.buffer as Transferable);
         }
     }
     return transferables;

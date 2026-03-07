@@ -40,7 +40,7 @@ import {
 } from "../../runtime/build";
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
-import { createNpcBootstrapData } from "../../runtime/sim/NpcBootstrapData";
+import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
 import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";
@@ -599,7 +599,7 @@ export class MapRenderTsBackend {
                 : undefined;
         const npcBootstrap =
             loadNpcs && npcGeometry.npcs.length > 0
-                ? createNpcBootstrapData({
+                ? createBootstrapData({
                       mapId: getMapSquareId(mapX, mapY),
                       npcsIn: npcGeometry.npcs,
                   })

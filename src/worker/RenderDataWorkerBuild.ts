@@ -23,8 +23,8 @@ import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { IndexedSprite } from "../rs/sprite/IndexedSprite";
 import { SpriteLoader } from "../rs/sprite/SpriteLoader";
 import {
-    type StaticMapPacket,
-    buildStaticMapPacket,
+    type SerializedStaticMapPacket,
+    buildSerializedStaticMapPacket,
     staticMapPacketTransferables,
 } from "../runtime/contracts/StaticMapPacket";
 import { LoadedCache } from "../util/Caches";
@@ -276,17 +276,17 @@ export class RenderDataWorkerBuild {
 
     async loadStaticMapPacket(
         input: SdMapLoaderInput,
-    ): Promise<TransferDescriptor<StaticMapPacket | undefined>> {
+    ): Promise<TransferDescriptor<SerializedStaticMapPacket | undefined>> {
         const workerState = await this.requireWorkerState();
         const { data, transferables } = await workerState.mapRenderBackend.buildMapData(input);
         if (!data) {
-            return Transfer<StaticMapPacket | undefined>(undefined, []);
+            return Transfer<SerializedStaticMapPacket | undefined>(undefined, []);
         }
-        const packet = buildStaticMapPacket(data);
+        const packet = buildSerializedStaticMapPacket(data);
         const packetTransferables = staticMapPacketTransferables(packet);
         const allTransferables =
             packetTransferables.length > 0 ? packetTransferables : transferables;
-        return Transfer<StaticMapPacket | undefined>(packet, allTransferables);
+        return Transfer<SerializedStaticMapPacket | undefined>(packet, allTransferables);
     }
 
     async loadTexture(
