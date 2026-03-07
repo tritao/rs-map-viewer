@@ -6,7 +6,7 @@ import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { framePacketTransferables } from "../runtime/contracts/FramePacket";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { SerializedStaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import type { StaticMapWirePacket } from "../runtime/contracts/StaticMapWireCodec";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import { RenderDataWorkerBuild } from "./RenderDataWorkerBuild";
@@ -35,7 +35,7 @@ const worker = {
     },
     async loadStaticMapPacket(
         input: SdMapLoaderInput,
-    ): Promise<TransferDescriptor<SerializedStaticMapPacket | undefined>> {
+    ): Promise<TransferDescriptor<StaticMapWirePacket | undefined>> {
         return buildService.loadStaticMapPacket(input);
     },
     async loadTexture(

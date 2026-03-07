@@ -5,10 +5,8 @@ import { MinimapData } from "../maprender/ts/MinimapData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import {
-    type StaticMapPacket,
-    hydrateStaticMapPacket,
-} from "../runtime/contracts/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import { decodeStaticMapWirePacket } from "../runtime/contracts/StaticMapWireCodec";
 import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
@@ -89,7 +87,7 @@ export class RenderDataWorkerPool {
 
     queueStaticMapPacket(input: SdMapLoaderInput): Promise<StaticMapPacket | undefined> {
         return this.queue((w) => w.loadStaticMapPacket(input)).then((packet) =>
-            packet ? hydrateStaticMapPacket(packet) : undefined,
+            packet ? decodeStaticMapWirePacket(packet) : undefined,
         );
     }
 

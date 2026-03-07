@@ -23,10 +23,10 @@ import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { IndexedSprite } from "../rs/sprite/IndexedSprite";
 import { SpriteLoader } from "../rs/sprite/SpriteLoader";
 import {
-    type SerializedStaticMapPacket,
-    buildSerializedStaticMapPacket,
-    staticMapPacketTransferables,
-} from "../runtime/contracts/StaticMapPacket";
+    type StaticMapWirePacket,
+    collectStaticMapWirePacketTransferables,
+    encodeStaticMapWirePacket,
+} from "../runtime/contracts/StaticMapWireCodec";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";
@@ -276,17 +276,18 @@ export class RenderDataWorkerBuild {
 
     async loadStaticMapPacket(
         input: SdMapLoaderInput,
-    ): Promise<TransferDescriptor<SerializedStaticMapPacket | undefined>> {
+    ): Promise<TransferDescriptor<StaticMapWirePacket | undefined>> {
         const workerState = await this.requireWorkerState();
-        const { data, transferables } = await workerState.mapRenderBackend.buildMapData(input);
-        if (!data) {
-            return Transfer<SerializedStaticMapPacket | undefined>(undefined, []);
+        const { data, transferables, runtimeRegistration, runtimeBootstrap } =
+            await workerState.mapRenderBackend.buildMapData(input);
+        if (!data || !runtimeRegistration || !runtimeBootstrap) {
+            return Transfer<StaticMapWirePacket | undefined>(undefined, []);
         }
-        const packet = buildSerializedStaticMapPacket(data);
-        const packetTransferables = staticMapPacketTransferables(packet);
+        const packet = encodeStaticMapWirePacket(data, runtimeRegistration, runtimeBootstrap);
+        const packetTransferables = collectStaticMapWirePacketTransferables(packet);
         const allTransferables =
             packetTransferables.length > 0 ? packetTransferables : transferables;
-        return Transfer<SerializedStaticMapPacket | undefined>(packet, allTransferables);
+        return Transfer<StaticMapWirePacket | undefined>(packet, allTransferables);
     }
 
     async loadTexture(

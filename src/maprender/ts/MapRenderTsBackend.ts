@@ -707,6 +707,7 @@ export class MapRenderTsBackend {
         }
 
         const data: SdMapData = {
+            mapId: getMapSquareId(mapX, mapY),
             mapX,
             mapY,
             cacheName: this.deps.session.cache.info.name,
@@ -730,8 +731,6 @@ export class MapRenderTsBackend {
             npcDrawRangesAlpha,
             npcVertices,
             npcIndices,
-            npcOrderKeys,
-            npcTypeAnimationTable,
         };
 
         return {
@@ -747,9 +746,8 @@ export class MapRenderTsBackend {
     async buildMapData(
         input: SdMapLoaderInput,
         options?: BuildMapDataOptions,
-    ): Promise<SdMapData | undefined> {
-        const bridgeInput = await this.buildMapDataBridgeInput(input, options);
-        return bridgeInput.data;
+    ): Promise<BuildMapDataBridgeInputResult> {
+        return await this.buildMapDataBridgeInput(input, options);
     }
 
     reset(): void {

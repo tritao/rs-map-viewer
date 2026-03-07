@@ -12,8 +12,14 @@ import type {
     RenderDataResult,
 } from "../MapRenderBackend";
 import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
-import type { SdMapData, SdMapLoaderInput } from "../MapRenderPayload";
-import { sdMapDataTransferables } from "../MapRenderPayload";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+    SdMapData,
+    SdMapLoaderInput,
+} from "../MapRenderPayload";
+import { buildMapRuntimeBootstrap, buildMapRuntimeRegistration } from "../MapRenderPayload";
+import { collectSdMapDataTransferables } from "../MapRenderTransferables";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
@@ -160,7 +166,14 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         runtimeHandle: MapRenderRuntimeHandle,
         input: SdMapLoaderInput,
         byteDrivenSceneBuildInput: MapRenderByteDrivenSceneBuildInput,
-    ): Promise<SdMapData | undefined> {
+    ): Promise<
+        | {
+              data: SdMapData;
+              runtimeRegistration: MapRuntimeRegistration;
+              runtimeBootstrap: MapRuntimeBootstrap;
+          }
+        | undefined
+    > {
         const request =
             WasmMapRenderBackend.createRuntimeCacheBuildRequest(byteDrivenSceneBuildInput);
         if (!request) {
@@ -205,7 +218,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const sizeX = packet.sizeX | 0;
         const sizeY = packet.sizeY | 0;
 
-        return {
+        const data: SdMapData = {
             mapX: input.mapX | 0,
             mapY: input.mapY | 0,
             cacheName: this.deps.session.cache.info.name,
@@ -229,7 +242,19 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             npcDrawRangesAlpha: packet.npcDrawRangesAlpha,
             npcVertices: packet.npcVertices,
             npcIndices: packet.npcIndices,
-            npcOrderKeys: packet.npcOrderKeys,
+        };
+        return {
+            data,
+            runtimeRegistration: buildMapRuntimeRegistration({
+                borderSize: request.borderSize | 0,
+                tileRenderFlags: data.tileRenderFlags,
+                locsAnimated: data.locsAnimated,
+                npcTypeAnimationTable: [],
+            }),
+            runtimeBootstrap: buildMapRuntimeBootstrap({
+                maxLevel: input.maxLevel | 0,
+                npcOrderKeys: packet.npcOrderKeys,
+            }),
         };
     }
 
@@ -244,18 +269,20 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         }
         const byteDrivenSceneBuildInput = this.createByteDrivenSceneBuildInput(input);
         try {
-            const bridgePayload = await this.buildWithBridge(
+            const result = await this.buildWithBridge(
                 bridge,
                 runtimeHandle,
                 input,
                 byteDrivenSceneBuildInput,
             );
-            if (!bridgePayload) {
+            if (!result) {
                 return { data: undefined, transferables: [] };
             }
             return {
-                data: bridgePayload,
-                transferables: sdMapDataTransferables(bridgePayload),
+                data: result.data,
+                transferables: collectSdMapDataTransferables(result.data),
+                runtimeRegistration: result.runtimeRegistration,
+                runtimeBootstrap: result.runtimeBootstrap,
             };
         } catch (e) {
             console.warn(`[map-render-backend] cpp-wasm buildMapData failed: ${errorToString(e)}`);
