@@ -77,6 +77,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
     private readonly warnedNpcMissingGeometryOrRangesMapIds = new Set<number>();
     private readonly pendingObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
+    private readonly drawRangeScratch: DrawRange = [0, 0, 1];
 
     app!: PicoApp;
     gl!: WebGL2RenderingContext;
@@ -656,18 +657,17 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             const drawCount = (drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0;
             this.rendererStats.drawRangeCalls =
                 (this.rendererStats.drawRangeCalls + drawCount) | 0;
-            const drawRange: DrawRange = [0, 0, 1];
             for (let i = 0; i < drawCount; i++) {
                 this.rendererStats.drawCalls = (this.rendererStats.drawCalls + 1) | 0;
                 const off = i * DRAW_RANGE_STRIDE;
                 drawCall.uniform("u_drawId", i);
-                drawRange[DRAW_RANGE_OFFSET_INDEX] =
+                this.drawRangeScratch[DRAW_RANGE_OFFSET_INDEX] =
                     drawRangesPacked[off + DRAW_RANGE_OFFSET_INDEX] | 0;
-                drawRange[DRAW_RANGE_ELEMENTS_INDEX] =
+                this.drawRangeScratch[DRAW_RANGE_ELEMENTS_INDEX] =
                     drawRangesPacked[off + DRAW_RANGE_ELEMENTS_INDEX] | 0;
-                drawRange[DRAW_RANGE_INSTANCES_INDEX] =
+                this.drawRangeScratch[DRAW_RANGE_INSTANCES_INDEX] =
                     drawRangesPacked[off + DRAW_RANGE_INSTANCES_INDEX] | 0;
-                drawCall.drawRanges(drawRange);
+                drawCall.drawRanges(this.drawRangeScratch);
                 drawCall.draw();
             }
         }
