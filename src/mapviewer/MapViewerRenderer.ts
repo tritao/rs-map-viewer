@@ -1,7 +1,9 @@
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { MapData } from "../maprender/MapRenderPayload";
-import { SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import {
+    type MapData,
+    type SdMapLoaderInput,
+} from "../maprender/MapRenderPayload";
 import { InteractType } from "../renderer/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
@@ -10,7 +12,7 @@ import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
-import { type StaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -40,7 +42,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly tickCoordinator = new MapViewerTickCoordinator();
     private readonly framePacketSource: WorkerMapViewerFramePacketSource;
     private readonly mapRuntimeController: MapRuntimeController;
-    private readonly staticMapPacketsByMapId = new Map<number, StaticMapPacket>();
     private loadEpoch: number = 1;
 
     private isInitialized: boolean = false;
@@ -84,7 +85,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async loadStaticMapPacket(
         mapX: number,
         mapY: number,
-    ): Promise<StaticMapPacket | undefined> {
+    ): Promise<DecodedStaticMapPacket | undefined> {
         const r = this.renderer;
         const input: SdMapLoaderInput = {
             mapX,
@@ -130,7 +131,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             const runtimeRegistration = staticMapPacket.runtimeRegistration;
             const runtimeBootstrap = staticMapPacket.runtimeBootstrap;
             if (this.renderer.isValidMapData(mapData)) {
-                const mapId = staticMapPacket.mapId | 0;
+                const mapId = mapData.mapId | 0;
                 const runtimeOptions = this.mapViewer.getWorkerRuntimeOptions();
                 if (runtimeOptions.mapRenderTelemetry) {
                     const ranges = mapData.drawRanges.base;
@@ -158,6 +159,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         npcIndices: mapData.npcIndices?.length ?? 0,
                         npcRangesBase: mapData.npcDrawRangesBase?.length ?? 0,
                         npcOrderKeys: runtimeBootstrap.npcOrderKeys.length | 0,
+                        objSpawns: runtimeBootstrap.objSpawns.length | 0,
                         npcTypeAnimTable: runtimeRegistration.npcTypeAnimationTable.length,
                     });
                 }
@@ -192,15 +194,14 @@ export class MapViewerRenderer extends RendererMainLoop {
                     return;
                 }
 
-                this.staticMapPacketsByMapId.set(mapId, staticMapPacket);
-                this.mapManager.addMap(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY);
-                this.renderer.addMap(staticMapPacket.mapData as unknown as MapData);
+                this.mapManager.addMap(mapData.mapX, mapData.mapY);
+                this.renderer.addMap(mapData as unknown as MapData);
 
-                if (staticMapPacket.mapData.minimapBlob.size > 0) {
+                if (mapData.minimapBlob.size > 0) {
                     this.mapViewer.setMapImageUrl(
-                        staticMapPacket.mapData.mapX,
-                        staticMapPacket.mapData.mapY,
-                        URL.createObjectURL(staticMapPacket.mapData.minimapBlob),
+                        mapData.mapX,
+                        mapData.mapY,
+                        URL.createObjectURL(mapData.minimapBlob),
                         true,
                         false,
                     );
@@ -235,7 +236,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        this.staticMapPacketsByMapId.delete(mapInfo.mapId | 0);
         this.mapRuntimeController.unregisterMapRuntime(mapInfo.mapId);
     }
 
@@ -308,7 +308,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         const wasRunning = this.pauseLoop();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapRuntimeController.reset();
-        this.staticMapPacketsByMapId.clear();
 
         try {
             await this.renderer.cleanUp();
@@ -344,7 +343,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         await super.cleanUp();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapRuntimeController.reset();
-        this.staticMapPacketsByMapId.clear();
         this.tickCoordinator.resetForShutdown(this.framePacketSource);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();

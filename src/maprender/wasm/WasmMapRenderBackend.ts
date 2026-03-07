@@ -1,3 +1,4 @@
+import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { errorToString } from "../../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
@@ -219,6 +220,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const sizeY = packet.sizeY | 0;
 
         const data: SdMapData = {
+            mapId: ((input.mapX << 8) | input.mapY) & 0xffff,
             mapX: input.mapX | 0,
             mapY: input.mapY | 0,
             cacheName: this.deps.session.cache.info.name,
@@ -243,10 +245,22 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             npcVertices: packet.npcVertices,
             npcIndices: packet.npcIndices,
         };
+        const borderSize = request.borderSize | 0;
+        const objSpawns =
+            input.loadObjs === true
+                ? getWindowObjSpawns(
+                      this.deps.objSpawns,
+                      input.maxLevel | 0,
+                      input.mapX * WasmMapRenderBackend.MAP_SQUARE_SIZE - borderSize,
+                      input.mapY * WasmMapRenderBackend.MAP_SQUARE_SIZE - borderSize,
+                      WasmMapRenderBackend.MAP_SQUARE_SIZE + borderSize * 2,
+                      WasmMapRenderBackend.MAP_SQUARE_SIZE + borderSize * 2,
+                  )
+                : [];
         return {
             data,
             runtimeRegistration: buildMapRuntimeRegistration({
-                borderSize: request.borderSize | 0,
+                borderSize,
                 tileRenderFlags: data.tileRenderFlags,
                 locsAnimated: data.locsAnimated,
                 npcTypeAnimationTable: [],
@@ -254,6 +268,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             runtimeBootstrap: buildMapRuntimeBootstrap({
                 maxLevel: input.maxLevel | 0,
                 npcOrderKeys: packet.npcOrderKeys,
+                objSpawns,
             }),
         };
     }

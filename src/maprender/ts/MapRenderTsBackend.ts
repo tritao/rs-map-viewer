@@ -42,8 +42,16 @@ import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
-import type { SdMapData } from "../MapRenderPayload";
-import { SdMapLoaderInput } from "../MapRenderPayload";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+    SdMapData,
+} from "../MapRenderPayload";
+import {
+    SdMapLoaderInput,
+    buildMapRuntimeBootstrap,
+    buildMapRuntimeRegistration,
+} from "../MapRenderPayload";
 import { loadMinimapBlob } from "./MinimapData";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
@@ -61,6 +69,8 @@ export type BuildMapDataOptions = Readonly<{
 
 export type BuildMapDataBridgeInputResult = Readonly<{
     data: SdMapData | undefined;
+    runtimeRegistration?: MapRuntimeRegistration;
+    runtimeBootstrap?: MapRuntimeBootstrap;
     runtimeCommandStreamInput: MapRenderCommandStreamRuntimeInput | undefined;
     debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
     debugSceneCommandPlanOpsPacked?: Int32Array;
@@ -495,10 +505,12 @@ export class MapRenderTsBackend {
             );
         }
 
+        const objSpawns = loadObjs
+            ? timeStep("getWindowObjSpawns", () =>
+                  getWindowObjSpawns(this.deps.objSpawns, maxLevel, baseX, baseY, mapSize, mapSize),
+              )
+            : [];
         if (loadObjs) {
-            const objSpawns = timeStep("getWindowObjSpawns", () =>
-                getWindowObjSpawns(this.deps.objSpawns, maxLevel, baseX, baseY, mapSize, mapSize),
-            );
             timeStep("createObjSceneModels", () =>
                 createObjSceneModels(
                     objTypeLoader,
@@ -735,6 +747,17 @@ export class MapRenderTsBackend {
 
         return {
             data,
+            runtimeRegistration: buildMapRuntimeRegistration({
+                borderSize,
+                tileRenderFlags: scene.tileRenderFlags,
+                locsAnimated,
+                npcTypeAnimationTable,
+            }),
+            runtimeBootstrap: buildMapRuntimeBootstrap({
+                maxLevel,
+                npcOrderKeys,
+                objSpawns,
+            }),
             runtimeCommandStreamInput,
             debugSceneCommandPlanDigest,
             debugSceneCommandPlanOpsPacked,

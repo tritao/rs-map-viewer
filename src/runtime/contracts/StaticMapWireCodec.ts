@@ -5,15 +5,18 @@ import {
     type SdMapData,
     type SdRenderableDrawRanges,
 } from "../../maprender/MapRenderPayload";
-import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import {
     packBucketedInt32Arrays,
     unpackBucketedInt32Arrays,
 } from "./BucketArrayTransport";
-import { buildStaticMapPacket, type StaticMapPacket } from "./StaticMapPacket";
+
+export type DecodedStaticMapPacket = Readonly<{
+    mapData: SdMapData;
+    runtimeRegistration: MapRuntimeRegistration;
+    runtimeBootstrap: MapRuntimeBootstrap;
+}>;
 
 export type StaticMapWirePacket = Readonly<{
-    mapId: number;
     mapData: Omit<SdMapData, "drawRanges"> & {
         drawRangeBucketLengths: Int32Array;
         drawRangesPacked: Int32Array;
@@ -68,7 +71,6 @@ export function encodeStaticMapWirePacket(
     const { drawRanges, ...restMapData } = mapData;
     const packedDrawRanges = packDrawRanges(drawRanges);
     return {
-        mapId: getMapSquareId(mapData.mapX, mapData.mapY),
         mapData: {
             ...restMapData,
             ...packedDrawRanges,
@@ -78,12 +80,16 @@ export function encodeStaticMapWirePacket(
     };
 }
 
-export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): StaticMapPacket {
+export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedStaticMapPacket {
     const { drawRangeBucketLengths, drawRangesPacked, ...restMapData } = packet.mapData;
-    return buildStaticMapPacket({
-        ...restMapData,
-        drawRanges: unpackDrawRanges(drawRangeBucketLengths, drawRangesPacked),
-    }, packet.runtimeRegistration, packet.runtimeBootstrap);
+    return {
+        mapData: {
+            ...restMapData,
+            drawRanges: unpackDrawRanges(drawRangeBucketLengths, drawRangesPacked),
+        },
+        runtimeRegistration: packet.runtimeRegistration,
+        runtimeBootstrap: packet.runtimeBootstrap,
+    };
 }
 
 export function collectStaticMapWirePacketTransferables(

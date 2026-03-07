@@ -1,7 +1,12 @@
 import type { BackendKind } from "../util/BackendKind";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import type { MapRenderBuildDeps } from "./MapRenderBuildDeps";
-import type { SdMapData, SdMapLoaderInput } from "./MapRenderPayload";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+    SdMapData,
+    SdMapLoaderInput,
+} from "./MapRenderPayload";
 import { collectSdMapDataTransferables } from "./MapRenderTransferables";
 import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
@@ -9,6 +14,8 @@ import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
 export type RenderDataResult<T> = Readonly<{
     data: T;
     transferables: Transferable[];
+    runtimeRegistration?: MapRuntimeRegistration;
+    runtimeBootstrap?: MapRuntimeBootstrap;
 }>;
 
 export type MapRenderBackendKind = BackendKind;
@@ -40,6 +47,8 @@ class TsMapRenderBackend implements MapRenderBackend {
         return {
             data,
             transferables: data ? collectSdMapDataTransferables(data) : [],
+            runtimeRegistration: result.runtimeRegistration,
+            runtimeBootstrap: result.runtimeBootstrap,
         };
     }
 
