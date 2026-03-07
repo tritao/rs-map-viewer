@@ -727,8 +727,8 @@ static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_COLLECT_MAP_INPUT_DEBUG_LENGTH = 
 static constexpr rs::i32 RS_MAP_RENDER_RUNTIME_NPC_BUILD_DEBUG_LENGTH = 12;
 // Type-entry blobs are stored as (domain, group, file) where:
 // - domain is a stable "kind domain" in [101..116]
-// - group is the type id
-// - file is always 0
+// - group is always 0
+// - file is the type id
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_LOC = 101;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_VARBIT = 102;
 static constexpr rs::i32 RS_MAP_RENDER_BLOB_DOMAIN_TYPE_ENTRY_MODEL = 103;
@@ -1368,7 +1368,7 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
     //   frame-map blobs (domain=3).
     // Avoid recording (domain=100+kind,group=0,file=id) as missing for these cache types, otherwise
     // the worker/parity upload loop will spin trying to upload unfulfillable entries.
-    if (kind == 3 || kind == 6 || kind == 4) {
+    if (kind == 3 || kind == 6 || kind == 4 || kind == 14) {
         rs::CacheInfo cacheInfo{};
         cacheInfo.game = static_cast<rs::GameType>(runtime->cache.cacheGame);
         cacheInfo.revision = runtime->cache.cacheRevision;
@@ -1383,6 +1383,11 @@ static rs::Status runtimeTryGetTypeEntryBytesFromRuntimeCtx(
         // would require multi-file sprite inputs (e.g. index.dat) and aren't currently supported
         // in the runtime-cache v2 seam.
         if (kind == 4 && cacheType != rs::CacheType::Dat2) {
+            return rs::Status::NotFound;
+        }
+        // Seq alpha hints (kind=14) are derived internally from uploaded seq/skeletal/frame data.
+        // They are not an upload requirement in the runtime-cache seam.
+        if (kind == 14) {
             return rs::Status::NotFound;
         }
     }

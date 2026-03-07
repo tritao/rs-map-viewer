@@ -66,7 +66,8 @@ struct SceneCommandBuildInput final {
     //
     // `kind` matches the (100+kind) domain convention used by the runtime cache:
     //   1=loc 2=varbit 3=model 5=seqType 6=seqFrame 8=bas 10=underlay 11=overlay
-    //   12=obj 13=objSpawns 14=seqAlphaHint 15=seqBase 16=skeletalSeq
+    //   12=obj 13=objSpawns 15=seqBase 16=skeletalSeq
+    // `kind=14` (seqAlphaHint) is derived internally by the runtime and is not expected from TS.
     // Implementations may return empty spans for presence-only kinds (e.g., textures), but
     // core decode paths treat empty bytes as NotFound for real types.
     const void* typeEntryBytesCtx = nullptr;

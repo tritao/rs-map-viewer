@@ -32,7 +32,8 @@ Key schemes (stable):
     -   `channel=1`: locs
     -   `channel=2`: npc spawns
 -   Type entries: `(domain=100+kind, group=0, file=id)`
-    -   `kind=1..16` (loc, varbit, model, seqtype, seqframe, npc, bas, underlay, overlay, obj, etc)
+    -   Uploaded kinds currently cover loc/varbit/model/texture-def/seqtype/seqframe/npc/bas/underlay/overlay/obj/obj-spawns/seq-base/skeletal-seq.
+    -   `kind=14` (`seqAlphaHint`) is derived internally by C++ from uploaded animation data and is not uploaded by TS.
 -   Dat (classic) seq frame-maps: `(domain=3, group=frameMapId, file=0)`
 -   Legacy seq global files: `(domain=4, group=0, file=<enum>)`
 -   Legacy model global files: `(domain=5, group=0, file=<enum>)`

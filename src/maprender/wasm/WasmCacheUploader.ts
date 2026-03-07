@@ -14,29 +14,53 @@ import {
     MAP_RENDER_RUNTIME_STATUS_OK,
 } from "../../wasm/MapRenderRuntimeStatus.mjs";
 import { SdMapLoaderInput } from "../MapRenderPayload";
+import {
+    RuntimeBlobTypeEntryKind,
+    runtimeBlobTypeEntryDomain,
+} from "./RuntimeBlobTypeEntries";
 
 const MAP_SQUARE_SIZE = 64;
 
-// Preferred domains for blob-store-backed type entries: (domain=101..116, group=0, file=id).
-// TS should treat these domains as opaque and operate only on blob keys.
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC = 101;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT = 102;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL = 103;
+// Preferred domains for blob-store-backed type entries follow the runtime contract:
+// domain = 100 + kind, group = 0, file = id.
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC = runtimeBlobTypeEntryDomain(RuntimeBlobTypeEntryKind.loc);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.varbit,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.model,
+);
 // Per-texture definition bytes (cache-type dependent):
 // - Dat2 Sprite textures: SpriteTextureDefinition bytes
 // - Dat2 procedural textures: procedural texture definition bytes
 // (domain=104, group=0, file=textureId).
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF = 104;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE = 105;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME = 106;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC = 107;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS = 108;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY = 110;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY = 111;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ = 112;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS = 113;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE = 115;
-const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ = 116;
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.textureDef,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.seqType,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.seqFrame,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC = runtimeBlobTypeEntryDomain(RuntimeBlobTypeEntryKind.npc);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS = runtimeBlobTypeEntryDomain(RuntimeBlobTypeEntryKind.bas);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.underlay,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.overlay,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ = runtimeBlobTypeEntryDomain(RuntimeBlobTypeEntryKind.obj);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ_SPAWNS = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.objSpawns,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.seqBase,
+);
+const RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ = runtimeBlobTypeEntryDomain(
+    RuntimeBlobTypeEntryKind.skeletalSeq,
+);
 // Domain for map-square bytes: (domain=2, group=mapSquareId, file=<map-square file id>).
 const RUNTIME_BLOB_DOMAIN_MAP_SQUARE = 2;
 const RUNTIME_BLOB_MAP_SQUARE_FILE_TERRAIN = 0;
@@ -116,11 +140,13 @@ type SeqFrameLoaderLike = TypeEntryLoaderLike &
         baseLoader?: TypeEntryLoaderLike;
         tryGetLegacySeqFrameFileBytes?: () => LegacySeqFrameFileBytes;
         tryGetFrameMapBytesForMapId?: (mapId: number) => Uint8Array | undefined;
+        tryGet?: (id: number) => Readonly<{ hasAlphaTransform: boolean }> | undefined;
     }>;
 
 type SkeletalSeqLoaderLike = TypeEntryLoaderLike &
     Readonly<{
         baseLoader?: TypeEntryLoaderLike;
+        tryGet?: (id: number) => Readonly<{ hasAlphaTransform: boolean }> | undefined;
     }>;
 
 type MapRenderSceneBuildInputDeps = Readonly<
@@ -275,64 +301,51 @@ export function createSceneBuildCacheProvider(
     const legacyModelFilesByFileId = new Map<number, Uint8Array>();
     const legacySeqFilesByFileId = new Map<number, Uint8Array>();
 
-    const tryGetLegacyModelFileBytesRaw = modelLoader?.tryGetLegacyModelFileBytes;
+    const legacyModelFileBytesGetter = modelLoader?.tryGetLegacyModelFileBytes;
     const tryGetLegacyModelFileBytes =
-        typeof tryGetLegacyModelFileBytesRaw === "function"
+        typeof legacyModelFileBytesGetter === "function"
             ? () => {
                   try {
-                      return tryGetLegacyModelFileBytesRaw();
+                      return legacyModelFileBytesGetter.call(modelLoader);
                   } catch {
                       return undefined;
                   }
               }
             : undefined;
 
-    const tryGetLegacySeqFrameFileBytesRaw = seqFrameLoader?.tryGetLegacySeqFrameFileBytes;
+    const legacySeqFrameFileBytesGetter = seqFrameLoader?.tryGetLegacySeqFrameFileBytes;
     const tryGetLegacySeqFrameFileBytes =
-        typeof tryGetLegacySeqFrameFileBytesRaw === "function"
+        typeof legacySeqFrameFileBytesGetter === "function"
             ? () => {
                   try {
-                      return tryGetLegacySeqFrameFileBytesRaw();
+                      return legacySeqFrameFileBytesGetter.call(seqFrameLoader);
                   } catch {
                       return undefined;
                   }
               }
             : undefined;
+
+    const typeEntryBytesByDomain = new Map<number, (id: number) => Uint8Array | undefined>([
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC, (id) => tryLoadTypeBytes(locTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT, (id) => tryLoadTypeBytes(varbitLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL, (id) => tryLoadTypeBytes(modelLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF, (id) => tryLoadTypeBytes(textureLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE, (id) => tryLoadTypeBytes(seqTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME, (id) => tryLoadTypeBytes(seqFrameLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC, (id) => tryLoadTypeBytes(npcTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS, (id) => tryLoadTypeBytes(basTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY, (id) => tryLoadTypeBytes(underlayTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY, (id) => tryLoadTypeBytes(overlayTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ, (id) => tryLoadTypeBytes(objTypeLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE, (id) => tryLoadTypeBytes(seqBaseLoader, id)],
+        [RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ, (id) => tryLoadTypeBytes(skeletalSeqLoader, id)],
+    ]);
 
     const tryGetTypeEntryBytes = (domain: number, id: number): Uint8Array | undefined => {
         const d = domain | 0;
         const typeId = id | 0;
         if (typeId < 0) return undefined;
-        switch (d) {
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_LOC:
-                return tryLoadTypeBytes(locTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OBJ:
-                return tryLoadTypeBytes(objTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_NPC:
-                return tryLoadTypeBytes(npcTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_BAS:
-                return tryLoadTypeBytes(basTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_TEXTURE_DEF:
-                return tryLoadTypeBytes(textureLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_UNDERLAY:
-                return tryLoadTypeBytes(underlayTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_OVERLAY:
-                return tryLoadTypeBytes(overlayTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_VARBIT:
-                return tryLoadTypeBytes(varbitLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_MODEL:
-                return tryLoadTypeBytes(modelLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_TYPE:
-                return tryLoadTypeBytes(seqTypeLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_FRAME:
-                return tryLoadTypeBytes(seqFrameLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SKELETAL_SEQ:
-                return tryLoadTypeBytes(skeletalSeqLoader, typeId);
-            case RUNTIME_BLOB_DOMAIN_TYPE_ENTRY_SEQ_BASE:
-                return tryLoadTypeBytes(seqBaseLoader, typeId);
-            default:
-                return undefined;
-        }
+        return typeEntryBytesByDomain.get(d)?.(typeId);
     };
 
     const tryGetBlobBytes = (
@@ -365,10 +378,9 @@ export function createSceneBuildCacheProvider(
 
         if (d === RUNTIME_BLOB_DOMAIN_DAT_SEQ_FRAME_MAP) {
             if (f !== RUNTIME_BLOB_DAT_SEQ_FRAME_MAP_FILE_BYTES) return undefined;
-            const fn = seqFrameLoader?.tryGetFrameMapBytesForMapId;
-            if (typeof fn !== "function") return undefined;
+            if (typeof seqFrameLoader?.tryGetFrameMapBytesForMapId !== "function") return undefined;
             try {
-                const bytes = fn(g);
+                const bytes = seqFrameLoader.tryGetFrameMapBytesForMapId(g);
                 return bytes instanceof Uint8Array ? bytes : undefined;
             } catch {
                 return undefined;
