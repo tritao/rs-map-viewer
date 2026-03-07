@@ -13,9 +13,9 @@ import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
-import { encodeNpcLifecyclePacketFromEvents } from "../runtime/contracts/NpcLifecyclePacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
 import { createMapObjBootstrapPacket } from "../runtime/MapObjRuntime";
+import { createNpcLifecyclePacket } from "../runtime/NpcRuntime";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -246,10 +246,10 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
-        if ((events.length | 0) <= 0) {
+        const packet = createNpcLifecyclePacket(events);
+        if (!packet) {
             return 0;
         }
-        const packet = encodeNpcLifecyclePacketFromEvents(events);
         return this.applyNpcLifecyclePacketBytes(packet);
     }
 
