@@ -652,6 +652,11 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (this.inputManager.isKeyDown("KeyV")) {
             this.mapViewer.debugText = `Frame Time: ${frameTime.toFixed(2)}ms`;
         }
+        if (this.inputManager.isKeyDown("KeyG")) {
+            this.mapViewer.debugText =
+                `Draw Calls: ${rendererStats.drawCalls} ` +
+                `(ranges: ${rendererStats.drawRangeCalls}, multi: ${rendererStats.multiDrawCalls})`;
+        }
         if (this.inputManager.isKeyDown("KeyU")) {
             this.mapViewer.debugText = `Frame Time Js: ${frameStats.frameTimeJs.toFixed(2)}ms`;
         }

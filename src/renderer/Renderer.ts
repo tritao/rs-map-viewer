@@ -58,6 +58,10 @@ export class RendererStats {
     tickTime: number;
     interactionsTime: number;
 
+    drawCalls: number;
+    drawRangeCalls: number;
+    multiDrawCalls: number;
+
     opaquePassTime: number;
     opaqueNpcPassTime: number;
     transparentPassTime: number;
@@ -67,6 +71,9 @@ export class RendererStats {
         this.frameStart = 0;
         this.tickTime = 0;
         this.interactionsTime = 0;
+        this.drawCalls = 0;
+        this.drawRangeCalls = 0;
+        this.multiDrawCalls = 0;
         this.opaquePassTime = 0;
         this.opaqueNpcPassTime = 0;
         this.transparentPassTime = 0;

@@ -315,6 +315,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     render(time: number, deltaTime: number, resized: boolean): void {
         this.rendererStats.frameStart = performance.now();
+        this.rendererStats.drawCalls = 0;
+        this.rendererStats.drawRangeCalls = 0;
+        this.rendererStats.multiDrawCalls = 0;
         const timeSec = time / 1000;
 
         if (this.needsFramebufferUpdate) {
@@ -642,11 +645,20 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     draw(drawCall: DrawCall, drawRangesPacked: Int32Array) {
         if (this.hasMultiDraw) {
+            this.rendererStats.drawCalls = (this.rendererStats.drawCalls + 1) | 0;
+            this.rendererStats.multiDrawCalls = (this.rendererStats.multiDrawCalls + 1) | 0;
+            this.rendererStats.drawRangeCalls =
+                (this.rendererStats.drawRangeCalls +
+                    ((drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0)) |
+                0;
             drawCall.draw();
         } else {
             const drawCount = (drawRangesPacked.length / DRAW_RANGE_STRIDE) | 0;
+            this.rendererStats.drawRangeCalls =
+                (this.rendererStats.drawRangeCalls + drawCount) | 0;
             const drawRange: DrawRange = [0, 0, 1];
             for (let i = 0; i < drawCount; i++) {
+                this.rendererStats.drawCalls = (this.rendererStats.drawCalls + 1) | 0;
                 const off = i * DRAW_RANGE_STRIDE;
                 drawCall.uniform("u_drawId", i);
                 drawRange[DRAW_RANGE_OFFSET_INDEX] =
