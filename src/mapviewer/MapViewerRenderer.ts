@@ -221,17 +221,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const mapData = packet.mapData;
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
-        try {
-            const applied = await this.mapWorldSession.attachLoadedMapRuntime(packet);
-            if ((applied | 0) > 0) {
-                this.renderFrameCoordinator.invalidateLatestPacket();
-            }
-        } catch (error: unknown) {
-            console.error(
-                `[map-render] failed to attach obj render data for mapId=${mapData.mapId | 0}`,
-                error,
-            );
-        }
+        await this.attachLoadedMapObjRenderData(packet);
         if (mapData.minimapBlob.size > 0) {
             this.mapViewer.setMapImageUrl(
                 mapData.mapX,
@@ -318,20 +308,33 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        const mapId = getMapSquareId(mapX, mapY);
-        void this.mapWorldSession
-            .replaceMapObjRenderData(mapId, objRenderData)
-            .then((applied) => {
-                if ((applied | 0) > 0) {
-                    this.renderFrameCoordinator.invalidateLatestPacket();
-                }
-            })
-            .catch((error: unknown) => {
-                console.error(
-                    `[map-render] failed to replace obj render data for mapId=${mapId | 0}`,
-                    error,
-                );
-            });
+        void this.replaceMapObjRenderDataById(getMapSquareId(mapX, mapY), objRenderData);
+    }
+
+    private async attachLoadedMapObjRenderData(packet: DecodedStaticMapPacket): Promise<void> {
+        await this.replaceMapObjRenderDataById(
+            packet.mapData.mapId | 0,
+            packet.runtimeBootstrap.objRenderData,
+            "attach",
+        );
+    }
+
+    private async replaceMapObjRenderDataById(
+        mapId: number,
+        objRenderData: ObjRenderData | undefined,
+        action: "attach" | "replace" = "replace",
+    ): Promise<void> {
+        try {
+            const applied = await this.renderWorkerPool.replaceMapObjRenderData(mapId, objRenderData);
+            if ((applied | 0) > 0) {
+                this.renderFrameCoordinator.invalidateLatestPacket();
+            }
+        } catch (error: unknown) {
+            console.error(
+                `[map-render] failed to ${action} obj render data for mapId=${mapId | 0}`,
+                error,
+            );
+        }
     }
 
     override async init() {

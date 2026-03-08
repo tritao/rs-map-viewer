@@ -79,7 +79,7 @@ export class RenderDataWorkerPool {
         await Promise.all(this.workers.map((desc) => desc.init.then(task)));
     }
 
-    private queue<T>(task: (w: RenderDataWorkerThread) => PromiseLike<T>): Promise<T> {
+    private queueBuildTask<T>(task: (w: RenderDataWorkerThread) => PromiseLike<T>): Promise<T> {
         // `threads` pool returns a thenable task object; callers use it as a Promise.
         return Promise.resolve(
             this.pool.queue(async (w) => {
@@ -90,7 +90,7 @@ export class RenderDataWorkerPool {
     }
 
     queueStaticMapPacket(input: SdMapLoaderInput): Promise<DecodedStaticMapPacket | undefined> {
-        return this.queue((w) => w.loadStaticMapPacket(input)).then((packet) =>
+        return this.queueBuildTask((w) => w.loadStaticMapPacket(input)).then((packet) =>
             packet ? decodeStaticMapWirePacket(packet) : undefined,
         );
     }
@@ -101,7 +101,7 @@ export class RenderDataWorkerPool {
         flipH: boolean,
         brightness: number,
     ): Promise<Int32Array> {
-        return this.queue((w) => w.loadTexture(id, size, flipH, brightness));
+        return this.queueBuildTask((w) => w.loadTexture(id, size, flipH, brightness));
     }
 
     queueMapImage(
@@ -110,38 +110,39 @@ export class RenderDataWorkerPool {
         level: number,
         drawMapFunctions: boolean,
     ): Promise<MinimapData | undefined> {
-        return this.queue((w) => w.loadMapImage(mapX, mapY, level, drawMapFunctions));
+        return this.queueBuildTask((w) => w.loadMapImage(mapX, mapY, level, drawMapFunctions));
     }
 
     setVars(vars: Int32Array): Promise<void> {
         return this.awaitInitCache().then(async () => {
             await Promise.all([
                 this.runAll((w) => w.setVars(vars)),
-                this.withFrameWorker((w) => w.setVars(vars)),
+                this.withRenderFrameWorker((w) => w.setVars(vars)),
             ]);
         });
     }
 
     loadCachedMapImages(): Promise<Map<number, string>> {
-        return this.queue((w) => w.loadCachedMapImages());
+        return this.queueBuildTask((w) => w.loadCachedMapImages());
     }
 
     exportSprites(): Promise<Blob> {
-        return this.queue((w) => w.exportSpritesToZip());
+        return this.queueBuildTask((w) => w.exportSpritesToZip());
     }
 
     exportTextures(): Promise<Blob> {
-        return this.queue((w) => w.exportTexturesToZip());
+        return this.queueBuildTask((w) => w.exportTexturesToZip());
     }
 
-    // Dedicated render-frame worker for NPC render state + frame packet build.
-    private getFrameWorker(): Promise<RenderDataWorkerThread> {
+    private getRenderFrameWorker(): Promise<RenderDataWorkerThread> {
         return this.frameWorkerPromise;
     }
 
-    private async withFrameWorker<T>(task: (w: RenderDataWorkerThread) => Promise<T>): Promise<T> {
+    private async withRenderFrameWorker<T>(
+        task: (w: RenderDataWorkerThread) => Promise<T>,
+    ): Promise<T> {
         await this.awaitInitCache();
-        const worker = await this.getFrameWorker();
+        const worker = await this.getRenderFrameWorker();
         return task(worker);
     }
 
@@ -153,7 +154,7 @@ export class RenderDataWorkerPool {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        return this.withFrameWorker((w) =>
+        return this.withRenderFrameWorker((w) =>
             w.registerMapRuntime(
                 mapId,
                 borderSize,
@@ -166,11 +167,11 @@ export class RenderDataWorkerPool {
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
-        return this.withFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
+        return this.withRenderFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
     setFrameMapIds(mapIds: Int32Array): Promise<void> {
-        return this.withFrameWorker((w) => w.setFrameMapIds(mapIds));
+        return this.withRenderFrameWorker((w) => w.setFrameMapIds(mapIds));
     }
 
     setFrameViewState(
@@ -178,19 +179,21 @@ export class RenderDataWorkerPool {
         cameraMapY: number,
         lodDistance: number,
     ): Promise<void> {
-        return this.withFrameWorker((w) => w.setFrameViewState(cameraMapX, cameraMapY, lodDistance));
+        return this.withRenderFrameWorker((w) =>
+            w.setFrameViewState(cameraMapX, cameraMapY, lodDistance),
+        );
     }
 
     setFrameHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        return this.withFrameWorker((w) => w.setFrameHoveredMapIds(hoveredMapIdsPacked));
+        return this.withRenderFrameWorker((w) => w.setFrameHoveredMapIds(hoveredMapIdsPacked));
     }
 
     applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
-        return this.withFrameWorker((w) => w.applyNpcWorldStateDeltaPacket(deltaPacket));
+        return this.withRenderFrameWorker((w) => w.applyNpcWorldStateDeltaPacket(deltaPacket));
     }
 
     private applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
-        return this.withFrameWorker((w) => w.applyMapObjRenderPacket(packet));
+        return this.withRenderFrameWorker((w) => w.applyMapObjRenderPacket(packet));
     }
 
     replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): Promise<number> {
@@ -208,7 +211,7 @@ export class RenderDataWorkerPool {
         frameCount: number,
         cycleNow: number,
     ): Promise<RenderFramePacket | undefined> {
-        return this.withFrameWorker((w) => w.buildRenderFramePacket(frameCount, cycleNow));
+        return this.withRenderFrameWorker((w) => w.buildRenderFramePacket(frameCount, cycleNow));
     }
 
     async terminate(): Promise<void> {

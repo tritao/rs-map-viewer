@@ -1,4 +1,3 @@
-import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import {
     type DecodedStaticMapPacket,
     getValidatedStaticMapNpcOrderKeys,
@@ -65,20 +64,6 @@ export class MapWorldSession {
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
         return await this.deps.simWorkerPool.applyNpcLifecycleEvents(events);
-    }
-
-    replaceMapObjRenderData(
-        mapId: number,
-        objRenderData: ObjRenderData | undefined,
-    ): Promise<number> {
-        return this.deps.renderWorkerPool.replaceMapObjRenderData(mapId, objRenderData);
-    }
-
-    attachLoadedMapRuntime(packet: DecodedStaticMapPacket): Promise<number> {
-        return this.replaceMapObjRenderData(
-            packet.mapData.mapId | 0,
-            packet.runtimeBootstrap.objRenderData,
-        );
     }
 
     private reserveToken(mapId: number): number {
