@@ -3,6 +3,10 @@ import { ModuleThread, Thread, spawn } from "threads";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromLifecycleEvents } from "../runtime/packets/NpcLifecyclePacket";
 import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import {
+    getValidatedStaticMapNpcOrderKeys,
+    type StaticMapPacket,
+} from "../shared/StaticMapPacket";
 import { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,
@@ -30,6 +34,10 @@ export class SimWorkerPool {
     private workerPromise: Promise<SimWorkerThread> | undefined;
 
     readonly world = {
+        activateLoadedMap: (packet: StaticMapPacket, mapSimToken: number) =>
+            this.activateLoadedMap(packet, mapSimToken),
+        deactivateLoadedMap: (mapId: number, mapSimToken?: number) =>
+            this.deactivateLoadedMap(mapId, mapSimToken),
         registerMapRuntime: (input: SimMapRuntimeRegistrationInput) => this.registerMapRuntime(input),
         bootstrapMapRuntime: (input: MapRuntimeBootstrapInput) => this.bootstrapMapRuntime(input),
         unregisterMapRuntime: (mapId: number, mapSimToken?: number) =>
@@ -98,6 +106,28 @@ export class SimWorkerPool {
 
     private bootstrapMapRuntime(input: MapRuntimeBootstrapInput): Promise<void> {
         return this.withWorker((w) => w.bootstrapMapRuntime(input));
+    }
+
+    private activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void> {
+        const npcTypeAnimationTable = packet.runtimeRegistration.npcTypeAnimationTable;
+        return this.registerMapRuntime({
+            mapId: packet.mapData.mapId | 0,
+            borderSize: packet.runtimeRegistration.borderSize,
+            locsAnimated: packet.runtimeRegistration.locsAnimated,
+            npcTypeAnimationTable,
+            mapSimToken,
+        }).then(() =>
+            this.bootstrapMapRuntime({
+                mapId: packet.mapData.mapId | 0,
+                maxLevel: packet.mapData.maxLevel | 0,
+                npcOrderKeys: getValidatedStaticMapNpcOrderKeys(packet),
+                mapSimToken,
+            }),
+        );
+    }
+
+    private deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void> {
+        return this.unregisterMapRuntime(mapId, mapSimToken);
     }
 
     private unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {

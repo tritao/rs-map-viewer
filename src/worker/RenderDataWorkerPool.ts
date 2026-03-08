@@ -57,6 +57,10 @@ export class RenderDataWorkerPool {
     };
 
     readonly frame = {
+        activateLoadedMap: (packet: StaticMapPacket, mapSimToken: number) =>
+            this.activateLoadedMap(packet, mapSimToken),
+        deactivateLoadedMap: (mapId: number, mapSimToken?: number) =>
+            this.deactivateLoadedMap(mapId, mapSimToken),
         registerMapRuntime: (input: RenderMapRuntimeRegistrationInput) =>
             this.registerRenderMapRuntime(input),
         unregisterMapRuntime: (mapId: number, mapSimToken?: number) =>
@@ -176,6 +180,21 @@ export class RenderDataWorkerPool {
 
     private registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
         return this.withRenderFrameWorker((w) => w.registerRenderMapRuntime(input));
+    }
+
+    private activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void> {
+        return this.registerRenderMapRuntime({
+            mapId: packet.mapData.mapId | 0,
+            borderSize: packet.runtimeRegistration.borderSize,
+            tileRenderFlagsLevel1: packet.runtimeRegistration.tileRenderFlagsLevel1,
+            locsAnimated: packet.runtimeRegistration.locsAnimated,
+            npcTypeAnimationTable: packet.runtimeRegistration.npcTypeAnimationTable,
+            mapSimToken,
+        });
+    }
+
+    private deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void> {
+        return this.unregisterRenderMapRuntime(mapId, mapSimToken);
     }
 
     private unregisterRenderMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {

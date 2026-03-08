@@ -1,24 +1,15 @@
 import {
     type StaticMapPacket,
-    getValidatedStaticMapNpcOrderKeys,
 } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
 import { type WorldMapObjUpdate } from "./packets/WorldDeltaPacket";
-import type {
-    MapRuntimeBootstrapInput,
-    RenderMapRuntimeRegistrationInput,
-    SimMapRuntimeRegistrationInput,
-} from "../worker/WorkerContext";
-import type { NpcTypeAnimationEntry } from "./NpcTypeAnimationTable";
 
 type MapWorldSessionDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
     simWorkerPool: SimWorkerPool;
 }>;
-
-const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export type NpcLifecycleEventsInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
@@ -118,44 +109,18 @@ export class MapWorldSession {
         mapSimToken: number,
     ): Promise<void> {
         const mapId = packet.mapData.mapId | 0;
-        const maxLevel = packet.mapData.maxLevel | 0;
-        const npcOrderKeys = getValidatedStaticMapNpcOrderKeys(packet);
-        const npcTypeAnimationTable =
-            packet.runtimeRegistration.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
-        const renderRegistration: RenderMapRuntimeRegistrationInput = {
-            mapId,
-            borderSize: packet.runtimeRegistration.borderSize,
-            tileRenderFlagsLevel1: packet.runtimeRegistration.tileRenderFlagsLevel1,
-            locsAnimated: packet.runtimeRegistration.locsAnimated,
-            npcTypeAnimationTable,
-            mapSimToken,
-        };
-        const simRegistration: SimMapRuntimeRegistrationInput = {
-            mapId,
-            borderSize: packet.runtimeRegistration.borderSize,
-            locsAnimated: packet.runtimeRegistration.locsAnimated,
-            npcTypeAnimationTable,
-            mapSimToken,
-        };
-        const bootstrapInput: MapRuntimeBootstrapInput = {
-            mapId,
-            maxLevel,
-            npcOrderKeys,
-            mapSimToken,
-        };
-        await this.deps.renderWorkerPool.frame.registerMapRuntime(renderRegistration);
+        await this.deps.renderWorkerPool.frame.activateLoadedMap(packet, mapSimToken);
         try {
-            await this.deps.simWorkerPool.world.registerMapRuntime(simRegistration);
-            await this.deps.simWorkerPool.world.bootstrapMapRuntime(bootstrapInput);
+            await this.deps.simWorkerPool.world.activateLoadedMap(packet, mapSimToken);
         } catch (error: unknown) {
-            void this.deps.renderWorkerPool.frame.unregisterMapRuntime(mapId, mapSimToken);
-            void this.deps.simWorkerPool.world.unregisterMapRuntime(mapId, mapSimToken);
+            void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
+            void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
             throw error;
         }
     }
 
     private unregisterMapRuntime(mapId: number, mapSimToken: number): void {
-        void this.deps.simWorkerPool.world.unregisterMapRuntime(mapId, mapSimToken);
-        void this.deps.renderWorkerPool.frame.unregisterMapRuntime(mapId, mapSimToken);
+        void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
+        void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
     }
 }
