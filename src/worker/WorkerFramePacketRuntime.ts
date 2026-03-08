@@ -6,7 +6,7 @@ import type { CacheSession } from "../rs/loaders/CacheSession";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../runtime/TickPatchLayout";
+} from "../shared/TickPatchLayout";
 import {
     type RenderFramePacketMapEntry,
     buildRenderFramePacketFromMapEntries,
@@ -34,7 +34,7 @@ import {
     type WorkerViewState,
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
-import { mapObjStateToRenderData } from "../runtime/packets/StaticMapPacket";
+import { mapObjStateToRenderData } from "../shared/StaticMapPacket";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;

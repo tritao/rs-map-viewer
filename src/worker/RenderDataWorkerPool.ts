@@ -7,7 +7,7 @@ import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import {
     decodeStaticMapWirePacket,
     type StaticMapPacket,
-} from "../runtime/packets/StaticMapPacket";
+} from "../shared/StaticMapPacket";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type {

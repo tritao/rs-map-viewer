@@ -5,7 +5,7 @@ import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { renderFramePacketTransferables } from "../renderer/RenderFramePacket";
 import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
-import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
+import type { StaticMapWirePacket } from "../shared/StaticMapPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
     RenderFrameInputUpdate,

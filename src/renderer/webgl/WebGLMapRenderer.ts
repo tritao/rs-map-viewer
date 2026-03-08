@@ -13,7 +13,7 @@ import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload"
 import { Camera } from "../Camera";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import type { DrawRange } from "../../runtime/DrawRange";
+import type { DrawRange } from "../../shared/DrawRange";
 import {
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
@@ -26,7 +26,7 @@ import {
     TICK_PATCH_STREAM_COUNT,
     getLocTickPatchStreamIndex,
     getNpcTickPatchStreamIndex,
-} from "../../runtime/TickPatchLayout";
+} from "../../shared/TickPatchLayout";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
     ensureDrawRangePatchBackendInit,

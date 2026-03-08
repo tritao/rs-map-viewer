@@ -2,7 +2,7 @@ import type {
     NpcEvent,
 } from "../entities/NpcEvents";
 import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
-import type { MapObjState } from "./StaticMapPacket";
+import type { MapObjState } from "../../shared/StaticMapPacket";
 
 export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
 export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;

@@ -7,7 +7,7 @@ export {
     type SdRenderableData,
     type SdRenderableDrawRanges,
     type SdRenderableModelInfoTextures,
-} from "../runtime/packets/StaticMapPacket";
+} from "../shared/StaticMapPacket";
 
 export type SdMapLoaderInput = Readonly<{
     mapX: number;

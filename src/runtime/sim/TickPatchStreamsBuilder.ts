@@ -1,10 +1,10 @@
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import type { DrawRange } from "../DrawRange";
+import type { DrawRange } from "../../shared/DrawRange";
 import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../TickPatchLayout";
+} from "../../shared/TickPatchLayout";
 import type { NpcSimMapState } from "./NpcSimStateStore";
 
 const NULL_DRAW_RANGE: DrawRange = [0, 0, 0];

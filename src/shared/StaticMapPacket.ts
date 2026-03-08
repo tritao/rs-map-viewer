@@ -1,5 +1,5 @@
-import type { LocAnimatedData } from "../LocAnimatedData";
-import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
+import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 
 export const MAP_RENDER_DRAW_BUCKET_KEYS = [
     "base",

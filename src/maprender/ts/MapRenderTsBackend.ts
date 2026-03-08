@@ -35,16 +35,16 @@ import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import { resolveLocRenderPlacement } from "../../runtime/build/LocPlacementResolver";
 import { getSceneLocs } from "../../runtime/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
-import type { DrawRange } from "../../runtime/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
+import type { DrawRange } from "../../shared/DrawRange";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
-} from "../../runtime/packets/StaticMapPacket";
+} from "../../shared/StaticMapPacket";
 import {
     buildMapRuntimePayloads,
     mapObjStateFromRenderData,
-} from "../../runtime/packets/StaticMapPacket";
+} from "../../shared/StaticMapPacket";
 import type { MapRenderBuildDeps } from "../MapRenderBackend";
 import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";

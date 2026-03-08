@@ -13,7 +13,7 @@ import {
     TICK_PATCH_STREAM_COUNT,
     getLocTickPatchStreamIndex,
     getNpcTickPatchStreamIndex,
-} from "../runtime/TickPatchLayout";
+} from "../shared/TickPatchLayout";
 
 // Meta tuples: [mapId, npcDataStart, npcDataCount]
 export const NPC_RANGES_BY_MAP_ID_STRIDE = 3;

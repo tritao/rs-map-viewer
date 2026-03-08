@@ -25,11 +25,11 @@ import type {
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
-} from "../../runtime/packets/StaticMapPacket";
+} from "../../shared/StaticMapPacket";
 import {
     buildMapRuntimePayloads,
     mapObjStateFromRenderData,
-} from "../../runtime/packets/StaticMapPacket";
+} from "../../shared/StaticMapPacket";
 import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import {
     MapRenderByteDrivenSceneBuildInput,

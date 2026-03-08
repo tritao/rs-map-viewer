@@ -1,4 +1,4 @@
-import type { DrawRange } from "../DrawRange";
+import type { DrawRange } from "../../shared/DrawRange";
 
 export type AnimationFrames = {
     frames: DrawRange[];

@@ -12,7 +12,7 @@ import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../renderer/InteractionState";
-import type { StaticMapPacket } from "../runtime/packets/StaticMapPacket";
+import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import {
     collectInteractionHits,
     resolveInteractionTargets,

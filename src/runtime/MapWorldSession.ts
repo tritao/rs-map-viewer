@@ -1,7 +1,7 @@
 import {
     type StaticMapPacket,
     getValidatedStaticMapNpcOrderKeys,
-} from "./packets/StaticMapPacket";
+} from "../shared/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
