@@ -186,19 +186,19 @@ export class RenderDataWorkerPool {
         return this.withFrameWorker((w) => w.setFrameTickHoveredMapIds(hoveredMapIdsPacked));
     }
 
-    applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
-        return this.withFrameWorker((w) => w.applyNpcStateDeltaPacket(deltaPacket));
+    applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
+        return this.withFrameWorker((w) => w.applyNpcWorldStateDeltaPacket(deltaPacket));
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
         return this.withFrameWorker((w) => w.applyMapObjRenderPacket(packet));
     }
 
-    buildFramePacketFromRenderState(
+    buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
     ): Promise<FramePacket | undefined> {
-        return this.withFrameWorker((w) => w.buildFramePacketFromRenderState(frameCount, cycleNow));
+        return this.withFrameWorker((w) => w.buildRenderFramePacket(frameCount, cycleNow));
     }
 
     async terminate(): Promise<void> {

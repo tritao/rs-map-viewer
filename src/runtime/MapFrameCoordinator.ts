@@ -12,11 +12,11 @@ export type FrameStepInput = Readonly<{
 }>;
 
 export type MapFrameSeamSample = Readonly<{
-    simMs: number;
-    applyMs: number;
-    packMs: number;
+    worldMs: number;
+    applyWorldMs: number;
+    renderMs: number;
     totalMs: number;
-    eventCount: number;
+    worldEventCount: number;
 }>;
 
 type MapFrameCoordinatorDeps = Readonly<{
@@ -86,7 +86,6 @@ export class MapFrameCoordinator {
             this.pendingFramePacket = this.queueNextFramePacket({
                 epoch,
                 input,
-                hoveredMapIdsPacked,
                 updatePromises,
             });
         }
@@ -107,7 +106,6 @@ export class MapFrameCoordinator {
         void Promise.all([
             this.deps.simWorkerPool.setTickMapIds(EMPTY_INT32),
             this.deps.simWorkerPool.setTickViewState(0, 0, 0),
-            this.deps.simWorkerPool.setTickHoveredMapIds(EMPTY_INT32),
             this.deps.renderWorkerPool.setFrameTickMapIds(EMPTY_INT32),
             this.deps.renderWorkerPool.setFrameTickViewState(0, 0, 0),
             this.deps.renderWorkerPool.setFrameTickHoveredMapIds(EMPTY_INT32),
@@ -174,9 +172,6 @@ export class MapFrameCoordinator {
         if (input.shouldUpdateFrameHoveredMapIds) {
             this.lastFrameHoveredMapIds = Int32Array.from(input.hoveredMapIdsPacked);
             updatePromises.push(
-                this.deps.simWorkerPool.setTickHoveredMapIds(input.hoveredMapIdsPacked),
-            );
-            updatePromises.push(
                 this.deps.renderWorkerPool.setFrameTickHoveredMapIds(input.hoveredMapIdsPacked),
             );
         }
@@ -186,42 +181,40 @@ export class MapFrameCoordinator {
     private queueNextFramePacket(input: Readonly<{
         epoch: number;
         input: FrameStepInput;
-        hoveredMapIdsPacked: Int32Array;
         updatePromises: Promise<void>[];
     }>): Promise<FramePacket | undefined> {
-        const runTickFrame = async () => {
+        const runWorldStepAndBuildFrame = async () => {
             const seamStart = performance.now();
-            const deltaPacket = await this.deps.simWorkerPool.tickSim(
+            const worldDeltaPacket = await this.deps.simWorkerPool.stepWorld(
                 input.input.frameCount,
                 input.input.ticksElapsed,
                 input.input.clientTicksElapsed,
                 input.input.cycle,
-                input.hoveredMapIdsPacked,
             );
             const afterSim = performance.now();
-            if (deltaPacket) {
-                await this.deps.renderWorkerPool.applyNpcStateDeltaPacket(deltaPacket);
+            if (worldDeltaPacket) {
+                await this.deps.renderWorkerPool.applyNpcWorldStateDeltaPacket(worldDeltaPacket);
             }
             const afterApply = performance.now();
-            const packet = await this.deps.renderWorkerPool.buildFramePacketFromRenderState(
+            const packet = await this.deps.renderWorkerPool.buildRenderFramePacket(
                 input.input.frameCount,
                 input.input.cycle,
             );
             const seamEnd = performance.now();
             this.deps.reportSeamSample?.({
-                simMs: afterSim - seamStart,
-                applyMs: afterApply - afterSim,
-                packMs: seamEnd - afterApply,
+                worldMs: afterSim - seamStart,
+                applyWorldMs: afterApply - afterSim,
+                renderMs: seamEnd - afterApply,
                 totalMs: seamEnd - seamStart,
-                eventCount: deltaPacket?.eventCount ?? 0,
+                worldEventCount: worldDeltaPacket?.eventCount ?? 0,
             });
             return packet;
         };
 
         const startFrameTick =
             input.updatePromises.length > 0
-                ? Promise.all(input.updatePromises).then(runTickFrame)
-                : runTickFrame();
+                ? Promise.all(input.updatePromises).then(runWorldStepAndBuildFrame)
+                : runWorldStepAndBuildFrame();
 
         return startFrameTick
             .then((nextPacket) => {

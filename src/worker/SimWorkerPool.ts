@@ -111,20 +111,13 @@ export class SimWorkerPool {
         return this.withWorker((w) => w.setTickViewState(cameraMapX, cameraMapY, lodDistance));
     }
 
-    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        return this.withWorker((w) => w.setTickHoveredMapIds(hoveredMapIdsPacked));
-    }
-
-    tickSim(
+    stepWorld(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-        hoveredMapIdsPacked?: Int32Array,
     ): Promise<NpcStateDeltaPacket | undefined> {
-        return this.withWorker((w) =>
-            w.tickSim(frameCount, ticksElapsed, clientTicksElapsed, cycleNow, hoveredMapIdsPacked),
-        );
+        return this.withWorker((w) => w.stepWorld(frameCount, ticksElapsed, clientTicksElapsed, cycleNow));
     }
 
     setVars(vars: Int32Array): Promise<void> {

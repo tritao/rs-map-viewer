@@ -50,11 +50,11 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly frameRuntimeCoordinator: MapFrameCoordinator;
     private readonly mapWorldSession: MapWorldSession;
     private seamSampleCount: number = 0;
-    private seamSimMsTotal: number = 0;
-    private seamApplyMsTotal: number = 0;
-    private seamPackMsTotal: number = 0;
+    private seamWorldMsTotal: number = 0;
+    private seamApplyWorldMsTotal: number = 0;
+    private seamRenderMsTotal: number = 0;
     private seamTotalMsTotal: number = 0;
-    private seamEventCountTotal: number = 0;
+    private seamWorldEventCountTotal: number = 0;
 
     private isInitialized: boolean = false;
 
@@ -143,29 +143,29 @@ export class MapViewerRenderer extends RendererMainLoop {
             return;
         }
         this.seamSampleCount = (this.seamSampleCount + 1) | 0;
-        this.seamSimMsTotal += sample.simMs;
-        this.seamApplyMsTotal += sample.applyMs;
-        this.seamPackMsTotal += sample.packMs;
+        this.seamWorldMsTotal += sample.worldMs;
+        this.seamApplyWorldMsTotal += sample.applyWorldMs;
+        this.seamRenderMsTotal += sample.renderMs;
         this.seamTotalMsTotal += sample.totalMs;
-        this.seamEventCountTotal += sample.eventCount | 0;
+        this.seamWorldEventCountTotal += sample.worldEventCount | 0;
         if ((this.seamSampleCount | 0) < 120) {
             return;
         }
         const count = this.seamSampleCount | 0;
         console.log("[map-render][frame-seam] avg", {
             samples: count,
-            simMs: this.seamSimMsTotal / count,
-            applyMs: this.seamApplyMsTotal / count,
-            packMs: this.seamPackMsTotal / count,
+            worldMs: this.seamWorldMsTotal / count,
+            applyWorldMs: this.seamApplyWorldMsTotal / count,
+            renderMs: this.seamRenderMsTotal / count,
             totalMs: this.seamTotalMsTotal / count,
-            eventsPerFrame: this.seamEventCountTotal / count,
+            worldEventsPerFrame: this.seamWorldEventCountTotal / count,
         });
         this.seamSampleCount = 0;
-        this.seamSimMsTotal = 0;
-        this.seamApplyMsTotal = 0;
-        this.seamPackMsTotal = 0;
+        this.seamWorldMsTotal = 0;
+        this.seamApplyWorldMsTotal = 0;
+        this.seamRenderMsTotal = 0;
         this.seamTotalMsTotal = 0;
-        this.seamEventCountTotal = 0;
+        this.seamWorldEventCountTotal = 0;
     }
 
     private shouldDropStaticMapPacketForDevSquare(

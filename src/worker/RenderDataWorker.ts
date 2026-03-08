@@ -22,7 +22,7 @@ type RenderDataWorkerServices = Readonly<{
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
 let frameTickMapIdsVersion = 0;
 let frameTickViewStateVersion = 0;
-let lastAppliedDeltaFrameCount = -1;
+let lastAppliedWorldDeltaFrameCount = -1;
 
 async function getWorkerServices(): Promise<RenderDataWorkerServices> {
     const existing = workerServicesPromise;
@@ -55,7 +55,7 @@ const worker = {
         frameRuntime.resetForCache();
         frameTickMapIdsVersion = 0;
         frameTickViewStateVersion = 0;
-        lastAppliedDeltaFrameCount = -1;
+        lastAppliedWorldDeltaFrameCount = -1;
         await buildService.initCache(cache, spawnBootstrap, options);
     },
     async loadStaticMapPacket(
@@ -117,7 +117,7 @@ const worker = {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
     },
-    async applyNpcStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
+    async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
         if (
             (deltaPacket.tickMapIdsVersion | 0) !== (frameTickMapIdsVersion | 0) ||
@@ -126,15 +126,15 @@ const worker = {
             return 0;
         }
         const deltaFrameCount = deltaPacket.frameCount | 0;
-        if (deltaFrameCount < (lastAppliedDeltaFrameCount | 0)) {
+        if (deltaFrameCount < (lastAppliedWorldDeltaFrameCount | 0)) {
             return 0;
         }
         if ((deltaPacket.eventCount | 0) <= 0) {
             return 0;
         }
-        const applied = await frameRuntime.applyNpcStateDeltaPacket(deltaPacket);
+        const applied = await frameRuntime.applyNpcWorldStateDeltaPacket(deltaPacket);
         if ((applied | 0) > 0) {
-            lastAppliedDeltaFrameCount = deltaFrameCount;
+            lastAppliedWorldDeltaFrameCount = deltaFrameCount;
         }
         return applied | 0;
     },
@@ -142,12 +142,12 @@ const worker = {
         const { frameRuntime } = await getWorkerServices();
         return frameRuntime.applyMapObjRenderPacket(packet);
     },
-    async buildFramePacketFromRenderState(
+    async buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
     ): Promise<TransferDescriptor<FramePacket | undefined>> {
         const { frameRuntime } = await getWorkerServices();
-        const packet = await frameRuntime.buildFramePacketFromCurrentState(frameCount, cycleNow);
+        const packet = await frameRuntime.buildRenderFramePacket(frameCount, cycleNow);
         return packet
             ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
             : Transfer<FramePacket | undefined>(undefined, []);

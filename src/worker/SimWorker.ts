@@ -91,25 +91,14 @@ const worker = {
         const { tickRuntime } = await getWorkerServices();
         tickRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
     },
-    async setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        const { tickRuntime } = await getWorkerServices();
-        tickRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
-    },
-    async tickSim(
+    async stepWorld(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-        hoveredMapIdsPacked?: Int32Array,
     ): Promise<TransferDescriptor<NpcStateDeltaPacket | undefined>> {
         const { tickRuntime } = await getWorkerServices();
-        const packet = await tickRuntime.tickSim(
-            frameCount,
-            ticksElapsed,
-            clientTicksElapsed,
-            cycleNow,
-            hoveredMapIdsPacked,
-        );
+        const packet = await tickRuntime.stepWorld(frameCount, ticksElapsed, clientTicksElapsed, cycleNow);
         return packet
             ? Transfer<NpcStateDeltaPacket | undefined>(
                   packet,

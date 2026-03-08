@@ -32,10 +32,9 @@ type TickWorkerState = Readonly<{
     sceneBuilder: SceneBuilder;
 }>;
 
-type TickFrameInputs = Readonly<{
+type WorldStepInputs = Readonly<{
     safeTicksElapsed: number;
     safeClientTicks: number;
-    hoveredMapIds: ReadonlySet<number>;
 }>;
 
 type TickViewState = Readonly<{
@@ -94,8 +93,6 @@ export class WorkerTickRuntime {
         cameraMapY: 0,
         lodDistance: 0,
     };
-    private tickHoveredMapIdsPacked: Int32Array = new Int32Array(0);
-
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
 
     resetForCache(): void {
@@ -117,7 +114,6 @@ export class WorkerTickRuntime {
         this.tickMapIdsVersion = 0;
         this.tickViewStateVersion = 0;
         this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
-        this.tickHoveredMapIdsPacked = new Int32Array(0);
     }
 
     setTickMapIds(mapIds: Int32Array): void {
@@ -144,14 +140,6 @@ export class WorkerTickRuntime {
             this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
             this.tickViewState = nextViewState;
         }
-    }
-
-    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
-        if (!(hoveredMapIdsPacked instanceof Int32Array) || (hoveredMapIdsPacked.length | 0) <= 0) {
-            this.tickHoveredMapIdsPacked = new Int32Array(0);
-            return;
-        }
-        this.tickHoveredMapIdsPacked = Int32Array.from(hoveredMapIdsPacked);
     }
 
     private async resolveNpcBootstrapData(
@@ -503,26 +491,18 @@ export class WorkerTickRuntime {
         return emitted | 0;
     }
 
-    async tickSim(
+    async stepWorld(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
         _cycleNow: number,
-        hoveredMapIdsPacked?: Int32Array,
     ): Promise<NpcStateDeltaPacket | undefined> {
         const mapIds = this.tickMapIds;
         if (!(mapIds instanceof Int32Array) || mapIds.length === 0) {
             return undefined;
         }
-        if (hoveredMapIdsPacked instanceof Int32Array) {
-            this.setTickHoveredMapIds(hoveredMapIdsPacked);
-        }
         const workerState = await this.getWorkerState();
-        const inputs = this.normalizeTickFrameInputs(
-            ticksElapsed,
-            clientTicksElapsed,
-            this.tickHoveredMapIdsPacked,
-        );
+        const inputs = this.normalizeWorldStepInputs(ticksElapsed, clientTicksElapsed);
         const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
         const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
         const events: NpcEvent[] = [];
@@ -553,21 +533,13 @@ export class WorkerTickRuntime {
         });
     }
 
-    private normalizeTickFrameInputs(
+    private normalizeWorldStepInputs(
         ticksElapsed: number,
         clientTicksElapsed: number,
-        hoveredMapIdsPacked: Int32Array,
-    ): TickFrameInputs {
-        const hoveredMapIds = new Set<number>();
-        if (hoveredMapIdsPacked instanceof Int32Array) {
-            for (let index = 0; index < hoveredMapIdsPacked.length; index++) {
-                hoveredMapIds.add(hoveredMapIdsPacked[index] | 0);
-            }
-        }
+    ): WorldStepInputs {
         return {
             safeTicksElapsed: Math.max(0, Math.min(ticksElapsed | 0, 4)),
             safeClientTicks: Math.max(0, Math.min(clientTicksElapsed | 0, 50)),
-            hoveredMapIds,
         };
     }
 

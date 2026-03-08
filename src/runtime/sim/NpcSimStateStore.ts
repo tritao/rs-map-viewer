@@ -389,7 +389,7 @@ export class NpcSimStateStore {
         return applied | 0;
     }
 
-    applyNpcStateDeltaPacket(packet: NpcStateDeltaPacket, deps: NpcSimStateStoreDeps): number {
+    applyNpcWorldStateDeltaPacket(packet: NpcStateDeltaPacket, deps: NpcSimStateStoreDeps): number {
         const counts = validateNpcStateDeltaPacket(packet);
         if ((counts.eventCount | 0) <= 0) {
             return 0;

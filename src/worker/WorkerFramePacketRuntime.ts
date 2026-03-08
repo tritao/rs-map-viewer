@@ -234,16 +234,16 @@ export class WorkerFramePacketRuntime {
         this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
     }
 
-    async applyNpcStateDeltaPacket(packet: NpcStateDeltaPacket): Promise<number> {
+    async applyNpcWorldStateDeltaPacket(packet: NpcStateDeltaPacket): Promise<number> {
         if ((packet.eventCount | 0) <= 0) {
             return 0;
         }
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
-        return this.npcSimStateStore.applyNpcStateDeltaPacket(packet, deps) | 0;
+        return this.npcSimStateStore.applyNpcWorldStateDeltaPacket(packet, deps) | 0;
     }
 
-    private normalizeTickFrameInputs(
+    private normalizeFrameBuildInputs(
         frameCount: number,
         clientTicksElapsed: number,
         hoveredMapIdsPacked: Int32Array,
@@ -347,7 +347,7 @@ export class WorkerFramePacketRuntime {
         }
     }
 
-    async buildFramePacketFromCurrentState(
+    async buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
         hoveredMapIdsPacked?: Int32Array,
@@ -361,7 +361,7 @@ export class WorkerFramePacketRuntime {
         }
         const workerState = await this.getWorkerState();
         const backendKind = workerState.mapRenderBackend.kind ?? "unknown";
-        const inputs = this.normalizeTickFrameInputs(frameCount, 0, this.tickHoveredMapIdsPacked);
+        const inputs = this.normalizeFrameBuildInputs(frameCount, 0, this.tickHoveredMapIdsPacked);
         const view = this.tickViewState;
         const wasmTick = await this.runWasmTickIfEnabled(
             workerState,
