@@ -1,4 +1,4 @@
-import type { StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
+import type { StandaloneRenderData } from "../runtime/build/StandaloneRenderDataBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import type { CacheSession } from "../rs/loaders/CacheSession";
 import { WebGLEntityRenderer, type SetEntityRenderDataOptions } from "../renderer/webgl/WebGLEntityRenderer";
@@ -15,7 +15,7 @@ export class EntityViewerRenderer extends RendererMainLoop {
     }
 
     setRenderData(
-        renderData: StandaloneRenderableData | undefined,
+        renderData: StandaloneRenderData | undefined,
         options?: SetEntityRenderDataOptions,
     ): void {
         this.renderer.setRenderData(renderData, options);

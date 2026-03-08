@@ -5,7 +5,7 @@ import { GameType } from "../../rs/cache/CacheInfo";
 import type { CacheSession } from "../../rs/loaders/CacheSession";
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
-import type { StandaloneRenderableData } from "../../runtime/build/StandaloneRenderableDataBuilder";
+import type { StandaloneRenderData } from "../../runtime/build/StandaloneRenderDataBuilder";
 import { createWebGLDevice } from "./WebGLDevice";
 import { createSceneDrawCall } from "./WebGLDrawCallUtil";
 import { WebGLSceneResources } from "./WebGLSceneResources";
@@ -45,7 +45,7 @@ export class WebGLEntityRenderer implements Renderer {
     private readonly up = vec3.fromValues(0, 1, 0);
 
     private renderable: WebGLSceneResources | undefined;
-    private renderData: StandaloneRenderableData | undefined;
+    private renderData: StandaloneRenderData | undefined;
     private fitRadius = 256;
     private orbitDistance = 8;
     private pitch = -180;
@@ -62,7 +62,7 @@ export class WebGLEntityRenderer implements Renderer {
     constructor(private readonly session: CacheSession) {}
 
     setRenderData(
-        renderData: StandaloneRenderableData | undefined,
+        renderData: StandaloneRenderData | undefined,
         options: SetEntityRenderDataOptions = {},
     ): void {
         this.renderData = renderData;

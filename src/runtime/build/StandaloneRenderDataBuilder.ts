@@ -13,7 +13,7 @@ import { emitSceneModelsToSceneGeometryBuffer } from "./SceneDrawPlan";
 
 const DEFAULT_SCENE_BUFFER_VERTEX_CAPACITY = 4096;
 
-export type StandaloneRenderableData = Readonly<{
+export type StandaloneRenderData = Readonly<{
     vertices: Uint8Array;
     indices: Int32Array;
     modelInfoTextures: SdRenderableModelInfoTextures;
@@ -22,7 +22,7 @@ export type StandaloneRenderableData = Readonly<{
     fitRadius: number;
 }>;
 
-export type BuildStandaloneRenderableDataInput = Readonly<{
+export type BuildStandaloneRenderDataInput = Readonly<{
     textureLoader: TextureLoader;
     model: Model;
     interactType: InteractType;
@@ -30,7 +30,7 @@ export type BuildStandaloneRenderableDataInput = Readonly<{
     minimizeDrawCalls?: boolean;
 }>;
 
-function createSceneModel(input: BuildStandaloneRenderableDataInput): SceneModel {
+function createSceneModel(input: BuildStandaloneRenderDataInput): SceneModel {
     return {
         model: input.model,
         lowDetail: false,
@@ -47,9 +47,9 @@ function createSceneModel(input: BuildStandaloneRenderableDataInput): SceneModel
     };
 }
 
-export function buildStandaloneRenderableData(
-    input: BuildStandaloneRenderableDataInput,
-): StandaloneRenderableData | undefined {
+export function buildStandaloneRenderData(
+    input: BuildStandaloneRenderDataInput,
+): StandaloneRenderData | undefined {
     input.model.calculateBoundsCylinder();
 
     const sceneBuf = new SceneGeometryBuffer(

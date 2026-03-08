@@ -10,7 +10,7 @@ import { isModelData } from "../rs/model/ModelData";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { buildStandaloneRenderableData, type StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
+import { buildStandaloneRenderData, type StandaloneRenderData } from "../runtime/build/StandaloneRenderDataBuilder";
 import {
     renderObjIconSprite,
     type ObjIconSprite,
@@ -39,7 +39,7 @@ export type EntityViewerNpcAnimationOption = Readonly<{
 
 export type EntityViewerResolvedData = Readonly<{
     label: string;
-    renderData?: StandaloneRenderableData;
+    renderData?: StandaloneRenderData;
     iconSprite?: ObjIconSprite;
     npcAnimationOptions?: readonly EntityViewerNpcAnimationOption[];
 }>;
@@ -136,7 +136,7 @@ function buildObjData(
     const renderData =
         request.objMode === "icon"
             ? undefined
-            : buildStandaloneRenderableData({
+            : buildStandaloneRenderData({
                   textureLoader: services.session.loaders.textureLoader,
                   model,
                   interactType: InteractType.OBJ,
@@ -310,7 +310,7 @@ function buildNpcData(
     const model = Model.copy(baseModel);
     applyStandalonePreviewBasis(model);
     model.calculateBoundsCylinder();
-    const renderData = buildStandaloneRenderableData({
+    const renderData = buildStandaloneRenderData({
         textureLoader: services.session.loaders.textureLoader,
         model,
         interactType: InteractType.NPC,
@@ -406,7 +406,7 @@ function buildLocData(
         : rawModel;
     applyStandalonePreviewBasis(model);
     model.calculateBoundsCylinder();
-    const renderData = buildStandaloneRenderableData({
+    const renderData = buildStandaloneRenderData({
         textureLoader: services.session.loaders.textureLoader,
         model,
         interactType: InteractType.LOC,
@@ -439,7 +439,7 @@ function buildModelData(
     );
     applyStandalonePreviewBasis(model);
     model.calculateBoundsCylinder();
-    const renderData = buildStandaloneRenderableData({
+    const renderData = buildStandaloneRenderData({
         textureLoader: services.session.loaders.textureLoader,
         model,
         interactType: InteractType.NONE,
