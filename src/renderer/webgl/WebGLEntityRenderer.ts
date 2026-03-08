@@ -4,10 +4,10 @@ import { App as PicoApp, PicoGL, Program, UniformBuffer } from "picogl";
 import { GameType } from "../../rs/cache/CacheInfo";
 import type { CacheSession } from "../../rs/loaders/CacheSession";
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
-import { Scene } from "../../rs/scene/Scene";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import type { StandaloneRenderableData } from "../../runtime/build/StandaloneRenderableDataBuilder";
 import { createWebGLDevice } from "./WebGLDevice";
+import { createSceneDrawCall } from "./WebGLDrawCallUtil";
 import { WebGLRenderable } from "./WebGLRenderable";
 import { WebGLTextureSystem } from "./WebGLTextureSystem";
 import { createEntityProgram } from "./shaders/Shaders";
@@ -20,10 +20,6 @@ export type EntityViewerDebugMode = "normal" | "flat" | "bypass" | "color";
 export type SetEntityRenderDataOptions = Readonly<{
     resetCamera?: boolean;
 }>;
-
-function createEmptyTileRenderFlags(): Uint8Array[][] {
-    return Array.from({ length: Scene.MAX_LEVELS }, () => [new Uint8Array(1)]);
-}
 
 export class WebGLEntityRenderer implements Renderer {
     stats = new FrameStats();
@@ -41,6 +37,8 @@ export class WebGLEntityRenderer implements Renderer {
     private readonly debugTextureModeUni = new Float32Array(1);
     private readonly skyColor = new Float32Array([0.42, 0.42, 0.46, 1]);
     private readonly drawRangeScratch: DrawRange = [0, 0, 1];
+    private readonly emptyUsedTextureIds = new Int32Array(0);
+    private readonly visibleUsedTextureIds: Int32Array[] = [this.emptyUsedTextureIds];
     private readonly projectionMatrix = mat4.create();
     private readonly viewMatrix = mat4.create();
     private readonly viewProjMatrix = mat4.create();
@@ -170,11 +168,8 @@ export class WebGLEntityRenderer implements Renderer {
             .set(11, this.debugTextureModeUni)
             .update();
 
-        this.textures.updateVisibleResidency(
-            [this.renderData?.usedTextureIds ?? new Int32Array(0)],
-            this.stats.frameCount,
-            false,
-        );
+        this.visibleUsedTextureIds[0] = this.renderData?.usedTextureIds ?? this.emptyUsedTextureIds;
+        this.textures.updateVisibleResidency(this.visibleUsedTextureIds, this.stats.frameCount, false);
 
         this.app.defaultDrawFramebuffer();
         this.app.disable(PicoGL.CULL_FACE);
@@ -266,38 +261,23 @@ export class WebGLEntityRenderer implements Renderer {
             return;
         }
 
-        const renderable = new WebGLRenderable(0, 0, createEmptyTileRenderFlags(), 0, 0);
+        const renderable = WebGLRenderable.createStandalone();
         renderable.createBuffers(this.app, this.renderData);
         renderable.createModelInfoTextures(this.app, this.renderData);
         const createDrawCall = (
             program: Program,
             modelInfoTexture: unknown,
             drawRangesPacked: Int32Array,
-        ) => {
-            const drawRangeCount = (drawRangesPacked.length / 3) | 0;
-            const drawRangeArgs = new Array<[number, number, number]>(drawRangeCount);
-            for (let i = 0; i < drawRangeCount; i++) {
-                const off = i * 3;
-                drawRangeArgs[i] = [
-                    drawRangesPacked[off + 0] | 0,
-                    drawRangesPacked[off + 1] | 0,
-                    drawRangesPacked[off + 2] | 0,
-                ];
-            }
-            const drawCall = this.app
-                .createDrawCall(program, renderable.vertexArray)
-                .uniformBlock("SceneUniforms", this.sceneUniformBuffer!)
-                .uniform("u_timeLoaded", 0)
-                .uniform("u_mapPos", this.mapPosUni)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_textureSlotLut", textureSlotLut)
-                .drawRanges(...drawRangeArgs);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture as never);
-            }
-            return { drawCall, drawRangesPacked };
-        };
+        ) =>
+            this.createStandaloneDrawCall(
+                renderable,
+                program,
+                modelInfoTexture,
+                drawRangesPacked,
+                textureArray,
+                textureMaterials,
+                textureSlotLut,
+            );
         renderable.createDrawCalls(
             this.renderData,
             createDrawCall,
@@ -306,6 +286,30 @@ export class WebGLEntityRenderer implements Renderer {
         );
         renderable.usedTextureIds = this.renderData.usedTextureIds;
         this.renderable = renderable;
+    }
+
+    private createStandaloneDrawCall(
+        renderable: WebGLRenderable,
+        program: Program,
+        modelInfoTexture: unknown,
+        drawRangesPacked: Int32Array,
+        textureArray: unknown,
+        textureMaterials: unknown,
+        textureSlotLut: unknown,
+    ) {
+        const drawCall = createSceneDrawCall(this.app, {
+            program,
+            vertexArray: renderable.vertexArray,
+            sceneUniformBuffer: this.sceneUniformBuffer!,
+            timeLoaded: 0,
+            mapPos: this.mapPosUni,
+            textureArray: textureArray as never,
+            textureMaterials: textureMaterials as never,
+            textureSlotLut: textureSlotLut as never,
+            drawRangesPacked,
+            modelInfoTexture: modelInfoTexture as never,
+        });
+        return { drawCall, drawRangesPacked };
     }
 
     private drawRenderable(isAlpha: boolean): void {

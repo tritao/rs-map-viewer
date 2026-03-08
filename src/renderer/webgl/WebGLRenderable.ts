@@ -17,6 +17,10 @@ import { Scene } from "../../rs/scene/Scene";
 
 const FRAME_RENDER_DELAY = 3;
 
+function createStandaloneTileRenderFlags(): Uint8Array[][] {
+    return Array.from({ length: Scene.MAX_LEVELS }, () => [new Uint8Array(1)]);
+}
+
 function createIntegerVertexAttributeOptions(
     type: number,
     size: number,
@@ -119,6 +123,10 @@ export class WebGLRenderable {
         readonly timeLoaded: number,
         readonly frameLoaded: number,
     ) {}
+
+    static createStandalone(): WebGLRenderable {
+        return new WebGLRenderable(0, 0, createStandaloneTileRenderFlags(), 0, 0);
+    }
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
         return this.tileRenderFlags[level][tileX + this.borderSize][tileY + this.borderSize];

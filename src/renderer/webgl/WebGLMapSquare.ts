@@ -5,6 +5,7 @@ import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload"
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
+import { createSceneDrawCall } from "./WebGLDrawCallUtil";
 import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
 
 export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
@@ -55,39 +56,24 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             useNpcGeometry?: boolean,
             useObjGeometry?: boolean,
         ): DrawCallRange => {
-            const drawRangeCount = (drawRangesPacked.length / 3) | 0;
-            const drawRangeArgs = new Array<[number, number, number]>(drawRangeCount);
-            for (let i = 0; i < drawRangeCount; i++) {
-                const off = i * 3;
-                drawRangeArgs[i] = [
-                    drawRangesPacked[off + 0] | 0,
-                    drawRangesPacked[off + 1] | 0,
-                    drawRangesPacked[off + 2] | 0,
-                ];
-            }
-            const drawCall = app
-                .createDrawCall(
-                    program,
+            const drawCall = createSceneDrawCall(app, {
+                program,
+                vertexArray:
                     useObjGeometry && renderable.objVertexArray
                         ? renderable.objVertexArray
                         : useNpcGeometry && renderable.npcVertexArray
                         ? renderable.npcVertexArray
                         : renderable.vertexArray,
-                )
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", time)
-                .uniform("u_mapPos", mapPos)
-                // .uniform("u_drawIdOffset", drawIdOffset)
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_textureSlotLut", textureSlotLut)
-                .texture("u_heightMap", renderable.heightMapTexture)
-                .drawRanges(...drawRangeArgs);
-
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
-
+                sceneUniformBuffer,
+                timeLoaded: time,
+                mapPos,
+                textureArray,
+                textureMaterials,
+                textureSlotLut,
+                drawRangesPacked,
+                modelInfoTexture,
+                heightMapTexture: renderable.heightMapTexture,
+            });
             return {
                 drawCall,
                 drawRangesPacked,
@@ -168,32 +154,20 @@ export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderab
             _useNpcGeometry?: boolean,
             useObjGeometry?: boolean,
         ): DrawCallRange => {
-            const drawRangeCount = (drawRangesPacked.length / 3) | 0;
-            const drawRangeArgs = new Array<[number, number, number]>(drawRangeCount);
-            for (let i = 0; i < drawRangeCount; i++) {
-                const off = i * 3;
-                drawRangeArgs[i] = [
-                    drawRangesPacked[off + 0] | 0,
-                    drawRangesPacked[off + 1] | 0,
-                    drawRangesPacked[off + 2] | 0,
-                ];
-            }
-            const drawCall = app
-                .createDrawCall(
-                    program,
+            const drawCall = createSceneDrawCall(app, {
+                program,
+                vertexArray:
                     useObjGeometry && this.objVertexArray ? this.objVertexArray : this.vertexArray,
-                )
-                .uniformBlock("SceneUniforms", sceneUniformBuffer)
-                .uniform("u_timeLoaded", this.timeLoaded)
-                .uniform("u_mapPos", vec2.fromValues(this.mapX, this.mapY))
-                .texture("u_textures", textureArray)
-                .texture("u_textureMaterials", textureMaterials)
-                .texture("u_textureSlotLut", textureSlotLut)
-                .texture("u_heightMap", this.heightMapTexture)
-                .drawRanges(...drawRangeArgs);
-            if (modelInfoTexture) {
-                drawCall.texture("u_modelInfoTexture", modelInfoTexture);
-            }
+                sceneUniformBuffer,
+                timeLoaded: this.timeLoaded,
+                mapPos: vec2.fromValues(this.mapX, this.mapY),
+                textureArray,
+                textureMaterials,
+                textureSlotLut,
+                drawRangesPacked,
+                modelInfoTexture,
+                heightMapTexture: this.heightMapTexture,
+            });
             return { drawCall, drawRangesPacked };
         };
         this.createObjGeometryBuffers(app, objRenderData);
