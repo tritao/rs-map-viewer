@@ -8,7 +8,7 @@ import {
     type NpcBootstrapData,
     createNpcBootstrapData,
     createNpcBootstrapDataFromSpawns,
-} from "./NpcBootstrapData";
+} from "./NpcBootstrapEvents";
 import type { NpcSpawnEvent } from "./NpcEvents";
 
 type ResolveDeps = Readonly<{
