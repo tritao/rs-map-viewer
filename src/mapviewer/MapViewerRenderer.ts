@@ -323,10 +323,13 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async applyRuntimeMapObjRenderDataById(
         mapId: number,
         objRenderData: ObjRenderData | undefined,
-        action: "attach" | "replace" = "replace",
+        action: "attach" | "apply" = "apply",
     ): Promise<void> {
         try {
-            const applied = await this.renderWorkerPool.replaceMapObjRenderData(mapId, objRenderData);
+            const applied = await this.renderWorkerPool.applyRuntimeMapObjRenderData(
+                mapId,
+                objRenderData,
+            );
             if ((applied | 0) > 0) {
                 this.renderFrameCoordinator.invalidateLatestPacket();
             }

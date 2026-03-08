@@ -16,9 +16,7 @@ import {
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import { NpcGpuFrameBuilder } from "../renderer/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
@@ -31,7 +29,8 @@ import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
 import {
     type RenderFrameInputUpdate,
-    type RenderFrameStateVersions,
+    type RenderMapRuntimeRegistrationInput,
+    type WorkerInputStateVersion,
     type WorkerViewState,
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
@@ -97,15 +96,14 @@ export class WorkerFramePacketRuntime {
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapRuntimeTracker = new WorkerMapRuntimeTracker();
     private visibleMapIds: Int32Array = new Int32Array(0);
-    private inputMapIdsVersion: number = 0;
-    private inputViewStateVersion: number = 0;
+    private inputStateVersion: WorkerInputStateVersion = 0;
     private viewState: WorkerViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
         lodDistance: 0,
     };
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
-    private readonly pendingObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
+    private readonly pendingRuntimeObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
 
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
 
@@ -121,14 +119,13 @@ export class WorkerFramePacketRuntime {
         resetNpcStateStore();
         this.workerMapRuntimeTracker.reset();
         this.visibleMapIds = new Int32Array(0);
-        this.inputMapIdsVersion = 0;
-        this.inputViewStateVersion = 0;
+        this.inputStateVersion = 0;
         this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.hoveredMapIdsPacked = new Int32Array(0);
-        this.pendingObjRenderDataByMapId.clear();
+        this.pendingRuntimeObjRenderDataByMapId.clear();
     }
 
-    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): number {
+    applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): number {
         if (!packet) {
             return 0;
         }
@@ -139,47 +136,40 @@ export class WorkerFramePacketRuntime {
             if (!update) {
                 continue;
             }
-            this.pendingObjRenderDataByMapId.set(update.mapId | 0, update.objRenderData);
+            this.pendingRuntimeObjRenderDataByMapId.set(update.mapId | 0, update.objRenderData);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
     }
 
-    private consumePendingMapObjRenderPacket(): MapObjRenderPacket | undefined {
-        if ((this.pendingObjRenderDataByMapId.size | 0) <= 0) {
+    private consumePendingRuntimeMapObjRenderPacket(): MapObjRenderPacket | undefined {
+        if ((this.pendingRuntimeObjRenderDataByMapId.size | 0) <= 0) {
             return undefined;
         }
         const updates = new Array<{
             mapId: number;
             objRenderData?: ObjRenderData;
-        }>(this.pendingObjRenderDataByMapId.size | 0);
+        }>(this.pendingRuntimeObjRenderDataByMapId.size | 0);
         let write = 0;
-        for (const [mapId, objRenderData] of this.pendingObjRenderDataByMapId.entries()) {
+        for (const [mapId, objRenderData] of this.pendingRuntimeObjRenderDataByMapId.entries()) {
             updates[write++] = {
                 mapId: mapId | 0,
                 objRenderData,
             };
         }
-        this.pendingObjRenderDataByMapId.clear();
+        this.pendingRuntimeObjRenderDataByMapId.clear();
         return buildMapObjRenderPacket(updates);
     }
 
-    private getRenderFrameStateVersions(): RenderFrameStateVersions {
-        return {
-            inputMapIdsVersion: this.inputMapIdsVersion | 0,
-            inputViewStateVersion: this.inputViewStateVersion | 0,
-        };
+    private getInputStateVersion(): WorkerInputStateVersion {
+        return this.inputStateVersion | 0;
     }
 
-    hasCompatibleStateVersions(inputMapIdsVersion: number, inputViewStateVersion: number): boolean {
-        const versions = this.getRenderFrameStateVersions();
-        return (
-            (versions.inputMapIdsVersion | 0) === (inputMapIdsVersion | 0) &&
-            (versions.inputViewStateVersion | 0) === (inputViewStateVersion | 0)
-        );
+    hasCompatibleInputStateVersion(inputStateVersion: number): boolean {
+        return (this.getInputStateVersion() | 0) === (inputStateVersion | 0);
     }
 
-    applyRenderFrameInputUpdate(update: RenderFrameInputUpdate): RenderFrameStateVersions {
+    applyRenderFrameInputUpdate(update: RenderFrameInputUpdate): WorkerInputStateVersion {
         if (update.mapIds !== undefined) {
             this.setVisibleMapIds(update.mapIds);
         }
@@ -189,17 +179,17 @@ export class WorkerFramePacketRuntime {
         if (update.hoveredMapIdsPacked !== undefined) {
             this.setHoveredMapIds(update.hoveredMapIdsPacked);
         }
-        return this.getRenderFrameStateVersions();
+        return this.getInputStateVersion();
     }
 
     private setVisibleMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
             this.visibleMapIds = new Int32Array(0);
-            this.inputMapIdsVersion = (this.inputMapIdsVersion + 1) | 0;
+            this.inputStateVersion = (this.inputStateVersion + 1) | 0;
             return;
         }
         this.visibleMapIds = Int32Array.from(mapIds);
-        this.inputMapIdsVersion = (this.inputMapIdsVersion + 1) | 0;
+        this.inputStateVersion = (this.inputStateVersion + 1) | 0;
     }
 
     private setViewState(viewState: WorkerViewState): void {
@@ -213,7 +203,7 @@ export class WorkerFramePacketRuntime {
             (this.viewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
             (this.viewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
         ) {
-            this.inputViewStateVersion = (this.inputViewStateVersion + 1) | 0;
+            this.inputStateVersion = (this.inputStateVersion + 1) | 0;
             this.viewState = nextViewState;
         }
     }
@@ -226,14 +216,9 @@ export class WorkerFramePacketRuntime {
         this.hoveredMapIdsPacked = Int32Array.from(hoveredMapIdsPacked);
     }
 
-    async registerMapRuntime(
-        mapId: number,
-        borderSize: number,
-        tileRenderFlagsLevel1: Uint8Array[],
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
+    async registerMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
+        const mapId = input.mapId | 0;
+        const mapSimToken = input.mapSimToken;
         if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
@@ -242,11 +227,11 @@ export class WorkerFramePacketRuntime {
         this.npcSimStateStore.registerMap(
             {
                 mapId,
-                borderSize,
-                tileRenderFlagsLevel1,
+                borderSize: input.borderSize | 0,
+                tileRenderFlagsLevel1: input.tileRenderFlagsLevel1,
                 collisionDatas: [],
-                locsAnimated,
-                npcTypeAnimationTable,
+                locsAnimated: input.locsAnimated,
+                npcTypeAnimationTable: input.npcTypeAnimationTable,
             },
             deps,
         );
@@ -456,12 +441,11 @@ export class WorkerFramePacketRuntime {
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
         return buildRenderFramePacketFromMapEntries({
             frameCount: frameCount | 0,
-            inputMapIdsVersion: this.inputMapIdsVersion | 0,
-            inputViewStateVersion: this.inputViewStateVersion | 0,
+            inputStateVersion: this.inputStateVersion | 0,
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,
-            runtimeRenderUpdates: this.consumePendingMapObjRenderPacket(),
+            runtimeRenderUpdates: this.consumePendingRuntimeMapObjRenderPacket(),
         });
     }
 }

@@ -54,8 +54,7 @@ export type ParsedRenderFrameNpcRangesByMapId = ReadonlyMap<number, ParsedRender
 
 export type ParsedRenderFramePacket = Readonly<{
     frameCount: number;
-    inputMapIdsVersion: number;
-    inputViewStateVersion: number;
+    inputStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     npcRangesByMapId: ParsedRenderFrameNpcRangesByMapId;
@@ -66,8 +65,7 @@ export type ParsedRenderFramePacket = Readonly<{
 
 export type RenderFramePacket = Readonly<{
     frameCount: number;
-    inputMapIdsVersion: number;
-    inputViewStateVersion: number;
+    inputStateVersion: number;
     npcRingWriteIndex: number;
 
     // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,typeId).
@@ -110,8 +108,7 @@ export type TickPatchStreamSource = (
 export type TickPatchStreamsByMap = (Int32Array | undefined)[][];
 export type BuildRenderFramePacketInput = Readonly<{
     frameCount: number;
-    inputMapIdsVersion: number;
-    inputViewStateVersion: number;
+    inputStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     npcRangesByMapIdPacked: Int32Array;
@@ -197,16 +194,10 @@ function validateRenderFramePacketStrict(packet: RenderFramePacket): void {
     if (frameCount < 0) {
         throw new Error(`[map-render][frame-packet] frameCount invalid: ${frameCount}`);
     }
-    const inputMapIdsVersion = packet.inputMapIdsVersion | 0;
-    if (inputMapIdsVersion < 0) {
+    const inputStateVersion = packet.inputStateVersion | 0;
+    if (inputStateVersion < 0) {
         throw new Error(
-            `[map-render][frame-packet] inputMapIdsVersion invalid: ${inputMapIdsVersion}`,
-        );
-    }
-    const inputViewStateVersion = packet.inputViewStateVersion | 0;
-    if (inputViewStateVersion < 0) {
-        throw new Error(
-            `[map-render][frame-packet] inputViewStateVersion invalid: ${inputViewStateVersion}`,
+            `[map-render][frame-packet] inputStateVersion invalid: ${inputStateVersion}`,
         );
     }
 
@@ -330,8 +321,7 @@ export function buildRenderFramePacket(
 ): RenderFramePacket {
     const packet: RenderFramePacket = {
         frameCount: input.frameCount | 0,
-        inputMapIdsVersion: input.inputMapIdsVersion | 0,
-        inputViewStateVersion: input.inputViewStateVersion | 0,
+        inputStateVersion: input.inputStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
         npcRangesByMapIdPacked: input.npcRangesByMapIdPacked,
@@ -452,8 +442,7 @@ export function parseRenderFramePacket(
 
     return {
         frameCount: packet.frameCount | 0,
-        inputMapIdsVersion: packet.inputMapIdsVersion | 0,
-        inputViewStateVersion: packet.inputViewStateVersion | 0,
+        inputStateVersion: packet.inputStateVersion | 0,
         npcRingWriteIndex,
         npcGpuFrameData: packet.npcGpuFrameData,
         npcRangesByMapId: parseRenderFrameNpcRangesByMapId(packet.npcRangesByMapIdPacked),

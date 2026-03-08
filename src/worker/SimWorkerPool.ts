@@ -3,10 +3,14 @@ import { ModuleThread, Thread, spawn } from "threads";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/packets/NpcLifecyclePacket";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap, WorldInputUpdate } from "./WorkerContext";
+import type {
+    MapRuntimeBootstrapInput,
+    SimMapRuntimeRegistrationInput,
+    WorkerRuntimeOptions,
+    WorkerSpawnBootstrap,
+    WorldInputUpdate,
+} from "./WorkerContext";
 import type { SimWorker } from "./SimWorker";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 
@@ -70,31 +74,12 @@ export class SimWorkerPool {
         await this.initPromise;
     }
 
-    registerMapRuntime(
-        mapId: number,
-        borderSize: number,
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
-        return this.withWorker((w) =>
-            w.registerMapRuntime(
-                mapId,
-                borderSize,
-                locsAnimated,
-                npcTypeAnimationTable,
-                mapSimToken,
-            ),
-        );
+    registerMapRuntime(input: SimMapRuntimeRegistrationInput): Promise<void> {
+        return this.withWorker((w) => w.registerMapRuntime(input));
     }
 
-    bootstrapMapRuntime(
-        mapId: number,
-        maxLevel: number,
-        npcOrderKeys: Int32Array,
-        mapSimToken?: number,
-    ): Promise<void> {
-        return this.withWorker((w) => w.bootstrapMapRuntime(mapId, maxLevel, npcOrderKeys, mapSimToken));
+    bootstrapMapRuntime(input: MapRuntimeBootstrapInput): Promise<void> {
+        return this.withWorker((w) => w.bootstrapMapRuntime(input));
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {

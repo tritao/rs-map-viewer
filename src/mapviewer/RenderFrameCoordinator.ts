@@ -1,6 +1,6 @@
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerContext";
-import type { RenderFrameStateVersions } from "../worker/WorkerContext";
+import type { WorkerInputStateVersion } from "../worker/WorkerContext";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
 
@@ -38,7 +38,7 @@ export class RenderFrameCoordinator {
     private packetEpoch: number = 0;
     private needsPacketRefresh: boolean = false;
     private lastFrameMapIds: Int32Array = EMPTY_INT32;
-    private expectedRenderFrameStateVersions: RenderFrameStateVersions | undefined;
+    private expectedInputStateVersion: WorkerInputStateVersion | undefined;
     private lastFrameHoveredMapIds: Int32Array = EMPTY_INT32;
     private lastFrameViewState:
         | Readonly<{ cameraMapX: number; cameraMapY: number; lodDistance: number }>
@@ -100,7 +100,7 @@ export class RenderFrameCoordinator {
         this.latestFramePacket = undefined;
         this.needsPacketRefresh = false;
         this.lastFrameMapIds = EMPTY_INT32;
-        this.expectedRenderFrameStateVersions = undefined;
+        this.expectedInputStateVersion = undefined;
         this.lastFrameHoveredMapIds = EMPTY_INT32;
         this.lastFrameViewState = undefined;
         void Promise.all([
@@ -218,7 +218,7 @@ export class RenderFrameCoordinator {
             updatePromises.push(
                 this.deps.renderWorkerPool.syncRenderFrameState(renderFrameUpdate).then((versions) => {
                     if ((this.packetEpoch | 0) === (epoch | 0)) {
-                        this.expectedRenderFrameStateVersions = versions;
+                        this.expectedInputStateVersion = versions;
                     }
                 }),
             );
@@ -267,13 +267,11 @@ export class RenderFrameCoordinator {
         return startFrameTick
             .then((nextPacket) => {
                 if ((this.packetEpoch | 0) === (input.epoch | 0)) {
-                    const expectedVersions = this.expectedRenderFrameStateVersions;
+                    const expectedInputStateVersion = this.expectedInputStateVersion;
                     if (
                         nextPacket &&
-                        expectedVersions &&
-                        ((nextPacket.inputMapIdsVersion | 0) !== (expectedVersions.inputMapIdsVersion | 0) ||
-                            (nextPacket.inputViewStateVersion | 0) !==
-                                (expectedVersions.inputViewStateVersion | 0))
+                        expectedInputStateVersion !== undefined &&
+                        (nextPacket.inputStateVersion | 0) !== (expectedInputStateVersion | 0)
                     ) {
                         this.needsPacketRefresh = true;
                         return this.latestFramePacket;

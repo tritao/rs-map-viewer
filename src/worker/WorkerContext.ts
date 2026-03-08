@@ -9,6 +9,8 @@ import type { SceneBuilder } from "../rs/scene/SceneBuilder";
 import type { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import type { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
+import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 
 export type WorkerState = {
     session: CacheSession;
@@ -49,12 +51,29 @@ export type WorldInputUpdate = Readonly<{
 
 export type RenderFrameInputUpdate = WorldInputUpdate &
     Readonly<{
-    hoveredMapIdsPacked?: Int32Array;
+        hoveredMapIdsPacked?: Int32Array;
     }>;
 
-export type RenderFrameStateVersions = Readonly<{
-    inputMapIdsVersion: number;
-    inputViewStateVersion: number;
+export type WorkerInputStateVersion = number;
+
+export type SimMapRuntimeRegistrationInput = Readonly<{
+    mapId: number;
+    borderSize: number;
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
+    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
+    mapSimToken?: number;
+}>;
+
+export type RenderMapRuntimeRegistrationInput = SimMapRuntimeRegistrationInput &
+    Readonly<{
+        tileRenderFlagsLevel1: Uint8Array[];
+    }>;
+
+export type MapRuntimeBootstrapInput = Readonly<{
+    mapId: number;
+    maxLevel: number;
+    npcOrderKeys: Int32Array;
+    mapSimToken?: number;
 }>;
 
 export class WorkerMapRuntimeTracker {

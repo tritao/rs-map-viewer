@@ -6,17 +6,16 @@ import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import {
     decodeStaticMapWirePacket,
     type DecodedStaticMapPacket,
 } from "../runtime/packets/StaticMapPacket";
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type {
     RenderFrameInputUpdate,
-    RenderFrameStateVersions,
+    RenderMapRuntimeRegistrationInput,
+    WorkerInputStateVersion,
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
 } from "./WorkerContext";
@@ -151,31 +150,15 @@ export class RenderDataWorkerPool {
         return task(worker);
     }
 
-    registerMapRuntime(
-        mapId: number,
-        borderSize: number,
-        tileRenderFlagsLevel1: Uint8Array[],
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
-        return this.withRenderFrameWorker((w) =>
-            w.registerMapRuntime(
-                mapId,
-                borderSize,
-                tileRenderFlagsLevel1,
-                locsAnimated,
-                npcTypeAnimationTable,
-                mapSimToken,
-            ),
-        );
+    registerMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
+        return this.withRenderFrameWorker((w) => w.registerMapRuntime(input));
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
         return this.withRenderFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
-    syncRenderFrameState(update: RenderFrameInputUpdate): Promise<RenderFrameStateVersions> {
+    syncRenderFrameState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion> {
         return this.withRenderFrameWorker((w) => w.syncRenderFrameState(update));
     }
 
@@ -183,12 +166,15 @@ export class RenderDataWorkerPool {
         return this.withRenderFrameWorker((w) => w.applyNpcWorldStateDeltaPacket(deltaPacket));
     }
 
-    private applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
-        return this.withRenderFrameWorker((w) => w.applyMapObjRenderPacket(packet));
+    private applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
+        return this.withRenderFrameWorker((w) => w.applyRuntimeMapObjRenderPacket(packet));
     }
 
-    replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): Promise<number> {
-        return this.applyMapObjRenderPacket(
+    applyRuntimeMapObjRenderData(
+        mapId: number,
+        objRenderData: ObjRenderData | undefined,
+    ): Promise<number> {
+        return this.applyRuntimeMapObjRenderPacket(
             buildMapObjRenderPacket([
                 {
                     mapId: mapId | 0,

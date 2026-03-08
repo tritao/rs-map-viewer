@@ -6,13 +6,12 @@ import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { renderFramePacketTransferables } from "../renderer/RenderFramePacket";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import type {
     RenderFrameInputUpdate,
-    RenderFrameStateVersions,
+    RenderMapRuntimeRegistrationInput,
+    WorkerInputStateVersion,
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
 } from "./WorkerContext";
@@ -83,29 +82,15 @@ const worker = {
         const { buildService } = await getWorkerServices();
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
     },
-    async registerMapRuntime(
-        mapId: number,
-        borderSize: number,
-        tileRenderFlagsLevel1: Uint8Array[],
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
+    async registerMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        await frameRuntime.registerMapRuntime(
-            mapId,
-            borderSize,
-            tileRenderFlagsLevel1,
-            locsAnimated,
-            npcTypeAnimationTable,
-            mapSimToken,
-        );
+        await frameRuntime.registerMapRuntime(input);
     },
     async unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
-    async syncRenderFrameState(update: RenderFrameInputUpdate): Promise<RenderFrameStateVersions> {
+    async syncRenderFrameState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion> {
         const { frameRuntime } = await getWorkerServices();
         return frameRuntime.applyRenderFrameInputUpdate({
             mapIds:
@@ -128,12 +113,7 @@ const worker = {
     },
     async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
-        if (
-            !frameRuntime.hasCompatibleStateVersions(
-                deltaPacket.inputMapIdsVersion | 0,
-                deltaPacket.inputViewStateVersion | 0,
-            )
-        ) {
+        if (!frameRuntime.hasCompatibleInputStateVersion(deltaPacket.inputStateVersion | 0)) {
             return 0;
         }
         const deltaFrameCount = deltaPacket.frameCount | 0;
@@ -149,9 +129,9 @@ const worker = {
         }
         return applied | 0;
     },
-    async applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
+    async applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
-        return frameRuntime.applyMapObjRenderPacket(packet);
+        return frameRuntime.applyRuntimeMapObjRenderPacket(packet);
     },
     async buildRenderFramePacket(
         frameCount: number,

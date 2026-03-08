@@ -3,10 +3,14 @@ import { Transfer, expose } from "threads/worker";
 
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
 import { npcStateDeltaPacketTransferables } from "../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap, WorldInputUpdate } from "./WorkerContext";
+import type {
+    MapRuntimeBootstrapInput,
+    SimMapRuntimeRegistrationInput,
+    WorkerRuntimeOptions,
+    WorkerSpawnBootstrap,
+    WorldInputUpdate,
+} from "./WorkerContext";
 
 type SimWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;
@@ -51,30 +55,13 @@ const worker = {
         tickRuntime.resetForCache();
         await buildService.initCache(cache, spawnBootstrap, options);
     },
-    async registerMapRuntime(
-        mapId: number,
-        borderSize: number,
-        locsAnimated: ReadonlyArray<LocAnimatedData>,
-        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
-        mapSimToken?: number,
-    ): Promise<void> {
+    async registerMapRuntime(input: SimMapRuntimeRegistrationInput): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
-        await tickRuntime.registerMapRuntime(
-            mapId,
-            borderSize,
-            locsAnimated,
-            npcTypeAnimationTable,
-            mapSimToken,
-        );
+        await tickRuntime.registerMapRuntime(input);
     },
-    async bootstrapMapRuntime(
-        mapId: number,
-        maxLevel: number,
-        npcOrderKeys: Int32Array,
-        mapSimToken?: number,
-    ): Promise<void> {
+    async bootstrapMapRuntime(input: MapRuntimeBootstrapInput): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
-        await tickRuntime.bootstrapMapRuntime(mapId, maxLevel, npcOrderKeys, mapSimToken);
+        await tickRuntime.bootstrapMapRuntime(input);
     },
     async unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
