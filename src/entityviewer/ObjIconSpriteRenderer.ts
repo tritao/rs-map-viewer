@@ -45,10 +45,6 @@ type ItemTransform = {
 const BASE_ICON_WIDTH = 36;
 const BASE_ICON_HEIGHT = 32;
 const LEGACY_ICON_SIZE = 128;
-const LEGACY_ICON_PADDING = 8;
-const VIEWER_ICON_SCALE = 8;
-const VIEWER_ICON_WIDTH = BASE_ICON_WIDTH * VIEWER_ICON_SCALE;
-const VIEWER_ICON_HEIGHT = BASE_ICON_HEIGHT * VIEWER_ICON_SCALE;
 const BASE_ITEM_VIEW_CENTER_X = 16;
 const BASE_ITEM_VIEW_CENTER_Y = 16;
 const BASE_ITEM_VIEW_ZOOM = 512;
@@ -62,9 +58,11 @@ export function renderObjIconSprite(
     offsetX2d: number,
     offsetY2d: number,
     mode: ObjIconRenderMode = "authentic",
+    outline: boolean = true,
+    shadow: boolean = true,
 ): ObjIconSprite {
-    const width = mode === "viewer" ? VIEWER_ICON_WIDTH : BASE_ICON_WIDTH;
-    const height = mode === "viewer" ? VIEWER_ICON_HEIGHT : BASE_ICON_HEIGHT;
+    const width = mode === "viewer" ? LEGACY_ICON_SIZE : BASE_ICON_WIDTH;
+    const height = mode === "viewer" ? LEGACY_ICON_SIZE : BASE_ICON_HEIGHT;
     const sprite = SpritePixels.fromDimensions(width, height);
     const rasterizer2d = new Rasterizer2D();
     const rasterizer3d = new Rasterizer3D();
@@ -102,8 +100,12 @@ export function renderObjIconSprite(
     }
 
     if (mode === "viewer") {
-        sprite.outline(0x010101);
-        sprite.shadow(0x202020);
+        if (outline) {
+            sprite.outline(0x010101);
+        }
+        if (shadow) {
+            sprite.shadow(0x202020);
+        }
     }
 
     let nonZeroPixels = 0;
@@ -138,80 +140,6 @@ export function renderObjIconSprite(
         pixels: sprite.pixels,
     };
 }
-
-export function renderLegacyObjIconSprite(
-    model: Model,
-    zoom2d: number,
-    xan2d: number,
-    yan2d: number,
-    zan2d: number,
-    offsetX2d: number,
-    offsetY2d: number,
-    width: number = LEGACY_ICON_SIZE,
-    height: number = LEGACY_ICON_SIZE,
-): ObjIconSprite {
-    const sprite = SpritePixels.fromDimensions(width, height);
-    const rasterizer2d = new Rasterizer2D();
-    const rasterizer3d = new Rasterizer3D();
-    sprite.setRaster(rasterizer2d);
-    rasterizer3d.setClip(rasterizer2d);
-    rasterizer3d.rasterGouraudLowRes = false;
-
-    model.calculateBounds();
-    const transform = createItemIconTransform(
-        model.minY,
-        zoom2d,
-        xan2d & 2047,
-        yan2d & 2047,
-        zan2d & 2047,
-        offsetX2d,
-        offsetY2d,
-    );
-    const safeWidth = Math.max(1, width - LEGACY_ICON_PADDING * 2);
-    const safeHeight = Math.max(1, height - LEGACY_ICON_PADDING * 2);
-    const transformedBounds = collectTransformedBounds(model, transform);
-    const extentX = Math.max(1, transformedBounds.maxX - transformedBounds.minX);
-    const extentY = Math.max(1, transformedBounds.maxY - transformedBounds.minY);
-    const zoomScale = Math.max(0.25, zoom2d / 2000);
-    let scale = Math.max(0.01, Math.min(safeWidth / extentX, safeHeight / extentY) * zoomScale);
-
-    const screenX = new Int32Array(model.verticesCount);
-    const screenY = new Int32Array(model.verticesCount);
-    const depthZ = new Int32Array(model.verticesCount);
-    let projected = projectLegacyModel(model, transform, scale, screenX, screenY, depthZ);
-
-    const projectedWidth = Math.max(1, projected.maxX - projected.minX);
-    const projectedHeight = Math.max(1, projected.maxY - projected.minY);
-    const fitScale = Math.min(safeWidth / projectedWidth, safeHeight / projectedHeight, 1);
-    if (fitScale < 1) {
-        scale = Math.max(0.01, scale * fitScale);
-        projected = projectLegacyModel(model, transform, scale, screenX, screenY, depthZ);
-    }
-
-    const offsetX =
-        Math.round((width - (projected.maxX - projected.minX)) / 2 - projected.minX);
-    const offsetY =
-        Math.round((height - (projected.maxY - projected.minY)) / 2 - projected.minY);
-    for (let i = 0; i < model.verticesCount; i++) {
-        screenX[i] += offsetX;
-        screenY[i] += offsetY;
-    }
-
-    const faces = collectSortedFaces(model, depthZ);
-    for (let i = 0; i < faces.length; i++) {
-        drawFace(rasterizer3d, model, screenX, screenY, faces[i].index);
-    }
-
-    sprite.outline(0x010101);
-    sprite.shadow(0x202020);
-
-    return {
-        width,
-        height,
-        pixels: sprite.pixels,
-    };
-}
-
 function createItemIconTransform(
     modelMinY: number,
     zoom2d: number,
@@ -295,86 +223,6 @@ function projectModel(
         maxScreenY,
         minProjectedZ,
         maxProjectedZ,
-    };
-}
-
-type LegacyProjectedBounds = Readonly<{
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-}>;
-
-function projectLegacyModel(
-    model: Model,
-    transform: ItemTransform,
-    scale: number,
-    screenX: Int32Array,
-    screenY: Int32Array,
-    depthZ: Int32Array,
-): LegacyProjectedBounds {
-    let minX = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    for (let i = 0; i < model.verticesCount; i++) {
-        const x = model.verticesX[i] | 0;
-        const y = model.verticesY[i] | 0;
-        const z = model.verticesZ[i] | 0;
-        const projectedX =
-            transform.tx + transform.e11 * x + transform.e12 * y + transform.e13 * z;
-        const projectedY =
-            transform.ty + transform.e21 * x + transform.e22 * y + transform.e23 * z;
-        const projectedZ =
-            transform.tz + transform.e31 * x + transform.e32 * y + transform.e33 * z;
-        const sx = Math.round(projectedX * scale);
-        const sy = Math.round(projectedY * scale);
-        screenX[i] = sx;
-        screenY[i] = sy;
-        depthZ[i] = projectedZ | 0;
-        if (sx < minX) minX = sx;
-        if (sx > maxX) maxX = sx;
-        if (sy < minY) minY = sy;
-        if (sy > maxY) maxY = sy;
-    }
-    return {
-        minX,
-        maxX,
-        minY,
-        maxY,
-    };
-}
-
-type TransformedBounds = Readonly<{
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-}>;
-
-function collectTransformedBounds(model: Model, transform: ItemTransform): TransformedBounds {
-    let minX = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    for (let i = 0; i < model.verticesCount; i++) {
-        const x = model.verticesX[i] | 0;
-        const y = model.verticesY[i] | 0;
-        const z = model.verticesZ[i] | 0;
-        const projectedX =
-            transform.tx + transform.e11 * x + transform.e12 * y + transform.e13 * z;
-        const projectedY =
-            transform.ty + transform.e21 * x + transform.e22 * y + transform.e23 * z;
-        if (projectedX < minX) minX = projectedX;
-        if (projectedX > maxX) maxX = projectedX;
-        if (projectedY < minY) minY = projectedY;
-        if (projectedY > maxY) maxY = projectedY;
-    }
-    return {
-        minX,
-        maxX,
-        minY,
-        maxY,
     };
 }
 

@@ -1,4 +1,4 @@
-import { ChangeEvent, memo, useEffect, useRef } from "react";
+import { ChangeEvent, memo, type PointerEventHandler, useEffect, useRef, type WheelEventHandler } from "react";
 
 import { RendererCanvas } from "../components/renderer/RendererCanvas";
 import type { CacheInfo } from "../rs/cache/CacheInfo";
@@ -82,6 +82,10 @@ function SpriteCanvas({ sprite }: Readonly<{ sprite: ObjIconSprite }>): JSX.Elem
     );
 }
 
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+}
+
 function parseNonNegativeNumber(value: string, fallback: number): number {
     const parsed = Number.parseFloat(value);
     if (!Number.isFinite(parsed) || parsed < 0) {
@@ -105,6 +109,17 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
     onCacheChange,
     onCameraChange,
 }: EntityViewerContainerProps): JSX.Element {
+    const dragStateRef = useRef<
+        | {
+              pointerId: number;
+              startX: number;
+              startY: number;
+              startYaw: number;
+              startPitch: number;
+          }
+        | undefined
+    >(undefined);
+
     const updateRequest = (patch: Partial<EntityViewerRequest>) =>
         onRequestChange({
             ...request,
@@ -131,6 +146,46 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
         updateRequest({ objMode: event.target.value as EntityViewerObjMode });
 
     const showWorldCameraControls = !iconSprite;
+
+    const onWorldPointerDown: PointerEventHandler<HTMLDivElement> = (event) => {
+        dragStateRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            startYaw: cameraYaw,
+            startPitch: cameraPitch,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const onWorldPointerMove: PointerEventHandler<HTMLDivElement> = (event) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.pointerId !== event.pointerId) {
+            return;
+        }
+        const deltaX = event.clientX - dragState.startX;
+        const deltaY = event.clientY - dragState.startY;
+        const nextYaw = (dragState.startYaw + Math.round(deltaX * 4)) & 2047;
+        const nextPitch = clamp(dragState.startPitch + Math.round(deltaY * 2), -512, 512);
+        onCameraChange("yaw", nextYaw);
+        onCameraChange("pitch", nextPitch);
+    };
+
+    const onWorldPointerUp: PointerEventHandler<HTMLDivElement> = (event) => {
+        if (dragStateRef.current?.pointerId === event.pointerId) {
+            dragStateRef.current = undefined;
+        }
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    };
+
+    const onWorldWheel: WheelEventHandler<HTMLDivElement> = (event) => {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? 1 : -1;
+        const nextDistance = clamp(cameraDistance + delta, 2, 64);
+        onCameraChange("distance", nextDistance);
+    };
 
     return (
         <div className="App max-height" style={{ display: "flex", flexDirection: "column" }}>
@@ -185,23 +240,48 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                             Mode{" "}
                             <select value={request.objMode} onChange={onObjModeChange}>
                                 <option value="icon">Icon</option>
-                                <option value="icon-viewer">Icon Viewer</option>
                                 <option value="world">World</option>
                             </select>
                         </label>
                         {request.objMode !== "world" ? (
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={request.legacyIconMath}
-                                    onChange={(event) =>
-                                        updateRequest({
-                                            legacyIconMath: event.target.checked,
-                                        })
-                                    }
-                                />{" "}
-                                Legacy Math
-                            </label>
+                            <>
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        checked={request.icon36x32}
+                                        onChange={(event) =>
+                                            updateRequest({
+                                                icon36x32: event.target.checked,
+                                            })
+                                        }
+                                    />{" "}
+                                    36x32
+                                </label>
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        checked={request.iconOutline}
+                                        onChange={(event) =>
+                                            updateRequest({
+                                                iconOutline: event.target.checked,
+                                            })
+                                        }
+                                    />{" "}
+                                    Outline
+                                </label>
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        checked={request.iconShadow}
+                                        onChange={(event) =>
+                                            updateRequest({
+                                                iconShadow: event.target.checked,
+                                            })
+                                        }
+                                    />{" "}
+                                    Shadow
+                                </label>
+                            </>
                         ) : undefined}
                     </>
                 ) : undefined}
@@ -274,7 +354,20 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                 {errorMessage ? <span style={{ color: "#ff9c9c" }}>{errorMessage}</span> : undefined}
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-                {iconSprite ? <SpriteCanvas sprite={iconSprite} /> : <RendererCanvas renderer={renderer} />}
+                {iconSprite ? (
+                    <SpriteCanvas sprite={iconSprite} />
+                ) : (
+                    <div
+                        style={{ width: "100%", height: "100%", cursor: "grab" }}
+                        onPointerDown={onWorldPointerDown}
+                        onPointerMove={onWorldPointerMove}
+                        onPointerUp={onWorldPointerUp}
+                        onPointerCancel={onWorldPointerUp}
+                        onWheel={onWorldWheel}
+                    >
+                        <RendererCanvas renderer={renderer} />
+                    </div>
+                )}
             </div>
         </div>
     );

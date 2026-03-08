@@ -1,5 +1,6 @@
 import { InteractType } from "../renderer/InteractType";
 import { GameType } from "../rs/cache/CacheInfo";
+import type { ObjType } from "../rs/config/objtype/ObjType";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";
 import { LocModelType } from "../rs/config/loctype/LocModelType";
 import type { CacheSession } from "../rs/loaders/CacheSession";
@@ -12,12 +13,11 @@ import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { buildStandaloneRenderableData, type StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
 import {
     renderObjIconSprite,
-    renderLegacyObjIconSprite,
     type ObjIconSprite,
 } from "./ObjIconSpriteRenderer";
 
 export type EntityViewerKind = "obj" | "npc" | "loc" | "model";
-export type EntityViewerObjMode = "icon" | "icon-viewer" | "world";
+export type EntityViewerObjMode = "icon" | "world";
 
 export type EntityViewerRequest = Readonly<{
     kind: EntityViewerKind;
@@ -25,7 +25,9 @@ export type EntityViewerRequest = Readonly<{
     count: number;
     rotation: number;
     objMode: EntityViewerObjMode;
-    legacyIconMath: boolean;
+    icon36x32: boolean;
+    iconOutline: boolean;
+    iconShadow: boolean;
 }>;
 
 export type EntityViewerResolvedData = Readonly<{
@@ -84,42 +86,47 @@ function buildObjData(
     if (!objResult.ok) {
         throw new Error(`Object ${request.id | 0} not found`);
     }
+    const resolvedObjType = resolveObjTypeForCount(
+        services,
+        request.id | 0,
+        request.count | 0,
+    );
     const iconModelResult =
-        request.objMode === "icon" || request.objMode === "icon-viewer"
-            ? buildObjIconModel(services, request.id | 0, request.count | 0)
+        request.objMode === "icon"
+            ? buildObjIconModel(
+                  services,
+                  request.id | 0,
+                  request.count | 0,
+                  request.icon36x32,
+              )
             : undefined;
     const model =
-        request.objMode === "icon" || request.objMode === "icon-viewer"
+        request.objMode === "icon"
             ? iconModelResult?.model
-            : services.objModelLoader.getModel(request.id | 0, request.count | 0);
+            : orientObjWorldModel(
+                  services.objModelLoader.getModel(request.id | 0, request.count | 0),
+                  resolvedObjType,
+              );
     if (!model) {
         throw new Error(`Object ${request.id | 0} has no renderable model`);
     }
     const iconSprite =
-        request.objMode === "icon" || request.objMode === "icon-viewer"
-            ? request.legacyIconMath
-                ? renderLegacyObjIconSprite(
-                      model,
-                      iconModelResult?.zoom2d ?? 2000,
-                      iconModelResult?.xan2d ?? 0,
-                      iconModelResult?.yan2d ?? 0,
-                      iconModelResult?.zan2d ?? 0,
-                      iconModelResult?.offsetX2d ?? 0,
-                      iconModelResult?.offsetY2d ?? 0,
-                  )
-                : renderObjIconSprite(
-                      model,
-                      iconModelResult?.zoom2d ?? 2000,
-                      iconModelResult?.xan2d ?? 0,
-                      iconModelResult?.yan2d ?? 0,
-                      iconModelResult?.zan2d ?? 0,
-                      iconModelResult?.offsetX2d ?? 0,
-                      iconModelResult?.offsetY2d ?? 0,
-                      request.objMode === "icon-viewer" ? "viewer" : "authentic",
-                  )
+        request.objMode === "icon"
+            ? renderObjIconSprite(
+                  model,
+                  iconModelResult?.zoom2d ?? 2000,
+                  iconModelResult?.xan2d ?? 0,
+                  iconModelResult?.yan2d ?? 0,
+                  iconModelResult?.zan2d ?? 0,
+                  iconModelResult?.offsetX2d ?? 0,
+                  iconModelResult?.offsetY2d ?? 0,
+                  request.icon36x32 ? "authentic" : "viewer",
+                  request.iconOutline,
+                  request.iconShadow,
+              )
             : undefined;
     const renderData =
-        request.objMode === "icon" || request.objMode === "icon-viewer"
+        request.objMode === "icon"
             ? undefined
             : buildStandaloneRenderableData({
                   textureLoader: services.session.loaders.textureLoader,
@@ -127,11 +134,7 @@ function buildObjData(
                   interactType: InteractType.OBJ,
                   interactId: request.id | 0,
               });
-    if (
-        request.objMode !== "icon" &&
-        request.objMode !== "icon-viewer" &&
-        !renderData
-    ) {
+    if (request.objMode !== "icon" && !renderData) {
         throw new Error(`Failed to build object render data for ${request.id | 0}`);
     }
     return {
@@ -141,10 +144,63 @@ function buildObjData(
     };
 }
 
+function resolveObjTypeForCount(
+    services: EntityViewerServices,
+    id: number,
+    count: number,
+): ObjType | undefined {
+    const objResult = services.session.loaders.objTypeLoader.tryLoad(id);
+    if (!objResult.ok) {
+        return undefined;
+    }
+    let resolvedType = objResult.value;
+    if (resolvedType.countObj && count > 1) {
+        for (let i = 0; i < 10; i++) {
+            if (count >= resolvedType.countCo[i] && resolvedType.countCo[i] !== 0) {
+                const stackedResult = services.session.loaders.objTypeLoader.tryLoad(
+                    resolvedType.countObj[i],
+                );
+                if (stackedResult.ok) {
+                    resolvedType = stackedResult.value;
+                }
+            }
+        }
+    }
+    return resolvedType;
+}
+
+function orientObjWorldModel(model: Model | undefined, objType: ObjType | undefined): Model | undefined {
+    if (!model || !objType) {
+        return model;
+    }
+    const oriented = Model.copy(model);
+    applyObjPreviewRotation(oriented, objType);
+    oriented.calculateBoundsCylinder();
+    return oriented;
+}
+
+function applyObjPreviewRotation(
+    model: Pick<Model, "rotate" | "rotateX" | "rotateZ">,
+    objType: ObjType,
+): void {
+    model.rotateZ(1024);
+    model.rotate(1024);
+    if ((objType.xan2d | 0) !== 0) {
+        model.rotateX(objType.xan2d & 2047);
+    }
+    if ((objType.yan2d | 0) !== 0) {
+        model.rotate(objType.yan2d & 2047);
+    }
+    if ((objType.zan2d | 0) !== 0) {
+        model.rotateZ(objType.zan2d & 2047);
+    }
+}
+
 function buildObjIconModel(
     services: EntityViewerServices,
     id: number,
     count: number,
+    authenticMode: boolean,
 ): Readonly<{
     model: Model;
     zoom2d: number;

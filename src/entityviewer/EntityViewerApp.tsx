@@ -44,18 +44,14 @@ function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
         count: Number.isFinite(count) ? Math.max(1, count | 0) : 1,
         rotation: Number.isFinite(rotation) ? rotation & 3 : 0,
         objMode: parseObjMode(searchParams.get("objMode")),
-        legacyIconMath: searchParams.get("legacyIconMath") === "1",
+        icon36x32: searchParams.get("icon36x32") === "1",
+        iconOutline: searchParams.get("iconOutline") !== "0",
+        iconShadow: searchParams.get("iconShadow") !== "0",
     };
 }
 
 function parseObjMode(value: string | null): EntityViewerObjMode {
-    switch (value) {
-        case "world":
-        case "icon-viewer":
-            return value;
-        default:
-            return "icon";
-    }
+    return value === "world" ? "world" : "icon";
 }
 
 function parseDebugMode(searchParams: URLSearchParams): EntityViewerDebugMode {
@@ -190,9 +186,17 @@ export default function EntityViewerApp(): JSX.Element {
                             count: nextRequest.count.toString(),
                             rotation: nextRequest.rotation.toString(),
                             objMode: nextRequest.kind === "obj" ? nextRequest.objMode : undefined,
-                            legacyIconMath:
-                                nextRequest.kind === "obj" && nextRequest.legacyIconMath
+                            icon36x32:
+                                nextRequest.kind === "obj" && nextRequest.icon36x32
                                     ? "1"
+                                    : undefined,
+                            iconOutline:
+                                nextRequest.kind === "obj" && !nextRequest.iconOutline
+                                    ? "0"
+                                    : undefined,
+                            iconShadow:
+                                nextRequest.kind === "obj" && !nextRequest.iconShadow
+                                    ? "0"
                                     : undefined,
                         }),
                     )
