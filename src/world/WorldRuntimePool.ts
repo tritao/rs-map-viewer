@@ -3,7 +3,7 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
-import type { WorldMapActivationInput } from "./WorldSession";
+import type { WorldMapActivationInput, WorldMapDeactivationInput } from "./WorldSession";
 
 type WorldRuntimePoolDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
@@ -39,14 +39,14 @@ export class WorldRuntimePool {
             !this.isActivationVersionCurrent(input.activationVersion) ||
             !this.hasToken(mapId, mapSimToken)
         ) {
-            this.deactivateLoadedMap(mapId);
+            this.deactivateLoadedMap({ mapId });
             return false;
         }
         return true;
     }
 
-    deactivateLoadedMap(mapId: number): void {
-        this.deactivateLoadedMapRuntime(mapId | 0);
+    deactivateLoadedMap(input: WorldMapDeactivationInput): void {
+        this.deactivateLoadedMapRuntime(input.mapId | 0);
     }
 
     private hasToken(mapId: number, token: number): boolean {

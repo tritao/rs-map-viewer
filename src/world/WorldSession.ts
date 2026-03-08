@@ -27,6 +27,10 @@ export type WorldMapActivationInput = Readonly<{
     activationVersion: number;
 }>;
 
+export type WorldMapDeactivationInput = Readonly<{
+    mapId: number;
+}>;
+
 export class WorldSession {
     constructor(private readonly deps: WorldSessionDeps) {}
 
@@ -46,8 +50,8 @@ export class WorldSession {
         return await this.deps.worldRuntimePool.activateLoadedMap(input);
     }
 
-    deactivateLoadedMap(mapId: number): void {
-        this.deps.worldRuntimePool.deactivateLoadedMap(mapId | 0);
+    deactivateLoadedMap(input: WorldMapDeactivationInput): void {
+        this.deps.worldRuntimePool.deactivateLoadedMap(input);
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {

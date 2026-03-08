@@ -306,7 +306,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        this.worldSession.deactivateLoadedMap(mapInfo.mapId);
+        this.worldSession.deactivateLoadedMap({ mapId: mapInfo.mapId });
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
