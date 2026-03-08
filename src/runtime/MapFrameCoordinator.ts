@@ -34,6 +34,7 @@ export class MapFrameCoordinator {
     private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;
+    private needsPacketRefresh: boolean = false;
     private lastFrameMapIds: Int32Array = EMPTY_INT32;
     private frameMapIdsVersion: number = 0;
     private frameViewStateVersion: number = 0;
@@ -61,6 +62,7 @@ export class MapFrameCoordinator {
             !this.pendingFramePacket &&
             (input.ticksElapsed > 0 ||
                 input.clientTicksElapsed > 0 ||
+                this.needsPacketRefresh ||
                 !this.latestFramePacket ||
                 shouldUpdateFrameMaps ||
                 shouldUpdateFrameViewState)
@@ -96,6 +98,7 @@ export class MapFrameCoordinator {
         this.packetEpoch = (this.packetEpoch + 1) | 0;
         this.pendingFramePacket = undefined;
         this.latestFramePacket = undefined;
+        this.needsPacketRefresh = false;
         this.lastFrameMapIds = EMPTY_INT32;
         this.frameMapIdsVersion = (this.frameMapIdsVersion + 1) | 0;
         this.frameViewStateVersion = (this.frameViewStateVersion + 1) | 0;
@@ -112,7 +115,7 @@ export class MapFrameCoordinator {
     }
 
     invalidateLatestPacket(): void {
-        this.latestFramePacket = undefined;
+        this.needsPacketRefresh = true;
     }
 
     private areInt32ArraysEqual(left: Int32Array, right: Int32Array): boolean {
@@ -229,18 +232,19 @@ export class MapFrameCoordinator {
                             (nextPacket.tickViewStateVersion | 0) !==
                                 (this.frameViewStateVersion | 0))
                     ) {
-                        this.latestFramePacket = undefined;
-                        return undefined;
+                        this.needsPacketRefresh = true;
+                        return this.latestFramePacket;
                     }
                     this.latestFramePacket = nextPacket;
+                    this.needsPacketRefresh = false;
                 }
                 return nextPacket;
             })
             .catch(() => {
                 if ((this.packetEpoch | 0) === (input.epoch | 0)) {
-                    this.latestFramePacket = undefined;
+                    this.needsPacketRefresh = true;
                 }
-                return undefined;
+                return this.latestFramePacket;
             })
             .finally(() => {
                 if ((this.packetEpoch | 0) === (input.epoch | 0)) {
