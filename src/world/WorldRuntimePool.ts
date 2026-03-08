@@ -1,9 +1,11 @@
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
-import type { NpcEvent } from "../runtime/entities/NpcEvents";
-import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
-import type { WorldMapActivationInput, WorldMapDeactivationInput } from "./WorldSession";
+import type {
+    WorldInput,
+    WorldMapActivationInput,
+    WorldMapDeactivationInput,
+} from "./WorldSession";
 
 type WorldRuntimePoolDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
@@ -73,12 +75,22 @@ export class WorldRuntimePool {
         void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
     }
 
-    applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
-        return this.deps.simWorkerPool.world.applyNpcLifecycleEvents(events);
-    }
-
-    applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
-        return this.deps.simWorkerPool.world.applyMapObjStateUpdates(updates);
+    async applyWorldInput(input: WorldInput): Promise<number> {
+        let applied = 0;
+        const npcLifecycleEvents = input.npc?.lifecycleEvents;
+        if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
+            applied =
+                (applied +
+                    (await this.deps.simWorkerPool.world.applyNpcLifecycleEvents(npcLifecycleEvents))) |
+                0;
+        }
+        const objUpdates = input.obj?.updates;
+        if (objUpdates && (objUpdates.length | 0) > 0) {
+            applied =
+                (applied + (await this.deps.simWorkerPool.world.applyMapObjStateUpdates(objUpdates))) |
+                0;
+        }
+        return applied | 0;
     }
 
     private reserveToken(mapId: number): number {

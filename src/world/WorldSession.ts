@@ -55,20 +55,6 @@ export class WorldSession {
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
-        let applied = 0;
-        const npcLifecycleEvents = input.npc?.lifecycleEvents;
-        if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
-            applied =
-                (applied +
-                    (await this.deps.worldRuntimePool.applyNpcLifecycleEvents(npcLifecycleEvents))) |
-                0;
-        }
-        const objUpdates = input.obj?.updates;
-        if (objUpdates && (objUpdates.length | 0) > 0) {
-            applied =
-                (applied + (await this.deps.worldRuntimePool.applyMapObjStateUpdates(objUpdates))) |
-                0;
-        }
-        return applied | 0;
+        return await this.deps.worldRuntimePool.applyWorldInput(input);
     }
 }
