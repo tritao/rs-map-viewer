@@ -1,6 +1,9 @@
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { CLIENT_TICK_SECONDS, SERVER_TICK_SECONDS } from "../runtime/contracts/TickTiming";
-import type { MapViewerFramePacketSource, TickFrameInput } from "./MapViewerFramePacketSource";
+import type {
+    MapViewerFrameRuntimeCoordinator,
+    TickFrameInput,
+} from "./MapViewerFrameRuntimeCoordinator";
 
 const MAX_SERVER_TICKS_PER_FRAME = 1;
 const MAX_CLIENT_TICKS_PER_FRAME = 50;
@@ -13,7 +16,7 @@ export type TickClockState = Readonly<{
 
 type TickPassInput = Readonly<{
     frameInput: TickFrameInput;
-    packetSource: MapViewerFramePacketSource;
+    frameRuntimeCoordinator: MapViewerFrameRuntimeCoordinator;
     applyFramePacket(packet: FramePacket | undefined): void;
 }>;
 
@@ -61,7 +64,7 @@ export class MapViewerTickCoordinator {
     }
 
     applyTick(input: TickPassInput): void {
-        const packet = input.packetSource.nextPacket(input.frameInput);
+        const packet = input.frameRuntimeCoordinator.nextPacket(input.frameInput);
         input.applyFramePacket(packet);
     }
 
@@ -69,12 +72,12 @@ export class MapViewerTickCoordinator {
         this.needsClockResync = true;
     }
 
-    resetForCacheContext(packetSource: MapViewerFramePacketSource): void {
+    resetForCacheContext(packetSource: MapViewerFrameRuntimeCoordinator): void {
         packetSource.reset();
         this.requestClockResync();
     }
 
-    resetForShutdown(packetSource: MapViewerFramePacketSource): void {
+    resetForShutdown(packetSource: MapViewerFrameRuntimeCoordinator): void {
         this.resetForCacheContext(packetSource);
         this.lastTick = 0;
         this.lastClientTick = 0;

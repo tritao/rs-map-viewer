@@ -29,7 +29,7 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { Camera } from "./Camera";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
-import { WorkerMapViewerFramePacketSource } from "./MapViewerFramePacketSource";
+import { WorkerMapViewerFrameRuntimeCoordinator } from "./MapViewerFrameRuntimeCoordinator";
 import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
 
 const DRAW_RANGE_STRIDE = 3;
@@ -46,7 +46,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly tickCoordinator = new MapViewerTickCoordinator();
-    private readonly framePacketSource: WorkerMapViewerFramePacketSource;
+    private readonly frameRuntimeCoordinator: WorkerMapViewerFrameRuntimeCoordinator;
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
@@ -67,7 +67,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.framePacketSource = new WorkerMapViewerFramePacketSource({
+        this.frameRuntimeCoordinator = new WorkerMapViewerFrameRuntimeCoordinator({
             simWorkerPool: this.simWorkerPool,
             renderWorkerPool: this.renderWorkerPool,
             getLodDistance: () => this.renderer.lodDistance,
@@ -323,7 +323,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         const applied = await this.renderWorkerPool.applyMapObjRenderPacket(packet);
         if ((applied | 0) > 0) {
-            this.framePacketSource.requestRefresh();
+            this.frameRuntimeCoordinator.requestRefresh();
         }
     }
 
@@ -391,7 +391,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
-            this.tickCoordinator.resetForCacheContext(this.framePacketSource);
+        this.tickCoordinator.resetForCacheContext(this.frameRuntimeCoordinator);
             this.mapManager.cleanUp();
 
             this.renderer = new WebGLMapRenderer(
@@ -423,7 +423,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         await super.cleanUp();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.resetMapRuntimeTokens();
-        this.tickCoordinator.resetForShutdown(this.framePacketSource);
+        this.tickCoordinator.resetForShutdown(this.frameRuntimeCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
     }
@@ -468,7 +468,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 ticksElapsed,
                 clientTicksElapsed,
             },
-            packetSource: this.framePacketSource,
+            frameRuntimeCoordinator: this.frameRuntimeCoordinator,
             applyFramePacket: (packet) => this.renderer.applyFramePacket(packet),
         });
     }

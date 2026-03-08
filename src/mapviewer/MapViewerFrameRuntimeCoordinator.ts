@@ -13,13 +13,13 @@ export type TickFrameInput = Readonly<{
     clientTicksElapsed: number;
 }>;
 
-export interface MapViewerFramePacketSource {
+export interface MapViewerFrameRuntimeCoordinator {
     nextPacket(input: TickFrameInput): FramePacket | undefined;
     reset(): void;
     requestRefresh(): void;
 }
 
-type WorkerMapViewerFramePacketSourceDeps = Readonly<{
+type WorkerMapViewerFrameRuntimeCoordinatorDeps = Readonly<{
     simWorkerPool: SimWorkerPool;
     renderWorkerPool: RenderDataWorkerPool;
     getLodDistance(): number;
@@ -29,7 +29,7 @@ type WorkerMapViewerFramePacketSourceDeps = Readonly<{
     getCamera(): Camera;
 }>;
 
-export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSource {
+export class WorkerMapViewerFrameRuntimeCoordinator implements MapViewerFrameRuntimeCoordinator {
     private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;
@@ -47,7 +47,7 @@ export class WorkerMapViewerFramePacketSource implements MapViewerFramePacketSou
         | Readonly<{ cameraMapX: number; cameraMapY: number; lodDistance: number }>
         | undefined;
 
-    constructor(private readonly deps: WorkerMapViewerFramePacketSourceDeps) {}
+    constructor(private readonly deps: WorkerMapViewerFrameRuntimeCoordinatorDeps) {}
 
     nextPacket(input: TickFrameInput): FramePacket | undefined {
         const packet = this.latestFramePacket;
