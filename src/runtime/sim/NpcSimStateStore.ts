@@ -408,22 +408,22 @@ export class NpcSimStateStore {
             }
         };
 
-        const spawnsPacked = npcState.spawnsPacked;
+        const spawnStatePacked = npcState.spawnStatePacked;
         for (let i = 0; i < (counts.spawnCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
-            const mapId = spawnsPacked[off + 0] | 0;
+            const mapId = spawnStatePacked[off + 0] | 0;
             const state = this.maps.get(mapId);
             if (!state) {
                 continue;
             }
-            const hasOrderKey = (spawnsPacked[off + 6] | 0) !== 0;
+            const hasOrderKey = (spawnStatePacked[off + 6] | 0) !== 0;
             const npc = this.createNpcFromSpawnData(
-                spawnsPacked[off + 1] | 0,
-                spawnsPacked[off + 2] | 0,
-                spawnsPacked[off + 3] | 0,
-                spawnsPacked[off + 4] | 0,
-                spawnsPacked[off + 5] | 0,
-                hasOrderKey ? spawnsPacked[off + 7] | 0 : undefined,
+                spawnStatePacked[off + 1] | 0,
+                spawnStatePacked[off + 2] | 0,
+                spawnStatePacked[off + 3] | 0,
+                spawnStatePacked[off + 4] | 0,
+                spawnStatePacked[off + 5] | 0,
+                hasOrderKey ? spawnStatePacked[off + 7] | 0 : undefined,
                 state,
                 deps,
             );
@@ -431,20 +431,20 @@ export class NpcSimStateStore {
                 continue;
             }
             trackMapNpcCountBefore(mapId, state);
-            this.upsertSpawnedNpc(state, npc, spawnsPacked[off + 1] | 0);
+            this.upsertSpawnedNpc(state, npc, spawnStatePacked[off + 1] | 0);
             changedMaps.add(mapId);
         }
 
-        const despawnsPacked = npcState.despawnsPacked;
+        const despawnStatePacked = npcState.despawnStatePacked;
         for (let i = 0; i < (counts.despawnCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE;
-            const mapId = despawnsPacked[off + 0] | 0;
+            const mapId = despawnStatePacked[off + 0] | 0;
             const state = this.maps.get(mapId);
             if (!state) {
                 continue;
             }
-            const npcInstanceId = despawnsPacked[off + 1] | 0;
-            const seq = despawnsPacked[off + 2] | 0;
+            const npcInstanceId = despawnStatePacked[off + 1] | 0;
+            const seq = despawnStatePacked[off + 2] | 0;
             if (!this.shouldApplySeq(state, npcInstanceId, seq)) {
                 continue;
             }
@@ -466,17 +466,17 @@ export class NpcSimStateStore {
             }
         }
 
-        const updatesPacked = npcState.updatesPacked;
+        const updateStatePacked = npcState.updateStatePacked;
         let applied = 0;
         for (let i = 0; i < (counts.updateCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
-            const mapId = updatesPacked[off + 0] | 0;
+            const mapId = updateStatePacked[off + 0] | 0;
             const state = this.maps.get(mapId);
             if (!state) {
                 continue;
             }
-            const npcInstanceId = updatesPacked[off + 1] | 0;
-            const seq = updatesPacked[off + 2] | 0;
+            const npcInstanceId = updateStatePacked[off + 1] | 0;
+            const seq = updateStatePacked[off + 2] | 0;
             if (!this.shouldApplySeq(state, npcInstanceId, seq)) {
                 continue;
             }
@@ -488,8 +488,12 @@ export class NpcSimStateStore {
             if (!npc) {
                 continue;
             }
-            const flags = updatesPacked[off + 3] | 0;
-            const delta: NpcUpdateDelta = decodeNpcWorldStateUpdate(flags, updatesPacked, off);
+            const flags = updateStatePacked[off + 3] | 0;
+            const delta: NpcUpdateDelta = decodeNpcWorldStateUpdate(
+                flags,
+                updateStatePacked,
+                off,
+            );
             applyNpcUpdateDelta(npc, delta);
             applied = (applied + 1) | 0;
         }

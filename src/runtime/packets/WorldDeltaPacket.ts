@@ -39,9 +39,9 @@ export type WorldObjDelta = Readonly<{
 
 export type NpcWorldState = Readonly<{
     changeCount: number;
-    spawnsPacked: Int32Array;
-    updatesPacked: Int32Array;
-    despawnsPacked: Int32Array;
+    spawnStatePacked: Int32Array;
+    updateStatePacked: Int32Array;
+    despawnStatePacked: Int32Array;
 }>;
 
 export type WorldDeltaPacketCounts = Readonly<{
@@ -81,12 +81,14 @@ export function getWorldDeltaPacketCounts(
             changeCount: 0,
         };
     }
-    const spawnCount = Math.floor((npcState.spawnsPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
+    const spawnCount = Math.floor(
+        (npcState.spawnStatePacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE,
+    );
     const updateCount = Math.floor(
-        (npcState.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE,
+        (npcState.updateStatePacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE,
     );
     const despawnCount = Math.floor(
-        (npcState.despawnsPacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE,
+        (npcState.despawnStatePacked.length | 0) / NPC_STATE_DELTA_DESPAWN_STRIDE,
     );
     return {
         spawnCount: spawnCount | 0,
@@ -108,9 +110,21 @@ export function validateWorldDeltaPacket(
             changeCount: 0,
         };
     }
-    assertPackedStride("spawnsPacked", npcState.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
-    assertPackedStride("updatesPacked", npcState.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
-    assertPackedStride("despawnsPacked", npcState.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
+    assertPackedStride(
+        "spawnStatePacked",
+        npcState.spawnStatePacked,
+        NPC_STATE_DELTA_SPAWN_STRIDE,
+    );
+    assertPackedStride(
+        "updateStatePacked",
+        npcState.updateStatePacked,
+        NPC_STATE_DELTA_UPDATE_STRIDE,
+    );
+    assertPackedStride(
+        "despawnStatePacked",
+        npcState.despawnStatePacked,
+        NPC_STATE_DELTA_DESPAWN_STRIDE,
+    );
     const counts = getWorldDeltaPacketCounts(packet);
     if ((npcState.changeCount | 0) !== (counts.changeCount | 0)) {
         throw new Error(
@@ -125,9 +139,21 @@ export function validateWorldDeltaPacket(
 
 export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaPacket {
     if (input.npcState) {
-        assertPackedStride("spawnsPacked", input.npcState.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
-        assertPackedStride("updatesPacked", input.npcState.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
-        assertPackedStride("despawnsPacked", input.npcState.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
+        assertPackedStride(
+            "spawnStatePacked",
+            input.npcState.spawnStatePacked,
+            NPC_STATE_DELTA_SPAWN_STRIDE,
+        );
+        assertPackedStride(
+            "updateStatePacked",
+            input.npcState.updateStatePacked,
+            NPC_STATE_DELTA_UPDATE_STRIDE,
+        );
+        assertPackedStride(
+            "despawnStatePacked",
+            input.npcState.despawnStatePacked,
+            NPC_STATE_DELTA_DESPAWN_STRIDE,
+        );
     }
     return {
         frameCount: input.frameCount | 0,
@@ -191,9 +217,9 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
         }
     }
 
-    const spawnsPacked = new Int32Array((spawnCount | 0) * NPC_STATE_DELTA_SPAWN_STRIDE);
-    const updatesPacked = new Int32Array((updateCount | 0) * NPC_STATE_DELTA_UPDATE_STRIDE);
-    const despawnsPacked = new Int32Array((despawnCount | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE);
+    const spawnStatePacked = new Int32Array((spawnCount | 0) * NPC_STATE_DELTA_SPAWN_STRIDE);
+    const updateStatePacked = new Int32Array((updateCount | 0) * NPC_STATE_DELTA_UPDATE_STRIDE);
+    const despawnStatePacked = new Int32Array((despawnCount | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE);
 
     let spawnOff = 0;
     let updateOff = 0;
@@ -201,37 +227,37 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
     for (let i = 0; i < events.length; i++) {
         const event = events[i]!;
         if (event.kind === "spawn") {
-            spawnsPacked[spawnOff++] = event.mapId | 0;
-            spawnsPacked[spawnOff++] = event.npcInstanceId | 0;
-            spawnsPacked[spawnOff++] = event.npcTypeId | 0;
-            spawnsPacked[spawnOff++] = event.tileX | 0;
-            spawnsPacked[spawnOff++] = event.tileY | 0;
-            spawnsPacked[spawnOff++] = event.level | 0;
-            spawnsPacked[spawnOff++] = event.orderKey === undefined ? 0 : 1;
-            spawnsPacked[spawnOff++] = (event.orderKey ?? 0) | 0;
+            spawnStatePacked[spawnOff++] = event.mapId | 0;
+            spawnStatePacked[spawnOff++] = event.npcInstanceId | 0;
+            spawnStatePacked[spawnOff++] = event.npcTypeId | 0;
+            spawnStatePacked[spawnOff++] = event.tileX | 0;
+            spawnStatePacked[spawnOff++] = event.tileY | 0;
+            spawnStatePacked[spawnOff++] = event.level | 0;
+            spawnStatePacked[spawnOff++] = event.orderKey === undefined ? 0 : 1;
+            spawnStatePacked[spawnOff++] = (event.orderKey ?? 0) | 0;
             continue;
         }
         if (event.kind === "update") {
             const flags = updateFlagsFromDelta(event.delta);
-            updatesPacked[updateOff++] = event.mapId | 0;
-            updatesPacked[updateOff++] = event.npcInstanceId | 0;
-            updatesPacked[updateOff++] = event.seq | 0;
-            updatesPacked[updateOff++] = flags | 0;
-            updatesPacked[updateOff++] = event.delta.snapTileX ?? 0;
-            updatesPacked[updateOff++] = event.delta.snapTileY ?? 0;
-            updatesPacked[updateOff++] = event.delta.snapWorldX ?? 0;
-            updatesPacked[updateOff++] = event.delta.snapWorldY ?? 0;
-            updatesPacked[updateOff++] = event.delta.orientation ?? 0;
-            updatesPacked[updateOff++] = event.delta.rotation ?? 0;
-            updatesPacked[updateOff++] = event.delta.movementSeqId ?? 0;
-            updatesPacked[updateOff++] = event.delta.movementFrame ?? 0;
-            updatesPacked[updateOff++] = event.delta.movementFrameTick ?? 0;
-            updatesPacked[updateOff++] = event.delta.movementLoop ?? 0;
+            updateStatePacked[updateOff++] = event.mapId | 0;
+            updateStatePacked[updateOff++] = event.npcInstanceId | 0;
+            updateStatePacked[updateOff++] = event.seq | 0;
+            updateStatePacked[updateOff++] = flags | 0;
+            updateStatePacked[updateOff++] = event.delta.snapTileX ?? 0;
+            updateStatePacked[updateOff++] = event.delta.snapTileY ?? 0;
+            updateStatePacked[updateOff++] = event.delta.snapWorldX ?? 0;
+            updateStatePacked[updateOff++] = event.delta.snapWorldY ?? 0;
+            updateStatePacked[updateOff++] = event.delta.orientation ?? 0;
+            updateStatePacked[updateOff++] = event.delta.rotation ?? 0;
+            updateStatePacked[updateOff++] = event.delta.movementSeqId ?? 0;
+            updateStatePacked[updateOff++] = event.delta.movementFrame ?? 0;
+            updateStatePacked[updateOff++] = event.delta.movementFrameTick ?? 0;
+            updateStatePacked[updateOff++] = event.delta.movementLoop ?? 0;
             continue;
         }
-        despawnsPacked[despawnOff++] = event.mapId | 0;
-        despawnsPacked[despawnOff++] = event.npcInstanceId | 0;
-        despawnsPacked[despawnOff++] = event.seq | 0;
+        despawnStatePacked[despawnOff++] = event.mapId | 0;
+        despawnStatePacked[despawnOff++] = event.npcInstanceId | 0;
+        despawnStatePacked[despawnOff++] = event.seq | 0;
     }
 
     return buildWorldDeltaPacket({
@@ -239,9 +265,9 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
         inputStateVersion: input.inputStateVersion | 0,
         npcState: {
             changeCount: (spawnCount + updateCount + despawnCount) | 0,
-            spawnsPacked,
-            updatesPacked,
-            despawnsPacked,
+            spawnStatePacked,
+            updateStatePacked,
+            despawnStatePacked,
         },
     });
 }
@@ -331,7 +357,7 @@ export function decodeWorldDeltaNpcLifecycleEvents(
         return out;
     }
 
-    const spawnPacked = npcState.spawnsPacked;
+    const spawnPacked = npcState.spawnStatePacked;
     const spawnCount = counts.spawnCount | 0;
     for (let i = 0; i < spawnCount; i++) {
         const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
@@ -351,7 +377,7 @@ export function decodeWorldDeltaNpcLifecycleEvents(
         events.push(event);
     }
 
-    const updatePacked = npcState.updatesPacked;
+    const updatePacked = npcState.updateStatePacked;
     const updateCount = counts.updateCount | 0;
     for (let i = 0; i < updateCount; i++) {
         const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
@@ -368,7 +394,7 @@ export function decodeWorldDeltaNpcLifecycleEvents(
         events.push(event);
     }
 
-    const despawnPacked = npcState.despawnsPacked;
+    const despawnPacked = npcState.despawnStatePacked;
     const despawnCount = counts.despawnCount | 0;
     for (let i = 0; i < despawnCount; i++) {
         const off = (i | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE;
@@ -392,8 +418,8 @@ export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transfe
         return [];
     }
     return [
-        npcState.spawnsPacked.buffer as Transferable,
-        npcState.updatesPacked.buffer as Transferable,
-        npcState.despawnsPacked.buffer as Transferable,
+        npcState.spawnStatePacked.buffer as Transferable,
+        npcState.updateStatePacked.buffer as Transferable,
+        npcState.despawnStatePacked.buffer as Transferable,
     ];
 }
