@@ -21,13 +21,18 @@ export class InteractionsReadback {
         this.interactBuffer = new Float32Array(this.interactSize * this.interactSize * 4);
     }
 
-    read(gl: WebGL2RenderingContext, x: number, y: number): void {
+    read(gl: WebGL2RenderingContext, x: number, y: number): boolean {
         if (this.sync) {
-            return;
+            return false;
         }
 
         const canvasWidth = gl.canvas.width;
         const canvasHeight = gl.canvas.height;
+        if ((canvasWidth | 0) <= 0 || (canvasHeight | 0) <= 0) {
+            this.readWidth = 0;
+            this.readHeight = 0;
+            return false;
+        }
 
         const startX = x - this.interactRadius;
         const startY = canvasHeight - y - this.interactRadius - 1;
@@ -40,6 +45,11 @@ export class InteractionsReadback {
 
         this.readWidth = Math.min(startX + this.interactSize, canvasWidth) - readX;
         this.readHeight = Math.min(startY + this.interactSize, canvasHeight) - readY;
+        if ((this.readWidth | 0) <= 0 || (this.readHeight | 0) <= 0) {
+            this.readWidth = 0;
+            this.readHeight = 0;
+            return false;
+        }
 
         this.pixelBuf = gl.createBuffer();
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, this.pixelBuf);
@@ -48,6 +58,7 @@ export class InteractionsReadback {
         gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
 
         this.sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+        return true;
     }
 
     check(gl: WebGL2RenderingContext, state: InteractionState): boolean {

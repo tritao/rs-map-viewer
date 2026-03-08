@@ -74,6 +74,22 @@ export class WebGLInteractionSystem {
         if (mouseX === -1 || mouseY === -1) {
             return;
         }
+        const pixelX = (mouseX * pixelRatio) | 0;
+        const pixelY = (mouseY * pixelRatio) | 0;
+        const canvasWidth = gl.canvas.width | 0;
+        const canvasHeight = gl.canvas.height | 0;
+        if (
+            (canvasWidth | 0) <= 0 ||
+            (canvasHeight | 0) <= 0 ||
+            pixelX < 0 ||
+            pixelY < 0 ||
+            pixelX >= (canvasWidth | 0) ||
+            pixelY >= (canvasHeight | 0)
+        ) {
+            this.state.reset();
+            this.interactBuffer = undefined;
+            return;
+        }
         if (msaaEnabled) {
             // TODO: reading from the multisampled framebuffer is not accurate
             app.drawFramebuffer(interactFramebuffer);
@@ -85,7 +101,10 @@ export class WebGLInteractionSystem {
         } else {
             gl.readBuffer(PicoGL.COLOR_ATTACHMENT1);
         }
-        interactions.read(gl, (mouseX * pixelRatio) | 0, (mouseY * pixelRatio) | 0);
+        if (!interactions.read(gl, pixelX, pixelY)) {
+            this.state.reset();
+            this.interactBuffer = undefined;
+        }
     }
 
     frame(

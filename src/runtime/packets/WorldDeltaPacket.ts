@@ -48,6 +48,13 @@ export type WorldDeltaPacketCounts = Readonly<{
     changeCount: number;
 }>;
 
+const EMPTY_WORLD_DELTA_PACKET_COUNTS: WorldDeltaPacketCounts = {
+    spawnCount: 0,
+    updateCount: 0,
+    despawnCount: 0,
+    changeCount: 0,
+};
+
 function assertPackedStride(name: string, packed: Int32Array, stride: number): void {
     const len = packed.length | 0;
     const expectedStride = stride | 0;
@@ -59,25 +66,7 @@ function assertPackedStride(name: string, packed: Int32Array, stride: number): v
     }
 }
 
-export type WorldDeltaPacket = Readonly<{
-    frameCount: number;
-    inputStateVersion: number;
-    npcState?: NpcWorldState;
-    objDelta?: WorldObjDelta;
-}>;
-
-export function getWorldDeltaPacketCounts(
-    packet: WorldDeltaPacket,
-): WorldDeltaPacketCounts {
-    const npcState = packet.npcState;
-    if (!npcState) {
-        return {
-            spawnCount: 0,
-            updateCount: 0,
-            despawnCount: 0,
-            changeCount: 0,
-        };
-    }
+function getNpcWorldStateCounts(npcState: NpcWorldState): WorldDeltaPacketCounts {
     const spawnCount = Math.floor(
         (npcState.spawnStatePacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE,
     );
@@ -95,17 +84,29 @@ export function getWorldDeltaPacketCounts(
     };
 }
 
+export type WorldDeltaPacket = Readonly<{
+    frameCount: number;
+    inputStateVersion: number;
+    npcState?: NpcWorldState;
+    objDelta?: WorldObjDelta;
+}>;
+
+export function getWorldDeltaPacketCounts(
+    packet: WorldDeltaPacket,
+): WorldDeltaPacketCounts {
+    const npcState = packet.npcState;
+    if (!npcState) {
+        return EMPTY_WORLD_DELTA_PACKET_COUNTS;
+    }
+    return getNpcWorldStateCounts(npcState);
+}
+
 export function validateWorldDeltaPacket(
     packet: WorldDeltaPacket,
 ): WorldDeltaPacketCounts {
     const npcState = packet.npcState;
     if (!npcState) {
-        return {
-            spawnCount: 0,
-            updateCount: 0,
-            despawnCount: 0,
-            changeCount: 0,
-        };
+        return EMPTY_WORLD_DELTA_PACKET_COUNTS;
     }
     assertPackedStride(
         "spawnStatePacked",
