@@ -79,17 +79,17 @@ const worker = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
-    async setTickMapIds(mapIds: Int32Array): Promise<void> {
+    async setVisibleMapIds(mapIds: Int32Array): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
-        tickRuntime.setTickMapIds(mapIds);
+        tickRuntime.setVisibleMapIds(mapIds);
     },
-    async setTickViewState(
+    async setViewState(
         cameraMapX: number,
         cameraMapY: number,
         lodDistance: number,
     ): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
-        tickRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
+        tickRuntime.setViewState(cameraMapX, cameraMapY, lodDistance);
     },
     async stepWorld(
         frameCount: number,

@@ -104,23 +104,23 @@ const worker = {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
-    async setFrameTickMapIds(mapIds: Int32Array): Promise<void> {
+    async setFrameMapIds(mapIds: Int32Array): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setTickMapIds(normalizeWorkerInt32Array(mapIds));
+        frameRuntime.setVisibleMapIds(normalizeWorkerInt32Array(mapIds));
         frameTickMapIdsVersion = (frameTickMapIdsVersion + 1) | 0;
     },
-    async setFrameTickViewState(
+    async setFrameViewState(
         cameraMapX: number,
         cameraMapY: number,
         lodDistance: number,
     ): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setTickViewState(cameraMapX, cameraMapY, lodDistance);
+        frameRuntime.setViewState(cameraMapX, cameraMapY, lodDistance);
         frameTickViewStateVersion = (frameTickViewStateVersion + 1) | 0;
     },
-    async setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
+    async setFrameHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setTickHoveredMapIds(normalizeWorkerInt32Array(hoveredMapIdsPacked));
+        frameRuntime.setHoveredMapIds(normalizeWorkerInt32Array(hoveredMapIdsPacked));
     },
     async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();

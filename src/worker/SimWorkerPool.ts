@@ -112,12 +112,12 @@ export class SimWorkerPool {
         return this.applyNpcLifecyclePacketBytes(encodeNpcLifecyclePacketFromEvents(events));
     }
 
-    setTickMapIds(mapIds: Int32Array): Promise<void> {
-        return this.withWorker((w) => w.setTickMapIds(mapIds));
+    setVisibleMapIds(mapIds: Int32Array): Promise<void> {
+        return this.withWorker((w) => w.setVisibleMapIds(mapIds));
     }
 
-    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): Promise<void> {
-        return this.withWorker((w) => w.setTickViewState(cameraMapX, cameraMapY, lodDistance));
+    setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): Promise<void> {
+        return this.withWorker((w) => w.setViewState(cameraMapX, cameraMapY, lodDistance));
     }
 
     stepWorld(

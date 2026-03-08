@@ -13,7 +13,6 @@ import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/InteractionState";
-import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "../runtime/packets/StaticMapPacket";
 import {
     collectInteractionHits,
@@ -314,22 +313,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             getMapSquareId(mapX, mapY),
             objRenderData,
         );
-    }
-
-    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        if (!packet) {
-            return;
-        }
-        void this.renderWorkerPool
-            .applyMapObjRenderPacket(packet)
-            .then((applied) => {
-                if ((applied | 0) > 0) {
-                    this.frameRuntimeCoordinator.invalidateLatestPacket();
-                }
-            })
-            .catch((error: unknown) => {
-                console.error("[map-render] failed to apply map obj render packet", error);
-            });
     }
 
     override async init() {

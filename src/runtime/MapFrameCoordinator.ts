@@ -104,11 +104,11 @@ export class MapFrameCoordinator {
         this.lastFrameHoveredMapIds = EMPTY_INT32;
         this.lastFrameViewState = undefined;
         void Promise.all([
-            this.deps.simWorkerPool.setTickMapIds(EMPTY_INT32),
-            this.deps.simWorkerPool.setTickViewState(0, 0, 0),
-            this.deps.renderWorkerPool.setFrameTickMapIds(EMPTY_INT32),
-            this.deps.renderWorkerPool.setFrameTickViewState(0, 0, 0),
-            this.deps.renderWorkerPool.setFrameTickHoveredMapIds(EMPTY_INT32),
+            this.deps.simWorkerPool.setVisibleMapIds(EMPTY_INT32),
+            this.deps.simWorkerPool.setViewState(0, 0, 0),
+            this.deps.renderWorkerPool.setFrameMapIds(EMPTY_INT32),
+            this.deps.renderWorkerPool.setFrameViewState(0, 0, 0),
+            this.deps.renderWorkerPool.setFrameHoveredMapIds(EMPTY_INT32),
         ]);
     }
 
@@ -144,8 +144,8 @@ export class MapFrameCoordinator {
         if (input.shouldUpdateFrameMaps) {
             this.lastFrameMapIds = input.mapIds;
             this.frameMapIdsVersion = (this.frameMapIdsVersion + 1) | 0;
-            updatePromises.push(this.deps.simWorkerPool.setTickMapIds(input.mapIds));
-            updatePromises.push(this.deps.renderWorkerPool.setFrameTickMapIds(input.mapIds));
+            updatePromises.push(this.deps.simWorkerPool.setVisibleMapIds(input.mapIds));
+            updatePromises.push(this.deps.renderWorkerPool.setFrameMapIds(input.mapIds));
         }
         if (input.shouldUpdateFrameViewState) {
             this.lastFrameViewState = {
@@ -155,14 +155,14 @@ export class MapFrameCoordinator {
             };
             this.frameViewStateVersion = (this.frameViewStateVersion + 1) | 0;
             updatePromises.push(
-                this.deps.simWorkerPool.setTickViewState(
+                this.deps.simWorkerPool.setViewState(
                     input.cameraMapX | 0,
                     input.cameraMapY | 0,
                     input.lodDistance | 0,
                 ),
             );
             updatePromises.push(
-                this.deps.renderWorkerPool.setFrameTickViewState(
+                this.deps.renderWorkerPool.setFrameViewState(
                     input.cameraMapX | 0,
                     input.cameraMapY | 0,
                     input.lodDistance | 0,
@@ -172,7 +172,7 @@ export class MapFrameCoordinator {
         if (input.shouldUpdateFrameHoveredMapIds) {
             this.lastFrameHoveredMapIds = Int32Array.from(input.hoveredMapIdsPacked);
             updatePromises.push(
-                this.deps.renderWorkerPool.setFrameTickHoveredMapIds(input.hoveredMapIdsPacked),
+                this.deps.renderWorkerPool.setFrameHoveredMapIds(input.hoveredMapIdsPacked),
             );
         }
         return updatePromises;

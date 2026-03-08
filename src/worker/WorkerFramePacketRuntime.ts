@@ -165,7 +165,7 @@ export class WorkerFramePacketRuntime {
         return buildMapObjRenderPacket(updates);
     }
 
-    setTickMapIds(mapIds: Int32Array): void {
+    setVisibleMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
             this.tickMapIds = new Int32Array(0);
             this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
@@ -175,7 +175,7 @@ export class WorkerFramePacketRuntime {
         this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
     }
 
-    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+    setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
         const nextViewState = {
             cameraMapX: cameraMapX | 0,
             cameraMapY: cameraMapY | 0,
@@ -191,7 +191,7 @@ export class WorkerFramePacketRuntime {
         }
     }
 
-    setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
+    setHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
         if ((hoveredMapIdsPacked.length | 0) <= 0) {
             this.tickHoveredMapIdsPacked = new Int32Array(0);
             return;

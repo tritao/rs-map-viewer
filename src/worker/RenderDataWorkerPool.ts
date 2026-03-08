@@ -169,29 +169,27 @@ export class RenderDataWorkerPool {
         return this.withFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
-    setFrameTickMapIds(mapIds: Int32Array): Promise<void> {
-        return this.withFrameWorker((w) => w.setFrameTickMapIds(mapIds));
+    setFrameMapIds(mapIds: Int32Array): Promise<void> {
+        return this.withFrameWorker((w) => w.setFrameMapIds(mapIds));
     }
 
-    setFrameTickViewState(
+    setFrameViewState(
         cameraMapX: number,
         cameraMapY: number,
         lodDistance: number,
     ): Promise<void> {
-        return this.withFrameWorker((w) =>
-            w.setFrameTickViewState(cameraMapX, cameraMapY, lodDistance),
-        );
+        return this.withFrameWorker((w) => w.setFrameViewState(cameraMapX, cameraMapY, lodDistance));
     }
 
-    setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        return this.withFrameWorker((w) => w.setFrameTickHoveredMapIds(hoveredMapIdsPacked));
+    setFrameHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
+        return this.withFrameWorker((w) => w.setFrameHoveredMapIds(hoveredMapIdsPacked));
     }
 
     applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         return this.withFrameWorker((w) => w.applyNpcWorldStateDeltaPacket(deltaPacket));
     }
 
-    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
+    private applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
         return this.withFrameWorker((w) => w.applyMapObjRenderPacket(packet));
     }
 

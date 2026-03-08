@@ -116,7 +116,7 @@ export class WorkerTickRuntime {
         this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
     }
 
-    setTickMapIds(mapIds: Int32Array): void {
+    setVisibleMapIds(mapIds: Int32Array): void {
         if (!(mapIds instanceof Int32Array) || (mapIds.length | 0) <= 0) {
             this.tickMapIds = new Int32Array(0);
             this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
@@ -126,7 +126,7 @@ export class WorkerTickRuntime {
         this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
     }
 
-    setTickViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+    setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
         const nextViewState = {
             cameraMapX: cameraMapX | 0,
             cameraMapY: cameraMapY | 0,
