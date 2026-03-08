@@ -1,3 +1,8 @@
+uint lookupTextureSlot(uint textureId) {
+    ivec2 coord = ivec2(int(textureId & 255u), int((textureId >> 8u) & 255u));
+    return texelFetch(u_textureSlotLut, coord, 0).r;
+}
+
 void applyVertexMaterialOutputs(Vertex vertex) {
     v_color = vertex.color;
 

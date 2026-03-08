@@ -29,8 +29,3 @@ ModelInfo decodeModelInfo(int offset) {
     info.interactId = data.a | (((data.b >> 3u) & 0x1u) << 16u);
     return info;
 }
-
-uint lookupTextureSlot(uint textureId) {
-    ivec2 coord = ivec2(int(textureId & 255u), int((textureId >> 8u) & 255u));
-    return texelFetch(u_textureSlotLut, coord, 0).r;
-}
