@@ -23,7 +23,7 @@ const SPAWN_FLAG_HAS_ORDER_KEY = 1 << 0;
 export type DecodedNpcLifecyclePacket = Readonly<{
     version: 2;
     lifecycleEventsByMapId: ReadonlyMap<number, NpcEvent[]>;
-    eventCount: number;
+    lifecycleEventCount: number;
 }>;
 
 type MutableNpcUpdateDelta = {
@@ -281,10 +281,12 @@ export function encodeNpcLifecyclePacket(
     return writer.finish();
 }
 
-export function encodeNpcLifecyclePacketFromEvents(events: ReadonlyArray<NpcEvent>): Uint8Array {
+export function encodeNpcLifecyclePacketFromLifecycleEvents(
+    lifecycleEvents: ReadonlyArray<NpcEvent>,
+): Uint8Array {
     const lifecycleEventsByMapId = new Map<number, NpcEvent[]>();
-    for (let i = 0; i < events.length; i++) {
-        const event = events[i]!;
+    for (let i = 0; i < lifecycleEvents.length; i++) {
+        const event = lifecycleEvents[i]!;
         const mapId = event.mapId | 0;
         const mapEvents = lifecycleEventsByMapId.get(mapId);
         if (mapEvents) {
@@ -308,7 +310,7 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
 
     const mapCount = reader.readUnsignedShort() | 0;
     const lifecycleEventsByMapId = new Map<number, NpcEvent[]>();
-    let eventCount = 0;
+    let lifecycleEventCount = 0;
 
     for (let m = 0; m < mapCount; m++) {
         const mapId = reader.readUnsignedShort() | 0;
@@ -336,7 +338,7 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
                     (flags & SPAWN_FLAG_HAS_ORDER_KEY) !== 0 ? reader.readInt() | 0 : undefined,
             };
             events.push(event);
-            eventCount = (eventCount + 1) | 0;
+            lifecycleEventCount = (lifecycleEventCount + 1) | 0;
         }
 
         for (let i = 0; i < updateCount; i++) {
@@ -351,7 +353,7 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
                 delta: readLifecycleDelta(reader, flags, mapId, i),
             };
             events.push(event);
-            eventCount = (eventCount + 1) | 0;
+            lifecycleEventCount = (lifecycleEventCount + 1) | 0;
         }
 
         for (let i = 0; i < despawnCount; i++) {
@@ -362,7 +364,7 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
                 seq: reader.readInt() | 0,
             };
             events.push(event);
-            eventCount = (eventCount + 1) | 0;
+            lifecycleEventCount = (lifecycleEventCount + 1) | 0;
         }
 
         if ((events.length | 0) > 0) {
@@ -379,6 +381,6 @@ export function decodeNpcLifecyclePacket(input: ByteInput): DecodedNpcLifecycleP
     return {
         version: LIFECYCLE_PACKET_VERSION,
         lifecycleEventsByMapId,
-        eventCount: eventCount | 0,
+        lifecycleEventCount: lifecycleEventCount | 0,
     };
 }

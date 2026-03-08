@@ -23,10 +23,12 @@ type MapWorldSessionDeps = Readonly<{
 
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
+export type NpcLifecycleEventsInput = Readonly<{
+    lifecycleEvents: ReadonlyArray<NpcEvent>;
+}>;
+
 export type WorldEventsInput = Readonly<{
-    npc?: Readonly<{
-        lifecycleEvents: ReadonlyArray<NpcEvent>;
-    }>;
+    npc?: NpcLifecycleEventsInput;
     obj?: Readonly<{
         updates: ReadonlyArray<WorldMapObjUpdate>;
     }>;

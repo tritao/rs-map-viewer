@@ -1,7 +1,7 @@
 import { ModuleThread, Thread, spawn } from "threads";
 
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
-import { encodeNpcLifecyclePacketFromEvents } from "../runtime/packets/NpcLifecyclePacket";
+import { encodeNpcLifecyclePacketFromLifecycleEvents } from "../runtime/packets/NpcLifecyclePacket";
 import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import { LoadedCache } from "../util/Caches";
 import type {
@@ -110,7 +110,9 @@ export class SimWorkerPool {
         if ((events.length | 0) <= 0) {
             return Promise.resolve(0);
         }
-        return this.applyNpcLifecyclePacketBytes(encodeNpcLifecyclePacketFromEvents(events));
+        return this.applyNpcLifecyclePacketBytes(
+            encodeNpcLifecyclePacketFromLifecycleEvents(events),
+        );
     }
 
     private syncWorldState(update: WorldInputUpdate): Promise<void> {
