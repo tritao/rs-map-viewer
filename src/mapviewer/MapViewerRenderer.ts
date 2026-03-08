@@ -50,7 +50,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly frameRuntimeCoordinator: WorkerMapFrameCoordinator;
     private readonly mapRuntimeSession: MapRuntimeSession;
     private readonly mapWorldSession: MapWorldSession;
-    private loadEpoch: number = 1;
     private seamSampleCount: number = 0;
     private seamSimMsTotal: number = 0;
     private seamApplyMsTotal: number = 0;
@@ -220,9 +219,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private async finalizeLoadedMap(packet: DecodedStaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
-        const mapId = mapData.mapId | 0;
-        const objRenderData = packet.runtimeBootstrap.objRenderData;
-        this.renderer.replaceMapObjRenderData(mapId, objRenderData);
+        this.mapWorldSession.attachLoadedMapRuntime(packet);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         if (mapData.minimapBlob.size > 0) {
@@ -255,14 +252,14 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
-        const queuedLoadEpoch = this.loadEpoch | 0;
+        const queuedLoadEpoch = this.mapWorldSession.captureLoadEpoch();
         const devsq = this.mapViewer.getDevFixedMapSquare();
         if (devsq && (mapX !== devsq.mapX || mapY !== devsq.mapY)) {
             // Fixed-square dev mode: never queue builds for other squares.
             return;
         }
         const staticMapPacket = await this.loadStaticMapPacket(mapX, mapY);
-        if ((this.loadEpoch | 0) !== queuedLoadEpoch) {
+        if (!this.mapWorldSession.hasLoadEpoch(queuedLoadEpoch)) {
             return;
         }
         if (this.shouldDropStaticMapPacketForDevSquare(staticMapPacket)) {
@@ -290,7 +287,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             return;
         }
         if (
-            (this.loadEpoch | 0) !== queuedLoadEpoch ||
+            !this.mapWorldSession.hasLoadEpoch(queuedLoadEpoch) ||
             !this.mapWorldSession.hasToken(mapRuntime.mapId, mapRuntime.mapSimToken)
         ) {
             return;
@@ -378,7 +375,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async resetForCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
-        this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapWorldSession.reset();
 
         try {
@@ -396,7 +392,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
-        this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapWorldSession.reset();
         this.tickCoordinator.resetForShutdown(this.frameRuntimeCoordinator);
         this.inputManager.cleanUp();

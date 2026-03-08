@@ -11,10 +11,21 @@ type MapWorldSessionDeps = Readonly<{
 }>;
 
 export class MapWorldSession {
+    private loadEpoch: number = 1;
+
     constructor(private readonly deps: MapWorldSessionDeps) {}
 
     reset(): void {
+        this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.deps.runtimeSession.reset();
+    }
+
+    captureLoadEpoch(): number {
+        return this.loadEpoch | 0;
+    }
+
+    hasLoadEpoch(epoch: number): boolean {
+        return (this.loadEpoch | 0) === (epoch | 0);
     }
 
     hasToken(mapId: number, token: number): boolean {
@@ -39,6 +50,10 @@ export class MapWorldSession {
 
     replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): void {
         void this.applyMapObjRenderPacket(createMapObjRenderPacket(mapId, objRenderData));
+    }
+
+    attachLoadedMapRuntime(packet: DecodedStaticMapPacket): void {
+        this.replaceMapObjRenderData(packet.mapData.mapId | 0, packet.runtimeBootstrap.objRenderData);
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
