@@ -404,6 +404,8 @@ function buildLocData(
               -50,
           )
         : rawModel;
+    applyStandalonePreviewBasis(model);
+    model.calculateBoundsCylinder();
     const renderData = buildStandaloneRenderableData({
         textureLoader: services.session.loaders.textureLoader,
         model,
