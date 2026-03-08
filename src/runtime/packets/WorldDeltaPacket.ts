@@ -1,8 +1,5 @@
 import type {
-    NpcDespawnEvent,
     NpcEvent,
-    NpcSpawnEvent,
-    NpcUpdateEvent,
 } from "../entities/NpcEvents";
 import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
 
@@ -334,82 +331,6 @@ export function decodeNpcWorldStateUpdate(
         delta.movementLoop = packed[off + 13] | 0;
     }
     return delta;
-}
-
-function ensureMapEvents(out: Map<number, NpcEvent[]>, mapId: number): NpcEvent[] {
-    const id = mapId | 0;
-    const existing = out.get(id);
-    if (existing) {
-        return existing;
-    }
-    const next: NpcEvent[] = [];
-    out.set(id, next);
-    return next;
-}
-
-export function decodeWorldDeltaNpcLifecycleEvents(
-    packet: WorldDeltaPacket,
-): ReadonlyMap<number, NpcEvent[]> {
-    const counts = validateWorldDeltaPacket(packet);
-    const out = new Map<number, NpcEvent[]>();
-    const npcState = packet.npcState;
-    if (!npcState) {
-        return out;
-    }
-
-    const spawnPacked = npcState.spawnStatePacked;
-    const spawnCount = counts.spawnCount | 0;
-    for (let i = 0; i < spawnCount; i++) {
-        const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
-        const mapId = spawnPacked[off + 0] | 0;
-        const events = ensureMapEvents(out, mapId);
-        const hasOrderKey = (spawnPacked[off + 6] | 0) !== 0;
-        const event: NpcSpawnEvent = {
-            kind: "spawn",
-            mapId,
-            npcInstanceId: spawnPacked[off + 1] | 0,
-            npcTypeId: spawnPacked[off + 2] | 0,
-            tileX: spawnPacked[off + 3] | 0,
-            tileY: spawnPacked[off + 4] | 0,
-            level: spawnPacked[off + 5] | 0,
-            orderKey: hasOrderKey ? spawnPacked[off + 7] | 0 : undefined,
-        };
-        events.push(event);
-    }
-
-    const updatePacked = npcState.updateStatePacked;
-    const updateCount = counts.updateCount | 0;
-    for (let i = 0; i < updateCount; i++) {
-        const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
-        const mapId = updatePacked[off + 0] | 0;
-        const flags = updatePacked[off + 3] | 0;
-        const events = ensureMapEvents(out, mapId);
-        const event: NpcUpdateEvent = {
-            kind: "update",
-            mapId,
-            npcInstanceId: updatePacked[off + 1] | 0,
-            seq: updatePacked[off + 2] | 0,
-            delta: decodeNpcWorldStateUpdate(flags, updatePacked, off),
-        };
-        events.push(event);
-    }
-
-    const despawnPacked = npcState.despawnStatePacked;
-    const despawnCount = counts.despawnCount | 0;
-    for (let i = 0; i < despawnCount; i++) {
-        const off = (i | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE;
-        const mapId = despawnPacked[off + 0] | 0;
-        const events = ensureMapEvents(out, mapId);
-        const event: NpcDespawnEvent = {
-            kind: "despawn",
-            mapId,
-            npcInstanceId: despawnPacked[off + 1] | 0,
-            seq: despawnPacked[off + 2] | 0,
-        };
-        events.push(event);
-    }
-
-    return out;
 }
 
 export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transferable[] {
