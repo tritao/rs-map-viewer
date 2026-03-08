@@ -10,9 +10,22 @@ type WorldRuntimePoolDeps = Readonly<{
 }>;
 
 export class WorldRuntimePool {
+    private readonly mapRuntimeTokenByMapId = new Map<number, number>();
+    private nextMapRuntimeToken: number = 1;
+
     constructor(private readonly deps: WorldRuntimePoolDeps) {}
 
-    async activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void> {
+    reset(): void {
+        this.mapRuntimeTokenByMapId.clear();
+        this.nextMapRuntimeToken = 1;
+    }
+
+    hasToken(mapId: number, token: number): boolean {
+        return (this.mapRuntimeTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
+    }
+
+    async activateLoadedMap(packet: StaticMapPacket): Promise<number> {
+        const mapSimToken = this.reserveToken(packet.mapData.mapId | 0);
         const mapId = packet.mapData.mapId | 0;
         await this.deps.renderWorkerPool.frame.activateLoadedMap(packet, mapSimToken);
         try {
@@ -22,9 +35,11 @@ export class WorldRuntimePool {
             void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
             throw error;
         }
+        return mapSimToken | 0;
     }
 
-    deactivateLoadedMap(mapId: number, mapSimToken: number): void {
+    deactivateLoadedMap(mapId: number): void {
+        const mapSimToken = this.invalidateToken(mapId | 0);
         void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
         void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
     }
@@ -35,5 +50,16 @@ export class WorldRuntimePool {
 
     applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
         return this.deps.simWorkerPool.world.applyMapObjStateUpdates(updates);
+    }
+
+    private reserveToken(mapId: number): number {
+        const token = this.nextMapRuntimeToken | 0;
+        this.nextMapRuntimeToken = (token + 1) | 0;
+        this.mapRuntimeTokenByMapId.set(mapId | 0, token);
+        return token | 0;
+    }
+
+    private invalidateToken(mapId: number): number {
+        return this.reserveToken(mapId | 0);
     }
 }

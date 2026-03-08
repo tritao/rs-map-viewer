@@ -24,15 +24,12 @@ export type WorldEventsInput = Readonly<{
 
 export class MapWorldSession {
     private loadEpoch: number = 1;
-    private readonly mapSimTokenByMapId = new Map<number, number>();
-    private nextMapSimToken: number = 1;
 
     constructor(private readonly deps: MapWorldSessionDeps) {}
 
     reset(): void {
         this.loadEpoch = (this.loadEpoch + 1) | 0;
-        this.mapSimTokenByMapId.clear();
-        this.nextMapSimToken = 1;
+        this.deps.worldRuntimePool.reset();
     }
 
     captureLoadEpoch(): number {
@@ -43,22 +40,17 @@ export class MapWorldSession {
         return (this.loadEpoch | 0) === (epoch | 0);
     }
 
-    hasToken(mapId: number, token: number): boolean {
-        return (this.mapSimTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
-    }
-
     async registerActiveLoadedMap(
         packet: StaticMapPacket,
         loadEpoch: number,
     ): Promise<boolean> {
         const mapId = packet.mapData.mapId | 0;
-        const mapSimToken = this.reserveToken(mapId);
-        await this.registerMapRuntime(packet, mapSimToken);
+        const mapSimToken = await this.registerMapRuntime(packet);
         if (
             !this.hasLoadEpoch(loadEpoch) ||
-            !this.hasToken(mapId, mapSimToken)
+            !this.deps.worldRuntimePool.hasToken(mapId, mapSimToken)
         ) {
-            this.unregisterMapRuntime(mapId, mapSimToken);
+            this.unregisterMapRuntime(mapId);
             return false;
         }
         return true;
@@ -66,8 +58,7 @@ export class MapWorldSession {
 
     unregisterLoadedMap(mapId: number): void {
         const normalizedMapId = mapId | 0;
-        const mapSimToken = this.invalidateToken(normalizedMapId);
-        this.unregisterMapRuntime(normalizedMapId, mapSimToken);
+        this.unregisterMapRuntime(normalizedMapId);
     }
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
@@ -88,25 +79,11 @@ export class MapWorldSession {
         return applied | 0;
     }
 
-    private reserveToken(mapId: number): number {
-        const token = this.nextMapSimToken | 0;
-        this.nextMapSimToken = (token + 1) | 0;
-        this.mapSimTokenByMapId.set(mapId | 0, token);
-        return token;
+    private async registerMapRuntime(packet: StaticMapPacket): Promise<number> {
+        return await this.deps.worldRuntimePool.activateLoadedMap(packet);
     }
 
-    private invalidateToken(mapId: number): number {
-        return this.reserveToken(mapId | 0);
-    }
-
-    private async registerMapRuntime(
-        packet: StaticMapPacket,
-        mapSimToken: number,
-    ): Promise<void> {
-        await this.deps.worldRuntimePool.activateLoadedMap(packet, mapSimToken);
-    }
-
-    private unregisterMapRuntime(mapId: number, mapSimToken: number): void {
-        this.deps.worldRuntimePool.deactivateLoadedMap(mapId, mapSimToken);
+    private unregisterMapRuntime(mapId: number): void {
+        this.deps.worldRuntimePool.deactivateLoadedMap(mapId);
     }
 }
