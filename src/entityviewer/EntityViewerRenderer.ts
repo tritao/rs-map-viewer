@@ -1,11 +1,16 @@
 import type { StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import type { CacheSession } from "../rs/loaders/CacheSession";
-import { WebGLEntityRenderer, type EntityViewerDebugMode } from "../renderer/webgl/WebGLEntityRenderer";
+import {
+    WebGLEntityRenderer,
+    type EntityViewerDebugMode,
+    type SetEntityRenderDataOptions,
+} from "../renderer/webgl/WebGLEntityRenderer";
 
 export class EntityViewerRenderer extends RendererMainLoop {
     declare renderer: WebGLEntityRenderer;
     readonly session: CacheSession;
+    renderTargetKey: string | undefined;
 
     constructor(session: CacheSession) {
         super();
@@ -13,8 +18,11 @@ export class EntityViewerRenderer extends RendererMainLoop {
         this.renderer = new WebGLEntityRenderer(session);
     }
 
-    setRenderData(renderData: StandaloneRenderableData | undefined): void {
-        this.renderer.setRenderData(renderData);
+    setRenderData(
+        renderData: StandaloneRenderableData | undefined,
+        options?: SetEntityRenderDataOptions,
+    ): void {
+        this.renderer.setRenderData(renderData, options);
     }
 
     setOrbitDistance(distance: number): void {

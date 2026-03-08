@@ -3,7 +3,12 @@ import { ChangeEvent, memo, type PointerEventHandler, useEffect, useRef, type Wh
 import { RendererCanvas } from "../components/renderer/RendererCanvas";
 import type { CacheInfo } from "../rs/cache/CacheInfo";
 import type { CacheList } from "../util/Caches";
-import type { EntityViewerKind, EntityViewerObjMode, EntityViewerRequest } from "./EntityViewerData";
+import type {
+    EntityViewerKind,
+    EntityViewerNpcAnimationOption,
+    EntityViewerObjMode,
+    EntityViewerRequest,
+} from "./EntityViewerData";
 import { EntityViewerRenderer } from "./EntityViewerRenderer";
 import type { ObjIconSprite } from "./ObjIconSpriteRenderer";
 
@@ -18,11 +23,14 @@ type EntityViewerContainerProps = Readonly<{
     label?: string;
     errorMessage?: string;
     iconSprite?: ObjIconSprite;
+    npcAnimationOptions?: readonly EntityViewerNpcAnimationOption[];
+    npcPlaying: boolean;
     cameraYaw: number;
     cameraPitch: number;
     cameraDistance: number;
     onRequestChange: (request: EntityViewerRequest) => void;
     onCacheChange: (cacheName: string) => void;
+    onNpcPlayingChange: (playing: boolean) => void;
     onCameraChange: (field: "yaw" | "pitch" | "distance", value: number) => void;
 }>;
 
@@ -102,11 +110,14 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
     label,
     errorMessage,
     iconSprite,
+    npcAnimationOptions,
+    npcPlaying,
     cameraYaw,
     cameraPitch,
     cameraDistance,
     onRequestChange,
     onCacheChange,
+    onNpcPlayingChange,
     onCameraChange,
 }: EntityViewerContainerProps): JSX.Element {
     const dragStateRef = useRef<
@@ -284,6 +295,38 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                                 </label>
                             </>
                         ) : undefined}
+                    </>
+                ) : undefined}
+                {request.kind === "npc" ? (
+                    <>
+                        <label>
+                            Animation{" "}
+                            <select
+                                value={request.npcSeqId}
+                                onChange={(event) =>
+                                    updateRequest({
+                                        npcSeqId: Number.parseInt(event.target.value, 10) || -1,
+                                        npcFrame: 0,
+                                    })
+                                }
+                            >
+                                <option value={-1}>None</option>
+                                {(npcAnimationOptions ?? []).map((option) => (
+                                    <option key={option.seqId} value={option.seqId}>
+                                        {option.label} ({option.seqId})
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={npcPlaying}
+                                disabled={request.npcSeqId < 0}
+                                onChange={(event) => onNpcPlayingChange(event.target.checked)}
+                            />{" "}
+                            Play
+                        </label>
                     </>
                 ) : undefined}
                 {request.kind === "loc" ? (

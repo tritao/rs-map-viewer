@@ -28,12 +28,20 @@ export type EntityViewerRequest = Readonly<{
     icon36x32: boolean;
     iconOutline: boolean;
     iconShadow: boolean;
+    npcSeqId: number;
+    npcFrame: number;
+}>;
+
+export type EntityViewerNpcAnimationOption = Readonly<{
+    seqId: number;
+    label: string;
 }>;
 
 export type EntityViewerResolvedData = Readonly<{
     label: string;
     renderData?: StandaloneRenderableData;
     iconSprite?: ObjIconSprite;
+    npcAnimationOptions?: readonly EntityViewerNpcAnimationOption[];
 }>;
 
 export type EntityViewerServices = Readonly<{
@@ -287,7 +295,15 @@ function buildNpcData(
     if (!npcResult.ok) {
         throw new Error(`NPC ${request.id | 0} not found`);
     }
-    const baseModel = services.npcModelLoader.getModel(npcResult.value, -1, -1);
+    const npcType = npcResult.value;
+    const animationOptions = collectNpcAnimationOptions(npcType);
+    const seqId = request.npcSeqId | 0;
+    const frame = Math.max(0, request.npcFrame | 0);
+    const baseModel = services.npcModelLoader.getModel(
+        npcType,
+        seqId >= 0 ? seqId : -1,
+        seqId >= 0 ? frame : -1,
+    );
     if (!baseModel) {
         throw new Error(`NPC ${request.id | 0} has no renderable model`);
     }
@@ -304,9 +320,60 @@ function buildNpcData(
         throw new Error(`Failed to build NPC render data for ${request.id | 0}`);
     }
     return {
-        label: `npc:${request.id | 0} ${npcResult.value.name}`,
+        label:
+            seqId >= 0
+                ? `npc:${request.id | 0} ${npcType.name} (seq ${seqId}, frame ${frame})`
+                : `npc:${request.id | 0} ${npcType.name}`,
         renderData,
+        npcAnimationOptions: animationOptions,
     };
+}
+
+function collectNpcAnimationOptions(npcType: {
+    idleSeqId: number;
+    walkSeqId: number;
+    walkBackSeqId: number;
+    walkLeftSeqId: number;
+    walkRightSeqId: number;
+    turnLeftSeqId: number;
+    turnRightSeqId: number;
+    runSeqId: number;
+    runBackSeqId: number;
+    runLeftSeqId: number;
+    runRightSeqId: number;
+    crawlSeqId: number;
+    crawlBackSeqId: number;
+    crawlLeftSeqId: number;
+    crawlRightSeqId: number;
+}): readonly EntityViewerNpcAnimationOption[] {
+    const rawOptions: readonly EntityViewerNpcAnimationOption[] = [
+        { seqId: npcType.idleSeqId | 0, label: "Idle" },
+        { seqId: npcType.walkSeqId | 0, label: "Walk" },
+        { seqId: npcType.walkBackSeqId | 0, label: "Walk Back" },
+        { seqId: npcType.walkLeftSeqId | 0, label: "Walk Left" },
+        { seqId: npcType.walkRightSeqId | 0, label: "Walk Right" },
+        { seqId: npcType.turnLeftSeqId | 0, label: "Turn Left" },
+        { seqId: npcType.turnRightSeqId | 0, label: "Turn Right" },
+        { seqId: npcType.runSeqId | 0, label: "Run" },
+        { seqId: npcType.runBackSeqId | 0, label: "Run Back" },
+        { seqId: npcType.runLeftSeqId | 0, label: "Run Left" },
+        { seqId: npcType.runRightSeqId | 0, label: "Run Right" },
+        { seqId: npcType.crawlSeqId | 0, label: "Crawl" },
+        { seqId: npcType.crawlBackSeqId | 0, label: "Crawl Back" },
+        { seqId: npcType.crawlLeftSeqId | 0, label: "Crawl Left" },
+        { seqId: npcType.crawlRightSeqId | 0, label: "Crawl Right" },
+    ];
+    const seen = new Set<number>();
+    const options: EntityViewerNpcAnimationOption[] = [];
+    for (const option of rawOptions) {
+        const seqId = option.seqId | 0;
+        if (seqId < 0 || seen.has(seqId)) {
+            continue;
+        }
+        seen.add(seqId);
+        options.push(option);
+    }
+    return options;
 }
 
 function buildLocData(

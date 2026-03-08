@@ -18,6 +18,9 @@ import { FrameStats, RendererStats } from "../Renderer";
 const DRAW_RANGE_STRIDE = 3;
 
 export type EntityViewerDebugMode = "normal" | "flat" | "bypass" | "color";
+export type SetEntityRenderDataOptions = Readonly<{
+    resetCamera?: boolean;
+}>;
 
 function createEmptyTileRenderFlags(): Uint8Array[][] {
     return Array.from({ length: Scene.MAX_LEVELS }, () => [new Uint8Array(1)]);
@@ -81,10 +84,15 @@ export class WebGLEntityRenderer implements Renderer {
 
     constructor(private readonly session: CacheSession) {}
 
-    setRenderData(renderData: StandaloneRenderableData | undefined): void {
+    setRenderData(
+        renderData: StandaloneRenderableData | undefined,
+        options: SetEntityRenderDataOptions = {},
+    ): void {
         this.renderData = renderData;
         this.fitRadius = renderData?.fitRadius ?? 256;
-        this.resetCameraToFit();
+        if (options.resetCamera ?? true) {
+            this.resetCameraToFit();
+        }
         if (this.app) {
             this.reloadRenderable();
         }

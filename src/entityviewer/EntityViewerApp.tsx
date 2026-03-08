@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
@@ -45,6 +45,7 @@ function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
     const id = Number.parseInt(searchParams.get("id") ?? "4151", 10);
     const count = Number.parseInt(searchParams.get("count") ?? "1", 10);
     const rotation = Number.parseInt(searchParams.get("rotation") ?? "0", 10);
+    const npcSeqId = Number.parseInt(searchParams.get("npcSeqId") ?? "-1", 10);
     return {
         kind,
         id: Number.isFinite(id) ? Math.max(0, id | 0) : DEFAULT_IDS_BY_KIND[kind],
@@ -54,6 +55,8 @@ function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
         icon36x32: searchParams.get("icon36x32") === "1",
         iconOutline: searchParams.get("iconOutline") !== "0",
         iconShadow: searchParams.get("iconShadow") !== "0",
+        npcSeqId: Number.isFinite(npcSeqId) ? npcSeqId | 0 : -1,
+        npcFrame: 0,
     };
 }
 
@@ -89,6 +92,19 @@ function updateSearchParams(
     return next;
 }
 
+function getRenderTargetKey(request: EntityViewerRequest): string {
+    switch (request.kind) {
+        case "obj":
+            return `obj:${request.id}:${request.count}:${request.objMode}`;
+        case "npc":
+            return `npc:${request.id}`;
+        case "loc":
+            return `loc:${request.id}`;
+        case "model":
+            return `model:${request.id}`;
+    }
+}
+
 export default function EntityViewerApp(): JSX.Element {
     const [searchParams, setSearchParams] = useSearchParams();
     const [errorMessage, setErrorMessage] = useState<string>();
@@ -101,11 +117,27 @@ export default function EntityViewerApp(): JSX.Element {
     const [cameraYaw, setCameraYaw] = useState<number>(1024);
     const [cameraPitch, setCameraPitch] = useState<number>(-180);
     const [cameraDistance, setCameraDistance] = useState<number>(8);
+    const [npcPlaying, setNpcPlaying] = useState<boolean>(true);
+    const [npcFrame, setNpcFrame] = useState<number>(0);
     const [lastIdsByKind, setLastIdsByKind] = useState<Record<EntityViewerKind, number>>(
         DEFAULT_IDS_BY_KIND,
     );
     const request = useMemo(() => parseRequest(searchParams), [searchParams]);
     const debugMode = useMemo(() => parseDebugMode(searchParams), [searchParams]);
+    const resolvedRequest = useMemo(
+        () => (request.kind === "npc" ? { ...request, npcFrame } : request),
+        [npcFrame, request],
+    );
+    const renderTargetKey = useMemo(() => getRenderTargetKey(resolvedRequest), [resolvedRequest]);
+    const npcAnimationKey = useMemo(
+        () =>
+            request.kind === "npc"
+                ? `npc:${request.id}:${request.npcSeqId}`
+                : request.kind,
+        [request.id, request.kind, request.npcSeqId],
+    );
+    const previousNpcAnimationKeyRef = useRef<string>();
+    const npcFrameRef = useRef<number>(0);
 
     useEffect(() => {
         setLastIdsByKind((current) => {
@@ -119,6 +151,85 @@ export default function EntityViewerApp(): JSX.Element {
             };
         });
     }, [request.id, request.kind]);
+
+    useEffect(() => {
+        if (previousNpcAnimationKeyRef.current !== npcAnimationKey) {
+            previousNpcAnimationKeyRef.current = npcAnimationKey;
+            setNpcFrame(0);
+        }
+    }, [npcAnimationKey]);
+
+    useEffect(() => {
+        npcFrameRef.current = npcFrame;
+    }, [npcFrame]);
+
+    useEffect(() => {
+        if (request.kind !== "npc" || !npcPlaying || request.npcSeqId < 0 || !renderer) {
+            return;
+        }
+
+        let cancelled = false;
+        let frameHandle = 0;
+        let accumulatedMs = 0;
+        let lastTimestamp = performance.now();
+
+        const step = (timestamp: number) => {
+            if (cancelled) {
+                return;
+            }
+            const deltaMs = Math.max(0, timestamp - lastTimestamp);
+            lastTimestamp = timestamp;
+            accumulatedMs += deltaMs;
+
+            const seqResult = renderer.session.loaders.seqTypeLoader.tryLoad(request.npcSeqId);
+            if (seqResult.ok && seqResult.value.frameIds.length > 0) {
+                const seqType = seqResult.value;
+                let currentFrame = Math.max(
+                    0,
+                    Math.min(npcFrameRef.current | 0, seqType.frameIds.length - 1),
+                );
+                let frameDurationMs =
+                    Math.max(
+                        1,
+                        seqType.getFrameLength(
+                            renderer.session.loaders.seqFrameLoader,
+                            currentFrame,
+                        ),
+                    ) * 20;
+
+                while (accumulatedMs >= frameDurationMs) {
+                    accumulatedMs -= frameDurationMs;
+                    currentFrame = (currentFrame + 1) % seqType.frameIds.length;
+                    frameDurationMs =
+                        Math.max(
+                            1,
+                            seqType.getFrameLength(
+                                renderer.session.loaders.seqFrameLoader,
+                                currentFrame,
+                            ),
+                        ) * 20;
+                }
+
+                if (currentFrame !== (npcFrameRef.current | 0)) {
+                    npcFrameRef.current = currentFrame;
+                    setNpcFrame(currentFrame);
+                }
+            }
+
+            frameHandle = requestAnimationFrame(step);
+        };
+
+        frameHandle = requestAnimationFrame(step);
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(frameHandle);
+        };
+    }, [
+        npcPlaying,
+        renderer,
+        request.kind,
+        request.npcSeqId,
+    ]);
 
     useEffect(() => {
         const abortController = new AbortController();
@@ -163,8 +274,12 @@ export default function EntityViewerApp(): JSX.Element {
         try {
             renderer.setDebugMode(debugMode);
             const services = createEntityViewerServices(renderer.session);
-            const resolved = resolveEntityViewerData(services, request);
-            renderer.setRenderData(resolved.renderData);
+            const resolved = resolveEntityViewerData(services, resolvedRequest);
+            const shouldResetCamera = renderer.renderTargetKey !== renderTargetKey;
+            renderer.setRenderData(resolved.renderData, {
+                resetCamera: shouldResetCamera,
+            });
+            renderer.renderTargetKey = renderTargetKey;
             setCameraYaw(renderer.getYaw());
             setCameraPitch(renderer.getPitch());
             setCameraDistance(renderer.getOrbitDistance());
@@ -177,7 +292,7 @@ export default function EntityViewerApp(): JSX.Element {
             setResolvedEntity(undefined);
             setErrorMessage(errorToString(error));
         }
-    }, [debugMode, renderer, request]);
+    }, [debugMode, renderTargetKey, renderer, resolvedRequest]);
 
     const content =
         errorMessage && !renderer ? (
@@ -198,6 +313,8 @@ export default function EntityViewerApp(): JSX.Element {
                 label={entityLabel}
                 errorMessage={renderer ? errorMessage : undefined}
                 iconSprite={resolvedEntity?.iconSprite}
+                npcAnimationOptions={resolvedEntity?.npcAnimationOptions}
+                npcPlaying={npcPlaying}
                 cameraYaw={cameraYaw}
                 cameraPitch={cameraPitch}
                 cameraDistance={cameraDistance}
@@ -206,6 +323,9 @@ export default function EntityViewerApp(): JSX.Element {
                         nextRequest.kind === request.kind
                             ? nextRequest.id
                             : (lastIdsByKind[nextRequest.kind] ?? DEFAULT_IDS_BY_KIND[nextRequest.kind]);
+                    const resetNpcAnimation =
+                        nextRequest.kind === "npc" &&
+                        (request.kind !== "npc" || effectiveId !== request.id);
                     setSearchParams(
                         updateSearchParams(searchParams, {
                             kind: nextRequest.kind,
@@ -225,12 +345,19 @@ export default function EntityViewerApp(): JSX.Element {
                                 nextRequest.kind === "obj" && !nextRequest.iconShadow
                                     ? "0"
                                     : undefined,
+                            npcSeqId:
+                                nextRequest.kind === "npc" &&
+                                !resetNpcAnimation &&
+                                nextRequest.npcSeqId >= 0
+                                    ? nextRequest.npcSeqId.toString()
+                                    : undefined,
                         }),
                     );
                 }}
                 onCacheChange={(cacheName) =>
                     setSearchParams(updateSearchParams(searchParams, { cache: cacheName }))
                 }
+                onNpcPlayingChange={setNpcPlaying}
                 onCameraChange={(field, value) => {
                     switch (field) {
                         case "yaw":
