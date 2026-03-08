@@ -23,42 +23,29 @@ export type WorldEventsInput = Readonly<{
 }>;
 
 export class WorldSession {
-    private loadEpoch: number = 1;
-
     constructor(private readonly deps: WorldSessionDeps) {}
 
     reset(): void {
-        this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.deps.worldRuntimePool.reset();
     }
 
     captureLoadEpoch(): number {
-        return this.loadEpoch | 0;
+        return this.deps.worldRuntimePool.captureLoadEpoch();
     }
 
     hasLoadEpoch(epoch: number): boolean {
-        return (this.loadEpoch | 0) === (epoch | 0);
+        return this.deps.worldRuntimePool.hasLoadEpoch(epoch);
     }
 
     async registerActiveLoadedMap(
         packet: StaticMapPacket,
         loadEpoch: number,
     ): Promise<boolean> {
-        const mapId = packet.mapData.mapId | 0;
-        const mapSimToken = await this.registerMapRuntime(packet);
-        if (
-            !this.hasLoadEpoch(loadEpoch) ||
-            !this.deps.worldRuntimePool.hasToken(mapId, mapSimToken)
-        ) {
-            this.unregisterMapRuntime(mapId);
-            return false;
-        }
-        return true;
+        return await this.deps.worldRuntimePool.registerActiveLoadedMap(packet, loadEpoch);
     }
 
     unregisterLoadedMap(mapId: number): void {
-        const normalizedMapId = mapId | 0;
-        this.unregisterMapRuntime(normalizedMapId);
+        this.deps.worldRuntimePool.unregisterLoadedMap(mapId | 0);
     }
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
@@ -77,13 +64,5 @@ export class WorldSession {
                 0;
         }
         return applied | 0;
-    }
-
-    private async registerMapRuntime(packet: StaticMapPacket): Promise<number> {
-        return await this.deps.worldRuntimePool.activateLoadedMap(packet);
-    }
-
-    private unregisterMapRuntime(mapId: number): void {
-        this.deps.worldRuntimePool.deactivateLoadedMap(mapId);
     }
 }

@@ -10,21 +10,48 @@ type WorldRuntimePoolDeps = Readonly<{
 }>;
 
 export class WorldRuntimePool {
+    private loadEpoch: number = 1;
     private readonly mapRuntimeTokenByMapId = new Map<number, number>();
     private nextMapRuntimeToken: number = 1;
 
     constructor(private readonly deps: WorldRuntimePoolDeps) {}
 
     reset(): void {
+        this.loadEpoch = (this.loadEpoch + 1) | 0;
         this.mapRuntimeTokenByMapId.clear();
         this.nextMapRuntimeToken = 1;
     }
 
-    hasToken(mapId: number, token: number): boolean {
+    captureLoadEpoch(): number {
+        return this.loadEpoch | 0;
+    }
+
+    hasLoadEpoch(epoch: number): boolean {
+        return (this.loadEpoch | 0) === (epoch | 0);
+    }
+
+    async registerActiveLoadedMap(
+        packet: StaticMapPacket,
+        loadEpoch: number,
+    ): Promise<boolean> {
+        const mapId = packet.mapData.mapId | 0;
+        const mapSimToken = await this.activateLoadedMap(packet);
+        if (!this.hasLoadEpoch(loadEpoch) || !this.hasToken(mapId, mapSimToken)) {
+            this.unregisterLoadedMap(mapId);
+            return false;
+        }
+        return true;
+    }
+
+    unregisterLoadedMap(mapId: number): void {
+        this.deactivateLoadedMap(mapId | 0);
+    }
+
+    private hasToken(mapId: number, token: number): boolean {
         return (this.mapRuntimeTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
     }
 
-    async activateLoadedMap(packet: StaticMapPacket): Promise<number> {
+    private async activateLoadedMap(packet: StaticMapPacket): Promise<number> {
         const mapSimToken = this.reserveToken(packet.mapData.mapId | 0);
         const mapId = packet.mapData.mapId | 0;
         await this.deps.renderWorkerPool.frame.activateLoadedMap(packet, mapSimToken);
@@ -38,7 +65,7 @@ export class WorldRuntimePool {
         return mapSimToken | 0;
     }
 
-    deactivateLoadedMap(mapId: number): void {
+    private deactivateLoadedMap(mapId: number): void {
         const mapSimToken = this.invalidateToken(mapId | 0);
         void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
         void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
