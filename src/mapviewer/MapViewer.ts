@@ -47,6 +47,8 @@ const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
     mapRenderTelemetry: false,
 };
 
+type SearchParamsListener = (params: URLSearchParamsInit) => void;
+
 function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
     return {
         mapRenderBackend: options?.mapRenderBackend ?? DEFAULT_RUNTIME_OPTIONS.mapRenderBackend,
@@ -84,6 +86,80 @@ function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined 
     return { mapX, mapY };
 }
 
+function buildMapViewerSearchParams(input: Readonly<{
+    camera: Camera;
+    loadedCacheName: string;
+    latestCacheName: string;
+    runtimeOptions: MapViewerRuntimeOptions;
+    devFixedMapSquare?: DevFixedMapSquare;
+}>): URLSearchParamsInit {
+    const cx = input.camera.getPosX().toFixed(2).toString();
+    const cy = (-input.camera.getPosY()).toFixed(2);
+    const cz = input.camera.getPosZ().toFixed(2).toString();
+    const yaw = input.camera.yaw & 2047;
+    const params: Record<string, string> = {
+        cx,
+        cy,
+        cz,
+        p: (input.camera.pitch | 0).toString(),
+        y: yaw.toString(),
+        v: "1",
+    };
+
+    if (input.camera.projectionType === ProjectionType.ORTHO) {
+        params.pt = "o";
+        params.z = input.camera.orthoZoom.toString();
+    }
+    if (input.loadedCacheName !== input.latestCacheName) {
+        params.cache = input.loadedCacheName;
+    }
+    if (input.runtimeOptions.mapRenderBackend !== DEFAULT_RUNTIME_OPTIONS.mapRenderBackend) {
+        params.mrb = input.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
+    }
+    if (input.runtimeOptions.mapRenderTelemetry) {
+        params.mrt = "1";
+    }
+    if (input.devFixedMapSquare) {
+        params.devsq = `${input.devFixedMapSquare.mapX}:${input.devFixedMapSquare.mapY}`;
+    }
+
+    return params;
+}
+
+type ParsedMapViewerSearchParams = Readonly<{
+    position?: vec3;
+    projectionType?: ProjectionType;
+    orthoZoom?: number;
+    pitch?: number;
+    yaw?: number;
+    devFixedMapSquare?: DevFixedMapSquare;
+}>;
+
+function parseMapViewerSearchParams(
+    searchParams: URLSearchParams,
+): ParsedMapViewerSearchParams {
+    const cx = searchParams.get("cx");
+    const cy = searchParams.get("cy");
+    const cz = searchParams.get("cz");
+    const pitch = searchParams.get("p");
+    const yaw = searchParams.get("y");
+    const version = searchParams.get("v");
+    const zoom = searchParams.get("z");
+
+    return {
+        position:
+            cx && cy && cz
+                ? vec3.fromValues(parseFloat(cx), -parseFloat(cy), parseFloat(cz))
+                : undefined,
+        projectionType:
+            searchParams.get("pt") === "o" ? ProjectionType.ORTHO : undefined,
+        orthoZoom: zoom ? parseInt(zoom) : undefined,
+        pitch: pitch ? (version ? parseInt(pitch) : -parseInt(pitch)) : undefined,
+        yaw: yaw ? (version ? parseInt(yaw) : 2048 - parseInt(yaw)) : undefined,
+        devFixedMapSquare: parseDevMapSquare(searchParams.get("devsq")),
+    };
+}
+
 export type CacheSwitchStatus =
     | { state: "idle" }
     | { state: "switching"; cacheName: string; progress?: DownloadProgress }
@@ -110,7 +186,7 @@ export class MapViewer {
     debugId: boolean = false;
 
     // Events/state
-    private readonly searchParamsListeners = new Set<(params: URLSearchParamsInit) => void>();
+    private readonly searchParamsListeners = new Set<SearchParamsListener>();
     private searchParamsDebounceTimer?: number;
 
     private readonly cacheSwitchListeners = new Set<(status: CacheSwitchStatus) => void>();
@@ -219,45 +295,13 @@ export class MapViewer {
     }
 
     getSearchParams(): URLSearchParamsInit {
-        const cx = this.camera.getPosX().toFixed(2).toString();
-        const cy = -this.camera.getPosY().toFixed(2).toString();
-        const cz = this.camera.getPosZ().toFixed(2).toString();
-
-        const yaw = this.camera.yaw & 2047;
-
-        const p = (this.camera.pitch | 0).toString();
-        const y = yaw.toString();
-
-        const params: any = {
-            cx,
-            cy,
-            cz,
-            p,
-            y,
-        };
-
-        if (this.camera.projectionType === ProjectionType.ORTHO) {
-            params["pt"] = "o";
-            params["z"] = this.camera.orthoZoom.toString();
-        }
-
-        if (this.loadedCache.info.name !== this.cacheList.latest.name) {
-            params["cache"] = this.loadedCache.info.name;
-        }
-
-        if (this.runtimeOptions.mapRenderBackend !== DEFAULT_RUNTIME_OPTIONS.mapRenderBackend) {
-            params["mrb"] = this.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
-        }
-        if (this.runtimeOptions.mapRenderTelemetry) {
-            params["mrt"] = "1";
-        }
-        if (this.devFixedMapSquare) {
-            params["devsq"] = `${this.devFixedMapSquare.mapX}:${this.devFixedMapSquare.mapY}`;
-        }
-
-        params["v"] = 1;
-
-        return params;
+        return buildMapViewerSearchParams({
+            camera: this.camera,
+            loadedCacheName: this.loadedCache.info.name,
+            latestCacheName: this.cacheList.latest.name,
+            runtimeOptions: this.runtimeOptions,
+            devFixedMapSquare: this.devFixedMapSquare,
+        });
     }
 
     getDevFixedMapSquare(): DevFixedMapSquare | undefined {
@@ -273,7 +317,7 @@ export class MapViewer {
             this.renderer.mapManager.clearFixedMapSquare();
         }
         // Update URL immediately; no heavy work should run here.
-        this.emitSearchParamsNow();
+        this.emitSearchParams();
     }
 
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
@@ -303,7 +347,7 @@ export class MapViewer {
         }
         this.runtimeOptions = normalized;
         // Update URL immediately so the user sees the new mode even if rebuilding takes time.
-        this.emitSearchParamsNow();
+        this.emitSearchParams();
 
         // Yield so the URL update is observable before we do potentially heavy work
         // (threads RPC / structured clone of cache inputs).
@@ -321,7 +365,7 @@ export class MapViewer {
         this.resetMenu();
     }
 
-    subscribeSearchParams(listener: (params: URLSearchParamsInit) => void): () => void {
+    subscribeSearchParams(listener: SearchParamsListener): () => void {
         this.searchParamsListeners.add(listener);
         return () => this.searchParamsListeners.delete(listener);
     }
@@ -343,70 +387,52 @@ export class MapViewer {
         }
     }
 
-    private scheduleSearchParamsEmit(): void {
-        if (this.searchParamsDebounceTimer !== undefined) {
-            window.clearTimeout(this.searchParamsDebounceTimer);
-        }
-        this.searchParamsDebounceTimer = window.setTimeout(() => {
-            this.searchParamsDebounceTimer = undefined;
-            const params = this.getSearchParams();
-            for (const listener of this.searchParamsListeners) {
-                listener(params);
-            }
-        }, 200);
-    }
-
-    private emitSearchParamsNow(): void {
-        if (this.searchParamsDebounceTimer !== undefined) {
-            window.clearTimeout(this.searchParamsDebounceTimer);
-            this.searchParamsDebounceTimer = undefined;
-        }
+    private notifySearchParamsListeners(): void {
         const params = this.getSearchParams();
         for (const listener of this.searchParamsListeners) {
             listener(params);
         }
     }
 
+    private emitSearchParams(debounceMs: number = 0): void {
+        if (this.searchParamsDebounceTimer !== undefined) {
+            window.clearTimeout(this.searchParamsDebounceTimer);
+        }
+        if ((debounceMs | 0) <= 0) {
+            this.searchParamsDebounceTimer = undefined;
+            this.notifySearchParamsListeners();
+            return;
+        }
+        this.searchParamsDebounceTimer = window.setTimeout(() => {
+            this.searchParamsDebounceTimer = undefined;
+            this.notifySearchParamsListeners();
+        }, debounceMs);
+    }
+
     applySearchParams(searchParams: URLSearchParams) {
-        const cx = searchParams.get("cx");
-        const cy = searchParams.get("cy");
-        const cz = searchParams.get("cz");
-
-        const pitch = searchParams.get("p");
-        const yaw = searchParams.get("y");
-
-        const v = searchParams.get("v");
-
-        if (searchParams.get("pt") === "o") {
-            this.camera.projectionType = ProjectionType.ORTHO;
+        const parsed = parseMapViewerSearchParams(searchParams);
+        if (parsed.projectionType !== undefined) {
+            this.camera.projectionType = parsed.projectionType;
+        }
+        if (parsed.orthoZoom !== undefined) {
+            this.camera.orthoZoom = parsed.orthoZoom;
+        }
+        if (parsed.position) {
+            this.camera.pos = parsed.position;
+        }
+        if (parsed.pitch !== undefined) {
+            this.camera.pitch = parsed.pitch;
+        }
+        if (parsed.yaw !== undefined) {
+            this.camera.yaw = parsed.yaw;
         }
 
-        const zoom = searchParams.get("z");
-        if (zoom) {
-            this.camera.orthoZoom = parseInt(zoom);
-        }
-
-        if (cx && cy && cz) {
-            const pos = vec3.fromValues(parseFloat(cx), -parseFloat(cy), parseFloat(cz));
-            this.camera.pos = pos;
-        }
-        if (pitch) {
-            this.camera.pitch = parseInt(pitch);
-            if (!v) {
-                this.camera.pitch = -this.camera.pitch;
-            }
-        }
-        if (yaw) {
-            this.camera.yaw = parseInt(yaw);
-            if (!v) {
-                this.camera.yaw = 2048 - this.camera.yaw;
-            }
-        }
-
-        const devsq = parseDevMapSquare(searchParams.get("devsq"));
-        this.devFixedMapSquare = devsq;
-        if (devsq) {
-            this.renderer.mapManager.setFixedMapSquare(devsq.mapX, devsq.mapY);
+        this.devFixedMapSquare = parsed.devFixedMapSquare;
+        if (parsed.devFixedMapSquare) {
+            this.renderer.mapManager.setFixedMapSquare(
+                parsed.devFixedMapSquare.mapX,
+                parsed.devFixedMapSquare.mapY,
+            );
         } else {
             this.renderer.mapManager.clearFixedMapSquare();
         }
@@ -497,7 +523,7 @@ export class MapViewer {
     }
 
     updateSearchParams(): void {
-        this.scheduleSearchParamsEmit();
+        this.emitSearchParams(200);
     }
 
     closeMenu = () => {
