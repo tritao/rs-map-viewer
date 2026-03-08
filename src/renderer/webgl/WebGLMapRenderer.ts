@@ -298,8 +298,6 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.app.resize(width, height);
     }
 
-    update(time: number, deltaTime: number) {}
-
     render(time: number, deltaTime: number, resized: boolean): void {
         this.rendererStats.frameStart = performance.now();
         this.rendererStats.drawCalls = 0;
