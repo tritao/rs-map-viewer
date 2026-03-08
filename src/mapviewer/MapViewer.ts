@@ -11,7 +11,7 @@ import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession"
 import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { type WorldEventsInput } from "../runtime/MapWorldSession";
+import { type WorldEventsInput } from "../runtime/WorldSession";
 import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";

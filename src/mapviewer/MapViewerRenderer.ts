@@ -24,7 +24,7 @@ import {
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { MapWorldSession, type WorldEventsInput } from "../runtime/MapWorldSession";
+import { WorldSession, type WorldEventsInput } from "../runtime/WorldSession";
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -48,7 +48,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly renderTickCoordinator = new RenderTickCoordinator();
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
-    private readonly mapWorldSession: MapWorldSession;
+    private readonly worldSession: WorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
@@ -116,7 +116,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             getCameraMapY: () => this.camera.getMapY(),
             reportSeamSample: (sample) => this.recordRenderFrameSeamSample(sample),
         });
-        this.mapWorldSession = new MapWorldSession({
+        this.worldSession = new WorldSession({
             worldRuntimePool: new WorldRuntimePool({
                 renderWorkerPool: this.renderWorkerPool,
                 simWorkerPool: this.simWorkerPool,
@@ -260,14 +260,14 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
-        const queuedLoadEpoch = this.mapWorldSession.captureLoadEpoch();
+        const queuedLoadEpoch = this.worldSession.captureLoadEpoch();
         const devsq = this.mapViewer.getDevFixedMapSquare();
         if (devsq && (mapX !== devsq.mapX || mapY !== devsq.mapY)) {
             // Fixed-square dev mode: never queue builds for other squares.
             return;
         }
         const staticMapPacket = await this.loadStaticMapPacket(mapX, mapY);
-        if (!this.mapWorldSession.hasLoadEpoch(queuedLoadEpoch)) {
+        if (!this.worldSession.hasLoadEpoch(queuedLoadEpoch)) {
             return;
         }
         if (this.shouldDropStaticMapPacketForDevSquare(staticMapPacket)) {
@@ -284,7 +284,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.logMapPacketTelemetry(staticMapPacket);
         }
         try {
-            const ok = await this.mapWorldSession.registerActiveLoadedMap(
+            const ok = await this.worldSession.registerActiveLoadedMap(
                 staticMapPacket,
                 queuedLoadEpoch,
             );
@@ -304,11 +304,11 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        this.mapWorldSession.unregisterLoadedMap(mapInfo.mapId);
+        this.worldSession.unregisterLoadedMap(mapInfo.mapId);
     }
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
-        const applied = await this.mapWorldSession.applyWorldEvents(input);
+        const applied = await this.worldSession.applyWorldEvents(input);
         if ((applied | 0) > 0 && input.obj?.updates && (input.obj.updates.length | 0) > 0) {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
@@ -387,7 +387,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async resetForCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
-        this.mapWorldSession.reset();
+        this.worldSession.reset();
 
         try {
             await this.renderer.cleanUp();
@@ -404,7 +404,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
-        this.mapWorldSession.reset();
+        this.worldSession.reset();
         this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();

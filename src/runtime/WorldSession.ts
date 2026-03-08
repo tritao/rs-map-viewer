@@ -5,7 +5,7 @@ import type { NpcEvent } from "./entities/NpcEvents";
 import { type WorldMapObjUpdate } from "./packets/WorldDeltaPacket";
 import type { WorldRuntimePool } from "../worker/WorldRuntimePool";
 
-type MapWorldSessionDeps = Readonly<{
+type WorldSessionDeps = Readonly<{
     worldRuntimePool: WorldRuntimePool;
 }>;
 
@@ -22,10 +22,10 @@ export type WorldEventsInput = Readonly<{
     obj?: MapObjStateUpdatesInput;
 }>;
 
-export class MapWorldSession {
+export class WorldSession {
     private loadEpoch: number = 1;
 
-    constructor(private readonly deps: MapWorldSessionDeps) {}
+    constructor(private readonly deps: WorldSessionDeps) {}
 
     reset(): void {
         this.loadEpoch = (this.loadEpoch + 1) | 0;
