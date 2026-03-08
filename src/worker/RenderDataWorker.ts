@@ -16,7 +16,7 @@ export type { WorkerRuntimeOptions, WorkerState } from "./WorkerShared";
 
 type RenderDataWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;
-    frameRuntime: import("./runtime/WorkerFramePacketRuntime").WorkerFramePacketRuntime;
+    frameRuntime: import("./WorkerFramePacketRuntime").WorkerFramePacketRuntime;
 }>;
 
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
@@ -32,7 +32,7 @@ async function getWorkerServices(): Promise<RenderDataWorkerServices> {
     const created = (async () => {
         const [{ WorkerBuildService }, { WorkerFramePacketRuntime }] = await Promise.all([
             import("./WorkerBuildService"),
-            import("./runtime/WorkerFramePacketRuntime"),
+            import("./WorkerFramePacketRuntime"),
         ]);
         const buildService = new WorkerBuildService();
         const frameRuntime = new WorkerFramePacketRuntime(() => buildService.requireWorkerState());

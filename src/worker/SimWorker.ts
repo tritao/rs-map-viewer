@@ -10,7 +10,7 @@ import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared"
 
 type SimWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;
-    tickRuntime: import("./runtime/WorkerTickRuntime").WorkerTickRuntime;
+    tickRuntime: import("./WorkerTickRuntime").WorkerTickRuntime;
 }>;
 
 let workerServicesPromise: Promise<SimWorkerServices> | undefined;
@@ -23,7 +23,7 @@ async function getWorkerServices(): Promise<SimWorkerServices> {
     const created = (async () => {
         const [{ WorkerBuildService }, { WorkerTickRuntime }] = await Promise.all([
             import("./WorkerBuildService"),
-            import("./runtime/WorkerTickRuntime"),
+            import("./WorkerTickRuntime"),
         ]);
         const buildService = new WorkerBuildService();
         const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());

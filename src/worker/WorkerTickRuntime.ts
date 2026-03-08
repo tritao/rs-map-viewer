@@ -1,29 +1,29 @@
-import type { NpcSpawn } from "../../data/npc/NpcSpawn";
-import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
-import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import type { CacheSession } from "../../rs/loaders/CacheSession";
-import type { MapBytesProvider } from "../../rs/map/MapBytesProvider";
-import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
-import { Scene } from "../../rs/scene/Scene";
-import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
-import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
-import { decodeNpcLifecyclePacket } from "../../runtime/packets/NpcLifecyclePacket";
+import type { NpcSpawn } from "../data/npc/NpcSpawn";
+import { NpcSpawnResolver } from "../data/npc/NpcSpawnResolver";
+import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
+import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
+import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
+import type { CacheSession } from "../rs/loaders/CacheSession";
+import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
+import { Pathfinder } from "../rs/pathfinder/Pathfinder";
+import { Scene } from "../rs/scene/Scene";
+import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
+import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
 import {
     type NpcStateDeltaPacket,
     buildNpcStateDeltaPacketFromEvents,
-} from "../../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
+} from "../runtime/packets/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import {
     type ResolvedBootstrapData,
     resolveBootstrapData,
-} from "../../runtime/sim/NpcBootstrap";
-import type { NpcEvent } from "../../runtime/entities/NpcEvents";
-import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
-import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
-import { WorkerMapSimLifecycle } from "../WorkerShared";
+} from "../runtime/sim/NpcBootstrap";
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
+import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
+import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
+import { WorkerMapSimLifecycle } from "./WorkerShared";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;

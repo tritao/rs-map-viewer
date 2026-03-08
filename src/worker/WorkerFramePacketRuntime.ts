@@ -1,35 +1,35 @@
-import type { MapRenderBackend } from "../../maprender/MapRenderBackend";
-import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import type { CacheSession } from "../../rs/loaders/CacheSession";
-import type { FramePacket } from "../../runtime/packets/FramePacket";
+import type { MapRenderBackend } from "../maprender/MapRenderBackend";
+import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
+import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
+import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
+import type { CacheSession } from "../rs/loaders/CacheSession";
+import type { FramePacket } from "../runtime/packets/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../../runtime/packets/FramePacket";
+} from "../runtime/packets/FramePacket";
 import {
     type FramePacketMapEntry,
     buildFramePacketFromMapEntries,
     buildFramePacketMapEntry,
-} from "../../runtime/FramePacketBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/packets/NpcGpuFrame";
-import type { NpcStateDeltaPacket } from "../../runtime/packets/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
-import type { MapObjRenderPacket } from "../../runtime/packets/MapObjRenderPacket";
-import { buildMapObjRenderPacket } from "../../runtime/packets/MapObjRenderPacket";
-import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
-import type { ObjRenderData } from "../../maprender/MapRenderPayload";
-import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
-import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
+} from "../runtime/FramePacketBuilder";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/packets/NpcGpuFrame";
+import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
+import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
+import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import { buildMapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
+import type { ObjRenderData } from "../maprender/MapRenderPayload";
+import { NpcGpuFrameBuilder } from "../runtime/entities/NpcGpuFrameBuilder";
+import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
     buildTickPatchStreamsForMap,
     readWasmPatchStreamsForMap,
-} from "../../runtime/sim/TickPatchStreamsBuilder";
-import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
-import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
-import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
-import { WorkerMapSimLifecycle } from "../WorkerShared";
+} from "../runtime/sim/TickPatchStreamsBuilder";
+import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
+import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
+import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
+import { WorkerMapSimLifecycle } from "./WorkerShared";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
