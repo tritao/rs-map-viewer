@@ -1,11 +1,3 @@
-export enum RenderableType {
-    Model,
-    NPC,
-    Item,
-    Loc,
-    Map,
-}
-
 export interface Renderer {
     stats: FrameStats;
 
