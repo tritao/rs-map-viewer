@@ -182,8 +182,9 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
 
     const onWorldWheel: WheelEventHandler<HTMLDivElement> = (event) => {
         event.preventDefault();
-        const delta = event.deltaY > 0 ? 1 : -1;
-        const nextDistance = clamp(cameraDistance + delta, 2, 64);
+        const zoomStep = clamp(Math.abs(event.deltaY) * 0.01, 0.1, 1.5);
+        const direction = event.deltaY > 0 ? 1 : -1;
+        const nextDistance = clamp(cameraDistance + direction * zoomStep, 0.5, 64);
         onCameraChange("distance", nextDistance);
     };
 
@@ -333,9 +334,9 @@ export const EntityViewerContainer = memo(function EntityViewerContainer({
                             Distance{" "}
                             <input
                                 type="range"
-                                min={2}
+                                min={0.5}
                                 max={64}
-                                step={0.25}
+                                step={0.1}
                                 value={cameraDistance}
                                 onChange={(event) =>
                                     onCameraChange(

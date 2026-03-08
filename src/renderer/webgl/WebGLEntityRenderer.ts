@@ -206,7 +206,7 @@ export class WebGLEntityRenderer implements Renderer {
     }
 
     setOrbitDistance(distance: number): void {
-        this.orbitDistance = Math.max(2, distance);
+        this.orbitDistance = Math.max(0.5, distance);
     }
 
     setPitch(pitch: number): void {

@@ -174,17 +174,21 @@ function orientObjWorldModel(model: Model | undefined, objType: ObjType | undefi
         return model;
     }
     const oriented = Model.copy(model);
+    applyStandalonePreviewBasis(oriented);
     applyObjPreviewRotation(oriented, objType);
     oriented.calculateBoundsCylinder();
     return oriented;
+}
+
+function applyStandalonePreviewBasis(model: Pick<Model, "rotate" | "rotateZ">): void {
+    model.rotateZ(1024);
+    model.rotate(1024);
 }
 
 function applyObjPreviewRotation(
     model: Pick<Model, "rotate" | "rotateX" | "rotateZ">,
     objType: ObjType,
 ): void {
-    model.rotateZ(1024);
-    model.rotate(1024);
     if ((objType.xan2d | 0) !== 0) {
         model.rotateX(objType.xan2d & 2047);
     }
@@ -283,10 +287,13 @@ function buildNpcData(
     if (!npcResult.ok) {
         throw new Error(`NPC ${request.id | 0} not found`);
     }
-    const model = services.npcModelLoader.getModel(npcResult.value, -1, -1);
-    if (!model) {
+    const baseModel = services.npcModelLoader.getModel(npcResult.value, -1, -1);
+    if (!baseModel) {
         throw new Error(`NPC ${request.id | 0} has no renderable model`);
     }
+    const model = Model.copy(baseModel);
+    applyStandalonePreviewBasis(model);
+    model.calculateBoundsCylinder();
     const renderData = buildStandaloneRenderableData({
         textureLoader: services.session.loaders.textureLoader,
         model,
@@ -361,6 +368,8 @@ function buildModelData(
         -10,
         -50,
     );
+    applyStandalonePreviewBasis(model);
+    model.calculateBoundsCylinder();
     const renderData = buildStandaloneRenderableData({
         textureLoader: services.session.loaders.textureLoader,
         model,

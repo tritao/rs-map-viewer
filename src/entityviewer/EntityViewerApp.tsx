@@ -22,6 +22,12 @@ import { EntityViewerRenderer } from "./EntityViewerRenderer";
 import type { EntityViewerDebugMode } from "../renderer/webgl/WebGLEntityRenderer";
 
 const cachesPromise = fetchCacheList();
+const DEFAULT_IDS_BY_KIND: Record<EntityViewerKind, number> = {
+    obj: 4151,
+    npc: 1,
+    loc: 10,
+    model: 0,
+};
 
 function parseEntityViewerKind(value: string | null): EntityViewerKind {
     switch (value) {
@@ -35,12 +41,13 @@ function parseEntityViewerKind(value: string | null): EntityViewerKind {
 }
 
 function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
+    const kind = parseEntityViewerKind(searchParams.get("kind"));
     const id = Number.parseInt(searchParams.get("id") ?? "4151", 10);
     const count = Number.parseInt(searchParams.get("count") ?? "1", 10);
     const rotation = Number.parseInt(searchParams.get("rotation") ?? "0", 10);
     return {
-        kind: parseEntityViewerKind(searchParams.get("kind")),
-        id: Number.isFinite(id) ? Math.max(0, id | 0) : 4151,
+        kind,
+        id: Number.isFinite(id) ? Math.max(0, id | 0) : DEFAULT_IDS_BY_KIND[kind],
         count: Number.isFinite(count) ? Math.max(1, count | 0) : 1,
         rotation: Number.isFinite(rotation) ? rotation & 3 : 0,
         objMode: parseObjMode(searchParams.get("objMode")),
@@ -94,8 +101,24 @@ export default function EntityViewerApp(): JSX.Element {
     const [cameraYaw, setCameraYaw] = useState<number>(1024);
     const [cameraPitch, setCameraPitch] = useState<number>(-180);
     const [cameraDistance, setCameraDistance] = useState<number>(8);
+    const [lastIdsByKind, setLastIdsByKind] = useState<Record<EntityViewerKind, number>>(
+        DEFAULT_IDS_BY_KIND,
+    );
     const request = useMemo(() => parseRequest(searchParams), [searchParams]);
     const debugMode = useMemo(() => parseDebugMode(searchParams), [searchParams]);
+
+    useEffect(() => {
+        setLastIdsByKind((current) => {
+            const currentId = current[request.kind];
+            if (currentId === request.id) {
+                return current;
+            }
+            return {
+                ...current,
+                [request.kind]: request.id,
+            };
+        });
+    }, [request.id, request.kind]);
 
     useEffect(() => {
         const abortController = new AbortController();
@@ -178,11 +201,15 @@ export default function EntityViewerApp(): JSX.Element {
                 cameraYaw={cameraYaw}
                 cameraPitch={cameraPitch}
                 cameraDistance={cameraDistance}
-                onRequestChange={(nextRequest) =>
+                onRequestChange={(nextRequest) => {
+                    const effectiveId =
+                        nextRequest.kind === request.kind
+                            ? nextRequest.id
+                            : (lastIdsByKind[nextRequest.kind] ?? DEFAULT_IDS_BY_KIND[nextRequest.kind]);
                     setSearchParams(
                         updateSearchParams(searchParams, {
                             kind: nextRequest.kind,
-                            id: nextRequest.id.toString(),
+                            id: effectiveId.toString(),
                             count: nextRequest.count.toString(),
                             rotation: nextRequest.rotation.toString(),
                             objMode: nextRequest.kind === "obj" ? nextRequest.objMode : undefined,
@@ -199,8 +226,8 @@ export default function EntityViewerApp(): JSX.Element {
                                     ? "0"
                                     : undefined,
                         }),
-                    )
-                }
+                    );
+                }}
                 onCacheChange={(cacheName) =>
                     setSearchParams(updateSearchParams(searchParams, { cache: cacheName }))
                 }
