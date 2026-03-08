@@ -5,9 +5,9 @@ import {
     type FramePacket,
     TICK_PATCH_STREAM_COUNT,
     buildFramePacket,
-} from "./contracts/FramePacket";
-import type { MapObjRenderPacket } from "./contracts/MapObjRenderPacket";
-import type { NpcGpuFrameData } from "./contracts/NpcGpuFrame";
+} from "./packets/FramePacket";
+import type { MapObjRenderPacket } from "./packets/MapObjRenderPacket";
+import type { NpcGpuFrameData } from "./packets/NpcGpuFrame";
 
 export type FramePacketMapEntry = Readonly<{
     mapId: number;

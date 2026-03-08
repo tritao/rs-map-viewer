@@ -1,8 +1,8 @@
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
-import type { MapObjRenderPacket } from "./contracts/MapObjRenderPacket";
-import { buildMapObjRenderPacket } from "./contracts/MapObjRenderPacket";
-import { encodeNpcLifecyclePacketFromEvents } from "./contracts/NpcLifecyclePacket";
-import type { DecodedStaticMapPacket } from "./contracts/StaticMapPacket";
+import type { MapObjRenderPacket } from "./packets/MapObjRenderPacket";
+import { buildMapObjRenderPacket } from "./packets/MapObjRenderPacket";
+import { encodeNpcLifecyclePacketFromEvents } from "./packets/NpcLifecyclePacket";
+import type { DecodedStaticMapPacket } from "./packets/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";

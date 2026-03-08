@@ -2,14 +2,14 @@ import { ModuleThread, Pool, Thread, spawn } from "threads";
 
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MinimapData } from "../maprender/ts/MinimapData";
-import type { FramePacket } from "../runtime/contracts/FramePacket";
-import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
-import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { FramePacket } from "../runtime/packets/FramePacket";
+import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import {
     decodeStaticMapWirePacket,
     type DecodedStaticMapPacket,
-} from "../runtime/contracts/StaticMapPacket";
+} from "../runtime/packets/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";

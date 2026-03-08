@@ -1,4 +1,4 @@
-import type { FramePacket } from "./contracts/FramePacket";
+import type { FramePacket } from "./packets/FramePacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
 

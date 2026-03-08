@@ -5,7 +5,7 @@ import {
     INTERACTION_RADIUS,
     INTERACT_BUFFER_COUNT,
     type InteractionInput,
-} from "../../runtime/contracts/Interaction";
+} from "../../runtime/packets/Interaction";
 import { InteractionState } from "../../runtime/InteractionState";
 import { pixelRatio } from "../../util/DeviceUtil";
 import type { RendererStats } from "../Renderer";

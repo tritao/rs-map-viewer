@@ -3,21 +3,21 @@ import type { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import type { CacheSession } from "../../rs/loaders/CacheSession";
-import type { FramePacket } from "../../runtime/contracts/FramePacket";
+import type { FramePacket } from "../../runtime/packets/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../../runtime/contracts/FramePacket";
+} from "../../runtime/packets/FramePacket";
 import {
     type FramePacketMapEntry,
     buildFramePacketFromMapEntries,
     buildFramePacketMapEntry,
 } from "../../runtime/FramePacketBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import type { NpcStateDeltaPacket } from "../../runtime/contracts/NpcStateDeltaPacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/packets/NpcGpuFrame";
+import type { NpcStateDeltaPacket } from "../../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
-import type { MapObjRenderPacket } from "../../runtime/contracts/MapObjRenderPacket";
-import { buildMapObjRenderPacket } from "../../runtime/contracts/MapObjRenderPacket";
+import type { MapObjRenderPacket } from "../../runtime/packets/MapObjRenderPacket";
+import { buildMapObjRenderPacket } from "../../runtime/packets/MapObjRenderPacket";
 import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import type { ObjRenderData } from "../../maprender/MapRenderPayload";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";

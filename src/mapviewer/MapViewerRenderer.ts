@@ -5,16 +5,16 @@ import {
     type ObjRenderData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
-import { InteractType } from "../runtime/contracts/InteractType";
+import { InteractType } from "../runtime/packets/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
-import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
-import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
-import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapPacket";
+import { INTERACTION_RADIUS } from "../runtime/packets/Interaction";
+import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import type { DecodedStaticMapPacket } from "../runtime/packets/StaticMapPacket";
 import {
     collectInteractionHits,
     resolveInteractionTargets,

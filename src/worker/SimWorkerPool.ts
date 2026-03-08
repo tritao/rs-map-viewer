@@ -1,6 +1,6 @@
 import { ModuleThread, Thread, spawn } from "threads";
 
-import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";

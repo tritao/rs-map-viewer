@@ -22,10 +22,10 @@ import {
     TICK_PATCH_STREAM_COUNT,
     getLocTickPatchStreamIndex,
     getNpcTickPatchStreamIndex,
-} from "../../runtime/contracts/FramePacket";
-import type { FramePacket } from "../../runtime/contracts/FramePacket";
-import { type InteractionInput } from "../../runtime/contracts/Interaction";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
+} from "../../runtime/packets/FramePacket";
+import type { FramePacket } from "../../runtime/packets/FramePacket";
+import { type InteractionInput } from "../../runtime/packets/Interaction";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/packets/NpcGpuFrame";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
     ensureDrawRangePatchBackendInit,

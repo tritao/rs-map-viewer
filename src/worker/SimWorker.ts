@@ -1,8 +1,8 @@
 import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
-import { npcStateDeltaPacketTransferables } from "../runtime/contracts/NpcStateDeltaPacket";
+import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
+import { npcStateDeltaPacketTransferables } from "../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";

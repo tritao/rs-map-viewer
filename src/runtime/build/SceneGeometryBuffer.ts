@@ -1,6 +1,6 @@
 import { vec3 } from "gl-matrix";
 
-import { InteractType } from "../contracts/InteractType";
+import { InteractType } from "../packets/InteractType";
 import { Model, computeTextureCoords } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";

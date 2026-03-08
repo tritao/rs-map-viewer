@@ -10,22 +10,22 @@ import { Pathfinder } from "../../rs/pathfinder/Pathfinder";
 import { Scene } from "../../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
-import type { FramePacket } from "../../runtime/contracts/FramePacket";
+import type { FramePacket } from "../../runtime/packets/FramePacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../../runtime/contracts/FramePacket";
+} from "../../runtime/packets/FramePacket";
 import {
     type FramePacketMapEntry,
     buildFramePacketFromMapEntries,
     buildFramePacketMapEntry,
 } from "../../runtime/FramePacketBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
-import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/packets/NpcGpuFrame";
+import { decodeNpcLifecyclePacket } from "../../runtime/packets/NpcLifecyclePacket";
 import {
     type NpcStateDeltaPacket,
     buildNpcStateDeltaPacketFromEvents,
-} from "../../runtime/contracts/NpcStateDeltaPacket";
+} from "../../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";

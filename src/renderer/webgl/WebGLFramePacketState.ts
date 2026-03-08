@@ -3,11 +3,11 @@ import {
     type ParsedFramePacket,
     type ParsedFrameTickPatches,
     parseFramePacket,
-} from "../../runtime/contracts/FramePacket";
+} from "../../runtime/packets/FramePacket";
 import {
     NPC_DATA_TEXTURE_RING_SIZE,
     type NpcGpuFrameData,
-} from "../../runtime/contracts/NpcGpuFrame";
+} from "../../runtime/packets/NpcGpuFrame";
 
 export class WebGLFramePacketState {
     private readonly npcDataRangesByMapIdByRing: Map<

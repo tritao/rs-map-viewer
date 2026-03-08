@@ -1,5 +1,5 @@
 import { TileRenderFlag } from "../../rs/scene/Scene";
-import type { NpcGpuFrameData } from "../contracts/NpcGpuFrame";
+import type { NpcGpuFrameData } from "../packets/NpcGpuFrame";
 import type { Npc } from "./Npc";
 
 export class NpcGpuFrameBuilder {

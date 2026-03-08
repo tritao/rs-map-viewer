@@ -9,7 +9,7 @@ import {
     type NpcStateDeltaPacket,
     decodeNpcStateDeltaUpdate,
     validateNpcStateDeltaPacket,
-} from "../contracts/NpcStateDeltaPacket";
+} from "../packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
 import { LocAnimated } from "./LocAnimated";
 import type { LocAnimatedData } from "../LocAnimatedData";

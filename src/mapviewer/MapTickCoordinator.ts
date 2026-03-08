@@ -1,4 +1,4 @@
-import type { FramePacket } from "../runtime/contracts/FramePacket";
+import type { FramePacket } from "../runtime/packets/FramePacket";
 import { CLIENT_TICK_SECONDS, SERVER_TICK_SECONDS } from "../runtime/TickTiming";
 import type { FrameStepInput } from "../runtime/MapFrameCoordinator";
 import { MapFrameCoordinator } from "../runtime/MapFrameCoordinator";
