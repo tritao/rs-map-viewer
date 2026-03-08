@@ -12,6 +12,7 @@ import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import type {
     RenderFrameInputUpdate,
+    RenderFrameStateVersions,
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
 } from "./WorkerContext";
@@ -24,8 +25,6 @@ type RenderDataWorkerServices = Readonly<{
 }>;
 
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
-let frameMapIdsVersion = 0;
-let frameViewStateVersion = 0;
 let lastAppliedWorldDeltaFrameCount = -1;
 const EMPTY_INT32 = new Int32Array(0);
 
@@ -62,8 +61,6 @@ const worker = {
     ): Promise<void> {
         const { buildService, frameRuntime } = await getWorkerServices();
         frameRuntime.resetForCache();
-        frameMapIdsVersion = 0;
-        frameViewStateVersion = 0;
         lastAppliedWorldDeltaFrameCount = -1;
         await buildService.initCache(cache, spawnBootstrap, options);
     },
@@ -108,9 +105,9 @@ const worker = {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
-    async syncRenderFrameState(update: RenderFrameInputUpdate): Promise<void> {
+    async syncRenderFrameState(update: RenderFrameInputUpdate): Promise<RenderFrameStateVersions> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.applyRenderFrameInputUpdate({
+        return frameRuntime.applyRenderFrameInputUpdate({
             mapIds:
                 update.mapIds !== undefined
                     ? normalizeWorkerInt32Array(update.mapIds)
@@ -128,18 +125,14 @@ const worker = {
                     ? normalizeWorkerInt32Array(update.hoveredMapIdsPacked)
                     : undefined,
         });
-        if (update.mapIds !== undefined) {
-            frameMapIdsVersion = (frameMapIdsVersion + 1) | 0;
-        }
-        if (update.viewState !== undefined) {
-            frameViewStateVersion = (frameViewStateVersion + 1) | 0;
-        }
     },
     async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
         if (
-            (deltaPacket.mapIdsVersion | 0) !== (frameMapIdsVersion | 0) ||
-            (deltaPacket.viewStateVersion | 0) !== (frameViewStateVersion | 0)
+            !frameRuntime.hasCompatibleStateVersions(
+                deltaPacket.mapIdsVersion | 0,
+                deltaPacket.viewStateVersion | 0,
+            )
         ) {
             return 0;
         }

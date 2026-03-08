@@ -48,6 +48,11 @@ export type RenderFrameInputUpdate = Readonly<{
     hoveredMapIdsPacked?: Int32Array;
 }>;
 
+export type RenderFrameStateVersions = Readonly<{
+    mapIdsVersion: number;
+    viewStateVersion: number;
+}>;
+
 export class WorkerMapRuntimeTracker {
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private readonly warnedMissingRuntimeStateMapIds = new Set<number>();

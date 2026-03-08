@@ -16,6 +16,7 @@ import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type {
     RenderFrameInputUpdate,
+    RenderFrameStateVersions,
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
 } from "./WorkerContext";
@@ -174,7 +175,7 @@ export class RenderDataWorkerPool {
         return this.withRenderFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
-    syncRenderFrameState(update: RenderFrameInputUpdate): Promise<void> {
+    syncRenderFrameState(update: RenderFrameInputUpdate): Promise<RenderFrameStateVersions> {
         return this.withRenderFrameWorker((w) => w.syncRenderFrameState(update));
     }
 

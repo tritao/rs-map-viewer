@@ -31,6 +31,7 @@ import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
 import {
     type RenderFrameInputUpdate,
+    type RenderFrameStateVersions,
     type RenderFrameViewState,
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
@@ -163,7 +164,22 @@ export class WorkerFramePacketRuntime {
         return buildMapObjRenderPacket(updates);
     }
 
-    applyRenderFrameInputUpdate(update: RenderFrameInputUpdate): void {
+    private getRenderFrameStateVersions(): RenderFrameStateVersions {
+        return {
+            mapIdsVersion: this.mapIdsVersion | 0,
+            viewStateVersion: this.viewStateVersion | 0,
+        };
+    }
+
+    hasCompatibleStateVersions(mapIdsVersion: number, viewStateVersion: number): boolean {
+        const versions = this.getRenderFrameStateVersions();
+        return (
+            (versions.mapIdsVersion | 0) === (mapIdsVersion | 0) &&
+            (versions.viewStateVersion | 0) === (viewStateVersion | 0)
+        );
+    }
+
+    applyRenderFrameInputUpdate(update: RenderFrameInputUpdate): RenderFrameStateVersions {
         if (update.mapIds !== undefined) {
             this.setVisibleMapIds(update.mapIds);
         }
@@ -173,6 +189,7 @@ export class WorkerFramePacketRuntime {
         if (update.hoveredMapIdsPacked !== undefined) {
             this.setHoveredMapIds(update.hoveredMapIdsPacked);
         }
+        return this.getRenderFrameStateVersions();
     }
 
     private setVisibleMapIds(mapIds: Int32Array): void {
