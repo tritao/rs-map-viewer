@@ -56,6 +56,10 @@ export type NpcSimStateStoreDeps = Readonly<{
 export class NpcSimStateStore {
     private readonly maps = new Map<number, NpcSimMapState>();
 
+    private createCollisionMaps(collisionDatas: ReadonlyArray<CollisionData>): CollisionMap[] {
+        return collisionDatas.map(CollisionMap.fromData);
+    }
+
     private buildLocsAnimated(
         locsAnimatedIn: ReadonlyArray<LocAnimatedData>,
         seqTypeLoader: SeqTypeLoader,
@@ -117,7 +121,7 @@ export class NpcSimStateStore {
         return {
             borderSize: input.borderSize | 0,
             tileRenderFlagsLevel1: input.tileRenderFlagsLevel1,
-            collisionMaps: input.collisionDatas.map(CollisionMap.fromData),
+            collisionMaps: this.createCollisionMaps(input.collisionDatas),
             seededNpcFlags: false,
             npcs: [],
             npcIndexByInstanceId: new Map<number, number>(),
@@ -160,7 +164,7 @@ export class NpcSimStateStore {
     ): void {
         state.borderSize = input.borderSize | 0;
         state.tileRenderFlagsLevel1 = input.tileRenderFlagsLevel1;
-        state.collisionMaps = input.collisionDatas.map(CollisionMap.fromData);
+        state.collisionMaps = this.createCollisionMaps(input.collisionDatas);
         state.locsAnimated = this.buildLocsAnimated(input.locsAnimated, deps.seqTypeLoader);
         state.npcTypeAnimationByNpcTypeId = this.buildNpcTypeAnimationByNpcTypeId(
             input.npcTypeAnimationTable,

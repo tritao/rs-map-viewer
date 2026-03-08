@@ -111,7 +111,7 @@ export function createNpcBootstrapDataFromSpawns(
 ): NpcBootstrapData {
     return createNpcBootstrapData({
         mapId: mapId | 0,
-        npcsIn: createNpcDatasFromSpawns(Array.from(spawns)),
+        npcsIn: createNpcDatasFromSpawns(spawns),
         npcOrderKeys,
     });
 }

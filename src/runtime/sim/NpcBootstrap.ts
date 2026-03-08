@@ -94,14 +94,6 @@ export function createBootstrapData(input: CreateInput): NpcBootstrapData {
     return createNpcBootstrapData(input);
 }
 
-export function createBootstrapDataFromSpawns(
-    mapId: number,
-    spawns: ReadonlyArray<NpcSpawn>,
-    npcOrderKeys?: Int32Array,
-): NpcBootstrapData {
-    return createNpcBootstrapDataFromSpawns(mapId, spawns, npcOrderKeys);
-}
-
 export async function resolveBootstrapData(
     npcSpawnResolver: NpcSpawnResolver,
     deps: ResolveDeps,
@@ -125,7 +117,7 @@ export async function resolveBootstrapData(
     );
 
     if (cacheDecoded && (cacheDecoded.decodedSpawnsCount | 0) > 0) {
-        const bootstrapData = createBootstrapDataFromSpawns(
+        const bootstrapData = createNpcBootstrapDataFromSpawns(
             input.mapId | 0,
             cacheDecoded.spawns,
             input.npcOrderKeys,
@@ -170,7 +162,7 @@ export async function resolveBootstrapData(
         };
     }
 
-    const bootstrapData = createBootstrapDataFromSpawns(
+    const bootstrapData = createNpcBootstrapDataFromSpawns(
         input.mapId | 0,
         resolvedMapSpawns,
         input.npcOrderKeys,

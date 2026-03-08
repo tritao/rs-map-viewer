@@ -63,7 +63,7 @@ export function buildNpcOrderKey(spawn: NpcSpawn, occurrence: number): number {
     return hash | 0;
 }
 
-export function createNpcDatasFromSpawns(spawns: NpcSpawn[]): NpcData[] {
+export function createNpcDatasFromSpawns(spawns: ReadonlyArray<NpcSpawn>): NpcData[] {
     const npcs: NpcData[] = [];
     const occurrenceByTuple = new Map<string, number>();
 
