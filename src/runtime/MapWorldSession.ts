@@ -1,8 +1,8 @@
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
-import type { MapObjRenderPacket } from "./packets/MapObjRenderPacket";
-import { buildMapObjRenderPacket } from "./packets/MapObjRenderPacket";
-import { encodeNpcLifecyclePacketFromEvents } from "./packets/NpcLifecyclePacket";
-import type { DecodedStaticMapPacket } from "./packets/StaticMapPacket";
+import {
+    type DecodedStaticMapPacket,
+    getValidatedStaticMapNpcOrderKeys,
+} from "./packets/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -14,8 +14,6 @@ type MapWorldSessionDeps = Readonly<{
     requestFrameRefresh(): void;
 }>;
 
-const DRAW_RANGE_STRIDE = 3;
-const EMPTY_NPC_ORDER_KEYS = new Int32Array(0);
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export class MapWorldSession {
@@ -67,37 +65,31 @@ export class MapWorldSession {
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
-        const packet = createNpcLifecyclePacket(events);
-        if (!packet) {
-            return 0;
-        }
-        return this.applyNpcLifecyclePacketBytes(packet);
+        return await this.deps.simWorkerPool.applyNpcLifecycleEvents(events);
     }
 
     replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): void {
-        void this.applyMapObjRenderPacket(createMapObjRenderPacket(mapId, objRenderData));
+        void this.dispatchMapObjRenderData(mapId, objRenderData);
     }
 
     attachLoadedMapRuntime(packet: DecodedStaticMapPacket): void {
         this.replaceMapObjRenderData(packet.mapData.mapId | 0, packet.runtimeBootstrap.objRenderData);
     }
 
-    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        void this.dispatchMapObjRenderPacket(packet);
-    }
-
-    async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
-        const bytes = normalizePacketBytes(packet);
-        return await this.deps.simWorkerPool.applyNpcLifecyclePacketBytes(bytes);
-    }
-
-    private async dispatchMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<void> {
-        if (!packet) {
-            return;
-        }
-        const applied = await this.deps.renderWorkerPool.applyMapObjRenderPacket(packet);
-        if ((applied | 0) > 0) {
-            this.deps.requestFrameRefresh();
+    private async dispatchMapObjRenderData(
+        mapId: number,
+        objRenderData: ObjRenderData | undefined,
+    ): Promise<void> {
+        try {
+            const applied = await this.deps.renderWorkerPool.replaceMapObjRenderData(
+                mapId,
+                objRenderData,
+            );
+            if ((applied | 0) > 0) {
+                this.deps.requestFrameRefresh();
+            }
+        } catch (error: unknown) {
+            console.error(`[map-render] failed to replace obj render data for mapId=${mapId | 0}`, error);
         }
     }
 
@@ -118,14 +110,7 @@ export class MapWorldSession {
     ): Promise<void> {
         const mapId = packet.mapData.mapId | 0;
         const maxLevel = packet.mapData.maxLevel | 0;
-        const npcSlotCount = this.getNpcSlotCount(packet);
-        const npcOrderKeys = packet.runtimeBootstrap.npcOrderKeys ?? EMPTY_NPC_ORDER_KEYS;
-        if ((npcOrderKeys.length | 0) !== (npcSlotCount | 0)) {
-            throw new Error(
-                `[map-render][npc] npc slot metadata mismatch for mapId=${mapId}: ` +
-                    `orderKeys=${npcOrderKeys.length | 0} slots=${npcSlotCount | 0}`,
-            );
-        }
+        const npcOrderKeys = getValidatedStaticMapNpcOrderKeys(packet);
         const npcTypeAnimationTable =
             packet.runtimeRegistration.npcTypeAnimationTable ?? EMPTY_NPC_TYPE_ANIMATION_TABLE;
         await this.deps.renderWorkerPool.registerMapRuntime(
@@ -161,43 +146,4 @@ export class MapWorldSession {
         void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
         void this.deps.renderWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
     }
-
-    private getNpcSlotCount(packet: DecodedStaticMapPacket): number {
-        const mapData = packet.mapData;
-        const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
-        if (npcDrawRangeInts % DRAW_RANGE_STRIDE !== 0) {
-            throw new Error(
-                `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
-                    `len=${npcDrawRangeInts} stride=${DRAW_RANGE_STRIDE}`,
-            );
-        }
-        return (npcDrawRangeInts / DRAW_RANGE_STRIDE) | 0;
-    }
-}
-
-function createMapObjRenderPacket(
-    mapId: number,
-    objRenderData: ObjRenderData | undefined,
-): MapObjRenderPacket {
-    return buildMapObjRenderPacket([
-        {
-            mapId: mapId | 0,
-            objRenderData,
-        },
-    ]);
-}
-
-function createNpcLifecyclePacket(events: ReadonlyArray<NpcEvent>): Uint8Array | undefined {
-    if ((events.length | 0) <= 0) {
-        return undefined;
-    }
-    return encodeNpcLifecyclePacketFromEvents(events);
-}
-
-function normalizePacketBytes(packet: ArrayBuffer | ArrayBufferView): Uint8Array {
-    return packet instanceof Uint8Array
-        ? packet
-        : packet instanceof ArrayBuffer
-        ? new Uint8Array(packet)
-        : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
 }

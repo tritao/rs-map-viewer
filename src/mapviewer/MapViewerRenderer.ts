@@ -317,7 +317,19 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        this.mapWorldSession.applyMapObjRenderPacket(packet);
+        if (!packet) {
+            return;
+        }
+        void this.renderWorkerPool
+            .applyMapObjRenderPacket(packet)
+            .then((applied) => {
+                if ((applied | 0) > 0) {
+                    this.frameRuntimeCoordinator.invalidateLatestPacket();
+                }
+            })
+            .catch((error: unknown) => {
+                console.error("[map-render] failed to apply map obj render packet", error);
+            });
     }
 
     override async init() {

@@ -27,6 +27,8 @@ export type StaticMapWirePacket = Readonly<{
     };
 }>;
 
+const NPC_DRAW_RANGE_STRIDE = 3;
+
 function pushTransferableUnique(
     out: Transferable[],
     seen: Set<Transferable>,
@@ -166,6 +168,30 @@ export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedS
                 : undefined,
         },
     };
+}
+
+export function getStaticMapNpcSlotCount(packet: DecodedStaticMapPacket): number {
+    const mapData = packet.mapData;
+    const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
+    if (npcDrawRangeInts % NPC_DRAW_RANGE_STRIDE !== 0) {
+        throw new Error(
+            `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
+                `len=${npcDrawRangeInts} stride=${NPC_DRAW_RANGE_STRIDE}`,
+        );
+    }
+    return (npcDrawRangeInts / NPC_DRAW_RANGE_STRIDE) | 0;
+}
+
+export function getValidatedStaticMapNpcOrderKeys(packet: DecodedStaticMapPacket): Int32Array {
+    const npcOrderKeys = packet.runtimeBootstrap.npcOrderKeys;
+    const npcSlotCount = getStaticMapNpcSlotCount(packet);
+    if ((npcOrderKeys.length | 0) !== (npcSlotCount | 0)) {
+        throw new Error(
+            `[map-render][npc] npc slot metadata mismatch for mapId=${packet.mapData.mapId | 0}: ` +
+                `orderKeys=${npcOrderKeys.length | 0} slots=${npcSlotCount | 0}`,
+        );
+    }
+    return npcOrderKeys;
 }
 
 export function collectStaticMapWirePacketTransferables(

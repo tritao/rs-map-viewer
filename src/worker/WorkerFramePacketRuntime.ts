@@ -166,7 +166,7 @@ export class WorkerFramePacketRuntime {
     }
 
     setTickMapIds(mapIds: Int32Array): void {
-        if (!(mapIds instanceof Int32Array) || (mapIds.length | 0) <= 0) {
+        if ((mapIds.length | 0) <= 0) {
             this.tickMapIds = new Int32Array(0);
             this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
             return;
@@ -192,7 +192,7 @@ export class WorkerFramePacketRuntime {
     }
 
     setTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
-        if (!(hoveredMapIdsPacked instanceof Int32Array) || (hoveredMapIdsPacked.length | 0) <= 0) {
+        if ((hoveredMapIdsPacked.length | 0) <= 0) {
             this.tickHoveredMapIdsPacked = new Int32Array(0);
             return;
         }
@@ -249,10 +249,8 @@ export class WorkerFramePacketRuntime {
         hoveredMapIdsPacked: Int32Array,
     ): FrameBuildInputs {
         const hoveredMapIds = new Set<number>();
-        if (hoveredMapIdsPacked instanceof Int32Array) {
-            for (let index = 0; index < hoveredMapIdsPacked.length; index++) {
-                hoveredMapIds.add(hoveredMapIdsPacked[index] | 0);
-            }
+        for (let index = 0; index < hoveredMapIdsPacked.length; index++) {
+            hoveredMapIds.add(hoveredMapIdsPacked[index] | 0);
         }
         return {
             safeClientTicks: Math.max(0, Math.min(clientTicksElapsed | 0, 50)),
@@ -350,14 +348,10 @@ export class WorkerFramePacketRuntime {
     async buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
-        hoveredMapIdsPacked?: Int32Array,
     ): Promise<FramePacket | undefined> {
         const mapIds = this.tickMapIds;
-        if (!(mapIds instanceof Int32Array) || mapIds.length === 0) {
+        if ((mapIds.length | 0) <= 0) {
             return undefined;
-        }
-        if (hoveredMapIdsPacked instanceof Int32Array) {
-            this.setTickHoveredMapIds(hoveredMapIdsPacked);
         }
         const workerState = await this.getWorkerState();
         const backendKind = workerState.mapRenderBackend.kind ?? "unknown";

@@ -1,5 +1,7 @@
 import { ModuleThread, Thread, spawn } from "threads";
 
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
+import { encodeNpcLifecyclePacketFromEvents } from "../runtime/packets/NpcLifecyclePacket";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
@@ -101,6 +103,13 @@ export class SimWorkerPool {
 
     applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return this.withWorker((w) => w.applyNpcLifecyclePacketBytes(packet));
+    }
+
+    applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
+        if ((events.length | 0) <= 0) {
+            return Promise.resolve(0);
+        }
+        return this.applyNpcLifecyclePacketBytes(encodeNpcLifecyclePacketFromEvents(events));
     }
 
     setTickMapIds(mapIds: Int32Array): Promise<void> {

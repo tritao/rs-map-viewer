@@ -23,6 +23,11 @@ let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
 let frameTickMapIdsVersion = 0;
 let frameTickViewStateVersion = 0;
 let lastAppliedWorldDeltaFrameCount = -1;
+const EMPTY_INT32 = new Int32Array(0);
+
+function normalizeWorkerInt32Array(values: Int32Array): Int32Array {
+    return values instanceof Int32Array && (values.length | 0) > 0 ? values : EMPTY_INT32;
+}
 
 async function getWorkerServices(): Promise<RenderDataWorkerServices> {
     const existing = workerServicesPromise;
@@ -101,7 +106,7 @@ const worker = {
     },
     async setFrameTickMapIds(mapIds: Int32Array): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setTickMapIds(mapIds);
+        frameRuntime.setTickMapIds(normalizeWorkerInt32Array(mapIds));
         frameTickMapIdsVersion = (frameTickMapIdsVersion + 1) | 0;
     },
     async setFrameTickViewState(
@@ -115,7 +120,7 @@ const worker = {
     },
     async setFrameTickHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setTickHoveredMapIds(hoveredMapIdsPacked);
+        frameRuntime.setTickHoveredMapIds(normalizeWorkerInt32Array(hoveredMapIdsPacked));
     },
     async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
