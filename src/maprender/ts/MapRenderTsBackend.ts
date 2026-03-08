@@ -34,7 +34,7 @@ import {
     resolveLocRenderPlacement,
     summarizeSceneCommandPlan,
 } from "../../runtime/build";
-import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
+import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import type { MapRenderBuildDeps } from "../MapRenderBackend";

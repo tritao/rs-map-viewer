@@ -5,7 +5,7 @@ import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
-import { AnimationFrames } from "../contracts/AnimationFrames";
+import { AnimationFrames } from "../entities/AnimationFrames";
 import { DrawRange, NULL_DRAW_RANGE } from "../contracts/DrawRange";
 import type { NpcData } from "../entities/NpcData";
 import { createNpcDatas, createNpcDatasFromSpawns } from "../entities/NpcData";
