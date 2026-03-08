@@ -1,12 +1,23 @@
-import {
-    MAP_RENDER_DRAW_BUCKET_KEYS,
-    type MapRenderDrawBucketKey,
-    type ObjRenderData,
-    type SdMapData,
-    type SdRenderableDrawRanges,
-} from "../../maprender/MapRenderPayload";
+import type { SdMapData } from "../../maprender/MapRenderPayload";
 import type { LocAnimatedData } from "../LocAnimatedData";
 import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
+
+const STATIC_MAP_DRAW_BUCKET_KEYS = [
+    "base",
+    "alpha",
+    "lod",
+    "lodAlpha",
+    "interact",
+    "interactAlpha",
+    "interactLod",
+    "interactLodAlpha",
+] as const;
+
+type StaticMapDrawBucketKey = (typeof STATIC_MAP_DRAW_BUCKET_KEYS)[number];
+
+type StaticMapModelInfoTextures = Readonly<Record<StaticMapDrawBucketKey, Uint16Array>>;
+
+type StaticMapDrawRanges = Readonly<Record<StaticMapDrawBucketKey, Int32Array>>;
 
 export type MapRuntimeRegistration = Readonly<{
     borderSize: number;
@@ -16,10 +27,10 @@ export type MapRuntimeRegistration = Readonly<{
 }>;
 
 export type MapObjStateModelInfoTextures = Readonly<
-    Record<MapRenderDrawBucketKey, Uint16Array>
+    Record<StaticMapDrawBucketKey, Uint16Array>
 >;
 
-export type MapObjStateDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
+export type MapObjStateDrawRanges = Readonly<Record<StaticMapDrawBucketKey, Int32Array>>;
 
 export type MapObjState = Readonly<{
     vertices: Uint8Array;
@@ -173,12 +184,12 @@ function unpackBucketedInt32Arrays<K extends string>(
     return buckets;
 }
 
-function packDrawRanges(drawRanges: SdRenderableDrawRanges): Readonly<{
+function packDrawRanges(drawRanges: StaticMapDrawRanges): Readonly<{
     drawRangeBucketLengths: Int32Array;
     drawRangesPacked: Int32Array;
 }> {
     const { bucketLengths, packed } = packBucketedInt32Arrays(
-        MAP_RENDER_DRAW_BUCKET_KEYS,
+        STATIC_MAP_DRAW_BUCKET_KEYS,
         drawRanges,
     );
     return {
@@ -190,16 +201,26 @@ function packDrawRanges(drawRanges: SdRenderableDrawRanges): Readonly<{
 function unpackDrawRanges(
     drawRangeBucketLengths: Int32Array,
     drawRangesPacked: Int32Array,
-): SdRenderableDrawRanges {
+): StaticMapDrawRanges {
     return unpackBucketedInt32Arrays(
-        MAP_RENDER_DRAW_BUCKET_KEYS,
+        STATIC_MAP_DRAW_BUCKET_KEYS,
         drawRangeBucketLengths,
         drawRangesPacked,
         "StaticMapWirePacket",
-    ) as SdRenderableDrawRanges;
+    ) as StaticMapDrawRanges;
 }
 
-export function mapObjStateFromRenderData(objRenderData: ObjRenderData | undefined): MapObjState | undefined {
+type MapObjRenderDataLike = Readonly<{
+    vertices: Uint8Array;
+    indices: Int32Array;
+    modelInfoTextures: StaticMapModelInfoTextures;
+    drawRanges: StaticMapDrawRanges;
+    usedTextureIds: Int32Array;
+}>;
+
+export function mapObjStateFromRenderData(
+    objRenderData: MapObjRenderDataLike | undefined,
+): MapObjState | undefined {
     if (!objRenderData) {
         return undefined;
     }
@@ -212,7 +233,9 @@ export function mapObjStateFromRenderData(objRenderData: ObjRenderData | undefin
     };
 }
 
-export function mapObjStateToRenderData(mapObjState: MapObjState | undefined): ObjRenderData | undefined {
+export function mapObjStateToRenderData(
+    mapObjState: MapObjState | undefined,
+): MapObjRenderDataLike | undefined {
     if (!mapObjState) {
         return undefined;
     }
@@ -335,7 +358,7 @@ export function collectStaticMapWirePacketTransferables(
         mapData.drawRangeBucketLengths.buffer as Transferable,
     );
     pushTransferableUnique(transferables, seen, mapData.drawRangesPacked.buffer as Transferable);
-    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
+    for (const key of STATIC_MAP_DRAW_BUCKET_KEYS) {
         pushTransferableUnique(
             transferables,
             seen,
@@ -388,7 +411,7 @@ function collectMapObjStateWireTransferables(
     pushTransferableUnique(out, seen, mapObjState.usedTextureIds.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangeBucketLengths.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangesPacked.buffer as Transferable);
-    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
+    for (const key of STATIC_MAP_DRAW_BUCKET_KEYS) {
         pushTransferableUnique(
             out,
             seen,
