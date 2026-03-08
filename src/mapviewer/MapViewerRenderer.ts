@@ -60,20 +60,32 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private isInitialized: boolean = false;
 
+    private createRenderer(): MapRenderer<MapSquareRenderable, MapData> {
+        return new WebGLMapRenderer(
+            this.mapViewer.session,
+            this.mapViewer.renderDistance,
+            this.mapViewer.unloadDistance,
+            this.mapViewer.lodDistance,
+            this.camera,
+            this.checkInteractions.bind(this),
+        );
+    }
+
+    private createMapManager(): MapManager {
+        return new MapManager(
+            this.renderWorkerPool.size * 2,
+            this.queueLoadMap.bind(this),
+            this.removeLoadedMap.bind(this),
+        );
+    }
+
     constructor(public mapViewer: MapViewer) {
         super();
         this.inputManager = mapViewer.inputManager;
         this.renderWorkerPool = mapViewer.renderWorkerPool;
         this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
-        this.renderer = new WebGLMapRenderer(
-            mapViewer.session,
-            mapViewer.renderDistance,
-            mapViewer.unloadDistance,
-            mapViewer.lodDistance,
-            this.camera,
-            this.checkInteractions.bind(this),
-        );
+        this.renderer = this.createRenderer();
         this.frameRuntimeCoordinator = new WorkerMapFrameCoordinator({
             simWorkerPool: this.simWorkerPool,
             renderWorkerPool: this.renderWorkerPool,
@@ -99,11 +111,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             renderWorkerPool: this.renderWorkerPool,
             simWorkerPool: this.simWorkerPool,
         });
-        this.mapManager = new MapManager(
-            this.renderWorkerPool.size * 2,
-            this.queueLoadMap.bind(this),
-            this.removeLoadedMap.bind(this),
-        );
+        this.mapManager = this.createMapManager();
     }
 
     private async loadStaticMapPacket(
@@ -374,19 +382,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private async recreateRendererAndMapManager(): Promise<void> {
-        this.renderer = new WebGLMapRenderer(
-            this.mapViewer.session,
-            this.mapViewer.renderDistance,
-            this.mapViewer.unloadDistance,
-            this.mapViewer.lodDistance,
-            this.camera,
-            this.checkInteractions.bind(this),
-        );
-        this.mapManager = new MapManager(
-            this.renderWorkerPool.size * 2,
-            this.queueLoadMap.bind(this),
-            this.removeLoadedMap.bind(this),
-        );
+        this.renderer = this.createRenderer();
+        this.mapManager = this.createMapManager();
 
         if (this.isInitialized) {
             await this.renderer.init(this.canvas);
