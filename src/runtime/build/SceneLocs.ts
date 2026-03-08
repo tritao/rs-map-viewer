@@ -10,7 +10,7 @@ import { getIdFromTag } from "../../rs/scene/entity/EntityTag";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
 import { INVALID_HSL_COLOR } from "../../rs/util/ColorUtil";
 import { SceneLocEntity } from "../build/SceneLocEntity";
-import { ContourGroundType, SceneModel } from "./SceneBuffer";
+import { ContourGroundType, SceneModel } from "./SceneGeometryBuffer";
 
 export type SceneLocs = {
     locs: SceneModel[];

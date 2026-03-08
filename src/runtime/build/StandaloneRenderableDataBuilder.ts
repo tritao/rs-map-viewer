@@ -6,10 +6,10 @@ import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
     collectRuntimeDrawCommandBuckets,
-} from "./SceneCommandBuilder";
+} from "./SceneDrawCommandBuilder";
 import { ModelHashBuffer } from "./ModelHashBuffer";
-import { ContourGroundType, SceneBuffer, type SceneModel } from "./SceneBuffer";
-import { emitSceneModelsToSceneBuffer } from "./SceneCommandPlan";
+import { ContourGroundType, SceneGeometryBuffer, type SceneModel } from "./SceneGeometryBuffer";
+import { emitSceneModelsToSceneGeometryBuffer } from "./SceneDrawPlan";
 
 const DEFAULT_SCENE_BUFFER_VERTEX_CAPACITY = 4096;
 
@@ -52,12 +52,12 @@ export function buildStandaloneRenderableData(
 ): StandaloneRenderableData | undefined {
     input.model.calculateBoundsCylinder();
 
-    const sceneBuf = new SceneBuffer(
+    const sceneBuf = new SceneGeometryBuffer(
         input.textureLoader,
         Math.max(DEFAULT_SCENE_BUFFER_VERTEX_CAPACITY, input.model.usedVertexCount | 0),
     );
     const modelHashBuf = new ModelHashBuffer(32);
-    emitSceneModelsToSceneBuffer(
+    emitSceneModelsToSceneGeometryBuffer(
         modelHashBuf,
         input.textureLoader,
         sceneBuf,

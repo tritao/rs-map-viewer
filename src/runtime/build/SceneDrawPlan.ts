@@ -4,14 +4,14 @@ import {
     type DrawCommand,
     type ModelFace,
     type ModelMergeGroup,
-    type SceneBuffer,
+    type SceneGeometryBuffer,
     type SceneModel,
     decideSceneModelMergeStrategy,
     getModelFaces,
     splitModelFacesByTransparency,
-} from "./SceneBuffer";
+} from "./SceneGeometryBuffer";
 
-export type SceneCommandPlanOp =
+export type SceneDrawPlanOp =
     | Readonly<{
           kind: "instanced";
           modelHash: number;
@@ -26,11 +26,11 @@ export type SceneCommandPlanOp =
           group: ModelMergeGroup;
       }>;
 
-export type SceneCommandPlan = Readonly<{
-    ops: readonly SceneCommandPlanOp[];
+export type SceneDrawPlan = Readonly<{
+    ops: readonly SceneDrawPlanOp[];
 }>;
 
-export type SceneCommandPlanDigest = Readonly<{
+export type SceneDrawPlanDigest = Readonly<{
     opCount: number;
     mergedGroupOpCount: number;
     instancedOpCount: number;
@@ -48,7 +48,7 @@ function fnv1a32UpdateInt(hash: number, value: number): number {
     return Math.imul(h, 16777619) >>> 0;
 }
 
-function hashPlanOp(op: SceneCommandPlanOp): number {
+function hashPlanOp(op: SceneDrawPlanOp): number {
     let h = 2166136261 >>> 0;
     if (op.kind === "mergedGroup") {
         h = fnv1a32UpdateInt(h, 1);
@@ -69,7 +69,7 @@ function hashPlanOp(op: SceneCommandPlanOp): number {
     return h >>> 0;
 }
 
-export function summarizeSceneCommandPlan(plan: SceneCommandPlan): SceneCommandPlanDigest {
+export function summarizeSceneDrawPlan(plan: SceneDrawPlan): SceneDrawPlanDigest {
     let mergedGroupOpCount = 0;
     let instancedOpCount = 0;
     let instancedFacesTotal = 0;
@@ -109,7 +109,7 @@ export function summarizeSceneCommandPlan(plan: SceneCommandPlan): SceneCommandP
 }
 
 function createModelGroups(
-    outOps: SceneCommandPlanOp[],
+    outOps: SceneDrawPlanOp[],
     mergedGroupsInOrder: ModelMergeGroup[],
     modelGroupMap: Map<number, ModelMergeGroup>,
     sceneModels: SceneModel[],
@@ -139,12 +139,12 @@ function createModelGroups(
     }
 }
 
-export function buildSceneCommandPlanFromSceneModels(
+export function buildSceneDrawPlanFromSceneModels(
     modelHashBuf: ModelHashBuffer,
     textureLoader: TextureLoader,
     sceneModels: readonly SceneModel[],
     minimizeDrawCalls: boolean,
-): SceneCommandPlan {
+): SceneDrawPlan {
     const groupedModels = new Map<number, { firstSeen: number; models: SceneModel[] }>();
     for (let i = 0; i < sceneModels.length; i++) {
         const sceneModel = sceneModels[i];
@@ -159,7 +159,7 @@ export function buildSceneCommandPlanFromSceneModels(
     const grouped = Array.from(groupedModels.entries());
     grouped.sort((a, b) => (a[1].firstSeen | 0) - (b[1].firstSeen | 0));
 
-    const ops: SceneCommandPlanOp[] = [];
+    const ops: SceneDrawPlanOp[] = [];
     // Important: TS merges "force-merge" and "merge-by-placement" geometry across different
     // model hashes when they share the same bucket key (transparent/lowDetail/level/priority).
     const modelGroupMap: Map<number, ModelMergeGroup> = new Map();
@@ -240,7 +240,7 @@ export function buildSceneCommandPlanFromSceneModels(
     return { ops };
 }
 
-export function executeSceneCommandPlan(plan: SceneCommandPlan, sceneBuf: SceneBuffer): void {
+export function executeSceneDrawPlan(plan: SceneDrawPlan, sceneBuf: SceneGeometryBuffer): void {
     for (const op of plan.ops) {
         if (op.kind === "mergedGroup") {
             sceneBuf.addModelGroup(op.group);
@@ -277,19 +277,19 @@ export function executeSceneCommandPlan(plan: SceneCommandPlan, sceneBuf: SceneB
     }
 }
 
-export function emitSceneModelsToSceneBuffer(
+export function emitSceneModelsToSceneGeometryBuffer(
     modelHashBuf: ModelHashBuffer,
     textureLoader: TextureLoader,
-    sceneBuf: SceneBuffer,
+    sceneBuf: SceneGeometryBuffer,
     sceneModels: readonly SceneModel[],
     minimizeDrawCalls: boolean,
-): SceneCommandPlan {
-    const plan = buildSceneCommandPlanFromSceneModels(
+): SceneDrawPlan {
+    const plan = buildSceneDrawPlanFromSceneModels(
         modelHashBuf,
         textureLoader,
         sceneModels,
         minimizeDrawCalls,
     );
-    executeSceneCommandPlan(plan, sceneBuf);
+    executeSceneDrawPlan(plan, sceneBuf);
     return plan;
 }

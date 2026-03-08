@@ -9,7 +9,7 @@ import {
     type SceneCommandStreamEntry,
     buildSceneCommandStreamFromBuckets,
     createModelInfoTextureData,
-} from "./SceneBuffer";
+} from "./SceneGeometryBuffer";
 
 export { DRAW_BUCKET_KEYS };
 export type { DrawBucketKey };

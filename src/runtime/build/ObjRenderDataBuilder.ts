@@ -5,10 +5,10 @@ import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
 import type { ObjRenderData } from "../../maprender/MapRenderPayload";
-import { buildDrawRangesFromBuckets, buildModelInfoTexturesFromBuckets, collectRuntimeDrawCommandBuckets } from "./SceneCommandBuilder";
-import { emitSceneModelsToSceneBuffer } from "./SceneCommandPlan";
+import { buildDrawRangesFromBuckets, buildModelInfoTexturesFromBuckets, collectRuntimeDrawCommandBuckets } from "./SceneDrawCommandBuilder";
+import { emitSceneModelsToSceneGeometryBuffer } from "./SceneDrawPlan";
 import { ModelHashBuffer } from "./ModelHashBuffer";
-import { ContourGroundType, SceneBuffer, type SceneModel } from "./SceneBuffer";
+import { ContourGroundType, SceneGeometryBuffer, type SceneModel } from "./SceneGeometryBuffer";
 
 function createObjSceneModel(
     objTypeLoader: ObjTypeLoader,
@@ -84,7 +84,7 @@ export type BuildObjRenderDataInput = Readonly<{
     objTypeLoader: ObjTypeLoader;
     objModelLoader: ObjModelLoader;
     scene: Scene;
-    textureLoader: ConstructorParameters<typeof SceneBuffer>[0];
+    textureLoader: ConstructorParameters<typeof SceneGeometryBuffer>[0];
     baseX: number;
     baseY: number;
     borderSize: number;
@@ -113,9 +113,9 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
         return undefined;
     }
 
-    const sceneBuf = new SceneBuffer(input.textureLoader, 20000);
+    const sceneBuf = new SceneGeometryBuffer(input.textureLoader, 20000);
     const modelHashBuf = new ModelHashBuffer(1024);
-    emitSceneModelsToSceneBuffer(
+    emitSceneModelsToSceneGeometryBuffer(
         modelHashBuf,
         input.textureLoader,
         sceneBuf,

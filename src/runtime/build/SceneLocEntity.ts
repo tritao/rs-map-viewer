@@ -1,6 +1,6 @@
 import { SceneLoc } from "../../rs/scene/SceneLoc";
 import { LocEntity } from "../../rs/scene/entity/LocEntity";
-import { ModelInfo } from "./SceneBuffer";
+import { ModelInfo } from "./SceneGeometryBuffer";
 
 export type SceneLocEntity = {
     entity: LocEntity;

@@ -13,23 +13,23 @@ import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMap
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import type { LocAnimatedData } from "../../runtime/contracts/LocAnimatedData";
-import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build/SceneCommandBuilder";
+import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build/SceneDrawCommandBuilder";
 import { ModelHashBuffer } from "../../runtime/build/ModelHashBuffer";
 import type { LocAnimatedGroup } from "../../runtime/build/LocAnimatedGroup";
-import { SceneBuffer, type SceneModel } from "../../runtime/build/SceneBuffer";
+import { SceneGeometryBuffer, type SceneModel } from "../../runtime/build/SceneGeometryBuffer";
 import {
-    type SceneCommandPlan,
-    type SceneCommandPlanDigest,
-    emitSceneModelsToSceneBuffer,
-    summarizeSceneCommandPlan,
-} from "../../runtime/build/SceneCommandPlan";
+    type SceneDrawPlan,
+    type SceneDrawPlanDigest,
+    emitSceneModelsToSceneGeometryBuffer,
+    summarizeSceneDrawPlan,
+} from "../../runtime/build/SceneDrawPlan";
 import type { SceneLocEntity } from "../../runtime/build/SceneLocEntity";
 import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
-} from "../../runtime/build/SceneCommandBuilder";
+} from "../../runtime/build/SceneDrawCommandBuilder";
 import { buildNpcGeometry } from "../../runtime/build/NpcGeometryBuilder";
 import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import { createLocAnimatedGroupKey, resolveLocRenderPlacement } from "../../runtime/build/LocRenderPlacementResolver";
@@ -68,7 +68,7 @@ export type BuildMapDataBridgeInputResult = Readonly<{
     runtimeRegistration?: MapRuntimeRegistration;
     runtimeBootstrap?: MapRuntimeBootstrap;
     runtimeCommandStreamInput: MapRenderCommandStreamRuntimeInput | undefined;
-    debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
+    debugSceneCommandPlanDigest?: SceneDrawPlanDigest;
     debugSceneCommandPlanOpsPacked?: Int32Array;
     debugStageProfile?: Readonly<Record<string, number>>;
     debugTotalMs?: number;
@@ -83,11 +83,11 @@ type SceneBuildStageResult = Readonly<{
     baseY: number;
     mapSize: number;
     scene: Scene;
-    sceneBuf: SceneBuffer;
+    sceneBuf: SceneGeometryBuffer;
     sceneModels: SceneModel[];
     locsAnimated: LocAnimatedData[];
     objRenderData: ReturnType<typeof buildObjRenderData>;
-    debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
+    debugSceneCommandPlanDigest?: SceneDrawPlanDigest;
     debugSceneCommandPlanOpsPacked?: Int32Array;
 }>;
 
@@ -97,7 +97,7 @@ type NpcRuntimeStageResult = Readonly<{
     npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 
-function packSceneCommandPlanOps(plan: SceneCommandPlan): Int32Array {
+function packSceneDrawPlanOps(plan: SceneDrawPlan): Int32Array {
     const stride = 6;
     const out = new Int32Array((plan.ops.length | 0) * stride);
     let o = 0;
@@ -157,7 +157,7 @@ function flattenSceneTileHeights(scene: Scene): Int32Array {
 function addLocAnimationFrames(
     locModelLoader: LocModelLoader,
     seqTypeLoader: SeqTypeLoader,
-    sceneBuf: SceneBuffer,
+    sceneBuf: SceneGeometryBuffer,
     locType: LocType,
     type: number,
     rotation: number,
@@ -353,7 +353,7 @@ export class MapRenderTsBackend {
             ),
         );
 
-        const sceneBuf = new SceneBuffer(textureLoader, 100000);
+        const sceneBuf = new SceneGeometryBuffer(textureLoader, 100000);
         timeStep("addTerrain", () => sceneBuf.addTerrain(scene, borderSize, maxLevel));
 
         const sceneModels: SceneModel[] = [];
@@ -396,10 +396,10 @@ export class MapRenderTsBackend {
         );
 
         let locsAnimated: LocAnimatedData[] = [];
-        let debugSceneCommandPlanDigest: SceneCommandPlanDigest | undefined;
+        let debugSceneCommandPlanDigest: SceneDrawPlanDigest | undefined;
         let debugSceneCommandPlanOpsPacked: Int32Array | undefined;
         if (sceneModels.length > 0) {
-            const plan = emitSceneModelsToSceneBuffer(
+            const plan = emitSceneModelsToSceneGeometryBuffer(
                 this.modelHashBuf!,
                 textureLoader,
                 sceneBuf,
@@ -407,10 +407,10 @@ export class MapRenderTsBackend {
                 minimizeDrawCalls,
             );
             if (options?.debugIncludeSceneCommandPlanDigest) {
-                debugSceneCommandPlanDigest = summarizeSceneCommandPlan(plan);
+                debugSceneCommandPlanDigest = summarizeSceneDrawPlan(plan);
             }
             if (options?.debugIncludeSceneCommandPlanOpsPacked) {
-                debugSceneCommandPlanOpsPacked = packSceneCommandPlanOps(plan);
+                debugSceneCommandPlanOpsPacked = packSceneDrawPlanOps(plan);
             }
 
             if (loadLocs) {

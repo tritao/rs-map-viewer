@@ -10,14 +10,14 @@ import { DrawRange, NULL_DRAW_RANGE } from "../contracts/DrawRange";
 import type { NpcData } from "../entities/NpcData";
 import { createNpcDatas, createNpcDatasFromSpawns } from "../entities/NpcData";
 import type { NpcSpawnGroup } from "../entities/NpcSpawnGroup";
-import { SceneBuffer } from "./SceneBuffer";
+import { SceneGeometryBuffer } from "./SceneGeometryBuffer";
 
 const NPC_SCENE_BUFFER_INIT_VERTEX_COUNT = 20000;
 
 function addNpcAnimationFrames(
     npcModelLoader: NpcModelLoader,
     seqTypeLoader: SeqTypeLoader,
-    sceneBuf: SceneBuffer,
+    sceneBuf: SceneGeometryBuffer,
     npcType: NpcType,
     seqId: number,
 ): AnimationFrames | undefined {
@@ -66,7 +66,7 @@ function createNpcSpawnGroups(
     npcTypeLoader: NpcTypeLoader,
     seqTypeLoader: SeqTypeLoader,
     basTypeLoader: BasTypeLoader,
-    sceneBuf: SceneBuffer,
+    sceneBuf: SceneGeometryBuffer,
     npcSpawns: readonly NpcSpawn[],
 ): NpcSpawnGroup[] {
     const groupedSpawns = new Map<number, NpcSpawn[]>();
@@ -182,7 +182,7 @@ export function buildNpcGeometry(input: BuildNpcGeometryInput): BuiltNpcGeometry
         };
     }
 
-    const sceneBuf = new SceneBuffer(input.textureLoader, NPC_SCENE_BUFFER_INIT_VERTEX_COUNT);
+    const sceneBuf = new SceneGeometryBuffer(input.textureLoader, NPC_SCENE_BUFFER_INIT_VERTEX_COUNT);
     const npcSpawnGroups = createNpcSpawnGroups(
         input.npcModelLoader,
         input.npcTypeLoader,

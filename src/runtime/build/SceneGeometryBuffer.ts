@@ -322,7 +322,7 @@ class SceneCommandEmitter {
     }
 }
 
-export class SceneBuffer {
+export class SceneGeometryBuffer {
     vertexBuf: VertexBuffer;
     indices: number[] = [];
     private readonly commandEmitter: SceneCommandEmitter = new SceneCommandEmitter();
