@@ -35,6 +35,12 @@ type CacheContext = {
     readonly session: CacheSession;
 };
 
+export type CacheSwitchStatus =
+    | { state: "idle" }
+    | { state: "switching"; cacheName: string; progress?: DownloadProgress }
+    | { state: "error"; cacheName: string; message: string };
+
+type CacheSwitchStatusListener = (status: CacheSwitchStatus) => void;
 type DevFixedMapSquare = Readonly<{ mapX: number; mapY: number }>;
 
 export type MapViewerRuntimeOptions = Readonly<{
@@ -84,6 +90,84 @@ function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined 
         return undefined;
     }
     return { mapX, mapY };
+}
+
+type MapViewerCacheSwitcherDeps<TContext> = Readonly<{
+    getCurrentCacheName(): string;
+    loadCacheContext(
+        cacheInfo: CacheInfo,
+        signal?: AbortSignal,
+        progressListener?: ProgressListener,
+    ): Promise<TContext>;
+    applySwitchedCacheContext(context: TContext): Promise<void>;
+}>;
+
+class MapViewerCacheSwitcher<TContext> {
+    private readonly listeners = new Set<CacheSwitchStatusListener>();
+    private status: CacheSwitchStatus = { state: "idle" };
+    private nonce = 0;
+    private abortController?: AbortController;
+
+    constructor(private readonly deps: MapViewerCacheSwitcherDeps<TContext>) {}
+
+    subscribeStatus(listener: CacheSwitchStatusListener): () => void {
+        this.listeners.add(listener);
+        listener(this.status);
+        return () => this.listeners.delete(listener);
+    }
+
+    getStatus(): CacheSwitchStatus {
+        return this.status;
+    }
+
+    async switchCache(cacheInfo: CacheInfo): Promise<void> {
+        if (cacheInfo.name === this.deps.getCurrentCacheName()) {
+            return;
+        }
+
+        this.abortController?.abort();
+        this.abortController = new AbortController();
+        const activeAbort = this.abortController;
+        const nonce = (++this.nonce) | 0;
+
+        this.setStatus({ state: "switching", cacheName: cacheInfo.name });
+
+        try {
+            const context = await this.deps.loadCacheContext(
+                cacheInfo,
+                activeAbort.signal,
+                (progress) => {
+                    this.setStatus({
+                        state: "switching",
+                        cacheName: cacheInfo.name,
+                        progress,
+                    });
+                },
+            );
+
+            if ((nonce | 0) !== (this.nonce | 0)) {
+                this.setStatus({ state: "idle" });
+                return;
+            }
+
+            await this.deps.applySwitchedCacheContext(context);
+            this.setStatus({ state: "idle" });
+        } catch (error: unknown) {
+            if ((nonce | 0) !== (this.nonce | 0)) {
+                this.setStatus({ state: "idle" });
+                return;
+            }
+            const message = error instanceof Error ? error.message : String(error);
+            this.setStatus({ state: "error", cacheName: cacheInfo.name, message });
+        }
+    }
+
+    private setStatus(status: CacheSwitchStatus): void {
+        this.status = status;
+        for (const listener of this.listeners) {
+            listener(status);
+        }
+    }
 }
 
 function buildMapViewerSearchParams(input: Readonly<{
@@ -160,11 +244,6 @@ function parseMapViewerSearchParams(
     };
 }
 
-export type CacheSwitchStatus =
-    | { state: "idle" }
-    | { state: "switching"; cacheName: string; progress?: DownloadProgress }
-    | { state: "error"; cacheName: string; message: string };
-
 export class MapViewer {
     inputManager: InputManager = new InputManager();
     camera: Camera = new Camera(3242, -26, 3202, -245, 1862);
@@ -189,11 +268,7 @@ export class MapViewer {
     private readonly searchParamsListeners = new Set<SearchParamsListener>();
     private searchParamsDebounceTimer?: number;
 
-    private readonly cacheSwitchListeners = new Set<(status: CacheSwitchStatus) => void>();
-    private cacheSwitchStatus: CacheSwitchStatus = { state: "idle" };
-
-    private cacheSwitchNonce: number = 0;
-    private cacheSwitchAbort?: AbortController;
+    private readonly cacheSwitcher: MapViewerCacheSwitcher<CacheContext>;
 
     menuOpen: boolean = false;
     menuOpenedFrame: number = 0;
@@ -267,6 +342,12 @@ export class MapViewer {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
         this.renderer = new MapViewerRenderer(this);
+        this.cacheSwitcher = new MapViewerCacheSwitcher({
+            getCurrentCacheName: () => this.loadedCache.info.name,
+            loadCacheContext: MapViewer.loadCacheContext,
+            applySwitchedCacheContext: (nextContext) =>
+                this.applySwitchedCacheContext(nextContext),
+        });
 
         if (initialSearchParams) {
             this.applySearchParams(initialSearchParams);
@@ -371,20 +452,11 @@ export class MapViewer {
     }
 
     subscribeCacheSwitchStatus(listener: (status: CacheSwitchStatus) => void): () => void {
-        this.cacheSwitchListeners.add(listener);
-        listener(this.cacheSwitchStatus);
-        return () => this.cacheSwitchListeners.delete(listener);
+        return this.cacheSwitcher.subscribeStatus(listener);
     }
 
     getCacheSwitchStatus(): CacheSwitchStatus {
-        return this.cacheSwitchStatus;
-    }
-
-    private setCacheSwitchStatus(status: CacheSwitchStatus): void {
-        this.cacheSwitchStatus = status;
-        for (const listener of this.cacheSwitchListeners) {
-            listener(status);
-        }
+        return this.cacheSwitcher.getStatus();
     }
 
     private notifySearchParamsListeners(): void {
@@ -445,45 +517,7 @@ export class MapViewer {
     }
 
     async switchCache(cacheInfo: CacheInfo): Promise<void> {
-        if (cacheInfo.name === this.loadedCache.info.name) {
-            return;
-        }
-
-        this.cacheSwitchAbort?.abort();
-        const abortController = new AbortController();
-        this.cacheSwitchAbort = abortController;
-        const nonce = ++this.cacheSwitchNonce;
-
-        this.setCacheSwitchStatus({ state: "switching", cacheName: cacheInfo.name });
-
-        try {
-            const context = await MapViewer.loadCacheContext(
-                cacheInfo,
-                abortController.signal,
-                (progress) => {
-                    this.setCacheSwitchStatus({
-                        state: "switching",
-                        cacheName: cacheInfo.name,
-                        progress,
-                    });
-                },
-            );
-
-            if (nonce !== this.cacheSwitchNonce) {
-                this.setCacheSwitchStatus({ state: "idle" });
-                return;
-            }
-
-            await this.applySwitchedCacheContext(context);
-            this.setCacheSwitchStatus({ state: "idle" });
-        } catch (e) {
-            if (nonce !== this.cacheSwitchNonce) {
-                this.setCacheSwitchStatus({ state: "idle" });
-                return;
-            }
-            const message = e instanceof Error ? e.message : String(e);
-            this.setCacheSwitchStatus({ state: "error", cacheName: cacheInfo.name, message });
-        }
+        await this.cacheSwitcher.switchCache(cacheInfo);
     }
 
     private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
