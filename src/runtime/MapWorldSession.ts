@@ -36,6 +36,20 @@ export class MapWorldSession {
         return this.deps.runtimeSession.registerLoadedMap(packet);
     }
 
+    async registerActiveLoadedMap(
+        packet: DecodedStaticMapPacket,
+        loadEpoch: number,
+    ): Promise<RegisteredMapRuntime | undefined> {
+        const registered = await this.registerLoadedMap(packet);
+        if (
+            !this.hasLoadEpoch(loadEpoch) ||
+            !this.hasToken(registered.mapId, registered.mapSimToken)
+        ) {
+            return undefined;
+        }
+        return registered;
+    }
+
     unregisterLoadedMap(mapId: number): void {
         this.deps.runtimeSession.unregisterLoadedMap(mapId);
     }

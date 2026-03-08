@@ -275,21 +275,20 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry) {
             this.logMapPacketTelemetry(staticMapPacket);
         }
-        let mapRuntime: Readonly<{ mapId: number; mapSimToken: number }>;
         try {
-            mapRuntime = await this.mapWorldSession.registerLoadedMap(staticMapPacket);
+            const mapRuntime = await this.mapWorldSession.registerActiveLoadedMap(
+                staticMapPacket,
+                queuedLoadEpoch,
+            );
+            if (!mapRuntime) {
+                return;
+            }
         } catch (e) {
             console.warn(
                 `[map-render] failed to register worker sim state for ${staticMapPacket.mapData.mapX},${staticMapPacket.mapData.mapY}`,
                 e,
             );
             this.mapManager.addInvalidMap(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY);
-            return;
-        }
-        if (
-            !this.mapWorldSession.hasLoadEpoch(queuedLoadEpoch) ||
-            !this.mapWorldSession.hasToken(mapRuntime.mapId, mapRuntime.mapSimToken)
-        ) {
             return;
         }
         await this.finalizeLoadedMap(staticMapPacket);
