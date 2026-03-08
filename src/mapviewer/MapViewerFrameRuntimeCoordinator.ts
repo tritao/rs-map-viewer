@@ -78,34 +78,6 @@ export class WorkerMapViewerFrameRuntimeCoordinator implements MapViewerFrameRun
                 hoveredMapIdsPacked,
                 this.lastTickHoveredMapIds,
             );
-            const runTickFrame = async () => {
-                const seamStart = performance.now();
-                const deltaPacket = await this.deps.simWorkerPool.tickSim(
-                    input.frameCount,
-                    input.ticksElapsed,
-                    input.clientTicksElapsed,
-                    input.cycle,
-                    hoveredMapIdsPacked,
-                );
-                const afterSim = performance.now();
-                if (deltaPacket) {
-                    await this.deps.renderWorkerPool.applyNpcStateDeltaPacket(deltaPacket);
-                }
-                const afterApply = performance.now();
-                const packet = await this.deps.renderWorkerPool.buildFramePacketFromRenderState(
-                    input.frameCount,
-                    input.cycle,
-                );
-                const seamEnd = performance.now();
-                this.recordSeamTiming(
-                    afterSim - seamStart,
-                    afterApply - afterSim,
-                    seamEnd - afterApply,
-                    seamEnd - seamStart,
-                    deltaPacket?.eventCount ?? 0,
-                );
-                return packet;
-            };
             const updatePromises = this.syncTickRuntimeState({
                 mapIds,
                 shouldUpdateTickMaps,
@@ -116,37 +88,12 @@ export class WorkerMapViewerFrameRuntimeCoordinator implements MapViewerFrameRun
                 hoveredMapIdsPacked,
                 shouldUpdateHoveredMapIds,
             });
-            const startFrameTick =
-                updatePromises.length > 0
-                    ? Promise.all(updatePromises).then(runTickFrame)
-                    : runTickFrame();
-            this.pendingFramePacket = startFrameTick
-                .then((nextPacket) => {
-                    if ((this.packetEpoch | 0) === epoch) {
-                        if (
-                            nextPacket &&
-                            ((nextPacket.tickMapIdsVersion | 0) !== (this.tickMapIdsVersion | 0) ||
-                                (nextPacket.tickViewStateVersion | 0) !==
-                                    (this.tickViewStateVersion | 0))
-                        ) {
-                            this.latestFramePacket = undefined;
-                            return undefined;
-                        }
-                        this.latestFramePacket = nextPacket;
-                    }
-                    return nextPacket;
-                })
-                .catch(() => {
-                    if ((this.packetEpoch | 0) === epoch) {
-                        this.latestFramePacket = undefined;
-                    }
-                    return undefined;
-                })
-                .finally(() => {
-                    if ((this.packetEpoch | 0) === epoch) {
-                        this.pendingFramePacket = undefined;
-                    }
-                });
+            this.pendingFramePacket = this.queueNextFramePacket({
+                epoch,
+                input,
+                hoveredMapIdsPacked,
+                updatePromises,
+            });
         }
 
         return packet;
@@ -256,6 +203,75 @@ export class WorkerMapViewerFrameRuntimeCoordinator implements MapViewerFrameRun
             );
         }
         return updatePromises;
+    }
+
+    private queueNextFramePacket(input: Readonly<{
+        epoch: number;
+        input: TickFrameInput;
+        hoveredMapIdsPacked: Int32Array;
+        updatePromises: Promise<void>[];
+    }>): Promise<FramePacket | undefined> {
+        const runTickFrame = async () => {
+            const seamStart = performance.now();
+            const deltaPacket = await this.deps.simWorkerPool.tickSim(
+                input.input.frameCount,
+                input.input.ticksElapsed,
+                input.input.clientTicksElapsed,
+                input.input.cycle,
+                input.hoveredMapIdsPacked,
+            );
+            const afterSim = performance.now();
+            if (deltaPacket) {
+                await this.deps.renderWorkerPool.applyNpcStateDeltaPacket(deltaPacket);
+            }
+            const afterApply = performance.now();
+            const packet = await this.deps.renderWorkerPool.buildFramePacketFromRenderState(
+                input.input.frameCount,
+                input.input.cycle,
+            );
+            const seamEnd = performance.now();
+            this.recordSeamTiming(
+                afterSim - seamStart,
+                afterApply - afterSim,
+                seamEnd - afterApply,
+                seamEnd - seamStart,
+                deltaPacket?.eventCount ?? 0,
+            );
+            return packet;
+        };
+
+        const startFrameTick =
+            input.updatePromises.length > 0
+                ? Promise.all(input.updatePromises).then(runTickFrame)
+                : runTickFrame();
+
+        return startFrameTick
+            .then((nextPacket) => {
+                if ((this.packetEpoch | 0) === (input.epoch | 0)) {
+                    if (
+                        nextPacket &&
+                        ((nextPacket.tickMapIdsVersion | 0) !== (this.tickMapIdsVersion | 0) ||
+                            (nextPacket.tickViewStateVersion | 0) !==
+                                (this.tickViewStateVersion | 0))
+                    ) {
+                        this.latestFramePacket = undefined;
+                        return undefined;
+                    }
+                    this.latestFramePacket = nextPacket;
+                }
+                return nextPacket;
+            })
+            .catch(() => {
+                if ((this.packetEpoch | 0) === (input.epoch | 0)) {
+                    this.latestFramePacket = undefined;
+                }
+                return undefined;
+            })
+            .finally(() => {
+                if ((this.packetEpoch | 0) === (input.epoch | 0)) {
+                    this.pendingFramePacket = undefined;
+                }
+            });
     }
 
     private recordSeamTiming(
