@@ -1,6 +1,11 @@
 import { ByteBuffer } from "../../rs/io/ByteBuffer";
 import { MovementType } from "../entities/Npc";
-import type { NpcDespawnEvent, NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "../sim/NpcEvents";
+import type {
+    NpcDespawnEvent,
+    NpcEvent,
+    NpcSpawnEvent,
+    NpcUpdateEvent,
+} from "../entities/NpcEvents";
 import type { NpcUpdateDelta } from "../sim/NpcSimMovement";
 
 const LIFECYCLE_PACKET_VERSION = 2;

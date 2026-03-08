@@ -19,7 +19,7 @@ export type { SceneLocEntity } from "./SceneLocEntity";
 export { getSceneLocs } from "./SceneLocs";
 
 // Runtime entities consumed by the TS scene-build backend.
-export type { LocAnimatedData } from "../entities/LocAnimatedData";
-export type { LocAnimatedGroup } from "../entities/LocAnimatedGroup";
+export type { LocAnimatedData } from "../contracts/LocAnimatedData";
+export type { LocAnimatedGroup } from "./LocAnimatedGroup";
 export { createNpcDatas, createNpcDatasFromSpawns } from "../entities/NpcData";
 export type { NpcSpawnGroup } from "../entities/NpcSpawnGroup";

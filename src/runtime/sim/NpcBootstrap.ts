@@ -9,7 +9,7 @@ import {
     createNpcBootstrapData,
     createNpcBootstrapDataFromSpawns,
 } from "./NpcBootstrapData";
-import type { NpcSpawnEvent } from "./NpcEvents";
+import type { NpcSpawnEvent } from "../entities/NpcEvents";
 
 type ResolveDeps = Readonly<{
     mapBytesProvider: MapBytesProvider;

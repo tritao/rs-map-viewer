@@ -27,13 +27,13 @@ import {
     buildNpcStateDeltaPacketFromEvents,
 } from "../../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../../runtime/contracts/LocAnimatedData";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
 import {
     type ResolvedBootstrapData,
     resolveBootstrapData,
 } from "../../runtime/sim/NpcBootstrap";
-import type { NpcEvent } from "../../runtime/sim/NpcEvents";
+import type { NpcEvent } from "../../runtime/entities/NpcEvents";
 import { applyNpcMovementStep } from "../../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";
 import {

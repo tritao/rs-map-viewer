@@ -1,4 +1,4 @@
-import type { NpcUpdateDelta } from "./NpcSimMovement";
+import type { NpcUpdateDelta } from "../sim/NpcSimMovement";
 
 export type NpcSpawnEvent = Readonly<{
     kind: "spawn";

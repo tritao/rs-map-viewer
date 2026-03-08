@@ -18,7 +18,7 @@ import type { NpcStateDeltaPacket } from "../../runtime/contracts/NpcStateDeltaP
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 import type { MapObjRenderPacket } from "../../runtime/contracts/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../../runtime/contracts/MapObjRenderPacket";
-import type { LocAnimatedData } from "../../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../../runtime/contracts/LocAnimatedData";
 import type { ObjRenderData } from "../../maprender/MapRenderPayload";
 import { NpcGpuFrameBuilder } from "../../runtime/entities/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../../runtime/sim/NpcSimStateStore";

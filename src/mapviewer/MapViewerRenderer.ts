@@ -5,7 +5,7 @@ import {
     type ObjRenderData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
-import { InteractType } from "../renderer/InteractType";
+import { InteractType } from "../runtime/contracts/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
@@ -15,7 +15,7 @@ import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
 import { WorkerMapFrameCoordinator } from "../runtime/MapFrameCoordinator";
-import type { NpcEvent } from "../runtime/sim/NpcEvents";
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";

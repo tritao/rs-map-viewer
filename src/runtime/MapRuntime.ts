@@ -9,7 +9,7 @@ import {
 } from "./contracts/MapObjRenderPacket";
 import { encodeNpcLifecyclePacketFromEvents } from "./contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "./contracts/NpcTypeAnimationTable";
-import type { NpcEvent } from "./sim/NpcEvents";
+import type { NpcEvent } from "./entities/NpcEvents";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 

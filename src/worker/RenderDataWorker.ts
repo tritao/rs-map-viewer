@@ -8,7 +8,7 @@ import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/contracts/StaticMapWireCodec";
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../runtime/contracts/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 

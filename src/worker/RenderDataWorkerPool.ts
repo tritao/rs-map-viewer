@@ -10,7 +10,7 @@ import {
     decodeStaticMapWirePacket,
     type DecodedStaticMapPacket,
 } from "../runtime/contracts/StaticMapWireCodec";
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../runtime/contracts/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";

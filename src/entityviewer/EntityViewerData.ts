@@ -1,4 +1,4 @@
-import { InteractType } from "../renderer/InteractType";
+import { InteractType } from "../runtime/contracts/InteractType";
 import { GameType } from "../rs/cache/CacheInfo";
 import type { ObjType } from "../rs/config/objtype/ObjType";
 import { VarManagerProvider } from "../rs/config/vartype/VarProvider";

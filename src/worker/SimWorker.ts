@@ -4,7 +4,7 @@ import { Transfer, expose } from "threads/worker";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import { npcStateDeltaPacketTransferables } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../runtime/contracts/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 

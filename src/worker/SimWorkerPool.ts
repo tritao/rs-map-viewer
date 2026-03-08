@@ -2,7 +2,7 @@ import { ModuleThread, Thread, spawn } from "threads";
 
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
-import type { LocAnimatedData } from "../runtime/entities/LocAnimatedData";
+import type { LocAnimatedData } from "../runtime/contracts/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
 import type { SimWorker } from "./SimWorker";

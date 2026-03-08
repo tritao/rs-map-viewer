@@ -2,7 +2,7 @@ import type { NpcSpawn } from "../../data/npc/NpcSpawn";
 import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
 import { type NpcData, createNpcDatasFromSpawns } from "../entities/NpcData";
 import { orderByPacketKeys } from "../entities/orderByPacketKeys";
-import type { NpcSpawnEvent } from "./NpcEvents";
+import type { NpcSpawnEvent } from "../entities/NpcEvents";
 
 type NpcBootstrapInput = Readonly<{
     mapId: number;

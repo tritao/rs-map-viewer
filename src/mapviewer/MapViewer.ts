@@ -13,7 +13,7 @@ import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
-import type { NpcEvent } from "../runtime/sim/NpcEvents";
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";

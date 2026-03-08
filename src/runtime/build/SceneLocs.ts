@@ -1,4 +1,4 @@
-import { InteractType } from "../../renderer/InteractType";
+import { InteractType } from "../contracts/InteractType";
 import { loadOrNull } from "../../rs/config/TypeLoader";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 import { LocType } from "../../rs/config/loctype/LocType";

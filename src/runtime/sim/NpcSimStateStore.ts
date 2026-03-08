@@ -11,10 +11,10 @@ import {
     validateNpcStateDeltaPacket,
 } from "../contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
-import { LocAnimated } from "../entities/LocAnimated";
-import type { LocAnimatedData } from "../entities/LocAnimatedData";
+import { LocAnimated } from "./LocAnimated";
+import type { LocAnimatedData } from "../contracts/LocAnimatedData";
 import { Npc } from "../entities/Npc";
-import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "./NpcEvents";
+import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "../entities/NpcEvents";
 import { type NpcUpdateDelta, applyNpcUpdateDelta, applyNpcUpdateDeltas } from "./NpcSimMovement";
 
 export type NpcSimMapState = {
