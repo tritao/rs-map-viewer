@@ -116,6 +116,17 @@ export class RenderFrameCoordinator {
         this.needsPacketRefresh = true;
     }
 
+    private copyInt32Array(source: Int32Array, target: Int32Array): Int32Array {
+        if ((source.length | 0) === 0) {
+            return EMPTY_INT32;
+        }
+        if ((target.length | 0) !== (source.length | 0)) {
+            target = new Int32Array(source.length | 0);
+        }
+        target.set(source);
+        return target;
+    }
+
     private areInt32ArraysEqual(left: Int32Array, right: Int32Array): boolean {
         if ((left.length | 0) !== (right.length | 0)) {
             return false;
@@ -142,7 +153,7 @@ export class RenderFrameCoordinator {
     ): Promise<void>[] {
         const updatePromises = new Array<Promise<void>>();
         if (input.shouldUpdateFrameMaps) {
-            this.lastFrameMapIds = input.mapIds;
+            this.lastFrameMapIds = this.copyInt32Array(input.mapIds, this.lastFrameMapIds);
             this.frameMapIdsVersion = (this.frameMapIdsVersion + 1) | 0;
             updatePromises.push(this.deps.simWorkerPool.setVisibleMapIds(input.mapIds));
             updatePromises.push(this.deps.renderWorkerPool.setFrameMapIds(input.mapIds));
@@ -170,7 +181,10 @@ export class RenderFrameCoordinator {
             );
         }
         if (input.shouldUpdateFrameHoveredMapIds) {
-            this.lastFrameHoveredMapIds = Int32Array.from(input.hoveredMapIdsPacked);
+            this.lastFrameHoveredMapIds = this.copyInt32Array(
+                input.hoveredMapIdsPacked,
+                this.lastFrameHoveredMapIds,
+            );
             updatePromises.push(
                 this.deps.renderWorkerPool.setFrameHoveredMapIds(input.hoveredMapIdsPacked),
             );

@@ -6,24 +6,24 @@ import { RenderFrameCoordinator } from "./RenderFrameCoordinator";
 const MAX_SERVER_TICKS_PER_FRAME = 1;
 const MAX_CLIENT_TICKS_PER_FRAME = 50;
 
-export type TickClockState = Readonly<{
+export type RenderTickState = Readonly<{
     cycle: number;
     ticksElapsed: number;
     clientTicksElapsed: number;
 }>;
 
-type TickPassInput = Readonly<{
+type RenderTickPassInput = Readonly<{
     frameInput: RenderFrameStepInput;
     renderFrameCoordinator: RenderFrameCoordinator;
     applyFramePacket(packet: RenderFramePacket | undefined): void;
 }>;
 
-export class MapTickCoordinator {
+export class RenderTickCoordinator {
     private lastTick: number = 0;
     private lastClientTick: number = 0;
     private needsClockResync: boolean = true;
 
-    advanceClocks(timeSec: number): TickClockState {
+    advanceClocks(timeSec: number): RenderTickState {
         const tick = Math.floor(timeSec / SERVER_TICK_SECONDS);
         const clientTick = Math.floor(timeSec / CLIENT_TICK_SECONDS);
 
@@ -61,7 +61,7 @@ export class MapTickCoordinator {
         };
     }
 
-    applyTick(input: TickPassInput): void {
+    applyTick(input: RenderTickPassInput): void {
         const packet = input.renderFrameCoordinator.nextFramePacket(input.frameInput);
         input.applyFramePacket(packet);
     }

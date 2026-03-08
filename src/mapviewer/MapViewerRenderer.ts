@@ -32,9 +32,11 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
-import { MapTickCoordinator } from "./MapTickCoordinator";
+import { RenderTickCoordinator } from "./RenderTickCoordinator";
 
 export class MapViewerRenderer extends RendererMainLoop {
+    private static readonly EMPTY_INT32 = new Int32Array(0);
+
     inputManager: InputManager;
     renderWorkerPool: RenderDataWorkerPool;
     simWorkerPool: SimWorkerPool;
@@ -45,9 +47,10 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManagerTime: number = 0;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
-    private readonly tickCoordinator = new MapTickCoordinator();
+    private readonly tickCoordinator = new RenderTickCoordinator();
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
     private readonly mapWorldSession: MapWorldSession;
+    private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
     private seamApplyWorldMsTotal: number = 0;
@@ -82,6 +85,20 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
     }
 
+    private getVisibleMapIdsPacked(): Int32Array {
+        const count = this.mapManager.visibleMapCount | 0;
+        if ((count | 0) <= 0) {
+            return MapViewerRenderer.EMPTY_INT32;
+        }
+        if ((this.visibleMapIdsScratch.length | 0) !== (count | 0)) {
+            this.visibleMapIdsScratch = new Int32Array(count);
+        }
+        for (let i = 0; i < count; i++) {
+            this.visibleMapIdsScratch[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
+        }
+        return this.visibleMapIdsScratch;
+    }
+
     constructor(public mapViewer: MapViewer) {
         super();
         this.inputManager = mapViewer.inputManager;
@@ -95,17 +112,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
-            getVisibleMapIds: () => {
-                const n = this.mapManager.visibleMapCount | 0;
-                if ((n | 0) <= 0) {
-                    return new Int32Array(0);
-                }
-                const mapIds = new Int32Array(n);
-                for (let i = 0; i < n; i++) {
-                    mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
-                }
-                return mapIds;
-            },
+            getVisibleMapIds: () => this.getVisibleMapIdsPacked(),
             getCameraMapX: () => this.camera.getMapX(),
             getCameraMapY: () => this.camera.getMapY(),
             reportSeamSample: (sample) => this.recordRenderFrameSeamSample(sample),
