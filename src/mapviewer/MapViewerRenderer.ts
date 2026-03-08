@@ -284,7 +284,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.logMapPacketTelemetry(staticMapPacket);
         }
         try {
-            const ok = await this.worldSession.registerActiveLoadedMap(
+            const ok = await this.worldSession.activateLoadedMap(
                 staticMapPacket,
                 queuedLoadEpoch,
             );
@@ -304,7 +304,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        this.worldSession.unregisterLoadedMap(mapInfo.mapId);
+        this.worldSession.deactivateLoadedMap(mapInfo.mapId);
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {

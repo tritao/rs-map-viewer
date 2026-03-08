@@ -37,15 +37,15 @@ export class WorldSession {
         return this.deps.worldRuntimePool.hasLoadEpoch(epoch);
     }
 
-    async registerActiveLoadedMap(
+    async activateLoadedMap(
         packet: StaticMapPacket,
         loadEpoch: number,
     ): Promise<boolean> {
-        return await this.deps.worldRuntimePool.registerActiveLoadedMap(packet, loadEpoch);
+        return await this.deps.worldRuntimePool.activateLoadedMap(packet, loadEpoch);
     }
 
-    unregisterLoadedMap(mapId: number): void {
-        this.deps.worldRuntimePool.unregisterLoadedMap(mapId | 0);
+    deactivateLoadedMap(mapId: number): void {
+        this.deps.worldRuntimePool.deactivateLoadedMap(mapId | 0);
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {

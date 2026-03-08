@@ -30,28 +30,28 @@ export class WorldRuntimePool {
         return (this.loadEpoch | 0) === (epoch | 0);
     }
 
-    async registerActiveLoadedMap(
+    async activateLoadedMap(
         packet: StaticMapPacket,
         loadEpoch: number,
     ): Promise<boolean> {
         const mapId = packet.mapData.mapId | 0;
-        const mapSimToken = await this.activateLoadedMap(packet);
+        const mapSimToken = await this.activateLoadedMapRuntime(packet);
         if (!this.hasLoadEpoch(loadEpoch) || !this.hasToken(mapId, mapSimToken)) {
-            this.unregisterLoadedMap(mapId);
+            this.deactivateLoadedMap(mapId);
             return false;
         }
         return true;
     }
 
-    unregisterLoadedMap(mapId: number): void {
-        this.deactivateLoadedMap(mapId | 0);
+    deactivateLoadedMap(mapId: number): void {
+        this.deactivateLoadedMapRuntime(mapId | 0);
     }
 
     private hasToken(mapId: number, token: number): boolean {
         return (this.mapRuntimeTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
     }
 
-    private async activateLoadedMap(packet: StaticMapPacket): Promise<number> {
+    private async activateLoadedMapRuntime(packet: StaticMapPacket): Promise<number> {
         const mapSimToken = this.reserveToken(packet.mapData.mapId | 0);
         const mapId = packet.mapData.mapId | 0;
         await this.deps.renderWorkerPool.frame.activateLoadedMap(packet, mapSimToken);
@@ -65,7 +65,7 @@ export class WorldRuntimePool {
         return mapSimToken | 0;
     }
 
-    private deactivateLoadedMap(mapId: number): void {
+    private deactivateLoadedMapRuntime(mapId: number): void {
         const mapSimToken = this.invalidateToken(mapId | 0);
         void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
         void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
