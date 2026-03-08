@@ -23,7 +23,7 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
-import { WorkerMapSimLifecycle } from "./WorkerShared";
+import { WorkerMapSimLifecycle } from "./WorkerContext";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
@@ -37,7 +37,7 @@ type WorldStepInputs = Readonly<{
     safeClientTicks: number;
 }>;
 
-type TickViewState = Readonly<{
+type ViewState = Readonly<{
     cameraMapX: number;
     cameraMapY: number;
     lodDistance: number;
@@ -85,10 +85,10 @@ export class WorkerTickRuntime {
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
     private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
     private readonly npcSeqByInstanceId = new Map<number, number>();
-    private tickMapIds: Int32Array = new Int32Array(0);
-    private tickMapIdsVersion: number = 0;
-    private tickViewStateVersion: number = 0;
-    private tickViewState: TickViewState = {
+    private visibleMapIds: Int32Array = new Int32Array(0);
+    private mapIdsVersion: number = 0;
+    private viewStateVersion: number = 0;
+    private viewState: ViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
         lodDistance: 0,
@@ -110,20 +110,20 @@ export class WorkerTickRuntime {
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.npcSnapshotByMapId.clear();
         this.npcSeqByInstanceId.clear();
-        this.tickMapIds = new Int32Array(0);
-        this.tickMapIdsVersion = 0;
-        this.tickViewStateVersion = 0;
-        this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
+        this.visibleMapIds = new Int32Array(0);
+        this.mapIdsVersion = 0;
+        this.viewStateVersion = 0;
+        this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
     }
 
     setVisibleMapIds(mapIds: Int32Array): void {
         if (!(mapIds instanceof Int32Array) || (mapIds.length | 0) <= 0) {
-            this.tickMapIds = new Int32Array(0);
-            this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+            this.visibleMapIds = new Int32Array(0);
+            this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
             return;
         }
-        this.tickMapIds = Int32Array.from(mapIds);
-        this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+        this.visibleMapIds = Int32Array.from(mapIds);
+        this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
     }
 
     setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
@@ -133,12 +133,12 @@ export class WorkerTickRuntime {
             lodDistance: Math.max(0, lodDistance | 0),
         };
         if (
-            (this.tickViewState.cameraMapX | 0) !== (nextViewState.cameraMapX | 0) ||
-            (this.tickViewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
-            (this.tickViewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
+            (this.viewState.cameraMapX | 0) !== (nextViewState.cameraMapX | 0) ||
+            (this.viewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
+            (this.viewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
         ) {
-            this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
-            this.tickViewState = nextViewState;
+            this.viewStateVersion = (this.viewStateVersion + 1) | 0;
+            this.viewState = nextViewState;
         }
     }
 
@@ -260,7 +260,7 @@ export class WorkerTickRuntime {
             deps,
         );
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
-        this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
+        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
     }
 
     async bootstrapMapRuntime(
@@ -299,7 +299,7 @@ export class WorkerTickRuntime {
             resolvedBootstrap,
             deps,
         );
-        this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
+        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
@@ -315,7 +315,7 @@ export class WorkerTickRuntime {
         this.npcSnapshotByMapId.delete(mapId | 0);
         this.npcSimStateStore.unregisterMap(mapId);
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
-        this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
+        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
     }
 
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
@@ -497,7 +497,7 @@ export class WorkerTickRuntime {
         clientTicksElapsed: number,
         _cycleNow: number,
     ): Promise<NpcStateDeltaPacket | undefined> {
-        const mapIds = this.tickMapIds;
+        const mapIds = this.visibleMapIds;
         if (!(mapIds instanceof Int32Array) || mapIds.length === 0) {
             return undefined;
         }
@@ -527,8 +527,8 @@ export class WorkerTickRuntime {
 
         return buildNpcStateDeltaPacketFromEvents({
             frameCount: frameCount | 0,
-            tickMapIdsVersion: this.tickMapIdsVersion | 0,
-            tickViewStateVersion: this.tickViewStateVersion | 0,
+            mapIdsVersion: this.mapIdsVersion | 0,
+            viewStateVersion: this.viewStateVersion | 0,
             events,
         });
     }

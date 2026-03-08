@@ -61,8 +61,8 @@ export type ParsedFrameNpcRangesByMapId = ReadonlyMap<number, ParsedFrameNpcRang
 
 export type ParsedFramePacket = Readonly<{
     frameCount: number;
-    tickMapIdsVersion: number;
-    tickViewStateVersion: number;
+    mapIdsVersion: number;
+    viewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     npcRangesByMapId: ParsedFrameNpcRangesByMapId;
@@ -73,8 +73,8 @@ export type ParsedFramePacket = Readonly<{
 
 export type FramePacket = Readonly<{
     frameCount: number;
-    tickMapIdsVersion: number;
-    tickViewStateVersion: number;
+    mapIdsVersion: number;
+    viewStateVersion: number;
     npcRingWriteIndex: number;
 
     // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,typeId).
@@ -117,8 +117,8 @@ export type TickPatchStreamSource = (
 export type TickPatchStreamsByMap = (Int32Array | undefined)[][];
 export type BuildFramePacketInput = Readonly<{
     frameCount: number;
-    tickMapIdsVersion: number;
-    tickViewStateVersion: number;
+    mapIdsVersion: number;
+    viewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
     npcRangesByMapIdPacked: Int32Array;
@@ -204,16 +204,16 @@ function validateFramePacketStrict(packet: FramePacket): void {
     if (frameCount < 0) {
         throw new Error(`[map-render][frame-packet] frameCount invalid: ${frameCount}`);
     }
-    const tickMapIdsVersion = packet.tickMapIdsVersion | 0;
-    if (tickMapIdsVersion < 0) {
+    const mapIdsVersion = packet.mapIdsVersion | 0;
+    if (mapIdsVersion < 0) {
         throw new Error(
-            `[map-render][frame-packet] tickMapIdsVersion invalid: ${tickMapIdsVersion}`,
+            `[map-render][frame-packet] mapIdsVersion invalid: ${mapIdsVersion}`,
         );
     }
-    const tickViewStateVersion = packet.tickViewStateVersion | 0;
-    if (tickViewStateVersion < 0) {
+    const viewStateVersion = packet.viewStateVersion | 0;
+    if (viewStateVersion < 0) {
         throw new Error(
-            `[map-render][frame-packet] tickViewStateVersion invalid: ${tickViewStateVersion}`,
+            `[map-render][frame-packet] viewStateVersion invalid: ${viewStateVersion}`,
         );
     }
 
@@ -335,8 +335,8 @@ function validateFramePacketStrict(packet: FramePacket): void {
 export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
     const packet: FramePacket = {
         frameCount: input.frameCount | 0,
-        tickMapIdsVersion: input.tickMapIdsVersion | 0,
-        tickViewStateVersion: input.tickViewStateVersion | 0,
+        mapIdsVersion: input.mapIdsVersion | 0,
+        viewStateVersion: input.viewStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
         npcRangesByMapIdPacked: input.npcRangesByMapIdPacked,
@@ -453,8 +453,8 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
 
     return {
         frameCount: packet.frameCount | 0,
-        tickMapIdsVersion: packet.tickMapIdsVersion | 0,
-        tickViewStateVersion: packet.tickViewStateVersion | 0,
+        mapIdsVersion: packet.mapIdsVersion | 0,
+        viewStateVersion: packet.viewStateVersion | 0,
         npcRingWriteIndex,
         npcGpuFrameData: packet.npcGpuFrameData,
         npcRangesByMapId: parseFramePacketNpcRangesByMapId(packet.npcRangesByMapIdPacked),

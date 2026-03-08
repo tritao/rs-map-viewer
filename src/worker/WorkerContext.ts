@@ -38,11 +38,11 @@ export type WorkerSpawnBootstrap = Readonly<{
 
 export class WorkerMapSimLifecycle {
     private readonly mapSimTokenByMapId = new Map<number, number>();
-    private readonly warnedMissingTickStateMapIds = new Set<number>();
+    private readonly warnedMissingRuntimeStateMapIds = new Set<number>();
 
     reset(): void {
         this.mapSimTokenByMapId.clear();
-        this.warnedMissingTickStateMapIds.clear();
+        this.warnedMissingRuntimeStateMapIds.clear();
     }
 
     tryAcceptMapSimToken(mapId: number, mapSimToken: number | undefined): boolean {
@@ -56,16 +56,16 @@ export class WorkerMapSimLifecycle {
         return true;
     }
 
-    clearMissingTickStateWarning(mapId: number): void {
-        this.warnedMissingTickStateMapIds.delete(mapId | 0);
+    clearMissingRuntimeStateWarning(mapId: number): void {
+        this.warnedMissingRuntimeStateMapIds.delete(mapId | 0);
     }
 
-    consumeMissingTickStateWarning(mapId: number): boolean {
+    consumeMissingRuntimeStateWarning(mapId: number): boolean {
         const id = mapId | 0;
-        if (this.warnedMissingTickStateMapIds.has(id)) {
+        if (this.warnedMissingRuntimeStateMapIds.has(id)) {
             return false;
         }
-        this.warnedMissingTickStateMapIds.add(id);
+        this.warnedMissingRuntimeStateMapIds.add(id);
         return true;
     }
 }

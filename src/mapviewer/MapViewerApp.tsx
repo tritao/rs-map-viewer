@@ -10,7 +10,7 @@ import { fetchCacheList } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { WorkerRuntimeOptions } from "../worker/WorkerShared";
+import type { WorkerRuntimeOptions } from "../worker/WorkerContext";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";

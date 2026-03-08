@@ -1,7 +1,7 @@
 import { fetchNpcSpawns, getNpcSpawnsUrl } from "../data/npc/NpcSpawn";
 import { fetchObjSpawns } from "../data/obj/ObjSpawn";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerSpawnBootstrap } from "./WorkerShared";
+import type { WorkerSpawnBootstrap } from "./WorkerContext";
 
 const workerSpawnBootstrapByCacheKey = new Map<string, Promise<WorkerSpawnBootstrap>>();
 

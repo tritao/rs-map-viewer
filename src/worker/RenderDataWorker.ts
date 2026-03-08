@@ -10,9 +10,9 @@ import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
 
-export type { WorkerRuntimeOptions, WorkerState } from "./WorkerShared";
+export type { WorkerRuntimeOptions, WorkerState } from "./WorkerContext";
 
 type RenderDataWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;
@@ -20,8 +20,8 @@ type RenderDataWorkerServices = Readonly<{
 }>;
 
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
-let frameTickMapIdsVersion = 0;
-let frameTickViewStateVersion = 0;
+let frameMapIdsVersion = 0;
+let frameViewStateVersion = 0;
 let lastAppliedWorldDeltaFrameCount = -1;
 const EMPTY_INT32 = new Int32Array(0);
 
@@ -58,8 +58,8 @@ const worker = {
     ): Promise<void> {
         const { buildService, frameRuntime } = await getWorkerServices();
         frameRuntime.resetForCache();
-        frameTickMapIdsVersion = 0;
-        frameTickViewStateVersion = 0;
+        frameMapIdsVersion = 0;
+        frameViewStateVersion = 0;
         lastAppliedWorldDeltaFrameCount = -1;
         await buildService.initCache(cache, spawnBootstrap, options);
     },
@@ -107,7 +107,7 @@ const worker = {
     async setFrameMapIds(mapIds: Int32Array): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.setVisibleMapIds(normalizeWorkerInt32Array(mapIds));
-        frameTickMapIdsVersion = (frameTickMapIdsVersion + 1) | 0;
+        frameMapIdsVersion = (frameMapIdsVersion + 1) | 0;
     },
     async setFrameViewState(
         cameraMapX: number,
@@ -116,7 +116,7 @@ const worker = {
     ): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.setViewState(cameraMapX, cameraMapY, lodDistance);
-        frameTickViewStateVersion = (frameTickViewStateVersion + 1) | 0;
+        frameViewStateVersion = (frameViewStateVersion + 1) | 0;
     },
     async setFrameHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
@@ -125,8 +125,8 @@ const worker = {
     async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
         if (
-            (deltaPacket.tickMapIdsVersion | 0) !== (frameTickMapIdsVersion | 0) ||
-            (deltaPacket.tickViewStateVersion | 0) !== (frameTickViewStateVersion | 0)
+            (deltaPacket.mapIdsVersion | 0) !== (frameMapIdsVersion | 0) ||
+            (deltaPacket.viewStateVersion | 0) !== (frameViewStateVersion | 0)
         ) {
             return 0;
         }

@@ -221,8 +221,8 @@ export class MapFrameCoordinator {
                 if ((this.packetEpoch | 0) === (input.epoch | 0)) {
                     if (
                         nextPacket &&
-                        ((nextPacket.tickMapIdsVersion | 0) !== (this.frameMapIdsVersion | 0) ||
-                            (nextPacket.tickViewStateVersion | 0) !==
+                        ((nextPacket.mapIdsVersion | 0) !== (this.frameMapIdsVersion | 0) ||
+                            (nextPacket.viewStateVersion | 0) !==
                                 (this.frameViewStateVersion | 0))
                     ) {
                         this.needsPacketRefresh = true;

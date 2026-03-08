@@ -14,7 +14,7 @@ import {
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;

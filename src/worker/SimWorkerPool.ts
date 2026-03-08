@@ -6,7 +6,7 @@ import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
 import type { SimWorker } from "./SimWorker";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 

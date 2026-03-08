@@ -29,7 +29,7 @@ import {
 import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
-import { WorkerMapSimLifecycle } from "./WorkerShared";
+import { WorkerMapSimLifecycle } from "./WorkerContext";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
@@ -39,7 +39,7 @@ type FrameWorkerState = Readonly<{
     }>;
 }>;
 
-type TickViewState = Readonly<{
+type ViewState = Readonly<{
     cameraMapX: number;
     cameraMapY: number;
     lodDistance: number;
@@ -97,15 +97,15 @@ export class WorkerFramePacketRuntime {
     private readonly npcSimStateStore = new NpcSimStateStore();
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
-    private tickMapIds: Int32Array = new Int32Array(0);
-    private tickMapIdsVersion: number = 0;
-    private tickViewStateVersion: number = 0;
-    private tickViewState: TickViewState = {
+    private visibleMapIds: Int32Array = new Int32Array(0);
+    private mapIdsVersion: number = 0;
+    private viewStateVersion: number = 0;
+    private viewState: ViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
         lodDistance: 0,
     };
-    private tickHoveredMapIdsPacked: Int32Array = new Int32Array(0);
+    private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
     private readonly pendingObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
 
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
@@ -121,11 +121,11 @@ export class WorkerFramePacketRuntime {
     private resetState(resetNpcStateStore: () => void): void {
         resetNpcStateStore();
         this.workerMapSimLifecycle.reset();
-        this.tickMapIds = new Int32Array(0);
-        this.tickMapIdsVersion = 0;
-        this.tickViewStateVersion = 0;
-        this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
-        this.tickHoveredMapIdsPacked = new Int32Array(0);
+        this.visibleMapIds = new Int32Array(0);
+        this.mapIdsVersion = 0;
+        this.viewStateVersion = 0;
+        this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
+        this.hoveredMapIdsPacked = new Int32Array(0);
         this.pendingObjRenderDataByMapId.clear();
     }
 
@@ -167,12 +167,12 @@ export class WorkerFramePacketRuntime {
 
     setVisibleMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
-            this.tickMapIds = new Int32Array(0);
-            this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+            this.visibleMapIds = new Int32Array(0);
+            this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
             return;
         }
-        this.tickMapIds = Int32Array.from(mapIds);
-        this.tickMapIdsVersion = (this.tickMapIdsVersion + 1) | 0;
+        this.visibleMapIds = Int32Array.from(mapIds);
+        this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
     }
 
     setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
@@ -182,21 +182,21 @@ export class WorkerFramePacketRuntime {
             lodDistance: Math.max(0, lodDistance | 0),
         };
         if (
-            (this.tickViewState.cameraMapX | 0) !== (nextViewState.cameraMapX | 0) ||
-            (this.tickViewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
-            (this.tickViewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
+            (this.viewState.cameraMapX | 0) !== (nextViewState.cameraMapX | 0) ||
+            (this.viewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
+            (this.viewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
         ) {
-            this.tickViewStateVersion = (this.tickViewStateVersion + 1) | 0;
-            this.tickViewState = nextViewState;
+            this.viewStateVersion = (this.viewStateVersion + 1) | 0;
+            this.viewState = nextViewState;
         }
     }
 
     setHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
         if ((hoveredMapIdsPacked.length | 0) <= 0) {
-            this.tickHoveredMapIdsPacked = new Int32Array(0);
+            this.hoveredMapIdsPacked = new Int32Array(0);
             return;
         }
-        this.tickHoveredMapIdsPacked = Int32Array.from(hoveredMapIdsPacked);
+        this.hoveredMapIdsPacked = Int32Array.from(hoveredMapIdsPacked);
     }
 
     async registerMapRuntime(
@@ -223,7 +223,7 @@ export class WorkerFramePacketRuntime {
             },
             deps,
         );
-        this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
+        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
@@ -231,7 +231,7 @@ export class WorkerFramePacketRuntime {
             return;
         }
         this.npcSimStateStore.unregisterMap(mapId);
-        this.workerMapSimLifecycle.clearMissingTickStateWarning(mapId);
+        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
     }
 
     async applyNpcWorldStateDeltaPacket(packet: NpcStateDeltaPacket): Promise<number> {
@@ -308,10 +308,10 @@ export class WorkerFramePacketRuntime {
         hoveredMapIds: ReadonlySet<number>,
         backendKind: string,
     ): FramePacketMapEntry {
-        if (this.workerMapSimLifecycle.consumeMissingTickStateWarning(mapId)) {
+        if (this.workerMapSimLifecycle.consumeMissingRuntimeStateWarning(mapId)) {
             const { mapX, mapY } = decodeMapSquareFromId(mapId);
             console.warn(
-                `[map-render][tick] missing worker sim state for visible map ${mapX},${mapY} ` +
+                `[map-render][frame] missing worker runtime state for visible map ${mapX},${mapY} ` +
                     `(mapId=${mapId | 0} index=${mapEntryIndex | 0} backend=${backendKind})`,
             );
         }
@@ -349,14 +349,14 @@ export class WorkerFramePacketRuntime {
         frameCount: number,
         cycleNow: number,
     ): Promise<FramePacket | undefined> {
-        const mapIds = this.tickMapIds;
+        const mapIds = this.visibleMapIds;
         if ((mapIds.length | 0) <= 0) {
             return undefined;
         }
         const workerState = await this.getWorkerState();
         const backendKind = workerState.mapRenderBackend.kind ?? "unknown";
-        const inputs = this.normalizeFrameBuildInputs(frameCount, 0, this.tickHoveredMapIdsPacked);
-        const view = this.tickViewState;
+        const inputs = this.normalizeFrameBuildInputs(frameCount, 0, this.hoveredMapIdsPacked);
+        const view = this.viewState;
         const wasmTick = await this.runWasmTickIfEnabled(
             workerState,
             mapIds,
@@ -429,8 +429,8 @@ export class WorkerFramePacketRuntime {
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
         return buildFramePacketFromMapEntries({
             frameCount: frameCount | 0,
-            tickMapIdsVersion: this.tickMapIdsVersion | 0,
-            tickViewStateVersion: this.tickViewStateVersion | 0,
+            mapIdsVersion: this.mapIdsVersion | 0,
+            viewStateVersion: this.viewStateVersion | 0,
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,

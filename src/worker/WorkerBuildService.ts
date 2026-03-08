@@ -34,7 +34,7 @@ import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
     WorkerState,
-} from "./WorkerShared";
+} from "./WorkerContext";
 
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 

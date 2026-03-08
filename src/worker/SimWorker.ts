@@ -6,7 +6,7 @@ import { npcStateDeltaPacketTransferables } from "../runtime/packets/NpcStateDel
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
 
 type SimWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;
