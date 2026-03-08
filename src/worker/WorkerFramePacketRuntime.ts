@@ -29,7 +29,7 @@ import {
 import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
-import { WorkerMapSimLifecycle } from "./WorkerContext";
+import { WorkerMapRuntimeTracker } from "./WorkerContext";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
@@ -96,7 +96,7 @@ function isWasmTickEmitResult(value: unknown): value is WasmTickEmitResult {
 export class WorkerFramePacketRuntime {
     private readonly npcSimStateStore = new NpcSimStateStore();
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
-    private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
+    private readonly workerMapRuntimeTracker = new WorkerMapRuntimeTracker();
     private visibleMapIds: Int32Array = new Int32Array(0);
     private mapIdsVersion: number = 0;
     private viewStateVersion: number = 0;
@@ -120,7 +120,7 @@ export class WorkerFramePacketRuntime {
 
     private resetState(resetNpcStateStore: () => void): void {
         resetNpcStateStore();
-        this.workerMapSimLifecycle.reset();
+        this.workerMapRuntimeTracker.reset();
         this.visibleMapIds = new Int32Array(0);
         this.mapIdsVersion = 0;
         this.viewStateVersion = 0;
@@ -207,7 +207,7 @@ export class WorkerFramePacketRuntime {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
+        if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         const workerState = await this.getWorkerState();
@@ -223,15 +223,15 @@ export class WorkerFramePacketRuntime {
             },
             deps,
         );
-        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
+        this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
-        if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
+        if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         this.npcSimStateStore.unregisterMap(mapId);
-        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
+        this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
     async applyNpcWorldStateDeltaPacket(packet: NpcStateDeltaPacket): Promise<number> {
@@ -308,7 +308,7 @@ export class WorkerFramePacketRuntime {
         hoveredMapIds: ReadonlySet<number>,
         backendKind: string,
     ): FramePacketMapEntry {
-        if (this.workerMapSimLifecycle.consumeMissingRuntimeStateWarning(mapId)) {
+        if (this.workerMapRuntimeTracker.consumeMissingRuntimeStateWarning(mapId)) {
             const { mapX, mapY } = decodeMapSquareFromId(mapId);
             console.warn(
                 `[map-render][frame] missing worker runtime state for visible map ${mapX},${mapY} ` +

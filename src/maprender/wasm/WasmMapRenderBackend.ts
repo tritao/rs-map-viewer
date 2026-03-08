@@ -18,13 +18,15 @@ import type {
 } from "../MapRenderBackend";
 import { collectSdMapDataTransferables } from "../MapRenderBackend";
 import type {
-    MapRuntimeBootstrap,
-    MapRuntimeRegistration,
     ObjRenderData,
     SdMapData,
     SdMapLoaderInput,
 } from "../MapRenderPayload";
-import { buildMapRuntimePayloads } from "../MapRenderPayload";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+} from "../../runtime/packets/StaticMapPacket";
+import { buildMapRuntimePayloads } from "../../runtime/packets/StaticMapPacket";
 import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import {
     MapRenderByteDrivenSceneBuildInput,

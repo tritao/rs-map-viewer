@@ -36,7 +36,7 @@ export type WorkerSpawnBootstrap = Readonly<{
     fallbackNpcSpawns: NpcSpawn[];
 }>;
 
-export class WorkerMapSimLifecycle {
+export class WorkerMapRuntimeTracker {
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private readonly warnedMissingRuntimeStateMapIds = new Set<number>();
 

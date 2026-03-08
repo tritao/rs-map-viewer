@@ -1,4 +1,3 @@
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 
 export const MAP_RENDER_DRAW_BUCKET_KEYS = [
@@ -65,73 +64,12 @@ export interface MapData {
     minimapBlob: Blob;
 }
 
-export type MapRuntimeRegistration = Readonly<{
-    borderSize: number;
-    tileRenderFlagsLevel1: Uint8Array[];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
-}>;
-
-export type MapRuntimeBootstrap = Readonly<{
-    npcOrderKeys: Int32Array;
-    objRenderData?: ObjRenderData;
-}>;
-
 export type SdMapData = MapData &
     SdRenderableData & {
         readonly mapId: number;
         readonly heightMapTextureData: Int16Array;
         readonly usedTextureIds: Int32Array;
     };
-
-export function buildMapRuntimeRegistration(input: {
-    borderSize: number;
-    tileRenderFlags: Uint8Array[][];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
-}): MapRuntimeRegistration {
-    return {
-        borderSize: input.borderSize | 0,
-        tileRenderFlagsLevel1: input.tileRenderFlags[1] ?? [],
-        locsAnimated: input.locsAnimated,
-        npcTypeAnimationTable: input.npcTypeAnimationTable ?? [],
-    };
-}
-
-export function buildMapRuntimeBootstrap(input: {
-    npcOrderKeys?: Int32Array;
-    objRenderData?: ObjRenderData;
-}): MapRuntimeBootstrap {
-    return {
-        npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        objRenderData: input.objRenderData,
-    };
-}
-
-export function buildMapRuntimePayloads(input: {
-    borderSize: number;
-    tileRenderFlags: Uint8Array[][];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
-    npcOrderKeys?: Int32Array;
-    objRenderData?: ObjRenderData;
-}): Readonly<{
-    runtimeRegistration: MapRuntimeRegistration;
-    runtimeBootstrap: MapRuntimeBootstrap;
-}> {
-    return {
-        runtimeRegistration: buildMapRuntimeRegistration({
-            borderSize: input.borderSize,
-            tileRenderFlags: input.tileRenderFlags,
-            locsAnimated: input.locsAnimated,
-            npcTypeAnimationTable: input.npcTypeAnimationTable,
-        }),
-        runtimeBootstrap: buildMapRuntimeBootstrap({
-            npcOrderKeys: input.npcOrderKeys,
-            objRenderData: input.objRenderData,
-        }),
-    };
-}
 
 export type SdMapLoaderInput = Readonly<{
     mapX: number;

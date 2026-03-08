@@ -23,7 +23,7 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
-import { WorkerMapSimLifecycle } from "./WorkerContext";
+import { WorkerMapRuntimeTracker } from "./WorkerContext";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
@@ -81,7 +81,7 @@ export class WorkerTickRuntime {
     private readonly npcSpawnResolver = new NpcSpawnResolver();
     private readonly npcSimStateStore = new NpcSimStateStore();
     private readonly npcSimPathfinder = new Pathfinder();
-    private readonly workerMapSimLifecycle = new WorkerMapSimLifecycle();
+    private readonly workerMapRuntimeTracker = new WorkerMapRuntimeTracker();
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
     private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
     private readonly npcSeqByInstanceId = new Map<number, number>();
@@ -106,7 +106,7 @@ export class WorkerTickRuntime {
     private resetState(resetNpcStateStore: () => void): void {
         resetNpcStateStore();
         this.npcSpawnResolver.reset();
-        this.workerMapSimLifecycle.reset();
+        this.workerMapRuntimeTracker.reset();
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.npcSnapshotByMapId.clear();
         this.npcSeqByInstanceId.clear();
@@ -241,7 +241,7 @@ export class WorkerTickRuntime {
         npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>,
         mapSimToken?: number,
     ): Promise<void> {
-        if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
+        if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         const workerState = await this.getWorkerState();
@@ -260,7 +260,7 @@ export class WorkerTickRuntime {
             deps,
         );
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
-        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
+        this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
     async bootstrapMapRuntime(
@@ -269,7 +269,7 @@ export class WorkerTickRuntime {
         npcOrderKeys: Int32Array,
         mapSimToken?: number,
     ): Promise<void> {
-        if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
+        if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         const state = this.npcSimStateStore.getMap(mapId | 0);
@@ -299,11 +299,11 @@ export class WorkerTickRuntime {
             resolvedBootstrap,
             deps,
         );
-        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
+        this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
     unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
-        if (!this.workerMapSimLifecycle.tryAcceptMapSimToken(mapId, mapSimToken)) {
+        if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
         const prevSnapshots = this.npcSnapshotByMapId.get(mapId | 0);
@@ -315,7 +315,7 @@ export class WorkerTickRuntime {
         this.npcSnapshotByMapId.delete(mapId | 0);
         this.npcSimStateStore.unregisterMap(mapId);
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
-        this.workerMapSimLifecycle.clearMissingRuntimeStateWarning(mapId);
+        this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {

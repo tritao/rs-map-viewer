@@ -1,11 +1,72 @@
 import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
-    type MapRuntimeBootstrap,
-    type MapRuntimeRegistration,
     type ObjRenderData,
     type SdMapData,
     type SdRenderableDrawRanges,
 } from "../../maprender/MapRenderPayload";
+import type { LocAnimatedData } from "../LocAnimatedData";
+import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
+
+export type MapRuntimeRegistration = Readonly<{
+    borderSize: number;
+    tileRenderFlagsLevel1: Uint8Array[];
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
+    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
+}>;
+
+export type MapRuntimeBootstrap = Readonly<{
+    npcOrderKeys: Int32Array;
+    objRenderData?: ObjRenderData;
+}>;
+
+export function buildMapRuntimeRegistration(input: {
+    borderSize: number;
+    tileRenderFlags: Uint8Array[][];
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
+    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
+}): MapRuntimeRegistration {
+    return {
+        borderSize: input.borderSize | 0,
+        tileRenderFlagsLevel1: input.tileRenderFlags[1] ?? [],
+        locsAnimated: input.locsAnimated,
+        npcTypeAnimationTable: input.npcTypeAnimationTable ?? [],
+    };
+}
+
+export function buildMapRuntimeBootstrap(input: {
+    npcOrderKeys?: Int32Array;
+    objRenderData?: ObjRenderData;
+}): MapRuntimeBootstrap {
+    return {
+        npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
+        objRenderData: input.objRenderData,
+    };
+}
+
+export function buildMapRuntimePayloads(input: {
+    borderSize: number;
+    tileRenderFlags: Uint8Array[][];
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
+    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
+    npcOrderKeys?: Int32Array;
+    objRenderData?: ObjRenderData;
+}): Readonly<{
+    runtimeRegistration: MapRuntimeRegistration;
+    runtimeBootstrap: MapRuntimeBootstrap;
+}> {
+    return {
+        runtimeRegistration: buildMapRuntimeRegistration({
+            borderSize: input.borderSize,
+            tileRenderFlags: input.tileRenderFlags,
+            locsAnimated: input.locsAnimated,
+            npcTypeAnimationTable: input.npcTypeAnimationTable,
+        }),
+        runtimeBootstrap: buildMapRuntimeBootstrap({
+            npcOrderKeys: input.npcOrderKeys,
+            objRenderData: input.objRenderData,
+        }),
+    };
+}
 
 export type DecodedStaticMapPacket = Readonly<{
     mapData: SdMapData;

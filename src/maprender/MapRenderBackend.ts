@@ -11,12 +11,14 @@ import type { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import type { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import type {
-    MapRuntimeBootstrap,
-    MapRuntimeRegistration,
     SdMapData,
     SdMapLoaderInput,
 } from "./MapRenderPayload";
 import { MAP_RENDER_DRAW_BUCKET_KEYS } from "./MapRenderPayload";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+} from "../runtime/packets/StaticMapPacket";
 import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
 

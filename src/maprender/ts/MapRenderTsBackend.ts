@@ -37,16 +37,14 @@ import { getSceneLocs } from "../../runtime/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import type { DrawRange } from "../../runtime/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
-import type { MapRenderBuildDeps } from "../MapRenderBackend";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
-    SdMapData,
-} from "../MapRenderPayload";
-import {
-    SdMapLoaderInput,
-    buildMapRuntimePayloads,
-} from "../MapRenderPayload";
+} from "../../runtime/packets/StaticMapPacket";
+import { buildMapRuntimePayloads } from "../../runtime/packets/StaticMapPacket";
+import type { MapRenderBuildDeps } from "../MapRenderBackend";
+import type { SdMapData } from "../MapRenderPayload";
+import { SdMapLoaderInput } from "../MapRenderPayload";
 import { loadMinimapBlob } from "./MinimapData";
 import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
 
