@@ -26,7 +26,10 @@ import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
 } from "../../runtime/packets/StaticMapPacket";
-import { buildMapRuntimePayloads } from "../../runtime/packets/StaticMapPacket";
+import {
+    buildMapRuntimePayloads,
+    mapObjStateFromRenderData,
+} from "../../runtime/packets/StaticMapPacket";
 import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import {
     MapRenderByteDrivenSceneBuildInput,
@@ -298,7 +301,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             locsAnimated: data.locsAnimated,
             npcTypeAnimationTable: [],
             npcOrderKeys: packet.npcOrderKeys,
-            objRenderData,
+            mapObjState: mapObjStateFromRenderData(objRenderData),
         });
         return {
             data,

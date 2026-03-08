@@ -51,11 +51,10 @@ export function buildMapRuntimeRegistration(input: {
 export function buildMapRuntimeBootstrap(input: {
     npcOrderKeys?: Int32Array;
     mapObjState?: MapObjState;
-    objRenderData?: ObjRenderData;
 }): MapRuntimeBootstrap {
     return {
         npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        mapObjState: input.mapObjState ?? mapObjStateFromRenderData(input.objRenderData),
+        mapObjState: input.mapObjState,
     };
 }
 
@@ -66,7 +65,6 @@ export function buildMapRuntimePayloads(input: {
     npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
     npcOrderKeys?: Int32Array;
     mapObjState?: MapObjState;
-    objRenderData?: ObjRenderData;
 }): Readonly<{
     runtimeRegistration: MapRuntimeRegistration;
     runtimeBootstrap: MapRuntimeBootstrap;
@@ -81,7 +79,6 @@ export function buildMapRuntimePayloads(input: {
         runtimeBootstrap: buildMapRuntimeBootstrap({
             npcOrderKeys: input.npcOrderKeys,
             mapObjState: input.mapObjState,
-            objRenderData: input.objRenderData,
         }),
     };
 }

@@ -41,7 +41,10 @@ import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
 } from "../../runtime/packets/StaticMapPacket";
-import { buildMapRuntimePayloads } from "../../runtime/packets/StaticMapPacket";
+import {
+    buildMapRuntimePayloads,
+    mapObjStateFromRenderData,
+} from "../../runtime/packets/StaticMapPacket";
 import type { MapRenderBuildDeps } from "../MapRenderBackend";
 import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";
@@ -768,7 +771,7 @@ export class MapRenderTsBackend {
             locsAnimated: sceneStage.locsAnimated,
             npcTypeAnimationTable,
             npcOrderKeys: npcStage.npcOrderKeys,
-            objRenderData: sceneStage.objRenderData,
+            mapObjState: mapObjStateFromRenderData(sceneStage.objRenderData),
         });
 
         return {
