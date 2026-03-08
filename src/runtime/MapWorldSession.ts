@@ -27,11 +27,13 @@ export type NpcLifecycleEventsInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
 }>;
 
+export type MapObjStateUpdatesInput = Readonly<{
+    updates: ReadonlyArray<WorldMapObjUpdate>;
+}>;
+
 export type WorldEventsInput = Readonly<{
     npc?: NpcLifecycleEventsInput;
-    obj?: Readonly<{
-        updates: ReadonlyArray<WorldMapObjUpdate>;
-    }>;
+    obj?: MapObjStateUpdatesInput;
 }>;
 
 export class MapWorldSession {

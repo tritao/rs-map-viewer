@@ -34,6 +34,7 @@ import {
     type WorkerViewState,
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
+import { mapObjStateToRenderData } from "../runtime/packets/StaticMapPacket";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
@@ -140,7 +141,7 @@ export class WorkerFramePacketRuntime {
             }
             this.pendingRuntimeObjRenderDataByMapId.set(
                 update.mapId | 0,
-                update.mapObjState as ObjRenderData | undefined,
+                mapObjStateToRenderData(update.mapObjState),
             );
             applied = (applied + 1) | 0;
         }

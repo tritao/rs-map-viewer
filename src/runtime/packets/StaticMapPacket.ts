@@ -1,5 +1,6 @@
 import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
+    type MapRenderDrawBucketKey,
     type ObjRenderData,
     type SdMapData,
     type SdRenderableDrawRanges,
@@ -14,7 +15,19 @@ export type MapRuntimeRegistration = Readonly<{
     npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 
-export type MapObjState = ObjRenderData;
+export type MapObjStateModelInfoTextures = Readonly<
+    Record<MapRenderDrawBucketKey, Uint16Array>
+>;
+
+export type MapObjStateDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
+
+export type MapObjState = Readonly<{
+    vertices: Uint8Array;
+    indices: Int32Array;
+    modelInfoTextures: MapObjStateModelInfoTextures;
+    drawRanges: MapObjStateDrawRanges;
+    usedTextureIds: Int32Array;
+}>;
 
 export type MapRuntimeBootstrap = Readonly<{
     npcOrderKeys: Int32Array;
@@ -42,7 +55,7 @@ export function buildMapRuntimeBootstrap(input: {
 }): MapRuntimeBootstrap {
     return {
         npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        mapObjState: input.mapObjState ?? input.objRenderData,
+        mapObjState: input.mapObjState ?? mapObjStateFromRenderData(input.objRenderData),
     };
 }
 
@@ -184,6 +197,32 @@ function unpackDrawRanges(
         drawRangesPacked,
         "StaticMapWirePacket",
     ) as SdRenderableDrawRanges;
+}
+
+export function mapObjStateFromRenderData(objRenderData: ObjRenderData | undefined): MapObjState | undefined {
+    if (!objRenderData) {
+        return undefined;
+    }
+    return {
+        vertices: objRenderData.vertices,
+        indices: objRenderData.indices,
+        modelInfoTextures: objRenderData.modelInfoTextures,
+        drawRanges: objRenderData.drawRanges,
+        usedTextureIds: objRenderData.usedTextureIds,
+    };
+}
+
+export function mapObjStateToRenderData(mapObjState: MapObjState | undefined): ObjRenderData | undefined {
+    if (!mapObjState) {
+        return undefined;
+    }
+    return {
+        vertices: mapObjState.vertices,
+        indices: mapObjState.indices,
+        modelInfoTextures: mapObjState.modelInfoTextures,
+        drawRanges: mapObjState.drawRanges,
+        usedTextureIds: mapObjState.usedTextureIds,
+    };
 }
 
 export function encodeStaticMapWirePacket(

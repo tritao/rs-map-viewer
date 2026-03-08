@@ -2,6 +2,7 @@ import type {
     NpcEvent,
 } from "../entities/NpcEvents";
 import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
+import type { MapObjState } from "./StaticMapPacket";
 
 export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
 export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;
@@ -27,7 +28,7 @@ type WorldDeltaPacketInput = Readonly<{
 export type WorldMapObjUpdate = Readonly<{
     kind: "replaceMapObjState";
     mapId: number;
-    mapObjState?: unknown;
+    mapObjState?: MapObjState;
 }>;
 
 export type WorldObjDelta = Readonly<{
