@@ -81,8 +81,8 @@ export class WorkerTickRuntime {
     private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
     private readonly npcSeqByInstanceId = new Map<number, number>();
     private visibleMapIds: Int32Array = new Int32Array(0);
-    private mapIdsVersion: number = 0;
-    private viewStateVersion: number = 0;
+    private inputMapIdsVersion: number = 0;
+    private inputViewStateVersion: number = 0;
     private viewState: WorkerViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
@@ -106,8 +106,8 @@ export class WorkerTickRuntime {
         this.npcSnapshotByMapId.clear();
         this.npcSeqByInstanceId.clear();
         this.visibleMapIds = new Int32Array(0);
-        this.mapIdsVersion = 0;
-        this.viewStateVersion = 0;
+        this.inputMapIdsVersion = 0;
+        this.inputViewStateVersion = 0;
         this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
     }
 
@@ -123,11 +123,11 @@ export class WorkerTickRuntime {
     private setVisibleMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
             this.visibleMapIds = new Int32Array(0);
-            this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
+            this.inputMapIdsVersion = (this.inputMapIdsVersion + 1) | 0;
             return;
         }
         this.visibleMapIds = Int32Array.from(mapIds);
-        this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
+        this.inputMapIdsVersion = (this.inputMapIdsVersion + 1) | 0;
     }
 
     private setViewState(viewState: WorkerViewState): void {
@@ -141,7 +141,7 @@ export class WorkerTickRuntime {
             (this.viewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
             (this.viewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
         ) {
-            this.viewStateVersion = (this.viewStateVersion + 1) | 0;
+            this.inputViewStateVersion = (this.inputViewStateVersion + 1) | 0;
             this.viewState = nextViewState;
         }
     }
@@ -531,8 +531,8 @@ export class WorkerTickRuntime {
 
         return buildNpcStateDeltaPacketFromEvents({
             frameCount: frameCount | 0,
-            mapIdsVersion: this.mapIdsVersion | 0,
-            viewStateVersion: this.viewStateVersion | 0,
+            inputMapIdsVersion: this.inputMapIdsVersion | 0,
+            inputViewStateVersion: this.inputViewStateVersion | 0,
             events,
         });
     }

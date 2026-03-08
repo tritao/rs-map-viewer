@@ -130,8 +130,8 @@ const worker = {
         const { frameRuntime } = await getWorkerServices();
         if (
             !frameRuntime.hasCompatibleStateVersions(
-                deltaPacket.mapIdsVersion | 0,
-                deltaPacket.viewStateVersion | 0,
+                deltaPacket.inputMapIdsVersion | 0,
+                deltaPacket.inputViewStateVersion | 0,
             )
         ) {
             return 0;

@@ -271,9 +271,9 @@ export class RenderFrameCoordinator {
                     if (
                         nextPacket &&
                         expectedVersions &&
-                        ((nextPacket.mapIdsVersion | 0) !== (expectedVersions.mapIdsVersion | 0) ||
-                            (nextPacket.viewStateVersion | 0) !==
-                                (expectedVersions.viewStateVersion | 0))
+                        ((nextPacket.inputMapIdsVersion | 0) !== (expectedVersions.inputMapIdsVersion | 0) ||
+                            (nextPacket.inputViewStateVersion | 0) !==
+                                (expectedVersions.inputViewStateVersion | 0))
                     ) {
                         this.needsPacketRefresh = true;
                         return this.latestFramePacket;

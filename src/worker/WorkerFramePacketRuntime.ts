@@ -97,8 +97,8 @@ export class WorkerFramePacketRuntime {
     private readonly npcGpuFrameBuilder = new NpcGpuFrameBuilder();
     private readonly workerMapRuntimeTracker = new WorkerMapRuntimeTracker();
     private visibleMapIds: Int32Array = new Int32Array(0);
-    private mapIdsVersion: number = 0;
-    private viewStateVersion: number = 0;
+    private inputMapIdsVersion: number = 0;
+    private inputViewStateVersion: number = 0;
     private viewState: WorkerViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
@@ -121,8 +121,8 @@ export class WorkerFramePacketRuntime {
         resetNpcStateStore();
         this.workerMapRuntimeTracker.reset();
         this.visibleMapIds = new Int32Array(0);
-        this.mapIdsVersion = 0;
-        this.viewStateVersion = 0;
+        this.inputMapIdsVersion = 0;
+        this.inputViewStateVersion = 0;
         this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.hoveredMapIdsPacked = new Int32Array(0);
         this.pendingObjRenderDataByMapId.clear();
@@ -166,16 +166,16 @@ export class WorkerFramePacketRuntime {
 
     private getRenderFrameStateVersions(): RenderFrameStateVersions {
         return {
-            mapIdsVersion: this.mapIdsVersion | 0,
-            viewStateVersion: this.viewStateVersion | 0,
+            inputMapIdsVersion: this.inputMapIdsVersion | 0,
+            inputViewStateVersion: this.inputViewStateVersion | 0,
         };
     }
 
-    hasCompatibleStateVersions(mapIdsVersion: number, viewStateVersion: number): boolean {
+    hasCompatibleStateVersions(inputMapIdsVersion: number, inputViewStateVersion: number): boolean {
         const versions = this.getRenderFrameStateVersions();
         return (
-            (versions.mapIdsVersion | 0) === (mapIdsVersion | 0) &&
-            (versions.viewStateVersion | 0) === (viewStateVersion | 0)
+            (versions.inputMapIdsVersion | 0) === (inputMapIdsVersion | 0) &&
+            (versions.inputViewStateVersion | 0) === (inputViewStateVersion | 0)
         );
     }
 
@@ -195,11 +195,11 @@ export class WorkerFramePacketRuntime {
     private setVisibleMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
             this.visibleMapIds = new Int32Array(0);
-            this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
+            this.inputMapIdsVersion = (this.inputMapIdsVersion + 1) | 0;
             return;
         }
         this.visibleMapIds = Int32Array.from(mapIds);
-        this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
+        this.inputMapIdsVersion = (this.inputMapIdsVersion + 1) | 0;
     }
 
     private setViewState(viewState: WorkerViewState): void {
@@ -213,7 +213,7 @@ export class WorkerFramePacketRuntime {
             (this.viewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
             (this.viewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
         ) {
-            this.viewStateVersion = (this.viewStateVersion + 1) | 0;
+            this.inputViewStateVersion = (this.inputViewStateVersion + 1) | 0;
             this.viewState = nextViewState;
         }
     }
@@ -456,8 +456,8 @@ export class WorkerFramePacketRuntime {
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
         return buildRenderFramePacketFromMapEntries({
             frameCount: frameCount | 0,
-            mapIdsVersion: this.mapIdsVersion | 0,
-            viewStateVersion: this.viewStateVersion | 0,
+            inputMapIdsVersion: this.inputMapIdsVersion | 0,
+            inputViewStateVersion: this.inputViewStateVersion | 0,
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
             entries,

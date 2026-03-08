@@ -22,8 +22,8 @@ const UPDATE_FLAG_HAS_MOVEMENT_LOOP = 1 << 8;
 
 type NpcStateDeltaPacketInput = Readonly<{
     frameCount: number;
-    mapIdsVersion: number;
-    viewStateVersion: number;
+    inputMapIdsVersion: number;
+    inputViewStateVersion: number;
     spawnsPacked: Int32Array;
     updatesPacked: Int32Array;
     despawnsPacked: Int32Array;
@@ -49,8 +49,8 @@ function assertPackedStride(name: string, packed: Int32Array, stride: number): v
 
 export type NpcStateDeltaPacket = Readonly<{
     frameCount: number;
-    mapIdsVersion: number;
-    viewStateVersion: number;
+    inputMapIdsVersion: number;
+    inputViewStateVersion: number;
     eventCount: number;
     spawnsPacked: Int32Array;
     updatesPacked: Int32Array;
@@ -106,8 +106,8 @@ export function buildNpcStateDeltaPacket(input: NpcStateDeltaPacketInput): NpcSt
     );
     return {
         frameCount: input.frameCount | 0,
-        mapIdsVersion: input.mapIdsVersion | 0,
-        viewStateVersion: input.viewStateVersion | 0,
+        inputMapIdsVersion: input.inputMapIdsVersion | 0,
+        inputViewStateVersion: input.inputViewStateVersion | 0,
         eventCount: (spawnCount + updateCount + despawnCount) | 0,
         spawnsPacked: input.spawnsPacked,
         updatesPacked: input.updatesPacked,
@@ -150,8 +150,8 @@ function updateFlagsFromDelta(delta: NpcUpdateDelta): number {
 export function buildNpcStateDeltaPacketFromEvents(
     input: Readonly<{
         frameCount: number;
-        mapIdsVersion: number;
-        viewStateVersion: number;
+        inputMapIdsVersion: number;
+        inputViewStateVersion: number;
         events: ReadonlyArray<NpcEvent>;
     }>,
 ): NpcStateDeltaPacket {
@@ -215,8 +215,8 @@ export function buildNpcStateDeltaPacketFromEvents(
 
     return buildNpcStateDeltaPacket({
         frameCount: input.frameCount | 0,
-        mapIdsVersion: input.mapIdsVersion | 0,
-        viewStateVersion: input.viewStateVersion | 0,
+        inputMapIdsVersion: input.inputMapIdsVersion | 0,
+        inputViewStateVersion: input.inputViewStateVersion | 0,
         spawnsPacked,
         updatesPacked,
         despawnsPacked,

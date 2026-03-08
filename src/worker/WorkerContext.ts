@@ -53,8 +53,8 @@ export type RenderFrameInputUpdate = WorldInputUpdate &
     }>;
 
 export type RenderFrameStateVersions = Readonly<{
-    mapIdsVersion: number;
-    viewStateVersion: number;
+    inputMapIdsVersion: number;
+    inputViewStateVersion: number;
 }>;
 
 export class WorkerMapRuntimeTracker {
