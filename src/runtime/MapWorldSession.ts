@@ -1,5 +1,5 @@
 import {
-    type DecodedStaticMapPacket,
+    type StaticMapPacket,
     getValidatedStaticMapNpcOrderKeys,
 } from "./packets/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
@@ -62,7 +62,7 @@ export class MapWorldSession {
     }
 
     async registerActiveLoadedMap(
-        packet: DecodedStaticMapPacket,
+        packet: StaticMapPacket,
         loadEpoch: number,
     ): Promise<boolean> {
         const mapId = packet.mapData.mapId | 0;
@@ -121,7 +121,7 @@ export class MapWorldSession {
     }
 
     private async registerMapRuntime(
-        packet: DecodedStaticMapPacket,
+        packet: StaticMapPacket,
         mapSimToken: number,
     ): Promise<void> {
         const mapId = packet.mapData.mapId | 0;

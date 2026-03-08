@@ -6,7 +6,7 @@ import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import {
     decodeStaticMapWirePacket,
-    type DecodedStaticMapPacket,
+    type StaticMapPacket,
 } from "../runtime/packets/StaticMapPacket";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
@@ -117,7 +117,7 @@ export class RenderDataWorkerPool {
         );
     }
 
-    private loadStaticMapPacket(input: SdMapLoaderInput): Promise<DecodedStaticMapPacket | undefined> {
+    private loadStaticMapPacket(input: SdMapLoaderInput): Promise<StaticMapPacket | undefined> {
         return this.queueBuildTask((w) => w.loadStaticMapPacket(input)).then((packet) =>
             packet ? decodeStaticMapWirePacket(packet) : undefined,
         );

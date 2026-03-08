@@ -83,7 +83,7 @@ export function buildMapRuntimePayloads(input: {
     };
 }
 
-export type DecodedStaticMapPacket = Readonly<{
+export type StaticMapPacket = Readonly<{
     mapData: SdMapData;
     runtimeRegistration: MapRuntimeRegistration;
     runtimeBootstrap: MapRuntimeBootstrap;
@@ -248,7 +248,7 @@ export function encodeStaticMapWirePacket(
     };
 }
 
-export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedStaticMapPacket {
+export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): StaticMapPacket {
     const { drawRangeBucketLengths, drawRangesPacked, ...restMapData } = packet.mapData;
     const mapObjState = packet.runtimeBootstrap.mapObjState;
     return {
@@ -272,7 +272,7 @@ export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedS
     };
 }
 
-export function getStaticMapNpcSlotCount(packet: DecodedStaticMapPacket): number {
+export function getStaticMapNpcSlotCount(packet: StaticMapPacket): number {
     const mapData = packet.mapData;
     const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
     if (npcDrawRangeInts % NPC_DRAW_RANGE_STRIDE !== 0) {
@@ -284,7 +284,7 @@ export function getStaticMapNpcSlotCount(packet: DecodedStaticMapPacket): number
     return (npcDrawRangeInts / NPC_DRAW_RANGE_STRIDE) | 0;
 }
 
-export function getValidatedStaticMapNpcOrderKeys(packet: DecodedStaticMapPacket): Int32Array {
+export function getValidatedStaticMapNpcOrderKeys(packet: StaticMapPacket): Int32Array {
     const npcOrderKeys = packet.runtimeBootstrap.npcOrderKeys;
     const npcSlotCount = getStaticMapNpcSlotCount(packet);
     if ((npcOrderKeys.length | 0) !== (npcSlotCount | 0)) {

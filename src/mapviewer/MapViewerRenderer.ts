@@ -12,7 +12,7 @@ import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/InteractionState";
-import type { DecodedStaticMapPacket } from "../runtime/packets/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/packets/StaticMapPacket";
 import {
     collectInteractionHits,
     resolveInteractionTargets,
@@ -125,7 +125,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async loadStaticMapPacket(
         mapX: number,
         mapY: number,
-    ): Promise<DecodedStaticMapPacket | undefined> {
+    ): Promise<StaticMapPacket | undefined> {
         const r = this.renderer;
         const input: SdMapLoaderInput = {
             mapX,
@@ -172,7 +172,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private shouldDropStaticMapPacketForDevSquare(
-        staticMapPacket: DecodedStaticMapPacket | undefined,
+        staticMapPacket: StaticMapPacket | undefined,
     ): boolean {
         const devsq = this.mapViewer.getDevFixedMapSquare();
         if (
@@ -189,7 +189,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         return true;
     }
 
-    private logMapPacketTelemetry(packet: DecodedStaticMapPacket): void {
+    private logMapPacketTelemetry(packet: StaticMapPacket): void {
         const mapData = packet.mapData;
         const runtimeRegistration = packet.runtimeRegistration;
         const runtimeBootstrap = packet.runtimeBootstrap;
@@ -222,7 +222,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
-    private async finalizeLoadedMap(packet: DecodedStaticMapPacket): Promise<void> {
+    private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
@@ -313,7 +313,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private async attachLoadedRuntimeMapObjRenderData(
-        packet: DecodedStaticMapPacket,
+        packet: StaticMapPacket,
     ): Promise<void> {
         await this.applyWorldEvents({
             obj: {
