@@ -21,6 +21,14 @@ export class MapRuntimeSession {
 
     constructor(private readonly deps: MapRuntimeSessionDeps) {}
 
+    get renderWorkerPool(): RenderDataWorkerPool {
+        return this.deps.renderWorkerPool;
+    }
+
+    get simWorkerPool(): SimWorkerPool {
+        return this.deps.simWorkerPool;
+    }
+
     reset(): void {
         this.mapSimTokenByMapId.clear();
         this.nextMapSimToken = 1;

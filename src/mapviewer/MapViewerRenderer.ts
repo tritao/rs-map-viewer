@@ -26,13 +26,8 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import {
-    createMapObjRenderPacket,
-    createNpcLifecyclePacket,
-    dispatchMapObjRenderPacket,
-    dispatchNpcLifecyclePacketBytes,
-} from "../runtime/MapRuntime";
 import { MapRuntimeSession } from "../runtime/MapRuntimeSession";
+import { MapWorldSession } from "../runtime/MapWorldSession";
 import { Camera } from "../runtime/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -54,6 +49,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly tickCoordinator = new MapTickCoordinator();
     private readonly frameRuntimeCoordinator: WorkerMapFrameCoordinator;
     private readonly mapRuntimeSession: MapRuntimeSession;
+    private readonly mapWorldSession: MapWorldSession;
     private loadEpoch: number = 1;
     private seamSampleCount: number = 0;
     private seamSimMsTotal: number = 0;
@@ -114,6 +110,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapRuntimeSession = new MapRuntimeSession({
             renderWorkerPool: this.renderWorkerPool,
             simWorkerPool: this.simWorkerPool,
+        });
+        this.mapWorldSession = new MapWorldSession({
+            runtimeSession: this.mapRuntimeSession,
+            requestFrameRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
         });
         this.mapManager = this.createMapManager();
     }
@@ -280,7 +280,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         let mapRuntime: Readonly<{ mapId: number; mapSimToken: number }>;
         try {
-            mapRuntime = await this.mapRuntimeSession.registerLoadedMap(staticMapPacket);
+            mapRuntime = await this.mapWorldSession.registerLoadedMap(staticMapPacket);
         } catch (e) {
             console.warn(
                 `[map-render] failed to register worker sim state for ${staticMapPacket.mapData.mapX},${staticMapPacket.mapData.mapY}`,
@@ -291,7 +291,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         if (
             (this.loadEpoch | 0) !== queuedLoadEpoch ||
-            !this.mapRuntimeSession.hasToken(mapRuntime.mapId, mapRuntime.mapSimToken)
+            !this.mapWorldSession.hasToken(mapRuntime.mapId, mapRuntime.mapSimToken)
         ) {
             return;
         }
@@ -300,15 +300,11 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        this.mapRuntimeSession.unregisterLoadedMap(mapInfo.mapId);
+        this.mapWorldSession.unregisterLoadedMap(mapInfo.mapId);
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
-        const packet = createNpcLifecyclePacket(events);
-        if (!packet) {
-            return 0;
-        }
-        return this.applyNpcLifecyclePacketBytes(packet);
+        return await this.mapWorldSession.applyNpcLifecycleEvents(events);
     }
 
     replaceMapObjRenderData(
@@ -316,28 +312,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        void dispatchMapObjRenderPacket({
-            renderWorkerPool: this.renderWorkerPool,
-            packet: createMapObjRenderPacket(getMapSquareId(mapX, mapY), objRenderData),
-            requestRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
-        });
+        this.mapWorldSession.replaceMapObjRenderData(
+            getMapSquareId(mapX, mapY),
+            objRenderData,
+        );
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        void dispatchMapObjRenderPacket({
-            renderWorkerPool: this.renderWorkerPool,
-            packet,
-            requestRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
-        });
-    }
-
-    private async applyNpcLifecyclePacketBytes(
-        packet: ArrayBuffer | ArrayBufferView,
-    ): Promise<number> {
-        return await dispatchNpcLifecyclePacketBytes({
-            simWorkerPool: this.simWorkerPool,
-            packet,
-        });
+        this.mapWorldSession.applyMapObjRenderPacket(packet);
     }
 
     override async init() {
@@ -397,7 +379,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     async resetForCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
-        this.mapRuntimeSession.reset();
+        this.mapWorldSession.reset();
 
         try {
             await this.renderer.cleanUp();
@@ -415,7 +397,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
-        this.mapRuntimeSession.reset();
+        this.mapWorldSession.reset();
         this.tickCoordinator.resetForShutdown(this.frameRuntimeCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
