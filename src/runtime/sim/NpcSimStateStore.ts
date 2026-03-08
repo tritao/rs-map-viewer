@@ -15,7 +15,8 @@ import { LocAnimated } from "./LocAnimated";
 import type { LocAnimatedData } from "../contracts/LocAnimatedData";
 import { Npc } from "../entities/Npc";
 import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "../entities/NpcEvents";
-import { type NpcUpdateDelta, applyNpcUpdateDelta, applyNpcUpdateDeltas } from "./NpcSimMovement";
+import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
+import { applyNpcUpdateDelta, applyNpcUpdateDeltas } from "./NpcSimMovement";
 
 export type NpcSimMapState = {
     borderSize: number;

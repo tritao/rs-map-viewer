@@ -12,28 +12,28 @@ import { LocLoadType } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
-import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build";
+import type { LocAnimatedData } from "../../runtime/contracts/LocAnimatedData";
+import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build/SceneCommandBuilder";
+import { ModelHashBuffer } from "../../runtime/build/ModelHashBuffer";
+import type { LocAnimatedGroup } from "../../runtime/build/LocAnimatedGroup";
+import { SceneBuffer, type SceneModel } from "../../runtime/build/SceneBuffer";
 import {
-    LocAnimatedData,
-    LocAnimatedGroup,
-    ModelHashBuffer,
-    SceneBuffer,
     type SceneCommandPlan,
     type SceneCommandPlanDigest,
-    SceneLocEntity,
-    SceneModel,
+    emitSceneModelsToSceneBuffer,
+    summarizeSceneCommandPlan,
+} from "../../runtime/build/SceneCommandPlan";
+import type { SceneLocEntity } from "../../runtime/build/SceneLocEntity";
+import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
-    buildNpcGeometry,
-    buildObjRenderData,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
-    createLocAnimatedGroupKey,
-    emitSceneModelsToSceneBuffer,
-    getSceneLocs,
-    resolveLocRenderPlacement,
-    summarizeSceneCommandPlan,
-} from "../../runtime/build";
+} from "../../runtime/build/SceneCommandBuilder";
+import { buildNpcGeometry } from "../../runtime/build/NpcGeometryBuilder";
+import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
+import { createLocAnimatedGroupKey, resolveLocRenderPlacement } from "../../runtime/build/LocRenderPlacementResolver";
+import { getSceneLocs } from "../../runtime/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";

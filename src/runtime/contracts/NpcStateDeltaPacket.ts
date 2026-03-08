@@ -4,7 +4,7 @@ import type {
     NpcSpawnEvent,
     NpcUpdateEvent,
 } from "../entities/NpcEvents";
-import type { NpcUpdateDelta } from "../sim/NpcSimMovement";
+import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
 
 export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
 export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;

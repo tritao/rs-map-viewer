@@ -6,6 +6,7 @@ import { ExactRouteStrategy } from "../../rs/pathfinder/RouteStrategy";
 import { CollisionFlag } from "../../rs/pathfinder/flag/CollisionFlag";
 import { CollisionMap } from "../../rs/scene/CollisionMap";
 import { MovementType } from "../../runtime/entities/Npc";
+import type { NpcUpdateDelta } from "../../runtime/entities/NpcUpdateDelta";
 import { clamp } from "../../util/MathUtil";
 import type { NpcSimMapState } from "./NpcSimStateStore";
 
@@ -37,28 +38,6 @@ export type NpcServerMovementLike = {
     getSize(): number;
     queuePath(x: number, y: number, movementType: MovementType): void;
 };
-
-export type NpcUpdatePathDelta = Readonly<{
-    length?: number;
-    pathX: ArrayLike<number>;
-    pathY: ArrayLike<number>;
-    pathMovementType?: ArrayLike<number>;
-}>;
-
-export type NpcUpdateDelta = Readonly<{
-    clearServerPath?: boolean;
-    snapTileX?: number;
-    snapTileY?: number;
-    snapWorldX?: number;
-    snapWorldY?: number;
-    orientation?: number;
-    rotation?: number;
-    movementSeqId?: number;
-    movementFrame?: number;
-    movementFrameTick?: number;
-    movementLoop?: number;
-    path?: NpcUpdatePathDelta;
-}>;
 
 function isFiniteNumber(value: number | undefined): value is number {
     return typeof value === "number" && Number.isFinite(value);

@@ -1,7 +1,5 @@
 export type PacketKeyed = Readonly<{ orderKey?: number }>;
 
-// Applies a stable ordering driven by a packed key list (the packet keys) while preserving
-// duplicates by using a queue per key, matching the WebGL renderable ordering logic.
 export function orderByPacketKeys<T extends PacketKeyed>(
     items: ReadonlyArray<T>,
     orderKeys: Int32Array | undefined,

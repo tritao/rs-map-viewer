@@ -6,7 +6,7 @@ import type {
     NpcSpawnEvent,
     NpcUpdateEvent,
 } from "../entities/NpcEvents";
-import type { NpcUpdateDelta } from "../sim/NpcSimMovement";
+import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
 
 const LIFECYCLE_PACKET_VERSION = 2;
 const MAX_PATH_LENGTH = 25;

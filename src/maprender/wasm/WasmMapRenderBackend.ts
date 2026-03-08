@@ -25,7 +25,7 @@ import type {
     SdMapLoaderInput,
 } from "../MapRenderPayload";
 import { buildMapRuntimePayloads } from "../MapRenderPayload";
-import { buildObjRenderData } from "../../runtime/build";
+import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
