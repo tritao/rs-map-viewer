@@ -170,6 +170,109 @@ class MapViewerCacheSwitcher<TContext> {
     }
 }
 
+type MapViewerMapImagesDeps = Readonly<{
+    renderWorkerPool: RenderDataWorkerPool;
+    mapImageCache: Cache;
+    getLoadedCacheName(): string;
+    getMapManager(): MapManager;
+}>;
+
+class MapViewerMapImages {
+    private readonly mapImageUrls = new Map<number, string>();
+    private readonly minimapImageUrls = new Map<number, string>();
+    private readonly loadingMapImageIds = new Set<number>();
+
+    constructor(private readonly deps: MapViewerMapImagesDeps) {}
+
+    static getCachedMapImageUrl(mapX: number, mapY: number): string {
+        return CACHED_MAP_IMAGE_PREFIX + `${mapX}_${mapY}.png`;
+    }
+
+    loadCachedUrls(): void {
+        this.deps.renderWorkerPool.loadCachedMapImages().then((mapImageUrls) => {
+            mapImageUrls.forEach((value, key) => this.mapImageUrls.set(key, value));
+        });
+    }
+
+    async queueLoadMapImage(mapX: number, mapY: number): Promise<void> {
+        const mapManager = this.deps.getMapManager();
+        const mapId = getMapSquareId(mapX, mapY);
+        if (
+            this.loadingMapImageIds.size > this.deps.renderWorkerPool.size * 4 ||
+            this.mapImageUrls.has(mapId) ||
+            this.loadingMapImageIds.has(mapId) ||
+            mapManager.invalidMapIds.has(mapId) ||
+            mapManager.loadingMapIds.has(mapId)
+        ) {
+            return;
+        }
+        this.loadingMapImageIds.add(mapId);
+
+        const minimapData = await this.deps.renderWorkerPool.queueMapImage(mapX, mapY, 0, true);
+        if (minimapData) {
+            const url = URL.createObjectURL(minimapData.minimapBlob);
+            this.setMapImageUrl(mapX, mapY, url, false);
+        } else {
+            mapManager.invalidMapIds.add(mapId);
+        }
+
+        this.loadingMapImageIds.delete(mapId);
+    }
+
+    getMapImageUrl(mapX: number, mapY: number, minimap: boolean): string | undefined {
+        if (mapX < 0 || mapY < 0 || mapX >= MapManager.MAX_MAP_X || mapY >= MapManager.MAX_MAP_Y) {
+            return undefined;
+        }
+        const urls = minimap ? this.minimapImageUrls : this.mapImageUrls;
+        if (minimap) {
+            this.deps.getMapManager().loadMap(mapX, mapY);
+        } else {
+            void this.queueLoadMapImage(mapX, mapY);
+        }
+        return urls.get(getMapSquareId(mapX, mapY));
+    }
+
+    setMapImageUrl(
+        mapX: number,
+        mapY: number,
+        url: string,
+        minimap: boolean,
+        cache: boolean = true,
+    ): void {
+        const mapId = getMapSquareId(mapX, mapY);
+        const urls = minimap ? this.minimapImageUrls : this.mapImageUrls;
+        const old = urls.get(mapId);
+        if (old) {
+            URL.revokeObjectURL(old);
+        }
+        if (cache) {
+            fetch(url).then((resp) => {
+                if (resp.ok) {
+                    const request = new Request(MapViewerMapImages.getCachedMapImageUrl(mapX, mapY), {
+                        headers: {
+                            "RS-Cache-Name": this.deps.getLoadedCacheName(),
+                        },
+                    });
+                    this.deps.mapImageCache.put(request, resp);
+                }
+            });
+        }
+        urls.set(mapId, url);
+    }
+
+    clear(): void {
+        for (const url of this.mapImageUrls.values()) {
+            URL.revokeObjectURL(url);
+        }
+        for (const url of this.minimapImageUrls.values()) {
+            URL.revokeObjectURL(url);
+        }
+        this.mapImageUrls.clear();
+        this.minimapImageUrls.clear();
+        this.loadingMapImageIds.clear();
+    }
+}
+
 function buildMapViewerSearchParams(input: Readonly<{
     camera: Camera;
     loadedCacheName: string;
@@ -278,9 +381,7 @@ export class MapViewer {
 
     debugText?: string;
 
-    mapImageUrls: Map<number, string> = new Map();
-    minimapImageUrls: Map<number, string> = new Map();
-    loadingMapImageIds: Set<number> = new Set();
+    private readonly mapImages: MapViewerMapImages;
 
     cameraSpeed: number = 1;
     private devFixedMapSquare: DevFixedMapSquare | undefined;
@@ -334,7 +435,7 @@ export class MapViewer {
         readonly renderWorkerPool: RenderDataWorkerPool,
         readonly simWorkerPool: SimWorkerPool,
         readonly cacheList: CacheList,
-        readonly mapImageCache: Cache,
+        mapImageCache: Cache,
         context: CacheContext,
         runtimeOptions?: WorkerRuntimeOptions,
         initialSearchParams?: URLSearchParams,
@@ -342,6 +443,12 @@ export class MapViewer {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
         this.renderer = new MapViewerRenderer(this);
+        this.mapImages = new MapViewerMapImages({
+            renderWorkerPool,
+            mapImageCache,
+            getLoadedCacheName: () => this.loadedCache.info.name,
+            getMapManager: () => this.renderer.mapManager,
+        });
         this.cacheSwitcher = new MapViewerCacheSwitcher({
             getCurrentCacheName: () => this.loadedCache.info.name,
             loadCacheContext: MapViewer.loadCacheContext,
@@ -502,9 +609,7 @@ export class MapViewer {
     }
 
     init(): void {
-        this.renderWorkerPool.loadCachedMapImages().then((mapImageUrls) => {
-            mapImageUrls.forEach((value, key) => this.mapImageUrls.set(key, value));
-        });
+        this.mapImages.loadCachedUrls();
     }
 
     async switchCache(cacheInfo: CacheInfo): Promise<void> {
@@ -606,47 +711,8 @@ export class MapViewer {
         this.simWorkerPool.setVars(this.session.varManager.values);
     }
 
-    static getCachedMapImageUrl(mapX: number, mapY: number): string {
-        return CACHED_MAP_IMAGE_PREFIX + `${mapX}_${mapY}.png`;
-    }
-
-    async queueLoadMapImage(mapX: number, mapY: number) {
-        const mapManager = this.renderer.mapManager;
-        const mapId = getMapSquareId(mapX, mapY);
-        if (
-            this.loadingMapImageIds.size > this.renderWorkerPool.size * 4 ||
-            this.mapImageUrls.has(mapId) ||
-            this.loadingMapImageIds.has(mapId) ||
-            mapManager.invalidMapIds.has(mapId) ||
-            mapManager.loadingMapIds.has(mapId)
-        ) {
-            return;
-        }
-        this.loadingMapImageIds.add(mapId);
-
-        const minimapData = await this.renderWorkerPool.queueMapImage(mapX, mapY, 0, true);
-        if (minimapData) {
-            const url = URL.createObjectURL(minimapData.minimapBlob);
-            this.setMapImageUrl(mapX, mapY, url, false);
-        } else {
-            mapManager.invalidMapIds.add(mapId);
-        }
-
-        this.loadingMapImageIds.delete(mapId);
-    }
-
     getMapImageUrl(mapX: number, mapY: number, minimap: boolean): string | undefined {
-        if (mapX < 0 || mapY < 0 || mapX >= MapManager.MAX_MAP_X || mapY >= MapManager.MAX_MAP_Y) {
-            return undefined;
-        }
-        const urls = minimap ? this.minimapImageUrls : this.mapImageUrls;
-        if (minimap) {
-            this.renderer.mapManager.loadMap(mapX, mapY);
-        } else {
-            this.queueLoadMapImage(mapX, mapY);
-        }
-        const mapId = getMapSquareId(mapX, mapY);
-        return urls.get(mapId);
+        return this.mapImages.getMapImageUrl(mapX, mapY, minimap);
     }
 
     setMapImageUrl(
@@ -656,36 +722,10 @@ export class MapViewer {
         minimap: boolean,
         cache: boolean = true,
     ): void {
-        const mapId = getMapSquareId(mapX, mapY);
-        const urls = minimap ? this.minimapImageUrls : this.mapImageUrls;
-        const old = urls.get(mapId);
-        if (old) {
-            URL.revokeObjectURL(old);
-        }
-        if (cache) {
-            fetch(url).then((resp) => {
-                if (resp.ok) {
-                    const request = new Request(MapViewer.getCachedMapImageUrl(mapX, mapY), {
-                        headers: {
-                            "RS-Cache-Name": this.loadedCache.info.name,
-                        },
-                    });
-                    this.mapImageCache.put(request, resp);
-                }
-            });
-        }
-        urls.set(mapId, url);
+        this.mapImages.setMapImageUrl(mapX, mapY, url, minimap, cache);
     }
 
     clearMapImageUrls(): void {
-        for (const url of this.mapImageUrls.values()) {
-            URL.revokeObjectURL(url);
-        }
-        for (const url of this.minimapImageUrls.values()) {
-            URL.revokeObjectURL(url);
-        }
-        this.mapImageUrls.clear();
-        this.minimapImageUrls.clear();
-        this.loadingMapImageIds.clear();
+        this.mapImages.clear();
     }
 }
