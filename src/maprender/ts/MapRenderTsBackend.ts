@@ -49,6 +49,7 @@ import {
     buildMapRuntimeRegistration,
 } from "../MapRenderPayload";
 import { loadMinimapBlob } from "./MinimapData";
+import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 
@@ -72,6 +73,29 @@ export type BuildMapDataBridgeInputResult = Readonly<{
     debugSceneCommandPlanOpsPacked?: Int32Array;
     debugStageProfile?: Readonly<Record<string, number>>;
     debugTotalMs?: number;
+}>;
+
+type StageTimer = <T>(name: string, fn: () => T) => T;
+type AsyncStageTimer = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+
+type SceneBuildStageResult = Readonly<{
+    borderSize: number;
+    baseX: number;
+    baseY: number;
+    mapSize: number;
+    scene: Scene;
+    sceneBuf: SceneBuffer;
+    sceneModels: SceneModel[];
+    locsAnimated: LocAnimatedData[];
+    objRenderData: ReturnType<typeof buildObjRenderData>;
+    debugSceneCommandPlanDigest?: SceneCommandPlanDigest;
+    debugSceneCommandPlanOpsPacked?: Int32Array;
+}>;
+
+type NpcRuntimeStageResult = Readonly<{
+    npcGeometry: ReturnType<typeof buildNpcGeometry>;
+    npcOrderKeys?: Int32Array;
+    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 
 function packSceneCommandPlanOps(plan: SceneCommandPlan): Int32Array {
@@ -297,67 +321,22 @@ export class MapRenderTsBackend {
         }
     }
 
-    async buildMapDataBridgeInput(
-        {
-            mapX,
-            mapY,
-            maxLevel,
-            loadObjs,
-            loadNpcs,
-            loadLocs,
-            smoothTerrain,
-            minimizeDrawCalls,
-            loadedTextureIds,
-        }: SdMapLoaderInput,
-        options?: BuildMapDataOptions,
-    ): Promise<BuildMapDataBridgeInputResult> {
-        this.init();
-
-        const telemetryEnabled = this.deps.telemetry === true;
-        const npcSpawnTelemetry = telemetryEnabled
-            ? {
-                  now: () => performance.now(),
-                  log: (message: string) => console.log(message),
-              }
-            : undefined;
-        const captureStageProfile = options?.debugIncludeStageProfile === true || telemetryEnabled;
-        const profileStart = performance.now();
-        const profile: Record<string, number> = {};
-        const timeStep = <T>(name: string, fn: () => T): T => {
-            if (!captureStageProfile) {
-                return fn();
-            }
-            const t0 = performance.now();
-            const result = fn();
-            profile[name] = performance.now() - t0;
-            return result;
-        };
-        const timeStepAsync = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
-            if (!captureStageProfile) {
-                return fn();
-            }
-            const t0 = performance.now();
-            const result = await fn();
-            profile[name] = performance.now() - t0;
-            return result;
-        };
-
+    private buildSceneStage(
+        input: SdMapLoaderInput,
+        options: BuildMapDataOptions | undefined,
+        timeStep: StageTimer,
+    ): SceneBuildStageResult {
+        const { mapX, mapY, maxLevel, loadObjs, loadLocs, smoothTerrain, minimizeDrawCalls } = input;
         const loaders = this.deps.session.loaders;
         const locTypeLoader = loaders.locTypeLoader;
-        const npcTypeLoader = loaders.npcTypeLoader;
         const objTypeLoader = loaders.objTypeLoader;
-        const basTypeLoader = loaders.basTypeLoader;
         const seqTypeLoader = loaders.seqTypeLoader;
         const textureLoader = loaders.textureLoader;
-
         const locModelLoader = this.deps.locModelLoader;
         const objModelLoader = this.deps.objModelLoader;
-        const npcModelLoader = this.deps.npcModelLoader;
-
         const varManager = this.deps.varProvider;
 
         const borderSize = 6;
-
         const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
         const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
@@ -371,7 +350,6 @@ export class MapRenderTsBackend {
                 mapSize,
                 mapSize,
                 smoothTerrain,
-                // If we aren't rendering locs, still decode loc placements but avoid model loads/lighting.
                 loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
             ),
         );
@@ -386,7 +364,6 @@ export class MapRenderTsBackend {
                 getSceneLocs(locTypeLoader, scene, borderSize, maxLevel),
             );
             sceneModels.push(...sceneLocs.locs);
-            // Create loc animated groups and add transformed locs.
             locAnimatedGroupsBuild = timeStep("addLocEntities", () =>
                 addLocEntities(
                     locModelLoader,
@@ -437,7 +414,6 @@ export class MapRenderTsBackend {
                 debugSceneCommandPlanOpsPacked = packSceneCommandPlanOps(plan);
             }
 
-            // Animated locs
             if (loadLocs) {
                 const locAnimatedGroups: LocAnimatedGroup[] = [];
                 for (const group of locAnimatedGroupsBuild) {
@@ -455,13 +431,48 @@ export class MapRenderTsBackend {
                     }
                     locAnimatedGroups.push({ anim, locs: group.locs });
                 }
-
                 locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
-                if (telemetryEnabled) {
+                if (this.deps.telemetry === true) {
                     console.log(`animated locs: ${locsAnimated.length}`);
                 }
             }
         }
+
+        return {
+            borderSize,
+            baseX,
+            baseY,
+            mapSize,
+            scene,
+            sceneBuf,
+            sceneModels,
+            locsAnimated,
+            objRenderData,
+            debugSceneCommandPlanDigest,
+            debugSceneCommandPlanOpsPacked,
+        };
+    }
+
+    private async buildNpcRuntimeStage(
+        input: SdMapLoaderInput,
+        sceneStage: SceneBuildStageResult,
+        options: BuildMapDataOptions | undefined,
+        timeStep: StageTimer,
+        timeStepAsync: AsyncStageTimer,
+        npcSpawnTelemetry:
+            | {
+                  now: () => number;
+                  log: (message: string) => void;
+              }
+            | undefined,
+    ): Promise<NpcRuntimeStageResult> {
+        const { mapX, mapY, maxLevel, loadNpcs } = input;
+        const loaders = this.deps.session.loaders;
+        const npcTypeLoader = loaders.npcTypeLoader;
+        const basTypeLoader = loaders.basTypeLoader;
+        const seqTypeLoader = loaders.seqTypeLoader;
+        const textureLoader = loaders.textureLoader;
+        const npcModelLoader = this.deps.npcModelLoader;
 
         const npcSpawns = await timeStepAsync("resolveNpcSpawns", () =>
             this.npcSpawnResolver.resolveSpawns(
@@ -477,12 +488,13 @@ export class MapRenderTsBackend {
                     mapX,
                     mapY,
                     maxLevel,
-                    borderSize,
-                    tileRenderFlagsLevel1: scene.tileRenderFlags[1],
+                    borderSize: sceneStage.borderSize,
+                    tileRenderFlagsLevel1: sceneStage.scene.tileRenderFlags[1],
                     npcTypeLoader,
                 },
             ),
         );
+
         const npcGeometry = timeStep("buildNpcGeometry", () =>
             buildNpcGeometry({
                 loadNpcs,
@@ -495,10 +507,7 @@ export class MapRenderTsBackend {
                 basTypeLoader,
             }),
         );
-        const npcVertices = npcGeometry.npcVertices;
-        const npcIndices = npcGeometry.npcIndices;
-        const npcDrawRangesBase = npcGeometry.npcDrawRangesBase;
-        const npcDrawRangesAlpha = npcGeometry.npcDrawRangesAlpha;
+
         const npcOrderKeys =
             loadNpcs && npcGeometry.npcs.length > 0
                 ? Int32Array.from(npcGeometry.npcs, (npc) => npc.orderKey ?? -1)
@@ -510,12 +519,136 @@ export class MapRenderTsBackend {
                       npcsIn: npcGeometry.npcs,
                   })
                 : undefined;
-        const npcTypeAnimationTable = npcBootstrap?.npcTypeAnimationTable;
+
+        return {
+            npcGeometry,
+            npcOrderKeys,
+            npcTypeAnimationTable: npcBootstrap?.npcTypeAnimationTable,
+        };
+    }
+
+    private buildStaticMapData(
+        input: SdMapLoaderInput,
+        sceneStage: SceneBuildStageResult,
+        minimapBlob: Blob,
+        drawRanges: ReturnType<typeof buildDrawRangesFromBuckets>,
+        modelInfoTextures: ReturnType<typeof buildModelInfoTexturesFromBuckets>,
+        heightMapTextureData: Int16Array,
+        usedTextureIds: Int32Array,
+        loadedTextures: Map<number, Int32Array>,
+        npcVertices: Uint8Array | undefined,
+        npcIndices: Int32Array | undefined,
+        npcDrawRangesBase: Int32Array | undefined,
+        npcDrawRangesAlpha: Int32Array | undefined,
+    ): SdMapData {
+        return {
+            mapId: getMapSquareId(input.mapX, input.mapY),
+            mapX: input.mapX,
+            mapY: input.mapY,
+            cacheName: this.deps.session.cache.info.name,
+            maxLevel: input.maxLevel,
+            loadObjs: input.loadObjs,
+            loadNpcs: input.loadNpcs,
+            loadLocs: input.loadLocs,
+            smoothTerrain: input.smoothTerrain,
+            borderSize: sceneStage.borderSize,
+            tileRenderFlags: sceneStage.scene.tileRenderFlags,
+            minimapBlob,
+            vertices: sceneStage.sceneBuf.vertexBuf.byteArray(),
+            indices: new Int32Array(sceneStage.sceneBuf.indices),
+            modelInfoTextures,
+            heightMapTextureData,
+            drawRanges,
+            locsAnimated: sceneStage.locsAnimated,
+            usedTextureIds,
+            loadedTextures,
+            npcDrawRangesBase,
+            npcDrawRangesAlpha,
+            npcVertices,
+            npcIndices,
+        };
+    }
+
+    async buildMapData(
+        {
+            mapX,
+            mapY,
+            maxLevel,
+            loadObjs,
+            loadNpcs,
+            loadLocs,
+            smoothTerrain,
+            minimizeDrawCalls,
+            loadedTextureIds,
+        }: SdMapLoaderInput,
+        options?: BuildMapDataOptions,
+    ): Promise<BuildMapDataBridgeInputResult> {
+        this.init();
+        const input: SdMapLoaderInput = {
+            mapX,
+            mapY,
+            maxLevel,
+            loadObjs,
+            loadNpcs,
+            loadLocs,
+            smoothTerrain,
+            minimizeDrawCalls,
+            loadedTextureIds,
+        };
+
+        const telemetryEnabled = this.deps.telemetry === true;
+        const npcSpawnTelemetry = telemetryEnabled
+            ? {
+                  now: () => performance.now(),
+                  log: (message: string) => console.log(message),
+              }
+            : undefined;
+        const captureStageProfile = options?.debugIncludeStageProfile === true || telemetryEnabled;
+        const profileStart = performance.now();
+        const profile: Record<string, number> = {};
+        const timeStep = <T>(name: string, fn: () => T): T => {
+            if (!captureStageProfile) {
+                return fn();
+            }
+            const t0 = performance.now();
+            const result = fn();
+            profile[name] = performance.now() - t0;
+            return result;
+        };
+        const timeStepAsync = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+            if (!captureStageProfile) {
+                return fn();
+            }
+            const t0 = performance.now();
+            const result = await fn();
+            profile[name] = performance.now() - t0;
+            return result;
+        };
+
+        const loaders = this.deps.session.loaders;
+        const textureLoader = loaders.textureLoader;
+
+        const sceneStage = this.buildSceneStage(input, options, timeStep);
+        const npcStage = await this.buildNpcRuntimeStage(
+            input,
+            sceneStage,
+            options,
+            timeStep,
+            timeStepAsync,
+            npcSpawnTelemetry,
+        );
+        const npcGeometry = npcStage.npcGeometry;
+        const npcVertices = npcGeometry.npcVertices;
+        const npcIndices = npcGeometry.npcIndices;
+        const npcDrawRangesBase = npcGeometry.npcDrawRangesBase;
+        const npcDrawRangesAlpha = npcGeometry.npcDrawRangesAlpha;
+        const npcOrderKeys = npcStage.npcOrderKeys;
+        const npcTypeAnimationTable = npcStage.npcTypeAnimationTable;
 
         const includeRuntimeCommandStreamInput = options?.includeRuntimeCommandStreamInput === true;
         const includeRuntimeSceneTileHeights = options?.includeRuntimeSceneTileHeights !== false;
         const runtimeDrawCommandBuckets = timeStep("collectRuntimeDrawCommandBuckets", () =>
-            collectRuntimeDrawCommandBuckets(sceneBuf),
+            collectRuntimeDrawCommandBuckets(sceneStage.sceneBuf),
         );
 
         const drawRanges = timeStep("getDrawRanges", () =>
@@ -527,12 +660,12 @@ export class MapRenderTsBackend {
         );
 
         const heightMapTextureData = timeStep("loadHeightMapTextureData", () =>
-            loadHeightMapTextureData(scene),
+            loadHeightMapTextureData(sceneStage.scene),
         );
 
         const runtimeSceneTileHeights =
             includeRuntimeCommandStreamInput && includeRuntimeSceneTileHeights
-                ? timeStep("flattenSceneTileHeights", () => flattenSceneTileHeights(scene))
+                ? timeStep("flattenSceneTileHeights", () => flattenSceneTileHeights(sceneStage.scene))
                 : undefined;
 
         const runtimeCommandStreamInput = includeRuntimeCommandStreamInput
@@ -540,9 +673,9 @@ export class MapRenderTsBackend {
                   buildRuntimeCommandStreamInputFromBuckets(
                       runtimeSceneTileHeights ?? new Int32Array(0),
                       {
-                          levels: scene.levels,
-                          sizeX: scene.sizeX,
-                          sizeY: scene.sizeY,
+                          levels: sceneStage.scene.levels,
+                          sizeX: sceneStage.scene.sizeX,
+                          sizeY: sceneStage.scene.sizeY,
                           unitsTileHeightBasis: Scene.UNITS_TILE_HEIGHT_BASIS,
                       },
                       runtimeDrawCommandBuckets,
@@ -550,17 +683,20 @@ export class MapRenderTsBackend {
               )
             : undefined;
 
-        const vertices = sceneBuf.vertexBuf.byteArray();
-        const indices = timeStep("packIndices", () => new Int32Array(sceneBuf.indices));
-
         const minimapBlob =
             options?.includeMinimapBlob === false
                 ? new Blob()
                 : await timeStepAsync("loadMinimapBlob", () =>
-                      loadMinimapBlob(this.deps.mapImageRenderer, scene, 0, borderSize, false),
+                      loadMinimapBlob(
+                          this.deps.mapImageRenderer,
+                          sceneStage.scene,
+                          0,
+                          sceneStage.borderSize,
+                          false,
+                      ),
                   );
 
-        const usedTextureIdSet = new Set<number>(sceneBuf.usedTextureIds);
+        const usedTextureIdSet = new Set<number>(sceneStage.sceneBuf.usedTextureIds);
         for (const textureId of npcGeometry.usedTextureIds) {
             usedTextureIdSet.add(textureId);
         }
@@ -603,67 +739,49 @@ export class MapRenderTsBackend {
                 .slice(0, 10)
                 .map(([k, v]) => `${k}=${v.toFixed(1)}ms`)
                 .join(" ");
-            console.log(
-                `load map ${mapX},${mapY}: total=${totalMs.toFixed(
-                    1,
-                )}ms vertices=${sceneBuf.vertexCount()} indices=${sceneBuf.indices.length} models=${
-                    sceneModels.length
+                console.log(
+                    `load map ${mapX},${mapY}: total=${totalMs.toFixed(
+                        1,
+                )}ms vertices=${sceneStage.sceneBuf.vertexCount()} indices=${
+                    sceneStage.sceneBuf.indices.length
+                } models=${
+                    sceneStage.sceneModels.length
                 } ${parts}`,
             );
         }
-
-        const data: SdMapData = {
-            mapId: getMapSquareId(mapX, mapY),
-            mapX,
-            mapY,
-            cacheName: this.deps.session.cache.info.name,
-            maxLevel,
-            loadObjs,
-            loadNpcs,
-            loadLocs,
-            smoothTerrain,
-            borderSize,
-            tileRenderFlags: scene.tileRenderFlags,
+        const data = this.buildStaticMapData(
+            input,
+            sceneStage,
             minimapBlob,
-            vertices,
-            indices,
+            drawRanges,
             modelInfoTextures,
             heightMapTextureData,
-            drawRanges,
-            locsAnimated,
             usedTextureIds,
             loadedTextures,
-            npcDrawRangesBase,
-            npcDrawRangesAlpha,
             npcVertices,
             npcIndices,
-        };
+            npcDrawRangesBase,
+            npcDrawRangesAlpha,
+        );
 
         return {
             data,
             runtimeRegistration: buildMapRuntimeRegistration({
-                borderSize,
-                tileRenderFlags: scene.tileRenderFlags,
-                locsAnimated,
+                borderSize: sceneStage.borderSize,
+                tileRenderFlags: sceneStage.scene.tileRenderFlags,
+                locsAnimated: sceneStage.locsAnimated,
                 npcTypeAnimationTable,
             }),
             runtimeBootstrap: buildMapRuntimeBootstrap({
-                npcOrderKeys,
-                objRenderData,
+                npcOrderKeys: npcStage.npcOrderKeys,
+                objRenderData: sceneStage.objRenderData,
             }),
             runtimeCommandStreamInput,
-            debugSceneCommandPlanDigest,
-            debugSceneCommandPlanOpsPacked,
+            debugSceneCommandPlanDigest: sceneStage.debugSceneCommandPlanDigest,
+            debugSceneCommandPlanOpsPacked: sceneStage.debugSceneCommandPlanOpsPacked,
             debugStageProfile: options?.debugIncludeStageProfile ? { ...profile } : undefined,
             debugTotalMs: options?.debugIncludeStageProfile ? totalMs : undefined,
         };
-    }
-
-    async buildMapData(
-        input: SdMapLoaderInput,
-        options?: BuildMapDataOptions,
-    ): Promise<BuildMapDataBridgeInputResult> {
-        return await this.buildMapDataBridgeInput(input, options);
     }
 
     reset(): void {
