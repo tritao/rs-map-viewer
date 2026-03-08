@@ -45,16 +45,7 @@ async function getWorkerServices(): Promise<SimWorkerServices> {
     return await created;
 }
 
-const worker = {
-    async initCache(
-        cache: LoadedCache,
-        spawnBootstrap: WorkerSpawnBootstrap,
-        options?: WorkerRuntimeOptions,
-    ): Promise<void> {
-        const { buildService, tickRuntime } = await getWorkerServices();
-        tickRuntime.resetForCache();
-        await buildService.initCache(cache, spawnBootstrap, options);
-    },
+const worldApi = {
     async registerMapRuntime(input: SimMapRuntimeRegistrationInput): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
         await tickRuntime.registerMapRuntime(input);
@@ -71,13 +62,11 @@ const worker = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
-    async syncWorldState(update: WorldInputUpdate): Promise<void> {
+    async syncState(update: WorldInputUpdate): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
         tickRuntime.applyWorldInputUpdate({
             mapIds:
-                update.mapIds !== undefined
-                    ? normalizeWorkerInt32Array(update.mapIds)
-                    : undefined,
+                update.mapIds !== undefined ? normalizeWorkerInt32Array(update.mapIds) : undefined,
             viewState:
                 update.viewState !== undefined
                     ? {
@@ -88,7 +77,7 @@ const worker = {
                     : undefined,
         });
     },
-    async stepWorld(
+    async step(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
@@ -97,11 +86,43 @@ const worker = {
         const { tickRuntime } = await getWorkerServices();
         const packet = await tickRuntime.stepWorld(frameCount, ticksElapsed, clientTicksElapsed, cycleNow);
         return packet
-            ? Transfer<WorldDeltaPacket | undefined>(
-                  packet,
-                  worldDeltaPacketTransferables(packet),
-              )
+            ? Transfer<WorldDeltaPacket | undefined>(packet, worldDeltaPacketTransferables(packet))
             : Transfer<WorldDeltaPacket | undefined>(undefined, []);
+    },
+};
+
+const worker = {
+    async initCache(
+        cache: LoadedCache,
+        spawnBootstrap: WorkerSpawnBootstrap,
+        options?: WorkerRuntimeOptions,
+    ): Promise<void> {
+        const { buildService, tickRuntime } = await getWorkerServices();
+        tickRuntime.resetForCache();
+        await buildService.initCache(cache, spawnBootstrap, options);
+    },
+    async registerMapRuntime(input: SimMapRuntimeRegistrationInput): Promise<void> {
+        await worldApi.registerMapRuntime(input);
+    },
+    async bootstrapMapRuntime(input: MapRuntimeBootstrapInput): Promise<void> {
+        await worldApi.bootstrapMapRuntime(input);
+    },
+    async unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+        await worldApi.unregisterMapRuntime(mapId, mapSimToken);
+    },
+    async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+        return worldApi.applyNpcLifecyclePacketBytes(packet);
+    },
+    async syncWorldState(update: WorldInputUpdate): Promise<void> {
+        await worldApi.syncState(update);
+    },
+    async stepWorld(
+        frameCount: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+        cycleNow: number,
+    ): Promise<TransferDescriptor<WorldDeltaPacket | undefined>> {
+        return worldApi.step(frameCount, ticksElapsed, clientTicksElapsed, cycleNow);
     },
     async setVars(values: Int32Array): Promise<void> {
         const { buildService } = await getWorkerServices();
