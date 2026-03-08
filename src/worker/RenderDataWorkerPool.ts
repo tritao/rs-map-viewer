@@ -5,7 +5,7 @@ import { MinimapData } from "../maprender/ts/MinimapData";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
-import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
+import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import {
     decodeStaticMapWirePacket,
     type DecodedStaticMapPacket,
@@ -150,20 +150,20 @@ export class RenderDataWorkerPool {
         return task(worker);
     }
 
-    registerMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
-        return this.withRenderFrameWorker((w) => w.registerMapRuntime(input));
+    registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
+        return this.withRenderFrameWorker((w) => w.registerRenderMapRuntime(input));
     }
 
-    unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
-        return this.withRenderFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
+    unregisterRenderMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+        return this.withRenderFrameWorker((w) => w.unregisterRenderMapRuntime(mapId, mapSimToken));
     }
 
     syncRenderFrameState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion> {
         return this.withRenderFrameWorker((w) => w.syncRenderFrameState(update));
     }
 
-    applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
-        return this.withRenderFrameWorker((w) => w.applyNpcWorldStateDeltaPacket(deltaPacket));
+    applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
+        return this.withRenderFrameWorker((w) => w.applyWorldDeltaPacket(deltaPacket));
     }
 
     private applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {

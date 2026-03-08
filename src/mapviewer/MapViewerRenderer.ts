@@ -22,11 +22,10 @@ import {
     type RenderFrameSeamSample,
     RenderFrameCoordinator,
 } from "./RenderFrameCoordinator";
-import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { MapWorldSession } from "../runtime/MapWorldSession";
+import { MapWorldSession, type WorldEventsInput } from "../runtime/MapWorldSession";
 import { Camera } from "../runtime/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -306,8 +305,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapWorldSession.unregisterLoadedMap(mapInfo.mapId);
     }
 
-    async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
-        return await this.mapWorldSession.applyNpcLifecycleEvents(events);
+    async applyWorldEvents(input: WorldEventsInput): Promise<number> {
+        return await this.mapWorldSession.applyWorldEvents(input);
     }
 
     private async attachLoadedRuntimeMapObjRenderData(

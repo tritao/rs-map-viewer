@@ -11,9 +11,9 @@ import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
 import {
-    type NpcStateDeltaPacket,
-    buildNpcStateDeltaPacketFromEvents,
-} from "../runtime/packets/NpcStateDeltaPacket";
+    type WorldDeltaPacket,
+    buildWorldDeltaPacketFromNpcEvents,
+} from "../runtime/packets/WorldDeltaPacket";
 import {
     type ResolvedBootstrapData,
     resolveBootstrapData,
@@ -494,7 +494,7 @@ export class WorkerTickRuntime {
         ticksElapsed: number,
         clientTicksElapsed: number,
         _cycleNow: number,
-    ): Promise<NpcStateDeltaPacket | undefined> {
+    ): Promise<WorldDeltaPacket | undefined> {
         const mapIds = this.visibleMapIds;
         if ((mapIds.length | 0) === 0) {
             return undefined;
@@ -523,7 +523,7 @@ export class WorkerTickRuntime {
             this.collectNpcDeltaEventsForMap(mapId, state.npcs, events);
         }
 
-        return buildNpcStateDeltaPacketFromEvents({
+        return buildWorldDeltaPacketFromNpcEvents({
             frameCount: frameCount | 0,
             inputStateVersion: this.inputStateVersion | 0,
             events,

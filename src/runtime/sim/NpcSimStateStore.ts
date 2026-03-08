@@ -6,10 +6,10 @@ import {
     NPC_STATE_DELTA_DESPAWN_STRIDE,
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
-    type NpcStateDeltaPacket,
+    type WorldDeltaPacket,
     decodeNpcStateDeltaUpdate,
-    validateNpcStateDeltaPacket,
-} from "../packets/NpcStateDeltaPacket";
+    validateWorldDeltaPacket,
+} from "../packets/WorldDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
 import { LocAnimated } from "./LocAnimated";
 import type { LocAnimatedData } from "../LocAnimatedData";
@@ -389,8 +389,8 @@ export class NpcSimStateStore {
         return applied | 0;
     }
 
-    applyNpcWorldStateDeltaPacket(packet: NpcStateDeltaPacket, deps: NpcSimStateStoreDeps): number {
-        const counts = validateNpcStateDeltaPacket(packet);
+    applyWorldDeltaPacket(packet: WorldDeltaPacket, deps: NpcSimStateStoreDeps): number {
+        const counts = validateWorldDeltaPacket(packet);
         if ((counts.eventCount | 0) <= 0) {
             return 0;
         }

@@ -20,7 +20,7 @@ const UPDATE_FLAG_HAS_MOVEMENT_FRAME = 1 << 6;
 const UPDATE_FLAG_HAS_MOVEMENT_FRAME_TICK = 1 << 7;
 const UPDATE_FLAG_HAS_MOVEMENT_LOOP = 1 << 8;
 
-type NpcStateDeltaPacketInput = Readonly<{
+type WorldDeltaPacketInput = Readonly<{
     frameCount: number;
     inputStateVersion: number;
     spawnsPacked: Int32Array;
@@ -28,7 +28,7 @@ type NpcStateDeltaPacketInput = Readonly<{
     despawnsPacked: Int32Array;
 }>;
 
-export type NpcStateDeltaPacketCounts = Readonly<{
+export type WorldDeltaPacketCounts = Readonly<{
     spawnCount: number;
     updateCount: number;
     despawnCount: number;
@@ -46,7 +46,7 @@ function assertPackedStride(name: string, packed: Int32Array, stride: number): v
     }
 }
 
-export type NpcStateDeltaPacket = Readonly<{
+export type WorldDeltaPacket = Readonly<{
     frameCount: number;
     inputStateVersion: number;
     eventCount: number;
@@ -55,9 +55,9 @@ export type NpcStateDeltaPacket = Readonly<{
     despawnsPacked: Int32Array;
 }>;
 
-export function getNpcStateDeltaPacketCounts(
-    packet: NpcStateDeltaPacket,
-): NpcStateDeltaPacketCounts {
+export function getWorldDeltaPacketCounts(
+    packet: WorldDeltaPacket,
+): WorldDeltaPacketCounts {
     const spawnCount = Math.floor((packet.spawnsPacked.length | 0) / NPC_STATE_DELTA_SPAWN_STRIDE);
     const updateCount = Math.floor(
         (packet.updatesPacked.length | 0) / NPC_STATE_DELTA_UPDATE_STRIDE,
@@ -73,13 +73,13 @@ export function getNpcStateDeltaPacketCounts(
     };
 }
 
-export function validateNpcStateDeltaPacket(
-    packet: NpcStateDeltaPacket,
-): NpcStateDeltaPacketCounts {
+export function validateWorldDeltaPacket(
+    packet: WorldDeltaPacket,
+): WorldDeltaPacketCounts {
     assertPackedStride("spawnsPacked", packet.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
     assertPackedStride("updatesPacked", packet.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
     assertPackedStride("despawnsPacked", packet.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
-    const counts = getNpcStateDeltaPacketCounts(packet);
+    const counts = getWorldDeltaPacketCounts(packet);
     if ((packet.eventCount | 0) !== (counts.eventCount | 0)) {
         throw new Error(
             `[map-render][npc-state-delta] invalid eventCount: ` +
@@ -91,7 +91,7 @@ export function validateNpcStateDeltaPacket(
     return counts;
 }
 
-export function buildNpcStateDeltaPacket(input: NpcStateDeltaPacketInput): NpcStateDeltaPacket {
+export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaPacket {
     assertPackedStride("spawnsPacked", input.spawnsPacked, NPC_STATE_DELTA_SPAWN_STRIDE);
     assertPackedStride("updatesPacked", input.updatesPacked, NPC_STATE_DELTA_UPDATE_STRIDE);
     assertPackedStride("despawnsPacked", input.despawnsPacked, NPC_STATE_DELTA_DESPAWN_STRIDE);
@@ -144,13 +144,13 @@ function updateFlagsFromDelta(delta: NpcUpdateDelta): number {
     return flags | 0;
 }
 
-export function buildNpcStateDeltaPacketFromEvents(
+export function buildWorldDeltaPacketFromNpcEvents(
     input: Readonly<{
         frameCount: number;
         inputStateVersion: number;
         events: ReadonlyArray<NpcEvent>;
     }>,
-): NpcStateDeltaPacket {
+): WorldDeltaPacket {
     const events = input.events;
     let spawnCount = 0;
     let updateCount = 0;
@@ -209,7 +209,7 @@ export function buildNpcStateDeltaPacketFromEvents(
         despawnsPacked[despawnOff++] = event.seq | 0;
     }
 
-    return buildNpcStateDeltaPacket({
+    return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
         inputStateVersion: input.inputStateVersion | 0,
         spawnsPacked,
@@ -279,10 +279,10 @@ function ensureMapEvents(out: Map<number, NpcEvent[]>, mapId: number): NpcEvent[
     return next;
 }
 
-export function decodeNpcStateDeltaPacketEvents(
-    packet: NpcStateDeltaPacket,
+export function decodeWorldDeltaNpcEvents(
+    packet: WorldDeltaPacket,
 ): ReadonlyMap<number, NpcEvent[]> {
-    const counts = validateNpcStateDeltaPacket(packet);
+    const counts = validateWorldDeltaPacket(packet);
     const out = new Map<number, NpcEvent[]>();
 
     const spawnPacked = packet.spawnsPacked;
@@ -340,7 +340,7 @@ export function decodeNpcStateDeltaPacketEvents(
     return out;
 }
 
-export function npcStateDeltaPacketTransferables(packet: NpcStateDeltaPacket): Transferable[] {
+export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transferable[] {
     return [
         packet.spawnsPacked.buffer as Transferable,
         packet.updatesPacked.buffer as Transferable,

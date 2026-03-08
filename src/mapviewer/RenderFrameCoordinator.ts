@@ -241,7 +241,7 @@ export class RenderFrameCoordinator {
             );
             const afterSim = performance.now();
             if (worldDeltaPacket) {
-                await this.deps.renderWorkerPool.applyNpcWorldStateDeltaPacket(worldDeltaPacket);
+                await this.deps.renderWorkerPool.applyWorldDeltaPacket(worldDeltaPacket);
             }
             const afterApply = performance.now();
             const packet = await this.deps.renderWorkerPool.buildRenderFramePacket(

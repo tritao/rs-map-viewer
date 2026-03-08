@@ -1,8 +1,8 @@
 import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
-import { npcStateDeltaPacketTransferables } from "../runtime/packets/NpcStateDeltaPacket";
+import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import { worldDeltaPacketTransferables } from "../runtime/packets/WorldDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,
@@ -93,15 +93,15 @@ const worker = {
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-    ): Promise<TransferDescriptor<NpcStateDeltaPacket | undefined>> {
+    ): Promise<TransferDescriptor<WorldDeltaPacket | undefined>> {
         const { tickRuntime } = await getWorkerServices();
         const packet = await tickRuntime.stepWorld(frameCount, ticksElapsed, clientTicksElapsed, cycleNow);
         return packet
-            ? Transfer<NpcStateDeltaPacket | undefined>(
+            ? Transfer<WorldDeltaPacket | undefined>(
                   packet,
-                  npcStateDeltaPacketTransferables(packet),
+                  worldDeltaPacketTransferables(packet),
               )
-            : Transfer<NpcStateDeltaPacket | undefined>(undefined, []);
+            : Transfer<WorldDeltaPacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
         const { buildService } = await getWorkerServices();

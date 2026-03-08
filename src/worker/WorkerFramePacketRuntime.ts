@@ -15,7 +15,7 @@ import {
 } from "../renderer/RenderFramePacketBuilder";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
-import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
+import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import { NpcGpuFrameBuilder } from "../renderer/NpcGpuFrameBuilder";
@@ -216,7 +216,7 @@ export class WorkerFramePacketRuntime {
         this.hoveredMapIdsPacked = Int32Array.from(hoveredMapIdsPacked);
     }
 
-    async registerMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
+    async registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
         const mapId = input.mapId | 0;
         const mapSimToken = input.mapSimToken;
         if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
@@ -238,7 +238,7 @@ export class WorkerFramePacketRuntime {
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
-    unregisterMapRuntime(mapId: number, mapSimToken?: number): void {
+    unregisterRenderMapRuntime(mapId: number, mapSimToken?: number): void {
         if (!this.workerMapRuntimeTracker.tryAcceptMapSimToken(mapId, mapSimToken)) {
             return;
         }
@@ -246,13 +246,13 @@ export class WorkerFramePacketRuntime {
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
-    async applyNpcWorldStateDeltaPacket(packet: NpcStateDeltaPacket): Promise<number> {
+    async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
         if ((packet.eventCount | 0) <= 0) {
             return 0;
         }
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
-        return this.npcSimStateStore.applyNpcWorldStateDeltaPacket(packet, deps) | 0;
+        return this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0;
     }
 
     private normalizeFrameBuildInputs(

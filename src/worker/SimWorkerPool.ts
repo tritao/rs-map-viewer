@@ -2,7 +2,7 @@ import { ModuleThread, Thread, spawn } from "threads";
 
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromEvents } from "../runtime/packets/NpcLifecyclePacket";
-import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
+import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,
@@ -106,7 +106,7 @@ export class SimWorkerPool {
         ticksElapsed: number,
         clientTicksElapsed: number,
         cycleNow: number,
-    ): Promise<NpcStateDeltaPacket | undefined> {
+    ): Promise<WorldDeltaPacket | undefined> {
         return this.withWorker((w) => w.stepWorld(frameCount, ticksElapsed, clientTicksElapsed, cycleNow));
     }
 

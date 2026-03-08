@@ -5,7 +5,7 @@ import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { renderFramePacketTransferables } from "../renderer/RenderFramePacket";
-import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
+import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
@@ -82,13 +82,13 @@ const worker = {
         const { buildService } = await getWorkerServices();
         return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
     },
-    async registerMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
+    async registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        await frameRuntime.registerMapRuntime(input);
+        await frameRuntime.registerRenderMapRuntime(input);
     },
-    async unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+    async unregisterRenderMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
+        frameRuntime.unregisterRenderMapRuntime(mapId, mapSimToken);
     },
     async syncRenderFrameState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion> {
         const { frameRuntime } = await getWorkerServices();
@@ -111,7 +111,7 @@ const worker = {
                     : undefined,
         });
     },
-    async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
+    async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
         if (!frameRuntime.hasCompatibleInputStateVersion(deltaPacket.inputStateVersion | 0)) {
             return 0;
@@ -123,7 +123,7 @@ const worker = {
         if ((deltaPacket.eventCount | 0) <= 0) {
             return 0;
         }
-        const applied = await frameRuntime.applyNpcWorldStateDeltaPacket(deltaPacket);
+        const applied = await frameRuntime.applyWorldDeltaPacket(deltaPacket);
         if ((applied | 0) > 0) {
             lastAppliedWorldDeltaFrameCount = deltaFrameCount;
         }

@@ -19,6 +19,10 @@ type MapWorldSessionDeps = Readonly<{
 
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
+export type WorldEventsInput = Readonly<{
+    npcEvents?: ReadonlyArray<NpcEvent>;
+}>;
+
 export class MapWorldSession {
     private loadEpoch: number = 1;
     private readonly mapSimTokenByMapId = new Map<number, number>();
@@ -67,8 +71,12 @@ export class MapWorldSession {
         this.unregisterMapRuntime(normalizedMapId, mapSimToken);
     }
 
-    async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
-        return await this.deps.simWorkerPool.applyNpcLifecycleEvents(events);
+    async applyWorldEvents(input: WorldEventsInput): Promise<number> {
+        let applied = 0;
+        if (input.npcEvents && (input.npcEvents.length | 0) > 0) {
+            applied = (applied + (await this.deps.simWorkerPool.applyNpcLifecycleEvents(input.npcEvents))) | 0;
+        }
+        return applied | 0;
     }
 
     private reserveToken(mapId: number): number {
@@ -112,12 +120,12 @@ export class MapWorldSession {
             npcOrderKeys,
             mapSimToken,
         };
-        await this.deps.renderWorkerPool.registerMapRuntime(renderRegistration);
+        await this.deps.renderWorkerPool.registerRenderMapRuntime(renderRegistration);
         try {
             await this.deps.simWorkerPool.registerMapRuntime(simRegistration);
             await this.deps.simWorkerPool.bootstrapMapRuntime(bootstrapInput);
         } catch (error: unknown) {
-            void this.deps.renderWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
+            void this.deps.renderWorkerPool.unregisterRenderMapRuntime(mapId, mapSimToken);
             void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
             throw error;
         }
@@ -125,6 +133,6 @@ export class MapWorldSession {
 
     private unregisterMapRuntime(mapId: number, mapSimToken: number): void {
         void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
-        void this.deps.renderWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
+        void this.deps.renderWorkerPool.unregisterRenderMapRuntime(mapId, mapSimToken);
     }
 }
