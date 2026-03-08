@@ -12,7 +12,7 @@ import {
     type FramePacketMapEntry,
     buildFramePacketFromMapEntries,
     buildFramePacketMapEntry,
-} from "../../runtime/contracts/FramePacketBuilder";
+} from "../../runtime/FramePacketBuilder";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import type { NpcStateDeltaPacket } from "../../runtime/contracts/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";

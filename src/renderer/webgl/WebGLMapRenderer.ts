@@ -24,11 +24,7 @@ import {
     getNpcTickPatchStreamIndex,
 } from "../../runtime/contracts/FramePacket";
 import type { FramePacket } from "../../runtime/contracts/FramePacket";
-import {
-    type InteractionControllerRenderer,
-    type InteractionInput,
-    type InteractionSnapshotRenderer,
-} from "../../runtime/contracts/Interaction";
+import { type InteractionInput } from "../../runtime/contracts/Interaction";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
@@ -46,6 +42,10 @@ import { type InteractionsCallback, WebGLInteractionSystem } from "./WebGLIntera
 import { WebGLMapSquare } from "./WebGLMapSquare";
 import { WebGLPrograms } from "./WebGLPrograms";
 import { WebGLTextureSystem } from "./WebGLTextureSystem";
+import type {
+    InteractionControllerRenderer,
+    InteractionSnapshotRenderer,
+} from "../RendererInteraction";
 import { applyDrawRangePatches } from "./applyDrawRangePatches";
 
 const DRAW_RANGE_STRIDE = 3;

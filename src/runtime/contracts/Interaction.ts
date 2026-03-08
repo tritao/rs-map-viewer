@@ -6,11 +6,3 @@ export type InteractionInput = Readonly<{
     mouseX: number;
     mouseY: number;
 }>;
-
-export interface InteractionControllerRenderer {
-    setInteractionInput(input: InteractionInput): void;
-}
-
-export interface InteractionSnapshotRenderer {
-    getHoveredMapIdsPacked(): Int32Array;
-}

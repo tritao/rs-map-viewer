@@ -19,7 +19,7 @@ import {
     type FramePacketMapEntry,
     buildFramePacketFromMapEntries,
     buildFramePacketMapEntry,
-} from "../../runtime/contracts/FramePacketBuilder";
+} from "../../runtime/FramePacketBuilder";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/contracts/NpcGpuFrame";
 import { decodeNpcLifecyclePacket } from "../../runtime/contracts/NpcLifecyclePacket";
 import {
