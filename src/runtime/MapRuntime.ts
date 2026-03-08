@@ -1,11 +1,41 @@
-import type { MapRuntimeBootstrap, MapRuntimeRegistration } from "../maprender/MapRenderPayload";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+    ObjRenderData,
+} from "../maprender/MapRenderPayload";
 import type { MapObjRenderPacket } from "./contracts/MapObjRenderPacket";
+import {
+    buildMapObjRenderPacket,
+} from "./contracts/MapObjRenderPacket";
+import { encodeNpcLifecyclePacketFromEvents } from "./contracts/NpcLifecyclePacket";
 import type { NpcTypeAnimationEntry } from "./contracts/NpcTypeAnimationTable";
+import type { NpcEvent } from "./sim/NpcEvents";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 
 const EMPTY_NPC_ORDER_KEYS = new Int32Array(0);
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
+
+export function createMapObjBootstrapPacket(
+    mapId: number,
+    objRenderData: ObjRenderData | undefined,
+): MapObjRenderPacket {
+    return buildMapObjRenderPacket([
+        {
+            mapId: mapId | 0,
+            objRenderData,
+        },
+    ]);
+}
+
+export function createNpcLifecyclePacket(
+    events: ReadonlyArray<NpcEvent>,
+): Uint8Array | undefined {
+    if ((events.length | 0) <= 0) {
+        return undefined;
+    }
+    return encodeNpcLifecyclePacketFromEvents(events);
+}
 
 export async function registerMapRuntime(input: Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
@@ -87,12 +117,14 @@ export async function applyNpcLifecyclePacketBytes(input: Readonly<{
     simWorkerPool: SimWorkerPool;
     packet: ArrayBuffer | ArrayBufferView;
 }>): Promise<number> {
-    const packet = input.packet;
-    const bytes =
-        packet instanceof Uint8Array
-            ? packet
-            : packet instanceof ArrayBuffer
-            ? new Uint8Array(packet)
-            : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
+    const bytes = normalizePacketBytes(input.packet);
     return await input.simWorkerPool.applyNpcLifecyclePacketBytes(bytes);
+}
+
+function normalizePacketBytes(packet: ArrayBuffer | ArrayBufferView): Uint8Array {
+    return packet instanceof Uint8Array
+        ? packet
+        : packet instanceof ArrayBuffer
+        ? new Uint8Array(packet)
+        : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
 }

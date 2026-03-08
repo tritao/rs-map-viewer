@@ -15,8 +15,6 @@ import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
 import { WorkerMapFrameCoordinator } from "../runtime/MapFrameCoordinator";
-import { createMapObjBootstrapPacket } from "../runtime/MapObjRuntime";
-import { createNpcLifecyclePacket } from "../runtime/NpcRuntime";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -24,9 +22,11 @@ import { clamp } from "../util/MathUtil";
 import {
     applyMapObjRenderPacket as applyRuntimeMapObjRenderPacket,
     applyNpcLifecyclePacketBytes as applyRuntimeNpcLifecyclePacketBytes,
+    createMapObjBootstrapPacket,
+    createNpcLifecyclePacket,
     registerMapRuntime,
     unregisterMapRuntime,
-} from "../runtime/MapRuntimeController";
+} from "../runtime/MapRuntime";
 import { Camera } from "../runtime/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
