@@ -16,7 +16,7 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 const EMPTY_NPC_ORDER_KEYS = new Int32Array(0);
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
-export function createMapObjBootstrapPacket(
+export function createMapObjRenderPacket(
     mapId: number,
     objRenderData: ObjRenderData | undefined,
 ): MapObjRenderPacket {
@@ -99,7 +99,7 @@ export function unregisterMapRuntime(input: Readonly<{
     void input.renderWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
 }
 
-export async function applyMapObjRenderPacket(input: Readonly<{
+export async function dispatchMapObjRenderPacket(input: Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
     packet: MapObjRenderPacket | undefined;
     requestRefresh(): void;
@@ -113,7 +113,7 @@ export async function applyMapObjRenderPacket(input: Readonly<{
     }
 }
 
-export async function applyNpcLifecyclePacketBytes(input: Readonly<{
+export async function dispatchNpcLifecyclePacketBytes(input: Readonly<{
     simWorkerPool: SimWorkerPool;
     packet: ArrayBuffer | ArrayBufferView;
 }>): Promise<number> {

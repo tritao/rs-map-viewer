@@ -20,10 +20,10 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import {
-    applyMapObjRenderPacket as applyRuntimeMapObjRenderPacket,
-    applyNpcLifecyclePacketBytes as applyRuntimeNpcLifecyclePacketBytes,
-    createMapObjBootstrapPacket,
+    createMapObjRenderPacket,
     createNpcLifecyclePacket,
+    dispatchMapObjRenderPacket,
+    dispatchNpcLifecyclePacketBytes,
     registerMapRuntime,
     unregisterMapRuntime,
 } from "../runtime/MapRuntime";
@@ -321,15 +321,15 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        void applyRuntimeMapObjRenderPacket({
+        void dispatchMapObjRenderPacket({
             renderWorkerPool: this.renderWorkerPool,
-            packet: createMapObjBootstrapPacket(getMapSquareId(mapX, mapY), objRenderData),
+            packet: createMapObjRenderPacket(getMapSquareId(mapX, mapY), objRenderData),
             requestRefresh: () => this.frameRuntimeCoordinator.requestRefresh(),
         });
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        void applyRuntimeMapObjRenderPacket({
+        void dispatchMapObjRenderPacket({
             renderWorkerPool: this.renderWorkerPool,
             packet,
             requestRefresh: () => this.frameRuntimeCoordinator.requestRefresh(),
@@ -339,7 +339,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async applyNpcLifecyclePacketBytes(
         packet: ArrayBuffer | ArrayBufferView,
     ): Promise<number> {
-        return await applyRuntimeNpcLifecyclePacketBytes({
+        return await dispatchNpcLifecyclePacketBytes({
             simWorkerPool: this.simWorkerPool,
             packet,
         });
