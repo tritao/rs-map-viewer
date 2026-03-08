@@ -1,7 +1,7 @@
 import {
     type InteractionState,
     applyInteractionReadbackToState,
-} from "../../runtime/InteractionState";
+} from "../InteractionState";
 
 export class InteractionsReadback {
     interactSize: number;

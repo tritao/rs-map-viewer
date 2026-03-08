@@ -11,7 +11,7 @@ import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
-import { INTERACTION_RADIUS } from "../runtime/InteractionState";
+import { INTERACTION_RADIUS } from "../renderer/InteractionState";
 import type { StaticMapPacket } from "../runtime/packets/StaticMapPacket";
 import {
     collectInteractionHits,
@@ -25,7 +25,7 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { MapWorldSession, type WorldEventsInput } from "../runtime/MapWorldSession";
-import { Camera } from "../runtime/Camera";
+import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";

@@ -8,7 +8,7 @@ import { MapRenderer, TextureFilterMode } from "../renderer/MapRenderer";
 import type { BackendKind } from "../util/BackendKind";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { lerp, slerp } from "../util/MathUtil";
-import { CameraView, ProjectionType } from "../runtime/Camera";
+import { CameraView, ProjectionType } from "../renderer/Camera";
 import { MapViewer } from "./MapViewer";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 

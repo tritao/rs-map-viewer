@@ -10,7 +10,7 @@ import {
 } from "picogl";
 
 import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
-import { Camera } from "../../runtime/Camera";
+import { Camera } from "../Camera";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { DrawRange } from "../../runtime/DrawRange";

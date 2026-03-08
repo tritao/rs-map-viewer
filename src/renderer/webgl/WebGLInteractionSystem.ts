@@ -2,7 +2,7 @@ import type { Framebuffer, App as PicoApp } from "picogl";
 import PicoGL from "picogl";
 
 import type { InteractionInput } from "../MapRenderer";
-import { INTERACTION_RADIUS, InteractionState } from "../../runtime/InteractionState";
+import { INTERACTION_RADIUS, InteractionState } from "../InteractionState";
 import { pixelRatio } from "../../util/DeviceUtil";
 import type { RendererStats } from "../Renderer";
 import { InteractionsReadback } from "./InteractionsReadback";
