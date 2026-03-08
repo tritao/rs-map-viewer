@@ -434,16 +434,7 @@ export class MapViewer {
         // (threads RPC / structured clone of cache inputs).
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
-        await Promise.all([
-            this.renderWorkerPool.initCacheAndWait(
-                this.cacheContext.loadedCache,
-                this.runtimeOptions,
-            ),
-            this.simWorkerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions),
-        ]);
-        this.clearMapImageUrls();
-        await this.renderer.resetForCacheContext();
-        this.resetMenu();
+        await this.reinitWorkersAndResetViewer(true);
     }
 
     subscribeSearchParams(listener: SearchParamsListener): () => void {
@@ -522,15 +513,31 @@ export class MapViewer {
 
     private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
         this.cacheContext = context;
-
-        this.renderWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
-        this.simWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
-        this.clearMapImageUrls();
-
-        await this.renderer.resetForCacheContext();
-        this.resetMenu();
+        await this.reinitWorkersAndResetViewer(false);
 
         this.updateSearchParams();
+    }
+
+    private async reinitWorkersAndResetViewer(waitForWorkers: boolean): Promise<void> {
+        if (waitForWorkers) {
+            await Promise.all([
+                this.renderWorkerPool.initCacheAndWait(
+                    this.cacheContext.loadedCache,
+                    this.runtimeOptions,
+                ),
+                this.simWorkerPool.initCacheAndWait(
+                    this.cacheContext.loadedCache,
+                    this.runtimeOptions,
+                ),
+            ]);
+        } else {
+            this.renderWorkerPool.initCache(this.cacheContext.loadedCache, this.runtimeOptions);
+            this.simWorkerPool.initCache(this.cacheContext.loadedCache, this.runtimeOptions);
+        }
+
+        this.clearMapImageUrls();
+        await this.renderer.resetForCacheContext();
+        this.resetMenu();
     }
 
     /**
