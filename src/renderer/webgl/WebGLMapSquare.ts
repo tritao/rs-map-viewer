@@ -6,9 +6,9 @@ import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Scene } from "../../rs/scene/Scene";
 import { MapSquareRenderable } from "../MapRenderer";
 import { createSceneDrawCall } from "./WebGLDrawCallUtil";
-import { CreateDrawCallFunction, DrawCallRange, WebGLRenderable } from "./WebGLRenderable";
+import { CreateDrawCallFunction, DrawCallRange, WebGLSceneResources } from "./WebGLSceneResources";
 
-export class WebGLMapSquare extends WebGLRenderable implements MapSquareRenderable {
+export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRenderable {
     drawCallNpc!: DrawCallRange;
     private baseUsedTextureIds: Int32Array = new Int32Array(0);
     private objUsedTextureIds: Int32Array | undefined;

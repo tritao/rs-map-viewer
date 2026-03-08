@@ -8,7 +8,7 @@ import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import type { StandaloneRenderableData } from "../../runtime/build/StandaloneRenderableDataBuilder";
 import { createWebGLDevice } from "./WebGLDevice";
 import { createSceneDrawCall } from "./WebGLDrawCallUtil";
-import { WebGLRenderable } from "./WebGLRenderable";
+import { WebGLSceneResources } from "./WebGLSceneResources";
 import { WebGLTextureSystem } from "./WebGLTextureSystem";
 import { createEntityProgram } from "./shaders/Shaders";
 import type { Renderer } from "../Renderer";
@@ -46,7 +46,7 @@ export class WebGLEntityRenderer implements Renderer {
     private readonly target = vec3.create();
     private readonly up = vec3.fromValues(0, 1, 0);
 
-    private renderable: WebGLRenderable | undefined;
+    private renderable: WebGLSceneResources | undefined;
     private renderData: StandaloneRenderableData | undefined;
     private fitRadius = 256;
     private orbitDistance = 8;
@@ -261,7 +261,7 @@ export class WebGLEntityRenderer implements Renderer {
             return;
         }
 
-        const renderable = WebGLRenderable.createStandalone();
+        const renderable = WebGLSceneResources.createStandalone();
         renderable.createBuffers(this.app, this.renderData);
         renderable.createModelInfoTextures(this.app, this.renderData);
         const createDrawCall = (
@@ -289,7 +289,7 @@ export class WebGLEntityRenderer implements Renderer {
     }
 
     private createStandaloneDrawCall(
-        renderable: WebGLRenderable,
+        renderable: WebGLSceneResources,
         program: Program,
         modelInfoTexture: unknown,
         drawRangesPacked: Int32Array,

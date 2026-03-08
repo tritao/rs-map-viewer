@@ -90,7 +90,7 @@ function resolveDrawCallKey(isAlpha: boolean, isInteract: boolean, isLod: boolea
     return isAlpha ? DrawCallKey.Alpha : DrawCallKey.Base;
 }
 
-export class WebGLRenderable {
+export class WebGLSceneResources {
     interleavedBuffer!: VertexBuffer;
     indexBuffer!: VertexBuffer;
     vertexArray!: VertexArray;
@@ -124,8 +124,8 @@ export class WebGLRenderable {
         readonly frameLoaded: number,
     ) {}
 
-    static createStandalone(): WebGLRenderable {
-        return new WebGLRenderable(0, 0, createStandaloneTileRenderFlags(), 0, 0);
+    static createStandalone(): WebGLSceneResources {
+        return new WebGLSceneResources(0, 0, createStandaloneTileRenderFlags(), 0, 0);
     }
 
     getTileRenderFlag(level: number, tileX: number, tileY: number): number {
@@ -254,7 +254,7 @@ export class WebGLRenderable {
     }
 
     createModelInfoTextures(app: PicoApp, data: BaseRenderableDrawData) {
-        const modelInfoBuckets = WebGLRenderable.getModelInfoBuckets(data.modelInfoTextures);
+        const modelInfoBuckets = WebGLSceneResources.getModelInfoBuckets(data.modelInfoTextures);
         const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
             textures[i] = createModelInfoTexture(app, modelInfoBuckets[i]!);
@@ -267,7 +267,7 @@ export class WebGLRenderable {
             this.objModelInfoTexturesByKey = [];
             return;
         }
-        const modelInfoBuckets = WebGLRenderable.getModelInfoBuckets(data.modelInfoTextures);
+        const modelInfoBuckets = WebGLSceneResources.getModelInfoBuckets(data.modelInfoTextures);
         const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
             textures[i] = createModelInfoTexture(app, modelInfoBuckets[i]!);
@@ -282,7 +282,7 @@ export class WebGLRenderable {
         mainAlphaProgram: Program,
     ) {
         this.drawCallsByKey = this.createBucketedDrawCalls(
-            WebGLRenderable.getDrawRangeBuckets(data.drawRanges),
+            WebGLSceneResources.getDrawRangeBuckets(data.drawRanges),
             this.modelInfoTexturesByKey,
             createDrawCall,
             mainProgram,
@@ -301,7 +301,7 @@ export class WebGLRenderable {
             return;
         }
         this.objDrawCallsByKey = this.createBucketedDrawCalls(
-            WebGLRenderable.getDrawRangeBuckets(data.drawRanges),
+            WebGLSceneResources.getDrawRangeBuckets(data.drawRanges),
             this.objModelInfoTexturesByKey,
             createDrawCall,
             mainProgram,
@@ -336,7 +336,7 @@ export class WebGLRenderable {
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
             const key = i as DrawCallKey;
             drawCalls[i] = createDrawCall(
-                WebGLRenderable.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
+                WebGLSceneResources.isAlphaKey(key) ? mainAlphaProgram : mainProgram,
                 modelInfoTextures[i],
                 drawRangeBuckets[i]!,
                 false,
