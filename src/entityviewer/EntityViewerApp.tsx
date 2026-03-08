@@ -19,7 +19,6 @@ import {
     type EntityViewerRequest,
 } from "./EntityViewerData";
 import { EntityViewerRenderer } from "./EntityViewerRenderer";
-import type { EntityViewerDebugMode } from "../renderer/webgl/WebGLEntityRenderer";
 
 const cachesPromise = fetchCacheList();
 const DEFAULT_IDS_BY_KIND: Record<EntityViewerKind, number> = {
@@ -62,19 +61,6 @@ function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
 
 function parseObjMode(value: string | null): EntityViewerObjMode {
     return value === "world" ? "world" : "icon";
-}
-
-function parseDebugMode(searchParams: URLSearchParams): EntityViewerDebugMode {
-    switch (searchParams.get("debug")) {
-        case "flat":
-            return "flat";
-        case "bypass":
-            return "bypass";
-        case "color":
-            return "color";
-        default:
-            return "normal";
-    }
 }
 
 function updateSearchParams(
@@ -123,7 +109,6 @@ export default function EntityViewerApp(): JSX.Element {
         DEFAULT_IDS_BY_KIND,
     );
     const request = useMemo(() => parseRequest(searchParams), [searchParams]);
-    const debugMode = useMemo(() => parseDebugMode(searchParams), [searchParams]);
     const resolvedRequest = useMemo(
         () => (request.kind === "npc" ? { ...request, npcFrame } : request),
         [npcFrame, request],
@@ -272,7 +257,6 @@ export default function EntityViewerApp(): JSX.Element {
             return;
         }
         try {
-            renderer.setDebugMode(debugMode);
             const services = createEntityViewerServices(renderer.session);
             const resolved = resolveEntityViewerData(services, resolvedRequest);
             const shouldResetCamera = renderer.renderTargetKey !== renderTargetKey;
@@ -292,7 +276,7 @@ export default function EntityViewerApp(): JSX.Element {
             setResolvedEntity(undefined);
             setErrorMessage(errorToString(error));
         }
-    }, [debugMode, renderTargetKey, renderer, resolvedRequest]);
+    }, [renderTargetKey, renderer, resolvedRequest]);
 
     const content =
         errorMessage && !renderer ? (

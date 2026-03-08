@@ -15,8 +15,6 @@ import type { Renderer } from "../Renderer";
 import { FrameStats, RendererStats } from "../Renderer";
 
 const DRAW_RANGE_STRIDE = 3;
-
-export type EntityViewerDebugMode = "normal" | "flat" | "bypass" | "color";
 export type SetEntityRenderDataOptions = Readonly<{
     resetCamera?: boolean;
 }>;
@@ -52,7 +50,6 @@ export class WebGLEntityRenderer implements Renderer {
     private orbitDistance = 8;
     private pitch = -180;
     private yaw = 1024;
-    private debugMode: EntityViewerDebugMode = "normal";
 
     private sceneUniformBuffer?: UniformBuffer;
     private mainProgram?: Program;
@@ -76,10 +73,6 @@ export class WebGLEntityRenderer implements Renderer {
         if (this.app) {
             this.reloadRenderable();
         }
-    }
-
-    setDebugMode(debugMode: EntityViewerDebugMode): void {
-        this.debugMode = debugMode;
     }
 
     initCache(): void {}
@@ -146,14 +139,7 @@ export class WebGLEntityRenderer implements Renderer {
         this.updateCameraMatrices(this.app.width, this.app.height);
         this.currentTimeUni[0] = time / 1000;
         this.isNewTextureAnimUni[0] = this.isNewTextureAnim ? 1 : 0;
-        this.debugTextureModeUni[0] =
-            this.debugMode === "color"
-                ? 5
-                : this.debugMode === "bypass"
-                  ? 4
-                  : this.debugMode === "flat"
-                    ? 3
-                    : 0;
+        this.debugTextureModeUni[0] = 0;
         this.sceneUniformBuffer.set(0, this.viewProjMatrix as Float32Array)
             .set(1, this.viewMatrix as Float32Array)
             .set(2, this.projectionMatrix as Float32Array)

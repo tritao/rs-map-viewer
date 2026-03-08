@@ -1,11 +1,7 @@
 import type { StandaloneRenderableData } from "../runtime/build/StandaloneRenderableDataBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import type { CacheSession } from "../rs/loaders/CacheSession";
-import {
-    WebGLEntityRenderer,
-    type EntityViewerDebugMode,
-    type SetEntityRenderDataOptions,
-} from "../renderer/webgl/WebGLEntityRenderer";
+import { WebGLEntityRenderer, type SetEntityRenderDataOptions } from "../renderer/webgl/WebGLEntityRenderer";
 
 export class EntityViewerRenderer extends RendererMainLoop {
     declare renderer: WebGLEntityRenderer;
@@ -49,7 +45,4 @@ export class EntityViewerRenderer extends RendererMainLoop {
         return this.renderer.getYaw();
     }
 
-    setDebugMode(debugMode: EntityViewerDebugMode): void {
-        this.renderer.setDebugMode(debugMode);
-    }
 }

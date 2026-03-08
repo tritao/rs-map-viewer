@@ -43,22 +43,11 @@ flat out vec4 v_interactId;
 
 void main() {
     Vertex vertex = decodeVertex(a_vertex.x, a_vertex.y, a_vertex.z, a_vertex.w, u_brightness);
-    float bypassModelInfo = when_gt(u_debugTextureMode, 3.5);
-    int offset = int((1.0 - bypassModelInfo) * float(texelFetch(u_modelInfoTexture, getDataTexCoordFromIndex(DRAW_ID + u_drawIdOffset), 0).r));
+    int offset = int(texelFetch(u_modelInfoTexture, getDataTexCoordFromIndex(DRAW_ID + u_drawIdOffset), 0).r);
 
     applyVertexMaterialOutputs(vertex);
 
-    ModelInfo modelInfo;
-    if (bypassModelInfo > 0.5) {
-        modelInfo.tilePos = vec2(0.0);
-        modelInfo.height = 0u;
-        modelInfo.plane = 0u;
-        modelInfo.priority = 0u;
-        modelInfo.interactType = 0u;
-        modelInfo.interactId = 0u;
-    } else {
-        modelInfo = decodeModelInfo(offset);
-    }
+    ModelInfo modelInfo = decodeModelInfo(offset);
 
     vec3 localPos = vertex.pos + vec3(modelInfo.tilePos.x, -float(modelInfo.height), modelInfo.tilePos.y);
     localPos /= 128.0;
