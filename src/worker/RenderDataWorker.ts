@@ -112,7 +112,7 @@ const worker = {
     },
     async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
-        const hasNpcEvents = (deltaPacket.eventCount | 0) > 0;
+        const hasNpcEvents = ((deltaPacket.npcDelta?.eventCount ?? 0) | 0) > 0;
         if (
             hasNpcEvents &&
             !frameRuntime.hasCompatibleInputStateVersion(deltaPacket.inputStateVersion | 0)

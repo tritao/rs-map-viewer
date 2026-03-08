@@ -3,10 +3,12 @@ import {
     getValidatedStaticMapNpcOrderKeys,
 } from "./packets/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
-import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
-import { buildWorldDeltaPacketFromMapObjUpdates } from "./packets/WorldDeltaPacket";
+import {
+    buildWorldDeltaPacketFromMapObjUpdates,
+    type WorldMapObjUpdate,
+} from "./packets/WorldDeltaPacket";
 import type {
     MapRuntimeBootstrapInput,
     RenderMapRuntimeRegistrationInput,
@@ -23,7 +25,7 @@ const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export type WorldEventsInput = Readonly<{
     npcEvents?: ReadonlyArray<NpcEvent>;
-    objUpdates?: ReadonlyArray<Readonly<{ mapId: number; objRenderData?: ObjRenderData }>>;
+    objUpdates?: ReadonlyArray<WorldMapObjUpdate>;
 }>;
 
 export class MapWorldSession {

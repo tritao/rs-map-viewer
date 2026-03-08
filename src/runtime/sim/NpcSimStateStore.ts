@@ -7,7 +7,7 @@ import {
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
     type WorldDeltaPacket,
-    decodeNpcStateDeltaUpdate,
+    decodeNpcWorldDeltaUpdate,
     validateWorldDeltaPacket,
 } from "../packets/WorldDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
@@ -394,6 +394,10 @@ export class NpcSimStateStore {
         if ((counts.eventCount | 0) <= 0) {
             return 0;
         }
+        const npcDelta = packet.npcDelta;
+        if (!npcDelta) {
+            return 0;
+        }
 
         const mapNpcCountsBefore = new Map<number, number>();
         const changedMaps = new Set<number>();
@@ -404,7 +408,7 @@ export class NpcSimStateStore {
             }
         };
 
-        const spawnsPacked = packet.spawnsPacked;
+        const spawnsPacked = npcDelta.spawnsPacked;
         for (let i = 0; i < (counts.spawnCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
             const mapId = spawnsPacked[off + 0] | 0;
@@ -431,7 +435,7 @@ export class NpcSimStateStore {
             changedMaps.add(mapId);
         }
 
-        const despawnsPacked = packet.despawnsPacked;
+        const despawnsPacked = npcDelta.despawnsPacked;
         for (let i = 0; i < (counts.despawnCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_DESPAWN_STRIDE;
             const mapId = despawnsPacked[off + 0] | 0;
@@ -462,7 +466,7 @@ export class NpcSimStateStore {
             }
         }
 
-        const updatesPacked = packet.updatesPacked;
+        const updatesPacked = npcDelta.updatesPacked;
         let applied = 0;
         for (let i = 0; i < (counts.updateCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
@@ -485,7 +489,7 @@ export class NpcSimStateStore {
                 continue;
             }
             const flags = updatesPacked[off + 3] | 0;
-            const delta: NpcUpdateDelta = decodeNpcStateDeltaUpdate(flags, updatesPacked, off);
+            const delta: NpcUpdateDelta = decodeNpcWorldDeltaUpdate(flags, updatesPacked, off);
             applyNpcUpdateDelta(npc, delta);
             applied = (applied + 1) | 0;
         }

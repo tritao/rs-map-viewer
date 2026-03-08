@@ -135,7 +135,10 @@ export class WorkerFramePacketRuntime {
             if (!update) {
                 continue;
             }
-            this.pendingRuntimeObjRenderDataByMapId.set(update.mapId | 0, update.objRenderData);
+            this.pendingRuntimeObjRenderDataByMapId.set(
+                update.mapId | 0,
+                update.objRenderData as ObjRenderData | undefined,
+            );
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -246,8 +249,8 @@ export class WorkerFramePacketRuntime {
     }
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
-        let applied = this.applyRuntimeMapObjUpdates(packet.runtimeMapObjUpdates);
-        if ((packet.eventCount | 0) <= 0) {
+        let applied = this.applyRuntimeMapObjUpdates(packet.mapObjUpdates);
+        if (((packet.npcDelta?.eventCount ?? 0) | 0) <= 0) {
             return applied | 0;
         }
         const workerState = await this.getWorkerState();

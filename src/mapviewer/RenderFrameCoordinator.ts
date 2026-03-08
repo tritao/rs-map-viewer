@@ -254,7 +254,7 @@ export class RenderFrameCoordinator {
                 applyWorldMs: afterApply - afterSim,
                 renderMs: seamEnd - afterApply,
                 totalMs: seamEnd - seamStart,
-                worldEventCount: worldDeltaPacket?.eventCount ?? 0,
+                worldEventCount: worldDeltaPacket?.npcDelta?.eventCount ?? 0,
             });
             return packet;
         };
