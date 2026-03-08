@@ -637,7 +637,7 @@ export const MapViewerControls = memo(
                 // Cache switches replace the underlying WebGL renderer instance; include cache/renderer identity
                 // so Leva rebinds controls (buttons, dropdown values, debug toggles) to the new renderer.
                 mapViewer.loadedCache.info.name,
-                rendererMainLoop.renderer.cache.info.name,
+                rendererMainLoop.renderer.expectedCacheName,
                 projectionType,
                 varType,
                 varId,

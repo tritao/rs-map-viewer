@@ -11,8 +11,8 @@ import {
 
 import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
 import { Camera } from "../../runtime/Camera";
-import { GameType } from "../../rs/cache/CacheInfo";
-import { CacheSession } from "../../rs/loaders/CacheSession";
+import { GameType, type CacheInfo } from "../../rs/cache/CacheInfo";
+import type { TextureService } from "../../rs/loaders/Loaders";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import {
@@ -63,6 +63,12 @@ type FrameRenderMap = {
     isLod: boolean;
 };
 
+type WebGLMapRendererDeps = Readonly<{
+    cacheName: string;
+    textureLoader: TextureService;
+    cacheInfo: CacheInfo;
+}>;
+
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     protected readonly textures: WebGLTextureSystem;
     private readonly interactions: WebGLInteractionSystem;
@@ -102,28 +108,15 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     debugTextureMode: number = 0;
 
-    logTextureDebugStats(): void {
-        const cacheInfo = this.session.cache.info;
-        const textureLoader = this.session.getTextureLoader() as unknown as {
-            constructor?: { name?: string };
-        };
-        console.log(
-            `texture debug: cache=${cacheInfo.name} game=${cacheInfo.game} rev=${
-                cacheInfo.revision
-            } loader=${textureLoader?.constructor?.name ?? "unknown"}`,
-        );
-        this.textures.logDebugStats();
-    }
-
     constructor(
-        readonly session: CacheSession,
+        readonly cacheResources: WebGLMapRendererDeps,
         renderDistance: number,
         unloadDistance: number,
         lodDistance: number,
         readonly camera: Camera,
         onInteractions?: InteractionsCallback,
     ) {
-        super(session.cache, renderDistance, unloadDistance, lodDistance);
+        super(cacheResources.cacheName, renderDistance, unloadDistance, lodDistance);
         this.stats = new FrameStats();
         this.rendererStats = new RendererStats();
         this.textures = new WebGLTextureSystem(this.loadedTextureIds);
@@ -242,9 +235,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initCache(): void {
-        const cache = this.session.cache;
+        const cacheInfo = this.cacheResources.cacheInfo;
         this.isNewTextureAnim =
-            cache.info.game === GameType.Runescape && cache.info.revision >= 681;
+            cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 681;
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
         this.pendingObjRenderDataByMapId.clear();
 
@@ -261,8 +254,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.textures.init(
             this.app,
             this.gl,
-            this.session.getTextureLoader(),
-            this.session.cache.info,
+            this.cacheResources.textureLoader,
+            this.cacheResources.cacheInfo,
             this.textureFilterMode,
             this.stats.frameCount,
         );

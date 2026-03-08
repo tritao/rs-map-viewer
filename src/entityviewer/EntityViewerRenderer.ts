@@ -11,7 +11,10 @@ export class EntityViewerRenderer extends RendererMainLoop {
     constructor(session: CacheSession) {
         super();
         this.session = session;
-        this.renderer = new WebGLEntityRenderer(session);
+        this.renderer = new WebGLEntityRenderer({
+            cacheInfo: session.cache.info,
+            textureLoader: session.loaders.textureLoader,
+        });
     }
 
     setRenderData(

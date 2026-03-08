@@ -1,8 +1,8 @@
 import { mat4, vec2, vec3 } from "gl-matrix";
 import { App as PicoApp, PicoGL, Program, UniformBuffer } from "picogl";
 
-import { GameType } from "../../rs/cache/CacheInfo";
-import type { CacheSession } from "../../rs/loaders/CacheSession";
+import { GameType, type CacheInfo } from "../../rs/cache/CacheInfo";
+import type { TextureService } from "../../rs/loaders/Loaders";
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import type { StandaloneRenderData } from "../../runtime/build/StandaloneRenderDataBuilder";
@@ -17,6 +17,11 @@ import { FrameStats, RendererStats } from "../Renderer";
 const DRAW_RANGE_STRIDE = 3;
 export type SetEntityRenderDataOptions = Readonly<{
     resetCamera?: boolean;
+}>;
+
+type WebGLEntityRendererDeps = Readonly<{
+    cacheInfo: CacheInfo;
+    textureLoader: TextureService;
 }>;
 
 export class WebGLEntityRenderer implements Renderer {
@@ -59,7 +64,7 @@ export class WebGLEntityRenderer implements Renderer {
     private gl!: WebGL2RenderingContext;
     private isNewTextureAnim = false;
 
-    constructor(private readonly session: CacheSession) {}
+    constructor(private readonly cacheResources: WebGLEntityRendererDeps) {}
 
     setRenderData(
         renderData: StandaloneRenderData | undefined,
@@ -104,13 +109,13 @@ export class WebGLEntityRenderer implements Renderer {
         ]);
 
         this.isNewTextureAnim =
-            this.session.cache.info.game === GameType.Runescape &&
-            this.session.cache.info.revision >= 681;
+            this.cacheResources.cacheInfo.game === GameType.Runescape &&
+            this.cacheResources.cacheInfo.revision >= 681;
         this.textures.init(
             this.app,
             this.gl,
-            this.session.getTextureLoader(),
-            this.session.cache.info,
+            this.cacheResources.textureLoader,
+            this.cacheResources.cacheInfo,
             PicoGL.LINEAR_MIPMAP_LINEAR as unknown as never,
             this.stats.frameCount,
         );

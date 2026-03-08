@@ -61,7 +61,11 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private createRenderer(): MapRenderer<MapSquareRenderable, MapData> {
         return new WebGLMapRenderer(
-            this.mapViewer.session,
+            {
+                cacheName: this.mapViewer.session.cache.info.name,
+                cacheInfo: this.mapViewer.session.cache.info,
+                textureLoader: this.mapViewer.session.loaders.textureLoader,
+            },
             this.mapViewer.renderDistance,
             this.mapViewer.unloadDistance,
             this.mapViewer.lodDistance,

@@ -9,7 +9,6 @@ import type {
     InteractionSnapshotRenderer,
 } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
-import { LoadedCache } from "../util/Caches";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 
 type MapRemovalInfo = Readonly<{
@@ -98,7 +97,7 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
     lodDistance: number;
 
     constructor(
-        readonly cache: LoadedCache,
+        readonly expectedCacheName: string,
         renderDistance: number,
         unloadDistance: number,
         lodDistance: number,
@@ -176,7 +175,7 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     isValidMapData(mapData: U): boolean {
         return (
-            mapData.cacheName === this.cache.info.name &&
+            mapData.cacheName === this.expectedCacheName &&
             mapData.maxLevel === this.maxLevel &&
             mapData.loadObjs === this.loadObjs &&
             mapData.loadNpcs === this.loadNpcs &&
