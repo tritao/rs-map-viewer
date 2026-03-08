@@ -15,6 +15,10 @@ import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
 import {
+    collectInteractionHits,
+    resolveInteractionTargets,
+} from "../runtime/InteractionTargets";
+import {
     type MapFrameSeamSample,
     WorkerMapFrameCoordinator,
 } from "../runtime/MapFrameCoordinator";
@@ -697,139 +701,86 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         const menuEntries: OsrsMenuEntry[] = [];
         const examineEntries: OsrsMenuEntry[] = [];
-
-        const locIds = new Set<number>();
-        const objIds = new Set<number>();
-        const npcIds = new Set<number>();
-
-        for (let i = 0; i < INTERACTION_RADIUS + 1; i++) {
-            const indices = closestInteractIndices.get(i);
-            if (!indices) {
-                continue;
-            }
-            for (const index of indices) {
-                const interactId = interactBuffer[index];
-                const interactType = interactBuffer[index + 2];
-                if (interactType === InteractType.LOC) {
-                    const locResult = this.mapViewer.session.tryLoadLocType(interactId);
-                    if (!locResult.ok) {
+        const interactionHits = collectInteractionHits({
+            interactBuffer,
+            closestInteractIndices,
+            maxDistance: INTERACTION_RADIUS,
+        });
+        const interactionTargets = resolveInteractionTargets({
+            session: this.mapViewer.session,
+            hits: interactionHits,
+            includeUnnamed: this.mapViewer.debugId,
+        });
+        for (const target of interactionTargets) {
+            if (target.kind === InteractType.LOC) {
+                for (const option of target.locType.actions) {
+                    if (!option) {
                         continue;
                     }
-                    const locType = locResult.value;
-                    if (locType.name === "null" && !this.mapViewer.debugId) {
-                        continue;
-                    }
-                    if (locIds.has(interactId)) {
-                        continue;
-                    }
-                    locIds.add(interactId);
-
-                    for (const option of locType.actions) {
-                        if (!option) {
-                            continue;
-                        }
-                        menuEntries.push({
-                            option,
-                            targetId: locType.id,
-                            targetType: MenuTargetType.LOC,
-                            targetName: locType.name,
-                            targetLevel: -1,
-                            onClick: this.mapViewer.closeMenu,
-                        });
-                    }
-
-                    examineEntries.push({
-                        option: "Examine",
-                        targetId: locType.id,
+                    menuEntries.push({
+                        option,
+                        targetId: target.locType.id,
                         targetType: MenuTargetType.LOC,
-                        targetName: locType.name,
+                        targetName: target.locType.name,
                         targetLevel: -1,
-                        onClick: this.mapViewer.onExamine,
-                    });
-                } else if (interactType === InteractType.OBJ) {
-                    const objResult = this.mapViewer.session.tryLoadObjType(interactId);
-                    if (!objResult.ok) {
-                        continue;
-                    }
-                    const objType = objResult.value;
-                    if (objType.name === "null" && !this.mapViewer.debugId) {
-                        continue;
-                    }
-                    if (objIds.has(interactId)) {
-                        continue;
-                    }
-                    objIds.add(interactId);
-
-                    for (const option of objType.groundActions) {
-                        if (!option) {
-                            continue;
-                        }
-                        menuEntries.push({
-                            option,
-                            targetId: objType.id,
-                            targetType: MenuTargetType.OBJ,
-                            targetName: objType.name,
-                            targetLevel: -1,
-                            onClick: this.mapViewer.closeMenu,
-                        });
-                    }
-
-                    examineEntries.push({
-                        option: "Examine",
-                        targetId: objType.id,
-                        targetType: MenuTargetType.OBJ,
-                        targetName: objType.name,
-                        targetLevel: -1,
-                        onClick: this.mapViewer.onExamine,
-                    });
-                } else if (interactType === InteractType.NPC) {
-                    const npcResult = this.mapViewer.session.tryLoadNpcType(interactId);
-                    if (!npcResult.ok) {
-                        continue;
-                    }
-                    let npcType = npcResult.value;
-                    if (npcType.transforms) {
-                        const transformed = npcType.transform(
-                            this.mapViewer.session.varManager,
-                            this.mapViewer.session.getNpcTypeLoader(),
-                        );
-                        if (!transformed) {
-                            continue;
-                        }
-                        npcType = transformed;
-                    }
-                    if (npcType.name === "null" && !this.mapViewer.debugId) {
-                        continue;
-                    }
-                    if (npcIds.has(interactId)) {
-                        continue;
-                    }
-                    npcIds.add(interactId);
-
-                    for (const option of npcType.actions) {
-                        if (!option) {
-                            continue;
-                        }
-                        menuEntries.push({
-                            option,
-                            targetId: npcType.id,
-                            targetType: MenuTargetType.NPC,
-                            targetName: npcType.name,
-                            targetLevel: npcType.combatLevel,
-                            onClick: this.mapViewer.closeMenu,
-                        });
-                    }
-
-                    examineEntries.push({
-                        option: "Examine",
-                        targetId: npcType.id,
-                        targetType: MenuTargetType.NPC,
-                        targetName: npcType.name,
-                        targetLevel: npcType.combatLevel,
-                        onClick: this.mapViewer.onExamine,
+                        onClick: this.mapViewer.closeMenu,
                     });
                 }
+                examineEntries.push({
+                    option: "Examine",
+                    targetId: target.locType.id,
+                    targetType: MenuTargetType.LOC,
+                    targetName: target.locType.name,
+                    targetLevel: -1,
+                    onClick: this.mapViewer.onExamine,
+                });
+                continue;
             }
+            if (target.kind === InteractType.OBJ) {
+                for (const option of target.objType.groundActions) {
+                    if (!option) {
+                        continue;
+                    }
+                    menuEntries.push({
+                        option,
+                        targetId: target.objType.id,
+                        targetType: MenuTargetType.OBJ,
+                        targetName: target.objType.name,
+                        targetLevel: -1,
+                        onClick: this.mapViewer.closeMenu,
+                    });
+                }
+                examineEntries.push({
+                    option: "Examine",
+                    targetId: target.objType.id,
+                    targetType: MenuTargetType.OBJ,
+                    targetName: target.objType.name,
+                    targetLevel: -1,
+                    onClick: this.mapViewer.onExamine,
+                });
+                continue;
+            }
+            for (const option of target.npcType.actions) {
+                if (!option) {
+                    continue;
+                }
+                menuEntries.push({
+                    option,
+                    targetId: target.npcType.id,
+                    targetType: MenuTargetType.NPC,
+                    targetName: target.npcType.name,
+                    targetLevel: target.npcType.combatLevel,
+                    onClick: this.mapViewer.closeMenu,
+                });
+            }
+            examineEntries.push({
+                option: "Examine",
+                targetId: target.npcType.id,
+                targetType: MenuTargetType.NPC,
+                targetName: target.npcType.name,
+                targetLevel: target.npcType.combatLevel,
+                onClick: this.mapViewer.onExamine,
+            });
         }
 
         menuEntries.push({
