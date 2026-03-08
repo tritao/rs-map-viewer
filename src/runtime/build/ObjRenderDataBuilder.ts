@@ -1,5 +1,5 @@
 import type { ObjSpawn } from "../../data/obj/ObjSpawn";
-import { InteractType } from "../packets/InteractType";
+import { InteractType } from "../InteractType";
 import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";

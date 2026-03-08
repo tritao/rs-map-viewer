@@ -1,12 +1,8 @@
 import type { Framebuffer, App as PicoApp } from "picogl";
 import PicoGL from "picogl";
 
-import {
-    INTERACTION_RADIUS,
-    INTERACT_BUFFER_COUNT,
-    type InteractionInput,
-} from "../../runtime/packets/Interaction";
-import { InteractionState } from "../../runtime/InteractionState";
+import type { InteractionInput } from "../MapRenderer";
+import { INTERACTION_RADIUS, InteractionState } from "../../runtime/InteractionState";
 import { pixelRatio } from "../../util/DeviceUtil";
 import type { RendererStats } from "../Renderer";
 import { InteractionsReadback } from "./InteractionsReadback";
@@ -16,6 +12,8 @@ export type InteractionsCallback = (
     interactBuffer: Float32Array,
     closestInteractIndices: Map<number, number[]>,
 ) => void;
+
+const INTERACT_BUFFER_COUNT = 2;
 
 export class WebGLInteractionSystem {
     readonly state = new InteractionState();

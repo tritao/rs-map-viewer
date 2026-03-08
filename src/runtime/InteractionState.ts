@@ -1,3 +1,5 @@
+export const INTERACTION_RADIUS = 5;
+
 export class InteractionState {
     readonly hoveredMapIds: Set<number> = new Set();
     readonly closestInteractIndices: Map<number, number[]> = new Map();

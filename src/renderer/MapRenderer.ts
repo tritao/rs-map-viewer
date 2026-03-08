@@ -4,12 +4,17 @@ import { vec4 } from "gl-matrix";
 import { MapData, ObjRenderData } from "../maprender/MapRenderPayload";
 import { Scene } from "../rs/scene/Scene";
 import type { FramePacket } from "../runtime/packets/FramePacket";
-import type { InteractionInput } from "../runtime/packets/Interaction";
 import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 
 type MapRemovalInfo = Readonly<{
     mapId: number;
+}>;
+
+export type InteractionInput = Readonly<{
+    pointerLocked: boolean;
+    mouseX: number;
+    mouseY: number;
 }>;
 
 export interface InteractionControllerRenderer {

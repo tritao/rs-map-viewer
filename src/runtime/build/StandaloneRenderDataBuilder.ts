@@ -1,5 +1,5 @@
 import type { SdRenderableDrawRanges, SdRenderableModelInfoTextures } from "../../maprender/MapRenderPayload";
-import { InteractType } from "../packets/InteractType";
+import { InteractType } from "../InteractType";
 import { Model } from "../../rs/model/Model";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
 import {

@@ -2,7 +2,7 @@ import type { LocType } from "../rs/config/loctype/LocType";
 import type { NpcType } from "../rs/config/npctype/NpcType";
 import type { ObjType } from "../rs/config/objtype/ObjType";
 import type { CacheSession } from "../rs/loaders/CacheSession";
-import { InteractType } from "./packets/InteractType";
+import { InteractType } from "./InteractType";
 
 export type InteractionHit = Readonly<{
     kind: InteractType;
