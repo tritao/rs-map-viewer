@@ -1,6 +1,13 @@
 import { TileRenderFlag } from "../rs/scene/Scene";
 import type { NpcGpuFrameData } from "./NpcGpuFrame";
-import type { Npc } from "../runtime/entities/Npc";
+
+export type NpcGpuFrameSource = Readonly<{
+    x: number;
+    y: number;
+    level: number;
+    rotation: number;
+    npcTypeId: number;
+}>;
 
 export class NpcGpuFrameBuilder {
     private count = 0;
@@ -11,7 +18,7 @@ export class NpcGpuFrameBuilder {
     }
 
     addMapNpcs(
-        npcs: ReadonlyArray<Npc>,
+        npcs: ReadonlyArray<NpcGpuFrameSource>,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
     ): Readonly<{ start: number; count: number }> {
@@ -34,7 +41,7 @@ export class NpcGpuFrameBuilder {
                 renderPlane++;
             }
 
-            this.pushNpc(npc.x, npc.y, (npc.rotation << 2) | renderPlane, npc.npcType.id);
+            this.pushNpc(npc.x, npc.y, (npc.rotation << 2) | renderPlane, npc.npcTypeId);
         }
         return { start, count };
     }

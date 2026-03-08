@@ -18,7 +18,7 @@ import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/Wor
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
-import { NpcGpuFrameBuilder } from "../renderer/NpcGpuFrameBuilder";
+import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "../renderer/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
     buildTickPatchStreamsForMap,
@@ -105,6 +105,7 @@ export class WorkerFramePacketRuntime {
     };
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
     private readonly pendingRuntimeObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
+    private readonly npcGpuFrameSourceScratch: NpcGpuFrameSource[] = [];
 
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
 
@@ -365,6 +366,30 @@ export class WorkerFramePacketRuntime {
         }
     }
 
+    private toNpcGpuFrameSources(
+        npcs: ReadonlyArray<{
+            x: number;
+            y: number;
+            level: number;
+            rotation: number;
+            npcType: { id: number };
+        }>,
+    ): ReadonlyArray<NpcGpuFrameSource> {
+        const count = npcs.length | 0;
+        this.npcGpuFrameSourceScratch.length = count;
+        for (let index = 0; index < count; index++) {
+            const npc = npcs[index]!;
+            this.npcGpuFrameSourceScratch[index] = {
+                x: npc.x,
+                y: npc.y,
+                level: npc.level,
+                rotation: npc.rotation,
+                npcTypeId: npc.npcType.id,
+            };
+        }
+        return this.npcGpuFrameSourceScratch;
+    }
+
     async buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
@@ -415,7 +440,7 @@ export class WorkerFramePacketRuntime {
             }
 
             const npcRange = this.npcGpuFrameBuilder.addMapNpcs(
-                state.npcs,
+                this.toNpcGpuFrameSources(state.npcs),
                 state.borderSize,
                 state.tileRenderFlagsLevel1,
             );
