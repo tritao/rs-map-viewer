@@ -10,7 +10,7 @@ import {
 } from "picogl";
 
 import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
-import { Camera } from "../../mapviewer/Camera";
+import { Camera } from "../../runtime/Camera";
 import { GameType } from "../../rs/cache/CacheInfo";
 import { CacheSession } from "../../rs/loaders/CacheSession";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";

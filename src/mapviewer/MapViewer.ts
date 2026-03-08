@@ -22,7 +22,7 @@ import { Result, err, ok } from "../util/Result";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import { Camera, CameraView, ProjectionType } from "./Camera";
+import { Camera, CameraView, ProjectionType } from "../runtime/Camera";
 import { MapManager } from "./MapManager";
 import { MapViewerRenderer } from "./MapViewerRenderer";
 

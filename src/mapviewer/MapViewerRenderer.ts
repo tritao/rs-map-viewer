@@ -14,6 +14,7 @@ import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
+import { WorkerMapFrameCoordinator } from "../runtime/MapFrameCoordinator";
 import { createMapObjBootstrapPacket } from "../runtime/MapObjRuntime";
 import { createNpcLifecyclePacket } from "../runtime/NpcRuntime";
 import type { NpcEvent } from "../runtime/sim/NpcEvents";
@@ -24,13 +25,12 @@ import {
     registerMapRuntime,
     unregisterMapRuntime,
 } from "../runtime/MapRuntimeController";
+import { Camera } from "../runtime/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import { Camera } from "./Camera";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
-import { WorkerMapViewerFrameRuntimeCoordinator } from "./MapViewerFrameRuntimeCoordinator";
-import { MapViewerTickCoordinator } from "./MapViewerTickCoordinator";
+import { MapTickCoordinator } from "./MapTickCoordinator";
 
 const DRAW_RANGE_STRIDE = 3;
 
@@ -45,8 +45,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManagerTime: number = 0;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
-    private readonly tickCoordinator = new MapViewerTickCoordinator();
-    private readonly frameRuntimeCoordinator: WorkerMapViewerFrameRuntimeCoordinator;
+    private readonly tickCoordinator = new MapTickCoordinator();
+    private readonly frameRuntimeCoordinator: WorkerMapFrameCoordinator;
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
@@ -67,7 +67,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.camera,
             this.checkInteractions.bind(this),
         );
-        this.frameRuntimeCoordinator = new WorkerMapViewerFrameRuntimeCoordinator({
+        this.frameRuntimeCoordinator = new WorkerMapFrameCoordinator({
             simWorkerPool: this.simWorkerPool,
             renderWorkerPool: this.renderWorkerPool,
             getLodDistance: () => this.renderer.lodDistance,
@@ -75,8 +75,19 @@ export class MapViewerRenderer extends RendererMainLoop {
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
             isSeamTelemetryEnabled: () =>
                 !!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry,
-            getMapManager: () => this.mapManager,
-            getCamera: () => this.camera,
+            getVisibleMapIds: () => {
+                const n = this.mapManager.visibleMapCount | 0;
+                if ((n | 0) <= 0) {
+                    return new Int32Array(0);
+                }
+                const mapIds = new Int32Array(n);
+                for (let i = 0; i < n; i++) {
+                    mapIds[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
+                }
+                return mapIds;
+            },
+            getCameraMapX: () => this.camera.getMapX(),
+            getCameraMapY: () => this.camera.getMapY(),
         });
         this.mapManager = new MapManager(
             this.renderWorkerPool.size * 2,
