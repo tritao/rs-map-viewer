@@ -45,8 +45,7 @@ import type {
 } from "../MapRenderPayload";
 import {
     SdMapLoaderInput,
-    buildMapRuntimeBootstrap,
-    buildMapRuntimeRegistration,
+    buildMapRuntimePayloads,
 } from "../MapRenderPayload";
 import { loadMinimapBlob } from "./MinimapData";
 import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
@@ -764,18 +763,19 @@ export class MapRenderTsBackend {
             npcDrawRangesAlpha,
         );
 
+        const runtimePayloads = buildMapRuntimePayloads({
+            borderSize: sceneStage.borderSize,
+            tileRenderFlags: sceneStage.scene.tileRenderFlags,
+            locsAnimated: sceneStage.locsAnimated,
+            npcTypeAnimationTable,
+            npcOrderKeys: npcStage.npcOrderKeys,
+            objRenderData: sceneStage.objRenderData,
+        });
+
         return {
             data,
-            runtimeRegistration: buildMapRuntimeRegistration({
-                borderSize: sceneStage.borderSize,
-                tileRenderFlags: sceneStage.scene.tileRenderFlags,
-                locsAnimated: sceneStage.locsAnimated,
-                npcTypeAnimationTable,
-            }),
-            runtimeBootstrap: buildMapRuntimeBootstrap({
-                npcOrderKeys: npcStage.npcOrderKeys,
-                objRenderData: sceneStage.objRenderData,
-            }),
+            runtimeRegistration: runtimePayloads.runtimeRegistration,
+            runtimeBootstrap: runtimePayloads.runtimeBootstrap,
             runtimeCommandStreamInput,
             debugSceneCommandPlanDigest: sceneStage.debugSceneCommandPlanDigest,
             debugSceneCommandPlanOpsPacked: sceneStage.debugSceneCommandPlanOpsPacked,

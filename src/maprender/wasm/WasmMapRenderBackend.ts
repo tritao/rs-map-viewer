@@ -23,7 +23,7 @@ import type {
     SdMapData,
     SdMapLoaderInput,
 } from "../MapRenderPayload";
-import { buildMapRuntimeBootstrap, buildMapRuntimeRegistration } from "../MapRenderPayload";
+import { buildMapRuntimePayloads } from "../MapRenderPayload";
 import { collectSdMapDataTransferables } from "../MapRenderTransferables";
 import { buildObjRenderData } from "../../runtime/build";
 import {
@@ -290,18 +290,18 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 minimizeDrawCalls: input.minimizeDrawCalls,
             });
         }
+        const runtimePayloads = buildMapRuntimePayloads({
+            borderSize,
+            tileRenderFlags: data.tileRenderFlags,
+            locsAnimated: data.locsAnimated,
+            npcTypeAnimationTable: [],
+            npcOrderKeys: packet.npcOrderKeys,
+            objRenderData,
+        });
         return {
             data,
-            runtimeRegistration: buildMapRuntimeRegistration({
-                borderSize,
-                tileRenderFlags: data.tileRenderFlags,
-                locsAnimated: data.locsAnimated,
-                npcTypeAnimationTable: [],
-            }),
-            runtimeBootstrap: buildMapRuntimeBootstrap({
-                npcOrderKeys: packet.npcOrderKeys,
-                objRenderData,
-            }),
+            runtimeRegistration: runtimePayloads.runtimeRegistration,
+            runtimeBootstrap: runtimePayloads.runtimeBootstrap,
         };
     }
 

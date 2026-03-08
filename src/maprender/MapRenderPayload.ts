@@ -136,6 +136,31 @@ export function buildMapRuntimeBootstrap(input: {
     };
 }
 
+export function buildMapRuntimePayloads(input: {
+    borderSize: number;
+    tileRenderFlags: Uint8Array[][];
+    locsAnimated: ReadonlyArray<LocAnimatedData>;
+    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
+    npcOrderKeys?: Int32Array;
+    objRenderData?: ObjRenderData;
+}): Readonly<{
+    runtimeRegistration: MapRuntimeRegistration;
+    runtimeBootstrap: MapRuntimeBootstrap;
+}> {
+    return {
+        runtimeRegistration: buildMapRuntimeRegistration({
+            borderSize: input.borderSize,
+            tileRenderFlags: input.tileRenderFlags,
+            locsAnimated: input.locsAnimated,
+            npcTypeAnimationTable: input.npcTypeAnimationTable,
+        }),
+        runtimeBootstrap: buildMapRuntimeBootstrap({
+            npcOrderKeys: input.npcOrderKeys,
+            objRenderData: input.objRenderData,
+        }),
+    };
+}
+
 export type SdMapLoaderInput = {
     mapX: number;
     mapY: number;
