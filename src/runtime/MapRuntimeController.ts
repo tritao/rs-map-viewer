@@ -1,4 +1,5 @@
 import type { MapRuntimeBootstrap, MapRuntimeRegistration } from "../maprender/MapRenderPayload";
+import type { MapObjRenderPacket } from "./contracts/MapObjRenderPacket";
 import type { NpcTypeAnimationEntry } from "./contracts/NpcTypeAnimationTable";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -66,4 +67,32 @@ export function unregisterMapRuntime(input: Readonly<{
     const mapSimToken = input.mapSimToken | 0;
     void input.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
     void input.renderWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
+}
+
+export async function applyMapObjRenderPacket(input: Readonly<{
+    renderWorkerPool: RenderDataWorkerPool;
+    packet: MapObjRenderPacket | undefined;
+    requestRefresh(): void;
+}>): Promise<void> {
+    if (!input.packet) {
+        return;
+    }
+    const applied = await input.renderWorkerPool.applyMapObjRenderPacket(input.packet);
+    if ((applied | 0) > 0) {
+        input.requestRefresh();
+    }
+}
+
+export async function applyNpcLifecyclePacketBytes(input: Readonly<{
+    simWorkerPool: SimWorkerPool;
+    packet: ArrayBuffer | ArrayBufferView;
+}>): Promise<number> {
+    const packet = input.packet;
+    const bytes =
+        packet instanceof Uint8Array
+            ? packet
+            : packet instanceof ArrayBuffer
+            ? new Uint8Array(packet)
+            : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
+    return await input.simWorkerPool.applyNpcLifecyclePacketBytes(bytes);
 }

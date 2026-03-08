@@ -22,6 +22,8 @@ import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import {
+    applyMapObjRenderPacket as applyRuntimeMapObjRenderPacket,
+    applyNpcLifecyclePacketBytes as applyRuntimeNpcLifecyclePacketBytes,
     registerMapRuntime,
     unregisterMapRuntime,
 } from "../runtime/MapRuntimeController";
@@ -319,35 +321,28 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        void this.pushMapObjRenderPacket(
-            createMapObjBootstrapPacket(getMapSquareId(mapX, mapY), objRenderData),
-        );
+        void applyRuntimeMapObjRenderPacket({
+            renderWorkerPool: this.renderWorkerPool,
+            packet: createMapObjBootstrapPacket(getMapSquareId(mapX, mapY), objRenderData),
+            requestRefresh: () => this.frameRuntimeCoordinator.requestRefresh(),
+        });
     }
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        void this.pushMapObjRenderPacket(packet);
-    }
-
-    private async pushMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<void> {
-        if (!packet) {
-            return;
-        }
-        const applied = await this.renderWorkerPool.applyMapObjRenderPacket(packet);
-        if ((applied | 0) > 0) {
-            this.frameRuntimeCoordinator.requestRefresh();
-        }
+        void applyRuntimeMapObjRenderPacket({
+            renderWorkerPool: this.renderWorkerPool,
+            packet,
+            requestRefresh: () => this.frameRuntimeCoordinator.requestRefresh(),
+        });
     }
 
     private async applyNpcLifecyclePacketBytes(
         packet: ArrayBuffer | ArrayBufferView,
     ): Promise<number> {
-        const bytes =
-            packet instanceof Uint8Array
-                ? packet
-                : packet instanceof ArrayBuffer
-                ? new Uint8Array(packet)
-                : new Uint8Array(packet.buffer, packet.byteOffset, packet.byteLength);
-        return await this.simWorkerPool.applyNpcLifecyclePacketBytes(bytes);
+        return await applyRuntimeNpcLifecyclePacketBytes({
+            simWorkerPool: this.simWorkerPool,
+            packet,
+        });
     }
 
     override async init() {
