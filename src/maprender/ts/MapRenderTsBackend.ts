@@ -37,7 +37,7 @@ import {
 import type { AnimationFrames } from "../../runtime/contracts/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
-import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
+import type { MapRenderBuildDeps } from "../MapRenderBackend";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,

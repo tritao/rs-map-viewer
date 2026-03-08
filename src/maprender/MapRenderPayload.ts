@@ -14,33 +14,11 @@ export const MAP_RENDER_DRAW_BUCKET_KEYS = [
 
 export type MapRenderDrawBucketKey = (typeof MAP_RENDER_DRAW_BUCKET_KEYS)[number];
 
-export type SdRenderableModelInfoTextures = {
-    readonly base: Uint16Array;
-    readonly alpha: Uint16Array;
+export type SdRenderableModelInfoTextures = Readonly<
+    Record<MapRenderDrawBucketKey, Uint16Array>
+>;
 
-    readonly lod: Uint16Array;
-    readonly lodAlpha: Uint16Array;
-
-    readonly interact: Uint16Array;
-    readonly interactAlpha: Uint16Array;
-
-    readonly interactLod: Uint16Array;
-    readonly interactLodAlpha: Uint16Array;
-};
-
-export type SdRenderableDrawRanges = {
-    readonly base: Int32Array;
-    readonly alpha: Int32Array;
-
-    readonly lod: Int32Array;
-    readonly lodAlpha: Int32Array;
-
-    readonly interact: Int32Array;
-    readonly interactAlpha: Int32Array;
-
-    readonly interactLod: Int32Array;
-    readonly interactLodAlpha: Int32Array;
-};
+export type SdRenderableDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
 
 export type ObjRenderData = Readonly<{
     vertices: Uint8Array;
@@ -102,12 +80,6 @@ export type MapRuntimeBootstrap = Readonly<{
 export type SdMapData = MapData &
     SdRenderableData & {
         readonly mapId: number;
-        readonly mapX: number;
-        readonly mapY: number;
-
-        readonly loadLocs: boolean;
-
-        readonly minimapBlob: Blob;
         readonly heightMapTextureData: Int16Array;
         readonly usedTextureIds: Int32Array;
     };
@@ -161,7 +133,7 @@ export function buildMapRuntimePayloads(input: {
     };
 }
 
-export type SdMapLoaderInput = {
+export type SdMapLoaderInput = Readonly<{
     mapX: number;
     mapY: number;
 
@@ -175,4 +147,4 @@ export type SdMapLoaderInput = {
     minimizeDrawCalls: boolean;
 
     loadedTextureIds: Int32Array;
-};
+}>;

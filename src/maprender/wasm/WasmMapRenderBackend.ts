@@ -13,9 +13,10 @@ import type {
     MapRenderBackend,
     MapRenderBackendKind,
     MapRenderBackendOptions,
+    MapRenderBuildDeps,
     RenderDataResult,
 } from "../MapRenderBackend";
-import type { MapRenderBuildDeps } from "../MapRenderBuildDeps";
+import { collectSdMapDataTransferables } from "../MapRenderBackend";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
@@ -24,7 +25,6 @@ import type {
     SdMapLoaderInput,
 } from "../MapRenderPayload";
 import { buildMapRuntimePayloads } from "../MapRenderPayload";
-import { collectSdMapDataTransferables } from "../MapRenderTransferables";
 import { buildObjRenderData } from "../../runtime/build";
 import {
     MapRenderByteDrivenSceneBuildInput,
