@@ -24,11 +24,11 @@ import {
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { WorldSession, type WorldEventsInput } from "../runtime/WorldSession";
+import { WorldSession, type WorldEventsInput } from "../world/WorldSession";
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import { WorldRuntimePool } from "../worker/WorldRuntimePool";
+import { WorldRuntimePool } from "../world/WorldRuntimePool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";

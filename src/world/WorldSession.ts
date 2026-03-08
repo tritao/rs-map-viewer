@@ -1,9 +1,9 @@
 import {
     type StaticMapPacket,
 } from "../shared/StaticMapPacket";
-import type { NpcEvent } from "./entities/NpcEvents";
-import { type WorldMapObjUpdate } from "./packets/WorldDeltaPacket";
-import type { WorldRuntimePool } from "../worker/WorldRuntimePool";
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
+import { type WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldRuntimePool } from "./WorldRuntimePool";
 
 type WorldSessionDeps = Readonly<{
     worldRuntimePool: WorldRuntimePool;

@@ -1,8 +1,8 @@
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
-import type { RenderDataWorkerPool } from "./RenderDataWorkerPool";
-import type { SimWorkerPool } from "./SimWorkerPool";
+import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { SimWorkerPool } from "../worker/SimWorkerPool";
 
 type WorldRuntimePoolDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
