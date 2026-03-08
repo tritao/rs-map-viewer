@@ -1,9 +1,7 @@
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import { CLIENT_TICK_SECONDS, SERVER_TICK_SECONDS } from "../runtime/contracts/TickTiming";
-import type {
-    MapFrameCoordinator,
-    FrameStepInput,
-} from "../runtime/MapFrameCoordinator";
+import type { FrameStepInput } from "../runtime/MapFrameCoordinator";
+import { MapFrameCoordinator } from "../runtime/MapFrameCoordinator";
 
 const MAX_SERVER_TICKS_PER_FRAME = 1;
 const MAX_CLIENT_TICKS_PER_FRAME = 50;

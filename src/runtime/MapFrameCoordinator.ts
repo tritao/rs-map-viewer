@@ -11,12 +11,6 @@ export type FrameStepInput = Readonly<{
     clientTicksElapsed: number;
 }>;
 
-export interface MapFrameCoordinator {
-    nextFramePacket(input: FrameStepInput): FramePacket | undefined;
-    reset(): void;
-    invalidateLatestPacket(): void;
-}
-
 export type MapFrameSeamSample = Readonly<{
     simMs: number;
     applyMs: number;
@@ -36,7 +30,7 @@ type MapFrameCoordinatorDeps = Readonly<{
     reportSeamSample?(sample: MapFrameSeamSample): void;
 }>;
 
-export class WorkerMapFrameCoordinator implements MapFrameCoordinator {
+export class MapFrameCoordinator {
     private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
     private latestFramePacket: FramePacket | undefined;
     private packetEpoch: number = 0;

@@ -21,7 +21,7 @@ import {
 } from "../runtime/InteractionTargets";
 import {
     type MapFrameSeamSample,
-    WorkerMapFrameCoordinator,
+    MapFrameCoordinator,
 } from "../runtime/MapFrameCoordinator";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
@@ -47,7 +47,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly tickCoordinator = new MapTickCoordinator();
-    private readonly frameRuntimeCoordinator: WorkerMapFrameCoordinator;
+    private readonly frameRuntimeCoordinator: MapFrameCoordinator;
     private readonly mapWorldSession: MapWorldSession;
     private seamSampleCount: number = 0;
     private seamSimMsTotal: number = 0;
@@ -90,7 +90,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
         this.renderer = this.createRenderer();
-        this.frameRuntimeCoordinator = new WorkerMapFrameCoordinator({
+        this.frameRuntimeCoordinator = new MapFrameCoordinator({
             simWorkerPool: this.simWorkerPool,
             renderWorkerPool: this.renderWorkerPool,
             getLodDistance: () => this.renderer.lodDistance,
