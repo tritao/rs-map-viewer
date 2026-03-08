@@ -260,14 +260,14 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
-        const queuedLoadEpoch = this.worldSession.captureLoadEpoch();
+        const queuedActivationVersion = this.worldSession.captureActivationVersion();
         const devsq = this.mapViewer.getDevFixedMapSquare();
         if (devsq && (mapX !== devsq.mapX || mapY !== devsq.mapY)) {
             // Fixed-square dev mode: never queue builds for other squares.
             return;
         }
         const staticMapPacket = await this.loadStaticMapPacket(mapX, mapY);
-        if (!this.worldSession.hasLoadEpoch(queuedLoadEpoch)) {
+        if (!this.worldSession.isActivationVersionCurrent(queuedActivationVersion)) {
             return;
         }
         if (this.shouldDropStaticMapPacketForDevSquare(staticMapPacket)) {
@@ -286,7 +286,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         try {
             const ok = await this.worldSession.activateLoadedMap(
                 staticMapPacket,
-                queuedLoadEpoch,
+                queuedActivationVersion,
             );
             if (!ok) {
                 return;

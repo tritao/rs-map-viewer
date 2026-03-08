@@ -29,19 +29,19 @@ export class WorldSession {
         this.deps.worldRuntimePool.reset();
     }
 
-    captureLoadEpoch(): number {
-        return this.deps.worldRuntimePool.captureLoadEpoch();
+    captureActivationVersion(): number {
+        return this.deps.worldRuntimePool.captureActivationVersion();
     }
 
-    hasLoadEpoch(epoch: number): boolean {
-        return this.deps.worldRuntimePool.hasLoadEpoch(epoch);
+    isActivationVersionCurrent(version: number): boolean {
+        return this.deps.worldRuntimePool.isActivationVersionCurrent(version);
     }
 
     async activateLoadedMap(
         packet: StaticMapPacket,
-        loadEpoch: number,
+        activationVersion: number,
     ): Promise<boolean> {
-        return await this.deps.worldRuntimePool.activateLoadedMap(packet, loadEpoch);
+        return await this.deps.worldRuntimePool.activateLoadedMap(packet, activationVersion);
     }
 
     deactivateLoadedMap(mapId: number): void {

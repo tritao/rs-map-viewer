@@ -10,33 +10,36 @@ type WorldRuntimePoolDeps = Readonly<{
 }>;
 
 export class WorldRuntimePool {
-    private loadEpoch: number = 1;
+    private activationVersion: number = 1;
     private readonly mapRuntimeTokenByMapId = new Map<number, number>();
     private nextMapRuntimeToken: number = 1;
 
     constructor(private readonly deps: WorldRuntimePoolDeps) {}
 
     reset(): void {
-        this.loadEpoch = (this.loadEpoch + 1) | 0;
+        this.activationVersion = (this.activationVersion + 1) | 0;
         this.mapRuntimeTokenByMapId.clear();
         this.nextMapRuntimeToken = 1;
     }
 
-    captureLoadEpoch(): number {
-        return this.loadEpoch | 0;
+    captureActivationVersion(): number {
+        return this.activationVersion | 0;
     }
 
-    hasLoadEpoch(epoch: number): boolean {
-        return (this.loadEpoch | 0) === (epoch | 0);
+    isActivationVersionCurrent(version: number): boolean {
+        return (this.activationVersion | 0) === (version | 0);
     }
 
     async activateLoadedMap(
         packet: StaticMapPacket,
-        loadEpoch: number,
+        activationVersion: number,
     ): Promise<boolean> {
         const mapId = packet.mapData.mapId | 0;
         const mapSimToken = await this.activateLoadedMapRuntime(packet);
-        if (!this.hasLoadEpoch(loadEpoch) || !this.hasToken(mapId, mapSimToken)) {
+        if (
+            !this.isActivationVersionCurrent(activationVersion) ||
+            !this.hasToken(mapId, mapSimToken)
+        ) {
             this.deactivateLoadedMap(mapId);
             return false;
         }
