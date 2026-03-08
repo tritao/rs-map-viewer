@@ -154,11 +154,3 @@ export function resolveLocRenderPlacement(
         lowDetail: isLowDetail(scene, level, tileX, tileY, locType, entity.type),
     };
 }
-
-export function createLocAnimatedGroupKey(
-    rotation: number,
-    type: LocModelType,
-    locTypeId: number,
-): number {
-    return rotation + (type << 3) + (locTypeId << 10);
-}

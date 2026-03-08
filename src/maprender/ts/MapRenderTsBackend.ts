@@ -15,7 +15,7 @@ import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import type { LocAnimatedData } from "../../runtime/contracts/LocAnimatedData";
 import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build/SceneDrawCommandBuilder";
 import { ModelHashBuffer } from "../../runtime/build/ModelHashBuffer";
-import type { LocAnimatedGroup } from "../../runtime/build/LocAnimatedGroup";
+import { createLocAnimatedGroupKey, type LocAnimatedGroup } from "../../runtime/build/LocAnimatedGroup";
 import { SceneGeometryBuffer, type SceneModel } from "../../runtime/build/SceneGeometryBuffer";
 import {
     type SceneDrawPlan,
@@ -32,7 +32,7 @@ import {
 } from "../../runtime/build/SceneDrawCommandBuilder";
 import { buildNpcGeometry } from "../../runtime/build/NpcGeometryBuilder";
 import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
-import { createLocAnimatedGroupKey, resolveLocRenderPlacement } from "../../runtime/build/LocRenderPlacementResolver";
+import { resolveLocRenderPlacement } from "../../runtime/build/LocPlacementResolver";
 import { getSceneLocs } from "../../runtime/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
