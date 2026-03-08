@@ -32,7 +32,7 @@ import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
 import {
     type RenderFrameInputUpdate,
     type RenderFrameStateVersions,
-    type RenderFrameViewState,
+    type WorkerViewState,
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
 
@@ -99,7 +99,7 @@ export class WorkerFramePacketRuntime {
     private visibleMapIds: Int32Array = new Int32Array(0);
     private mapIdsVersion: number = 0;
     private viewStateVersion: number = 0;
-    private viewState: RenderFrameViewState = {
+    private viewState: WorkerViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
         lodDistance: 0,
@@ -202,7 +202,7 @@ export class WorkerFramePacketRuntime {
         this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
     }
 
-    private setViewState(viewState: RenderFrameViewState): void {
+    private setViewState(viewState: WorkerViewState): void {
         const nextViewState = {
             cameraMapX: viewState.cameraMapX | 0,
             cameraMapY: viewState.cameraMapY | 0,

@@ -36,17 +36,21 @@ export type WorkerSpawnBootstrap = Readonly<{
     fallbackNpcSpawns: NpcSpawn[];
 }>;
 
-export type RenderFrameViewState = Readonly<{
+export type WorkerViewState = Readonly<{
     cameraMapX: number;
     cameraMapY: number;
     lodDistance: number;
 }>;
 
-export type RenderFrameInputUpdate = Readonly<{
+export type WorldInputUpdate = Readonly<{
     mapIds?: Int32Array;
-    viewState?: RenderFrameViewState;
-    hoveredMapIdsPacked?: Int32Array;
+    viewState?: WorkerViewState;
 }>;
+
+export type RenderFrameInputUpdate = WorldInputUpdate &
+    Readonly<{
+    hoveredMapIdsPacked?: Int32Array;
+    }>;
 
 export type RenderFrameStateVersions = Readonly<{
     mapIdsVersion: number;

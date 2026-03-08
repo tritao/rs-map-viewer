@@ -6,7 +6,7 @@ import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap, WorldInputUpdate } from "./WorkerContext";
 import type { SimWorker } from "./SimWorker";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 
@@ -112,12 +112,8 @@ export class SimWorkerPool {
         return this.applyNpcLifecyclePacketBytes(encodeNpcLifecyclePacketFromEvents(events));
     }
 
-    setVisibleMapIds(mapIds: Int32Array): Promise<void> {
-        return this.withWorker((w) => w.setVisibleMapIds(mapIds));
-    }
-
-    setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): Promise<void> {
-        return this.withWorker((w) => w.setViewState(cameraMapX, cameraMapY, lodDistance));
+    syncWorldState(update: WorldInputUpdate): Promise<void> {
+        return this.withWorker((w) => w.syncWorldState(update));
     }
 
     stepWorld(

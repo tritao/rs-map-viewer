@@ -6,7 +6,7 @@ import { npcStateDeltaPacketTransferables } from "../runtime/packets/NpcStateDel
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap, WorldInputUpdate } from "./WorkerContext";
 
 type SimWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;
@@ -14,6 +14,11 @@ type SimWorkerServices = Readonly<{
 }>;
 
 let workerServicesPromise: Promise<SimWorkerServices> | undefined;
+const EMPTY_INT32 = new Int32Array(0);
+
+function normalizeWorkerInt32Array(values: Int32Array): Int32Array {
+    return values instanceof Int32Array && (values.length | 0) > 0 ? values : EMPTY_INT32;
+}
 
 async function getWorkerServices(): Promise<SimWorkerServices> {
     const existing = workerServicesPromise;
@@ -79,17 +84,22 @@ const worker = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
-    async setVisibleMapIds(mapIds: Int32Array): Promise<void> {
+    async syncWorldState(update: WorldInputUpdate): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
-        tickRuntime.setVisibleMapIds(mapIds);
-    },
-    async setViewState(
-        cameraMapX: number,
-        cameraMapY: number,
-        lodDistance: number,
-    ): Promise<void> {
-        const { tickRuntime } = await getWorkerServices();
-        tickRuntime.setViewState(cameraMapX, cameraMapY, lodDistance);
+        tickRuntime.applyWorldInputUpdate({
+            mapIds:
+                update.mapIds !== undefined
+                    ? normalizeWorkerInt32Array(update.mapIds)
+                    : undefined,
+            viewState:
+                update.viewState !== undefined
+                    ? {
+                          cameraMapX: update.viewState.cameraMapX | 0,
+                          cameraMapY: update.viewState.cameraMapY | 0,
+                          lodDistance: Math.max(0, update.viewState.lodDistance | 0),
+                      }
+                    : undefined,
+        });
     },
     async stepWorld(
         frameCount: number,
