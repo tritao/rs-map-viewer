@@ -86,7 +86,9 @@ export class MapWorldSession {
         if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
             applied =
                 (applied +
-                    (await this.deps.simWorkerPool.applyNpcLifecycleEvents(npcLifecycleEvents))) |
+                    (await this.deps.simWorkerPool.world.applyNpcLifecycleEvents(
+                        npcLifecycleEvents,
+                    ))) |
                 0;
         }
         const objUpdates = input.obj?.updates;
@@ -146,17 +148,17 @@ export class MapWorldSession {
         };
         await this.deps.renderWorkerPool.frame.registerMapRuntime(renderRegistration);
         try {
-            await this.deps.simWorkerPool.registerMapRuntime(simRegistration);
-            await this.deps.simWorkerPool.bootstrapMapRuntime(bootstrapInput);
+            await this.deps.simWorkerPool.world.registerMapRuntime(simRegistration);
+            await this.deps.simWorkerPool.world.bootstrapMapRuntime(bootstrapInput);
         } catch (error: unknown) {
             void this.deps.renderWorkerPool.frame.unregisterMapRuntime(mapId, mapSimToken);
-            void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
+            void this.deps.simWorkerPool.world.unregisterMapRuntime(mapId, mapSimToken);
             throw error;
         }
     }
 
     private unregisterMapRuntime(mapId: number, mapSimToken: number): void {
-        void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
+        void this.deps.simWorkerPool.world.unregisterMapRuntime(mapId, mapSimToken);
         void this.deps.renderWorkerPool.frame.unregisterMapRuntime(mapId, mapSimToken);
     }
 }

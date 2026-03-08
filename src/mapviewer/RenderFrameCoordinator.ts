@@ -104,7 +104,7 @@ export class RenderFrameCoordinator {
         this.lastFrameHoveredMapIds = EMPTY_INT32;
         this.lastFrameViewState = undefined;
         void Promise.all([
-            this.deps.simWorkerPool.syncWorldState({
+            this.deps.simWorkerPool.world.syncState({
                 mapIds: EMPTY_INT32,
                 viewState: {
                     cameraMapX: 0,
@@ -212,7 +212,7 @@ export class RenderFrameCoordinator {
             };
         }
         if (worldInputUpdate) {
-            updatePromises.push(this.deps.simWorkerPool.syncWorldState(worldInputUpdate));
+            updatePromises.push(this.deps.simWorkerPool.world.syncState(worldInputUpdate));
         }
         if (renderFrameUpdate) {
             updatePromises.push(
@@ -233,7 +233,7 @@ export class RenderFrameCoordinator {
     }>): Promise<RenderFramePacket | undefined> {
         const runWorldStepAndBuildFrame = async () => {
             const seamStart = performance.now();
-            const worldDeltaPacket = await this.deps.simWorkerPool.stepWorld(
+            const worldDeltaPacket = await this.deps.simWorkerPool.world.step(
                 input.input.frameCount,
                 input.input.ticksElapsed,
                 input.input.clientTicksElapsed,

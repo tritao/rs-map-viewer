@@ -29,6 +29,22 @@ export class SimWorkerPool {
     private initPromise: Promise<void> | undefined;
     private workerPromise: Promise<SimWorkerThread> | undefined;
 
+    readonly world = {
+        registerMapRuntime: (input: SimMapRuntimeRegistrationInput) => this.registerMapRuntime(input),
+        bootstrapMapRuntime: (input: MapRuntimeBootstrapInput) => this.bootstrapMapRuntime(input),
+        unregisterMapRuntime: (mapId: number, mapSimToken?: number) =>
+            this.unregisterMapRuntime(mapId, mapSimToken),
+        applyNpcLifecycleEvents: (events: ReadonlyArray<NpcEvent>) =>
+            this.applyNpcLifecycleEvents(events),
+        syncState: (update: WorldInputUpdate) => this.syncWorldState(update),
+        step: (
+            frameCount: number,
+            ticksElapsed: number,
+            clientTicksElapsed: number,
+            cycleNow: number,
+        ) => this.stepWorld(frameCount, ticksElapsed, clientTicksElapsed, cycleNow),
+    };
+
     private ensureSpawnBootstrap(cache: LoadedCache): Promise<WorkerSpawnBootstrap> {
         return ensureWorkerSpawnBootstrap(cache);
     }
@@ -74,34 +90,34 @@ export class SimWorkerPool {
         await this.initPromise;
     }
 
-    registerMapRuntime(input: SimMapRuntimeRegistrationInput): Promise<void> {
+    private registerMapRuntime(input: SimMapRuntimeRegistrationInput): Promise<void> {
         return this.withWorker((w) => w.registerMapRuntime(input));
     }
 
-    bootstrapMapRuntime(input: MapRuntimeBootstrapInput): Promise<void> {
+    private bootstrapMapRuntime(input: MapRuntimeBootstrapInput): Promise<void> {
         return this.withWorker((w) => w.bootstrapMapRuntime(input));
     }
 
-    unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+    private unregisterMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
         return this.withWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
-    applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
+    private applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return this.withWorker((w) => w.applyNpcLifecyclePacketBytes(packet));
     }
 
-    applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
+    private applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
         if ((events.length | 0) <= 0) {
             return Promise.resolve(0);
         }
         return this.applyNpcLifecyclePacketBytes(encodeNpcLifecyclePacketFromEvents(events));
     }
 
-    syncWorldState(update: WorldInputUpdate): Promise<void> {
+    private syncWorldState(update: WorldInputUpdate): Promise<void> {
         return this.withWorker((w) => w.syncWorldState(update));
     }
 
-    stepWorld(
+    private stepWorld(
         frameCount: number,
         ticksElapsed: number,
         clientTicksElapsed: number,
