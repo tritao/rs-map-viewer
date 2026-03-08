@@ -18,7 +18,7 @@ export type RenderFrameSeamSample = Readonly<{
     applyWorldMs: number;
     renderMs: number;
     totalMs: number;
-    worldEventCount: number;
+    worldChangeCount: number;
 }>;
 
 type RenderFrameCoordinatorDeps = Readonly<{
@@ -254,8 +254,8 @@ export class RenderFrameCoordinator {
                 applyWorldMs: afterApply - afterSim,
                 renderMs: seamEnd - afterApply,
                 totalMs: seamEnd - seamStart,
-                worldEventCount:
-                    (worldDeltaPacket?.npcDelta?.eventCount ?? 0) +
+                worldChangeCount:
+                    (worldDeltaPacket?.npcState?.changeCount ?? 0) +
                     (worldDeltaPacket?.objDelta?.updates.length ?? 0),
             });
             return packet;

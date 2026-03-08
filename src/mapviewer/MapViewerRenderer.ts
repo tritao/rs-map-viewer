@@ -54,7 +54,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private seamApplyWorldMsTotal: number = 0;
     private seamRenderMsTotal: number = 0;
     private seamTotalMsTotal: number = 0;
-    private seamWorldEventCountTotal: number = 0;
+    private seamWorldChangeCountTotal: number = 0;
 
     private isInitialized: boolean = false;
 
@@ -150,7 +150,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.seamApplyWorldMsTotal += sample.applyWorldMs;
         this.seamRenderMsTotal += sample.renderMs;
         this.seamTotalMsTotal += sample.totalMs;
-        this.seamWorldEventCountTotal += sample.worldEventCount | 0;
+        this.seamWorldChangeCountTotal += sample.worldChangeCount | 0;
         if ((this.seamSampleCount | 0) < 120) {
             return;
         }
@@ -161,14 +161,14 @@ export class MapViewerRenderer extends RendererMainLoop {
             applyWorldMs: this.seamApplyWorldMsTotal / count,
             renderMs: this.seamRenderMsTotal / count,
             totalMs: this.seamTotalMsTotal / count,
-            worldEventsPerFrame: this.seamWorldEventCountTotal / count,
+            worldChangesPerFrame: this.seamWorldChangeCountTotal / count,
         });
         this.seamSampleCount = 0;
         this.seamWorldMsTotal = 0;
         this.seamApplyWorldMsTotal = 0;
         this.seamRenderMsTotal = 0;
         this.seamTotalMsTotal = 0;
-        this.seamWorldEventCountTotal = 0;
+        this.seamWorldChangeCountTotal = 0;
     }
 
     private shouldDropStaticMapPacketForDevSquare(

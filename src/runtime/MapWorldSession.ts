@@ -25,7 +25,7 @@ const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export type WorldEventsInput = Readonly<{
     npc?: Readonly<{
-        events: ReadonlyArray<NpcEvent>;
+        lifecycleEvents: ReadonlyArray<NpcEvent>;
     }>;
     obj?: Readonly<{
         updates: ReadonlyArray<WorldMapObjUpdate>;
@@ -82,10 +82,12 @@ export class MapWorldSession {
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
         let applied = 0;
-        const npcEvents = input.npc?.events;
-        if (npcEvents && (npcEvents.length | 0) > 0) {
+        const npcLifecycleEvents = input.npc?.lifecycleEvents;
+        if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
             applied =
-                (applied + (await this.deps.simWorkerPool.applyNpcLifecycleEvents(npcEvents))) | 0;
+                (applied +
+                    (await this.deps.simWorkerPool.applyNpcLifecycleEvents(npcLifecycleEvents))) |
+                0;
         }
         const objUpdates = input.obj?.updates;
         if (objUpdates && (objUpdates.length | 0) > 0) {

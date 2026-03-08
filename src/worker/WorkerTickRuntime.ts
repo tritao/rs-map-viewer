@@ -12,7 +12,7 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
-    buildWorldDeltaPacketFromNpcEvents,
+    buildWorldDeltaPacketFromNpcLifecycleEvents,
 } from "../runtime/packets/WorldDeltaPacket";
 import {
     type ResolvedBootstrapData,
@@ -400,7 +400,7 @@ export class WorkerTickRuntime {
         );
     }
 
-    private collectNpcDeltaEventsForMap(
+    private collectNpcLifecycleEventsForMap(
         mapId: number,
         npcs: ReadonlyArray<{
             instanceId?: number;
@@ -520,13 +520,13 @@ export class WorkerTickRuntime {
                 seqTypeLoader,
                 seqFrameLoader,
             );
-            this.collectNpcDeltaEventsForMap(mapId, state.npcs, events);
+            this.collectNpcLifecycleEventsForMap(mapId, state.npcs, events);
         }
 
-        return buildWorldDeltaPacketFromNpcEvents({
+        return buildWorldDeltaPacketFromNpcLifecycleEvents({
             frameCount: frameCount | 0,
             inputStateVersion: this.inputStateVersion | 0,
-            events,
+            lifecycleEvents: events,
         });
     }
 

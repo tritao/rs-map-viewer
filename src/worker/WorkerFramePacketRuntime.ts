@@ -253,7 +253,7 @@ export class WorkerFramePacketRuntime {
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
         let applied = this.applyRuntimeMapObjUpdates(packet.objDelta?.updates);
-        if (((packet.npcDelta?.eventCount ?? 0) | 0) <= 0) {
+        if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
             return applied | 0;
         }
         const workerState = await this.getWorkerState();
