@@ -2,13 +2,11 @@ import {
     type StaticMapPacket,
 } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
-import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { SimWorkerPool } from "../worker/SimWorkerPool";
 import { type WorldMapObjUpdate } from "./packets/WorldDeltaPacket";
+import type { WorldRuntimePool } from "../worker/WorldRuntimePool";
 
 type MapWorldSessionDeps = Readonly<{
-    renderWorkerPool: RenderDataWorkerPool;
-    simWorkerPool: SimWorkerPool;
+    worldRuntimePool: WorldRuntimePool;
 }>;
 
 export type NpcLifecycleEventsInput = Readonly<{
@@ -78,16 +76,13 @@ export class MapWorldSession {
         if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
             applied =
                 (applied +
-                    (await this.deps.simWorkerPool.world.applyNpcLifecycleEvents(
-                        npcLifecycleEvents,
-                    ))) |
+                    (await this.deps.worldRuntimePool.applyNpcLifecycleEvents(npcLifecycleEvents))) |
                 0;
         }
         const objUpdates = input.obj?.updates;
         if (objUpdates && (objUpdates.length | 0) > 0) {
             applied =
-                (applied +
-                    (await this.deps.simWorkerPool.world.applyMapObjStateUpdates(objUpdates))) |
+                (applied + (await this.deps.worldRuntimePool.applyMapObjStateUpdates(objUpdates))) |
                 0;
         }
         return applied | 0;
@@ -108,19 +103,10 @@ export class MapWorldSession {
         packet: StaticMapPacket,
         mapSimToken: number,
     ): Promise<void> {
-        const mapId = packet.mapData.mapId | 0;
-        await this.deps.renderWorkerPool.frame.activateLoadedMap(packet, mapSimToken);
-        try {
-            await this.deps.simWorkerPool.world.activateLoadedMap(packet, mapSimToken);
-        } catch (error: unknown) {
-            void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
-            void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
-            throw error;
-        }
+        await this.deps.worldRuntimePool.activateLoadedMap(packet, mapSimToken);
     }
 
     private unregisterMapRuntime(mapId: number, mapSimToken: number): void {
-        void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
-        void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
+        this.deps.worldRuntimePool.deactivateLoadedMap(mapId, mapSimToken);
     }
 }

@@ -28,6 +28,7 @@ import { MapWorldSession, type WorldEventsInput } from "../runtime/MapWorldSessi
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
+import { WorldRuntimePool } from "../worker/WorldRuntimePool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
@@ -116,8 +117,10 @@ export class MapViewerRenderer extends RendererMainLoop {
             reportSeamSample: (sample) => this.recordRenderFrameSeamSample(sample),
         });
         this.mapWorldSession = new MapWorldSession({
-            renderWorkerPool: this.renderWorkerPool,
-            simWorkerPool: this.simWorkerPool,
+            worldRuntimePool: new WorldRuntimePool({
+                renderWorkerPool: this.renderWorkerPool,
+                simWorkerPool: this.simWorkerPool,
+            }),
         });
         this.mapManager = this.createMapManager();
     }
