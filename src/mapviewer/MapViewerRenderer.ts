@@ -14,7 +14,10 @@ import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
-import { WorkerMapFrameCoordinator } from "../runtime/MapFrameCoordinator";
+import {
+    type MapFrameSeamSample,
+    WorkerMapFrameCoordinator,
+} from "../runtime/MapFrameCoordinator";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -52,6 +55,12 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private nextMapSimToken: number = 1;
     private loadEpoch: number = 1;
+    private seamSampleCount: number = 0;
+    private seamSimMsTotal: number = 0;
+    private seamApplyMsTotal: number = 0;
+    private seamPackMsTotal: number = 0;
+    private seamTotalMsTotal: number = 0;
+    private seamEventCountTotal: number = 0;
 
     private isInitialized: boolean = false;
 
@@ -75,8 +84,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
-            isSeamTelemetryEnabled: () =>
-                !!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry,
             getVisibleMapIds: () => {
                 const n = this.mapManager.visibleMapCount | 0;
                 if ((n | 0) <= 0) {
@@ -90,6 +97,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             },
             getCameraMapX: () => this.camera.getMapX(),
             getCameraMapY: () => this.camera.getMapY(),
+            reportSeamSample: (sample) => this.recordFrameSeamSample(sample),
         });
         this.mapManager = new MapManager(
             this.renderWorkerPool.size * 2,
@@ -122,6 +130,36 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.nextMapSimToken = (token + 1) | 0;
         this.mapSimTokenByMapId.set(mapId | 0, token);
         return token;
+    }
+
+    private recordFrameSeamSample(sample: MapFrameSeamSample): void {
+        if (!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry) {
+            return;
+        }
+        this.seamSampleCount = (this.seamSampleCount + 1) | 0;
+        this.seamSimMsTotal += sample.simMs;
+        this.seamApplyMsTotal += sample.applyMs;
+        this.seamPackMsTotal += sample.packMs;
+        this.seamTotalMsTotal += sample.totalMs;
+        this.seamEventCountTotal += sample.eventCount | 0;
+        if ((this.seamSampleCount | 0) < 120) {
+            return;
+        }
+        const count = this.seamSampleCount | 0;
+        console.log("[map-render][frame-seam] avg", {
+            samples: count,
+            simMs: this.seamSimMsTotal / count,
+            applyMs: this.seamApplyMsTotal / count,
+            packMs: this.seamPackMsTotal / count,
+            totalMs: this.seamTotalMsTotal / count,
+            eventsPerFrame: this.seamEventCountTotal / count,
+        });
+        this.seamSampleCount = 0;
+        this.seamSimMsTotal = 0;
+        this.seamApplyMsTotal = 0;
+        this.seamPackMsTotal = 0;
+        this.seamTotalMsTotal = 0;
+        this.seamEventCountTotal = 0;
     }
 
     private invalidateMapSimToken(mapId: number): number {
@@ -324,7 +362,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         void dispatchMapObjRenderPacket({
             renderWorkerPool: this.renderWorkerPool,
             packet: createMapObjRenderPacket(getMapSquareId(mapX, mapY), objRenderData),
-            requestRefresh: () => this.frameRuntimeCoordinator.requestRefresh(),
+            requestRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
         });
     }
 
@@ -332,7 +370,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         void dispatchMapObjRenderPacket({
             renderWorkerPool: this.renderWorkerPool,
             packet,
-            requestRefresh: () => this.frameRuntimeCoordinator.requestRefresh(),
+            requestRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
         });
     }
 
