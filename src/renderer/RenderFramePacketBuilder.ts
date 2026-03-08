@@ -4,10 +4,10 @@ import {
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     type FramePacket,
     TICK_PATCH_STREAM_COUNT,
-    buildFramePacket,
-} from "./packets/FramePacket";
-import type { MapObjRenderPacket } from "./packets/MapObjRenderPacket";
-import type { NpcGpuFrameData } from "./packets/NpcGpuFrame";
+    buildRenderFramePacket,
+} from "./RenderFramePacket";
+import type { MapObjRenderPacket } from "./MapObjRenderPacket";
+import type { NpcGpuFrameData } from "./NpcGpuFrame";
 
 export type FramePacketMapEntry = Readonly<{
     mapId: number;
@@ -115,7 +115,7 @@ export function buildFramePacketFromMapEntries(
         tickPatchStreamsByMap[i] = entry.tickPatchStreams as (Int32Array | undefined)[];
     }
 
-    return buildFramePacket({
+    return buildRenderFramePacket({
         frameCount: input.frameCount | 0,
         mapIdsVersion: input.mapIdsVersion | 0,
         viewStateVersion: input.viewStateVersion | 0,
@@ -128,3 +128,9 @@ export function buildFramePacketFromMapEntries(
         runtimeRenderUpdates: input.runtimeRenderUpdates,
     });
 }
+
+export type RenderFramePacketMapEntry = FramePacketMapEntry;
+export type BuildRenderFramePacketMapEntryInput = BuildFramePacketMapEntryInput;
+export type BuildRenderFramePacketFromMapEntriesInput = BuildFramePacketFromMapEntriesInput;
+export const buildRenderFramePacketMapEntry = buildFramePacketMapEntry;
+export const buildRenderFramePacketFromMapEntries = buildFramePacketFromMapEntries;

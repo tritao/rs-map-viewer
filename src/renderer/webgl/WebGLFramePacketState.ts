@@ -1,13 +1,13 @@
 import {
-    type FramePacket,
-    type ParsedFramePacket,
+    type ParsedRenderFramePacket,
+    type RenderFramePacket,
     type ParsedFrameTickPatches,
-    parseFramePacket,
-} from "../../runtime/packets/FramePacket";
+    parseRenderFramePacket,
+} from "../RenderFramePacket";
 import {
     NPC_DATA_TEXTURE_RING_SIZE,
     type NpcGpuFrameData,
-} from "../../runtime/packets/NpcGpuFrame";
+} from "../NpcGpuFrame";
 
 export class WebGLFramePacketState {
     private readonly npcDataRangesByMapIdByRing: Map<
@@ -24,7 +24,7 @@ export class WebGLFramePacketState {
     private lastAppliedFramePacketFrameCount: number = -1;
     private npcDataTextureDirty: boolean = false;
 
-    apply(packet: FramePacket | undefined): void {
+    apply(packet: RenderFramePacket | undefined): void {
         if (!packet) {
             this.reset();
             return;
@@ -33,7 +33,7 @@ export class WebGLFramePacketState {
         // Avoid re-parsing the packet when the worker output lags by a frame.
         if ((packet.frameCount | 0) !== (this.lastAppliedFramePacketFrameCount | 0)) {
             this.lastAppliedFramePacketFrameCount = packet.frameCount | 0;
-            const parsed = parseFramePacket(packet);
+            const parsed = parseRenderFramePacket(packet);
             if (parsed) {
                 this.applyParsedFramePacket(parsed);
             }
@@ -86,7 +86,7 @@ export class WebGLFramePacketState {
         return ringRanges?.get(mapId | 0);
     }
 
-    private applyParsedFramePacket(packet: ParsedFramePacket): void {
+    private applyParsedFramePacket(packet: ParsedRenderFramePacket): void {
         this.npcGpuFrameData = packet.npcGpuFrameData;
         this.frameTickPatches = packet.tickPatches;
         this.frameRenderListPacked = packet.renderListPacked;

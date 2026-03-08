@@ -1,6 +1,6 @@
-import { TileRenderFlag } from "../../rs/scene/Scene";
-import type { NpcGpuFrameData } from "../packets/NpcGpuFrame";
-import type { Npc } from "./Npc";
+import { TileRenderFlag } from "../rs/scene/Scene";
+import type { NpcGpuFrameData } from "./NpcGpuFrame";
+import type { Npc } from "../runtime/entities/Npc";
 
 export class NpcGpuFrameBuilder {
     private count = 0;

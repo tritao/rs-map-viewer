@@ -3,24 +3,24 @@ import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import type { CacheSession } from "../rs/loaders/CacheSession";
-import type { FramePacket } from "../runtime/packets/FramePacket";
+import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../runtime/packets/FramePacket";
+} from "../renderer/RenderFramePacket";
 import {
-    type FramePacketMapEntry,
-    buildFramePacketFromMapEntries,
-    buildFramePacketMapEntry,
-} from "../runtime/FramePacketBuilder";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../runtime/packets/NpcGpuFrame";
+    type RenderFramePacketMapEntry,
+    buildRenderFramePacketFromMapEntries,
+    buildRenderFramePacketMapEntry,
+} from "../renderer/RenderFramePacketBuilder";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
-import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
-import { buildMapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
-import { NpcGpuFrameBuilder } from "../runtime/entities/NpcGpuFrameBuilder";
+import { NpcGpuFrameBuilder } from "../renderer/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
     buildTickPatchStreamsForMap,
@@ -307,7 +307,7 @@ export class WorkerFramePacketRuntime {
         safeLodDistance: number,
         hoveredMapIds: ReadonlySet<number>,
         backendKind: string,
-    ): FramePacketMapEntry {
+    ): RenderFramePacketMapEntry {
         if (this.workerMapRuntimeTracker.consumeMissingRuntimeStateWarning(mapId)) {
             const { mapX, mapY } = decodeMapSquareFromId(mapId);
             console.warn(
@@ -315,7 +315,7 @@ export class WorkerFramePacketRuntime {
                     `(mapId=${mapId | 0} index=${mapEntryIndex | 0} backend=${backendKind})`,
             );
         }
-        return buildFramePacketMapEntry({
+        return buildRenderFramePacketMapEntry({
             mapId,
             cameraMapX,
             cameraMapY,
@@ -348,7 +348,7 @@ export class WorkerFramePacketRuntime {
     async buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
-    ): Promise<FramePacket | undefined> {
+    ): Promise<RenderFramePacket | undefined> {
         const mapIds = this.visibleMapIds;
         if ((mapIds.length | 0) <= 0) {
             return undefined;
@@ -365,7 +365,7 @@ export class WorkerFramePacketRuntime {
         );
         const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
         this.npcGpuFrameBuilder.beginFrame();
-        const entries = new Array<FramePacketMapEntry>(mapIds.length | 0);
+        const entries = new Array<RenderFramePacketMapEntry>(mapIds.length | 0);
         const wasmCountsByMapId = wasmTick.tickPatchCountsByMapId;
         const wasmPatchesPacked = wasmTick.tickPatchPacked;
 
@@ -412,7 +412,7 @@ export class WorkerFramePacketRuntime {
                 wasmLocStreamsForMap: wasmPatchRead.streamsForMap,
                 wasmCountsByMapId,
             });
-            entries[mapEntryIndex] = buildFramePacketMapEntry({
+            entries[mapEntryIndex] = buildRenderFramePacketMapEntry({
                 mapId,
                 cameraMapX: view.cameraMapX | 0,
                 cameraMapY: view.cameraMapY | 0,
@@ -427,7 +427,7 @@ export class WorkerFramePacketRuntime {
         this.validateWasmPatchRead(wasmReadOff, wasmCountsByMapId, wasmPatchesPacked);
 
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
-        return buildFramePacketFromMapEntries({
+        return buildRenderFramePacketFromMapEntries({
             frameCount: frameCount | 0,
             mapIdsVersion: this.mapIdsVersion | 0,
             viewStateVersion: this.viewStateVersion | 0,

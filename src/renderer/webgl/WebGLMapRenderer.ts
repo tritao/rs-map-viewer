@@ -22,9 +22,9 @@ import {
     TICK_PATCH_STREAM_COUNT,
     getLocTickPatchStreamIndex,
     getNpcTickPatchStreamIndex,
-} from "../../runtime/packets/FramePacket";
-import type { FramePacket } from "../../runtime/packets/FramePacket";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../../runtime/packets/NpcGpuFrame";
+} from "../RenderFramePacket";
+import type { RenderFramePacket } from "../RenderFramePacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../NpcGpuFrame";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
     ensureDrawRangePatchBackendInit,
@@ -135,9 +135,15 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         return this;
     }
 
-    override applyFramePacket(packet: FramePacket | undefined): void {
+    override applyFramePacket(packet: RenderFramePacket | undefined): void {
         if (packet?.runtimeRenderUpdates) {
-            this.applyMapObjRenderPacket(packet.runtimeRenderUpdates);
+            for (let index = 0; index < packet.runtimeRenderUpdates.updates.length; index++) {
+                const update = packet.runtimeRenderUpdates.updates[index];
+                if (!update) {
+                    continue;
+                }
+                this.replaceMapObjRenderData(update.mapId | 0, update.objRenderData);
+            }
         }
         this.framePacketState.apply(packet);
         if (!packet) {

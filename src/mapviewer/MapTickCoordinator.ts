@@ -1,7 +1,7 @@
-import type { FramePacket } from "../runtime/packets/FramePacket";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { CLIENT_TICK_SECONDS, SERVER_TICK_SECONDS } from "../runtime/TickTiming";
-import type { FrameStepInput } from "../runtime/MapFrameCoordinator";
-import { MapFrameCoordinator } from "../runtime/MapFrameCoordinator";
+import type { RenderFrameStepInput } from "../runtime/RenderFrameCoordinator";
+import { RenderFrameCoordinator } from "../runtime/RenderFrameCoordinator";
 
 const MAX_SERVER_TICKS_PER_FRAME = 1;
 const MAX_CLIENT_TICKS_PER_FRAME = 50;
@@ -13,9 +13,9 @@ export type TickClockState = Readonly<{
 }>;
 
 type TickPassInput = Readonly<{
-    frameInput: FrameStepInput;
-    frameRuntimeCoordinator: MapFrameCoordinator;
-    applyFramePacket(packet: FramePacket | undefined): void;
+    frameInput: RenderFrameStepInput;
+    renderFrameCoordinator: RenderFrameCoordinator;
+    applyFramePacket(packet: RenderFramePacket | undefined): void;
 }>;
 
 export class MapTickCoordinator {
@@ -62,7 +62,7 @@ export class MapTickCoordinator {
     }
 
     applyTick(input: TickPassInput): void {
-        const packet = input.frameRuntimeCoordinator.nextFramePacket(input.frameInput);
+        const packet = input.renderFrameCoordinator.nextFramePacket(input.frameInput);
         input.applyFramePacket(packet);
     }
 
@@ -70,12 +70,12 @@ export class MapTickCoordinator {
         this.needsClockResync = true;
     }
 
-    resetForCacheContext(frameCoordinator: MapFrameCoordinator): void {
+    resetForCacheContext(frameCoordinator: RenderFrameCoordinator): void {
         frameCoordinator.reset();
         this.requestClockResync();
     }
 
-    resetForShutdown(frameCoordinator: MapFrameCoordinator): void {
+    resetForShutdown(frameCoordinator: RenderFrameCoordinator): void {
         this.resetForCacheContext(frameCoordinator);
         this.lastTick = 0;
         this.lastClientTick = 0;

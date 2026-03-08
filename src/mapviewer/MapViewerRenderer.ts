@@ -19,9 +19,9 @@ import {
     resolveInteractionTargets,
 } from "../runtime/InteractionTargets";
 import {
-    type MapFrameSeamSample,
-    MapFrameCoordinator,
-} from "../runtime/MapFrameCoordinator";
+    type RenderFrameSeamSample,
+    RenderFrameCoordinator,
+} from "../runtime/RenderFrameCoordinator";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -46,7 +46,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly tickCoordinator = new MapTickCoordinator();
-    private readonly frameRuntimeCoordinator: MapFrameCoordinator;
+    private readonly renderFrameCoordinator: RenderFrameCoordinator;
     private readonly mapWorldSession: MapWorldSession;
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
@@ -89,7 +89,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
         this.renderer = this.createRenderer();
-        this.frameRuntimeCoordinator = new MapFrameCoordinator({
+        this.renderFrameCoordinator = new RenderFrameCoordinator({
             simWorkerPool: this.simWorkerPool,
             renderWorkerPool: this.renderWorkerPool,
             getLodDistance: () => this.renderer.lodDistance,
@@ -108,12 +108,11 @@ export class MapViewerRenderer extends RendererMainLoop {
             },
             getCameraMapX: () => this.camera.getMapX(),
             getCameraMapY: () => this.camera.getMapY(),
-            reportSeamSample: (sample) => this.recordFrameSeamSample(sample),
+            reportSeamSample: (sample) => this.recordRenderFrameSeamSample(sample),
         });
         this.mapWorldSession = new MapWorldSession({
             renderWorkerPool: this.renderWorkerPool,
             simWorkerPool: this.simWorkerPool,
-            requestFrameRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
         });
         this.mapManager = this.createMapManager();
     }
@@ -137,7 +136,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         return await this.renderWorkerPool.queueStaticMapPacket(input);
     }
 
-    private recordFrameSeamSample(sample: MapFrameSeamSample): void {
+    private recordRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
         if (!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry) {
             return;
         }
@@ -220,9 +219,19 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private async finalizeLoadedMap(packet: DecodedStaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
-        this.mapWorldSession.attachLoadedMapRuntime(packet);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
+        try {
+            const applied = await this.mapWorldSession.attachLoadedMapRuntime(packet);
+            if ((applied | 0) > 0) {
+                this.renderFrameCoordinator.invalidateLatestPacket();
+            }
+        } catch (error: unknown) {
+            console.error(
+                `[map-render] failed to attach obj render data for mapId=${mapData.mapId | 0}`,
+                error,
+            );
+        }
         if (mapData.minimapBlob.size > 0) {
             this.mapViewer.setMapImageUrl(
                 mapData.mapX,
@@ -309,10 +318,20 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
         objRenderData: ObjRenderData | undefined,
     ): void {
-        this.mapWorldSession.replaceMapObjRenderData(
-            getMapSquareId(mapX, mapY),
-            objRenderData,
-        );
+        const mapId = getMapSquareId(mapX, mapY);
+        void this.mapWorldSession
+            .replaceMapObjRenderData(mapId, objRenderData)
+            .then((applied) => {
+                if ((applied | 0) > 0) {
+                    this.renderFrameCoordinator.invalidateLatestPacket();
+                }
+            })
+            .catch((error: unknown) => {
+                console.error(
+                    `[map-render] failed to replace obj render data for mapId=${mapId | 0}`,
+                    error,
+                );
+            });
     }
 
     override async init() {
@@ -375,7 +394,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
-            this.tickCoordinator.resetForCacheContext(this.frameRuntimeCoordinator);
+            this.tickCoordinator.resetForCacheContext(this.renderFrameCoordinator);
             this.mapManager.cleanUp();
             await this.recreateRendererAndMapManager();
             this.initializeCacheState();
@@ -389,7 +408,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.mapWorldSession.reset();
-        this.tickCoordinator.resetForShutdown(this.frameRuntimeCoordinator);
+        this.tickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
     }
@@ -434,7 +453,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 ticksElapsed,
                 clientTicksElapsed,
             },
-            frameRuntimeCoordinator: this.frameRuntimeCoordinator,
+            renderFrameCoordinator: this.renderFrameCoordinator,
             applyFramePacket: (packet) => this.renderer.applyFramePacket(packet),
         });
     }

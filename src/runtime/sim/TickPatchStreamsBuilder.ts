@@ -4,7 +4,7 @@ import {
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../packets/FramePacket";
+} from "../../renderer/RenderFramePacket";
 import type { NpcSimMapState } from "./NpcSimStateStore";
 
 const NULL_DRAW_RANGE: DrawRange = [0, 0, 0];

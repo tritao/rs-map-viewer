@@ -3,8 +3,7 @@ import { vec4 } from "gl-matrix";
 
 import { MapData, ObjRenderData } from "../maprender/MapRenderPayload";
 import { Scene } from "../rs/scene/Scene";
-import type { FramePacket } from "../runtime/packets/FramePacket";
-import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import type { RenderFramePacket } from "./RenderFramePacket";
 import { FrameStats, Renderer, RendererStats } from "./Renderer";
 
 type MapRemovalInfo = Readonly<{
@@ -148,24 +147,10 @@ export abstract class MapRenderer<T extends MapSquareRenderable, U extends MapDa
 
     // Optional capability: renderer instance can consume per-frame worker packets (npc gpu data +
     // tick patch streams). Default is a no-op so non-packet renderers don't need to implement it.
-    applyFramePacket(_packet: FramePacket | undefined): void {}
+    applyFramePacket(_packet: RenderFramePacket | undefined): void {}
 
     // Optional capability: renderer instance can replace runtime-owned object render data for a map.
     replaceMapObjRenderData(_mapId: number, _objRenderData: ObjRenderData | undefined): void {}
-
-    // Optional capability: renderer instance can consume object runtime packets.
-    applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
-        if (!packet) {
-            return;
-        }
-        for (let index = 0; index < packet.updates.length; index++) {
-            const update = packet.updates[index];
-            if (!update) {
-                continue;
-            }
-            this.replaceMapObjRenderData(update.mapId | 0, update.objRenderData);
-        }
-    }
 
     addMap(mapData: U): void {
         this.mapsToLoad.push(mapData);

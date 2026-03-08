@@ -2,9 +2,9 @@ import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
-import type { FramePacket } from "../runtime/packets/FramePacket";
-import { framePacketTransferables } from "../runtime/packets/FramePacket";
-import type { MapObjRenderPacket } from "../runtime/packets/MapObjRenderPacket";
+import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
+import { renderFramePacketTransferables } from "../renderer/RenderFramePacket";
 import type { NpcStateDeltaPacket } from "../runtime/packets/NpcStateDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
@@ -150,12 +150,12 @@ const worker = {
     async buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
-    ): Promise<TransferDescriptor<FramePacket | undefined>> {
+    ): Promise<TransferDescriptor<RenderFramePacket | undefined>> {
         const { frameRuntime } = await getWorkerServices();
         const packet = await frameRuntime.buildRenderFramePacket(frameCount, cycleNow);
         return packet
-            ? Transfer<FramePacket | undefined>(packet, framePacketTransferables(packet))
-            : Transfer<FramePacket | undefined>(undefined, []);
+            ? Transfer<RenderFramePacket | undefined>(packet, renderFramePacketTransferables(packet))
+            : Transfer<RenderFramePacket | undefined>(undefined, []);
     },
     async setVars(values: Int32Array): Promise<void> {
         const { buildService } = await getWorkerServices();

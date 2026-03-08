@@ -1,17 +1,17 @@
-import type { FramePacket } from "./packets/FramePacket";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
 
 const EMPTY_INT32 = new Int32Array(0);
 
-export type FrameStepInput = Readonly<{
+export type RenderFrameStepInput = Readonly<{
     frameCount: number;
     cycle: number;
     ticksElapsed: number;
     clientTicksElapsed: number;
 }>;
 
-export type MapFrameSeamSample = Readonly<{
+export type RenderFrameSeamSample = Readonly<{
     worldMs: number;
     applyWorldMs: number;
     renderMs: number;
@@ -19,7 +19,7 @@ export type MapFrameSeamSample = Readonly<{
     worldEventCount: number;
 }>;
 
-type MapFrameCoordinatorDeps = Readonly<{
+type RenderFrameCoordinatorDeps = Readonly<{
     simWorkerPool: SimWorkerPool;
     renderWorkerPool: RenderDataWorkerPool;
     getLodDistance(): number;
@@ -27,12 +27,12 @@ type MapFrameCoordinatorDeps = Readonly<{
     getVisibleMapIds(): Int32Array;
     getCameraMapX(): number;
     getCameraMapY(): number;
-    reportSeamSample?(sample: MapFrameSeamSample): void;
+    reportSeamSample?(sample: RenderFrameSeamSample): void;
 }>;
 
-export class MapFrameCoordinator {
-    private pendingFramePacket: Promise<FramePacket | undefined> | undefined;
-    private latestFramePacket: FramePacket | undefined;
+export class RenderFrameCoordinator {
+    private pendingFramePacket: Promise<RenderFramePacket | undefined> | undefined;
+    private latestFramePacket: RenderFramePacket | undefined;
     private packetEpoch: number = 0;
     private needsPacketRefresh: boolean = false;
     private lastFrameMapIds: Int32Array = EMPTY_INT32;
@@ -43,9 +43,9 @@ export class MapFrameCoordinator {
         | Readonly<{ cameraMapX: number; cameraMapY: number; lodDistance: number }>
         | undefined;
 
-    constructor(private readonly deps: MapFrameCoordinatorDeps) {}
+    constructor(private readonly deps: RenderFrameCoordinatorDeps) {}
 
-    nextFramePacket(input: FrameStepInput): FramePacket | undefined {
+    nextFramePacket(input: RenderFrameStepInput): RenderFramePacket | undefined {
         const packet = this.latestFramePacket;
         const mapIds = this.deps.getVisibleMapIds();
         const cameraMapX = this.deps.getCameraMapX() | 0;
@@ -180,9 +180,9 @@ export class MapFrameCoordinator {
 
     private queueNextFramePacket(input: Readonly<{
         epoch: number;
-        input: FrameStepInput;
+        input: RenderFrameStepInput;
         updatePromises: Promise<void>[];
-    }>): Promise<FramePacket | undefined> {
+    }>): Promise<RenderFramePacket | undefined> {
         const runWorldStepAndBuildFrame = async () => {
             const seamStart = performance.now();
             const worldDeltaPacket = await this.deps.simWorkerPool.stepWorld(

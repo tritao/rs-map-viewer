@@ -463,3 +463,10 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
         runtimeRenderUpdates: packet.runtimeRenderUpdates,
     };
 }
+
+export type ParsedRenderFramePacket = ParsedFramePacket;
+export type RenderFramePacket = FramePacket;
+export type BuildRenderFramePacketInput = BuildFramePacketInput;
+export const renderFramePacketTransferables = framePacketTransferables;
+export const buildRenderFramePacket = buildFramePacket;
+export const parseRenderFramePacket = parseFramePacket;

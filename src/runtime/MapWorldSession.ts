@@ -11,7 +11,6 @@ import type { NpcTypeAnimationEntry } from "./NpcTypeAnimationTable";
 type MapWorldSessionDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
     simWorkerPool: SimWorkerPool;
-    requestFrameRefresh(): void;
 }>;
 
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
@@ -68,29 +67,18 @@ export class MapWorldSession {
         return await this.deps.simWorkerPool.applyNpcLifecycleEvents(events);
     }
 
-    replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): void {
-        void this.dispatchMapObjRenderData(mapId, objRenderData);
-    }
-
-    attachLoadedMapRuntime(packet: DecodedStaticMapPacket): void {
-        this.replaceMapObjRenderData(packet.mapData.mapId | 0, packet.runtimeBootstrap.objRenderData);
-    }
-
-    private async dispatchMapObjRenderData(
+    replaceMapObjRenderData(
         mapId: number,
         objRenderData: ObjRenderData | undefined,
-    ): Promise<void> {
-        try {
-            const applied = await this.deps.renderWorkerPool.replaceMapObjRenderData(
-                mapId,
-                objRenderData,
-            );
-            if ((applied | 0) > 0) {
-                this.deps.requestFrameRefresh();
-            }
-        } catch (error: unknown) {
-            console.error(`[map-render] failed to replace obj render data for mapId=${mapId | 0}`, error);
-        }
+    ): Promise<number> {
+        return this.deps.renderWorkerPool.replaceMapObjRenderData(mapId, objRenderData);
+    }
+
+    attachLoadedMapRuntime(packet: DecodedStaticMapPacket): Promise<number> {
+        return this.replaceMapObjRenderData(
+            packet.mapData.mapId | 0,
+            packet.runtimeBootstrap.objRenderData,
+        );
     }
 
     private reserveToken(mapId: number): number {
