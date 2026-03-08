@@ -135,12 +135,12 @@ export class WorkerFramePacketRuntime {
             if (!update) {
                 continue;
             }
-            if (update.kind !== "replaceMapObjRenderData") {
+            if (update.kind !== "replaceMapObjState") {
                 continue;
             }
             this.pendingRuntimeObjRenderDataByMapId.set(
                 update.mapId | 0,
-                update.objRenderData as ObjRenderData | undefined,
+                update.mapObjState as ObjRenderData | undefined,
             );
             applied = (applied + 1) | 0;
         }

@@ -28,9 +28,9 @@ type WorldDeltaPacketInput = Readonly<{
 }>;
 
 export type WorldMapObjUpdate = Readonly<{
-    kind: "replaceMapObjRenderData";
+    kind: "replaceMapObjState";
     mapId: number;
-    objRenderData?: unknown;
+    mapObjState?: unknown;
 }>;
 
 export type WorldObjDelta = Readonly<{

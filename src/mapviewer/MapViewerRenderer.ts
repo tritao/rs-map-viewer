@@ -319,9 +319,9 @@ export class MapViewerRenderer extends RendererMainLoop {
             obj: {
                 updates: [
                     {
-                        kind: "replaceMapObjRenderData",
+                        kind: "replaceMapObjState",
                         mapId: packet.mapData.mapId | 0,
-                        objRenderData: packet.runtimeBootstrap.objRenderData,
+                        mapObjState: packet.runtimeBootstrap.mapObjState,
                     },
                 ],
             },

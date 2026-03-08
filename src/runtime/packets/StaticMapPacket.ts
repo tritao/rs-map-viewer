@@ -14,9 +14,11 @@ export type MapRuntimeRegistration = Readonly<{
     npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
 
+export type MapObjState = ObjRenderData;
+
 export type MapRuntimeBootstrap = Readonly<{
     npcOrderKeys: Int32Array;
-    objRenderData?: ObjRenderData;
+    mapObjState?: MapObjState;
 }>;
 
 export function buildMapRuntimeRegistration(input: {
@@ -35,11 +37,12 @@ export function buildMapRuntimeRegistration(input: {
 
 export function buildMapRuntimeBootstrap(input: {
     npcOrderKeys?: Int32Array;
+    mapObjState?: MapObjState;
     objRenderData?: ObjRenderData;
 }): MapRuntimeBootstrap {
     return {
         npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        objRenderData: input.objRenderData,
+        mapObjState: input.mapObjState ?? input.objRenderData,
     };
 }
 
@@ -49,6 +52,7 @@ export function buildMapRuntimePayloads(input: {
     locsAnimated: ReadonlyArray<LocAnimatedData>;
     npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
     npcOrderKeys?: Int32Array;
+    mapObjState?: MapObjState;
     objRenderData?: ObjRenderData;
 }): Readonly<{
     runtimeRegistration: MapRuntimeRegistration;
@@ -63,6 +67,7 @@ export function buildMapRuntimePayloads(input: {
         }),
         runtimeBootstrap: buildMapRuntimeBootstrap({
             npcOrderKeys: input.npcOrderKeys,
+            mapObjState: input.mapObjState,
             objRenderData: input.objRenderData,
         }),
     };
@@ -80,8 +85,8 @@ export type StaticMapWirePacket = Readonly<{
         drawRangesPacked: Int32Array;
     };
     runtimeRegistration: MapRuntimeRegistration;
-    runtimeBootstrap: Omit<MapRuntimeBootstrap, "objRenderData"> & {
-        objRenderData?: Omit<ObjRenderData, "drawRanges"> & {
+    runtimeBootstrap: Omit<MapRuntimeBootstrap, "mapObjState"> & {
+        mapObjState?: Omit<MapObjState, "drawRanges"> & {
             drawRangeBucketLengths: Int32Array;
             drawRangesPacked: Int32Array;
         };
@@ -188,7 +193,7 @@ export function encodeStaticMapWirePacket(
 ): StaticMapWirePacket {
     const { drawRanges, ...restMapData } = mapData;
     const packedDrawRanges = packDrawRanges(drawRanges);
-    const objRenderData = runtimeBootstrap.objRenderData;
+    const mapObjState = runtimeBootstrap.mapObjState;
     return {
         mapData: {
             ...restMapData,
@@ -197,10 +202,10 @@ export function encodeStaticMapWirePacket(
         runtimeRegistration,
         runtimeBootstrap: {
             ...runtimeBootstrap,
-            objRenderData: objRenderData
+            mapObjState: mapObjState
                 ? {
-                      ...objRenderData,
-                      ...packDrawRanges(objRenderData.drawRanges),
+                      ...mapObjState,
+                      ...packDrawRanges(mapObjState.drawRanges),
                   }
                 : undefined,
         },
@@ -209,7 +214,7 @@ export function encodeStaticMapWirePacket(
 
 export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedStaticMapPacket {
     const { drawRangeBucketLengths, drawRangesPacked, ...restMapData } = packet.mapData;
-    const objRenderData = packet.runtimeBootstrap.objRenderData;
+    const mapObjState = packet.runtimeBootstrap.mapObjState;
     return {
         mapData: {
             ...restMapData,
@@ -218,12 +223,12 @@ export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): DecodedS
         runtimeRegistration: packet.runtimeRegistration,
         runtimeBootstrap: {
             ...packet.runtimeBootstrap,
-            objRenderData: objRenderData
+            mapObjState: mapObjState
                 ? {
-                      ...objRenderData,
+                      ...mapObjState,
                       drawRanges: unpackDrawRanges(
-                          objRenderData.drawRangeBucketLengths,
-                          objRenderData.drawRangesPacked,
+                          mapObjState.drawRangeBucketLengths,
+                          mapObjState.drawRangesPacked,
                       ),
                   }
                 : undefined,
@@ -313,30 +318,30 @@ export function collectStaticMapWirePacketTransferables(
         seen,
         packet.runtimeBootstrap.npcOrderKeys.buffer as Transferable,
     );
-    const objRenderData = packet.runtimeBootstrap.objRenderData;
-    if (objRenderData) {
-        pushTransferableUnique(transferables, seen, objRenderData.vertices.buffer as Transferable);
-        pushTransferableUnique(transferables, seen, objRenderData.indices.buffer as Transferable);
+    const mapObjState = packet.runtimeBootstrap.mapObjState;
+    if (mapObjState) {
+        pushTransferableUnique(transferables, seen, mapObjState.vertices.buffer as Transferable);
+        pushTransferableUnique(transferables, seen, mapObjState.indices.buffer as Transferable);
         pushTransferableUnique(
             transferables,
             seen,
-            objRenderData.usedTextureIds.buffer as Transferable,
+            mapObjState.usedTextureIds.buffer as Transferable,
         );
         pushTransferableUnique(
             transferables,
             seen,
-            objRenderData.drawRangeBucketLengths.buffer as Transferable,
+            mapObjState.drawRangeBucketLengths.buffer as Transferable,
         );
         pushTransferableUnique(
             transferables,
             seen,
-            objRenderData.drawRangesPacked.buffer as Transferable,
+            mapObjState.drawRangesPacked.buffer as Transferable,
         );
         for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
             pushTransferableUnique(
                 transferables,
                 seen,
-                objRenderData.modelInfoTextures[key].buffer as Transferable,
+                mapObjState.modelInfoTextures[key].buffer as Transferable,
             );
         }
     }
