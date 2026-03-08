@@ -1,5 +1,7 @@
-import type { ObjRenderData } from "../maprender/MapRenderPayload";
-import { MAP_RENDER_DRAW_BUCKET_KEYS } from "../maprender/MapRenderPayload";
+import {
+    MAP_RENDER_DRAW_BUCKET_KEYS,
+    type ObjRenderData,
+} from "../runtime/packets/StaticMapPacket";
 
 export type MapObjRenderUpdate = Readonly<{
     mapId: number;
