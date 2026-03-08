@@ -113,12 +113,6 @@ const worker = {
     async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
         const hasNpcStateChanges = ((deltaPacket.npcState?.changeCount ?? 0) | 0) > 0;
-        if (
-            hasNpcStateChanges &&
-            !frameRuntime.hasCompatibleInputStateVersion(deltaPacket.inputStateVersion | 0)
-        ) {
-            return 0;
-        }
         const deltaFrameCount = deltaPacket.frameCount | 0;
         if (hasNpcStateChanges && deltaFrameCount < (lastAppliedWorldDeltaFrameCount | 0)) {
             return 0;

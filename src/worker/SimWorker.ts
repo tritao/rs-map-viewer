@@ -1,7 +1,7 @@
 import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 import { worldDeltaPacketTransferables } from "../runtime/packets/WorldDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
@@ -62,19 +62,15 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
+    async applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyMapObjStateUpdates(updates);
+    },
     async syncState(update: WorldInputUpdate): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
         tickRuntime.applyWorldInputUpdate({
             mapIds:
                 update.mapIds !== undefined ? normalizeWorkerInt32Array(update.mapIds) : undefined,
-            viewState:
-                update.viewState !== undefined
-                    ? {
-                          cameraMapX: update.viewState.cameraMapX | 0,
-                          cameraMapY: update.viewState.cameraMapY | 0,
-                          lodDistance: Math.max(0, update.viewState.lodDistance | 0),
-                      }
-                    : undefined,
         });
     },
     async step(
@@ -112,6 +108,9 @@ const worker = {
     },
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return worldApi.applyNpcLifecyclePacketBytes(packet);
+    },
+    async applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
+        return worldApi.applyMapObjStateUpdates(updates);
     },
     async syncWorldState(update: WorldInputUpdate): Promise<void> {
         await worldApi.syncState(update);

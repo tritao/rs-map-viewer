@@ -13,27 +13,27 @@ import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMap
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
-import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build/SceneDrawCommandBuilder";
-import { ModelHashBuffer } from "../../runtime/build/ModelHashBuffer";
-import { createLocAnimatedGroupKey, type LocAnimatedGroup } from "../../runtime/build/LocAnimatedGroup";
-import { SceneGeometryBuffer, type SceneModel } from "../../runtime/build/SceneGeometryBuffer";
+import type { MapRenderCommandStreamRuntimeInput } from "../../shared/build/SceneDrawCommandBuilder";
+import { ModelHashBuffer } from "../../shared/build/ModelHashBuffer";
+import { createLocAnimatedGroupKey, type LocAnimatedGroup } from "../../shared/build/LocAnimatedGroup";
+import { SceneGeometryBuffer, type SceneModel } from "../../shared/build/SceneGeometryBuffer";
 import {
     type SceneDrawPlan,
     type SceneDrawPlanDigest,
     emitSceneModelsToSceneGeometryBuffer,
     summarizeSceneDrawPlan,
-} from "../../runtime/build/SceneDrawPlan";
-import type { SceneLocEntity } from "../../runtime/build/SceneLocEntity";
+} from "../../shared/build/SceneDrawPlan";
+import type { SceneLocEntity } from "../../shared/build/SceneLocEntity";
 import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
-} from "../../runtime/build/SceneDrawCommandBuilder";
-import { buildNpcGeometry } from "../../runtime/build/NpcGeometryBuilder";
-import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
-import { resolveLocRenderPlacement } from "../../runtime/build/LocPlacementResolver";
-import { getSceneLocs } from "../../runtime/build/SceneLocs";
+} from "../../shared/build/SceneDrawCommandBuilder";
+import { buildNpcGeometry } from "../../shared/build/NpcGeometryBuilder";
+import { buildObjRenderData } from "../../shared/build/ObjRenderDataBuilder";
+import { resolveLocRenderPlacement } from "../../shared/build/LocPlacementResolver";
+import { getSceneLocs } from "../../shared/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import type { DrawRange } from "../../shared/DrawRange";

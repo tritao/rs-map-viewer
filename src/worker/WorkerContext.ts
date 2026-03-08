@@ -46,13 +46,13 @@ export type WorkerViewState = Readonly<{
 
 export type WorldInputUpdate = Readonly<{
     mapIds?: Int32Array;
-    viewState?: WorkerViewState;
 }>;
 
-export type RenderFrameInputUpdate = WorldInputUpdate &
-    Readonly<{
-        hoveredMapIdsPacked?: Int32Array;
-    }>;
+export type RenderFrameInputUpdate = Readonly<{
+    mapIds?: Int32Array;
+    viewState?: WorkerViewState;
+    hoveredMapIdsPacked?: Int32Array;
+}>;
 
 export type WorkerInputStateVersion = number;
 

@@ -30,7 +30,7 @@ import {
     buildMapRuntimePayloads,
     mapObjStateFromRenderData,
 } from "../../shared/StaticMapPacket";
-import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
+import { buildObjRenderData } from "../../shared/build/ObjRenderDataBuilder";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,

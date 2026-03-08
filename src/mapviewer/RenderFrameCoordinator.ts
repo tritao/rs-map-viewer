@@ -106,11 +106,6 @@ export class RenderFrameCoordinator {
         void Promise.all([
             this.deps.simWorkerPool.world.syncState({
                 mapIds: EMPTY_INT32,
-                viewState: {
-                    cameraMapX: 0,
-                    cameraMapY: 0,
-                    lodDistance: 0,
-                },
             }),
             this.deps.renderWorkerPool.frame.syncState({
                 mapIds: EMPTY_INT32,
@@ -183,14 +178,6 @@ export class RenderFrameCoordinator {
                 cameraMapX: input.cameraMapX | 0,
                 cameraMapY: input.cameraMapY | 0,
                 lodDistance: input.lodDistance | 0,
-            };
-            worldInputUpdate = {
-                ...worldInputUpdate,
-                viewState: {
-                    cameraMapX: input.cameraMapX | 0,
-                    cameraMapY: input.cameraMapY | 0,
-                    lodDistance: input.lodDistance | 0,
-                },
             };
             renderFrameUpdate = {
                 ...renderFrameUpdate,

@@ -10,7 +10,10 @@ import { isModelData } from "../rs/model/ModelData";
 import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { buildStandaloneRenderData, type StandaloneRenderData } from "../runtime/build/StandaloneRenderDataBuilder";
+import {
+    buildStandaloneRenderData,
+    type StandaloneRenderData,
+} from "../shared/build/StandaloneRenderDataBuilder";
 import {
     renderObjIconSprite,
     type ObjIconSprite,

@@ -20,7 +20,6 @@ const UPDATE_FLAG_HAS_MOVEMENT_LOOP = 1 << 8;
 
 type WorldDeltaPacketInput = Readonly<{
     frameCount: number;
-    inputStateVersion: number;
     npcState?: NpcWorldState;
     objDelta?: WorldObjDelta;
 }>;
@@ -87,7 +86,6 @@ function getNpcWorldStateCounts(npcState: NpcWorldState): WorldDeltaPacketCounts
 
 export type WorldDeltaPacket = Readonly<{
     frameCount: number;
-    inputStateVersion: number;
     npcState?: NpcWorldState;
     objDelta?: WorldObjDelta;
 }>;
@@ -156,7 +154,6 @@ export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaP
     }
     return {
         frameCount: input.frameCount | 0,
-        inputStateVersion: input.inputStateVersion | 0,
         npcState: input.npcState,
         objDelta: input.objDelta,
     };
@@ -197,7 +194,6 @@ function updateFlagsFromDelta(delta: NpcUpdateDelta): number {
 export function buildWorldDeltaPacketFromNpcLifecycleEvents(
     input: Readonly<{
         frameCount: number;
-        inputStateVersion: number;
         lifecycleEvents: ReadonlyArray<NpcEvent>;
     }>,
 ): WorldDeltaPacket {
@@ -261,7 +257,6 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
 
     return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
-        inputStateVersion: input.inputStateVersion | 0,
         npcState: {
             changeCount: (spawnCount + updateCount + despawnCount) | 0,
             spawnStatePacked,
@@ -273,12 +268,12 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
 
 export function buildWorldDeltaPacketFromObjUpdates(
     input: Readonly<{
+        frameCount?: number;
         updates: ReadonlyArray<WorldMapObjUpdate>;
     }>,
 ): WorldDeltaPacket {
     return buildWorldDeltaPacket({
-        frameCount: 0,
-        inputStateVersion: 0,
+        frameCount: input.frameCount ?? 0,
         objDelta: {
             updates: input.updates,
         },
@@ -336,13 +331,36 @@ export function decodeNpcWorldStateUpdate(
 }
 
 export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transferable[] {
+    const transferables: Transferable[] = [];
     const npcState = packet.npcState;
-    if (!npcState) {
-        return [];
+    if (npcState) {
+        transferables.push(
+            npcState.spawnStatePacked.buffer as Transferable,
+            npcState.updateStatePacked.buffer as Transferable,
+            npcState.despawnStatePacked.buffer as Transferable,
+        );
     }
-    return [
-        npcState.spawnStatePacked.buffer as Transferable,
-        npcState.updateStatePacked.buffer as Transferable,
-        npcState.despawnStatePacked.buffer as Transferable,
-    ];
+    const objUpdates = packet.objDelta?.updates;
+    if (objUpdates) {
+        for (let index = 0; index < objUpdates.length; index++) {
+            const mapObjState = objUpdates[index]?.mapObjState;
+            if (!mapObjState) {
+                continue;
+            }
+            transferables.push(
+                mapObjState.vertices.buffer as Transferable,
+                mapObjState.indices.buffer as Transferable,
+                mapObjState.usedTextureIds.buffer as Transferable,
+            );
+            for (const key of Object.keys(mapObjState.modelInfoTextures) as Array<
+                keyof typeof mapObjState.modelInfoTextures
+            >) {
+                transferables.push(
+                    mapObjState.modelInfoTextures[key].buffer as Transferable,
+                    mapObjState.drawRanges[key].buffer as Transferable,
+                );
+            }
+        }
+    }
+    return transferables;
 }

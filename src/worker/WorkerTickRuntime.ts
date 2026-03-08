@@ -12,6 +12,8 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
+    type WorldMapObjUpdate,
+    buildWorldDeltaPacket,
     buildWorldDeltaPacketFromNpcLifecycleEvents,
 } from "../runtime/packets/WorldDeltaPacket";
 import {
@@ -25,7 +27,6 @@ import { WorkerMapRuntimeTracker } from "./WorkerContext";
 import type {
     MapRuntimeBootstrapInput,
     SimMapRuntimeRegistrationInput,
-    WorkerViewState,
     WorldInputUpdate,
 } from "./WorkerContext";
 
@@ -83,13 +84,8 @@ export class WorkerTickRuntime {
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
     private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
     private readonly npcSeqByInstanceId = new Map<number, number>();
-    private visibleMapIds: Int32Array = new Int32Array(0);
-    private inputStateVersion: number = 0;
-    private viewState: WorkerViewState = {
-        cameraMapX: 0,
-        cameraMapY: 0,
-        lodDistance: 0,
-    };
+    private activeMapIds: Int32Array = new Int32Array(0);
+    private readonly pendingMapObjStateUpdatesByMapId = new Map<number, WorldMapObjUpdate>();
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
 
     resetForCache(): void {
@@ -107,44 +103,35 @@ export class WorkerTickRuntime {
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.npcSnapshotByMapId.clear();
         this.npcSeqByInstanceId.clear();
-        this.visibleMapIds = new Int32Array(0);
-        this.inputStateVersion = 0;
-        this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
+        this.activeMapIds = new Int32Array(0);
+        this.pendingMapObjStateUpdatesByMapId.clear();
     }
 
     applyWorldInputUpdate(update: WorldInputUpdate): void {
         if (update.mapIds !== undefined) {
-            this.setVisibleMapIds(update.mapIds);
-        }
-        if (update.viewState !== undefined) {
-            this.setViewState(update.viewState);
+            this.setActiveMapIds(update.mapIds);
         }
     }
 
-    private setVisibleMapIds(mapIds: Int32Array): void {
+    applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): number {
+        let applied = 0;
+        for (let index = 0; index < updates.length; index++) {
+            const update = updates[index];
+            if (!update) {
+                continue;
+            }
+            this.pendingMapObjStateUpdatesByMapId.set(update.mapId | 0, update);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    private setActiveMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
-            this.visibleMapIds = new Int32Array(0);
-            this.inputStateVersion = (this.inputStateVersion + 1) | 0;
+            this.activeMapIds = new Int32Array(0);
             return;
         }
-        this.visibleMapIds = Int32Array.from(mapIds);
-        this.inputStateVersion = (this.inputStateVersion + 1) | 0;
-    }
-
-    private setViewState(viewState: WorkerViewState): void {
-        const nextViewState = {
-            cameraMapX: viewState.cameraMapX | 0,
-            cameraMapY: viewState.cameraMapY | 0,
-            lodDistance: Math.max(0, viewState.lodDistance | 0),
-        };
-        if (
-            (this.viewState.cameraMapX | 0) !== (nextViewState.cameraMapX | 0) ||
-            (this.viewState.cameraMapY | 0) !== (nextViewState.cameraMapY | 0) ||
-            (this.viewState.lodDistance | 0) !== (nextViewState.lodDistance | 0)
-        ) {
-            this.inputStateVersion = (this.inputStateVersion + 1) | 0;
-            this.viewState = nextViewState;
-        }
+        this.activeMapIds = Int32Array.from(mapIds);
     }
 
     private async resolveNpcBootstrapData(
@@ -313,6 +300,7 @@ export class WorkerTickRuntime {
         this.npcSnapshotByMapId.delete(mapId | 0);
         this.npcSimStateStore.unregisterMap(mapId);
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
+        this.pendingMapObjStateUpdatesByMapId.delete(mapId | 0);
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
@@ -495,8 +483,9 @@ export class WorkerTickRuntime {
         clientTicksElapsed: number,
         _cycleNow: number,
     ): Promise<WorldDeltaPacket | undefined> {
-        const mapIds = this.visibleMapIds;
-        if ((mapIds.length | 0) === 0) {
+        const mapIds = this.activeMapIds;
+        const hasPendingObjUpdates = (this.pendingMapObjStateUpdatesByMapId.size | 0) > 0;
+        if ((mapIds.length | 0) === 0 && !hasPendingObjUpdates) {
             return undefined;
         }
         const workerState = await this.getWorkerState();
@@ -523,10 +512,21 @@ export class WorkerTickRuntime {
             this.collectNpcLifecycleEventsForMap(mapId, state.npcs, events);
         }
 
-        return buildWorldDeltaPacketFromNpcLifecycleEvents({
+        const npcStatePacket = buildWorldDeltaPacketFromNpcLifecycleEvents({
             frameCount: frameCount | 0,
-            inputStateVersion: this.inputStateVersion | 0,
             lifecycleEvents: events,
+        });
+        const objUpdates = hasPendingObjUpdates
+            ? Array.from(this.pendingMapObjStateUpdatesByMapId.values())
+            : undefined;
+        this.pendingMapObjStateUpdatesByMapId.clear();
+        if (!npcStatePacket.npcState && !objUpdates) {
+            return undefined;
+        }
+        return buildWorldDeltaPacket({
+            frameCount: frameCount | 0,
+            npcState: npcStatePacket.npcState,
+            objDelta: objUpdates ? { updates: objUpdates } : undefined,
         });
     }
 

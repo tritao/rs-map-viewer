@@ -2,7 +2,7 @@ import { ModuleThread, Thread, spawn } from "threads";
 
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromLifecycleEvents } from "../runtime/packets/NpcLifecyclePacket";
-import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 import { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,
@@ -36,6 +36,8 @@ export class SimWorkerPool {
             this.unregisterMapRuntime(mapId, mapSimToken),
         applyNpcLifecycleEvents: (events: ReadonlyArray<NpcEvent>) =>
             this.applyNpcLifecycleEvents(events),
+        applyMapObjStateUpdates: (updates: ReadonlyArray<WorldMapObjUpdate>) =>
+            this.applyMapObjStateUpdates(updates),
         syncState: (update: WorldInputUpdate) => this.syncWorldState(update),
         step: (
             frameCount: number,
@@ -113,6 +115,10 @@ export class SimWorkerPool {
         return this.applyNpcLifecyclePacketBytes(
             encodeNpcLifecyclePacketFromLifecycleEvents(events),
         );
+    }
+
+    private applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
+        return this.withWorker((w) => w.applyMapObjStateUpdates(updates));
     }
 
     private syncWorldState(update: WorldInputUpdate): Promise<void> {

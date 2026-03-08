@@ -1,13 +1,13 @@
 import { vec3 } from "gl-matrix";
 
-import { InteractType } from "../InteractType";
+import { InteractType } from "../../runtime/InteractType";
 import { Model, computeTextureCoords } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { newDrawRange, type DrawRange } from "../../shared/DrawRange";
 import { clamp } from "../../util/MathUtil";
-import { LocAnimatedData } from "../LocAnimatedData";
+import { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import { LocAnimatedGroup } from "./LocAnimatedGroup";
 import { SceneLocEntity } from "./SceneLocEntity";
 import { VertexBuffer } from "./VertexBuffer";

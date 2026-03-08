@@ -1,4 +1,4 @@
-import type { StandaloneRenderData } from "../runtime/build/StandaloneRenderDataBuilder";
+import type { StandaloneRenderData } from "../shared/build/StandaloneRenderDataBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import type { CacheSession } from "../rs/loaders/CacheSession";
 import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";

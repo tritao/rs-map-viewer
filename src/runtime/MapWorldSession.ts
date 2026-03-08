@@ -5,10 +5,7 @@ import {
 import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
-import {
-    buildWorldDeltaPacketFromObjUpdates,
-    type WorldMapObjUpdate,
-} from "./packets/WorldDeltaPacket";
+import { type WorldMapObjUpdate } from "./packets/WorldDeltaPacket";
 import type {
     MapRuntimeBootstrapInput,
     RenderMapRuntimeRegistrationInput,
@@ -99,11 +96,7 @@ export class MapWorldSession {
         if (objUpdates && (objUpdates.length | 0) > 0) {
             applied =
                 (applied +
-                    (await this.deps.renderWorkerPool.frame.applyWorldDelta(
-                        buildWorldDeltaPacketFromObjUpdates({
-                            updates: objUpdates,
-                        }),
-                    ))) |
+                    (await this.deps.simWorkerPool.world.applyMapObjStateUpdates(objUpdates))) |
                 0;
         }
         return applied | 0;

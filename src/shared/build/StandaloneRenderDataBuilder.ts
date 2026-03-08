@@ -2,7 +2,7 @@ import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
 } from "../../shared/StaticMapPacket";
-import { InteractType } from "../InteractType";
+import { InteractType } from "../../runtime/InteractType";
 import { Model } from "../../rs/model/Model";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
 import {

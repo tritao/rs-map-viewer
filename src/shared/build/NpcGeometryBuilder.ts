@@ -6,10 +6,10 @@ import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import type { DrawRange } from "../../shared/DrawRange";
-import { AnimationFrames } from "../entities/AnimationFrames";
-import type { NpcData } from "../entities/NpcData";
-import { createNpcDatas, createNpcDatasFromSpawns } from "../entities/NpcData";
-import type { NpcSpawnGroup } from "../entities/NpcSpawnGroup";
+import { AnimationFrames } from "../../runtime/entities/AnimationFrames";
+import type { NpcData } from "../../runtime/entities/NpcData";
+import { createNpcDatas, createNpcDatasFromSpawns } from "../../runtime/entities/NpcData";
+import type { NpcSpawnGroup } from "../../runtime/entities/NpcSpawnGroup";
 import { SceneGeometryBuffer } from "./SceneGeometryBuffer";
 
 const NPC_SCENE_BUFFER_INIT_VERTEX_COUNT = 20000;

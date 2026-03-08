@@ -4,7 +4,7 @@ import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
 import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { Scene } from "../../rs/scene/Scene";
 import { ContourGroundInfo } from "../../rs/scene/model/LocModelLoader";
-import { SceneLocEntity } from "../build/SceneLocEntity";
+import { SceneLocEntity } from "./SceneLocEntity";
 import { isLowDetail } from "./SceneLocs";
 
 export type ResolvedLocRenderPlacement = Readonly<{

@@ -1,5 +1,5 @@
 import { SceneLocEntity } from "./SceneLocEntity";
-import { AnimationFrames } from "../entities/AnimationFrames";
+import { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import { LocModelType } from "../../rs/config/loctype/LocModelType";
 
 export type LocAnimatedGroup = {
