@@ -6,13 +6,14 @@ import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { AnimationFrames } from "../entities/AnimationFrames";
-import { DrawRange, NULL_DRAW_RANGE } from "../contracts/DrawRange";
+import type { DrawRange } from "../DrawRange";
 import type { NpcData } from "../entities/NpcData";
 import { createNpcDatas, createNpcDatasFromSpawns } from "../entities/NpcData";
 import type { NpcSpawnGroup } from "../entities/NpcSpawnGroup";
 import { SceneGeometryBuffer } from "./SceneGeometryBuffer";
 
 const NPC_SCENE_BUFFER_INIT_VERTEX_COUNT = 20000;
+const NULL_DRAW_RANGE: DrawRange = [0, 0, 0];
 
 function addNpcAnimationFrames(
     npcModelLoader: NpcModelLoader,

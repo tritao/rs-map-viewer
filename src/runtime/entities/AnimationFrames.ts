@@ -1,4 +1,4 @@
-import type { DrawRange } from "../contracts/DrawRange";
+import type { DrawRange } from "../DrawRange";
 
 export type AnimationFrames = {
     frames: DrawRange[];

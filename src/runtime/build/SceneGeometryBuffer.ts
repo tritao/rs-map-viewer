@@ -6,7 +6,7 @@ import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { clamp } from "../../util/MathUtil";
-import { DrawRange, newDrawRange } from "../contracts/DrawRange";
+import { newDrawRange, type DrawRange } from "../DrawRange";
 import { LocAnimatedData } from "../contracts/LocAnimatedData";
 import { LocAnimatedGroup } from "./LocAnimatedGroup";
 import { SceneLocEntity } from "./SceneLocEntity";

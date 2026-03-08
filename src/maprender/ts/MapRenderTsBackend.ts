@@ -35,7 +35,7 @@ import { buildObjRenderData } from "../../runtime/build/ObjRenderDataBuilder";
 import { resolveLocRenderPlacement } from "../../runtime/build/LocPlacementResolver";
 import { getSceneLocs } from "../../runtime/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
-import { type DrawRange, NULL_DRAW_RANGE } from "../../runtime/contracts/DrawRange";
+import type { DrawRange } from "../../runtime/DrawRange";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import type { MapRenderBuildDeps } from "../MapRenderBackend";
 import type {
@@ -76,6 +76,7 @@ export type BuildMapDataBridgeInputResult = Readonly<{
 
 type StageTimer = <T>(name: string, fn: () => T) => T;
 type AsyncStageTimer = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
+const NULL_DRAW_RANGE: DrawRange = [0, 0, 0];
 
 type SceneBuildStageResult = Readonly<{
     borderSize: number;
