@@ -17,7 +17,7 @@ export type MapObjStateUpdatesInput = Readonly<{
     updates: ReadonlyArray<WorldMapObjUpdate>;
 }>;
 
-export type WorldEventsInput = Readonly<{
+export type WorldInput = Readonly<{
     npc?: NpcLifecycleEventsInput;
     obj?: MapObjStateUpdatesInput;
 }>;
@@ -48,7 +48,7 @@ export class WorldSession {
         this.deps.worldRuntimePool.unregisterLoadedMap(mapId | 0);
     }
 
-    async applyWorldEvents(input: WorldEventsInput): Promise<number> {
+    async applyWorldInput(input: WorldInput): Promise<number> {
         let applied = 0;
         const npcLifecycleEvents = input.npc?.lifecycleEvents;
         if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {

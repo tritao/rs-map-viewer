@@ -24,7 +24,7 @@ import {
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { WorldSession, type WorldEventsInput } from "../world/WorldSession";
+import { WorldSession, type WorldInput } from "../world/WorldSession";
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -307,8 +307,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.worldSession.unregisterLoadedMap(mapInfo.mapId);
     }
 
-    async applyWorldEvents(input: WorldEventsInput): Promise<number> {
-        const applied = await this.worldSession.applyWorldEvents(input);
+    async applyWorldInput(input: WorldInput): Promise<number> {
+        const applied = await this.worldSession.applyWorldInput(input);
         if ((applied | 0) > 0 && input.obj?.updates && (input.obj.updates.length | 0) > 0) {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
@@ -318,7 +318,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async attachLoadedRuntimeMapObjRenderData(
         packet: StaticMapPacket,
     ): Promise<void> {
-        await this.applyWorldEvents({
+        await this.applyWorldInput({
             obj: {
                 updates: [
                     {

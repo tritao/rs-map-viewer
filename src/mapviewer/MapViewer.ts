@@ -11,7 +11,7 @@ import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession"
 import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { type WorldEventsInput } from "../world/WorldSession";
+import { type WorldInput } from "../world/WorldSession";
 import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
@@ -515,8 +515,8 @@ export class MapViewer {
         return this.runtimeOptions;
     }
 
-    applyWorldEvents(input: WorldEventsInput): Promise<number> {
-        return this.renderer.applyWorldEvents(input);
+    applyWorldInput(input: WorldInput): Promise<number> {
+        return this.renderer.applyWorldInput(input);
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
