@@ -3,6 +3,7 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
+import type { WorldMapActivationInput } from "./WorldSession";
 
 type WorldRuntimePoolDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;
@@ -30,14 +31,12 @@ export class WorldRuntimePool {
         return (this.activationVersion | 0) === (version | 0);
     }
 
-    async activateLoadedMap(
-        packet: StaticMapPacket,
-        activationVersion: number,
-    ): Promise<boolean> {
+    async activateLoadedMap(input: WorldMapActivationInput): Promise<boolean> {
+        const packet = input.staticMap;
         const mapId = packet.mapData.mapId | 0;
         const mapSimToken = await this.activateLoadedMapRuntime(packet);
         if (
-            !this.isActivationVersionCurrent(activationVersion) ||
+            !this.isActivationVersionCurrent(input.activationVersion) ||
             !this.hasToken(mapId, mapSimToken)
         ) {
             this.deactivateLoadedMap(mapId);

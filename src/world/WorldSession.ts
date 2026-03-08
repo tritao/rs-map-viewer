@@ -22,6 +22,11 @@ export type WorldInput = Readonly<{
     obj?: MapObjStateUpdatesInput;
 }>;
 
+export type WorldMapActivationInput = Readonly<{
+    staticMap: StaticMapPacket;
+    activationVersion: number;
+}>;
+
 export class WorldSession {
     constructor(private readonly deps: WorldSessionDeps) {}
 
@@ -37,11 +42,8 @@ export class WorldSession {
         return this.deps.worldRuntimePool.isActivationVersionCurrent(version);
     }
 
-    async activateLoadedMap(
-        packet: StaticMapPacket,
-        activationVersion: number,
-    ): Promise<boolean> {
-        return await this.deps.worldRuntimePool.activateLoadedMap(packet, activationVersion);
+    async activateLoadedMap(input: WorldMapActivationInput): Promise<boolean> {
+        return await this.deps.worldRuntimePool.activateLoadedMap(input);
     }
 
     deactivateLoadedMap(mapId: number): void {

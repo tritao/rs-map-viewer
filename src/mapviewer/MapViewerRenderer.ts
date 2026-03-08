@@ -285,8 +285,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         try {
             const ok = await this.worldSession.activateLoadedMap(
-                staticMapPacket,
-                queuedActivationVersion,
+                {
+                    staticMap: staticMapPacket,
+                    activationVersion: queuedActivationVersion,
+                },
             );
             if (!ok) {
                 return;
