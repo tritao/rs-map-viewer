@@ -7,9 +7,9 @@ import {
 } from "../maprender/MapRenderPayload";
 import { InteractType } from "../runtime/contracts/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
+import { createRendererTexturePolicy } from "../renderer/RendererTexturePolicy";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
-import { GameType } from "../rs/cache/CacheInfo";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
@@ -61,18 +61,13 @@ export class MapViewerRenderer extends RendererMainLoop {
     private isInitialized: boolean = false;
 
     private createRenderer(): MapRenderer<MapSquareRenderable, MapData> {
+        const texturePolicy = createRendererTexturePolicy(this.mapViewer.session.cache.info);
         return new WebGLMapRenderer(
             {
                 cacheName: this.mapViewer.session.cache.info.name,
                 textureLoader: this.mapViewer.session.loaders.textureLoader,
-                isNewTextureAnim:
-                    this.mapViewer.session.cache.info.game === GameType.Runescape &&
-                    this.mapViewer.session.cache.info.revision >= 681,
-                maxTexturePreloadCount:
-                    this.mapViewer.session.cache.info.game === GameType.Runescape &&
-                    this.mapViewer.session.cache.info.revision >= 508
-                        ? 64
-                        : undefined,
+                isNewTextureAnim: texturePolicy.isNewTextureAnim,
+                maxTexturePreloadCount: texturePolicy.maxTexturePreloadCount,
             },
             this.mapViewer.renderDistance,
             this.mapViewer.unloadDistance,

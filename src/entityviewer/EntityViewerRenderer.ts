@@ -1,7 +1,7 @@
 import type { StandaloneRenderData } from "../runtime/build/StandaloneRenderDataBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
-import { GameType } from "../rs/cache/CacheInfo";
 import type { CacheSession } from "../rs/loaders/CacheSession";
+import { createRendererTexturePolicy } from "../renderer/RendererTexturePolicy";
 import { WebGLEntityRenderer, type SetEntityRenderDataOptions } from "../renderer/webgl/WebGLEntityRenderer";
 
 export class EntityViewerRenderer extends RendererMainLoop {
@@ -12,16 +12,11 @@ export class EntityViewerRenderer extends RendererMainLoop {
     constructor(session: CacheSession) {
         super();
         this.session = session;
+        const texturePolicy = createRendererTexturePolicy(session.cache.info);
         this.renderer = new WebGLEntityRenderer({
             textureLoader: session.loaders.textureLoader,
-            isNewTextureAnim:
-                session.cache.info.game === GameType.Runescape &&
-                session.cache.info.revision >= 681,
-            maxTexturePreloadCount:
-                session.cache.info.game === GameType.Runescape &&
-                session.cache.info.revision >= 508
-                    ? 64
-                    : undefined,
+            isNewTextureAnim: texturePolicy.isNewTextureAnim,
+            maxTexturePreloadCount: texturePolicy.maxTexturePreloadCount,
         });
     }
 
