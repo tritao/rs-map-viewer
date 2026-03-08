@@ -14,7 +14,7 @@ import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
-import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapWireCodec";
+import type { DecodedStaticMapPacket } from "../runtime/contracts/StaticMapPacket";
 import {
     collectInteractionHits,
     resolveInteractionTargets,

@@ -9,7 +9,7 @@ import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimatio
 import {
     decodeStaticMapWirePacket,
     type DecodedStaticMapPacket,
-} from "../runtime/contracts/StaticMapWireCodec";
+} from "../runtime/contracts/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/contracts/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
