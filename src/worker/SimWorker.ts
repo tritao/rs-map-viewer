@@ -6,11 +6,11 @@ import { npcStateDeltaPacketTransferables } from "../runtime/packets/NpcStateDel
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
 
 type SimWorkerServices = Readonly<{
-    buildService: import("./RenderDataWorkerBuild").RenderDataWorkerBuild;
-    tickRuntime: import("./tick/WorkerTickRuntime").WorkerTickRuntime;
+    buildService: import("./WorkerBuildService").WorkerBuildService;
+    tickRuntime: import("./runtime/WorkerTickRuntime").WorkerTickRuntime;
 }>;
 
 let workerServicesPromise: Promise<SimWorkerServices> | undefined;
@@ -21,11 +21,11 @@ async function getWorkerServices(): Promise<SimWorkerServices> {
         return await existing;
     }
     const created = (async () => {
-        const [{ RenderDataWorkerBuild }, { WorkerTickRuntime }] = await Promise.all([
-            import("./RenderDataWorkerBuild"),
-            import("./tick/WorkerTickRuntime"),
+        const [{ WorkerBuildService }, { WorkerTickRuntime }] = await Promise.all([
+            import("./WorkerBuildService"),
+            import("./runtime/WorkerTickRuntime"),
         ]);
-        const buildService = new RenderDataWorkerBuild();
+        const buildService = new WorkerBuildService();
         const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
         return {
             buildService,

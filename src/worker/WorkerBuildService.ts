@@ -34,7 +34,7 @@ import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
     WorkerState,
-} from "./RenderDataWorkerTypes";
+} from "./WorkerShared";
 
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 
@@ -248,7 +248,7 @@ async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise
     await Promise.all(promises);
 }
 
-export class RenderDataWorkerBuild {
+export class WorkerBuildService {
     private workerStatePromise: Promise<WorkerStateInit> | undefined;
 
     async requireWorkerState(): Promise<WorkerState> {

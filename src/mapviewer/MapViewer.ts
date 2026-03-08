@@ -20,7 +20,7 @@ import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { WorkerRuntimeOptions } from "../worker/RenderDataWorkerTypes";
+import type { WorkerRuntimeOptions } from "../worker/WorkerShared";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { Camera, CameraView, ProjectionType } from "../runtime/Camera";
 import { MapManager } from "./MapManager";

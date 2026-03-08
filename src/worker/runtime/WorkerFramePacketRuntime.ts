@@ -29,7 +29,7 @@ import {
 import { LOC_CYCLE_SCALE } from "../../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
-import { WorkerMapSimLifecycle } from "./WorkerTickRuntime";
+import { WorkerMapSimLifecycle } from "../WorkerShared";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;

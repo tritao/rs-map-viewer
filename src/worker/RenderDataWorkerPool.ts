@@ -13,8 +13,8 @@ import {
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
-import { ensureWorkerSpawnBootstrap } from "./SpawnBootstrapLoader";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
+import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
 type WorkerDescriptorLike = Readonly<{ init: Promise<RenderDataWorkerThread> }>;

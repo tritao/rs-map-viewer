@@ -10,13 +10,13 @@ import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerShared";
 
-export type { WorkerRuntimeOptions, WorkerState } from "./RenderDataWorkerTypes";
+export type { WorkerRuntimeOptions, WorkerState } from "./WorkerShared";
 
 type RenderDataWorkerServices = Readonly<{
-    buildService: import("./RenderDataWorkerBuild").RenderDataWorkerBuild;
-    frameRuntime: import("./tick/WorkerFramePacketRuntime").WorkerFramePacketRuntime;
+    buildService: import("./WorkerBuildService").WorkerBuildService;
+    frameRuntime: import("./runtime/WorkerFramePacketRuntime").WorkerFramePacketRuntime;
 }>;
 
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
@@ -30,11 +30,11 @@ async function getWorkerServices(): Promise<RenderDataWorkerServices> {
         return await existing;
     }
     const created = (async () => {
-        const [{ RenderDataWorkerBuild }, { WorkerFramePacketRuntime }] = await Promise.all([
-            import("./RenderDataWorkerBuild"),
-            import("./tick/WorkerFramePacketRuntime"),
+        const [{ WorkerBuildService }, { WorkerFramePacketRuntime }] = await Promise.all([
+            import("./WorkerBuildService"),
+            import("./runtime/WorkerFramePacketRuntime"),
         ]);
-        const buildService = new RenderDataWorkerBuild();
+        const buildService = new WorkerBuildService();
         const frameRuntime = new WorkerFramePacketRuntime(() => buildService.requireWorkerState());
         return {
             buildService,
