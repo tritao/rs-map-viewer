@@ -12,7 +12,7 @@ import { LocLoadType } from "../../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
 import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
-import type { LocAnimatedData } from "../../runtime/contracts/LocAnimatedData";
+import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import type { MapRenderCommandStreamRuntimeInput } from "../../runtime/build/SceneDrawCommandBuilder";
 import { ModelHashBuffer } from "../../runtime/build/ModelHashBuffer";
 import { createLocAnimatedGroupKey, type LocAnimatedGroup } from "../../runtime/build/LocAnimatedGroup";
@@ -48,7 +48,7 @@ import {
     buildMapRuntimePayloads,
 } from "../MapRenderPayload";
 import { loadMinimapBlob } from "./MinimapData";
-import type { NpcTypeAnimationEntry } from "../../runtime/contracts/NpcTypeAnimationTable";
+import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 

@@ -5,12 +5,12 @@ import { MinimapData } from "../maprender/ts/MinimapData";
 import type { FramePacket } from "../runtime/contracts/FramePacket";
 import type { MapObjRenderPacket } from "../runtime/contracts/MapObjRenderPacket";
 import type { NpcStateDeltaPacket } from "../runtime/contracts/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../runtime/contracts/NpcTypeAnimationTable";
+import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import {
     decodeStaticMapWirePacket,
     type DecodedStaticMapPacket,
 } from "../runtime/contracts/StaticMapPacket";
-import type { LocAnimatedData } from "../runtime/contracts/LocAnimatedData";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./RenderDataWorkerTypes";

@@ -6,7 +6,7 @@ import type { DecodedStaticMapPacket } from "./contracts/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
-import type { NpcTypeAnimationEntry } from "./contracts/NpcTypeAnimationTable";
+import type { NpcTypeAnimationEntry } from "./NpcTypeAnimationTable";
 
 type MapWorldSessionDeps = Readonly<{
     renderWorkerPool: RenderDataWorkerPool;

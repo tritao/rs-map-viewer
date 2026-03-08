@@ -7,7 +7,7 @@ import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
 import { clamp } from "../../util/MathUtil";
 import { newDrawRange, type DrawRange } from "../DrawRange";
-import { LocAnimatedData } from "../contracts/LocAnimatedData";
+import { LocAnimatedData } from "../LocAnimatedData";
 import { LocAnimatedGroup } from "./LocAnimatedGroup";
 import { SceneLocEntity } from "./SceneLocEntity";
 import { VertexBuffer } from "./VertexBuffer";

@@ -1,5 +1,5 @@
 import type { NpcSpawn } from "../../data/npc/NpcSpawn";
-import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
+import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
 import { type NpcData, createNpcDatasFromSpawns } from "../entities/NpcData";
 import { orderByPacketKeys } from "./orderByPacketKeys";
 import type { NpcSpawnEvent } from "../entities/NpcEvents";

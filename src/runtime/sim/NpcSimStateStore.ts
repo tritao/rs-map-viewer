@@ -10,9 +10,9 @@ import {
     decodeNpcStateDeltaUpdate,
     validateNpcStateDeltaPacket,
 } from "../contracts/NpcStateDeltaPacket";
-import type { NpcTypeAnimationEntry } from "../contracts/NpcTypeAnimationTable";
+import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
 import { LocAnimated } from "./LocAnimated";
-import type { LocAnimatedData } from "../contracts/LocAnimatedData";
+import type { LocAnimatedData } from "../LocAnimatedData";
 import { Npc } from "../entities/Npc";
 import type { NpcEvent, NpcSpawnEvent, NpcUpdateEvent } from "../entities/NpcEvents";
 import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
