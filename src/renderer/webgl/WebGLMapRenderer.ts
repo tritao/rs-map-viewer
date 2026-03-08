@@ -42,11 +42,11 @@ import { type InteractionsCallback, WebGLInteractionSystem } from "./WebGLIntera
 import { WebGLMapSquare } from "./WebGLMapSquare";
 import { WebGLPrograms } from "./WebGLPrograms";
 import { WebGLTextureSystem } from "./WebGLTextureSystem";
+import { applyDrawRangePatches } from "./applyDrawRangePatches";
 import type {
     InteractionControllerRenderer,
     InteractionSnapshotRenderer,
-} from "../RendererInteraction";
-import { applyDrawRangePatches } from "./applyDrawRangePatches";
+} from "../MapRenderer";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;

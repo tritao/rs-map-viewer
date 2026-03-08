@@ -7,7 +7,7 @@ import {
 } from "../maprender/MapRenderPayload";
 import { InteractType } from "../runtime/contracts/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
-import { createRendererTexturePolicy } from "../renderer/RendererTexturePolicy";
+import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
