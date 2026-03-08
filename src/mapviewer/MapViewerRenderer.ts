@@ -21,7 +21,7 @@ import {
 import {
     type RenderFrameSeamSample,
     RenderFrameCoordinator,
-} from "../runtime/RenderFrameCoordinator";
+} from "./RenderFrameCoordinator";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";

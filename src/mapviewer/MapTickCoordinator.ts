@@ -1,7 +1,7 @@
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { CLIENT_TICK_SECONDS, SERVER_TICK_SECONDS } from "../runtime/TickTiming";
-import type { RenderFrameStepInput } from "../runtime/RenderFrameCoordinator";
-import { RenderFrameCoordinator } from "../runtime/RenderFrameCoordinator";
+import type { RenderFrameStepInput } from "./RenderFrameCoordinator";
+import { RenderFrameCoordinator } from "./RenderFrameCoordinator";
 
 const MAX_SERVER_TICKS_PER_FRAME = 1;
 const MAX_CLIENT_TICKS_PER_FRAME = 50;

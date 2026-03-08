@@ -1,7 +1,7 @@
 import {
     type ParsedRenderFramePacket,
     type RenderFramePacket,
-    type ParsedFrameTickPatches,
+    type ParsedRenderFrameTickPatches,
     parseRenderFramePacket,
 } from "../RenderFramePacket";
 import {
@@ -19,7 +19,7 @@ export class WebGLFramePacketState {
     );
     private npcDataRingIndex: number = 0;
     private npcGpuFrameData: NpcGpuFrameData | undefined;
-    private frameTickPatches: ParsedFrameTickPatches | undefined;
+    private frameTickPatches: ParsedRenderFrameTickPatches | undefined;
     private frameRenderListPacked: Int32Array | undefined;
     private lastAppliedFramePacketFrameCount: number = -1;
     private npcDataTextureDirty: boolean = false;
@@ -49,7 +49,7 @@ export class WebGLFramePacketState {
         this.npcDataTextureDirty = false;
     }
 
-    getTickPatches(): ParsedFrameTickPatches | undefined {
+    getTickPatches(): ParsedRenderFrameTickPatches | undefined {
         return this.frameTickPatches;
     }
 

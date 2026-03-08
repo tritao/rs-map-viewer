@@ -18,13 +18,15 @@ import {
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     FRAME_RENDER_LIST_STRIDE,
+} from "../RenderFramePacket";
+import type { RenderFramePacket } from "../RenderFramePacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../NpcGpuFrame";
+import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     getLocTickPatchStreamIndex,
     getNpcTickPatchStreamIndex,
-} from "../RenderFramePacket";
-import type { RenderFramePacket } from "../RenderFramePacket";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../NpcGpuFrame";
+} from "../../runtime/TickPatchLayout";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
     ensureDrawRangePatchBackendInit,

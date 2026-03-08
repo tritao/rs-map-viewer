@@ -7,7 +7,7 @@ import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../renderer/RenderFramePacket";
+} from "../runtime/TickPatchLayout";
 import {
     type RenderFramePacketMapEntry,
     buildRenderFramePacketFromMapEntries,

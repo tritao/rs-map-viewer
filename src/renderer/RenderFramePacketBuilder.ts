@@ -2,14 +2,14 @@ import {
     FRAME_RENDER_LIST_FLAG_HAS_NPCS,
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
-    type FramePacket,
+    type RenderFramePacket,
     TICK_PATCH_STREAM_COUNT,
     buildRenderFramePacket,
 } from "./RenderFramePacket";
 import type { MapObjRenderPacket } from "./MapObjRenderPacket";
 import type { NpcGpuFrameData } from "./NpcGpuFrame";
 
-export type FramePacketMapEntry = Readonly<{
+export type RenderFramePacketMapEntry = Readonly<{
     mapId: number;
     renderFlags: number;
     npcRangeStart: number;
@@ -18,7 +18,7 @@ export type FramePacketMapEntry = Readonly<{
     tickPatchStreams: readonly (Int32Array | undefined)[];
 }>;
 
-export type BuildFramePacketMapEntryInput = Readonly<{
+export type BuildRenderFramePacketMapEntryInput = Readonly<{
     mapId: number;
     cameraMapX: number;
     cameraMapY: number;
@@ -30,13 +30,13 @@ export type BuildFramePacketMapEntryInput = Readonly<{
     tickPatchStreams: readonly (Int32Array | undefined)[];
 }>;
 
-export type BuildFramePacketFromMapEntriesInput = Readonly<{
+export type BuildRenderFramePacketFromMapEntriesInput = Readonly<{
     frameCount: number;
     mapIdsVersion: number;
     viewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
-    entries: readonly FramePacketMapEntry[];
+    entries: readonly RenderFramePacketMapEntry[];
     runtimeRenderUpdates?: MapObjRenderPacket;
 }>;
 
@@ -67,9 +67,9 @@ export function computeFrameRenderFlags(
     return flags | 0;
 }
 
-export function buildFramePacketMapEntry(
-    input: BuildFramePacketMapEntryInput,
-): FramePacketMapEntry {
+export function buildRenderFramePacketMapEntry(
+    input: BuildRenderFramePacketMapEntryInput,
+): RenderFramePacketMapEntry {
     return {
         mapId: input.mapId | 0,
         renderFlags: computeFrameRenderFlags(
@@ -87,9 +87,9 @@ export function buildFramePacketMapEntry(
     };
 }
 
-export function buildFramePacketFromMapEntries(
-    input: BuildFramePacketFromMapEntriesInput,
-): FramePacket {
+export function buildRenderFramePacketFromMapEntries(
+    input: BuildRenderFramePacketFromMapEntriesInput,
+): RenderFramePacket {
     const entryCount = input.entries.length | 0;
     const npcRangesByMapIdPacked = new Int32Array((entryCount | 0) * 3);
     const renderListPacked = new Int32Array((entryCount | 0) * 2);
@@ -128,9 +128,3 @@ export function buildFramePacketFromMapEntries(
         runtimeRenderUpdates: input.runtimeRenderUpdates,
     });
 }
-
-export type RenderFramePacketMapEntry = FramePacketMapEntry;
-export type BuildRenderFramePacketMapEntryInput = BuildFramePacketMapEntryInput;
-export type BuildRenderFramePacketFromMapEntriesInput = BuildFramePacketFromMapEntriesInput;
-export const buildRenderFramePacketMapEntry = buildFramePacketMapEntry;
-export const buildRenderFramePacketFromMapEntries = buildFramePacketFromMapEntries;

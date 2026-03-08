@@ -3,6 +3,17 @@ import {
     type MapObjRenderPacket,
     mapObjRenderPacketTransferables,
 } from "./MapObjRenderPacket";
+import {
+    LOC_TICK_PATCH_STREAM_BASE,
+    LOC_TICK_PATCH_STREAM_COUNT,
+    NPC_TICK_PATCH_STREAM_BASE,
+    NPC_TICK_PATCH_STREAM_COUNT,
+    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
+    TICK_PATCH_ENTRY_STRIDE,
+    TICK_PATCH_STREAM_COUNT,
+    getLocTickPatchStreamIndex,
+    getNpcTickPatchStreamIndex,
+} from "../runtime/TickPatchLayout";
 
 // Meta tuples: [mapId, npcDataStart, npcDataCount]
 export const NPC_RANGES_BY_MAP_ID_STRIDE = 3;
@@ -15,63 +26,45 @@ const FRAME_RENDER_LIST_FLAGS_MASK =
     FRAME_RENDER_LIST_FLAG_IS_LOD |
     FRAME_RENDER_LIST_FLAG_IS_INTERACT;
 
-// Per-map tick patch counts cover:
-// 8 loc variants (base/alpha/lod/lodAlpha/interact/interactAlpha/interactLod/interactLodAlpha)
-// 2 npc variants (base/alpha)
-export const TICK_PATCH_STREAM_COUNT = 10;
-export const LOC_TICK_PATCH_STREAM_BASE = 0;
-export const LOC_TICK_PATCH_STREAM_COUNT = 8;
-export const NPC_TICK_PATCH_STREAM_BASE = LOC_TICK_PATCH_STREAM_BASE + LOC_TICK_PATCH_STREAM_COUNT;
-export const NPC_TICK_PATCH_STREAM_COUNT = 2;
+export {
+    LOC_TICK_PATCH_STREAM_BASE,
+    LOC_TICK_PATCH_STREAM_COUNT,
+    NPC_TICK_PATCH_STREAM_BASE,
+    NPC_TICK_PATCH_STREAM_COUNT,
+    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
+    TICK_PATCH_ENTRY_STRIDE,
+    TICK_PATCH_STREAM_COUNT,
+    getLocTickPatchStreamIndex,
+    getNpcTickPatchStreamIndex,
+};
 
-// Meta tuples: [mapId, <10 counts in the stream order above>]
-export const TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE = 1 + TICK_PATCH_STREAM_COUNT;
-
-// Patch tuples are packed as: [drawRangeIndex, offset, elements, instances]
-export const TICK_PATCH_ENTRY_STRIDE = 4;
-
-export function getLocTickPatchStreamIndex(
-    isAlpha: boolean,
-    isInteract: boolean,
-    isLod: boolean,
-): number {
-    const interactBit = isInteract ? 4 : 0;
-    const lodBit = isLod ? 2 : 0;
-    const alphaBit = isAlpha ? 1 : 0;
-    return (LOC_TICK_PATCH_STREAM_BASE + interactBit + lodBit + alphaBit) | 0;
-}
-
-export function getNpcTickPatchStreamIndex(isAlpha: boolean): number {
-    return (NPC_TICK_PATCH_STREAM_BASE + (isAlpha ? 1 : 0)) | 0;
-}
-
-export type ParsedFrameTickPatches = Readonly<{
+export type ParsedRenderFrameTickPatches = Readonly<{
     patchesPacked: Int32Array;
     mapIdToIndex: Map<number, number>;
     streamOffsets: Int32Array;
     streamCounts: Int32Array;
 }>;
 
-export type ParsedFrameNpcRange = Readonly<{
+export type ParsedRenderFrameNpcRange = Readonly<{
     start: number;
     count: number;
 }>;
 
-export type ParsedFrameNpcRangesByMapId = ReadonlyMap<number, ParsedFrameNpcRange>;
+export type ParsedRenderFrameNpcRangesByMapId = ReadonlyMap<number, ParsedRenderFrameNpcRange>;
 
-export type ParsedFramePacket = Readonly<{
+export type ParsedRenderFramePacket = Readonly<{
     frameCount: number;
     mapIdsVersion: number;
     viewStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
-    npcRangesByMapId: ParsedFrameNpcRangesByMapId;
-    tickPatches: ParsedFrameTickPatches | undefined;
+    npcRangesByMapId: ParsedRenderFrameNpcRangesByMapId;
+    tickPatches: ParsedRenderFrameTickPatches | undefined;
     renderListPacked: Int32Array;
     runtimeRenderUpdates: MapObjRenderPacket | undefined;
 }>;
 
-export type FramePacket = Readonly<{
+export type RenderFramePacket = Readonly<{
     frameCount: number;
     mapIdsVersion: number;
     viewStateVersion: number;
@@ -95,7 +88,7 @@ export type FramePacket = Readonly<{
     runtimeRenderUpdates?: MapObjRenderPacket;
 }>;
 
-export function framePacketTransferables(packet: FramePacket): Transferable[] {
+export function renderFramePacketTransferables(packet: RenderFramePacket): Transferable[] {
     const out: Transferable[] = [];
     out.push(packet.npcGpuFrameData.data.buffer as Transferable);
     out.push(packet.npcRangesByMapIdPacked.buffer as Transferable);
@@ -115,7 +108,7 @@ export type TickPatchStreamSource = (
 ) => Int32Array | undefined;
 
 export type TickPatchStreamsByMap = (Int32Array | undefined)[][];
-export type BuildFramePacketInput = Readonly<{
+export type BuildRenderFramePacketInput = Readonly<{
     frameCount: number;
     mapIdsVersion: number;
     viewStateVersion: number;
@@ -199,7 +192,7 @@ export function buildTickPatchPackedFromCountsAndStreams(
     );
 }
 
-function validateFramePacketStrict(packet: FramePacket): void {
+function validateRenderFramePacketStrict(packet: RenderFramePacket): void {
     const frameCount = packet.frameCount | 0;
     if (frameCount < 0) {
         throw new Error(`[map-render][frame-packet] frameCount invalid: ${frameCount}`);
@@ -332,8 +325,10 @@ function validateFramePacketStrict(packet: FramePacket): void {
     }
 }
 
-export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
-    const packet: FramePacket = {
+export function buildRenderFramePacket(
+    input: BuildRenderFramePacketInput,
+): RenderFramePacket {
+    const packet: RenderFramePacket = {
         frameCount: input.frameCount | 0,
         mapIdsVersion: input.mapIdsVersion | 0,
         viewStateVersion: input.viewStateVersion | 0,
@@ -348,11 +343,11 @@ export function buildFramePacket(input: BuildFramePacketInput): FramePacket {
         ),
         runtimeRenderUpdates: input.runtimeRenderUpdates,
     };
-    validateFramePacketStrict(packet);
+    validateRenderFramePacketStrict(packet);
     return packet;
 }
 
-export function parseFramePacketRenderList(packed: Int32Array): Int32Array {
+export function parseRenderFramePacketRenderList(packed: Int32Array): Int32Array {
     const totalInts = packed.length | 0;
     if (totalInts % FRAME_RENDER_LIST_STRIDE !== 0) {
         throw new Error(
@@ -363,10 +358,10 @@ export function parseFramePacketRenderList(packed: Int32Array): Int32Array {
     return packed;
 }
 
-export function parseFramePacketTickPatches(
+export function parseRenderFrameTickPatches(
     countsByMapId: Int32Array,
     patchesPacked: Int32Array,
-): ParsedFrameTickPatches | undefined {
+): ParsedRenderFrameTickPatches | undefined {
     const totalInts = countsByMapId.length | 0;
     if (totalInts % TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
@@ -414,16 +409,18 @@ export function parseFramePacketTickPatches(
     };
 }
 
-export function parseFramePacketTickPatchesFromPacket(
-    packet: FramePacket | undefined,
-): ParsedFrameTickPatches | undefined {
+export function parseRenderFrameTickPatchesFromPacket(
+    packet: RenderFramePacket | undefined,
+): ParsedRenderFrameTickPatches | undefined {
     if (!packet) {
         return undefined;
     }
-    return parseFramePacketTickPatches(packet.tickPatchCountsByMapId, packet.tickPatchPacked);
+    return parseRenderFrameTickPatches(packet.tickPatchCountsByMapId, packet.tickPatchPacked);
 }
 
-export function parseFramePacketNpcRangesByMapId(pairs: Int32Array): ParsedFrameNpcRangesByMapId {
+export function parseRenderFrameNpcRangesByMapId(
+    pairs: Int32Array,
+): ParsedRenderFrameNpcRangesByMapId {
     const totalInts = pairs.length | 0;
     if (totalInts % NPC_RANGES_BY_MAP_ID_STRIDE !== 0) {
         throw new Error(
@@ -432,7 +429,7 @@ export function parseFramePacketNpcRangesByMapId(pairs: Int32Array): ParsedFrame
         );
     }
 
-    const out = new Map<number, ParsedFrameNpcRange>();
+    const out = new Map<number, ParsedRenderFrameNpcRange>();
     const pairCount = Math.floor((pairs.length | 0) / NPC_RANGES_BY_MAP_ID_STRIDE);
     for (let i = 0; i < pairCount; i++) {
         const off = (i * NPC_RANGES_BY_MAP_ID_STRIDE) | 0;
@@ -444,11 +441,13 @@ export function parseFramePacketNpcRangesByMapId(pairs: Int32Array): ParsedFrame
     return out;
 }
 
-export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePacket | undefined {
+export function parseRenderFramePacket(
+    packet: RenderFramePacket | undefined,
+): ParsedRenderFramePacket | undefined {
     if (!packet) {
         return undefined;
     }
-    validateFramePacketStrict(packet);
+    validateRenderFramePacketStrict(packet);
     const npcRingWriteIndex = packet.npcRingWriteIndex | 0;
 
     return {
@@ -457,16 +456,9 @@ export function parseFramePacket(packet: FramePacket | undefined): ParsedFramePa
         viewStateVersion: packet.viewStateVersion | 0,
         npcRingWriteIndex,
         npcGpuFrameData: packet.npcGpuFrameData,
-        npcRangesByMapId: parseFramePacketNpcRangesByMapId(packet.npcRangesByMapIdPacked),
-        tickPatches: parseFramePacketTickPatchesFromPacket(packet),
-        renderListPacked: parseFramePacketRenderList(packet.renderListPacked),
+        npcRangesByMapId: parseRenderFrameNpcRangesByMapId(packet.npcRangesByMapIdPacked),
+        tickPatches: parseRenderFrameTickPatchesFromPacket(packet),
+        renderListPacked: parseRenderFramePacketRenderList(packet.renderListPacked),
         runtimeRenderUpdates: packet.runtimeRenderUpdates,
     };
 }
-
-export type ParsedRenderFramePacket = ParsedFramePacket;
-export type RenderFramePacket = FramePacket;
-export type BuildRenderFramePacketInput = BuildFramePacketInput;
-export const renderFramePacketTransferables = framePacketTransferables;
-export const buildRenderFramePacket = buildFramePacket;
-export const parseRenderFramePacket = parseFramePacket;
