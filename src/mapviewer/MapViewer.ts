@@ -199,7 +199,7 @@ export class MapViewer {
         this.renderWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.simWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
-        this.renderer.initCache();
+        this.renderer.initializeCacheState();
         this.resetMenu();
         this.updateSearchParams();
     }
@@ -317,7 +317,7 @@ export class MapViewer {
             this.simWorkerPool.initCacheAndWait(this.cacheContext.loadedCache, this.runtimeOptions),
         ]);
         this.clearMapImageUrls();
-        await this.renderer.applyCacheContext();
+        await this.renderer.resetForCacheContext();
         this.resetMenu();
     }
 
@@ -467,7 +467,7 @@ export class MapViewer {
         this.simWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
         this.clearMapImageUrls();
 
-        await this.renderer.applyCacheContext();
+        await this.renderer.resetForCacheContext();
         this.resetMenu();
 
         this.updateSearchParams();

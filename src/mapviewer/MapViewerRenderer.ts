@@ -27,17 +27,14 @@ import {
     createNpcLifecyclePacket,
     dispatchMapObjRenderPacket,
     dispatchNpcLifecyclePacketBytes,
-    registerMapRuntime,
-    unregisterMapRuntime,
 } from "../runtime/MapRuntime";
+import { MapRuntimeSession } from "../runtime/MapRuntimeSession";
 import { Camera } from "../runtime/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { MapTickCoordinator } from "./MapTickCoordinator";
-
-const DRAW_RANGE_STRIDE = 3;
 
 export class MapViewerRenderer extends RendererMainLoop {
     inputManager: InputManager;
@@ -52,8 +49,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly tickCoordinator = new MapTickCoordinator();
     private readonly frameRuntimeCoordinator: WorkerMapFrameCoordinator;
-    private readonly mapSimTokenByMapId = new Map<number, number>();
-    private nextMapSimToken: number = 1;
+    private readonly mapRuntimeSession: MapRuntimeSession;
     private loadEpoch: number = 1;
     private seamSampleCount: number = 0;
     private seamSimMsTotal: number = 0;
@@ -99,6 +95,10 @@ export class MapViewerRenderer extends RendererMainLoop {
             getCameraMapY: () => this.camera.getMapY(),
             reportSeamSample: (sample) => this.recordFrameSeamSample(sample),
         });
+        this.mapRuntimeSession = new MapRuntimeSession({
+            renderWorkerPool: this.renderWorkerPool,
+            simWorkerPool: this.simWorkerPool,
+        });
         this.mapManager = new MapManager(
             this.renderWorkerPool.size * 2,
             this.queueLoadMap.bind(this),
@@ -123,13 +123,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             loadedTextureIds: Int32Array.from(r.loadedTextureIds),
         };
         return await this.renderWorkerPool.queueStaticMapPacket(input);
-    }
-
-    private reserveMapSimToken(mapId: number): number {
-        const token = this.nextMapSimToken | 0;
-        this.nextMapSimToken = (token + 1) | 0;
-        this.mapSimTokenByMapId.set(mapId | 0, token);
-        return token;
     }
 
     private recordFrameSeamSample(sample: MapFrameSeamSample): void {
@@ -160,19 +153,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.seamPackMsTotal = 0;
         this.seamTotalMsTotal = 0;
         this.seamEventCountTotal = 0;
-    }
-
-    private invalidateMapSimToken(mapId: number): number {
-        return this.reserveMapSimToken(mapId | 0);
-    }
-
-    private hasMapRuntimeToken(mapId: number, token: number): boolean {
-        return (this.mapSimTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
-    }
-
-    private resetMapRuntimeTokens(): void {
-        this.mapSimTokenByMapId.clear();
-        this.nextMapSimToken = 1;
     }
 
     private shouldDropStaticMapPacketForDevSquare(
@@ -224,35 +204,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             npcOrderKeys: runtimeBootstrap.npcOrderKeys.length | 0,
             npcTypeAnimTable: runtimeRegistration.npcTypeAnimationTable.length,
         });
-    }
-
-    private getNpcSlotCount(mapData: DecodedStaticMapPacket["mapData"]): number {
-        const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
-        if (npcDrawRangeInts % DRAW_RANGE_STRIDE !== 0) {
-            throw new Error(
-                `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
-                    `len=${npcDrawRangeInts} stride=${DRAW_RANGE_STRIDE}`,
-            );
-        }
-        return (npcDrawRangeInts / DRAW_RANGE_STRIDE) | 0;
-    }
-
-    private async registerLoadedMapRuntime(
-        packet: DecodedStaticMapPacket,
-    ): Promise<Readonly<{ mapId: number; mapSimToken: number }>> {
-        const mapId = packet.mapData.mapId | 0;
-        const mapSimToken = this.reserveMapSimToken(mapId);
-        await registerMapRuntime({
-            renderWorkerPool: this.renderWorkerPool,
-            simWorkerPool: this.simWorkerPool,
-            mapId,
-            maxLevel: packet.mapData.maxLevel,
-            runtimeRegistration: packet.runtimeRegistration,
-            runtimeBootstrap: packet.runtimeBootstrap,
-            npcSlotCount: this.getNpcSlotCount(packet.mapData),
-            mapSimToken,
-        });
-        return { mapId, mapSimToken };
     }
 
     private async finalizeLoadedMap(packet: DecodedStaticMapPacket): Promise<void> {
@@ -317,7 +268,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         let mapRuntime: Readonly<{ mapId: number; mapSimToken: number }>;
         try {
-            mapRuntime = await this.registerLoadedMapRuntime(staticMapPacket);
+            mapRuntime = await this.mapRuntimeSession.registerLoadedMap(staticMapPacket);
         } catch (e) {
             console.warn(
                 `[map-render] failed to register worker sim state for ${staticMapPacket.mapData.mapX},${staticMapPacket.mapData.mapY}`,
@@ -328,7 +279,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         if (
             (this.loadEpoch | 0) !== queuedLoadEpoch ||
-            !this.hasMapRuntimeToken(mapRuntime.mapId, mapRuntime.mapSimToken)
+            !this.mapRuntimeSession.hasToken(mapRuntime.mapId, mapRuntime.mapSimToken)
         ) {
             return;
         }
@@ -337,13 +288,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.renderer.removeMap(mapInfo);
-        const mapSimToken = this.invalidateMapSimToken(mapInfo.mapId);
-        unregisterMapRuntime({
-            renderWorkerPool: this.renderWorkerPool,
-            simWorkerPool: this.simWorkerPool,
-            mapId: mapInfo.mapId,
-            mapSimToken,
-        });
+        this.mapRuntimeSession.unregisterLoadedMap(mapInfo.mapId);
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
@@ -389,7 +334,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.isInitialized = true;
     }
 
-    initCache(): void {
+    initializeCacheState(): void {
         this.renderer.initCache();
         this.mapManager.init(
             this.mapViewer.session.mapFileIndex,
@@ -428,34 +373,37 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.animationId = requestAnimationFrame(this.frameCallback);
     }
 
-    async applyCacheContext(): Promise<void> {
+    private async recreateRendererAndMapManager(): Promise<void> {
+        this.renderer = new WebGLMapRenderer(
+            this.mapViewer.session,
+            this.mapViewer.renderDistance,
+            this.mapViewer.unloadDistance,
+            this.mapViewer.lodDistance,
+            this.camera,
+            this.checkInteractions.bind(this),
+        );
+        this.mapManager = new MapManager(
+            this.renderWorkerPool.size * 2,
+            this.queueLoadMap.bind(this),
+            this.removeLoadedMap.bind(this),
+        );
+
+        if (this.isInitialized) {
+            await this.renderer.init(this.canvas);
+        }
+    }
+
+    async resetForCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
-        this.resetMapRuntimeTokens();
+        this.mapRuntimeSession.reset();
 
         try {
             await this.renderer.cleanUp();
-        this.tickCoordinator.resetForCacheContext(this.frameRuntimeCoordinator);
+            this.tickCoordinator.resetForCacheContext(this.frameRuntimeCoordinator);
             this.mapManager.cleanUp();
-
-            this.renderer = new WebGLMapRenderer(
-                this.mapViewer.session,
-                this.mapViewer.renderDistance,
-                this.mapViewer.unloadDistance,
-                this.mapViewer.lodDistance,
-                this.camera,
-                this.checkInteractions.bind(this),
-            );
-            this.mapManager = new MapManager(
-                this.renderWorkerPool.size * 2,
-                this.queueLoadMap.bind(this),
-                this.removeLoadedMap.bind(this),
-            );
-
-            if (this.isInitialized) {
-                await this.renderer.init(this.canvas);
-            }
-            this.initCache();
+            await this.recreateRendererAndMapManager();
+            this.initializeCacheState();
         } finally {
             if (wasRunning) {
                 this.resumeLoop();
@@ -466,7 +414,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.loadEpoch = (this.loadEpoch + 1) | 0;
-        this.resetMapRuntimeTokens();
+        this.mapRuntimeSession.reset();
         this.tickCoordinator.resetForShutdown(this.frameRuntimeCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
