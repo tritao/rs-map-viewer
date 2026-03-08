@@ -45,7 +45,7 @@ type TickViewState = Readonly<{
     lodDistance: number;
 }>;
 
-type TickFrameInputs = Readonly<{
+type FrameBuildInputs = Readonly<{
     hoveredMapIds: ReadonlySet<number>;
     safeClientTicks: number;
     npcRingWriteIndex: number;
@@ -111,18 +111,15 @@ export class WorkerFramePacketRuntime {
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
 
     resetForCache(): void {
-        this.npcSimStateStore.resetForCache();
-        this.workerMapSimLifecycle.reset();
-        this.tickMapIds = new Int32Array(0);
-        this.tickMapIdsVersion = 0;
-        this.tickViewStateVersion = 0;
-        this.tickViewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
-        this.tickHoveredMapIdsPacked = new Int32Array(0);
-        this.pendingObjRenderDataByMapId.clear();
+        this.resetState(() => this.npcSimStateStore.resetForCache());
     }
 
     resetForLoaderReset(): void {
-        this.npcSimStateStore.resetForLoaderReset();
+        this.resetState(() => this.npcSimStateStore.resetForLoaderReset());
+    }
+
+    private resetState(resetNpcStateStore: () => void): void {
+        resetNpcStateStore();
         this.workerMapSimLifecycle.reset();
         this.tickMapIds = new Int32Array(0);
         this.tickMapIdsVersion = 0;
@@ -250,7 +247,7 @@ export class WorkerFramePacketRuntime {
         frameCount: number,
         clientTicksElapsed: number,
         hoveredMapIdsPacked: Int32Array,
-    ): TickFrameInputs {
+    ): FrameBuildInputs {
         const hoveredMapIds = new Set<number>();
         if (hoveredMapIdsPacked instanceof Int32Array) {
             for (let index = 0; index < hoveredMapIdsPacked.length; index++) {
