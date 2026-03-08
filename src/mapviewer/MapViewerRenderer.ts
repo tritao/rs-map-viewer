@@ -27,7 +27,6 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { MapRuntimeSession } from "../runtime/MapRuntimeSession";
 import { MapWorldSession } from "../runtime/MapWorldSession";
 import { Camera } from "../runtime/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
@@ -49,7 +48,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly tickCoordinator = new MapTickCoordinator();
     private readonly frameRuntimeCoordinator: WorkerMapFrameCoordinator;
-    private readonly mapRuntimeSession: MapRuntimeSession;
     private readonly mapWorldSession: MapWorldSession;
     private seamSampleCount: number = 0;
     private seamSimMsTotal: number = 0;
@@ -113,12 +111,9 @@ export class MapViewerRenderer extends RendererMainLoop {
             getCameraMapY: () => this.camera.getMapY(),
             reportSeamSample: (sample) => this.recordFrameSeamSample(sample),
         });
-        this.mapRuntimeSession = new MapRuntimeSession({
+        this.mapWorldSession = new MapWorldSession({
             renderWorkerPool: this.renderWorkerPool,
             simWorkerPool: this.simWorkerPool,
-        });
-        this.mapWorldSession = new MapWorldSession({
-            runtimeSession: this.mapRuntimeSession,
             requestFrameRefresh: () => this.frameRuntimeCoordinator.invalidateLatestPacket(),
         });
         this.mapManager = this.createMapManager();
@@ -283,11 +278,11 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.logMapPacketTelemetry(staticMapPacket);
         }
         try {
-            const mapRuntime = await this.mapWorldSession.registerActiveLoadedMap(
+            const ok = await this.mapWorldSession.registerActiveLoadedMap(
                 staticMapPacket,
                 queuedLoadEpoch,
             );
-            if (!mapRuntime) {
+            if (!ok) {
                 return;
             }
         } catch (e) {

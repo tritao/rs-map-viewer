@@ -1,23 +1,37 @@
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import type { MapObjRenderPacket } from "./contracts/MapObjRenderPacket";
 import type { DecodedStaticMapPacket } from "./contracts/StaticMapWireCodec";
-import { createMapObjRenderPacket, createNpcLifecyclePacket, dispatchMapObjRenderPacket, dispatchNpcLifecyclePacketBytes } from "./MapRuntime";
-import { type MapRuntimeSession, type RegisteredMapRuntime } from "./MapRuntimeSession";
+import {
+    createMapObjRenderPacket,
+    createNpcLifecyclePacket,
+    dispatchMapObjRenderPacket,
+    dispatchNpcLifecyclePacketBytes,
+    registerMapRuntime,
+    unregisterMapRuntime,
+} from "./MapRuntime";
 import type { NpcEvent } from "./entities/NpcEvents";
+import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
+import type { SimWorkerPool } from "../worker/SimWorkerPool";
 
 type MapWorldSessionDeps = Readonly<{
-    runtimeSession: MapRuntimeSession;
+    renderWorkerPool: RenderDataWorkerPool;
+    simWorkerPool: SimWorkerPool;
     requestFrameRefresh(): void;
 }>;
 
+const DRAW_RANGE_STRIDE = 3;
+
 export class MapWorldSession {
     private loadEpoch: number = 1;
+    private readonly mapSimTokenByMapId = new Map<number, number>();
+    private nextMapSimToken: number = 1;
 
     constructor(private readonly deps: MapWorldSessionDeps) {}
 
     reset(): void {
         this.loadEpoch = (this.loadEpoch + 1) | 0;
-        this.deps.runtimeSession.reset();
+        this.mapSimTokenByMapId.clear();
+        this.nextMapSimToken = 1;
     }
 
     captureLoadEpoch(): number {
@@ -29,29 +43,47 @@ export class MapWorldSession {
     }
 
     hasToken(mapId: number, token: number): boolean {
-        return this.deps.runtimeSession.hasToken(mapId, token);
-    }
-
-    registerLoadedMap(packet: DecodedStaticMapPacket): Promise<RegisteredMapRuntime> {
-        return this.deps.runtimeSession.registerLoadedMap(packet);
+        return (this.mapSimTokenByMapId.get(mapId | 0) ?? 0) === (token | 0);
     }
 
     async registerActiveLoadedMap(
         packet: DecodedStaticMapPacket,
         loadEpoch: number,
-    ): Promise<RegisteredMapRuntime | undefined> {
-        const registered = await this.registerLoadedMap(packet);
+    ): Promise<boolean> {
+        const mapId = packet.mapData.mapId | 0;
+        const mapSimToken = this.reserveToken(mapId);
+        await registerMapRuntime({
+            renderWorkerPool: this.deps.renderWorkerPool,
+            simWorkerPool: this.deps.simWorkerPool,
+            mapId,
+            maxLevel: packet.mapData.maxLevel,
+            runtimeRegistration: packet.runtimeRegistration,
+            runtimeBootstrap: packet.runtimeBootstrap,
+            npcSlotCount: this.getNpcSlotCount(packet),
+            mapSimToken,
+        });
         if (
             !this.hasLoadEpoch(loadEpoch) ||
-            !this.hasToken(registered.mapId, registered.mapSimToken)
+            !this.hasToken(mapId, mapSimToken)
         ) {
-            return undefined;
+            unregisterMapRuntime({
+                renderWorkerPool: this.deps.renderWorkerPool,
+                simWorkerPool: this.deps.simWorkerPool,
+                mapId,
+                mapSimToken,
+            });
+            return false;
         }
-        return registered;
+        return true;
     }
 
     unregisterLoadedMap(mapId: number): void {
-        this.deps.runtimeSession.unregisterLoadedMap(mapId);
+        unregisterMapRuntime({
+            renderWorkerPool: this.deps.renderWorkerPool,
+            simWorkerPool: this.deps.simWorkerPool,
+            mapId: mapId | 0,
+            mapSimToken: this.invalidateToken(mapId),
+        });
     }
 
     async applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
@@ -72,7 +104,7 @@ export class MapWorldSession {
 
     applyMapObjRenderPacket(packet: MapObjRenderPacket | undefined): void {
         void dispatchMapObjRenderPacket({
-            renderWorkerPool: this.deps.runtimeSession.renderWorkerPool,
+            renderWorkerPool: this.deps.renderWorkerPool,
             packet,
             requestRefresh: () => this.deps.requestFrameRefresh(),
         });
@@ -80,8 +112,31 @@ export class MapWorldSession {
 
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | ArrayBufferView): Promise<number> {
         return await dispatchNpcLifecyclePacketBytes({
-            simWorkerPool: this.deps.runtimeSession.simWorkerPool,
+            simWorkerPool: this.deps.simWorkerPool,
             packet,
         });
+    }
+
+    private reserveToken(mapId: number): number {
+        const token = this.nextMapSimToken | 0;
+        this.nextMapSimToken = (token + 1) | 0;
+        this.mapSimTokenByMapId.set(mapId | 0, token);
+        return token;
+    }
+
+    private invalidateToken(mapId: number): number {
+        return this.reserveToken(mapId | 0);
+    }
+
+    private getNpcSlotCount(packet: DecodedStaticMapPacket): number {
+        const mapData = packet.mapData;
+        const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
+        if (npcDrawRangeInts % DRAW_RANGE_STRIDE !== 0) {
+            throw new Error(
+                `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
+                    `len=${npcDrawRangeInts} stride=${DRAW_RANGE_STRIDE}`,
+            );
+        }
+        return (npcDrawRangeInts / DRAW_RANGE_STRIDE) | 0;
     }
 }
