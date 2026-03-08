@@ -1,7 +1,6 @@
 import { mat4, vec2, vec3 } from "gl-matrix";
 import { App as PicoApp, PicoGL, Program, UniformBuffer } from "picogl";
 
-import type { SdRenderableData } from "../../maprender/MapRenderPayload";
 import { GameType } from "../../rs/cache/CacheInfo";
 import type { CacheSession } from "../../rs/loaders/CacheSession";
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
@@ -24,23 +23,6 @@ export type SetEntityRenderDataOptions = Readonly<{
 
 function createEmptyTileRenderFlags(): Uint8Array[][] {
     return Array.from({ length: Scene.MAX_LEVELS }, () => [new Uint8Array(1)]);
-}
-
-function createRenderableData(
-    cacheName: string,
-    data: StandaloneRenderableData,
-): SdRenderableData {
-    return {
-        cacheName,
-        borderSize: 0,
-        tileRenderFlags: createEmptyTileRenderFlags(),
-        vertices: data.vertices,
-        indices: data.indices,
-        modelInfoTextures: data.modelInfoTextures,
-        drawRanges: data.drawRanges,
-        locsAnimated: [],
-        loadedTextures: new Map(),
-    };
 }
 
 export class WebGLEntityRenderer implements Renderer {
@@ -285,9 +267,8 @@ export class WebGLEntityRenderer implements Renderer {
         }
 
         const renderable = new WebGLRenderable(0, 0, createEmptyTileRenderFlags(), 0, 0);
-        const data = createRenderableData(this.session.cache.info.name, this.renderData);
-        renderable.createBuffers(this.app, data);
-        renderable.createModelInfoTextures(this.app, data);
+        renderable.createBuffers(this.app, this.renderData);
+        renderable.createModelInfoTextures(this.app, this.renderData);
         const createDrawCall = (
             program: Program,
             modelInfoTexture: unknown,
@@ -317,7 +298,12 @@ export class WebGLEntityRenderer implements Renderer {
             }
             return { drawCall, drawRangesPacked };
         };
-        renderable.createDrawCalls(data, createDrawCall, this.mainProgram, this.mainAlphaProgram);
+        renderable.createDrawCalls(
+            this.renderData,
+            createDrawCall,
+            this.mainProgram,
+            this.mainAlphaProgram,
+        );
         renderable.usedTextureIds = this.renderData.usedTextureIds;
         this.renderable = renderable;
     }

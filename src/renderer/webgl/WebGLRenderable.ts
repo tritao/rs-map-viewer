@@ -7,7 +7,12 @@ import PicoGL, {
     VertexBuffer,
 } from "picogl";
 
-import { ObjRenderData, SdRenderableData } from "../../maprender/MapRenderPayload";
+import {
+    ObjRenderData,
+    SdRenderableData,
+    type SdRenderableDrawRanges,
+    type SdRenderableModelInfoTextures,
+} from "../../maprender/MapRenderPayload";
 import { Scene } from "../../rs/scene/Scene";
 
 const FRAME_RENDER_DELAY = 3;
@@ -54,6 +59,16 @@ export type CreateDrawCallFunction = (
     useNpcGeometry?: boolean,
     useObjGeometry?: boolean,
 ) => DrawCallRange;
+
+type BaseRenderableGeometryData = Readonly<{
+    vertices: Uint8Array;
+    indices: Int32Array;
+}>;
+
+type BaseRenderableDrawData = Readonly<{
+    modelInfoTextures: SdRenderableModelInfoTextures;
+    drawRanges: SdRenderableDrawRanges;
+}>;
 
 function resolveDrawCallKey(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallKey {
     if (isInteract) {
@@ -126,7 +141,7 @@ export class WebGLRenderable {
         );
     }
 
-    createBuffers(app: PicoApp, data: SdRenderableData) {
+    createBuffers(app: PicoApp, data: BaseRenderableGeometryData) {
         this.interleavedBuffer = app.createInterleavedBuffer(16, data.vertices);
         this.indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.indices);
 
@@ -201,7 +216,7 @@ export class WebGLRenderable {
     }
 
     private static getModelInfoBuckets(
-        modelInfoTextures: SdRenderableData["modelInfoTextures"],
+        modelInfoTextures: BaseRenderableDrawData["modelInfoTextures"],
     ): ReadonlyArray<Uint16Array> {
         return [
             modelInfoTextures.base,
@@ -216,7 +231,7 @@ export class WebGLRenderable {
     }
 
     private static getDrawRangeBuckets(
-        drawRanges: SdRenderableData["drawRanges"],
+        drawRanges: BaseRenderableDrawData["drawRanges"],
     ): ReadonlyArray<Int32Array> {
         return [
             drawRanges.base,
@@ -230,7 +245,7 @@ export class WebGLRenderable {
         ];
     }
 
-    createModelInfoTextures(app: PicoApp, data: SdRenderableData) {
+    createModelInfoTextures(app: PicoApp, data: BaseRenderableDrawData) {
         const modelInfoBuckets = WebGLRenderable.getModelInfoBuckets(data.modelInfoTextures);
         const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
@@ -253,7 +268,7 @@ export class WebGLRenderable {
     }
 
     createDrawCalls(
-        data: SdRenderableData,
+        data: BaseRenderableDrawData,
         createDrawCall: CreateDrawCallFunction,
         mainProgram: Program,
         mainAlphaProgram: Program,
