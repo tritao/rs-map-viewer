@@ -53,6 +53,7 @@ flat out vec4 v_interactId;
 #include "./includes/height-map.glsl";
 
 #include "./includes/vertex.glsl";
+#include "./includes/scene-vertex-common.glsl"
 
 struct NpcInfo {
     vec2 tilePos;
@@ -78,11 +79,6 @@ NpcInfo decodeNpcInfo(int offset) {
     return info;
 }
 
-uint lookupTextureSlot(uint textureId) {
-    ivec2 coord = ivec2(int(textureId & 255u), int((textureId >> 8u) & 255u));
-    return texelFetch(u_textureSlotLut, coord, 0).r;
-}
-
 mat4 rotationY( in float angle ) {
     return mat4(cos(angle),		0,		sin(angle),	0,
                          0,		1.0,			 0,	0,
@@ -92,25 +88,7 @@ mat4 rotationY( in float angle ) {
 
 void main() {
     Vertex vertex = decodeVertex(a_vertex.x, a_vertex.y, a_vertex.z, a_vertex.w, u_brightness);
-
-    v_color = vertex.color;
-
-    Material material0 = getMaterial(vertex.textureId);
-    vec2 textureAnimation = vec2(material0.animU, material0.animV);
-
-    if (u_isNewTextureAnim > 0.5) {
-        v_texCoord = vertex.texCoord + mod(mod(u_currentTime, 128.0) * textureAnimation / 64.0, 1.0);
-    } else {
-        v_texCoord = vertex.texCoord + (u_currentTime / 0.02) * textureAnimation * TEXTURE_ANIM_UNIT;
-    }
-    v_texId0 = vertex.textureId;
-    v_texId1 = vertex.textureId1;
-    v_texSlot0 = lookupTextureSlot(vertex.textureId);
-    v_texSlot1 = lookupTextureSlot(vertex.textureId1);
-    v_texBlend = vertex.texBlend;
-
-    Material material1 = getMaterial(vertex.textureId1);
-    v_alphaCutOff = max(material0.alphaCutOff, material1.alphaCutOff);
+    applyVertexMaterialOutputs(vertex);
 
     NpcInfo npcInfo = decodeNpcInfo(DRAW_ID + u_npcDataOffset);
 
@@ -121,30 +99,7 @@ void main() {
     localPos /= vec4(vec3(128.0), 1.0);
 
     localPos += vec4(vec3(u_mapPos.x, 0, u_mapPos.y) * vec3(64), 0);
-
-    float loadAlpha = smoothstep(0.0, 1.0, min((u_currentTime - u_timeLoaded), 1.0));
-    float isLoading = when_neq(loadAlpha, 1.0);
-
-    float dist = -sdRoundedBox(
-        vec2(localPos.x - u_cameraPos.x, localPos.z - u_cameraPos.y),
-        vec2(u_renderDistance),
-        FOG_CORNER_ROUNDING
-    );
-
-    float fogDepth = min(u_fogDepth, u_renderDistance);
-
-    v_fogAmount = fogFactorLinear(dist, 0.0, fogDepth);
-    v_fogAmount = isLoading * max(1.0 - loadAlpha, v_fogAmount) +
-        (1.0 - isLoading) * v_fogAmount;
-
-    float interactType = NPC_INTERACT_TYPE * when_neq(v_fogAmount, 1.0);
-
-    v_interactId = vec4(
-        float(npcInfo.interactId),
-        float(uint(u_mapPos.x) << 8u | uint(u_mapPos.y)),
-        interactType,
-        1.0
-    );
+    applySceneFogAndInteract(localPos.xyz, float(npcInfo.interactId), NPC_INTERACT_TYPE);
 
     gl_Position = u_viewMatrix * localPos;
     gl_Position.z += float(npcInfo.plane) * 0.005 + (float(vertex.priority) + 20.0) * 0.0007;
