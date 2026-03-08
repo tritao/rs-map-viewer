@@ -1,8 +1,7 @@
-import type { SdMapData } from "../../maprender/MapRenderPayload";
 import type { LocAnimatedData } from "../LocAnimatedData";
 import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
 
-const STATIC_MAP_DRAW_BUCKET_KEYS = [
+export const MAP_RENDER_DRAW_BUCKET_KEYS = [
     "base",
     "alpha",
     "lod",
@@ -13,11 +12,65 @@ const STATIC_MAP_DRAW_BUCKET_KEYS = [
     "interactLodAlpha",
 ] as const;
 
-type StaticMapDrawBucketKey = (typeof STATIC_MAP_DRAW_BUCKET_KEYS)[number];
+export type MapRenderDrawBucketKey = (typeof MAP_RENDER_DRAW_BUCKET_KEYS)[number];
 
-type StaticMapModelInfoTextures = Readonly<Record<StaticMapDrawBucketKey, Uint16Array>>;
+export type SdRenderableModelInfoTextures = Readonly<
+    Record<MapRenderDrawBucketKey, Uint16Array>
+>;
 
-type StaticMapDrawRanges = Readonly<Record<StaticMapDrawBucketKey, Int32Array>>;
+export type SdRenderableDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
+
+export type ObjRenderData = Readonly<{
+    vertices: Uint8Array;
+    indices: Int32Array;
+    modelInfoTextures: SdRenderableModelInfoTextures;
+    drawRanges: SdRenderableDrawRanges;
+    usedTextureIds: Int32Array;
+}>;
+
+export type SdRenderableData = {
+    readonly cacheName: string;
+
+    readonly borderSize: number;
+    readonly tileRenderFlags: Uint8Array[][];
+
+    readonly vertices: Uint8Array;
+    readonly indices: Int32Array;
+
+    readonly modelInfoTextures: SdRenderableModelInfoTextures;
+    readonly drawRanges: SdRenderableDrawRanges;
+
+    readonly locsAnimated: LocAnimatedData[];
+
+    readonly loadedTextures: Map<number, Int32Array>;
+    readonly npcDrawRangesBase?: Int32Array;
+    readonly npcDrawRangesAlpha?: Int32Array;
+    readonly npcVertices?: Uint8Array;
+    readonly npcIndices?: Int32Array;
+};
+
+export interface MapData {
+    mapX: number;
+    mapY: number;
+
+    cacheName: string;
+
+    maxLevel: number;
+    loadObjs: boolean;
+    loadNpcs: boolean;
+    loadLocs: boolean;
+
+    smoothTerrain: boolean;
+
+    minimapBlob: Blob;
+}
+
+export type SdMapData = MapData &
+    SdRenderableData & {
+        readonly mapId: number;
+        readonly heightMapTextureData: Int16Array;
+        readonly usedTextureIds: Int32Array;
+    };
 
 export type MapRuntimeRegistration = Readonly<{
     borderSize: number;
@@ -27,10 +80,10 @@ export type MapRuntimeRegistration = Readonly<{
 }>;
 
 export type MapObjStateModelInfoTextures = Readonly<
-    Record<StaticMapDrawBucketKey, Uint16Array>
+    Record<MapRenderDrawBucketKey, Uint16Array>
 >;
 
-export type MapObjStateDrawRanges = Readonly<Record<StaticMapDrawBucketKey, Int32Array>>;
+export type MapObjStateDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
 
 export type MapObjState = Readonly<{
     vertices: Uint8Array;
@@ -184,12 +237,12 @@ function unpackBucketedInt32Arrays<K extends string>(
     return buckets;
 }
 
-function packDrawRanges(drawRanges: StaticMapDrawRanges): Readonly<{
+function packDrawRanges(drawRanges: SdRenderableDrawRanges): Readonly<{
     drawRangeBucketLengths: Int32Array;
     drawRangesPacked: Int32Array;
 }> {
     const { bucketLengths, packed } = packBucketedInt32Arrays(
-        STATIC_MAP_DRAW_BUCKET_KEYS,
+        MAP_RENDER_DRAW_BUCKET_KEYS,
         drawRanges,
     );
     return {
@@ -201,25 +254,17 @@ function packDrawRanges(drawRanges: StaticMapDrawRanges): Readonly<{
 function unpackDrawRanges(
     drawRangeBucketLengths: Int32Array,
     drawRangesPacked: Int32Array,
-): StaticMapDrawRanges {
+): SdRenderableDrawRanges {
     return unpackBucketedInt32Arrays(
-        STATIC_MAP_DRAW_BUCKET_KEYS,
+        MAP_RENDER_DRAW_BUCKET_KEYS,
         drawRangeBucketLengths,
         drawRangesPacked,
         "StaticMapWirePacket",
-    ) as StaticMapDrawRanges;
+    ) as SdRenderableDrawRanges;
 }
 
-type MapObjRenderDataLike = Readonly<{
-    vertices: Uint8Array;
-    indices: Int32Array;
-    modelInfoTextures: StaticMapModelInfoTextures;
-    drawRanges: StaticMapDrawRanges;
-    usedTextureIds: Int32Array;
-}>;
-
 export function mapObjStateFromRenderData(
-    objRenderData: MapObjRenderDataLike | undefined,
+    objRenderData: ObjRenderData | undefined,
 ): MapObjState | undefined {
     if (!objRenderData) {
         return undefined;
@@ -235,7 +280,7 @@ export function mapObjStateFromRenderData(
 
 export function mapObjStateToRenderData(
     mapObjState: MapObjState | undefined,
-): MapObjRenderDataLike | undefined {
+): ObjRenderData | undefined {
     if (!mapObjState) {
         return undefined;
     }
@@ -358,7 +403,7 @@ export function collectStaticMapWirePacketTransferables(
         mapData.drawRangeBucketLengths.buffer as Transferable,
     );
     pushTransferableUnique(transferables, seen, mapData.drawRangesPacked.buffer as Transferable);
-    for (const key of STATIC_MAP_DRAW_BUCKET_KEYS) {
+    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
         pushTransferableUnique(
             transferables,
             seen,
@@ -411,7 +456,7 @@ function collectMapObjStateWireTransferables(
     pushTransferableUnique(out, seen, mapObjState.usedTextureIds.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangeBucketLengths.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangesPacked.buffer as Transferable);
-    for (const key of STATIC_MAP_DRAW_BUCKET_KEYS) {
+    for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
         pushTransferableUnique(
             out,
             seen,
