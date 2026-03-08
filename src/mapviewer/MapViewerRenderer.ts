@@ -138,7 +138,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             minimizeDrawCalls: !r.hasMultiDraw,
             loadedTextureIds: Int32Array.from(r.loadedTextureIds),
         };
-        return await this.renderWorkerPool.queueStaticMapPacket(input);
+        return await this.renderWorkerPool.build.loadStaticMapPacket(input);
     }
 
     private recordRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
@@ -237,8 +237,8 @@ export class MapViewerRenderer extends RendererMainLoop {
             );
             return;
         }
-        void this.renderWorkerPool
-            .queueMapImage(mapData.mapX, mapData.mapY, 0, false)
+        void this.renderWorkerPool.build
+            .loadMapImage(mapData.mapX, mapData.mapY, 0, false)
             .then((minimapData) => {
                 if (!minimapData || minimapData.minimapBlob.size <= 0) {
                     return;
@@ -306,7 +306,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
         const applied = await this.mapWorldSession.applyWorldEvents(input);
-        if ((applied | 0) > 0 && input.objUpdates && (input.objUpdates.length | 0) > 0) {
+        if ((applied | 0) > 0 && input.obj?.updates && (input.obj.updates.length | 0) > 0) {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
         return applied | 0;
@@ -316,12 +316,15 @@ export class MapViewerRenderer extends RendererMainLoop {
         packet: DecodedStaticMapPacket,
     ): Promise<void> {
         await this.applyWorldEvents({
-            objUpdates: [
-                {
-                    mapId: packet.mapData.mapId | 0,
-                    objRenderData: packet.runtimeBootstrap.objRenderData,
-                },
-            ],
+            obj: {
+                updates: [
+                    {
+                        kind: "replaceMapObjRenderData",
+                        mapId: packet.mapData.mapId | 0,
+                        objRenderData: packet.runtimeBootstrap.objRenderData,
+                    },
+                ],
+            },
         });
     }
 

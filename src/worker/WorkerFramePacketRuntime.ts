@@ -135,6 +135,9 @@ export class WorkerFramePacketRuntime {
             if (!update) {
                 continue;
             }
+            if (update.kind !== "replaceMapObjRenderData") {
+                continue;
+            }
             this.pendingRuntimeObjRenderDataByMapId.set(
                 update.mapId | 0,
                 update.objRenderData as ObjRenderData | undefined,
@@ -249,7 +252,7 @@ export class WorkerFramePacketRuntime {
     }
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
-        let applied = this.applyRuntimeMapObjUpdates(packet.mapObjUpdates);
+        let applied = this.applyRuntimeMapObjUpdates(packet.objDelta?.updates);
         if (((packet.npcDelta?.eventCount ?? 0) | 0) <= 0) {
             return applied | 0;
         }

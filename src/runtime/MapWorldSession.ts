@@ -6,7 +6,7 @@ import type { NpcEvent } from "./entities/NpcEvents";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
 import {
-    buildWorldDeltaPacketFromMapObjUpdates,
+    buildWorldDeltaPacketFromObjUpdates,
     type WorldMapObjUpdate,
 } from "./packets/WorldDeltaPacket";
 import type {
@@ -24,8 +24,12 @@ type MapWorldSessionDeps = Readonly<{
 const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export type WorldEventsInput = Readonly<{
-    npcEvents?: ReadonlyArray<NpcEvent>;
-    objUpdates?: ReadonlyArray<WorldMapObjUpdate>;
+    npc?: Readonly<{
+        events: ReadonlyArray<NpcEvent>;
+    }>;
+    obj?: Readonly<{
+        updates: ReadonlyArray<WorldMapObjUpdate>;
+    }>;
 }>;
 
 export class MapWorldSession {
@@ -78,15 +82,18 @@ export class MapWorldSession {
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
         let applied = 0;
-        if (input.npcEvents && (input.npcEvents.length | 0) > 0) {
-            applied = (applied + (await this.deps.simWorkerPool.applyNpcLifecycleEvents(input.npcEvents))) | 0;
+        const npcEvents = input.npc?.events;
+        if (npcEvents && (npcEvents.length | 0) > 0) {
+            applied =
+                (applied + (await this.deps.simWorkerPool.applyNpcLifecycleEvents(npcEvents))) | 0;
         }
-        if (input.objUpdates && (input.objUpdates.length | 0) > 0) {
+        const objUpdates = input.obj?.updates;
+        if (objUpdates && (objUpdates.length | 0) > 0) {
             applied =
                 (applied +
-                    (await this.deps.renderWorkerPool.applyWorldDeltaPacket(
-                        buildWorldDeltaPacketFromMapObjUpdates({
-                            updates: input.objUpdates,
+                    (await this.deps.renderWorkerPool.frame.applyWorldDelta(
+                        buildWorldDeltaPacketFromObjUpdates({
+                            updates: objUpdates,
                         }),
                     ))) |
                 0;
@@ -135,12 +142,12 @@ export class MapWorldSession {
             npcOrderKeys,
             mapSimToken,
         };
-        await this.deps.renderWorkerPool.registerRenderMapRuntime(renderRegistration);
+        await this.deps.renderWorkerPool.frame.registerMapRuntime(renderRegistration);
         try {
             await this.deps.simWorkerPool.registerMapRuntime(simRegistration);
             await this.deps.simWorkerPool.bootstrapMapRuntime(bootstrapInput);
         } catch (error: unknown) {
-            void this.deps.renderWorkerPool.unregisterRenderMapRuntime(mapId, mapSimToken);
+            void this.deps.renderWorkerPool.frame.unregisterMapRuntime(mapId, mapSimToken);
             void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
             throw error;
         }
@@ -148,6 +155,6 @@ export class MapWorldSession {
 
     private unregisterMapRuntime(mapId: number, mapSimToken: number): void {
         void this.deps.simWorkerPool.unregisterMapRuntime(mapId, mapSimToken);
-        void this.deps.renderWorkerPool.unregisterRenderMapRuntime(mapId, mapSimToken);
+        void this.deps.renderWorkerPool.frame.unregisterMapRuntime(mapId, mapSimToken);
     }
 }

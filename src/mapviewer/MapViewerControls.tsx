@@ -595,7 +595,7 @@ export const MapViewerControls = memo(
                                 }
                                 setExportingSprites(true);
                                 mapViewer.workerPool
-                                    .exportSprites()
+                                    .build.exportSprites()
                                     .then((zipBlob) => {
                                         FileSaver.saveAs(
                                             zipBlob,
@@ -615,7 +615,7 @@ export const MapViewerControls = memo(
                                 }
                                 setExportingTextures(true);
                                 mapViewer.workerPool
-                                    .exportTextures()
+                                    .build.exportTextures()
                                     .then((zipBlob) => {
                                         FileSaver.saveAs(
                                             zipBlob,

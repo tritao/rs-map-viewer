@@ -41,6 +41,32 @@ export class RenderDataWorkerPool {
         readonly frameWorkerPromise: Promise<RenderDataWorkerThread>,
     ) {}
 
+    readonly build = {
+        loadStaticMapPacket: (input: SdMapLoaderInput) => this.loadStaticMapPacket(input),
+        loadTexture: (id: number, size: number, flipH: boolean, brightness: number) =>
+            this.loadTexture(id, size, flipH, brightness),
+        loadMapImage: (
+            mapX: number,
+            mapY: number,
+            level: number,
+            drawMapFunctions: boolean,
+        ) => this.loadMapImage(mapX, mapY, level, drawMapFunctions),
+        loadCachedMapImages: () => this.loadCachedMapImages(),
+        exportSprites: () => this.exportSprites(),
+        exportTextures: () => this.exportTextures(),
+    };
+
+    readonly frame = {
+        registerMapRuntime: (input: RenderMapRuntimeRegistrationInput) =>
+            this.registerRenderMapRuntime(input),
+        unregisterMapRuntime: (mapId: number, mapSimToken?: number) =>
+            this.unregisterRenderMapRuntime(mapId, mapSimToken),
+        syncState: (update: RenderFrameInputUpdate) => this.syncRenderFrameState(update),
+        applyWorldDelta: (deltaPacket: WorldDeltaPacket) => this.applyWorldDeltaPacket(deltaPacket),
+        buildPacket: (frameCount: number, cycleNow: number) =>
+            this.buildRenderFramePacket(frameCount, cycleNow),
+    };
+
     private initPromise: Promise<void> | undefined;
 
     private ensureSpawnBootstrap(cache: LoadedCache): Promise<WorkerSpawnBootstrap> {
@@ -91,13 +117,13 @@ export class RenderDataWorkerPool {
         );
     }
 
-    queueStaticMapPacket(input: SdMapLoaderInput): Promise<DecodedStaticMapPacket | undefined> {
+    private loadStaticMapPacket(input: SdMapLoaderInput): Promise<DecodedStaticMapPacket | undefined> {
         return this.queueBuildTask((w) => w.loadStaticMapPacket(input)).then((packet) =>
             packet ? decodeStaticMapWirePacket(packet) : undefined,
         );
     }
 
-    queueLoadTexture(
+    private loadTexture(
         id: number,
         size: number,
         flipH: boolean,
@@ -106,7 +132,7 @@ export class RenderDataWorkerPool {
         return this.queueBuildTask((w) => w.loadTexture(id, size, flipH, brightness));
     }
 
-    queueMapImage(
+    private loadMapImage(
         mapX: number,
         mapY: number,
         level: number,
@@ -124,15 +150,15 @@ export class RenderDataWorkerPool {
         });
     }
 
-    loadCachedMapImages(): Promise<Map<number, string>> {
+    private loadCachedMapImages(): Promise<Map<number, string>> {
         return this.queueBuildTask((w) => w.loadCachedMapImages());
     }
 
-    exportSprites(): Promise<Blob> {
+    private exportSprites(): Promise<Blob> {
         return this.queueBuildTask((w) => w.exportSpritesToZip());
     }
 
-    exportTextures(): Promise<Blob> {
+    private exportTextures(): Promise<Blob> {
         return this.queueBuildTask((w) => w.exportTexturesToZip());
     }
 
@@ -148,23 +174,23 @@ export class RenderDataWorkerPool {
         return task(worker);
     }
 
-    registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
+    private registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
         return this.withRenderFrameWorker((w) => w.registerRenderMapRuntime(input));
     }
 
-    unregisterRenderMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
+    private unregisterRenderMapRuntime(mapId: number, mapSimToken?: number): Promise<void> {
         return this.withRenderFrameWorker((w) => w.unregisterRenderMapRuntime(mapId, mapSimToken));
     }
 
-    syncRenderFrameState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion> {
+    private syncRenderFrameState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion> {
         return this.withRenderFrameWorker((w) => w.syncRenderFrameState(update));
     }
 
-    applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
+    private applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         return this.withRenderFrameWorker((w) => w.applyWorldDeltaPacket(deltaPacket));
     }
 
-    buildRenderFramePacket(
+    private buildRenderFramePacket(
         frameCount: number,
         cycleNow: number,
     ): Promise<RenderFramePacket | undefined> {

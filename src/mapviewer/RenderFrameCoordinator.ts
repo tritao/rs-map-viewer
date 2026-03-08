@@ -112,7 +112,7 @@ export class RenderFrameCoordinator {
                     lodDistance: 0,
                 },
             }),
-            this.deps.renderWorkerPool.syncRenderFrameState({
+            this.deps.renderWorkerPool.frame.syncState({
                 mapIds: EMPTY_INT32,
                 viewState: {
                     cameraMapX: 0,
@@ -216,7 +216,7 @@ export class RenderFrameCoordinator {
         }
         if (renderFrameUpdate) {
             updatePromises.push(
-                this.deps.renderWorkerPool.syncRenderFrameState(renderFrameUpdate).then((versions) => {
+                this.deps.renderWorkerPool.frame.syncState(renderFrameUpdate).then((versions) => {
                     if ((this.packetEpoch | 0) === (epoch | 0)) {
                         this.expectedInputStateVersion = versions;
                     }
@@ -241,10 +241,10 @@ export class RenderFrameCoordinator {
             );
             const afterSim = performance.now();
             if (worldDeltaPacket) {
-                await this.deps.renderWorkerPool.applyWorldDeltaPacket(worldDeltaPacket);
+                await this.deps.renderWorkerPool.frame.applyWorldDelta(worldDeltaPacket);
             }
             const afterApply = performance.now();
-            const packet = await this.deps.renderWorkerPool.buildRenderFramePacket(
+            const packet = await this.deps.renderWorkerPool.frame.buildPacket(
                 input.input.frameCount,
                 input.input.cycle,
             );
@@ -254,7 +254,9 @@ export class RenderFrameCoordinator {
                 applyWorldMs: afterApply - afterSim,
                 renderMs: seamEnd - afterApply,
                 totalMs: seamEnd - seamStart,
-                worldEventCount: worldDeltaPacket?.npcDelta?.eventCount ?? 0,
+                worldEventCount:
+                    (worldDeltaPacket?.npcDelta?.eventCount ?? 0) +
+                    (worldDeltaPacket?.objDelta?.updates.length ?? 0),
             });
             return packet;
         };

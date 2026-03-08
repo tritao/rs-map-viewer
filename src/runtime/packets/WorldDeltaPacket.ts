@@ -24,12 +24,17 @@ type WorldDeltaPacketInput = Readonly<{
     frameCount: number;
     inputStateVersion: number;
     npcDelta?: NpcWorldDelta;
-    mapObjUpdates?: ReadonlyArray<WorldMapObjUpdate>;
+    objDelta?: WorldObjDelta;
 }>;
 
 export type WorldMapObjUpdate = Readonly<{
+    kind: "replaceMapObjRenderData";
     mapId: number;
     objRenderData?: unknown;
+}>;
+
+export type WorldObjDelta = Readonly<{
+    updates: ReadonlyArray<WorldMapObjUpdate>;
 }>;
 
 export type NpcWorldDelta = Readonly<{
@@ -61,7 +66,7 @@ export type WorldDeltaPacket = Readonly<{
     frameCount: number;
     inputStateVersion: number;
     npcDelta?: NpcWorldDelta;
-    mapObjUpdates?: ReadonlyArray<WorldMapObjUpdate>;
+    objDelta?: WorldObjDelta;
 }>;
 
 export function getWorldDeltaPacketCounts(
@@ -128,7 +133,7 @@ export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaP
         frameCount: input.frameCount | 0,
         inputStateVersion: input.inputStateVersion | 0,
         npcDelta: input.npcDelta,
-        mapObjUpdates: input.mapObjUpdates,
+        objDelta: input.objDelta,
     };
 }
 
@@ -241,7 +246,7 @@ export function buildWorldDeltaPacketFromNpcEvents(
     });
 }
 
-export function buildWorldDeltaPacketFromMapObjUpdates(
+export function buildWorldDeltaPacketFromObjUpdates(
     input: Readonly<{
         updates: ReadonlyArray<WorldMapObjUpdate>;
     }>,
@@ -249,7 +254,9 @@ export function buildWorldDeltaPacketFromMapObjUpdates(
     return buildWorldDeltaPacket({
         frameCount: 0,
         inputStateVersion: 0,
-        mapObjUpdates: input.updates,
+        objDelta: {
+            updates: input.updates,
+        },
     });
 }
 

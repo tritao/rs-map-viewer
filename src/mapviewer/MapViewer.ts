@@ -187,7 +187,7 @@ class MapViewerMapImages {
     }
 
     loadCachedUrls(): void {
-        this.deps.renderWorkerPool.loadCachedMapImages().then((mapImageUrls) => {
+        this.deps.renderWorkerPool.build.loadCachedMapImages().then((mapImageUrls) => {
             mapImageUrls.forEach((value, key) => this.mapImageUrls.set(key, value));
         });
     }
@@ -206,7 +206,12 @@ class MapViewerMapImages {
         }
         this.loadingMapImageIds.add(mapId);
 
-        const minimapData = await this.deps.renderWorkerPool.queueMapImage(mapX, mapY, 0, true);
+        const minimapData = await this.deps.renderWorkerPool.build.loadMapImage(
+            mapX,
+            mapY,
+            0,
+            true,
+        );
         if (minimapData) {
             const url = URL.createObjectURL(minimapData.minimapBlob);
             this.setMapImageUrl(mapX, mapY, url, false);
