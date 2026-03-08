@@ -1,9 +1,8 @@
 import { mat4, vec2, vec3 } from "gl-matrix";
 import { App as PicoApp, PicoGL, Program, UniformBuffer } from "picogl";
 
-import { GameType, type CacheInfo } from "../../rs/cache/CacheInfo";
-import type { TextureService } from "../../rs/loaders/Loaders";
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
+import type { TextureService } from "../../rs/loaders/Loaders";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
 import type { StandaloneRenderData } from "../../runtime/build/StandaloneRenderDataBuilder";
 import { createWebGLDevice } from "./WebGLDevice";
@@ -20,8 +19,9 @@ export type SetEntityRenderDataOptions = Readonly<{
 }>;
 
 type WebGLEntityRendererDeps = Readonly<{
-    cacheInfo: CacheInfo;
     textureLoader: TextureService;
+    isNewTextureAnim: boolean;
+    maxTexturePreloadCount?: number;
 }>;
 
 export class WebGLEntityRenderer implements Renderer {
@@ -108,14 +108,12 @@ export class WebGLEntityRenderer implements Renderer {
             PicoGL.FLOAT,
         ]);
 
-        this.isNewTextureAnim =
-            this.cacheResources.cacheInfo.game === GameType.Runescape &&
-            this.cacheResources.cacheInfo.revision >= 681;
+        this.isNewTextureAnim = this.cacheResources.isNewTextureAnim;
         this.textures.init(
             this.app,
             this.gl,
             this.cacheResources.textureLoader,
-            this.cacheResources.cacheInfo,
+            this.cacheResources.maxTexturePreloadCount,
             PicoGL.LINEAR_MIPMAP_LINEAR as unknown as never,
             this.stats.frameCount,
         );

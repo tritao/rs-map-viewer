@@ -1,6 +1,5 @@
 import PicoGL, { type App as PicoApp, type Texture } from "picogl";
 
-import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import type { TextureFilterMode } from "../MapRenderer";
 import { WebGLTextureResidency } from "./WebGLTextureResidency";
@@ -18,11 +17,18 @@ export class WebGLTextureSystem {
         app: PicoApp,
         gl: WebGL2RenderingContext,
         textureLoader: TextureService,
-        cacheInfo: CacheInfo,
+        maxPreloadTexturesHint: number | undefined,
         textureFilterMode: TextureFilterMode,
         frameCount: number,
     ): void {
-        this.residency.init(app, gl, textureLoader, cacheInfo, textureFilterMode, frameCount);
+        this.residency.init(
+            app,
+            gl,
+            textureLoader,
+            maxPreloadTexturesHint,
+            textureFilterMode,
+            frameCount,
+        );
         this.rebuildMaterialsTexture(app, textureLoader);
     }
 

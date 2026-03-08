@@ -9,6 +9,7 @@ import { InteractType } from "../runtime/contracts/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { MenuTargetType } from "../rs/MenuEntry";
+import { GameType } from "../rs/cache/CacheInfo";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import { INTERACTION_RADIUS } from "../runtime/contracts/Interaction";
@@ -63,8 +64,15 @@ export class MapViewerRenderer extends RendererMainLoop {
         return new WebGLMapRenderer(
             {
                 cacheName: this.mapViewer.session.cache.info.name,
-                cacheInfo: this.mapViewer.session.cache.info,
                 textureLoader: this.mapViewer.session.loaders.textureLoader,
+                isNewTextureAnim:
+                    this.mapViewer.session.cache.info.game === GameType.Runescape &&
+                    this.mapViewer.session.cache.info.revision >= 681,
+                maxTexturePreloadCount:
+                    this.mapViewer.session.cache.info.game === GameType.Runescape &&
+                    this.mapViewer.session.cache.info.revision >= 508
+                        ? 64
+                        : undefined,
             },
             this.mapViewer.renderDistance,
             this.mapViewer.unloadDistance,

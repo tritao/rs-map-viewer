@@ -11,7 +11,6 @@ import {
 
 import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
 import { Camera } from "../../runtime/Camera";
-import { GameType, type CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type { DrawRange } from "../../runtime/contracts/DrawRange";
@@ -66,7 +65,8 @@ type FrameRenderMap = {
 type WebGLMapRendererDeps = Readonly<{
     cacheName: string;
     textureLoader: TextureService;
-    cacheInfo: CacheInfo;
+    isNewTextureAnim: boolean;
+    maxTexturePreloadCount?: number;
 }>;
 
 export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
@@ -235,9 +235,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     }
 
     initCache(): void {
-        const cacheInfo = this.cacheResources.cacheInfo;
-        this.isNewTextureAnim =
-            cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 681;
+        this.isNewTextureAnim = this.cacheResources.isNewTextureAnim;
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
         this.pendingObjRenderDataByMapId.clear();
 
@@ -255,7 +253,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             this.app,
             this.gl,
             this.cacheResources.textureLoader,
-            this.cacheResources.cacheInfo,
+            this.cacheResources.maxTexturePreloadCount,
             this.textureFilterMode,
             this.stats.frameCount,
         );

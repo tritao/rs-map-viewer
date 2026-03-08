@@ -1,5 +1,3 @@
-import type { CacheInfo } from "../../../rs/cache/CacheInfo";
-import { GameType } from "../../../rs/cache/CacheInfo";
 import { TEXTURE_ID_LUT_SIZE, textureIdToLutIndex } from "./TextureIdLut";
 
 const MAX_TEXTURE_UPLOADS_PER_FRAME = 16;
@@ -75,13 +73,13 @@ export class TextureResidencyPolicy {
         }
     }
 
-    computeMaxPreloadTextures(cacheInfo: CacheInfo): number {
+    computeMaxPreloadTextures(maxPreloadTexturesHint: number | undefined): number {
         let maxPreloadTextures = Math.min(
             this.textureIds.length,
             Math.max(0, this.textureSlotCount - 1),
         );
-        if (cacheInfo.game === GameType.Runescape && cacheInfo.revision >= 508) {
-            maxPreloadTextures = 64;
+        if (typeof maxPreloadTexturesHint === "number" && Number.isFinite(maxPreloadTexturesHint)) {
+            maxPreloadTextures = Math.min(maxPreloadTextures, Math.max(0, maxPreloadTexturesHint | 0));
         }
         maxPreloadTextures = Math.min(maxPreloadTextures, Math.max(0, this.textureSlotCount - 1));
         return maxPreloadTextures | 0;

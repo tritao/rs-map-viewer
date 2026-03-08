@@ -1,6 +1,5 @@
 import PicoGL, { App as PicoApp, Texture } from "picogl";
 
-import type { CacheInfo } from "../../rs/cache/CacheInfo";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { TextureFilterMode, getMaxAnisotropy } from "../MapRenderer";
 import { createTextureArray } from "./PicoTexture";
@@ -33,7 +32,7 @@ export class WebGLTextureResidency {
         app: PicoApp,
         gl: WebGL2RenderingContext,
         textureLoader: TextureService,
-        cacheInfo: CacheInfo,
+        maxPreloadTexturesHint: number | undefined,
         textureFilterMode: TextureFilterMode,
         frameCount: number,
     ): void {
@@ -45,7 +44,7 @@ export class WebGLTextureResidency {
         this.policy.setTextureIds(textureLoader.getTextureIds());
 
         this.initTextureSlotLut();
-        this.initTextureArray(cacheInfo, textureFilterMode);
+        this.initTextureArray(maxPreloadTexturesHint, textureFilterMode);
     }
 
     dispose(): void {
@@ -252,7 +251,7 @@ export class WebGLTextureResidency {
         );
     }
 
-    private initTextureArray(cacheInfo: CacheInfo, filterMode: TextureFilterMode) {
+    private initTextureArray(maxPreloadTexturesHint: number | undefined, filterMode: TextureFilterMode) {
         if (!this.app || !this.gl || !this.textureLoader) {
             throw new Error("Texture residency is not initialized");
         }
@@ -286,7 +285,7 @@ export class WebGLTextureResidency {
             );
         }
 
-        const maxPreloadTextures = this.policy.computeMaxPreloadTextures(cacheInfo);
+        const maxPreloadTextures = this.policy.computeMaxPreloadTextures(maxPreloadTexturesHint);
         const textureIds = this.policy.getTextureIds();
         for (let i = 0; i < maxPreloadTextures; i++) {
             const slot = i + 1;
