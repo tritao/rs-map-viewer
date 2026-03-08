@@ -2,7 +2,6 @@ import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import {
     type MapData,
-    type ObjRenderData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
 import { InteractType } from "../runtime/InteractType";
@@ -306,38 +305,24 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async applyWorldEvents(input: WorldEventsInput): Promise<number> {
-        return await this.mapWorldSession.applyWorldEvents(input);
+        const applied = await this.mapWorldSession.applyWorldEvents(input);
+        if ((applied | 0) > 0 && input.objUpdates && (input.objUpdates.length | 0) > 0) {
+            this.renderFrameCoordinator.invalidateLatestPacket();
+        }
+        return applied | 0;
     }
 
     private async attachLoadedRuntimeMapObjRenderData(
         packet: DecodedStaticMapPacket,
     ): Promise<void> {
-        await this.applyRuntimeMapObjRenderDataById(
-            packet.mapData.mapId | 0,
-            packet.runtimeBootstrap.objRenderData,
-            "attach",
-        );
-    }
-
-    private async applyRuntimeMapObjRenderDataById(
-        mapId: number,
-        objRenderData: ObjRenderData | undefined,
-        action: "attach" | "apply" = "apply",
-    ): Promise<void> {
-        try {
-            const applied = await this.renderWorkerPool.applyRuntimeMapObjRenderData(
-                mapId,
-                objRenderData,
-            );
-            if ((applied | 0) > 0) {
-                this.renderFrameCoordinator.invalidateLatestPacket();
-            }
-        } catch (error: unknown) {
-            console.error(
-                `[map-render] failed to ${action} obj render data for mapId=${mapId | 0}`,
-                error,
-            );
-        }
+        await this.applyWorldEvents({
+            objUpdates: [
+                {
+                    mapId: packet.mapData.mapId | 0,
+                    objRenderData: packet.runtimeBootstrap.objRenderData,
+                },
+            ],
+        });
     }
 
     override async init() {

@@ -3,8 +3,10 @@ import {
     getValidatedStaticMapNpcOrderKeys,
 } from "./packets/StaticMapPacket";
 import type { NpcEvent } from "./entities/NpcEvents";
+import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
+import { buildWorldDeltaPacketFromMapObjUpdates } from "./packets/WorldDeltaPacket";
 import type {
     MapRuntimeBootstrapInput,
     RenderMapRuntimeRegistrationInput,
@@ -21,6 +23,7 @@ const EMPTY_NPC_TYPE_ANIMATION_TABLE: ReadonlyArray<NpcTypeAnimationEntry> = [];
 
 export type WorldEventsInput = Readonly<{
     npcEvents?: ReadonlyArray<NpcEvent>;
+    objUpdates?: ReadonlyArray<Readonly<{ mapId: number; objRenderData?: ObjRenderData }>>;
 }>;
 
 export class MapWorldSession {
@@ -75,6 +78,16 @@ export class MapWorldSession {
         let applied = 0;
         if (input.npcEvents && (input.npcEvents.length | 0) > 0) {
             applied = (applied + (await this.deps.simWorkerPool.applyNpcLifecycleEvents(input.npcEvents))) | 0;
+        }
+        if (input.objUpdates && (input.objUpdates.length | 0) > 0) {
+            applied =
+                (applied +
+                    (await this.deps.renderWorkerPool.applyWorldDeltaPacket(
+                        buildWorldDeltaPacketFromMapObjUpdates({
+                            updates: input.objUpdates,
+                        }),
+                    ))) |
+                0;
         }
         return applied | 0;
     }

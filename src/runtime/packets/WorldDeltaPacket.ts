@@ -5,6 +5,7 @@ import type {
     NpcUpdateEvent,
 } from "../entities/NpcEvents";
 import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
+import type { ObjRenderData } from "../../maprender/MapRenderPayload";
 
 export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
 export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;
@@ -26,6 +27,12 @@ type WorldDeltaPacketInput = Readonly<{
     spawnsPacked: Int32Array;
     updatesPacked: Int32Array;
     despawnsPacked: Int32Array;
+    runtimeMapObjUpdates?: ReadonlyArray<WorldMapObjUpdate>;
+}>;
+
+export type WorldMapObjUpdate = Readonly<{
+    mapId: number;
+    objRenderData?: ObjRenderData;
 }>;
 
 export type WorldDeltaPacketCounts = Readonly<{
@@ -53,6 +60,7 @@ export type WorldDeltaPacket = Readonly<{
     spawnsPacked: Int32Array;
     updatesPacked: Int32Array;
     despawnsPacked: Int32Array;
+    runtimeMapObjUpdates?: ReadonlyArray<WorldMapObjUpdate>;
 }>;
 
 export function getWorldDeltaPacketCounts(
@@ -109,6 +117,7 @@ export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaP
         spawnsPacked: input.spawnsPacked,
         updatesPacked: input.updatesPacked,
         despawnsPacked: input.despawnsPacked,
+        runtimeMapObjUpdates: input.runtimeMapObjUpdates,
     };
 }
 
@@ -215,6 +224,21 @@ export function buildWorldDeltaPacketFromNpcEvents(
         spawnsPacked,
         updatesPacked,
         despawnsPacked,
+    });
+}
+
+export function buildWorldDeltaPacketFromMapObjUpdates(
+    input: Readonly<{
+        updates: ReadonlyArray<WorldMapObjUpdate>;
+    }>,
+): WorldDeltaPacket {
+    return buildWorldDeltaPacket({
+        frameCount: 0,
+        inputStateVersion: 0,
+        spawnsPacked: new Int32Array(0),
+        updatesPacked: new Int32Array(0),
+        despawnsPacked: new Int32Array(0),
+        runtimeMapObjUpdates: input.updates,
     });
 }
 
@@ -341,9 +365,49 @@ export function decodeWorldDeltaNpcEvents(
 }
 
 export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transferable[] {
-    return [
+    const out: Transferable[] = [
         packet.spawnsPacked.buffer as Transferable,
         packet.updatesPacked.buffer as Transferable,
         packet.despawnsPacked.buffer as Transferable,
     ];
+    const seen = new Set<Transferable>();
+    for (let i = 0; i < out.length; i++) {
+        seen.add(out[i]!);
+    }
+    const updates = packet.runtimeMapObjUpdates;
+    if (!updates) {
+        return out;
+    }
+    for (let updateIndex = 0; updateIndex < updates.length; updateIndex++) {
+        const objRenderData = updates[updateIndex]?.objRenderData;
+        if (!objRenderData) {
+            continue;
+        }
+        pushTransferableUnique(out, seen, objRenderData.vertices.buffer as Transferable);
+        pushTransferableUnique(out, seen, objRenderData.indices.buffer as Transferable);
+        pushTransferableUnique(out, seen, objRenderData.usedTextureIds.buffer as Transferable);
+        for (const key of Object.keys(objRenderData.modelInfoTextures) as Array<
+            keyof typeof objRenderData.modelInfoTextures
+        >) {
+            pushTransferableUnique(
+                out,
+                seen,
+                objRenderData.modelInfoTextures[key].buffer as Transferable,
+            );
+            pushTransferableUnique(out, seen, objRenderData.drawRanges[key].buffer as Transferable);
+        }
+    }
+    return out;
+}
+
+function pushTransferableUnique(
+    out: Transferable[],
+    seen: Set<Transferable>,
+    transferable: Transferable,
+): void {
+    if (seen.has(transferable)) {
+        return;
+    }
+    seen.add(transferable);
+    out.push(transferable);
 }

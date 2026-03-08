@@ -2,7 +2,6 @@ import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
-import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { renderFramePacketTransferables } from "../renderer/RenderFramePacket";
 import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
@@ -113,25 +112,22 @@ const worker = {
     },
     async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
-        if (!frameRuntime.hasCompatibleInputStateVersion(deltaPacket.inputStateVersion | 0)) {
+        const hasNpcEvents = (deltaPacket.eventCount | 0) > 0;
+        if (
+            hasNpcEvents &&
+            !frameRuntime.hasCompatibleInputStateVersion(deltaPacket.inputStateVersion | 0)
+        ) {
             return 0;
         }
         const deltaFrameCount = deltaPacket.frameCount | 0;
-        if (deltaFrameCount < (lastAppliedWorldDeltaFrameCount | 0)) {
-            return 0;
-        }
-        if ((deltaPacket.eventCount | 0) <= 0) {
+        if (hasNpcEvents && deltaFrameCount < (lastAppliedWorldDeltaFrameCount | 0)) {
             return 0;
         }
         const applied = await frameRuntime.applyWorldDeltaPacket(deltaPacket);
-        if ((applied | 0) > 0) {
+        if (hasNpcEvents && (applied | 0) > 0) {
             lastAppliedWorldDeltaFrameCount = deltaFrameCount;
         }
         return applied | 0;
-    },
-    async applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
-        const { frameRuntime } = await getWorkerServices();
-        return frameRuntime.applyRuntimeMapObjRenderPacket(packet);
     },
     async buildRenderFramePacket(
         frameCount: number,

@@ -1,10 +1,8 @@
 import { ModuleThread, Pool, Thread, spawn } from "threads";
 
-import type { ObjRenderData, SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MinimapData } from "../maprender/ts/MinimapData";
-import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
-import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import {
     decodeStaticMapWirePacket,
@@ -164,24 +162,6 @@ export class RenderDataWorkerPool {
 
     applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         return this.withRenderFrameWorker((w) => w.applyWorldDeltaPacket(deltaPacket));
-    }
-
-    private applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): Promise<number> {
-        return this.withRenderFrameWorker((w) => w.applyRuntimeMapObjRenderPacket(packet));
-    }
-
-    applyRuntimeMapObjRenderData(
-        mapId: number,
-        objRenderData: ObjRenderData | undefined,
-    ): Promise<number> {
-        return this.applyRuntimeMapObjRenderPacket(
-            buildMapObjRenderPacket([
-                {
-                    mapId: mapId | 0,
-                    objRenderData,
-                },
-            ]),
-        );
     }
 
     buildRenderFramePacket(

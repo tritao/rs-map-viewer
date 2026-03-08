@@ -3,7 +3,6 @@ import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
 import type { CacheSession } from "../rs/loaders/CacheSession";
-import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
@@ -15,7 +14,8 @@ import {
 } from "../renderer/RenderFramePacketBuilder";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
-import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
 import { NpcGpuFrameBuilder } from "../renderer/NpcGpuFrameBuilder";
@@ -125,11 +125,10 @@ export class WorkerFramePacketRuntime {
         this.pendingRuntimeObjRenderDataByMapId.clear();
     }
 
-    applyRuntimeMapObjRenderPacket(packet: MapObjRenderPacket | undefined): number {
-        if (!packet) {
+    private applyRuntimeMapObjUpdates(updates: ReadonlyArray<WorldMapObjUpdate> | undefined): number {
+        if (!updates) {
             return 0;
         }
-        const updates = packet.updates;
         let applied = 0;
         for (let index = 0; index < updates.length; index++) {
             const update = updates[index];
@@ -247,12 +246,14 @@ export class WorkerFramePacketRuntime {
     }
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
+        let applied = this.applyRuntimeMapObjUpdates(packet.runtimeMapObjUpdates);
         if ((packet.eventCount | 0) <= 0) {
-            return 0;
+            return applied | 0;
         }
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
-        return this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0;
+        applied = (applied + (this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0)) | 0;
+        return applied | 0;
     }
 
     private normalizeFrameBuildInputs(
