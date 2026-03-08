@@ -29,7 +29,11 @@ import {
 import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
-import { WorkerMapRuntimeTracker } from "./WorkerContext";
+import {
+    type RenderFrameInputUpdate,
+    type RenderFrameViewState,
+    WorkerMapRuntimeTracker,
+} from "./WorkerContext";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
@@ -37,12 +41,6 @@ type FrameWorkerState = Readonly<{
         kind: MapRenderBackend["kind"];
         getCppWasmRuntimeHandle?: () => MapRenderRuntimeHandle | undefined;
     }>;
-}>;
-
-type ViewState = Readonly<{
-    cameraMapX: number;
-    cameraMapY: number;
-    lodDistance: number;
 }>;
 
 type FrameBuildInputs = Readonly<{
@@ -100,7 +98,7 @@ export class WorkerFramePacketRuntime {
     private visibleMapIds: Int32Array = new Int32Array(0);
     private mapIdsVersion: number = 0;
     private viewStateVersion: number = 0;
-    private viewState: ViewState = {
+    private viewState: RenderFrameViewState = {
         cameraMapX: 0,
         cameraMapY: 0,
         lodDistance: 0,
@@ -165,7 +163,19 @@ export class WorkerFramePacketRuntime {
         return buildMapObjRenderPacket(updates);
     }
 
-    setVisibleMapIds(mapIds: Int32Array): void {
+    applyRenderFrameInputUpdate(update: RenderFrameInputUpdate): void {
+        if (update.mapIds !== undefined) {
+            this.setVisibleMapIds(update.mapIds);
+        }
+        if (update.viewState !== undefined) {
+            this.setViewState(update.viewState);
+        }
+        if (update.hoveredMapIdsPacked !== undefined) {
+            this.setHoveredMapIds(update.hoveredMapIdsPacked);
+        }
+    }
+
+    private setVisibleMapIds(mapIds: Int32Array): void {
         if ((mapIds.length | 0) <= 0) {
             this.visibleMapIds = new Int32Array(0);
             this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
@@ -175,11 +185,11 @@ export class WorkerFramePacketRuntime {
         this.mapIdsVersion = (this.mapIdsVersion + 1) | 0;
     }
 
-    setViewState(cameraMapX: number, cameraMapY: number, lodDistance: number): void {
+    private setViewState(viewState: RenderFrameViewState): void {
         const nextViewState = {
-            cameraMapX: cameraMapX | 0,
-            cameraMapY: cameraMapY | 0,
-            lodDistance: Math.max(0, lodDistance | 0),
+            cameraMapX: viewState.cameraMapX | 0,
+            cameraMapY: viewState.cameraMapY | 0,
+            lodDistance: Math.max(0, viewState.lodDistance | 0),
         };
         if (
             (this.viewState.cameraMapX | 0) !== (nextViewState.cameraMapX | 0) ||
@@ -191,7 +201,7 @@ export class WorkerFramePacketRuntime {
         }
     }
 
-    setHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
+    private setHoveredMapIds(hoveredMapIdsPacked: Int32Array): void {
         if ((hoveredMapIdsPacked.length | 0) <= 0) {
             this.hoveredMapIdsPacked = new Int32Array(0);
             return;

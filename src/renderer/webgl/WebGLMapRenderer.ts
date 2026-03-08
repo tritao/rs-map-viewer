@@ -144,7 +144,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 if (!update) {
                     continue;
                 }
-                this.replaceMapObjRenderData(update.mapId | 0, update.objRenderData);
+                this.applyMapObjRenderDataUpdate(update.mapId | 0, update.objRenderData);
             }
         }
         this.framePacketState.apply(packet);
@@ -153,7 +153,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         }
     }
 
-    override replaceMapObjRenderData(mapId: number, objRenderData: ObjRenderData | undefined): void {
+    private applyMapObjRenderDataUpdate(
+        mapId: number,
+        objRenderData: ObjRenderData | undefined,
+    ): void {
         const normalizedMapId = mapId | 0;
         this.pendingObjRenderDataByMapId.set(normalizedMapId, objRenderData);
         const map = this.loadedMaps.get(normalizedMapId);

@@ -36,6 +36,18 @@ export type WorkerSpawnBootstrap = Readonly<{
     fallbackNpcSpawns: NpcSpawn[];
 }>;
 
+export type RenderFrameViewState = Readonly<{
+    cameraMapX: number;
+    cameraMapY: number;
+    lodDistance: number;
+}>;
+
+export type RenderFrameInputUpdate = Readonly<{
+    mapIds?: Int32Array;
+    viewState?: RenderFrameViewState;
+    hoveredMapIdsPacked?: Int32Array;
+}>;
+
 export class WorkerMapRuntimeTracker {
     private readonly mapSimTokenByMapId = new Map<number, number>();
     private readonly warnedMissingRuntimeStateMapIds = new Set<number>();

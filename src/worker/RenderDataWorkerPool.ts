@@ -14,7 +14,11 @@ import {
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
+import type {
+    RenderFrameInputUpdate,
+    WorkerRuntimeOptions,
+    WorkerSpawnBootstrap,
+} from "./WorkerContext";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;
@@ -170,22 +174,8 @@ export class RenderDataWorkerPool {
         return this.withRenderFrameWorker((w) => w.unregisterMapRuntime(mapId, mapSimToken));
     }
 
-    setFrameMapIds(mapIds: Int32Array): Promise<void> {
-        return this.withRenderFrameWorker((w) => w.setFrameMapIds(mapIds));
-    }
-
-    setFrameViewState(
-        cameraMapX: number,
-        cameraMapY: number,
-        lodDistance: number,
-    ): Promise<void> {
-        return this.withRenderFrameWorker((w) =>
-            w.setFrameViewState(cameraMapX, cameraMapY, lodDistance),
-        );
-    }
-
-    setFrameHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        return this.withRenderFrameWorker((w) => w.setFrameHoveredMapIds(hoveredMapIdsPacked));
+    syncRenderFrameState(update: RenderFrameInputUpdate): Promise<void> {
+        return this.withRenderFrameWorker((w) => w.syncRenderFrameState(update));
     }
 
     applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {

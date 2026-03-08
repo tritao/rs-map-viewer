@@ -47,7 +47,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     mapManagerTime: number = 0;
 
     renderer: MapRenderer<MapSquareRenderable, MapData>;
-    private readonly tickCoordinator = new RenderTickCoordinator();
+    private readonly renderTickCoordinator = new RenderTickCoordinator();
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
     private readonly mapWorldSession: MapWorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
@@ -228,7 +228,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const mapData = packet.mapData;
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
-        await this.attachLoadedMapObjRenderData(packet);
+        await this.attachLoadedRuntimeMapObjRenderData(packet);
         if (mapData.minimapBlob.size > 0) {
             this.mapViewer.setMapImageUrl(
                 mapData.mapX,
@@ -310,23 +310,17 @@ export class MapViewerRenderer extends RendererMainLoop {
         return await this.mapWorldSession.applyNpcLifecycleEvents(events);
     }
 
-    replaceMapObjRenderData(
-        mapX: number,
-        mapY: number,
-        objRenderData: ObjRenderData | undefined,
-    ): void {
-        void this.replaceMapObjRenderDataById(getMapSquareId(mapX, mapY), objRenderData);
-    }
-
-    private async attachLoadedMapObjRenderData(packet: DecodedStaticMapPacket): Promise<void> {
-        await this.replaceMapObjRenderDataById(
+    private async attachLoadedRuntimeMapObjRenderData(
+        packet: DecodedStaticMapPacket,
+    ): Promise<void> {
+        await this.applyRuntimeMapObjRenderDataById(
             packet.mapData.mapId | 0,
             packet.runtimeBootstrap.objRenderData,
             "attach",
         );
     }
 
-    private async replaceMapObjRenderDataById(
+    private async applyRuntimeMapObjRenderDataById(
         mapId: number,
         objRenderData: ObjRenderData | undefined,
         action: "attach" | "replace" = "replace",
@@ -385,7 +379,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             return;
         }
         this.running = true;
-        this.tickCoordinator.requestClockResync();
+        this.renderTickCoordinator.requestClockResync();
         this.animationId = requestAnimationFrame(this.frameCallback);
     }
 
@@ -404,7 +398,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
         try {
             await this.renderer.cleanUp();
-            this.tickCoordinator.resetForCacheContext(this.renderFrameCoordinator);
+            this.renderTickCoordinator.resetForCacheContext(this.renderFrameCoordinator);
             this.mapManager.cleanUp();
             await this.recreateRendererAndMapManager();
             this.initializeCacheState();
@@ -418,7 +412,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.mapWorldSession.reset();
-        this.tickCoordinator.resetForShutdown(this.renderFrameCoordinator);
+        this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
     }
@@ -448,15 +442,19 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
 
         const timeSec = time / 1000;
-        const tickState = this.tickCoordinator.advanceClocks(timeSec);
+        const renderTickState = this.renderTickCoordinator.advanceClocks(timeSec);
 
-        const tickStart = performance.now();
-        this.tickPass(tickState.cycle, tickState.ticksElapsed, tickState.clientTicksElapsed);
-        this.renderer.rendererStats.tickTime = performance.now() - tickStart;
+        const renderTickStart = performance.now();
+        this.runRenderTick(
+            renderTickState.cycle,
+            renderTickState.ticksElapsed,
+            renderTickState.clientTicksElapsed,
+        );
+        this.renderer.rendererStats.tickTime = performance.now() - renderTickStart;
     }
 
-    tickPass(cycle: number, ticksElapsed: number, clientTicksElapsed: number): void {
-        this.tickCoordinator.applyTick({
+    private runRenderTick(cycle: number, ticksElapsed: number, clientTicksElapsed: number): void {
+        this.renderTickCoordinator.applyTick({
             frameInput: {
                 frameCount: this.renderer.stats.frameCount,
                 cycle,

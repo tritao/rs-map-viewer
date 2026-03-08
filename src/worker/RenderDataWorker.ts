@@ -10,7 +10,11 @@ import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { StaticMapWirePacket } from "../runtime/packets/StaticMapPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import type { LoadedCache } from "../util/Caches";
-import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerContext";
+import type {
+    RenderFrameInputUpdate,
+    WorkerRuntimeOptions,
+    WorkerSpawnBootstrap,
+} from "./WorkerContext";
 
 export type { WorkerRuntimeOptions, WorkerState } from "./WorkerContext";
 
@@ -104,23 +108,32 @@ const worker = {
         const { frameRuntime } = await getWorkerServices();
         frameRuntime.unregisterMapRuntime(mapId, mapSimToken);
     },
-    async setFrameMapIds(mapIds: Int32Array): Promise<void> {
+    async syncRenderFrameState(update: RenderFrameInputUpdate): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setVisibleMapIds(normalizeWorkerInt32Array(mapIds));
-        frameMapIdsVersion = (frameMapIdsVersion + 1) | 0;
-    },
-    async setFrameViewState(
-        cameraMapX: number,
-        cameraMapY: number,
-        lodDistance: number,
-    ): Promise<void> {
-        const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setViewState(cameraMapX, cameraMapY, lodDistance);
-        frameViewStateVersion = (frameViewStateVersion + 1) | 0;
-    },
-    async setFrameHoveredMapIds(hoveredMapIdsPacked: Int32Array): Promise<void> {
-        const { frameRuntime } = await getWorkerServices();
-        frameRuntime.setHoveredMapIds(normalizeWorkerInt32Array(hoveredMapIdsPacked));
+        frameRuntime.applyRenderFrameInputUpdate({
+            mapIds:
+                update.mapIds !== undefined
+                    ? normalizeWorkerInt32Array(update.mapIds)
+                    : undefined,
+            viewState:
+                update.viewState !== undefined
+                    ? {
+                          cameraMapX: update.viewState.cameraMapX | 0,
+                          cameraMapY: update.viewState.cameraMapY | 0,
+                          lodDistance: Math.max(0, update.viewState.lodDistance | 0),
+                      }
+                    : undefined,
+            hoveredMapIdsPacked:
+                update.hoveredMapIdsPacked !== undefined
+                    ? normalizeWorkerInt32Array(update.hoveredMapIdsPacked)
+                    : undefined,
+        });
+        if (update.mapIds !== undefined) {
+            frameMapIdsVersion = (frameMapIdsVersion + 1) | 0;
+        }
+        if (update.viewState !== undefined) {
+            frameViewStateVersion = (frameViewStateVersion + 1) | 0;
+        }
     },
     async applyNpcWorldStateDeltaPacket(deltaPacket: NpcStateDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();

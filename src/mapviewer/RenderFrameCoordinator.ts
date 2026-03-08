@@ -1,4 +1,5 @@
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
+import type { RenderFrameInputUpdate } from "../worker/WorkerContext";
 import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { SimWorkerPool } from "../worker/SimWorkerPool";
 
@@ -106,9 +107,15 @@ export class RenderFrameCoordinator {
         void Promise.all([
             this.deps.simWorkerPool.setVisibleMapIds(EMPTY_INT32),
             this.deps.simWorkerPool.setViewState(0, 0, 0),
-            this.deps.renderWorkerPool.setFrameMapIds(EMPTY_INT32),
-            this.deps.renderWorkerPool.setFrameViewState(0, 0, 0),
-            this.deps.renderWorkerPool.setFrameHoveredMapIds(EMPTY_INT32),
+            this.deps.renderWorkerPool.syncRenderFrameState({
+                mapIds: EMPTY_INT32,
+                viewState: {
+                    cameraMapX: 0,
+                    cameraMapY: 0,
+                    lodDistance: 0,
+                },
+                hoveredMapIdsPacked: EMPTY_INT32,
+            }),
         ]);
     }
 
@@ -152,11 +159,15 @@ export class RenderFrameCoordinator {
         }>,
     ): Promise<void>[] {
         const updatePromises = new Array<Promise<void>>();
+        let renderFrameUpdate: RenderFrameInputUpdate | undefined;
         if (input.shouldUpdateFrameMaps) {
             this.lastFrameMapIds = this.copyInt32Array(input.mapIds, this.lastFrameMapIds);
             this.frameMapIdsVersion = (this.frameMapIdsVersion + 1) | 0;
             updatePromises.push(this.deps.simWorkerPool.setVisibleMapIds(input.mapIds));
-            updatePromises.push(this.deps.renderWorkerPool.setFrameMapIds(input.mapIds));
+            renderFrameUpdate = {
+                ...renderFrameUpdate,
+                mapIds: input.mapIds,
+            };
         }
         if (input.shouldUpdateFrameViewState) {
             this.lastFrameViewState = {
@@ -172,22 +183,27 @@ export class RenderFrameCoordinator {
                     input.lodDistance | 0,
                 ),
             );
-            updatePromises.push(
-                this.deps.renderWorkerPool.setFrameViewState(
-                    input.cameraMapX | 0,
-                    input.cameraMapY | 0,
-                    input.lodDistance | 0,
-                ),
-            );
+            renderFrameUpdate = {
+                ...renderFrameUpdate,
+                viewState: {
+                    cameraMapX: input.cameraMapX | 0,
+                    cameraMapY: input.cameraMapY | 0,
+                    lodDistance: input.lodDistance | 0,
+                },
+            };
         }
         if (input.shouldUpdateFrameHoveredMapIds) {
             this.lastFrameHoveredMapIds = this.copyInt32Array(
                 input.hoveredMapIdsPacked,
                 this.lastFrameHoveredMapIds,
             );
-            updatePromises.push(
-                this.deps.renderWorkerPool.setFrameHoveredMapIds(input.hoveredMapIdsPacked),
-            );
+            renderFrameUpdate = {
+                ...renderFrameUpdate,
+                hoveredMapIdsPacked: input.hoveredMapIdsPacked,
+            };
+        }
+        if (renderFrameUpdate) {
+            updatePromises.push(this.deps.renderWorkerPool.syncRenderFrameState(renderFrameUpdate));
         }
         return updatePromises;
     }
