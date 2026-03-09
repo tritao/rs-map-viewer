@@ -16,12 +16,14 @@ import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
 } from "./WorkerBuildTypes";
+import { WorkerBuildService } from "./WorkerBuildService";
+import { WorkerFramePacketRuntime } from "./WorkerFramePacketRuntime";
 
 export type { WorkerRuntimeOptions, WorkerState } from "./WorkerBuildTypes";
 
 type RenderDataWorkerServices = Readonly<{
-    buildService: import("./WorkerBuildService").WorkerBuildService;
-    frameRuntime: import("./WorkerFramePacketRuntime").WorkerFramePacketRuntime;
+    buildService: WorkerBuildService;
+    frameRuntime: WorkerFramePacketRuntime;
 }>;
 
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
@@ -37,20 +39,19 @@ async function getWorkerServices(): Promise<RenderDataWorkerServices> {
     if (existing) {
         return await existing;
     }
-    const created = (async () => {
-        const [{ WorkerBuildService }, { WorkerFramePacketRuntime }] = await Promise.all([
-            import("./WorkerBuildService"),
-            import("./WorkerFramePacketRuntime"),
-        ]);
+    const created = Promise.resolve().then(() => {
         const buildService = new WorkerBuildService();
         const frameRuntime = new WorkerFramePacketRuntime(() => buildService.requireWorkerState());
         return {
             buildService,
             frameRuntime,
         };
-    })();
-    workerServicesPromise = created;
-    return await created;
+    });
+    workerServicesPromise = created.catch((error) => {
+        workerServicesPromise = undefined;
+        throw error;
+    });
+    return await workerServicesPromise;
 }
 
 const worker = {

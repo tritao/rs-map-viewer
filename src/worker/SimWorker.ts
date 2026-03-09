@@ -15,10 +15,12 @@ import type {
     WorldInputUpdate,
 } from "./WorkerRuntimeTypes";
 import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerBuildTypes";
+import { WorkerBuildService } from "./WorkerBuildService";
+import { WorkerTickRuntime } from "./WorkerTickRuntime";
 
 type SimWorkerServices = Readonly<{
-    buildService: import("./WorkerBuildService").WorkerBuildService;
-    tickRuntime: import("./WorkerTickRuntime").WorkerTickRuntime;
+    buildService: WorkerBuildService;
+    tickRuntime: WorkerTickRuntime;
 }>;
 
 let workerServicesPromise: Promise<SimWorkerServices> | undefined;
@@ -33,20 +35,19 @@ async function getWorkerServices(): Promise<SimWorkerServices> {
     if (existing) {
         return await existing;
     }
-    const created = (async () => {
-        const [{ WorkerBuildService }, { WorkerTickRuntime }] = await Promise.all([
-            import("./WorkerBuildService"),
-            import("./WorkerTickRuntime"),
-        ]);
+    const created = Promise.resolve().then(() => {
         const buildService = new WorkerBuildService();
         const tickRuntime = new WorkerTickRuntime(() => buildService.requireWorkerState());
         return {
             buildService,
             tickRuntime,
         };
-    })();
-    workerServicesPromise = created;
-    return await created;
+    });
+    workerServicesPromise = created.catch((error) => {
+        workerServicesPromise = undefined;
+        throw error;
+    });
+    return await workerServicesPromise;
 }
 
 const worldApi = {
