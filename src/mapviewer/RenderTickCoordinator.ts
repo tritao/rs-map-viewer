@@ -1,5 +1,6 @@
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
-import { CLIENT_TICK_SECONDS, SERVER_TICK_SECONDS } from "../runtime/TickTiming";
+const SERVER_TICK_SECONDS = 0.6;
+const CLIENT_TICK_SECONDS = 0.02;
 import type { RenderFrameStepInput } from "../renderer/RenderFrameCoordinator";
 import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 
