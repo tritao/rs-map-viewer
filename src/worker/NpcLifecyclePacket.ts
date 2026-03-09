@@ -1,12 +1,12 @@
-import { ByteBuffer } from "../../rs/io/ByteBuffer";
-import { MovementType } from "../entities/Npc";
+import { ByteBuffer } from "../rs/io/ByteBuffer";
+import { MovementType } from "../runtime/entities/Npc";
 import type {
     NpcDespawnEvent,
     NpcEvent,
     NpcSpawnEvent,
     NpcUpdateEvent,
-} from "../entities/NpcEvents";
-import type { NpcUpdateDelta } from "../entities/NpcUpdateDelta";
+} from "../runtime/entities/NpcEvents";
+import type { NpcUpdateDelta } from "../runtime/entities/NpcUpdateDelta";
 
 const LIFECYCLE_PACKET_VERSION = 2;
 const MAX_PATH_LENGTH = 25;

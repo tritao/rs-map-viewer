@@ -9,7 +9,7 @@ import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
+import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
     type WorldLocAnimationPauseState,

@@ -1,7 +1,7 @@
 import { ModuleThread, Thread, spawn } from "threads";
 
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
-import { encodeNpcLifecyclePacketFromLifecycleEvents } from "../runtime/packets/NpcLifecyclePacket";
+import { encodeNpcLifecyclePacketFromLifecycleEvents } from "./NpcLifecyclePacket";
 import type {
     WorldDeltaPacket,
     WorldLocAnimationPauseState,
