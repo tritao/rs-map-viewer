@@ -422,6 +422,51 @@ export class MapViewerRenderer extends RendererMainLoop {
             });
     }
 
+    private detachLoadedMapRuntime(mapId: number): void {
+        const normalizedMapId = mapId | 0;
+        this.animatedLocsByMapId.delete(normalizedMapId);
+        this.objInteractionStateByMapId.delete(normalizedMapId);
+        this.renderer.removeMap({ mapId: normalizedMapId });
+        this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
+    }
+
+    private async applyStaticMapPacket(
+        packet: StaticMapPacket,
+        input: Readonly<{
+            activationVersion: number;
+            replaceMapId?: number;
+            invalidateLatestPacket?: boolean;
+        }>,
+    ): Promise<boolean> {
+        const replaceMapId = input.replaceMapId;
+        if (replaceMapId !== undefined) {
+            this.detachLoadedMapRuntime(replaceMapId);
+        }
+        try {
+            const ok = await this.worldSession.activateLoadedMap({
+                staticMap: packet,
+                activationVersion: input.activationVersion,
+            });
+            if (!ok) {
+                return false;
+            }
+        } catch (error: unknown) {
+            const { mapX, mapY } = packet.mapData;
+            const action = replaceMapId !== undefined ? "reload" : "register";
+            console.warn(
+                `[map-render] failed to ${action} worker sim state for ${mapX},${mapY}`,
+                error,
+            );
+            return false;
+        }
+
+        await this.finalizeLoadedMap(packet);
+        if (input.invalidateLatestPacket === true) {
+            this.renderFrameCoordinator.invalidateLatestPacket();
+        }
+        return true;
+    }
+
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
         const queuedActivationVersion = this.worldSession.captureActivationVersion();
         const devsq = this.mapViewer.getDevFixedMapSquare();
@@ -446,32 +491,17 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry) {
             this.logMapPacketTelemetry(staticMapPacket);
         }
-        try {
-            const ok = await this.worldSession.activateLoadedMap(
-                {
-                    staticMap: staticMapPacket,
-                    activationVersion: queuedActivationVersion,
-                },
-            );
-            if (!ok) {
-                return;
-            }
-        } catch (e) {
-            console.warn(
-                `[map-render] failed to register worker sim state for ${staticMapPacket.mapData.mapX},${staticMapPacket.mapData.mapY}`,
-                e,
-            );
+        const ok = await this.applyStaticMapPacket(staticMapPacket, {
+            activationVersion: queuedActivationVersion,
+        });
+        if (!ok) {
             this.mapManager.addInvalidMap(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY);
             return;
         }
-        await this.finalizeLoadedMap(staticMapPacket);
     }
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
-        this.animatedLocsByMapId.delete(mapInfo.mapId);
-        this.objInteractionStateByMapId.delete(mapInfo.mapId);
-        this.renderer.removeMap(mapInfo);
-        this.worldSession.deactivateLoadedMap({ mapId: mapInfo.mapId });
+        this.detachLoadedMapRuntime(mapInfo.mapId);
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
@@ -752,28 +782,11 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (!staticMapPacket || !this.renderer.isValidMapData(staticMapPacket.mapData)) {
             return false;
         }
-
-        this.animatedLocsByMapId.delete(normalizedMapId);
-        this.objInteractionStateByMapId.delete(normalizedMapId);
-        this.renderer.removeMap({ mapId: normalizedMapId });
-        this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
-
-        try {
-            const ok = await this.worldSession.activateLoadedMap({
-                staticMap: staticMapPacket,
-                activationVersion: this.worldSession.captureActivationVersion(),
-            });
-            if (!ok) {
-                return false;
-            }
-        } catch (error: unknown) {
-            console.warn(`[map-render] failed to reload worker state for ${mapX},${mapY}`, error);
-            return false;
-        }
-
-        await this.finalizeLoadedMap(staticMapPacket);
-        this.renderFrameCoordinator.invalidateLatestPacket();
-        return true;
+        return await this.applyStaticMapPacket(staticMapPacket, {
+            activationVersion: this.worldSession.captureActivationVersion(),
+            replaceMapId: normalizedMapId,
+            invalidateLatestPacket: true,
+        });
     }
 
     private setMapObjInteractionState(
