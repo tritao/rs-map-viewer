@@ -2,7 +2,10 @@ import {
     type StaticMapPacket,
 } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
-import { type WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import {
+    type WorldLocAnimationReset,
+    type WorldMapObjUpdate,
+} from "../runtime/packets/WorldDeltaPacket";
 
 export type WorldNpcInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
@@ -12,9 +15,14 @@ export type WorldObjInput = Readonly<{
     updates: ReadonlyArray<WorldMapObjUpdate>;
 }>;
 
+export type WorldLocInput = Readonly<{
+    animationResets: ReadonlyArray<WorldLocAnimationReset>;
+}>;
+
 export type WorldInput = Readonly<{
     npc?: WorldNpcInput;
     obj?: WorldObjInput;
+    loc?: WorldLocInput;
 }>;
 
 export type WorldMapActivationInput = Readonly<{

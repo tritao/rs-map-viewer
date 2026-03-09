@@ -14,7 +14,11 @@ import {
 } from "../renderer/RenderFramePacketBuilder";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
-import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type {
+    WorldDeltaPacket,
+    WorldLocAnimationReset,
+    WorldMapObjUpdate,
+} from "../runtime/packets/WorldDeltaPacket";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
@@ -105,6 +109,7 @@ export class WorkerFramePacketRuntime {
     };
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
     private readonly pendingRuntimeObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
+    private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly npcGpuFrameSourceScratch: NpcGpuFrameSource[] = [];
 
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
@@ -125,6 +130,7 @@ export class WorkerFramePacketRuntime {
         this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.hoveredMapIdsPacked = new Int32Array(0);
         this.pendingRuntimeObjRenderDataByMapId.clear();
+        this.pendingLocAnimationResetByLocKey.clear();
     }
 
     private applyRuntimeMapObjUpdates(updates: ReadonlyArray<WorldMapObjUpdate> | undefined): number {
@@ -255,6 +261,19 @@ export class WorkerFramePacketRuntime {
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
         let applied = this.applyRuntimeMapObjUpdates(packet.objDelta?.updates);
+        const locDelta = packet.locDelta;
+        if (locDelta) {
+            const packed = locDelta.animationResetPacked;
+            for (let offset = 0; offset + 2 <= (packed.length | 0); offset += 2) {
+                const mapId = packed[offset + 0] | 0;
+                const locIndex = packed[offset + 1] | 0;
+                this.pendingLocAnimationResetByLocKey.set(`${mapId}:${locIndex}`, {
+                    mapId,
+                    locIndex,
+                });
+                applied = (applied + 1) | 0;
+            }
+        }
         if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
             return applied | 0;
         }
@@ -262,6 +281,30 @@ export class WorkerFramePacketRuntime {
         const deps = createNpcSimStateStoreDeps(workerState);
         applied = (applied + (this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0)) | 0;
         return applied | 0;
+    }
+
+    private applyPendingLocAnimationResets(cycleNow: number): void {
+        if ((this.pendingLocAnimationResetByLocKey.size | 0) <= 0) {
+            return;
+        }
+        const animationResetPacked = new Int32Array(
+            (this.pendingLocAnimationResetByLocKey.size | 0) * 2,
+        );
+        let write = 0;
+        for (const reset of this.pendingLocAnimationResetByLocKey.values()) {
+            animationResetPacked[write++] = reset.mapId | 0;
+            animationResetPacked[write++] = reset.locIndex | 0;
+        }
+        this.pendingLocAnimationResetByLocKey.clear();
+        this.npcSimStateStore.applyLocAnimationResets(
+            {
+                frameCount: 0,
+                locDelta: {
+                    animationResetPacked,
+                },
+            },
+            cycleNow | 0,
+        );
     }
 
     private normalizeFrameBuildInputs(
@@ -399,6 +442,7 @@ export class WorkerFramePacketRuntime {
             return undefined;
         }
         const workerState = await this.getWorkerState();
+        this.applyPendingLocAnimationResets(cycleNow | 0);
         const backendKind = workerState.mapRenderBackend.kind ?? "unknown";
         const inputs = this.normalizeFrameBuildInputs(frameCount, 0, this.hoveredMapIdsPacked);
         const view = this.viewState;

@@ -1,7 +1,11 @@
 import { TransferDescriptor } from "threads";
 import { Transfer, expose } from "threads/worker";
 
-import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type {
+    WorldDeltaPacket,
+    WorldLocAnimationReset,
+    WorldMapObjUpdate,
+} from "../runtime/packets/WorldDeltaPacket";
 import { worldDeltaPacketTransferables } from "../runtime/packets/WorldDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
@@ -66,6 +70,12 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyMapObjStateUpdates(updates);
     },
+    async applyLocAnimationResets(
+        resets: ReadonlyArray<WorldLocAnimationReset>,
+    ): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyLocAnimationResets(resets);
+    },
     async syncState(update: WorldInputUpdate): Promise<void> {
         const { tickRuntime } = await getWorkerServices();
         tickRuntime.applyWorldInputUpdate({
@@ -111,6 +121,11 @@ const worker = {
     },
     async applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
         return worldApi.applyMapObjStateUpdates(updates);
+    },
+    async applyLocAnimationResets(
+        resets: ReadonlyArray<WorldLocAnimationReset>,
+    ): Promise<number> {
+        return worldApi.applyLocAnimationResets(resets);
     },
     async syncWorldState(update: WorldInputUpdate): Promise<void> {
         await worldApi.syncState(update);

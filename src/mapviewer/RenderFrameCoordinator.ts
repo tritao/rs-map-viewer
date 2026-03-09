@@ -258,7 +258,10 @@ export class RenderFrameCoordinator {
                 totalMs: seamEnd - seamStart,
                 worldChangeCount:
                     (worldDeltaPacket?.npcState?.changeCount ?? 0) +
-                    (worldDeltaPacket?.objDelta?.updates.length ?? 0),
+                    (worldDeltaPacket?.objDelta?.updates.length ?? 0) +
+                    Math.floor(
+                        ((worldDeltaPacket?.locDelta?.animationResetPacked.length ?? 0) | 0) / 2,
+                    ),
             });
             return packet;
         };

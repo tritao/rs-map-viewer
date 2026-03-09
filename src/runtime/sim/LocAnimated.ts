@@ -57,6 +57,11 @@ export class LocAnimated {
         }
     }
 
+    restart(cycle: number): void {
+        this.frame = 0;
+        this.cycleStart = (cycle | 0) - 1;
+    }
+
     update(seqFrameLoader: SeqFrameLoader, cycle: number): number {
         if (!this.seqType) {
             return 0;

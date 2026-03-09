@@ -3,6 +3,7 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import {
+    LOC_ANIMATION_RESET_STRIDE,
     NPC_STATE_DELTA_DESPAWN_STRIDE,
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
@@ -495,6 +496,34 @@ export class NpcSimStateStore {
                 off,
             );
             applyNpcUpdateDelta(npc, delta);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyLocAnimationResets(packet: WorldDeltaPacket, cycleNow: number): number {
+        const animationResetPacked = packet.locDelta?.animationResetPacked;
+        if (!(animationResetPacked instanceof Int32Array) || (animationResetPacked.length | 0) <= 0) {
+            return 0;
+        }
+        let applied = 0;
+        const safeCycleNow = cycleNow | 0;
+        for (
+            let offset = 0;
+            offset + LOC_ANIMATION_RESET_STRIDE <= (animationResetPacked.length | 0);
+            offset += LOC_ANIMATION_RESET_STRIDE
+        ) {
+            const mapId = animationResetPacked[offset + 0] | 0;
+            const locIndex = animationResetPacked[offset + 1] | 0;
+            const state = this.maps.get(mapId);
+            if (!state) {
+                continue;
+            }
+            const loc = state.locsAnimated[locIndex];
+            if (!loc) {
+                continue;
+            }
+            loc.restart(safeCycleNow);
             applied = (applied + 1) | 0;
         }
         return applied | 0;

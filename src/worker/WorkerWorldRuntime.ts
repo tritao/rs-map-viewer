@@ -1,5 +1,8 @@
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
-import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type {
+    WorldLocAnimationReset,
+    WorldMapObjUpdate,
+} from "../runtime/packets/WorldDeltaPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type {
     WorldRuntime,
@@ -18,6 +21,7 @@ type WorldSimRuntime = Readonly<{
     deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void>;
     applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number>;
     applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number>;
+    applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): Promise<number>;
 }>;
 
 type WorkerWorldRuntimeDeps = Readonly<{
@@ -101,6 +105,13 @@ export class WorkerWorldRuntime implements WorldRuntime {
         if (objUpdates && (objUpdates.length | 0) > 0) {
             applied =
                 (applied + (await this.deps.simRuntime.applyMapObjStateUpdates(objUpdates))) |
+                0;
+        }
+        const animationResets = input.loc?.animationResets;
+        if (animationResets && (animationResets.length | 0) > 0) {
+            applied =
+                (applied +
+                    (await this.deps.simRuntime.applyLocAnimationResets(animationResets))) |
                 0;
         }
         return applied | 0;

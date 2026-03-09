@@ -2,7 +2,11 @@ import { ModuleThread, Thread, spawn } from "threads";
 
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromLifecycleEvents } from "../runtime/packets/NpcLifecyclePacket";
-import type { WorldDeltaPacket, WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type {
+    WorldDeltaPacket,
+    WorldLocAnimationReset,
+    WorldMapObjUpdate,
+} from "../runtime/packets/WorldDeltaPacket";
 import {
     getValidatedStaticMapNpcOrderKeys,
     type StaticMapPacket,
@@ -46,6 +50,8 @@ export class SimWorkerPool {
             this.applyNpcLifecycleEvents(events),
         applyMapObjStateUpdates: (updates: ReadonlyArray<WorldMapObjUpdate>) =>
             this.applyMapObjStateUpdates(updates),
+        applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
+            this.applyLocAnimationResets(resets),
         syncState: (update: WorldInputUpdate) => this.syncWorldState(update),
         step: (
             frameCount: number,
@@ -149,6 +155,12 @@ export class SimWorkerPool {
 
     private applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
         return this.withWorker((w) => w.applyMapObjStateUpdates(updates));
+    }
+
+    private applyLocAnimationResets(
+        resets: ReadonlyArray<WorldLocAnimationReset>,
+    ): Promise<number> {
+        return this.withWorker((w) => w.applyLocAnimationResets(resets));
     }
 
     private syncWorldState(update: WorldInputUpdate): Promise<void> {

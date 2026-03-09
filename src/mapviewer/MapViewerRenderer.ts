@@ -307,7 +307,10 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async applyWorldInput(input: WorldInput): Promise<number> {
         const applied = await this.worldSession.applyWorldInput(input);
-        if ((applied | 0) > 0 && input.obj?.updates && (input.obj.updates.length | 0) > 0) {
+        const hasRenderAffectingWorldInput =
+            (!!input.obj?.updates && (input.obj.updates.length | 0) > 0) ||
+            (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0);
+        if ((applied | 0) > 0 && hasRenderAffectingWorldInput) {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
         return applied | 0;

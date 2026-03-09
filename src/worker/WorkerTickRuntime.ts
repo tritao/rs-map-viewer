@@ -12,8 +12,10 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
+    type WorldLocAnimationReset,
     type WorldMapObjUpdate,
     buildWorldDeltaPacket,
+    buildWorldDeltaPacketFromLocAnimationResets,
     buildWorldDeltaPacketFromNpcLifecycleEvents,
 } from "../runtime/packets/WorldDeltaPacket";
 import {
@@ -86,6 +88,7 @@ export class WorkerTickRuntime {
     private readonly npcSeqByInstanceId = new Map<number, number>();
     private activeMapIds: Int32Array = new Int32Array(0);
     private readonly pendingMapObjStateUpdatesByMapId = new Map<number, WorldMapObjUpdate>();
+    private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
 
     resetForCache(): void {
@@ -105,6 +108,7 @@ export class WorkerTickRuntime {
         this.npcSeqByInstanceId.clear();
         this.activeMapIds = new Int32Array(0);
         this.pendingMapObjStateUpdatesByMapId.clear();
+        this.pendingLocAnimationResetByLocKey.clear();
     }
 
     applyWorldInputUpdate(update: WorldInputUpdate): void {
@@ -121,6 +125,22 @@ export class WorkerTickRuntime {
                 continue;
             }
             this.pendingMapObjStateUpdatesByMapId.set(update.mapId | 0, update);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): number {
+        let applied = 0;
+        for (let index = 0; index < resets.length; index++) {
+            const reset = resets[index];
+            if (!reset) {
+                continue;
+            }
+            this.pendingLocAnimationResetByLocKey.set(
+                `${reset.mapId | 0}:${reset.locIndex | 0}`,
+                reset,
+            );
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -485,7 +505,9 @@ export class WorkerTickRuntime {
     ): Promise<WorldDeltaPacket | undefined> {
         const mapIds = this.activeMapIds;
         const hasPendingObjUpdates = (this.pendingMapObjStateUpdatesByMapId.size | 0) > 0;
-        if ((mapIds.length | 0) === 0 && !hasPendingObjUpdates) {
+        const hasPendingLocAnimationResets =
+            (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
+        if ((mapIds.length | 0) === 0 && !hasPendingObjUpdates && !hasPendingLocAnimationResets) {
             return undefined;
         }
         const workerState = await this.getWorkerState();
@@ -519,14 +541,25 @@ export class WorkerTickRuntime {
         const objUpdates = hasPendingObjUpdates
             ? Array.from(this.pendingMapObjStateUpdatesByMapId.values())
             : undefined;
+        const locAnimationResets = hasPendingLocAnimationResets
+            ? Array.from(this.pendingLocAnimationResetByLocKey.values())
+            : undefined;
         this.pendingMapObjStateUpdatesByMapId.clear();
-        if (!npcStatePacket.npcState && !objUpdates) {
+        this.pendingLocAnimationResetByLocKey.clear();
+        const locDeltaPacket = locAnimationResets
+            ? buildWorldDeltaPacketFromLocAnimationResets({
+                  frameCount: frameCount | 0,
+                  animationResets: locAnimationResets,
+              })
+            : undefined;
+        if (!npcStatePacket.npcState && !objUpdates && !locDeltaPacket?.locDelta) {
             return undefined;
         }
         return buildWorldDeltaPacket({
             frameCount: frameCount | 0,
             npcState: npcStatePacket.npcState,
             objDelta: objUpdates ? { updates: objUpdates } : undefined,
+            locDelta: locDeltaPacket?.locDelta,
         });
     }
 
