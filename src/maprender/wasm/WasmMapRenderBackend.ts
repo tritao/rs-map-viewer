@@ -44,6 +44,14 @@ import {
 import { runtimePacketToPayloadOverlay } from "./WasmPacketOverlay";
 
 type WasmMapRenderDataBridge = MapRenderRuntimeBridgeV2;
+type BuiltNpcFallbackData = Readonly<{
+    npcVertices: Uint8Array | undefined;
+    npcIndices: Int32Array | undefined;
+    npcDrawRangesBase: Int32Array | undefined;
+    npcDrawRangesAlpha: Int32Array | undefined;
+    npcOrderKeys: Int32Array | undefined;
+    npcTypeAnimationTable: ReturnType<typeof createBootstrapData>["npcTypeAnimationTable"];
+}>;
 
 export class WasmMapRenderBackend implements MapRenderBackend {
     private static readonly MAP_SQUARE_SIZE = 64;
@@ -80,15 +88,15 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         private readonly options: MapRenderBackendOptions | undefined,
     ) {}
 
-    private async buildNpcTypeAnimationTable(
+    private async buildNpcFallbackData(
         input: SdMapLoaderInput,
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
-    ) {
+    ): Promise<BuiltNpcFallbackData | undefined> {
         // TODO: move this NPC animation bootstrap data production into the cpp-wasm packet/runtime
         // output so the wasm backend remains the single source of truth for static map runtime payloads.
         if (input.loadNpcs !== true) {
-            return [];
+            return undefined;
         }
 
         const loaders = this.deps.session.loaders;
@@ -121,13 +129,25 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             basTypeLoader: loaders.basTypeLoader,
         });
         if ((npcGeometry.npcs.length | 0) <= 0) {
-            return [];
+            return undefined;
         }
 
-        return createBootstrapData({
+        const bootstrap = createBootstrapData({
             mapId: getMapSquareId(input.mapX | 0, input.mapY | 0),
             npcsIn: npcGeometry.npcs,
-        }).npcTypeAnimationTable;
+        });
+
+        return {
+            npcVertices: npcGeometry.npcVertices,
+            npcIndices: npcGeometry.npcIndices,
+            npcDrawRangesBase: npcGeometry.npcDrawRangesBase,
+            npcDrawRangesAlpha: npcGeometry.npcDrawRangesAlpha,
+            npcOrderKeys:
+                (npcGeometry.npcs.length | 0) > 0
+                    ? Int32Array.from(npcGeometry.npcs, (npc) => npc.orderKey ?? -1)
+                    : undefined,
+            npcTypeAnimationTable: bootstrap.npcTypeAnimationTable,
+        };
     }
 
     private static createRuntimeCacheBuildRequest(
@@ -287,6 +307,26 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const sizeX = packet.sizeX | 0;
         const sizeY = packet.sizeY | 0;
 
+        const borderSize = request.borderSize | 0;
+        const npcFallbackData = await this.buildNpcFallbackData(
+            input,
+            borderSize,
+            WasmMapRenderBackend.createEmptyTileRenderFlags(levels, sizeX, sizeY)[1] ?? [],
+        );
+        // TODO: if the shared TS/runtime 50,50 NPC issue is fixed upstream, re-check whether this
+        // wasm-only NPC geometry backfill is still needed and remove it if it becomes redundant.
+        const shouldUseFallbackNpcGeometry =
+            input.loadNpcs === true &&
+            npcFallbackData !== undefined &&
+            (
+                !(packet.npcVertices instanceof Uint8Array) ||
+                packet.npcVertices.length <= 0 ||
+                !(packet.npcIndices instanceof Int32Array) ||
+                packet.npcIndices.length <= 0 ||
+                !(packet.npcDrawRangesBase instanceof Int32Array) ||
+                packet.npcDrawRangesBase.length <= 0
+            );
+        const tileRenderFlags = WasmMapRenderBackend.createEmptyTileRenderFlags(levels, sizeX, sizeY);
         const data: SdMapData = {
             mapId: ((input.mapX << 8) | input.mapY) & 0xffff,
             mapX: input.mapX | 0,
@@ -297,8 +337,8 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             loadNpcs: input.loadNpcs === true,
             loadLocs: input.loadLocs === true,
             smoothTerrain: input.smoothTerrain === true,
-            borderSize: request.borderSize | 0,
-            tileRenderFlags: WasmMapRenderBackend.createEmptyTileRenderFlags(levels, sizeX, sizeY),
+            borderSize,
+            tileRenderFlags,
             minimapBlob: new Blob(),
             vertices: packet.vertices,
             indices: packet.indices,
@@ -308,12 +348,19 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             locsAnimated: [],
             usedTextureIds: packet.usedTextureIds,
             loadedTextures: new Map(),
-            npcDrawRangesBase: packet.npcDrawRangesBase,
-            npcDrawRangesAlpha: packet.npcDrawRangesAlpha,
-            npcVertices: packet.npcVertices,
-            npcIndices: packet.npcIndices,
+            npcDrawRangesBase: shouldUseFallbackNpcGeometry
+                ? npcFallbackData?.npcDrawRangesBase
+                : packet.npcDrawRangesBase,
+            npcDrawRangesAlpha: shouldUseFallbackNpcGeometry
+                ? npcFallbackData?.npcDrawRangesAlpha
+                : packet.npcDrawRangesAlpha,
+            npcVertices: shouldUseFallbackNpcGeometry
+                ? npcFallbackData?.npcVertices
+                : packet.npcVertices,
+            npcIndices: shouldUseFallbackNpcGeometry
+                ? npcFallbackData?.npcIndices
+                : packet.npcIndices,
         };
-        const borderSize = request.borderSize | 0;
         const objSpawns =
             input.loadObjs === true
                 ? getWindowObjSpawns(
@@ -350,17 +397,14 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 minimizeDrawCalls: input.minimizeDrawCalls,
             });
         }
-        const npcTypeAnimationTable = await this.buildNpcTypeAnimationTable(
-            input,
-            borderSize,
-            data.tileRenderFlags[1] ?? [],
-        );
         const runtimePayloads = buildMapRuntimePayloads({
             borderSize,
             tileRenderFlags: data.tileRenderFlags,
             locsAnimated: data.locsAnimated,
-            npcTypeAnimationTable,
-            npcOrderKeys: packet.npcOrderKeys,
+            npcTypeAnimationTable: npcFallbackData?.npcTypeAnimationTable ?? [],
+            npcOrderKeys: shouldUseFallbackNpcGeometry
+                ? npcFallbackData?.npcOrderKeys
+                : packet.npcOrderKeys,
             mapObjState: mapObjStateFromRenderData(objRenderData),
         });
         return {

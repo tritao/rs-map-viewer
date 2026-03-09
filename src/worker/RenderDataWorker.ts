@@ -27,7 +27,6 @@ type RenderDataWorkerServices = Readonly<{
 }>;
 
 let workerServicesPromise: Promise<RenderDataWorkerServices> | undefined;
-let lastAppliedWorldDeltaFrameCount = -1;
 const EMPTY_INT32 = new Int32Array(0);
 
 function normalizeWorkerInt32Array(values: Int32Array): Int32Array {
@@ -62,7 +61,6 @@ const worker = {
     ): Promise<void> {
         const { buildService, frameRuntime } = await getWorkerServices();
         frameRuntime.resetForCache();
-        lastAppliedWorldDeltaFrameCount = -1;
         await buildService.initCache(cache, spawnBootstrap, options);
     },
     async loadStaticMapPacket(
@@ -115,16 +113,7 @@ const worker = {
     },
     async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
         const { frameRuntime } = await getWorkerServices();
-        const hasNpcStateChanges = ((deltaPacket.npcState?.changeCount ?? 0) | 0) > 0;
-        const deltaFrameCount = deltaPacket.frameCount | 0;
-        if (hasNpcStateChanges && deltaFrameCount < (lastAppliedWorldDeltaFrameCount | 0)) {
-            return 0;
-        }
-        const applied = await frameRuntime.applyWorldDeltaPacket(deltaPacket);
-        if (hasNpcStateChanges && (applied | 0) > 0) {
-            lastAppliedWorldDeltaFrameCount = deltaFrameCount;
-        }
-        return applied | 0;
+        return await frameRuntime.applyWorldDeltaPacket(deltaPacket);
     },
     async buildRenderFramePacket(
         frameCount: number,

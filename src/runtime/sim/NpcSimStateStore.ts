@@ -411,6 +411,7 @@ export class NpcSimStateStore {
         };
 
         const spawnStatePacked = npcState.spawnStatePacked;
+        let applied = 0;
         for (let i = 0; i < (counts.spawnCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_SPAWN_STRIDE;
             const mapId = spawnStatePacked[off + 0] | 0;
@@ -418,10 +419,15 @@ export class NpcSimStateStore {
             if (!state) {
                 continue;
             }
+            const npcTypeId = spawnStatePacked[off + 2] | 0;
+            const typeResult = deps.npcTypeLoader.tryLoad(npcTypeId);
+            if (!typeResult.ok) {
+                continue;
+            }
             const hasOrderKey = (spawnStatePacked[off + 6] | 0) !== 0;
             const npc = this.createNpcFromSpawnData(
                 spawnStatePacked[off + 1] | 0,
-                spawnStatePacked[off + 2] | 0,
+                npcTypeId,
                 spawnStatePacked[off + 3] | 0,
                 spawnStatePacked[off + 4] | 0,
                 spawnStatePacked[off + 5] | 0,
@@ -435,6 +441,7 @@ export class NpcSimStateStore {
             trackMapNpcCountBefore(mapId, state);
             this.upsertSpawnedNpc(state, npc, spawnStatePacked[off + 1] | 0);
             changedMaps.add(mapId);
+            applied = (applied + 1) | 0;
         }
 
         const despawnStatePacked = npcState.despawnStatePacked;
@@ -454,6 +461,7 @@ export class NpcSimStateStore {
             this.removeNpcByEventTarget(state, npcInstanceId);
             state.seededNpcFlags = false;
             changedMaps.add(mapId);
+            applied = (applied + 1) | 0;
         }
 
         for (const mapId of changedMaps) {
@@ -469,7 +477,6 @@ export class NpcSimStateStore {
         }
 
         const updateStatePacked = npcState.updateStatePacked;
-        let applied = 0;
         for (let i = 0; i < (counts.updateCount | 0); i++) {
             const off = (i | 0) * NPC_STATE_DELTA_UPDATE_STRIDE;
             const mapId = updateStatePacked[off + 0] | 0;

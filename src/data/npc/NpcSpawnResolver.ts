@@ -123,6 +123,9 @@ function shouldResolveFallbackSpawns(
     if (!cacheDecoded) {
         return true;
     }
+    if ((cacheDecoded.spawns.length | 0) <= 0) {
+        return true;
+    }
     return (
         input.fallbackOnEmptyCacheDecode === true && (cacheDecoded.decodedSpawnsCount | 0) <= 0
     );

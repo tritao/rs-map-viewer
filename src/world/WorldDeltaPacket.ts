@@ -442,13 +442,36 @@ export function decodeNpcWorldStateUpdate(
     return delta;
 }
 
+function pushTransferableUnique(
+    out: Transferable[],
+    seen: Set<Transferable>,
+    transferable: Transferable | undefined,
+): void {
+    if (!transferable || seen.has(transferable)) {
+        return;
+    }
+    seen.add(transferable);
+    out.push(transferable);
+}
+
 export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transferable[] {
     const transferables: Transferable[] = [];
+    const seen = new Set<Transferable>();
     const npcState = packet.npcState;
     if (npcState) {
-        transferables.push(
+        pushTransferableUnique(
+            transferables,
+            seen,
             npcState.spawnStatePacked.buffer as Transferable,
+        );
+        pushTransferableUnique(
+            transferables,
+            seen,
             npcState.updateStatePacked.buffer as Transferable,
+        );
+        pushTransferableUnique(
+            transferables,
+            seen,
             npcState.despawnStatePacked.buffer as Transferable,
         );
     }
@@ -459,16 +482,37 @@ export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transfe
             if (!mapObjState) {
                 continue;
             }
-            transferables.push(
+            pushTransferableUnique(
+                transferables,
+                seen,
                 mapObjState.vertices.buffer as Transferable,
+            );
+            pushTransferableUnique(
+                transferables,
+                seen,
                 mapObjState.indices.buffer as Transferable,
+            );
+            pushTransferableUnique(
+                transferables,
+                seen,
                 mapObjState.usedTextureIds.buffer as Transferable,
+            );
+            pushTransferableUnique(
+                transferables,
+                seen,
+                mapObjState.objTypeIds.buffer as Transferable,
             );
             for (const key of Object.keys(mapObjState.modelInfoTextures) as Array<
                 keyof typeof mapObjState.modelInfoTextures
             >) {
-                transferables.push(
+                pushTransferableUnique(
+                    transferables,
+                    seen,
                     mapObjState.modelInfoTextures[key].buffer as Transferable,
+                );
+                pushTransferableUnique(
+                    transferables,
+                    seen,
                     mapObjState.drawRanges[key].buffer as Transferable,
                 );
             }
@@ -476,9 +520,17 @@ export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transfe
     }
     const locDelta = packet.locDelta;
     if (locDelta) {
-        transferables.push(locDelta.animationResetPacked.buffer as Transferable);
+        pushTransferableUnique(
+            transferables,
+            seen,
+            locDelta.animationResetPacked.buffer as Transferable,
+        );
         if (locDelta.animationPauseStatePacked) {
-            transferables.push(locDelta.animationPauseStatePacked.buffer as Transferable);
+            pushTransferableUnique(
+                transferables,
+                seen,
+                locDelta.animationPauseStatePacked.buffer as Transferable,
+            );
         }
     }
     return transferables;

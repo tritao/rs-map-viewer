@@ -116,7 +116,7 @@ export async function resolveBootstrapData(
         },
     );
 
-    if (cacheDecoded && (cacheDecoded.decodedSpawnsCount | 0) > 0) {
+    if (cacheDecoded && (cacheDecoded.spawns.length | 0) > 0) {
         const bootstrapData = createNpcBootstrapDataFromSpawns(
             input.mapId | 0,
             cacheDecoded.spawns,
