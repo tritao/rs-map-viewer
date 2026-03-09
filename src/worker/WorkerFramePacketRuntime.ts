@@ -18,6 +18,7 @@ import type {
     WorldMapObjAddition,
     WorldDynamicMapObjDespawn,
     WorldDynamicMapObjSpawn,
+    WorldDynamicMapObjUpdate,
     WorldLocAnimationPauseState,
     WorldDeltaPacket,
     WorldLocAnimationReset,
@@ -424,6 +425,58 @@ export class WorkerFramePacketRuntime {
         return applied | 0;
     }
 
+    private async applyRuntimeDynamicMapObjUpdates(
+        updates: ReadonlyArray<WorldDynamicMapObjUpdate> | undefined,
+    ): Promise<number> {
+        if (!updates || (updates.length | 0) <= 0) {
+            return 0;
+        }
+        const workerState = await this.getWorkerState();
+        let applied = 0;
+        const borderSizeByMapId = new Map<number, number>();
+        for (let index = 0; index < updates.length; index++) {
+            const update = updates[index];
+            if (!update) {
+                continue;
+            }
+            const mapId = update.mapId | 0;
+            const mapState = this.runtimeDynamicObjStateByMapId.get(mapId);
+            const slot = mapState?.slotByRuntimeObjId.get(update.runtimeObjId | 0);
+            if (slot === undefined || !mapState) {
+                continue;
+            }
+            const interactId = ((mapState.staticObjCount | 0) + (slot | 0)) | 0;
+            let borderSize = borderSizeByMapId.get(mapId);
+            if (borderSize === undefined) {
+                borderSize = this.npcSimStateStore.getMap(mapId)?.borderSize ?? 0;
+                borderSizeByMapId.set(mapId, borderSize | 0);
+            }
+            const objRenderData = this.buildDynamicObjRenderData(
+                workerState,
+                mapId,
+                borderSize | 0,
+                {
+                    id: update.objTypeId | 0,
+                    count: Math.max(1, update.count | 0),
+                    x: update.x | 0,
+                    y: update.y | 0,
+                    plane: update.plane | 0,
+                },
+                interactId | 0,
+            );
+            if (!objRenderData) {
+                continue;
+            }
+            this.getPendingRuntimeMapObjUpdate(mapId).appendDynamicObjRenders.push({
+                runtimeObjId: update.runtimeObjId | 0,
+                interactId: interactId | 0,
+                objRenderData,
+            });
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
     private applyRuntimeClearDynamicMapObjRenderData(
         mapIds: ReadonlyArray<number> | undefined,
     ): number {
@@ -651,6 +704,9 @@ export class WorkerFramePacketRuntime {
             0;
         applied =
             (applied + this.applyRuntimeDynamicMapObjDespawns(packet.objDelta?.dynamicDespawns)) | 0;
+        applied =
+            (applied + (await this.applyRuntimeDynamicMapObjUpdates(packet.objDelta?.dynamicUpdates))) |
+            0;
         applied =
             (applied + (await this.applyRuntimeDynamicMapObjSpawns(packet.objDelta?.dynamicSpawns))) |
             0;

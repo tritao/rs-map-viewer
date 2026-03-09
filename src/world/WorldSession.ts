@@ -4,6 +4,7 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import {
     type WorldMapObjAddition,
+    type WorldDynamicMapObjUpdate,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
@@ -34,6 +35,7 @@ export type WorldObjStateInput = Readonly<{
             runtimeObjId: number;
         }>
     >;
+    dynamicUpdates?: ReadonlyArray<WorldDynamicMapObjUpdate>;
     clearDynamicMaps?: ReadonlyArray<number>;
 }>;
 

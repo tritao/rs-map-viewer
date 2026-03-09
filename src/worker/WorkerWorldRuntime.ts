@@ -1,6 +1,7 @@
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import type {
     WorldMapObjAddition,
+    WorldDynamicMapObjUpdate,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -47,6 +48,9 @@ type WorldSimRuntime = Readonly<{
                 runtimeObjId: number;
             }>
         >,
+    ): Promise<number>;
+    applyDynamicMapObjUpdates(
+        updates: ReadonlyArray<WorldDynamicMapObjUpdate>,
     ): Promise<number>;
     clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number>;
     applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): Promise<number>;
@@ -170,6 +174,12 @@ export class WorkerWorldRuntime implements WorldRuntime {
             applied =
                 (applied +
                     (await this.deps.simRuntime.applyDynamicMapObjDespawns(dynamicDespawns))) |
+                0;
+        }
+        const dynamicUpdates = input.obj?.dynamicUpdates;
+        if (dynamicUpdates && (dynamicUpdates.length | 0) > 0) {
+            applied =
+                (applied + (await this.deps.simRuntime.applyDynamicMapObjUpdates(dynamicUpdates))) |
                 0;
         }
         const clearDynamicMaps = input.obj?.clearDynamicMaps;

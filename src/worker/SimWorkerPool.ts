@@ -5,6 +5,7 @@ import { encodeNpcLifecyclePacketFromLifecycleEvents } from "./NpcLifecyclePacke
 import type {
     WorldDeltaPacket,
     WorldMapObjAddition,
+    WorldDynamicMapObjUpdate,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -76,6 +77,8 @@ export class SimWorkerPool {
                 }>
             >,
         ) => this.applyDynamicMapObjDespawns(despawns),
+        applyDynamicMapObjUpdates: (updates: ReadonlyArray<WorldDynamicMapObjUpdate>) =>
+            this.applyDynamicMapObjUpdates(updates),
         clearDynamicMapObjs: (mapIds: ReadonlyArray<number>) => this.clearDynamicMapObjs(mapIds),
         applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
             this.applyLocAnimationResets(resets),
@@ -222,6 +225,12 @@ export class SimWorkerPool {
         >,
     ): Promise<number> {
         return this.withWorker((w) => w.applyDynamicMapObjDespawns(despawns));
+    }
+
+    private applyDynamicMapObjUpdates(
+        updates: ReadonlyArray<WorldDynamicMapObjUpdate>,
+    ): Promise<number> {
+        return this.withWorker((w) => w.applyDynamicMapObjUpdates(updates));
     }
 
     private clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {

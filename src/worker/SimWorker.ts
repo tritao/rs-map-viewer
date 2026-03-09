@@ -4,6 +4,7 @@ import { Transfer, expose } from "threads/worker";
 import type {
     WorldDeltaPacket,
     WorldMapObjAddition,
+    WorldDynamicMapObjUpdate,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -109,6 +110,12 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyDynamicMapObjDespawns(despawns);
     },
+    async applyDynamicMapObjUpdates(
+        updates: ReadonlyArray<WorldDynamicMapObjUpdate>,
+    ): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyDynamicMapObjUpdates(updates);
+    },
     async clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.clearDynamicMapObjs(mapIds);
@@ -206,6 +213,11 @@ const worker = {
         >,
     ): Promise<number> {
         return worldApi.applyDynamicMapObjDespawns(despawns);
+    },
+    async applyDynamicMapObjUpdates(
+        updates: ReadonlyArray<WorldDynamicMapObjUpdate>,
+    ): Promise<number> {
+        return worldApi.applyDynamicMapObjUpdates(updates);
     },
     async clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
         return worldApi.clearDynamicMapObjs(mapIds);

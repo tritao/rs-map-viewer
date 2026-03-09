@@ -20,6 +20,7 @@ import {
     type WorldMapObjAddition,
     type WorldDynamicMapObjDespawn,
     type WorldDynamicMapObjSpawn,
+    type WorldDynamicMapObjUpdate,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
@@ -127,6 +128,10 @@ export class WorkerTickRuntime {
         >
     >();
     private readonly pendingDynamicMapObjDespawnsByMapId = new Map<number, Set<number>>();
+    private readonly pendingDynamicMapObjUpdatesByMapId = new Map<
+        number,
+        Map<number, WorldDynamicMapObjUpdate>
+    >();
     private readonly pendingClearDynamicMapIds = new Set<number>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
@@ -158,6 +163,7 @@ export class WorkerTickRuntime {
         this.pendingMapObjRemovalsByMapId.clear();
         this.pendingDynamicMapObjSpawnsByMapId.clear();
         this.pendingDynamicMapObjDespawnsByMapId.clear();
+        this.pendingDynamicMapObjUpdatesByMapId.clear();
         this.pendingClearDynamicMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
@@ -289,6 +295,33 @@ export class WorkerTickRuntime {
                 this.pendingDynamicMapObjDespawnsByMapId.set(mapId, pending);
             }
             pending.add(despawn.runtimeObjId | 0);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyDynamicMapObjUpdates(updates: ReadonlyArray<WorldDynamicMapObjUpdate>): number {
+        let applied = 0;
+        for (let index = 0; index < updates.length; index++) {
+            const update = updates[index];
+            if (!update) {
+                continue;
+            }
+            const mapId = update.mapId | 0;
+            let pending = this.pendingDynamicMapObjUpdatesByMapId.get(mapId);
+            if (!pending) {
+                pending = new Map<number, WorldDynamicMapObjUpdate>();
+                this.pendingDynamicMapObjUpdatesByMapId.set(mapId, pending);
+            }
+            pending.set(update.runtimeObjId | 0, {
+                mapId,
+                runtimeObjId: update.runtimeObjId | 0,
+                objTypeId: update.objTypeId | 0,
+                count: Math.max(1, update.count | 0),
+                x: update.x | 0,
+                y: update.y | 0,
+                plane: update.plane | 0,
+            });
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -809,6 +842,7 @@ export class WorkerTickRuntime {
         const objRemovals: WorldMapObjRemoval[] = [];
         const dynamicObjSpawns: WorldDynamicMapObjSpawn[] = [];
         const dynamicObjDespawns: WorldDynamicMapObjDespawn[] = [];
+        const dynamicObjUpdates: WorldDynamicMapObjUpdate[] = [];
         const clearDynamicMapIds: number[] = [];
         if (hasPendingObjStateReplacements) {
             for (const update of this.pendingMapObjStateReplacementsByMapId.values()) {
@@ -913,6 +947,30 @@ export class WorkerTickRuntime {
                     dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
                 });
             }
+            for (const [mapId, updates] of this.pendingDynamicMapObjUpdatesByMapId.entries()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
+                for (const update of updates.values()) {
+                    if (!nextDynamicObjSpawnsByRuntimeId.has(update.runtimeObjId | 0)) {
+                        continue;
+                    }
+                    nextDynamicObjSpawnsByRuntimeId.set(update.runtimeObjId | 0, {
+                        id: update.objTypeId | 0,
+                        count: Math.max(1, update.count | 0),
+                        x: update.x | 0,
+                        y: update.y | 0,
+                        plane: update.plane | 0,
+                    });
+                    dynamicObjUpdates.push(update);
+                }
+                this.mapObjRuntimeByMapId.set(mapId | 0, {
+                    ...runtime,
+                    dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
+                });
+            }
         }
         if (hasPendingObjAdditions) {
             for (const [mapId, addedObjIndices] of this.pendingMapObjAdditionsByMapId.entries()) {
@@ -945,6 +1003,7 @@ export class WorkerTickRuntime {
         this.pendingMapObjRemovalsByMapId.clear();
         this.pendingDynamicMapObjSpawnsByMapId.clear();
         this.pendingDynamicMapObjDespawnsByMapId.clear();
+        this.pendingDynamicMapObjUpdatesByMapId.clear();
         this.pendingClearDynamicMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
@@ -979,6 +1038,7 @@ export class WorkerTickRuntime {
                 (objRemovals.length | 0) > 0 ||
                 (dynamicObjSpawns.length | 0) > 0 ||
                 (dynamicObjDespawns.length | 0) > 0 ||
+                (dynamicObjUpdates.length | 0) > 0 ||
                 (clearDynamicMapIds.length | 0) > 0
                     ? {
                           stateReplacements:
@@ -991,6 +1051,8 @@ export class WorkerTickRuntime {
                               (dynamicObjSpawns.length | 0) > 0 ? dynamicObjSpawns : undefined,
                           dynamicDespawns:
                               (dynamicObjDespawns.length | 0) > 0 ? dynamicObjDespawns : undefined,
+                          dynamicUpdates:
+                              (dynamicObjUpdates.length | 0) > 0 ? dynamicObjUpdates : undefined,
                           clearDynamicMapIds:
                               (clearDynamicMapIds.length | 0) > 0 ? clearDynamicMapIds : undefined,
                       }

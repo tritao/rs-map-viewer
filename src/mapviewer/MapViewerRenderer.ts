@@ -972,6 +972,35 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     };
 
+    private onMoveDynamicGroundItemToCamera = (entry: OsrsMenuEntry) => {
+        const actionTarget = entry.actionTarget;
+        this.mapViewer.closeMenu();
+        if (!actionTarget || actionTarget.kind !== MenuTargetType.OBJ) {
+            return;
+        }
+        if (actionTarget.objInstance.kind !== "dynamic") {
+            return;
+        }
+        void this.applyWorldInput({
+            obj: {
+                dynamicUpdates: [
+                    {
+                        mapId: getMapSquareId(
+                            this.camera.getMapX() >> 6,
+                            this.camera.getMapY() >> 6,
+                        ),
+                        runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
+                        objTypeId: actionTarget.objTypeId | 0,
+                        count: 1,
+                        x: this.camera.getMapX() | 0,
+                        y: this.camera.getMapY() | 0,
+                        plane: 0,
+                    },
+                ],
+            },
+        });
+    };
+
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
 
@@ -1367,6 +1396,20 @@ export class MapViewerRenderer extends RendererMainLoop {
                         actionTarget,
                         onClick: this.onRemoveGroundItem,
                     });
+                    if (
+                        actionTarget.kind === MenuTargetType.OBJ &&
+                        actionTarget.objInstance.kind === "dynamic"
+                    ) {
+                        menuEntries.push({
+                            option: "Move item here",
+                            targetId: target.objType.id,
+                            targetType: MenuTargetType.OBJ,
+                            targetName: target.objType.name,
+                            targetLevel: -1,
+                            actionTarget,
+                            onClick: this.onMoveDynamicGroundItemToCamera,
+                        });
+                    }
                 }
                 examineEntries.push({
                     option: "Examine",
