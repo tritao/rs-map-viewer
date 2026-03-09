@@ -5,7 +5,7 @@ import {
 
 export type MapObjRenderUpdate = Readonly<{
     mapId: number;
-    hasObjRenderDataUpdate: boolean;
+    replaceObjRenderData: boolean;
     objRenderData?: ObjRenderData;
     hiddenObjIndicesPacked?: Int32Array;
 }>;

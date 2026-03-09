@@ -200,12 +200,12 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         update: Readonly<{
-            hasObjRenderDataUpdate: boolean;
+            replaceObjRenderData: boolean;
             objRenderData?: ObjRenderData;
             hiddenObjIndicesPacked?: Int32Array;
         }>,
     ): void {
-        if (update.hasObjRenderDataUpdate) {
+        if (update.replaceObjRenderData) {
             this.currentObjRenderData = update.objRenderData;
         }
         if (update.hiddenObjIndicesPacked !== undefined) {
@@ -239,7 +239,7 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             });
             return { drawCall, drawRangesPacked };
         };
-        if (update.hasObjRenderDataUpdate) {
+        if (update.replaceObjRenderData) {
             this.resetObjRenderData();
             this.createObjGeometryBuffers(app, objRenderData);
         } else {

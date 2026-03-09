@@ -189,7 +189,7 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
         sceneModels,
         input.minimizeDrawCalls,
         {
-            preserveInstances: true,
+            keepPerInstanceMetadata: true,
         },
     );
     if (sceneBuf.vertexCount() <= 0 || sceneBuf.indices.length <= 0) {

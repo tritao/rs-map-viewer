@@ -31,7 +31,7 @@ export type SceneDrawPlan = Readonly<{
 }>;
 
 export type SceneDrawPlanOptions = Readonly<{
-    preserveInstances?: boolean;
+    keepPerInstanceMetadata?: boolean;
 }>;
 
 export type SceneDrawPlanDigest = Readonly<{
@@ -150,7 +150,7 @@ export function buildSceneDrawPlanFromSceneModels(
     minimizeDrawCalls: boolean,
     options?: SceneDrawPlanOptions,
 ): SceneDrawPlan {
-    const preserveInstances = options?.preserveInstances === true;
+    const keepPerInstanceMetadata = options?.keepPerInstanceMetadata === true;
     const groupedModels = new Map<number, { firstSeen: number; models: SceneModel[] }>();
     for (let i = 0; i < sceneModels.length; i++) {
         const sceneModel = sceneModels[i];
@@ -192,7 +192,7 @@ export function buildSceneDrawPlanFromSceneModels(
             }
         }
 
-        if (preserveInstances) {
+        if (keepPerInstanceMetadata) {
             const allInstances = mergeModels.concat(instancedModels);
             const allLodInstances = allInstances.filter((sceneModel) => !sceneModel.lowDetail);
             if (opaqueFaces.length > 0 && (allInstances.length | 0) > 0) {

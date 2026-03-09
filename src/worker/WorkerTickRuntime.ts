@@ -1,5 +1,5 @@
 import type { NpcSpawn } from "../data/npc/NpcSpawn";
-import { getWindowObjSpawns, type ObjSpawn } from "../data/obj/ObjSpawn";
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import { NpcSpawnResolver } from "../data/npc/NpcSpawnResolver";
 import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
@@ -10,8 +10,6 @@ import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
 import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
@@ -31,7 +29,7 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
-import { mapObjStateFromRenderData, type MapObjState } from "../shared/StaticMapPacket";
+import type { MapObjState } from "../shared/StaticMapPacket";
 import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import type {
     MapRuntimeBootstrapInput,
@@ -44,7 +42,6 @@ type TickWorkerState = Readonly<{
     mapBytesProvider: MapBytesProvider;
     objSpawns: ReadonlyArray<ObjSpawn>;
     fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
-    objModelLoader: ObjModelLoader;
     sceneBuilder: SceneBuilder;
 }>;
 
@@ -293,58 +290,6 @@ export class WorkerTickRuntime {
                 ? new Set<number>()
                 : new Set(current?.removedObjIndices ?? []),
         });
-    }
-
-    private async rebuildMapObjStateAfterRemovals(
-        workerState: TickWorkerState,
-        mapId: number,
-        removedObjIndices: ReadonlySet<number>,
-    ): Promise<MapObjState | undefined> {
-        const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
-        if (!runtime) {
-            return undefined;
-        }
-        const { mapX, mapY } = decodeMapSquareFromId(mapId | 0);
-        const borderSize = runtime.borderSize | 0;
-        const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
-        const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
-        const baseY = mapY * Scene.MAP_SQUARE_SIZE - borderSize;
-        const allMapObjSpawns = getWindowObjSpawns(
-            workerState.objSpawns as ObjSpawn[],
-            runtime.maxLevel | 0,
-            baseX | 0,
-            baseY | 0,
-            mapSize | 0,
-            mapSize | 0,
-        );
-        const keptObjSpawns: ObjSpawn[] = [];
-        const interactIds: number[] = [];
-        for (let index = 0; index < allMapObjSpawns.length; index++) {
-            if (removedObjIndices.has(index | 0)) {
-                continue;
-            }
-            keptObjSpawns.push(allMapObjSpawns[index]!);
-            interactIds.push(index | 0);
-        }
-        if ((keptObjSpawns.length | 0) <= 0) {
-            return undefined;
-        }
-        const scene = this.buildMapSimScene(workerState, mapId | 0, borderSize | 0);
-        return mapObjStateFromRenderData(
-            buildObjRenderData({
-                loadObjs: true,
-                objTypeLoader: workerState.session.loaders.objTypeLoader,
-                objModelLoader: workerState.objModelLoader,
-                scene,
-                textureLoader: workerState.session.loaders.textureLoader,
-                baseX,
-                baseY,
-                borderSize,
-                objSpawns: keptObjSpawns,
-                interactIds,
-                minimizeDrawCalls: true,
-            }),
-        );
     }
 
     private emitNpcBootstrapWarnings(

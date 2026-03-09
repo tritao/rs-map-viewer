@@ -65,7 +65,7 @@ type FrameRenderMap = {
 };
 
 type PendingMapObjRenderUpdate = Readonly<{
-    hasObjRenderDataUpdate: boolean;
+    replaceObjRenderData: boolean;
     objRenderData?: ObjRenderData;
     hiddenObjIndicesPacked?: Int32Array;
 }>;

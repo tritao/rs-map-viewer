@@ -71,7 +71,7 @@ type WasmTickEmitResult = Readonly<{
 
 type PendingRuntimeMapObjUpdate = {
     objRenderData: ObjRenderData | undefined;
-    hasObjRenderDataUpdate: boolean;
+    replaceObjRenderData: boolean;
     hiddenObjIndices: Set<number>;
 };
 
@@ -156,7 +156,7 @@ export class WorkerFramePacketRuntime {
         if (!pending) {
             pending = {
                 objRenderData: undefined,
-                hasObjRenderDataUpdate: false,
+                replaceObjRenderData: false,
                 hiddenObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
             };
             this.pendingRuntimeMapObjUpdatesByMapId.set(id, pending);
@@ -179,7 +179,7 @@ export class WorkerFramePacketRuntime {
             }
             const pending = this.getPendingRuntimeMapObjUpdate(update.mapId | 0);
             pending.objRenderData = mapObjStateToRenderData(update.mapObjState);
-            pending.hasObjRenderDataUpdate = true;
+            pending.replaceObjRenderData = true;
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -216,7 +216,7 @@ export class WorkerFramePacketRuntime {
         }
         const updates = new Array<{
             mapId: number;
-            hasObjRenderDataUpdate: boolean;
+            replaceObjRenderData: boolean;
             objRenderData?: ObjRenderData;
             hiddenObjIndicesPacked?: Int32Array;
         }>(this.pendingRuntimeMapObjUpdatesByMapId.size | 0);
@@ -224,7 +224,7 @@ export class WorkerFramePacketRuntime {
         for (const [mapId, pending] of this.pendingRuntimeMapObjUpdatesByMapId.entries()) {
             updates[write++] = {
                 mapId: mapId | 0,
-                hasObjRenderDataUpdate: pending.hasObjRenderDataUpdate,
+                replaceObjRenderData: pending.replaceObjRenderData,
                 objRenderData: pending.objRenderData,
                 hiddenObjIndicesPacked:
                     (pending.hiddenObjIndices.size | 0) > 0
