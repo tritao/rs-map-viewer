@@ -27,8 +27,8 @@ type WorldDeltaPacketInput = Readonly<{
     locDelta?: WorldLocDelta;
 }>;
 
-export type WorldMapObjUpdate = Readonly<{
-    kind: "replaceMapObjState";
+export type WorldMapObjStateReplacement = Readonly<{
+    kind: "replaceState";
     mapId: number;
     mapObjState?: MapObjState;
 }>;
@@ -39,7 +39,7 @@ export type WorldMapObjRemoval = Readonly<{
 }>;
 
 export type WorldObjDelta = Readonly<{
-    updates?: ReadonlyArray<WorldMapObjUpdate>;
+    stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
 }>;
 
@@ -147,13 +147,13 @@ function getNpcStateTransferables(npcState: NpcWorldState | undefined): Transfer
 }
 
 function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transferable[] {
-    const updates = objDelta?.updates;
-    if (!updates || (updates.length | 0) <= 0) {
+    const stateReplacements = objDelta?.stateReplacements;
+    if (!stateReplacements || (stateReplacements.length | 0) <= 0) {
         return [];
     }
     const transferables: Transferable[] = [];
-    for (let index = 0; index < updates.length; index++) {
-        const mapObjState = updates[index]?.mapObjState;
+    for (let index = 0; index < stateReplacements.length; index++) {
+        const mapObjState = stateReplacements[index]?.mapObjState;
         if (!mapObjState) {
             continue;
         }
@@ -163,13 +163,13 @@ function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transfer
             mapObjState.usedTextureIds.buffer as Transferable,
             mapObjState.objTypeIds.buffer as Transferable,
         );
-        for (const key of Object.keys(mapObjState.modelInfoTextures) as Array<
-            keyof typeof mapObjState.modelInfoTextures
+        for (const key of Object.keys(mapObjState.renderState.modelInfoTextures) as Array<
+            keyof typeof mapObjState.renderState.modelInfoTextures
         >) {
             transferables.push(
-                mapObjState.modelInfoTextures[key].buffer as Transferable,
-                mapObjState.modelInfoIndices[key].buffer as Transferable,
-                mapObjState.drawRanges[key].buffer as Transferable,
+                mapObjState.renderState.modelInfoTextures[key].buffer as Transferable,
+                mapObjState.renderState.modelInfoIndices[key].buffer as Transferable,
+                mapObjState.renderState.drawRanges[key].buffer as Transferable,
             );
         }
     }
@@ -202,7 +202,7 @@ export function getWorldDeltaPacketCounts(
 export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
     return (
         (packet.npcState?.changeCount ?? 0) +
-        (packet.objDelta?.updates?.length ?? 0) +
+        (packet.objDelta?.stateReplacements?.length ?? 0) +
         (packet.objDelta?.removals?.length ?? 0) +
         Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
         Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3)
@@ -405,16 +405,16 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
     });
 }
 
-export function buildWorldDeltaPacketFromObjUpdates(
+export function buildWorldDeltaPacketFromObjStateReplacements(
     input: Readonly<{
         frameCount?: number;
-        updates: ReadonlyArray<WorldMapObjUpdate>;
+        stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>;
     }>,
 ): WorldDeltaPacket {
     return buildWorldDeltaPacket({
         frameCount: input.frameCount ?? 0,
         objDelta: {
-            updates: input.updates,
+            stateReplacements: input.stateReplacements,
         },
     });
 }

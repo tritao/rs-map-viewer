@@ -89,12 +89,16 @@ export type MapObjStateDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int3
 
 export type MapObjStateModelInfoIndices = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
 
-export type MapObjState = Readonly<{
-    vertices: Uint8Array;
-    indices: Int32Array;
+export type MapObjRenderState = Readonly<{
     modelInfoTextures: MapObjStateModelInfoTextures;
     modelInfoIndices: MapObjStateModelInfoIndices;
     drawRanges: MapObjStateDrawRanges;
+}>;
+
+export type MapObjState = Readonly<{
+    vertices: Uint8Array;
+    indices: Int32Array;
+    renderState: MapObjRenderState;
     usedTextureIds: Int32Array;
     objTypeIds: Int32Array;
 }>;
@@ -166,9 +170,10 @@ type StaticMapWireDrawRanges = Readonly<{
 
 type StaticMapDataWire = Omit<SdMapData, "drawRanges"> & StaticMapWireDrawRanges;
 
-type StaticMapObjStateWire = Omit<MapObjState, "drawRanges" | "modelInfoIndices"> &
+type StaticMapObjStateWire = Omit<MapObjState, "renderState"> &
     StaticMapWireDrawRanges &
     Readonly<{
+        modelInfoTextures: MapObjStateModelInfoTextures;
         modelInfoIndexBucketLengths: Int32Array;
         modelInfoIndicesPacked: Int32Array;
     }>;
@@ -299,9 +304,11 @@ export function mapObjStateFromRenderData(
     return {
         vertices: objRenderData.vertices,
         indices: objRenderData.indices,
-        modelInfoTextures: objRenderData.modelInfoTextures,
-        modelInfoIndices: objRenderData.modelInfoIndices,
-        drawRanges: objRenderData.drawRanges,
+        renderState: {
+            modelInfoTextures: objRenderData.modelInfoTextures,
+            modelInfoIndices: objRenderData.modelInfoIndices,
+            drawRanges: objRenderData.drawRanges,
+        },
         usedTextureIds: objRenderData.usedTextureIds,
         objTypeIds: objRenderData.objTypeIds,
     };
@@ -316,9 +323,9 @@ export function mapObjStateToRenderData(
     return {
         vertices: mapObjState.vertices,
         indices: mapObjState.indices,
-        modelInfoTextures: mapObjState.modelInfoTextures,
-        modelInfoIndices: mapObjState.modelInfoIndices,
-        drawRanges: mapObjState.drawRanges,
+        modelInfoTextures: mapObjState.renderState.modelInfoTextures,
+        modelInfoIndices: mapObjState.renderState.modelInfoIndices,
+        drawRanges: mapObjState.renderState.drawRanges,
         usedTextureIds: mapObjState.usedTextureIds,
         objTypeIds: mapObjState.objTypeIds,
     };
@@ -329,9 +336,13 @@ function encodeMapObjStateWire(mapObjState: MapObjState | undefined): StaticMapO
         return undefined;
     }
     return {
-        ...mapObjState,
-        ...packModelInfoIndices(mapObjState.modelInfoIndices),
-        ...packDrawRanges(mapObjState.drawRanges),
+        vertices: mapObjState.vertices,
+        indices: mapObjState.indices,
+        modelInfoTextures: mapObjState.renderState.modelInfoTextures,
+        usedTextureIds: mapObjState.usedTextureIds,
+        objTypeIds: mapObjState.objTypeIds,
+        ...packModelInfoIndices(mapObjState.renderState.modelInfoIndices),
+        ...packDrawRanges(mapObjState.renderState.drawRanges),
     };
 }
 
@@ -342,17 +353,23 @@ function decodeMapObjStateWire(
         return undefined;
     }
     return {
-        ...mapObjState,
-        modelInfoIndices: unpackBucketedInt32Arrays(
-            MAP_RENDER_DRAW_BUCKET_KEYS,
-            mapObjState.modelInfoIndexBucketLengths,
-            mapObjState.modelInfoIndicesPacked,
-            "StaticMapObjStateWire",
-        ) as MapObjStateModelInfoIndices,
-        drawRanges: unpackDrawRanges(
-            mapObjState.drawRangeBucketLengths,
-            mapObjState.drawRangesPacked,
-        ),
+        vertices: mapObjState.vertices,
+        indices: mapObjState.indices,
+        renderState: {
+            modelInfoTextures: mapObjState.modelInfoTextures,
+            modelInfoIndices: unpackBucketedInt32Arrays(
+                MAP_RENDER_DRAW_BUCKET_KEYS,
+                mapObjState.modelInfoIndexBucketLengths,
+                mapObjState.modelInfoIndicesPacked,
+                "StaticMapObjStateWire",
+            ) as MapObjStateModelInfoIndices,
+            drawRanges: unpackDrawRanges(
+                mapObjState.drawRangeBucketLengths,
+                mapObjState.drawRangesPacked,
+            ),
+        },
+        usedTextureIds: mapObjState.usedTextureIds,
+        objTypeIds: mapObjState.objTypeIds,
     };
 }
 

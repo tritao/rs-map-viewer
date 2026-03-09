@@ -19,7 +19,7 @@ import type {
     WorldDeltaPacket,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
-    WorldMapObjUpdate,
+    WorldMapObjStateReplacement,
 } from "../world/WorldDeltaPacket";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
@@ -164,17 +164,19 @@ export class WorkerFramePacketRuntime {
         return pending;
     }
 
-    private applyRuntimeMapObjUpdates(updates: ReadonlyArray<WorldMapObjUpdate> | undefined): number {
-        if (!updates) {
+    private applyRuntimeMapObjStateReplacements(
+        stateReplacements: ReadonlyArray<WorldMapObjStateReplacement> | undefined,
+    ): number {
+        if (!stateReplacements) {
             return 0;
         }
         let applied = 0;
-        for (let index = 0; index < updates.length; index++) {
-            const update = updates[index];
+        for (let index = 0; index < stateReplacements.length; index++) {
+            const update = stateReplacements[index];
             if (!update) {
                 continue;
             }
-            if (update.kind !== "replaceMapObjState") {
+            if (update.kind !== "replaceState") {
                 continue;
             }
             const pending = this.getPendingRuntimeMapObjUpdate(update.mapId | 0);
@@ -324,7 +326,9 @@ export class WorkerFramePacketRuntime {
     }
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
-        let applied = this.applyRuntimeMapObjUpdates(packet.objDelta?.updates);
+        let applied = this.applyRuntimeMapObjStateReplacements(
+            packet.objDelta?.stateReplacements,
+        );
         applied = (applied + this.applyRuntimeMapObjRemovals(packet.objDelta?.removals)) | 0;
         const locDelta = packet.locDelta;
         if (locDelta) {

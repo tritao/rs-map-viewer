@@ -6,27 +6,27 @@ import {
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
-    type WorldMapObjUpdate,
+    type WorldMapObjStateReplacement,
 } from "./WorldDeltaPacket";
 
-export type WorldNpcInput = Readonly<{
+export type WorldNpcLifecycleInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
 }>;
 
-export type WorldObjInput = Readonly<{
-    updates?: ReadonlyArray<WorldMapObjUpdate>;
+export type WorldObjStateInput = Readonly<{
+    stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
 }>;
 
-export type WorldLocInput = Readonly<{
+export type WorldLocAnimationInput = Readonly<{
     animationResets?: ReadonlyArray<WorldLocAnimationReset>;
     animationPauseStates?: ReadonlyArray<WorldLocAnimationPauseState>;
 }>;
 
 export type WorldInput = Readonly<{
-    npc?: WorldNpcInput;
-    obj?: WorldObjInput;
-    loc?: WorldLocInput;
+    npc?: WorldNpcLifecycleInput;
+    obj?: WorldObjStateInput;
+    loc?: WorldLocAnimationInput;
 }>;
 
 export type WorldMapActivationInput = Readonly<{

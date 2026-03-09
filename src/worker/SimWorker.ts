@@ -6,7 +6,7 @@ import type {
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
-    WorldMapObjUpdate,
+    WorldMapObjStateReplacement,
 } from "../world/WorldDeltaPacket";
 import { worldDeltaPacketTransferables } from "../world/WorldDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
@@ -68,9 +68,11 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyNpcLifecyclePacketBytes(packet);
     },
-    async applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
+    async applyMapObjStateReplacements(
+        stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
+    ): Promise<number> {
         const { tickRuntime } = await getWorkerServices();
-        return tickRuntime.applyMapObjStateUpdates(updates);
+        return tickRuntime.applyMapObjStateReplacements(stateReplacements);
     },
     async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
         const { tickRuntime } = await getWorkerServices();
@@ -135,8 +137,10 @@ const worker = {
     async applyNpcLifecyclePacketBytes(packet: ArrayBuffer | Uint8Array): Promise<number> {
         return worldApi.applyNpcLifecyclePacketBytes(packet);
     },
-    async applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
-        return worldApi.applyMapObjStateUpdates(updates);
+    async applyMapObjStateReplacements(
+        stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
+    ): Promise<number> {
+        return worldApi.applyMapObjStateReplacements(stateReplacements);
     },
     async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
         return worldApi.applyMapObjRemovals(removals);

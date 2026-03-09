@@ -455,7 +455,8 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.applyMapObjTypeIdsFromWorldInput(input);
         }
         const hasRenderAffectingWorldInput =
-            (!!input.obj?.updates && (input.obj.updates.length | 0) > 0) ||
+            (!!input.obj?.stateReplacements &&
+                (input.obj.stateReplacements.length | 0) > 0) ||
             (!!input.obj?.removals && (input.obj.removals.length | 0) > 0) ||
             (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
             (!!input.loc?.animationPauseStates && (input.loc.animationPauseStates.length | 0) > 0);
@@ -470,9 +471,9 @@ export class MapViewerRenderer extends RendererMainLoop {
     ): Promise<void> {
         await this.applyWorldInput({
             obj: {
-                updates: [
+                stateReplacements: [
                     {
-                        kind: "replaceMapObjState",
+                        kind: "replaceState",
                         mapId: packet.mapData.mapId | 0,
                         mapObjState: packet.runtimeBootstrap.mapObjState,
                     },
@@ -608,13 +609,13 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private applyMapObjTypeIdsFromWorldInput(input: WorldInput): void {
-        const updates = input.obj?.updates;
-        if (!updates) {
+        const stateReplacements = input.obj?.stateReplacements;
+        if (!stateReplacements) {
             return;
         }
-        for (let index = 0; index < updates.length; index++) {
-            const update = updates[index];
-            if (!update || update.kind !== "replaceMapObjState") {
+        for (let index = 0; index < stateReplacements.length; index++) {
+            const update = stateReplacements[index];
+            if (!update || update.kind !== "replaceState") {
                 continue;
             }
             this.setMapObjTypeIds(update.mapId | 0, update.mapObjState?.objTypeIds);

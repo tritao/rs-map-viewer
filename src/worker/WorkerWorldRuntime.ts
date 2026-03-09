@@ -3,7 +3,7 @@ import type {
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
-    WorldMapObjUpdate,
+    WorldMapObjStateReplacement,
 } from "../world/WorldDeltaPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type {
@@ -22,7 +22,9 @@ type WorldSimRuntime = Readonly<{
     activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void>;
     deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void>;
     applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number>;
-    applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number>;
+    applyMapObjStateReplacements(
+        stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
+    ): Promise<number>;
     applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number>;
     applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): Promise<number>;
     applyLocAnimationPauseStates(
@@ -116,9 +118,14 @@ export class WorkerWorldRuntime implements WorldRuntime {
 
     private async applyObjInput(input: WorldInput): Promise<number> {
         let applied = 0;
-        const objUpdates = input.obj?.updates;
-        if (objUpdates && (objUpdates.length | 0) > 0) {
-            applied = (applied + (await this.deps.simRuntime.applyMapObjStateUpdates(objUpdates))) | 0;
+        const objStateReplacements = input.obj?.stateReplacements;
+        if (objStateReplacements && (objStateReplacements.length | 0) > 0) {
+            applied =
+                (applied +
+                    (await this.deps.simRuntime.applyMapObjStateReplacements(
+                        objStateReplacements,
+                    ))) |
+                0;
         }
         const objRemovals = input.obj?.removals;
         if (objRemovals && (objRemovals.length | 0) > 0) {
