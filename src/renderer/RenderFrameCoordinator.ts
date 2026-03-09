@@ -1,7 +1,7 @@
 import type { RenderFramePacket } from "./RenderFramePacket";
 import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
-import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerContext";
-import type { WorkerInputStateVersion } from "../worker/WorkerContext";
+import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerRuntimeTypes";
+import type { WorkerInputStateVersion } from "../worker/WorkerRuntimeTypes";
 
 const EMPTY_INT32 = new Int32Array(0);
 

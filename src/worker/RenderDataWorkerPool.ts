@@ -14,9 +14,11 @@ import type {
     RenderFrameInputUpdate,
     RenderMapRuntimeRegistrationInput,
     WorkerInputStateVersion,
+} from "./WorkerRuntimeTypes";
+import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
-} from "./WorkerContext";
+} from "./WorkerBuildTypes";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 
 type RenderDataWorkerThread = ModuleThread<RenderDataWorker>;

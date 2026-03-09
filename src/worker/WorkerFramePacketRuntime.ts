@@ -37,8 +37,8 @@ import {
     type RenderMapRuntimeRegistrationInput,
     type WorkerInputStateVersion,
     type WorkerViewState,
-    WorkerMapRuntimeTracker,
-} from "./WorkerContext";
+} from "./WorkerRuntimeTypes";
+import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import { mapObjStateToRenderData } from "../shared/StaticMapPacket";
 import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
 

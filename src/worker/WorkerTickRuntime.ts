@@ -27,12 +27,12 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
-import { WorkerMapRuntimeTracker } from "./WorkerContext";
+import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import type {
     MapRuntimeBootstrapInput,
     SimMapRuntimeRegistrationInput,
     WorldInputUpdate,
-} from "./WorkerContext";
+} from "./WorkerRuntimeTypes";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;

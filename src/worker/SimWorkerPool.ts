@@ -16,10 +16,9 @@ import { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,
     SimMapRuntimeRegistrationInput,
-    WorkerRuntimeOptions,
-    WorkerSpawnBootstrap,
     WorldInputUpdate,
-} from "./WorkerContext";
+} from "./WorkerRuntimeTypes";
+import type { WorkerRuntimeOptions, WorkerSpawnBootstrap } from "./WorkerBuildTypes";
 import type { SimWorker } from "./SimWorker";
 import { ensureWorkerSpawnBootstrap } from "./WorkerSpawnBootstrap";
 

@@ -34,7 +34,7 @@ import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
     WorkerState,
-} from "./WorkerContext";
+} from "./WorkerBuildTypes";
 
 type WorkerStateInit = { ok: true; state: WorkerState } | { ok: false; error: string };
 

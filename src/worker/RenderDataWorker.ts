@@ -11,11 +11,13 @@ import type {
     RenderFrameInputUpdate,
     RenderMapRuntimeRegistrationInput,
     WorkerInputStateVersion,
+} from "./WorkerRuntimeTypes";
+import type {
     WorkerRuntimeOptions,
     WorkerSpawnBootstrap,
-} from "./WorkerContext";
+} from "./WorkerBuildTypes";
 
-export type { WorkerRuntimeOptions, WorkerState } from "./WorkerContext";
+export type { WorkerRuntimeOptions, WorkerState } from "./WorkerBuildTypes";
 
 type RenderDataWorkerServices = Readonly<{
     buildService: import("./WorkerBuildService").WorkerBuildService;

@@ -18,7 +18,7 @@ import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { Result, err, ok } from "../util/Result";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { WorkerRuntimeOptions } from "../worker/WorkerContext";
+import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
