@@ -3,7 +3,11 @@ import {
     getWorldDeltaChangeCount,
     type WorldDeltaPacket,
 } from "../world/WorldDeltaPacket";
-import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerRuntimeTypes";
+import type {
+    ApplyWorldDeltaResult,
+    RenderFrameInputUpdate,
+    WorldInputUpdate,
+} from "../worker/WorkerRuntimeTypes";
 import type { WorkerInputStateVersion } from "../worker/WorkerRuntimeTypes";
 
 const EMPTY_INT32 = new Int32Array(0);
@@ -35,7 +39,7 @@ type RenderFrameWorldRuntime = Readonly<{
 
 type RenderFrameRuntime = Readonly<{
     syncState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion>;
-    applyWorldDelta(deltaPacket: WorldDeltaPacket): Promise<number>;
+    applyWorldDelta(deltaPacket: WorldDeltaPacket): Promise<ApplyWorldDeltaResult>;
     buildPacket(frameCount: number, cycleNow: number): Promise<RenderFramePacket | undefined>;
 }>;
 
@@ -245,8 +249,15 @@ export class RenderFrameCoordinator {
                 input.input.cycle,
             );
             const afterSim = performance.now();
+            let applyResult: ApplyWorldDeltaResult | undefined;
             if (worldDeltaPacket) {
-                await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
+                applyResult = await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
+                if (applyResult.npcSnapshotMapIds && (applyResult.npcSnapshotMapIds.length | 0) > 0) {
+                    await this.deps.worldRuntime.syncState({
+                        npcSnapshotMapIds: applyResult.npcSnapshotMapIds,
+                    });
+                    this.needsPacketRefresh = true;
+                }
             }
             const afterApply = performance.now();
             const packet = await this.deps.renderFrameRuntime.buildPacket(

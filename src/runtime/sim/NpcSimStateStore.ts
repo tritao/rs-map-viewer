@@ -58,6 +58,7 @@ export type NpcSimStateStoreDeps = Readonly<{
 
 export class NpcSimStateStore {
     private readonly maps = new Map<number, NpcSimMapState>();
+    private readonly pendingNpcSnapshotMapIds = new Set<number>();
 
     private createCollisionMaps(collisionDatas: ReadonlyArray<CollisionData>): CollisionMap[] {
         return collisionDatas.map(CollisionMap.fromData);
@@ -410,6 +411,7 @@ export class NpcSimStateStore {
             }
         };
 
+        const mapsWithSpawnState = new Set<number>();
         const spawnStatePacked = npcState.spawnStatePacked;
         let applied = 0;
         for (let i = 0; i < (counts.spawnCount | 0); i++) {
@@ -441,6 +443,7 @@ export class NpcSimStateStore {
             trackMapNpcCountBefore(mapId, state);
             this.upsertSpawnedNpc(state, npc, spawnStatePacked[off + 1] | 0);
             changedMaps.add(mapId);
+            mapsWithSpawnState.add(mapId);
             applied = (applied + 1) | 0;
         }
 
@@ -484,6 +487,10 @@ export class NpcSimStateStore {
             if (!state) {
                 continue;
             }
+            if ((state.npcs.length | 0) <= 0 && !mapsWithSpawnState.has(mapId)) {
+                this.pendingNpcSnapshotMapIds.add(mapId);
+                continue;
+            }
             const npcInstanceId = updateStatePacked[off + 1] | 0;
             const seq = updateStatePacked[off + 2] | 0;
             if (!this.shouldApplySeq(state, npcInstanceId, seq)) {
@@ -507,6 +514,19 @@ export class NpcSimStateStore {
             applied = (applied + 1) | 0;
         }
         return applied | 0;
+    }
+
+    consumePendingNpcSnapshotMapIdsPacked(): Int32Array | undefined {
+        if ((this.pendingNpcSnapshotMapIds.size | 0) <= 0) {
+            return undefined;
+        }
+        const packed = new Int32Array(this.pendingNpcSnapshotMapIds.size | 0);
+        let write = 0;
+        for (const mapId of this.pendingNpcSnapshotMapIds.values()) {
+            packed[write++] = mapId | 0;
+        }
+        this.pendingNpcSnapshotMapIds.clear();
+        return packed;
     }
 
     applyLocAnimationResets(packet: WorldDeltaPacket, cycleNow: number): number {
@@ -571,14 +591,17 @@ export class NpcSimStateStore {
 
     resetForCache(): void {
         this.maps.clear();
+        this.pendingNpcSnapshotMapIds.clear();
     }
 
     resetForLoaderReset(): void {
         this.maps.clear();
+        this.pendingNpcSnapshotMapIds.clear();
     }
 
     unregisterMap(mapId: number): void {
         this.maps.delete(mapId | 0);
+        this.pendingNpcSnapshotMapIds.delete(mapId | 0);
     }
 
     getMap(mapId: number): NpcSimMapState | undefined {

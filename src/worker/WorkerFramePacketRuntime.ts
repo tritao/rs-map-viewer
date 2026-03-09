@@ -33,6 +33,7 @@ import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
 import {
+    type ApplyWorldDeltaResult,
     type RenderFrameInputUpdate,
     type RenderMapRuntimeRegistrationInput,
     type WorkerInputStateVersion,
@@ -266,7 +267,7 @@ export class WorkerFramePacketRuntime {
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
-    async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<number> {
+    async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
         let applied = this.applyRuntimeMapObjUpdates(packet.objDelta?.updates);
         const locDelta = packet.locDelta;
         if (locDelta) {
@@ -304,12 +305,15 @@ export class WorkerFramePacketRuntime {
             }
         }
         if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
-            return applied | 0;
+            return { applied: applied | 0 };
         }
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
         applied = (applied + (this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0)) | 0;
-        return applied | 0;
+        return {
+            applied: applied | 0,
+            npcSnapshotMapIds: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
+        };
     }
 
     private applyPendingLocAnimationResets(cycleNow: number): void {

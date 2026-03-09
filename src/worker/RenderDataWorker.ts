@@ -8,6 +8,7 @@ import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
 import type { StaticMapWirePacket } from "../shared/StaticMapPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
+    ApplyWorldDeltaResult,
     RenderFrameInputUpdate,
     RenderMapRuntimeRegistrationInput,
     WorkerInputStateVersion,
@@ -111,7 +112,7 @@ const worker = {
                     : undefined,
         });
     },
-    async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
+    async applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
         const { frameRuntime } = await getWorkerServices();
         return await frameRuntime.applyWorldDeltaPacket(deltaPacket);
     },

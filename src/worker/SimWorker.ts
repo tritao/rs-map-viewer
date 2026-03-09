@@ -93,6 +93,10 @@ const worldApi = {
         tickRuntime.applyWorldInputUpdate({
             mapIds:
                 update.mapIds !== undefined ? normalizeWorkerInt32Array(update.mapIds) : undefined,
+            npcSnapshotMapIds:
+                update.npcSnapshotMapIds !== undefined
+                    ? normalizeWorkerInt32Array(update.npcSnapshotMapIds)
+                    : undefined,
         });
     },
     async step(

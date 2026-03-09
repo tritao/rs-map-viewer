@@ -102,6 +102,7 @@ export class WorkerTickRuntime {
     private readonly warnedEmptyNpcBootstrapMapIds = new Set<number>();
     private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
     private readonly npcSeqByInstanceId = new Map<number, number>();
+    private readonly pendingNpcSnapshotMapIds = new Set<number>();
     private activeMapIds: Int32Array = new Int32Array(0);
     private readonly pendingMapObjStateUpdatesByMapId = new Map<number, WorldMapObjUpdate>();
     private readonly pendingMapObjRemovalsByMapId = new Map<number, Set<number>>();
@@ -128,6 +129,7 @@ export class WorkerTickRuntime {
         this.warnedEmptyNpcBootstrapMapIds.clear();
         this.npcSnapshotByMapId.clear();
         this.npcSeqByInstanceId.clear();
+        this.pendingNpcSnapshotMapIds.clear();
         this.activeMapIds = new Int32Array(0);
         this.pendingMapObjStateUpdatesByMapId.clear();
         this.pendingMapObjRemovalsByMapId.clear();
@@ -139,6 +141,15 @@ export class WorkerTickRuntime {
     applyWorldInputUpdate(update: WorldInputUpdate): void {
         if (update.mapIds !== undefined) {
             this.setActiveMapIds(update.mapIds);
+        }
+        if (update.npcSnapshotMapIds !== undefined) {
+            this.requestNpcSnapshots(update.npcSnapshotMapIds);
+        }
+    }
+
+    private requestNpcSnapshots(mapIds: Int32Array): void {
+        for (let index = 0; index < mapIds.length; index++) {
+            this.pendingNpcSnapshotMapIds.add(mapIds[index] | 0);
         }
     }
 
@@ -460,6 +471,7 @@ export class WorkerTickRuntime {
             }
         }
         this.npcSnapshotByMapId.delete(mapId | 0);
+        this.pendingNpcSnapshotMapIds.delete(mapId | 0);
         this.npcSimStateStore.unregisterMap(mapId);
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
         this.pendingMapObjStateUpdatesByMapId.delete(mapId | 0);
@@ -648,6 +660,7 @@ export class WorkerTickRuntime {
         _cycleNow: number,
     ): Promise<WorldDeltaPacket | undefined> {
         const mapIds = this.activeMapIds;
+        const hasPendingNpcSnapshots = (this.pendingNpcSnapshotMapIds.size | 0) > 0;
         const hasPendingObjUpdates = (this.pendingMapObjStateUpdatesByMapId.size | 0) > 0;
         const hasPendingObjRemovals = (this.pendingMapObjRemovalsByMapId.size | 0) > 0;
         const hasPendingLocAnimationResets =
@@ -656,6 +669,7 @@ export class WorkerTickRuntime {
             (this.pendingLocAnimationPauseStateByLocKey.size | 0) > 0;
         if (
             (mapIds.length | 0) === 0 &&
+            !hasPendingNpcSnapshots &&
             !hasPendingObjUpdates &&
             !hasPendingObjRemovals &&
             !hasPendingLocAnimationResets &&
@@ -674,7 +688,12 @@ export class WorkerTickRuntime {
             const state = this.npcSimStateStore.getMap(mapId);
             if (!state) {
                 this.npcSnapshotByMapId.delete(mapId | 0);
+                this.pendingNpcSnapshotMapIds.delete(mapId | 0);
                 continue;
+            }
+            if (this.pendingNpcSnapshotMapIds.has(mapId | 0)) {
+                this.npcSnapshotByMapId.delete(mapId | 0);
+                this.pendingNpcSnapshotMapIds.delete(mapId | 0);
             }
             applyNpcMovementStep(
                 state,

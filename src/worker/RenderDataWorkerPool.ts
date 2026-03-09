@@ -11,6 +11,7 @@ import {
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
 import type {
+    ApplyWorldDeltaResult,
     RenderFrameInputUpdate,
     RenderMapRuntimeRegistrationInput,
     WorkerInputStateVersion,
@@ -207,7 +208,7 @@ export class RenderDataWorkerPool {
         return this.withRenderFrameWorker((w) => w.syncRenderFrameState(update));
     }
 
-    private applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<number> {
+    private applyWorldDeltaPacket(deltaPacket: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
         return this.withRenderFrameWorker((w) => w.applyWorldDeltaPacket(deltaPacket));
     }
 
