@@ -564,6 +564,10 @@ export class MapViewer {
         return this.renderer.resetVisibleLocAnimations();
     }
 
+    restoreVisibleGroundItems(): Promise<number> {
+        return this.renderer.restoreVisibleGroundItems();
+    }
+
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
         const normalized = normalizeRuntimeOptions(options);
         if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {

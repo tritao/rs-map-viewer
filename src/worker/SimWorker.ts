@@ -3,6 +3,7 @@ import { Transfer, expose } from "threads/worker";
 
 import type {
     WorldDeltaPacket,
+    WorldMapObjAddition,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -74,6 +75,10 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyMapObjStateReplacements(stateReplacements);
     },
+    async applyMapObjAdditions(additions: ReadonlyArray<WorldMapObjAddition>): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyMapObjAdditions(additions);
+    },
     async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyMapObjRemovals(removals);
@@ -141,6 +146,9 @@ const worker = {
         stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
     ): Promise<number> {
         return worldApi.applyMapObjStateReplacements(stateReplacements);
+    },
+    async applyMapObjAdditions(additions: ReadonlyArray<WorldMapObjAddition>): Promise<number> {
+        return worldApi.applyMapObjAdditions(additions);
     },
     async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
         return worldApi.applyMapObjRemovals(removals);

@@ -3,6 +3,7 @@ import {
 } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import {
+    type WorldMapObjAddition,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
@@ -15,6 +16,7 @@ export type WorldNpcLifecycleInput = Readonly<{
 
 export type WorldObjStateInput = Readonly<{
     stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
+    additions?: ReadonlyArray<WorldMapObjAddition>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
 }>;
 

@@ -38,8 +38,14 @@ export type WorldMapObjRemoval = Readonly<{
     objIndex: number;
 }>;
 
+export type WorldMapObjAddition = Readonly<{
+    mapId: number;
+    objIndex: number;
+}>;
+
 export type WorldObjDelta = Readonly<{
     stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
+    additions?: ReadonlyArray<WorldMapObjAddition>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
 }>;
 
@@ -203,6 +209,7 @@ export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
     return (
         (packet.npcState?.changeCount ?? 0) +
         (packet.objDelta?.stateReplacements?.length ?? 0) +
+        (packet.objDelta?.additions?.length ?? 0) +
         (packet.objDelta?.removals?.length ?? 0) +
         Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
         Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3)

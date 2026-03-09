@@ -513,6 +513,9 @@ export const MapViewerControls = memo(
                         "Reset Visible Loc Animations": button(async () => {
                             await mapViewer.resetVisibleLocAnimations();
                         }),
+                        "Restore Visible Ground Items": button(async () => {
+                            await mapViewer.restoreVisibleGroundItems();
+                        }),
                     },
                     { collapsed: true },
                 ),

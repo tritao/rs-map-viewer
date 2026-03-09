@@ -15,6 +15,7 @@ import {
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
 import type {
+    WorldMapObjAddition,
     WorldLocAnimationPauseState,
     WorldDeltaPacket,
     WorldLocAnimationReset,
@@ -212,6 +213,30 @@ export class WorkerFramePacketRuntime {
         return applied | 0;
     }
 
+    private applyRuntimeMapObjAdditions(
+        additions: ReadonlyArray<WorldMapObjAddition> | undefined,
+    ): number {
+        if (!additions) {
+            return 0;
+        }
+        let applied = 0;
+        for (let index = 0; index < additions.length; index++) {
+            const addition = additions[index];
+            if (!addition) {
+                continue;
+            }
+            const mapId = addition.mapId | 0;
+            const hiddenObjIndices = this.runtimeHiddenObjIndicesByMapId.get(mapId);
+            if (!hiddenObjIndices) {
+                continue;
+            }
+            hiddenObjIndices.delete(addition.objIndex | 0);
+            this.getPendingRuntimeMapObjUpdate(mapId).hiddenObjIndices = new Set(hiddenObjIndices);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
     private consumePendingRuntimeMapObjRenderPacket(): MapObjRenderPacket | undefined {
         if ((this.pendingRuntimeMapObjUpdatesByMapId.size | 0) <= 0) {
             return undefined;
@@ -330,6 +355,7 @@ export class WorkerFramePacketRuntime {
             packet.objDelta?.stateReplacements,
         );
         applied = (applied + this.applyRuntimeMapObjRemovals(packet.objDelta?.removals)) | 0;
+        applied = (applied + this.applyRuntimeMapObjAdditions(packet.objDelta?.additions)) | 0;
         const locDelta = packet.locDelta;
         if (locDelta) {
             const packed = locDelta.animationResetPacked;

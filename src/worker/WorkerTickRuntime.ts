@@ -13,6 +13,7 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
+    type WorldMapObjAddition,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
@@ -102,6 +103,7 @@ export class WorkerTickRuntime {
     private readonly pendingNpcSnapshotMapIds = new Set<number>();
     private activeMapIds: Int32Array = new Int32Array(0);
     private readonly pendingMapObjStateReplacementsByMapId = new Map<number, WorldMapObjStateReplacement>();
+    private readonly pendingMapObjAdditionsByMapId = new Map<number, Set<number>>();
     private readonly pendingMapObjRemovalsByMapId = new Map<number, Set<number>>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
@@ -129,6 +131,7 @@ export class WorkerTickRuntime {
         this.pendingNpcSnapshotMapIds.clear();
         this.activeMapIds = new Int32Array(0);
         this.pendingMapObjStateReplacementsByMapId.clear();
+        this.pendingMapObjAdditionsByMapId.clear();
         this.pendingMapObjRemovalsByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
@@ -160,6 +163,25 @@ export class WorkerTickRuntime {
                 continue;
             }
             this.pendingMapObjStateReplacementsByMapId.set(update.mapId | 0, update);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyMapObjAdditions(additions: ReadonlyArray<WorldMapObjAddition>): number {
+        let applied = 0;
+        for (let index = 0; index < additions.length; index++) {
+            const addition = additions[index];
+            if (!addition) {
+                continue;
+            }
+            const mapId = addition.mapId | 0;
+            let addedIndices = this.pendingMapObjAdditionsByMapId.get(mapId);
+            if (!addedIndices) {
+                addedIndices = new Set<number>();
+                this.pendingMapObjAdditionsByMapId.set(mapId, addedIndices);
+            }
+            addedIndices.add(addition.objIndex | 0);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -422,6 +444,7 @@ export class WorkerTickRuntime {
         this.npcSimStateStore.unregisterMap(mapId);
         this.warnedEmptyNpcBootstrapMapIds.delete(mapId | 0);
         this.pendingMapObjStateReplacementsByMapId.delete(mapId | 0);
+        this.pendingMapObjAdditionsByMapId.delete(mapId | 0);
         this.pendingMapObjRemovalsByMapId.delete(mapId | 0);
         this.mapObjRuntimeByMapId.delete(mapId | 0);
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
@@ -610,6 +633,7 @@ export class WorkerTickRuntime {
         const hasPendingNpcSnapshots = (this.pendingNpcSnapshotMapIds.size | 0) > 0;
         const hasPendingObjStateReplacements =
             (this.pendingMapObjStateReplacementsByMapId.size | 0) > 0;
+        const hasPendingObjAdditions = (this.pendingMapObjAdditionsByMapId.size | 0) > 0;
         const hasPendingObjRemovals = (this.pendingMapObjRemovalsByMapId.size | 0) > 0;
         const hasPendingLocAnimationResets =
             (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
@@ -619,6 +643,7 @@ export class WorkerTickRuntime {
             (mapIds.length | 0) === 0 &&
             !hasPendingNpcSnapshots &&
             !hasPendingObjStateReplacements &&
+            !hasPendingObjAdditions &&
             !hasPendingObjRemovals &&
             !hasPendingLocAnimationResets &&
             !hasPendingLocAnimationPauseStates
@@ -659,6 +684,7 @@ export class WorkerTickRuntime {
             lifecycleEvents: events,
         });
         const objStateReplacements: WorldMapObjStateReplacement[] = [];
+        const objAdditions: WorldMapObjAddition[] = [];
         const objRemovals: WorldMapObjRemoval[] = [];
         if (hasPendingObjStateReplacements) {
             for (const update of this.pendingMapObjStateReplacementsByMapId.values()) {
@@ -691,6 +717,26 @@ export class WorkerTickRuntime {
                 });
             }
         }
+        if (hasPendingObjAdditions) {
+            for (const [mapId, addedObjIndices] of this.pendingMapObjAdditionsByMapId.entries()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                const nextRemovedObjIndices = new Set(runtime.removedObjIndices);
+                for (const objIndex of addedObjIndices.values()) {
+                    nextRemovedObjIndices.delete(objIndex | 0);
+                    objAdditions.push({
+                        mapId: mapId | 0,
+                        objIndex: objIndex | 0,
+                    });
+                }
+                this.mapObjRuntimeByMapId.set(mapId | 0, {
+                    ...runtime,
+                    removedObjIndices: nextRemovedObjIndices,
+                });
+            }
+        }
         const locAnimationResets = hasPendingLocAnimationResets
             ? Array.from(this.pendingLocAnimationResetByLocKey.values())
             : undefined;
@@ -698,6 +744,7 @@ export class WorkerTickRuntime {
             ? Array.from(this.pendingLocAnimationPauseStateByLocKey.values())
             : undefined;
         this.pendingMapObjStateReplacementsByMapId.clear();
+        this.pendingMapObjAdditionsByMapId.clear();
         this.pendingMapObjRemovalsByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
@@ -716,6 +763,7 @@ export class WorkerTickRuntime {
         if (
             !npcStatePacket.npcState &&
             (objStateReplacements.length | 0) <= 0 &&
+            (objAdditions.length | 0) <= 0 &&
             (objRemovals.length | 0) <= 0 &&
             !locDeltaPacket?.locDelta &&
             !locPausePacket?.locDelta
@@ -726,12 +774,15 @@ export class WorkerTickRuntime {
             frameCount: frameCount | 0,
             npcState: npcStatePacket.npcState,
             objDelta:
-                (objStateReplacements.length | 0) > 0 || (objRemovals.length | 0) > 0
+                (objStateReplacements.length | 0) > 0 ||
+                (objAdditions.length | 0) > 0 ||
+                (objRemovals.length | 0) > 0
                     ? {
                           stateReplacements:
                               (objStateReplacements.length | 0) > 0
                                   ? objStateReplacements
                                   : undefined,
+                          additions: (objAdditions.length | 0) > 0 ? objAdditions : undefined,
                           removals: (objRemovals.length | 0) > 0 ? objRemovals : undefined,
                       }
                     : undefined,

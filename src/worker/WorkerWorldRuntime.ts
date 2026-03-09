@@ -1,5 +1,6 @@
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import type {
+    WorldMapObjAddition,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -25,6 +26,7 @@ type WorldSimRuntime = Readonly<{
     applyMapObjStateReplacements(
         stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
     ): Promise<number>;
+    applyMapObjAdditions(additions: ReadonlyArray<WorldMapObjAddition>): Promise<number>;
     applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number>;
     applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): Promise<number>;
     applyLocAnimationPauseStates(
@@ -126,6 +128,11 @@ export class WorkerWorldRuntime implements WorldRuntime {
                         objStateReplacements,
                     ))) |
                 0;
+        }
+        const objAdditions = input.obj?.additions;
+        if (objAdditions && (objAdditions.length | 0) > 0) {
+            applied =
+                (applied + (await this.deps.simRuntime.applyMapObjAdditions(objAdditions))) | 0;
         }
         const objRemovals = input.obj?.removals;
         if (objRemovals && (objRemovals.length | 0) > 0) {

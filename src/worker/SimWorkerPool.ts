@@ -4,6 +4,7 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromLifecycleEvents } from "./NpcLifecyclePacket";
 import type {
     WorldDeltaPacket,
+    WorldMapObjAddition,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -51,6 +52,8 @@ export class SimWorkerPool {
             this.applyNpcLifecycleEvents(events),
         applyMapObjStateReplacements: (stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>) =>
             this.applyMapObjStateReplacements(stateReplacements),
+        applyMapObjAdditions: (additions: ReadonlyArray<WorldMapObjAddition>) =>
+            this.applyMapObjAdditions(additions),
         applyMapObjRemovals: (removals: ReadonlyArray<WorldMapObjRemoval>) =>
             this.applyMapObjRemovals(removals),
         applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
@@ -164,6 +167,10 @@ export class SimWorkerPool {
         stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
     ): Promise<number> {
         return this.withWorker((w) => w.applyMapObjStateReplacements(stateReplacements));
+    }
+
+    private applyMapObjAdditions(additions: ReadonlyArray<WorldMapObjAddition>): Promise<number> {
+        return this.withWorker((w) => w.applyMapObjAdditions(additions));
     }
 
     private applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {

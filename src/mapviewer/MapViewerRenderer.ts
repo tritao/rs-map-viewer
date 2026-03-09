@@ -457,6 +457,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const hasRenderAffectingWorldInput =
             (!!input.obj?.stateReplacements &&
                 (input.obj.stateReplacements.length | 0) > 0) ||
+            (!!input.obj?.additions && (input.obj.additions.length | 0) > 0) ||
             (!!input.obj?.removals && (input.obj.removals.length | 0) > 0) ||
             (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
             (!!input.loc?.animationPauseStates && (input.loc.animationPauseStates.length | 0) > 0);
@@ -505,6 +506,38 @@ export class MapViewerRenderer extends RendererMainLoop {
         return await this.applyWorldInput({
             loc: {
                 animationResets,
+            },
+        });
+    }
+
+    async restoreVisibleGroundItems(): Promise<number> {
+        const additions: Array<Readonly<{ mapId: number; objIndex: number }>> = [];
+        const visibleMapCount = this.mapManager.visibleMapCount | 0;
+        for (let i = 0; i < visibleMapCount; i++) {
+            const mapInfo = this.mapManager.visibleMaps[i];
+            if (!mapInfo) {
+                continue;
+            }
+            const objTypeIds = this.objTypeIdsByMapId.get(mapInfo.mapId | 0);
+            if (!(objTypeIds instanceof Int32Array) || (objTypeIds.length | 0) <= 0) {
+                continue;
+            }
+            for (let objIndex = 0; objIndex < objTypeIds.length; objIndex++) {
+                if ((objTypeIds[objIndex] | 0) < 0) {
+                    continue;
+                }
+                additions.push({
+                    mapId: mapInfo.mapId | 0,
+                    objIndex: objIndex | 0,
+                });
+            }
+        }
+        if ((additions.length | 0) <= 0) {
+            return 0;
+        }
+        return await this.applyWorldInput({
+            obj: {
+                additions,
             },
         });
     }
