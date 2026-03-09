@@ -186,6 +186,13 @@ export type MapViewerStaticMapRuntime = Readonly<{
     reloadMap(mapId: number): Promise<boolean>;
 }>;
 
+export type MapViewerStaticMapRuntimeCallbacks = Readonly<{
+    loadStaticMapPacket(mapX: number, mapY: number): Promise<StaticMapPacket | undefined>;
+    isValidMapPacket(packet: StaticMapPacket): boolean;
+    detachLoadedMapRuntime(mapId: number): void;
+    finalizeLoadedMap(packet: StaticMapPacket): Promise<void>;
+}>;
+
 export class MapViewerRenderer extends RendererMainLoop {
     private static readonly EMPTY_INT32 = new Int32Array(0);
 
@@ -286,7 +293,16 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.staticMapRuntime = staticMapRuntime;
     }
 
-    async loadStaticMapPacket(
+    getStaticMapRuntimeCallbacks(): MapViewerStaticMapRuntimeCallbacks {
+        return {
+            loadStaticMapPacket: this.loadStaticMapPacket.bind(this),
+            isValidMapPacket: (packet) => this.renderer.isValidMapData(packet.mapData),
+            detachLoadedMapRuntime: this.detachLoadedMapRuntime.bind(this),
+            finalizeLoadedMap: this.finalizeLoadedMap.bind(this),
+        };
+    }
+
+    private async loadStaticMapPacket(
         mapX: number,
         mapY: number,
     ): Promise<StaticMapPacket | undefined> {
@@ -392,7 +408,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
-    async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
+    private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
         this.setMapObjInteractionState(mapData.mapId | 0, {
@@ -432,7 +448,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             });
     }
 
-    detachLoadedMapRuntime(mapId: number): void {
+    private detachLoadedMapRuntime(mapId: number): void {
         const normalizedMapId = mapId | 0;
         this.animatedLocsByMapId.delete(normalizedMapId);
         this.objInteractionStateByMapId.delete(normalizedMapId);

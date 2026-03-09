@@ -24,7 +24,11 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { MapManager } from "./MapManager";
-import { MapViewerRenderer, type MapViewerStaticMapRuntime } from "./MapViewerRenderer";
+import {
+    MapViewerRenderer,
+    type MapViewerStaticMapRuntime,
+    type MapViewerStaticMapRuntimeCallbacks,
+} from "./MapViewerRenderer";
 import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import { WorldSession } from "../world/WorldSession";
 
@@ -60,17 +64,16 @@ type SearchParamsListener = (params: URLSearchParamsInit) => void;
 type MapViewerRendererShell = Readonly<{
     worldSession: WorldSession;
     renderFrameCoordinator: RenderFrameCoordinator;
-    createStaticMapRuntime(renderer: MapViewerRenderer): MapViewerStaticMapRuntime;
+    createStaticMapRuntime(
+        callbacks: MapViewerStaticMapRuntimeCallbacks,
+    ): MapViewerStaticMapRuntime;
 }>;
 
 type MapViewerStaticMapRuntimeDeps = Readonly<{
     worldSession: WorldSession;
     renderFrameCoordinator: RenderFrameCoordinator;
-    loadStaticMapPacket(mapX: number, mapY: number): Promise<StaticMapPacket | undefined>;
-    isValidMapPacket(packet: StaticMapPacket): boolean;
-    detachLoadedMapRuntime(mapId: number): void;
-    finalizeLoadedMap(packet: StaticMapPacket): Promise<void>;
-}>;
+}> &
+    MapViewerStaticMapRuntimeCallbacks;
 
 class MapViewerStaticMapRuntimeImpl implements MapViewerStaticMapRuntime {
     constructor(private readonly deps: MapViewerStaticMapRuntimeDeps) {}
@@ -190,14 +193,11 @@ function createMapViewerRendererShell(
     return {
         worldSession,
         renderFrameCoordinator,
-        createStaticMapRuntime: (renderer) =>
+        createStaticMapRuntime: (callbacks) =>
             new MapViewerStaticMapRuntimeImpl({
                 worldSession,
                 renderFrameCoordinator,
-                loadStaticMapPacket: renderer.loadStaticMapPacket.bind(renderer),
-                isValidMapPacket: (packet) => renderer.renderer.isValidMapData(packet.mapData),
-                detachLoadedMapRuntime: renderer.detachLoadedMapRuntime.bind(renderer),
-                finalizeLoadedMap: renderer.finalizeLoadedMap.bind(renderer),
+                ...callbacks,
             }),
     };
 }
@@ -565,7 +565,9 @@ export class MapViewer {
             rendererShell.worldSession,
             rendererShell.renderFrameCoordinator,
         );
-        this.renderer.setStaticMapRuntime(rendererShell.createStaticMapRuntime(this.renderer));
+        this.renderer.setStaticMapRuntime(
+            rendererShell.createStaticMapRuntime(this.renderer.getStaticMapRuntimeCallbacks()),
+        );
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
             mapImageCache,
