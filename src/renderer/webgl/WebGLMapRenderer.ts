@@ -64,6 +64,12 @@ type FrameRenderMap = {
     isLod: boolean;
 };
 
+type PendingMapObjRenderUpdate = Readonly<{
+    hasObjRenderDataUpdate: boolean;
+    objRenderData?: ObjRenderData;
+    hiddenObjIndicesPacked?: Int32Array;
+}>;
+
 type WebGLMapRendererDeps = Readonly<{
     cacheName: string;
     textureLoader: TextureService;
@@ -84,7 +90,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     private readonly frameRenderMapsScratch: FrameRenderMap[] = [];
     private readonly visibleUsedTextureIdsScratch: Int32Array[] = [];
     private readonly warnedNpcMissingGeometryOrRangesMapIds = new Set<number>();
-    private readonly pendingObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
+    private readonly pendingObjRenderUpdatesByMapId = new Map<number, PendingMapObjRenderUpdate>();
     private readonly drawRangeScratch: DrawRange = [0, 0, 1];
 
     app!: PicoApp;
@@ -144,7 +150,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 if (!update) {
                     continue;
                 }
-                this.applyMapObjRenderDataUpdate(update.mapId | 0, update.objRenderData);
+                this.applyMapObjRenderDataUpdate(update.mapId | 0, update);
             }
         }
         this.framePacketState.apply(packet);
@@ -155,10 +161,10 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
     private applyMapObjRenderDataUpdate(
         mapId: number,
-        objRenderData: ObjRenderData | undefined,
+        update: PendingMapObjRenderUpdate,
     ): void {
         const normalizedMapId = mapId | 0;
-        this.pendingObjRenderDataByMapId.set(normalizedMapId, objRenderData);
+        this.pendingObjRenderUpdatesByMapId.set(normalizedMapId, update);
         const map = this.loadedMaps.get(normalizedMapId);
         const textureArray = this.textures.getTextureArray();
         const textureSlotLut = this.textures.getTextureSlotLut();
@@ -182,7 +188,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             textureMaterials,
             textureSlotLut,
             this.sceneUniformBuffer,
-            objRenderData,
+            update,
         );
     }
 
@@ -248,7 +254,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
     initCache(): void {
         this.isNewTextureAnim = this.cacheResources.isNewTextureAnim;
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
-        this.pendingObjRenderDataByMapId.clear();
+        this.pendingObjRenderUpdatesByMapId.clear();
 
         if (this.app) {
             this.initTextures();
@@ -284,7 +290,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         if (!textureArray || !textureSlotLut || !textureMaterials || !this.sceneUniformBuffer) {
             return;
         }
-        const objRenderData = this.pendingObjRenderDataByMapId.get(mapId);
+        const objUpdate = this.pendingObjRenderUpdatesByMapId.get(mapId);
 
         this.loadedMaps.set(
             mapId,
@@ -296,7 +302,8 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 textureSlotLut,
                 this.sceneUniformBuffer,
                 mapData,
-                objRenderData,
+                objUpdate?.objRenderData,
+                objUpdate?.hiddenObjIndicesPacked,
                 time,
                 this.stats.frameCount,
             ),
@@ -757,7 +764,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         this.framePacketState.reset();
         this.npcDataTexture = undefined;
         this.warnedNpcMissingGeometryOrRangesMapIds.clear();
-        this.pendingObjRenderDataByMapId.clear();
+        this.pendingObjRenderUpdatesByMapId.clear();
         this.clearMaps();
         console.log("Renderer cleaned up");
     }
@@ -771,6 +778,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         sceneUniformBuffer: UniformBuffer,
         mapData: SdMapData,
         objRenderData: ObjRenderData | undefined,
+        hiddenObjIndicesPacked: Int32Array | undefined,
         timeSec: number,
         frameCount: number,
     ): WebGLMapSquare {
@@ -785,6 +793,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             sceneUniformBuffer,
             mapData,
             objRenderData,
+            hiddenObjIndicesPacked,
             timeSec,
             frameCount,
         );

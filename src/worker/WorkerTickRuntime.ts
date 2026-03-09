@@ -711,6 +711,7 @@ export class WorkerTickRuntime {
             lifecycleEvents: events,
         });
         const objUpdates: WorldMapObjUpdate[] = [];
+        const objRemovals: WorldMapObjRemoval[] = [];
         if (hasPendingObjUpdates) {
             for (const update of this.pendingMapObjStateUpdatesByMapId.values()) {
                 objUpdates.push(update);
@@ -731,21 +732,14 @@ export class WorkerTickRuntime {
                 const nextRemovedObjIndices = new Set(runtime.removedObjIndices);
                 for (const objIndex of removedObjIndices.values()) {
                     nextRemovedObjIndices.add(objIndex | 0);
+                    objRemovals.push({
+                        mapId: mapId | 0,
+                        objIndex: objIndex | 0,
+                    });
                 }
-                const mapObjState = await this.rebuildMapObjStateAfterRemovals(
-                    workerState,
-                    mapId | 0,
-                    nextRemovedObjIndices,
-                );
                 this.mapObjRuntimeByMapId.set(mapId | 0, {
                     ...runtime,
-                    mapObjState,
                     removedObjIndices: nextRemovedObjIndices,
-                });
-                objUpdates.push({
-                    kind: "replaceMapObjState",
-                    mapId: mapId | 0,
-                    mapObjState,
                 });
             }
         }
@@ -774,6 +768,7 @@ export class WorkerTickRuntime {
         if (
             !npcStatePacket.npcState &&
             (objUpdates.length | 0) <= 0 &&
+            (objRemovals.length | 0) <= 0 &&
             !locDeltaPacket?.locDelta &&
             !locPausePacket?.locDelta
         ) {
@@ -782,7 +777,13 @@ export class WorkerTickRuntime {
         return buildWorldDeltaPacket({
             frameCount: frameCount | 0,
             npcState: npcStatePacket.npcState,
-            objDelta: (objUpdates.length | 0) > 0 ? { updates: objUpdates } : undefined,
+            objDelta:
+                (objUpdates.length | 0) > 0 || (objRemovals.length | 0) > 0
+                    ? {
+                          updates: (objUpdates.length | 0) > 0 ? objUpdates : undefined,
+                          removals: (objRemovals.length | 0) > 0 ? objRemovals : undefined,
+                      }
+                    : undefined,
             locDelta:
                 locDeltaPacket?.locDelta || locPausePacket?.locDelta
                     ? {

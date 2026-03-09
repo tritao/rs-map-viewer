@@ -39,7 +39,8 @@ export type WorldMapObjRemoval = Readonly<{
 }>;
 
 export type WorldObjDelta = Readonly<{
-    updates: ReadonlyArray<WorldMapObjUpdate>;
+    updates?: ReadonlyArray<WorldMapObjUpdate>;
+    removals?: ReadonlyArray<WorldMapObjRemoval>;
 }>;
 
 export type WorldLocAnimationReset = Readonly<{
@@ -146,12 +147,13 @@ function getNpcStateTransferables(npcState: NpcWorldState | undefined): Transfer
 }
 
 function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transferable[] {
-    if (!objDelta || (objDelta.updates.length | 0) <= 0) {
+    const updates = objDelta?.updates;
+    if (!updates || (updates.length | 0) <= 0) {
         return [];
     }
     const transferables: Transferable[] = [];
-    for (let index = 0; index < objDelta.updates.length; index++) {
-        const mapObjState = objDelta.updates[index]?.mapObjState;
+    for (let index = 0; index < updates.length; index++) {
+        const mapObjState = updates[index]?.mapObjState;
         if (!mapObjState) {
             continue;
         }
@@ -166,6 +168,7 @@ function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transfer
         >) {
             transferables.push(
                 mapObjState.modelInfoTextures[key].buffer as Transferable,
+                mapObjState.modelInfoIndices[key].buffer as Transferable,
                 mapObjState.drawRanges[key].buffer as Transferable,
             );
         }
@@ -199,7 +202,8 @@ export function getWorldDeltaPacketCounts(
 export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
     return (
         (packet.npcState?.changeCount ?? 0) +
-        (packet.objDelta?.updates.length ?? 0) +
+        (packet.objDelta?.updates?.length ?? 0) +
+        (packet.objDelta?.removals?.length ?? 0) +
         Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
         Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3)
     );

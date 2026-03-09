@@ -5,7 +5,9 @@ import {
 
 export type MapObjRenderUpdate = Readonly<{
     mapId: number;
+    hasObjRenderDataUpdate: boolean;
     objRenderData?: ObjRenderData;
+    hiddenObjIndicesPacked?: Int32Array;
 }>;
 
 export type MapObjRenderPacket = Readonly<{
@@ -38,18 +40,35 @@ export function mapObjRenderPacketTransferables(packet: MapObjRenderPacket): Tra
     for (let updateIndex = 0; updateIndex < packet.updates.length; updateIndex++) {
         const objRenderData = packet.updates[updateIndex]?.objRenderData;
         if (!objRenderData) {
+            const hiddenObjIndicesPacked = packet.updates[updateIndex]?.hiddenObjIndicesPacked;
+            if (hiddenObjIndicesPacked) {
+                pushTransferableUnique(
+                    out,
+                    seen,
+                    hiddenObjIndicesPacked.buffer as Transferable,
+                );
+            }
             continue;
         }
         pushTransferableUnique(out, seen, objRenderData.vertices.buffer as Transferable);
         pushTransferableUnique(out, seen, objRenderData.indices.buffer as Transferable);
         pushTransferableUnique(out, seen, objRenderData.usedTextureIds.buffer as Transferable);
         pushTransferableUnique(out, seen, objRenderData.objTypeIds.buffer as Transferable);
+        const hiddenObjIndicesPacked = packet.updates[updateIndex]?.hiddenObjIndicesPacked;
+        if (hiddenObjIndicesPacked) {
+            pushTransferableUnique(out, seen, hiddenObjIndicesPacked.buffer as Transferable);
+        }
         for (let bucketIndex = 0; bucketIndex < MAP_RENDER_DRAW_BUCKET_KEYS.length; bucketIndex++) {
             const key = MAP_RENDER_DRAW_BUCKET_KEYS[bucketIndex]!;
             pushTransferableUnique(
                 out,
                 seen,
                 objRenderData.modelInfoTextures[key].buffer as Transferable,
+            );
+            pushTransferableUnique(
+                out,
+                seen,
+                objRenderData.modelInfoIndices[key].buffer as Transferable,
             );
             pushTransferableUnique(out, seen, objRenderData.drawRanges[key].buffer as Transferable);
         }

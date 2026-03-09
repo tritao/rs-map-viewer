@@ -30,6 +30,10 @@ export type SceneDrawPlan = Readonly<{
     ops: readonly SceneDrawPlanOp[];
 }>;
 
+export type SceneDrawPlanOptions = Readonly<{
+    preserveInstances?: boolean;
+}>;
+
 export type SceneDrawPlanDigest = Readonly<{
     opCount: number;
     mergedGroupOpCount: number;
@@ -144,7 +148,9 @@ export function buildSceneDrawPlanFromSceneModels(
     textureLoader: TextureLoader,
     sceneModels: readonly SceneModel[],
     minimizeDrawCalls: boolean,
+    options?: SceneDrawPlanOptions,
 ): SceneDrawPlan {
+    const preserveInstances = options?.preserveInstances === true;
     const groupedModels = new Map<number, { firstSeen: number; models: SceneModel[] }>();
     for (let i = 0; i < sceneModels.length; i++) {
         const sceneModel = sceneModels[i];
@@ -184,6 +190,34 @@ export function buildSceneDrawPlanFromSceneModels(
                     lodModels.push(sceneModel);
                 }
             }
+        }
+
+        if (preserveInstances) {
+            const allInstances = mergeModels.concat(instancedModels);
+            const allLodInstances = allInstances.filter((sceneModel) => !sceneModel.lowDetail);
+            if (opaqueFaces.length > 0 && (allInstances.length | 0) > 0) {
+                ops.push({
+                    kind: "instanced",
+                    modelHash,
+                    model,
+                    transparent: false,
+                    faces: opaqueFaces,
+                    instances: allInstances,
+                    lodInstances: allLodInstances,
+                });
+            }
+            if (transparentFaces.length > 0 && (allInstances.length | 0) > 0) {
+                ops.push({
+                    kind: "instanced",
+                    modelHash,
+                    model,
+                    transparent: true,
+                    faces: transparentFaces,
+                    instances: allInstances,
+                    lodInstances: allLodInstances,
+                });
+            }
+            continue;
         }
 
         // Keep insertion order stable by emitting merged groups the first time we see each key.
@@ -283,12 +317,14 @@ export function emitSceneModelsToSceneGeometryBuffer(
     sceneBuf: SceneGeometryBuffer,
     sceneModels: readonly SceneModel[],
     minimizeDrawCalls: boolean,
+    options?: SceneDrawPlanOptions,
 ): SceneDrawPlan {
     const plan = buildSceneDrawPlanFromSceneModels(
         modelHashBuf,
         textureLoader,
         sceneModels,
         minimizeDrawCalls,
+        options,
     );
     executeSceneDrawPlan(plan, sceneBuf);
     return plan;

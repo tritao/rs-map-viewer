@@ -24,6 +24,7 @@ export type ObjRenderData = Readonly<{
     vertices: Uint8Array;
     indices: Int32Array;
     modelInfoTextures: SdRenderableModelInfoTextures;
+    modelInfoIndices: MapObjStateModelInfoIndices;
     drawRanges: SdRenderableDrawRanges;
     usedTextureIds: Int32Array;
     objTypeIds: Int32Array;
@@ -86,10 +87,13 @@ export type MapObjStateModelInfoTextures = Readonly<
 
 export type MapObjStateDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
 
+export type MapObjStateModelInfoIndices = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
+
 export type MapObjState = Readonly<{
     vertices: Uint8Array;
     indices: Int32Array;
     modelInfoTextures: MapObjStateModelInfoTextures;
+    modelInfoIndices: MapObjStateModelInfoIndices;
     drawRanges: MapObjStateDrawRanges;
     usedTextureIds: Int32Array;
     objTypeIds: Int32Array;
@@ -162,7 +166,12 @@ type StaticMapWireDrawRanges = Readonly<{
 
 type StaticMapDataWire = Omit<SdMapData, "drawRanges"> & StaticMapWireDrawRanges;
 
-type StaticMapObjStateWire = Omit<MapObjState, "drawRanges"> & StaticMapWireDrawRanges;
+type StaticMapObjStateWire = Omit<MapObjState, "drawRanges" | "modelInfoIndices"> &
+    StaticMapWireDrawRanges &
+    Readonly<{
+        modelInfoIndexBucketLengths: Int32Array;
+        modelInfoIndicesPacked: Int32Array;
+    }>;
 
 export type StaticMapWirePacket = Readonly<{
     mapData: StaticMapDataWire;
@@ -253,6 +262,22 @@ function packDrawRanges(drawRanges: SdRenderableDrawRanges): Readonly<{
     };
 }
 
+function packModelInfoIndices(
+    modelInfoIndices: MapObjStateModelInfoIndices,
+): Readonly<{
+    modelInfoIndexBucketLengths: Int32Array;
+    modelInfoIndicesPacked: Int32Array;
+}> {
+    const { bucketLengths, packed } = packBucketedInt32Arrays(
+        MAP_RENDER_DRAW_BUCKET_KEYS,
+        modelInfoIndices,
+    );
+    return {
+        modelInfoIndexBucketLengths: bucketLengths,
+        modelInfoIndicesPacked: packed,
+    };
+}
+
 function unpackDrawRanges(
     drawRangeBucketLengths: Int32Array,
     drawRangesPacked: Int32Array,
@@ -275,6 +300,7 @@ export function mapObjStateFromRenderData(
         vertices: objRenderData.vertices,
         indices: objRenderData.indices,
         modelInfoTextures: objRenderData.modelInfoTextures,
+        modelInfoIndices: objRenderData.modelInfoIndices,
         drawRanges: objRenderData.drawRanges,
         usedTextureIds: objRenderData.usedTextureIds,
         objTypeIds: objRenderData.objTypeIds,
@@ -291,6 +317,7 @@ export function mapObjStateToRenderData(
         vertices: mapObjState.vertices,
         indices: mapObjState.indices,
         modelInfoTextures: mapObjState.modelInfoTextures,
+        modelInfoIndices: mapObjState.modelInfoIndices,
         drawRanges: mapObjState.drawRanges,
         usedTextureIds: mapObjState.usedTextureIds,
         objTypeIds: mapObjState.objTypeIds,
@@ -303,6 +330,7 @@ function encodeMapObjStateWire(mapObjState: MapObjState | undefined): StaticMapO
     }
     return {
         ...mapObjState,
+        ...packModelInfoIndices(mapObjState.modelInfoIndices),
         ...packDrawRanges(mapObjState.drawRanges),
     };
 }
@@ -315,6 +343,12 @@ function decodeMapObjStateWire(
     }
     return {
         ...mapObjState,
+        modelInfoIndices: unpackBucketedInt32Arrays(
+            MAP_RENDER_DRAW_BUCKET_KEYS,
+            mapObjState.modelInfoIndexBucketLengths,
+            mapObjState.modelInfoIndicesPacked,
+            "StaticMapObjStateWire",
+        ) as MapObjStateModelInfoIndices,
         drawRanges: unpackDrawRanges(
             mapObjState.drawRangeBucketLengths,
             mapObjState.drawRangesPacked,
@@ -459,6 +493,12 @@ function collectMapObjStateWireTransferables(
     pushTransferableUnique(out, seen, mapObjState.indices.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.usedTextureIds.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.objTypeIds.buffer as Transferable);
+    pushTransferableUnique(
+        out,
+        seen,
+        mapObjState.modelInfoIndexBucketLengths.buffer as Transferable,
+    );
+    pushTransferableUnique(out, seen, mapObjState.modelInfoIndicesPacked.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangeBucketLengths.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangesPacked.buffer as Transferable);
     for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {

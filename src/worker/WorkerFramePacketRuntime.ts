@@ -18,6 +18,7 @@ import type {
     WorldLocAnimationPauseState,
     WorldDeltaPacket,
     WorldLocAnimationReset,
+    WorldMapObjRemoval,
     WorldMapObjUpdate,
 } from "../world/WorldDeltaPacket";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
@@ -68,6 +69,12 @@ type WasmTickEmitResult = Readonly<{
     tickPatchPacked: Int32Array;
 }>;
 
+type PendingRuntimeMapObjUpdate = {
+    objRenderData: ObjRenderData | undefined;
+    hasObjRenderDataUpdate: boolean;
+    hiddenObjIndices: Set<number>;
+};
+
 const tickWasmBridge = mapRenderRuntimeBridge;
 const EMPTY_TICK_PATCH_COUNTS = new Int32Array(TICK_PATCH_STREAM_COUNT);
 const EMPTY_TICK_PATCH_STREAMS = new Array<Int32Array | undefined>(TICK_PATCH_STREAM_COUNT);
@@ -111,7 +118,8 @@ export class WorkerFramePacketRuntime {
         lodDistance: 0,
     };
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
-    private readonly pendingRuntimeObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
+    private readonly runtimeHiddenObjIndicesByMapId = new Map<number, Set<number>>();
+    private readonly pendingRuntimeMapObjUpdatesByMapId = new Map<number, PendingRuntimeMapObjUpdate>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
         string,
@@ -136,9 +144,24 @@ export class WorkerFramePacketRuntime {
         this.inputStateVersion = 0;
         this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.hoveredMapIdsPacked = new Int32Array(0);
-        this.pendingRuntimeObjRenderDataByMapId.clear();
+        this.runtimeHiddenObjIndicesByMapId.clear();
+        this.pendingRuntimeMapObjUpdatesByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
+    }
+
+    private getPendingRuntimeMapObjUpdate(mapId: number): PendingRuntimeMapObjUpdate {
+        const id = mapId | 0;
+        let pending = this.pendingRuntimeMapObjUpdatesByMapId.get(id);
+        if (!pending) {
+            pending = {
+                objRenderData: undefined,
+                hasObjRenderDataUpdate: false,
+                hiddenObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
+            };
+            this.pendingRuntimeMapObjUpdatesByMapId.set(id, pending);
+        }
+        return pending;
     }
 
     private applyRuntimeMapObjUpdates(updates: ReadonlyArray<WorldMapObjUpdate> | undefined): number {
@@ -154,31 +177,62 @@ export class WorkerFramePacketRuntime {
             if (update.kind !== "replaceMapObjState") {
                 continue;
             }
-            this.pendingRuntimeObjRenderDataByMapId.set(
-                update.mapId | 0,
-                mapObjStateToRenderData(update.mapObjState),
-            );
+            const pending = this.getPendingRuntimeMapObjUpdate(update.mapId | 0);
+            pending.objRenderData = mapObjStateToRenderData(update.mapObjState);
+            pending.hasObjRenderDataUpdate = true;
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    private applyRuntimeMapObjRemovals(
+        removals: ReadonlyArray<WorldMapObjRemoval> | undefined,
+    ): number {
+        if (!removals) {
+            return 0;
+        }
+        let applied = 0;
+        for (let index = 0; index < removals.length; index++) {
+            const removal = removals[index];
+            if (!removal) {
+                continue;
+            }
+            const mapId = removal.mapId | 0;
+            let hiddenObjIndices = this.runtimeHiddenObjIndicesByMapId.get(mapId);
+            if (!hiddenObjIndices) {
+                hiddenObjIndices = new Set<number>();
+                this.runtimeHiddenObjIndicesByMapId.set(mapId, hiddenObjIndices);
+            }
+            hiddenObjIndices.add(removal.objIndex | 0);
+            this.getPendingRuntimeMapObjUpdate(mapId).hiddenObjIndices = new Set(hiddenObjIndices);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
     }
 
     private consumePendingRuntimeMapObjRenderPacket(): MapObjRenderPacket | undefined {
-        if ((this.pendingRuntimeObjRenderDataByMapId.size | 0) <= 0) {
+        if ((this.pendingRuntimeMapObjUpdatesByMapId.size | 0) <= 0) {
             return undefined;
         }
         const updates = new Array<{
             mapId: number;
+            hasObjRenderDataUpdate: boolean;
             objRenderData?: ObjRenderData;
-        }>(this.pendingRuntimeObjRenderDataByMapId.size | 0);
+            hiddenObjIndicesPacked?: Int32Array;
+        }>(this.pendingRuntimeMapObjUpdatesByMapId.size | 0);
         let write = 0;
-        for (const [mapId, objRenderData] of this.pendingRuntimeObjRenderDataByMapId.entries()) {
+        for (const [mapId, pending] of this.pendingRuntimeMapObjUpdatesByMapId.entries()) {
             updates[write++] = {
                 mapId: mapId | 0,
-                objRenderData,
+                hasObjRenderDataUpdate: pending.hasObjRenderDataUpdate,
+                objRenderData: pending.objRenderData,
+                hiddenObjIndicesPacked:
+                    (pending.hiddenObjIndices.size | 0) > 0
+                        ? Int32Array.from(pending.hiddenObjIndices)
+                        : undefined,
             };
         }
-        this.pendingRuntimeObjRenderDataByMapId.clear();
+        this.pendingRuntimeMapObjUpdatesByMapId.clear();
         return buildMapObjRenderPacket(updates);
     }
 
@@ -264,11 +318,14 @@ export class WorkerFramePacketRuntime {
             return;
         }
         this.npcSimStateStore.unregisterMap(mapId);
+        this.runtimeHiddenObjIndicesByMapId.delete(mapId | 0);
+        this.pendingRuntimeMapObjUpdatesByMapId.delete(mapId | 0);
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
         let applied = this.applyRuntimeMapObjUpdates(packet.objDelta?.updates);
+        applied = (applied + this.applyRuntimeMapObjRemovals(packet.objDelta?.removals)) | 0;
         const locDelta = packet.locDelta;
         if (locDelta) {
             const packed = locDelta.animationResetPacked;

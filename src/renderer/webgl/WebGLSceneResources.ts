@@ -101,13 +101,13 @@ export class WebGLSceneResources {
     objIndexBuffer?: VertexBuffer;
     objVertexArray?: VertexArray;
 
-    private modelInfoTexturesByKey!: Texture[];
-    private objModelInfoTexturesByKey: Texture[] = [];
+    protected modelInfoTexturesByKey!: Texture[];
+    protected objModelInfoTexturesByKey: Texture[] = [];
 
     heightMapTexture!: Texture;
 
-    private drawCallsByKey!: DrawCallRange[];
-    private objDrawCallsByKey: DrawCallRange[] = [];
+    protected drawCallsByKey!: DrawCallRange[];
+    protected objDrawCallsByKey: DrawCallRange[] = [];
 
     private disposed = false;
 

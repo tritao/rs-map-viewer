@@ -4,7 +4,12 @@ import { ObjTypeLoader } from "../../rs/config/objtype/ObjTypeLoader";
 import { Model } from "../../rs/model/Model";
 import { Scene, TileRenderFlag } from "../../rs/scene/Scene";
 import { ObjModelLoader } from "../../rs/scene/model/ObjModelLoader";
-import type { ObjRenderData } from "../../maprender/MapRenderPayload";
+import {
+    MAP_RENDER_DRAW_BUCKET_KEYS,
+    type MapRenderDrawBucketKey,
+    type ObjRenderData,
+} from "../../maprender/MapRenderPayload";
+import type { MapObjStateModelInfoIndices } from "../StaticMapPacket";
 import { buildDrawRangesFromBuckets, buildModelInfoTexturesFromBuckets, collectRuntimeDrawCommandBuckets } from "./SceneDrawCommandBuilder";
 import { emitSceneModelsToSceneGeometryBuffer } from "./SceneDrawPlan";
 import { ModelHashBuffer } from "./ModelHashBuffer";
@@ -105,6 +110,43 @@ export type BuildObjRenderDataInput = Readonly<{
     minimizeDrawCalls: boolean;
 }>;
 
+function createObjModelInfoIndices(objCount: number): MapObjStateModelInfoIndices {
+    const buckets = {} as Record<MapRenderDrawBucketKey, Int32Array>;
+    for (let bucketIndex = 0; bucketIndex < MAP_RENDER_DRAW_BUCKET_KEYS.length; bucketIndex++) {
+        buckets[MAP_RENDER_DRAW_BUCKET_KEYS[bucketIndex]!] = new Int32Array(objCount).fill(-1);
+    }
+    return buckets;
+}
+
+function buildObjModelInfoIndices(
+    runtimeDrawCommandBuckets: ReturnType<typeof collectRuntimeDrawCommandBuckets>,
+    objCount: number,
+): MapObjStateModelInfoIndices {
+    const modelInfoIndices = createObjModelInfoIndices(objCount | 0);
+    for (let bucketIndex = 0; bucketIndex < MAP_RENDER_DRAW_BUCKET_KEYS.length; bucketIndex++) {
+        const key = MAP_RENDER_DRAW_BUCKET_KEYS[bucketIndex]!;
+        const commands = runtimeDrawCommandBuckets[key];
+        const indices = modelInfoIndices[key];
+        let modelInfoIndex = commands.length | 0;
+        for (let commandIndex = 0; commandIndex < commands.length; commandIndex++) {
+            const command = commands[commandIndex]!;
+            for (let instanceIndex = 0; instanceIndex < command.instances.length; instanceIndex++) {
+                const instance = command.instances[instanceIndex]!;
+                if ((instance.interactType | 0) !== (InteractType.OBJ | 0)) {
+                    modelInfoIndex = (modelInfoIndex + 1) | 0;
+                    continue;
+                }
+                const interactId = instance.interactId | 0;
+                if (interactId >= 0 && interactId < (indices.length | 0)) {
+                    indices[interactId] = modelInfoIndex | 0;
+                }
+                modelInfoIndex = (modelInfoIndex + 1) | 0;
+            }
+        }
+    }
+    return modelInfoIndices;
+}
+
 export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderData | undefined {
     if (!input.loadObjs || input.objSpawns.length <= 0) {
         return undefined;
@@ -146,15 +188,23 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
         sceneBuf,
         sceneModels,
         input.minimizeDrawCalls,
+        {
+            preserveInstances: true,
+        },
     );
     if (sceneBuf.vertexCount() <= 0 || sceneBuf.indices.length <= 0) {
         return undefined;
     }
     const runtimeDrawCommandBuckets = collectRuntimeDrawCommandBuckets(sceneBuf);
+    const modelInfoIndices = buildObjModelInfoIndices(
+        runtimeDrawCommandBuckets,
+        objTypeIdsPacked.length | 0,
+    );
     return {
         vertices: sceneBuf.vertexBuf.byteArray(),
         indices: new Int32Array(sceneBuf.indices),
         modelInfoTextures: buildModelInfoTexturesFromBuckets(runtimeDrawCommandBuckets),
+        modelInfoIndices,
         drawRanges: buildDrawRangesFromBuckets(runtimeDrawCommandBuckets),
         usedTextureIds: Int32Array.from(sceneBuf.usedTextureIds),
         objTypeIds: objTypeIdsPacked,

@@ -8,10 +8,53 @@ import { MapSquareRenderable } from "../MapRenderer";
 import { createSceneDrawCall } from "./WebGLDrawCallUtil";
 import { CreateDrawCallFunction, DrawCallRange, WebGLSceneResources } from "./WebGLSceneResources";
 
+const HIDDEN_MODEL_INFO_WORD2 = 0xffc0;
+const HIDDEN_MODEL_INFO_WORD3 = 0xffff;
+
+function cloneObjRenderDataWithHiddenState(
+    objRenderData: ObjRenderData | undefined,
+    hiddenObjIndicesPacked: Int32Array | undefined,
+): ObjRenderData | undefined {
+    if (!objRenderData) {
+        return undefined;
+    }
+    if (!(hiddenObjIndicesPacked instanceof Int32Array) || (hiddenObjIndicesPacked.length | 0) <= 0) {
+        return objRenderData;
+    }
+    const modelInfoTextures = {
+        base: objRenderData.modelInfoTextures.base.slice(),
+        alpha: objRenderData.modelInfoTextures.alpha.slice(),
+        lod: objRenderData.modelInfoTextures.lod.slice(),
+        lodAlpha: objRenderData.modelInfoTextures.lodAlpha.slice(),
+        interact: objRenderData.modelInfoTextures.interact.slice(),
+        interactAlpha: objRenderData.modelInfoTextures.interactAlpha.slice(),
+        interactLod: objRenderData.modelInfoTextures.interactLod.slice(),
+        interactLodAlpha: objRenderData.modelInfoTextures.interactLodAlpha.slice(),
+    };
+    for (let hiddenIndex = 0; hiddenIndex < hiddenObjIndicesPacked.length; hiddenIndex++) {
+        const objIndex = hiddenObjIndicesPacked[hiddenIndex] | 0;
+        for (const key of Object.keys(modelInfoTextures) as Array<keyof typeof modelInfoTextures>) {
+            const modelInfoIndex = objRenderData.modelInfoIndices[key][objIndex] | 0;
+            if (modelInfoIndex < 0) {
+                continue;
+            }
+            const texelOffset = (modelInfoIndex | 0) * 4;
+            modelInfoTextures[key][texelOffset + 2] = HIDDEN_MODEL_INFO_WORD2;
+            modelInfoTextures[key][texelOffset + 3] = HIDDEN_MODEL_INFO_WORD3;
+        }
+    }
+    return {
+        ...objRenderData,
+        modelInfoTextures,
+    };
+}
+
 export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRenderable {
     drawCallNpc!: DrawCallRange;
     private baseUsedTextureIds: Int32Array = new Int32Array(0);
     private objUsedTextureIds: Int32Array | undefined;
+    private currentObjRenderData: ObjRenderData | undefined;
+    private hiddenObjIndicesPacked: Int32Array | undefined;
 
     static unionUsedTextureIds(
         base: Int32Array,
@@ -41,6 +84,7 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         sceneUniformBuffer: UniformBuffer,
         data: SdMapData,
         objRenderData: ObjRenderData | undefined,
+        hiddenObjIndicesPacked: Int32Array | undefined,
         time: number,
         frame: number,
     ): WebGLMapSquare {
@@ -88,14 +132,25 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             time,
             frame,
         );
+        const visibleObjRenderData = cloneObjRenderDataWithHiddenState(
+            objRenderData,
+            hiddenObjIndicesPacked,
+        );
+        renderable.currentObjRenderData = objRenderData;
+        renderable.hiddenObjIndicesPacked = hiddenObjIndicesPacked;
         renderable.createBuffers(app, data);
         renderable.createNpcGeometryBuffers(app, data);
         renderable.createObjGeometryBuffers(app, objRenderData);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
-        renderable.createObjModelInfoTextures(app, objRenderData);
+        renderable.createObjModelInfoTextures(app, visibleObjRenderData);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
-        renderable.createObjDrawCalls(objRenderData, createDrawCall, mainProgram, mainAlphaProgram);
+        renderable.createObjDrawCalls(
+            visibleObjRenderData,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+        );
         const npcDrawRanges =
             renderable.npcVertexArray !== undefined
                 ? data.npcDrawRangesBase
@@ -144,9 +199,23 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         textureMaterials: Texture,
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
-        objRenderData: ObjRenderData | undefined,
+        update: Readonly<{
+            hasObjRenderDataUpdate: boolean;
+            objRenderData?: ObjRenderData;
+            hiddenObjIndicesPacked?: Int32Array;
+        }>,
     ): void {
-        this.resetObjRenderData();
+        if (update.hasObjRenderDataUpdate) {
+            this.currentObjRenderData = update.objRenderData;
+        }
+        if (update.hiddenObjIndicesPacked !== undefined) {
+            this.hiddenObjIndicesPacked = update.hiddenObjIndicesPacked;
+        }
+        const objRenderData = this.currentObjRenderData;
+        const visibleObjRenderData = cloneObjRenderDataWithHiddenState(
+            objRenderData,
+            this.hiddenObjIndicesPacked,
+        );
         const createDrawCall: CreateDrawCallFunction = (
             program: Program,
             modelInfoTexture: Texture | undefined,
@@ -170,9 +239,18 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             });
             return { drawCall, drawRangesPacked };
         };
-        this.createObjGeometryBuffers(app, objRenderData);
-        this.createObjModelInfoTextures(app, objRenderData);
-        this.createObjDrawCalls(objRenderData, createDrawCall, mainProgram, mainAlphaProgram);
+        if (update.hasObjRenderDataUpdate) {
+            this.resetObjRenderData();
+            this.createObjGeometryBuffers(app, objRenderData);
+        } else {
+            for (const texture of this.objModelInfoTexturesByKey ?? []) {
+                texture.delete();
+            }
+            this.objModelInfoTexturesByKey = [];
+            this.objDrawCallsByKey = [];
+        }
+        this.createObjModelInfoTextures(app, visibleObjRenderData);
+        this.createObjDrawCalls(visibleObjRenderData, createDrawCall, mainProgram, mainAlphaProgram);
         this.objUsedTextureIds = objRenderData?.usedTextureIds;
         this.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
             this.baseUsedTextureIds,
