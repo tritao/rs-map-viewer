@@ -74,7 +74,7 @@ NpcInfo decodeNpcInfo(int offset) {
     info.tilePos = vec2(float(data.r), float(data.g));
     info.plane = data.b & 0x3u;
     info.rotation = data.b >> 2;
-    info.interactId = data.a;
+    info.interactId = uint(offset + gl_InstanceID);
 
     return info;
 }

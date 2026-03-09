@@ -91,17 +91,11 @@ export class NpcGpuFrameBuilder {
             newMeta.set(this.interactionMetaPacked);
             this.interactionMetaPacked = newMeta;
         }
-        if ((nextCount | 0) > 0xffff) {
-            throw new Error(
-                `[map-render][npc-frame] npc interaction index overflow: count=${nextCount | 0}`,
-            );
-        }
-
         let offset = (this.count * 4) | 0;
         this.data[offset++] = x;
         this.data[offset++] = y;
         this.data[offset++] = rotationAndPlane;
-        this.data[offset++] = this.count | 0;
+        this.data[offset++] = npcTypeId;
         let metaOffset = (this.count * 2) | 0;
         this.interactionMetaPacked[metaOffset++] = npcInstanceId | 0;
         this.interactionMetaPacked[metaOffset++] = npcTypeId | 0;

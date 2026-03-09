@@ -70,7 +70,7 @@ export type RenderFramePacket = Readonly<{
     inputStateVersion: number;
     npcRingWriteIndex: number;
 
-    // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,interactId).
+    // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,npcTypeId).
     npcGpuFrameData: NpcGpuFrameData;
     // Tuples of [npcInstanceId, npcTypeId], aligned to npcGpuFrameData entries.
     npcInteractionMetaPacked: Int32Array;

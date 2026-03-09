@@ -1,8 +1,10 @@
 import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
+import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
 import { errorToString } from "../../util/ErrorUtil";
 import { LocLoadType } from "../../rs/scene/SceneBuilder";
 import { Scene } from "../../rs/scene/Scene";
 import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
+import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
@@ -30,7 +32,9 @@ import {
     buildMapRuntimePayloads,
     mapObjStateFromRenderData,
 } from "../../shared/StaticMapPacket";
+import { buildNpcGeometry } from "../../shared/build/NpcGeometryBuilder";
 import { buildObjRenderData } from "../../shared/build/ObjRenderDataBuilder";
+import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
@@ -50,6 +54,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
     private readonly cacheUploader = new WasmCacheUploader();
+    private readonly npcSpawnResolver = new NpcSpawnResolver();
     private readonly cacheProvider = (() => {
         const { session } = this.deps;
         const loaders = session.loaders;
@@ -74,6 +79,56 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         private readonly deps: MapRenderBuildDeps,
         private readonly options: MapRenderBackendOptions | undefined,
     ) {}
+
+    private async buildNpcTypeAnimationTable(
+        input: SdMapLoaderInput,
+        borderSize: number,
+        tileRenderFlagsLevel1: Uint8Array[],
+    ) {
+        // TODO: move this NPC animation bootstrap data production into the cpp-wasm packet/runtime
+        // output so the wasm backend remains the single source of truth for static map runtime payloads.
+        if (input.loadNpcs !== true) {
+            return [];
+        }
+
+        const loaders = this.deps.session.loaders;
+        const npcSpawns = await this.npcSpawnResolver.resolveSpawns(
+            {
+                mapBytesProvider: this.deps.mapBytesProvider,
+                cacheInfo: this.deps.session.cache.info,
+                npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
+                fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
+            },
+            {
+                loadNpcs: true,
+                mapX: input.mapX,
+                mapY: input.mapY,
+                maxLevel: input.maxLevel,
+                borderSize: borderSize | 0,
+                tileRenderFlagsLevel1,
+                npcTypeLoader: loaders.npcTypeLoader,
+            },
+        );
+
+        const npcGeometry = buildNpcGeometry({
+            loadNpcs: true,
+            includeNpcAnimationFrames: true,
+            npcSpawns,
+            textureLoader: loaders.textureLoader,
+            npcModelLoader: this.deps.npcModelLoader,
+            npcTypeLoader: loaders.npcTypeLoader,
+            seqTypeLoader: loaders.seqTypeLoader,
+            basTypeLoader: loaders.basTypeLoader,
+        });
+        if ((npcGeometry.npcs.length | 0) <= 0) {
+            return [];
+        }
+
+        return createBootstrapData({
+            mapId: getMapSquareId(input.mapX | 0, input.mapY | 0),
+            npcsIn: npcGeometry.npcs,
+        }).npcTypeAnimationTable;
+    }
 
     private static createRuntimeCacheBuildRequest(
         sceneBuildInput: MapRenderByteDrivenSceneBuildInput,
@@ -295,11 +350,16 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 minimizeDrawCalls: input.minimizeDrawCalls,
             });
         }
+        const npcTypeAnimationTable = await this.buildNpcTypeAnimationTable(
+            input,
+            borderSize,
+            data.tileRenderFlags[1] ?? [],
+        );
         const runtimePayloads = buildMapRuntimePayloads({
             borderSize,
             tileRenderFlags: data.tileRenderFlags,
             locsAnimated: data.locsAnimated,
-            npcTypeAnimationTable: [],
+            npcTypeAnimationTable,
             npcOrderKeys: packet.npcOrderKeys,
             mapObjState: mapObjStateFromRenderData(objRenderData),
         });
@@ -350,6 +410,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
 
     reset(): void {
         this.cacheUploader.reset();
+        this.npcSpawnResolver.reset();
         this.runtimeInitPromise = undefined;
         const runtimeHandle = this.runtimeHandle;
         this.runtimeHandle = undefined;
