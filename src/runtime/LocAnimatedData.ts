@@ -1,7 +1,13 @@
+import { LocModelType } from "../rs/config/loctype/LocModelType";
 import { AnimationFrames } from "./entities/AnimationFrames";
 
 export type LocAnimatedData = {
     locTypeId: number;
+    locModelType: LocModelType;
+    rotation: number;
+    level: number;
+    tileX: number;
+    tileY: number;
 
     drawRangeIndex: number;
     drawRangeAlphaIndex: number;
