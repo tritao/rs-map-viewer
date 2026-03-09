@@ -1,5 +1,6 @@
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
+import type { MenuActionTarget } from "../rs/MenuEntry";
 import {
     type MapData,
     type SdMapLoaderInput,
@@ -144,6 +145,28 @@ function resolveMenuInteractionTargets(input: Readonly<{
     }
 
     return resolvedTargets;
+}
+
+function getMenuActionTarget(target: MenuInteractionTarget): MenuActionTarget {
+    if (target.kind === InteractType.LOC) {
+        return {
+            kind: MenuTargetType.LOC,
+            locTypeId: target.locType.id | 0,
+            locInstance: target.locInstance,
+        };
+    }
+    if (target.kind === InteractType.OBJ) {
+        return {
+            kind: MenuTargetType.OBJ,
+            objTypeId: target.objType.id | 0,
+            objInstance: target.objInstance,
+        };
+    }
+    return {
+        kind: MenuTargetType.NPC,
+        npcTypeId: target.npcType.id | 0,
+        npcInstance: target.npcInstance,
+    };
 }
 
 export class MapViewerRenderer extends RendererMainLoop {
@@ -613,6 +636,50 @@ export class MapViewerRenderer extends RendererMainLoop {
         );
     }
 
+    private getLocInstanceFromMenuEntry(
+        entry: Pick<OsrsMenuEntry, "actionTarget">,
+    ): Readonly<{ mapId: number; locIndex: number }> | undefined {
+        const actionTarget = entry.actionTarget;
+        if (!actionTarget || actionTarget.kind !== MenuTargetType.LOC) {
+            return undefined;
+        }
+        return actionTarget.locInstance;
+    }
+
+    private onResetLocAnimation = (entry: OsrsMenuEntry) => {
+        const locInstance = this.getLocInstanceFromMenuEntry(entry);
+        this.mapViewer.closeMenu();
+        if (!locInstance) {
+            return;
+        }
+        void this.applyWorldInput({
+            loc: {
+                animationResets: [locInstance],
+            },
+        });
+    };
+
+    private onSetLocAnimationPaused(paused: boolean): (entry: OsrsMenuEntry) => void {
+        return (entry) => {
+            const locInstance = this.getLocInstanceFromMenuEntry(entry);
+            this.mapViewer.closeMenu();
+            if (!locInstance) {
+                return;
+            }
+            void this.applyWorldInput({
+                loc: {
+                    animationPauseStates: [
+                        {
+                            mapId: locInstance.mapId | 0,
+                            locIndex: locInstance.locIndex | 0,
+                            paused,
+                        },
+                    ],
+                },
+            });
+        };
+    }
+
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
 
@@ -917,6 +984,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             includeUnnamed: this.mapViewer.debugId,
         });
         for (const target of interactionTargets) {
+            const actionTarget = getMenuActionTarget(target);
             if (target.kind === InteractType.LOC) {
                 for (const option of target.locType.actions) {
                     if (!option) {
@@ -928,39 +996,19 @@ export class MapViewerRenderer extends RendererMainLoop {
                         targetType: MenuTargetType.LOC,
                         targetName: target.locType.name,
                         targetLevel: -1,
+                        actionTarget,
                         onClick: this.mapViewer.closeMenu,
                     });
                 }
                 if (picked && target.locInstance) {
-                    const locInstance = target.locInstance;
-                    const applyLocPauseState = (paused: boolean) => {
-                        this.mapViewer.closeMenu();
-                        void this.applyWorldInput({
-                            loc: {
-                                animationPauseStates: [
-                                    {
-                                        mapId: locInstance.mapId | 0,
-                                        locIndex: locInstance.locIndex | 0,
-                                        paused,
-                                    },
-                                ],
-                            },
-                        });
-                    };
                     menuEntries.push({
                         option: "Reset anim",
                         targetId: target.locType.id,
                         targetType: MenuTargetType.LOC,
                         targetName: target.locType.name,
                         targetLevel: -1,
-                        onClick: () => {
-                            this.mapViewer.closeMenu();
-                            void this.applyWorldInput({
-                                loc: {
-                                    animationResets: [locInstance],
-                                },
-                            });
-                        },
+                        actionTarget,
+                        onClick: this.onResetLocAnimation,
                     });
                     menuEntries.push({
                         option: "Pause anim",
@@ -968,7 +1016,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                         targetType: MenuTargetType.LOC,
                         targetName: target.locType.name,
                         targetLevel: -1,
-                        onClick: () => applyLocPauseState(true),
+                        actionTarget,
+                        onClick: this.onSetLocAnimationPaused(true),
                     });
                     menuEntries.push({
                         option: "Resume anim",
@@ -976,7 +1025,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                         targetType: MenuTargetType.LOC,
                         targetName: target.locType.name,
                         targetLevel: -1,
-                        onClick: () => applyLocPauseState(false),
+                        actionTarget,
+                        onClick: this.onSetLocAnimationPaused(false),
                     });
                 }
                 examineEntries.push({
@@ -985,6 +1035,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     targetType: MenuTargetType.LOC,
                     targetName: target.locType.name,
                     targetLevel: -1,
+                    actionTarget,
                     onClick: this.mapViewer.onExamine,
                 });
                 continue;
@@ -1000,6 +1051,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         targetType: MenuTargetType.OBJ,
                         targetName: target.objType.name,
                         targetLevel: -1,
+                        actionTarget,
                         onClick: this.mapViewer.closeMenu,
                     });
                 }
@@ -1009,6 +1061,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     targetType: MenuTargetType.OBJ,
                     targetName: target.objType.name,
                     targetLevel: -1,
+                    actionTarget,
                     onClick: this.mapViewer.onExamine,
                 });
                 continue;
@@ -1023,6 +1076,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                     targetType: MenuTargetType.NPC,
                     targetName: target.npcType.name,
                     targetLevel: target.npcType.combatLevel,
+                    actionTarget,
                     onClick: this.mapViewer.closeMenu,
                 });
             }
@@ -1032,6 +1086,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                 targetType: MenuTargetType.NPC,
                 targetName: target.npcType.name,
                 targetLevel: target.npcType.combatLevel,
+                actionTarget,
                 onClick: this.mapViewer.onExamine,
             });
         }
