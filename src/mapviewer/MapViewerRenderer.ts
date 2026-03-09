@@ -19,7 +19,7 @@ import {
 } from "../runtime/InteractionTargets";
 import {
     type RenderFrameSeamSample,
-    RenderFrameCoordinator,
+    type RenderFrameCoordinator,
 } from "./RenderFrameCoordinator";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
@@ -97,9 +97,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         return this.visibleMapIdsScratch;
     }
 
+    getVisibleMapIdsPackedForFrameCoordinator(): Int32Array {
+        return this.getVisibleMapIdsPacked();
+    }
+
     constructor(
         public mapViewer: MapViewer,
         worldSession: WorldSession,
+        renderFrameCoordinator: RenderFrameCoordinator,
     ) {
         super();
         this.inputManager = mapViewer.inputManager;
@@ -107,17 +112,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
         this.renderer = this.createRenderer();
-        this.renderFrameCoordinator = new RenderFrameCoordinator({
-            worldRuntime: this.simWorkerPool.world,
-            renderFrameRuntime: this.renderWorkerPool.frame,
-            getLodDistance: () => this.renderer.lodDistance,
-            getHoveredMapIdsPacked: () =>
-                this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
-            getVisibleMapIds: () => this.getVisibleMapIdsPacked(),
-            getCameraMapX: () => this.camera.getMapX(),
-            getCameraMapY: () => this.camera.getMapY(),
-            reportSeamSample: (sample) => this.recordRenderFrameSeamSample(sample),
-        });
+        this.renderFrameCoordinator = renderFrameCoordinator;
         this.worldSession = worldSession;
         this.mapManager = this.createMapManager();
     }
@@ -169,6 +164,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.seamRenderMsTotal = 0;
         this.seamTotalMsTotal = 0;
         this.seamWorldChangeCountTotal = 0;
+    }
+
+    reportRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
+        this.recordRenderFrameSeamSample(sample);
     }
 
     private shouldDropStaticMapPacketForDevSquare(

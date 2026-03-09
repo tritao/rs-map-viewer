@@ -24,6 +24,7 @@ import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { MapManager } from "./MapManager";
 import { MapViewerRenderer } from "./MapViewerRenderer";
+import { RenderFrameCoordinator } from "./RenderFrameCoordinator";
 import { WorldSession } from "../world/WorldSession";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
@@ -447,14 +448,27 @@ export class MapViewer {
     ) {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
+        const worldSession = new WorldSession({
+            worldRuntime: new WorkerWorldRuntime({
+                renderRuntime: renderWorkerPool.frame,
+                simRuntime: simWorkerPool.world,
+            }),
+        });
+        const renderFrameCoordinator = new RenderFrameCoordinator({
+            worldRuntime: simWorkerPool.world,
+            renderFrameRuntime: renderWorkerPool.frame,
+            getLodDistance: () => this.renderer.renderer.lodDistance,
+            getHoveredMapIdsPacked: () =>
+                this.renderer.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
+            getVisibleMapIds: () => this.renderer.getVisibleMapIdsPackedForFrameCoordinator(),
+            getCameraMapX: () => this.camera.getMapX(),
+            getCameraMapY: () => this.camera.getMapY(),
+            reportSeamSample: (sample) => this.renderer.reportRenderFrameSeamSample(sample),
+        });
         this.renderer = new MapViewerRenderer(
             this,
-            new WorldSession({
-                worldRuntime: new WorkerWorldRuntime({
-                    renderRuntime: renderWorkerPool.frame,
-                    simRuntime: simWorkerPool.world,
-                }),
-            }),
+            worldSession,
+            renderFrameCoordinator,
         );
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
