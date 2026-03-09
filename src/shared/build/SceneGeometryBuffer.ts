@@ -1,6 +1,6 @@
 import { vec3 } from "gl-matrix";
 
-import { InteractType } from "../../runtime/InteractType";
+import { encodeAnimatedLocInteractId, InteractType } from "../../runtime/InteractType";
 import { Model, computeTextureCoords } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
@@ -513,14 +513,23 @@ export class SceneGeometryBuffer {
 
         for (const group of groups) {
             for (const loc of group.locs) {
-                locsAnimated.push(this.addLocAnimated(group, loc));
+                const locTypeId = loc.interactId | 0;
+                const animatedLoc: SceneLocEntity = {
+                    ...loc,
+                    interactId: encodeAnimatedLocInteractId(locsAnimated.length | 0),
+                };
+                locsAnimated.push(this.addLocAnimated(group, animatedLoc, locTypeId));
             }
         }
 
         return locsAnimated;
     }
 
-    addLocAnimated(group: LocAnimatedGroup, loc: SceneLocEntity): LocAnimatedData {
+    addLocAnimated(
+        group: LocAnimatedGroup,
+        loc: SceneLocEntity,
+        locTypeId: number,
+    ): LocAnimatedData {
         const anim = group.anim;
 
         // Normal (merged)
@@ -595,6 +604,7 @@ export class SceneGeometryBuffer {
             }
         }
         return {
+            locTypeId: locTypeId | 0,
             drawRangeIndex,
             drawRangeAlphaIndex,
 

@@ -1,6 +1,8 @@
 import { AnimationFrames } from "./entities/AnimationFrames";
 
 export type LocAnimatedData = {
+    locTypeId: number;
+
     drawRangeIndex: number;
     drawRangeAlphaIndex: number;
 

@@ -560,6 +560,10 @@ export class MapViewer {
         return this.renderer.applyWorldInput(input);
     }
 
+    resetVisibleLocAnimations(): Promise<number> {
+        return this.renderer.resetVisibleLocAnimations();
+    }
+
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
         const normalized = normalizeRuntimeOptions(options);
         if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {

@@ -31,6 +31,8 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
+import type { WorldLocAnimationReset } from "../runtime/packets/WorldDeltaPacket";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 
 export class MapViewerRenderer extends RendererMainLoop {
     private static readonly EMPTY_INT32 = new Int32Array(0);
@@ -49,6 +51,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
     private readonly worldSession: WorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
+    private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
     private seamApplyWorldMsTotal: number = 0;
@@ -223,6 +226,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
+        this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         await this.attachLoadedRuntimeMapObjRenderData(packet);
@@ -301,6 +305,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
+        this.animatedLocsByMapId.delete(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
         this.worldSession.deactivateLoadedMap({ mapId: mapInfo.mapId });
     }
@@ -332,6 +337,33 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
+    async resetVisibleLocAnimations(): Promise<number> {
+        const animationResets: WorldLocAnimationReset[] = [];
+        const visibleMapCount = this.mapManager.visibleMapCount | 0;
+        for (let i = 0; i < visibleMapCount; i++) {
+            const mapInfo = this.mapManager.visibleMaps[i];
+            if (!mapInfo) {
+                continue;
+            }
+            const animatedLocs = this.animatedLocsByMapId.get(mapInfo.mapId);
+            const animatedLocCount = animatedLocs?.length ?? 0;
+            for (let locIndex = 0; locIndex < (animatedLocCount | 0); locIndex++) {
+                animationResets.push({
+                    mapId: mapInfo.mapId | 0,
+                    locIndex: locIndex | 0,
+                });
+            }
+        }
+        if ((animationResets.length | 0) <= 0) {
+            return 0;
+        }
+        return await this.applyWorldInput({
+            loc: {
+                animationResets,
+            },
+        });
+    }
+
     override async init() {
         super.init();
         this.inputManager.init(this.canvas);
@@ -339,6 +371,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     initializeCacheState(): void {
+        this.animatedLocsByMapId.clear();
         this.renderer.initCache();
         this.mapManager.init(
             this.mapViewer.session.mapFileIndex,
@@ -405,10 +438,16 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
+        this.animatedLocsByMapId.clear();
         this.worldSession.reset();
         this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
+    }
+
+    private getAnimatedLocTypeId(mapId: number, locIndex: number): number | undefined {
+        const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
+        return animatedLocs?.[locIndex | 0]?.locTypeId;
     }
 
     override update(time: number, deltaTime: number) {
@@ -704,6 +743,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             session: this.mapViewer.session,
             hits: interactionHits,
             includeUnnamed: this.mapViewer.debugId,
+            getAnimatedLocTypeId: this.getAnimatedLocTypeId.bind(this),
         });
         for (const target of interactionTargets) {
             if (target.kind === InteractType.LOC) {
@@ -718,6 +758,24 @@ export class MapViewerRenderer extends RendererMainLoop {
                         targetName: target.locType.name,
                         targetLevel: -1,
                         onClick: this.mapViewer.closeMenu,
+                    });
+                }
+                if (picked && target.locInstance) {
+                    const locInstance = target.locInstance;
+                    menuEntries.push({
+                        option: "Reset anim",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        onClick: () => {
+                            this.mapViewer.closeMenu();
+                            void this.applyWorldInput({
+                                loc: {
+                                    animationResets: [locInstance],
+                                },
+                            });
+                        },
                     });
                 }
                 examineEntries.push({

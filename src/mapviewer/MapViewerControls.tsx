@@ -510,6 +510,9 @@ export const MapViewerControls = memo(
                                 mapRenderTelemetry: opts.mapRenderTelemetry,
                             });
                         }),
+                        "Reset Visible Loc Animations": button(async () => {
+                            await mapViewer.resetVisibleLocAnimations();
+                        }),
                     },
                     { collapsed: true },
                 ),
