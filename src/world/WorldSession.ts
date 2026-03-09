@@ -4,17 +4,17 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { type WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 
-export type NpcLifecycleEventsInput = Readonly<{
+export type WorldNpcInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
 }>;
 
-export type MapObjStateUpdatesInput = Readonly<{
+export type WorldObjInput = Readonly<{
     updates: ReadonlyArray<WorldMapObjUpdate>;
 }>;
 
 export type WorldInput = Readonly<{
-    npc?: NpcLifecycleEventsInput;
-    obj?: MapObjStateUpdatesInput;
+    npc?: WorldNpcInput;
+    obj?: WorldObjInput;
 }>;
 
 export type WorldMapActivationInput = Readonly<{
