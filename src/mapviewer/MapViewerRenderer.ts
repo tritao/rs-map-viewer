@@ -27,6 +27,10 @@ import {
     type RenderFrameSeamSample,
     type RenderFrameCoordinator,
 } from "../renderer/RenderFrameCoordinator";
+import {
+    resolveRenderFrameNpcInteractionTarget,
+    type RenderFramePacket,
+} from "../renderer/RenderFramePacket";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
@@ -54,11 +58,19 @@ type MenuInteractionTarget =
           kind: InteractType.OBJ;
           hit: InteractionHit & { kind: InteractType.OBJ };
           objType: ObjType;
+          objInstance: Readonly<{
+              mapId: number;
+              objIndex: number;
+          }>;
       }>
     | Readonly<{
           kind: InteractType.NPC;
           hit: InteractionHit & { kind: InteractType.NPC };
           npcType: NpcType;
+          npcInstance: Readonly<{
+              mapId: number;
+              npcInstanceId: number;
+          }>;
       }>;
 
 function resolveMenuInteractionTargets(input: Readonly<{
@@ -100,6 +112,7 @@ function resolveMenuInteractionTargets(input: Readonly<{
                 kind: InteractType.OBJ,
                 hit: target.hit,
                 objType,
+                objInstance: target.objInstance,
             });
             continue;
         }
@@ -126,6 +139,7 @@ function resolveMenuInteractionTargets(input: Readonly<{
             kind: InteractType.NPC,
             hit: target.hit,
             npcType,
+            npcInstance: target.npcInstance,
         });
     }
 
@@ -150,12 +164,14 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly worldSession: WorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
+    private readonly objTypeIdsByMapId = new Map<number, Int32Array>();
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
     private seamApplyWorldMsTotal: number = 0;
     private seamRenderMsTotal: number = 0;
     private seamTotalMsTotal: number = 0;
     private seamWorldChangeCountTotal: number = 0;
+    private latestRenderFramePacket: RenderFramePacket | undefined;
 
     private isInitialized: boolean = false;
 
@@ -325,6 +341,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
+        this.setMapObjTypeIds(mapData.mapId | 0, packet.runtimeBootstrap.mapObjState?.objTypeIds);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         await this.attachLoadedRuntimeMapObjRenderData(packet);
@@ -404,12 +421,16 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.animatedLocsByMapId.delete(mapInfo.mapId);
+        this.objTypeIdsByMapId.delete(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
         this.worldSession.deactivateLoadedMap({ mapId: mapInfo.mapId });
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
         const applied = await this.worldSession.applyWorldInput(input);
+        if ((applied | 0) > 0) {
+            this.applyMapObjTypeIdsFromWorldInput(input);
+        }
         const hasRenderAffectingWorldInput =
             (!!input.obj?.updates && (input.obj.updates.length | 0) > 0) ||
             (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
@@ -471,6 +492,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initializeCacheState(): void {
         this.animatedLocsByMapId.clear();
+        this.objTypeIdsByMapId.clear();
+        this.latestRenderFramePacket = undefined;
         this.renderer.initCache();
         this.mapManager.init(
             this.mapViewer.session.mapFileIndex,
@@ -521,6 +544,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     async resetForCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
         this.worldSession.reset();
+        this.latestRenderFramePacket = undefined;
 
         try {
             await this.renderer.cleanUp();
@@ -538,6 +562,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.animatedLocsByMapId.clear();
+        this.objTypeIdsByMapId.clear();
+        this.latestRenderFramePacket = undefined;
         this.worldSession.reset();
         this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
@@ -547,6 +573,44 @@ export class MapViewerRenderer extends RendererMainLoop {
     private getAnimatedLocTypeId(mapId: number, locIndex: number): number | undefined {
         const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
         return animatedLocs?.[locIndex | 0]?.locTypeId;
+    }
+
+    private setMapObjTypeIds(mapId: number, objTypeIds: Int32Array | undefined): void {
+        if (!(objTypeIds instanceof Int32Array)) {
+            this.objTypeIdsByMapId.delete(mapId | 0);
+            return;
+        }
+        this.objTypeIdsByMapId.set(mapId | 0, objTypeIds);
+    }
+
+    private applyMapObjTypeIdsFromWorldInput(input: WorldInput): void {
+        const updates = input.obj?.updates;
+        if (!updates) {
+            return;
+        }
+        for (let index = 0; index < updates.length; index++) {
+            const update = updates[index];
+            if (!update || update.kind !== "replaceMapObjState") {
+                continue;
+            }
+            this.setMapObjTypeIds(update.mapId | 0, update.mapObjState?.objTypeIds);
+        }
+    }
+
+    private getMapObjTypeId(mapId: number, objIndex: number): number | undefined {
+        const objTypeIds = this.objTypeIdsByMapId.get(mapId | 0);
+        return objTypeIds?.[objIndex | 0];
+    }
+
+    private getNpcInteractionTargetInfo(
+        mapId: number,
+        npcInteractId: number,
+    ): Readonly<{ npcInstanceId: number; npcTypeId: number }> | undefined {
+        return resolveRenderFrameNpcInteractionTarget(
+            this.latestRenderFramePacket,
+            mapId | 0,
+            npcInteractId | 0,
+        );
     }
 
     override update(time: number, deltaTime: number) {
@@ -594,7 +658,10 @@ export class MapViewerRenderer extends RendererMainLoop {
                 clientTicksElapsed,
             },
             renderFrameCoordinator: this.renderFrameCoordinator,
-            applyFramePacket: (packet) => this.renderer.applyFramePacket(packet),
+            applyFramePacket: (packet) => {
+                this.latestRenderFramePacket = packet;
+                this.renderer.applyFramePacket(packet);
+            },
         });
     }
 
@@ -841,6 +908,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         const worldInteractionTargets = resolveWorldInteractionTargets({
             hits: interactionHits,
             getAnimatedLocTypeId: this.getAnimatedLocTypeId.bind(this),
+            getMapObjTypeId: this.getMapObjTypeId.bind(this),
+            getNpcTargetInfo: this.getNpcInteractionTargetInfo.bind(this),
         });
         const interactionTargets = resolveMenuInteractionTargets({
             session: this.mapViewer.session,

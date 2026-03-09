@@ -43,6 +43,7 @@ export function mapObjRenderPacketTransferables(packet: MapObjRenderPacket): Tra
         pushTransferableUnique(out, seen, objRenderData.vertices.buffer as Transferable);
         pushTransferableUnique(out, seen, objRenderData.indices.buffer as Transferable);
         pushTransferableUnique(out, seen, objRenderData.usedTextureIds.buffer as Transferable);
+        pushTransferableUnique(out, seen, objRenderData.objTypeIds.buffer as Transferable);
         for (let bucketIndex = 0; bucketIndex < MAP_RENDER_DRAW_BUCKET_KEYS.length; bucketIndex++) {
             const key = MAP_RENDER_DRAW_BUCKET_KEYS[bucketIndex]!;
             pushTransferableUnique(

@@ -25,11 +25,19 @@ export type WorldInteractionTarget =
           kind: InteractType.OBJ;
           hit: InteractionHit & { kind: InteractType.OBJ };
           objTypeId: number;
+          objInstance: Readonly<{
+              mapId: number;
+              objIndex: number;
+          }>;
       }>
     | Readonly<{
           kind: InteractType.NPC;
           hit: InteractionHit & { kind: InteractType.NPC };
           npcTypeId: number;
+          npcInstance: Readonly<{
+              mapId: number;
+              npcInstanceId: number;
+          }>;
       }>;
 
 export function collectInteractionHits(input: Readonly<{
@@ -39,8 +47,8 @@ export function collectInteractionHits(input: Readonly<{
 }>): InteractionHit[] {
     const hits: InteractionHit[] = [];
     const locKeys = new Set<string>();
-    const objIds = new Set<number>();
-    const npcIds = new Set<number>();
+    const objKeys = new Set<string>();
+    const npcKeys = new Set<string>();
 
     for (let distance = 0; distance <= (input.maxDistance | 0); distance++) {
         const indices = input.closestInteractIndices.get(distance);
@@ -61,18 +69,20 @@ export function collectInteractionHits(input: Readonly<{
                 continue;
             }
             if (kind === InteractType.OBJ) {
-                if (objIds.has(id)) {
+                const objKey = `${mapId}:${id}`;
+                if (objKeys.has(objKey)) {
                     continue;
                 }
-                objIds.add(id);
+                objKeys.add(objKey);
                 hits.push({ kind, id, mapId, distance });
                 continue;
             }
             if (kind === InteractType.NPC) {
-                if (npcIds.has(id)) {
+                const npcKey = `${mapId}:${id}`;
+                if (npcKeys.has(npcKey)) {
                     continue;
                 }
-                npcIds.add(id);
+                npcKeys.add(npcKey);
                 hits.push({ kind, id, mapId, distance });
             }
         }
@@ -84,6 +94,16 @@ export function collectInteractionHits(input: Readonly<{
 export function resolveWorldInteractionTargets(input: Readonly<{
     hits: ReadonlyArray<InteractionHit>;
     getAnimatedLocTypeId?: (mapId: number, locIndex: number) => number | undefined;
+    getMapObjTypeId?: (mapId: number, objIndex: number) => number | undefined;
+    getNpcTargetInfo?: (
+        mapId: number,
+        npcInteractId: number,
+    ) =>
+        | Readonly<{
+              npcInstanceId: number;
+              npcTypeId: number;
+          }>
+        | undefined;
 }>): WorldInteractionTarget[] {
     const targets: WorldInteractionTarget[] = [];
 
@@ -121,19 +141,36 @@ export function resolveWorldInteractionTargets(input: Readonly<{
         }
 
         if (hit.kind === InteractType.OBJ) {
+            const objIndex = hit.id | 0;
+            const objTypeId = input.getMapObjTypeId?.(hit.mapId | 0, objIndex | 0);
+            if (objTypeId === undefined) {
+                continue;
+            }
             targets.push({
                 kind: InteractType.OBJ,
                 hit: hit as InteractionHit & { kind: InteractType.OBJ },
-                objTypeId: hit.id | 0,
+                objTypeId,
+                objInstance: {
+                    mapId: hit.mapId | 0,
+                    objIndex,
+                },
             });
             continue;
         }
 
         if (hit.kind === InteractType.NPC) {
+            const npcTarget = input.getNpcTargetInfo?.(hit.mapId | 0, hit.id | 0);
+            if (!npcTarget) {
+                continue;
+            }
             targets.push({
                 kind: InteractType.NPC,
                 hit: hit as InteractionHit & { kind: InteractType.NPC },
-                npcTypeId: hit.id | 0,
+                npcTypeId: npcTarget.npcTypeId | 0,
+                npcInstance: {
+                    mapId: hit.mapId | 0,
+                    npcInstanceId: npcTarget.npcInstanceId | 0,
+                },
             });
         }
     }

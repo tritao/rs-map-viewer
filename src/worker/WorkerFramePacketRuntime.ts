@@ -469,6 +469,7 @@ export class WorkerFramePacketRuntime {
             y: number;
             level: number;
             rotation: number;
+            instanceId?: number;
             npcType: { id: number };
         }>,
     ): ReadonlyArray<NpcGpuFrameSource> {
@@ -481,6 +482,7 @@ export class WorkerFramePacketRuntime {
                 y: npc.y,
                 level: npc.level,
                 rotation: npc.rotation,
+                npcInstanceId: npc.instanceId ?? -1,
                 npcTypeId: npc.npcType.id,
             };
         }
@@ -571,11 +573,13 @@ export class WorkerFramePacketRuntime {
         this.validateWasmPatchRead(wasmReadOff, wasmCountsByMapId, wasmPatchesPacked);
 
         const npcGpuFrameData = this.npcGpuFrameBuilder.flushPacked();
+        const npcInteractionMetaPacked = this.npcGpuFrameBuilder.flushInteractionMetaPacked();
         return buildRenderFramePacketFromMapEntries({
             frameCount: frameCount | 0,
             inputStateVersion: this.inputStateVersion | 0,
             npcRingWriteIndex: inputs.npcRingWriteIndex | 0,
             npcGpuFrameData,
+            npcInteractionMetaPacked,
             entries,
             runtimeRenderUpdates: this.consumePendingRuntimeMapObjRenderPacket(),
         });

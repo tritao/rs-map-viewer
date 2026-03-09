@@ -17,6 +17,7 @@ import {
 
 // Meta tuples: [mapId, npcDataStart, npcDataCount]
 export const NPC_RANGES_BY_MAP_ID_STRIDE = 3;
+export const NPC_INTERACTION_META_STRIDE = 2;
 export const FRAME_RENDER_LIST_STRIDE = 2;
 export const FRAME_RENDER_LIST_FLAG_HAS_NPCS = 1 << 0;
 export const FRAME_RENDER_LIST_FLAG_IS_LOD = 1 << 1;
@@ -57,6 +58,7 @@ export type ParsedRenderFramePacket = Readonly<{
     inputStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
+    npcInteractionMetaPacked: Int32Array;
     npcRangesByMapId: ParsedRenderFrameNpcRangesByMapId;
     tickPatches: ParsedRenderFrameTickPatches | undefined;
     renderListPacked: Int32Array;
@@ -68,8 +70,10 @@ export type RenderFramePacket = Readonly<{
     inputStateVersion: number;
     npcRingWriteIndex: number;
 
-    // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,typeId).
+    // Packed NPC info texture for the npc shader (x,y,rotationAndPlane,interactId).
     npcGpuFrameData: NpcGpuFrameData;
+    // Tuples of [npcInstanceId, npcTypeId], aligned to npcGpuFrameData entries.
+    npcInteractionMetaPacked: Int32Array;
 
     // Tuples of [mapId, start, count] for the current frame's NPC upload.
     // `start` is the npc index into `npcGpuFrameData.data`, `count` is npc entries for mapId.
@@ -89,6 +93,7 @@ export type RenderFramePacket = Readonly<{
 export function renderFramePacketTransferables(packet: RenderFramePacket): Transferable[] {
     const out: Transferable[] = [];
     out.push(packet.npcGpuFrameData.data.buffer as Transferable);
+    out.push(packet.npcInteractionMetaPacked.buffer as Transferable);
     out.push(packet.npcRangesByMapIdPacked.buffer as Transferable);
     out.push(packet.renderListPacked.buffer as Transferable);
     out.push(packet.tickPatchCountsByMapId.buffer as Transferable);
@@ -111,6 +116,7 @@ export type BuildRenderFramePacketInput = Readonly<{
     inputStateVersion: number;
     npcRingWriteIndex: number;
     npcGpuFrameData: NpcGpuFrameData;
+    npcInteractionMetaPacked: Int32Array;
     npcRangesByMapIdPacked: Int32Array;
     renderListPacked: Int32Array;
     tickPatchCountsByMapId: Int32Array;
@@ -225,6 +231,21 @@ function validateRenderFramePacketStrict(packet: RenderFramePacket): void {
                 `expected=${expectedGpuLen} actual=${gpu.data.length | 0}`,
         );
     }
+    const npcMetaInts = packet.npcInteractionMetaPacked.length | 0;
+    if (npcMetaInts % NPC_INTERACTION_META_STRIDE !== 0) {
+        throw new Error(
+            `[map-render][frame-packet] npcInteractionMetaPacked length misaligned: ` +
+                `len=${npcMetaInts} stride=${NPC_INTERACTION_META_STRIDE}`,
+        );
+    }
+    const npcMetaCount = Math.floor(npcMetaInts / NPC_INTERACTION_META_STRIDE);
+    const gpuEntryCount = ((gpu.width | 0) * (gpu.height | 0)) | 0;
+    if ((npcMetaCount | 0) > (gpuEntryCount | 0)) {
+        throw new Error(
+            `[map-render][frame-packet] npcInteractionMetaPacked too long: ` +
+                `metaCount=${npcMetaCount} gpuEntries=${gpuEntryCount}`,
+        );
+    }
 
     const renderInts = packet.renderListPacked.length | 0;
     if (renderInts % FRAME_RENDER_LIST_STRIDE !== 0) {
@@ -306,6 +327,13 @@ function validateRenderFramePacketStrict(packet: RenderFramePacket): void {
                     } mapId=${renderMapId} start=${npcStart} count=${npcCount} max=${maxNpcEntries}`,
             );
         }
+        if (((npcStart + npcCount) | 0) > (npcMetaCount | 0)) {
+            throw new Error(
+                `[map-render][frame-packet] npc interaction meta range invalid: ` +
+                    `entry=${i | 0} mapId=${renderMapId} start=${npcStart} count=${npcCount} ` +
+                    `metaCount=${npcMetaCount}`,
+            );
+        }
         const hasNpcsFlag = (renderFlags & FRAME_RENDER_LIST_FLAG_HAS_NPCS) !== 0;
         if (hasNpcsFlag !== (npcCount | 0) > 0) {
             throw new Error(
@@ -324,6 +352,7 @@ export function buildRenderFramePacket(
         inputStateVersion: input.inputStateVersion | 0,
         npcRingWriteIndex: input.npcRingWriteIndex | 0,
         npcGpuFrameData: input.npcGpuFrameData,
+        npcInteractionMetaPacked: input.npcInteractionMetaPacked,
         npcRangesByMapIdPacked: input.npcRangesByMapIdPacked,
         renderListPacked: input.renderListPacked,
         tickPatchCountsByMapId: input.tickPatchCountsByMapId,
@@ -445,9 +474,47 @@ export function parseRenderFramePacket(
         inputStateVersion: packet.inputStateVersion | 0,
         npcRingWriteIndex,
         npcGpuFrameData: packet.npcGpuFrameData,
+        npcInteractionMetaPacked: packet.npcInteractionMetaPacked,
         npcRangesByMapId: parseRenderFrameNpcRangesByMapId(packet.npcRangesByMapIdPacked),
         tickPatches: parseRenderFrameTickPatchesFromPacket(packet),
         renderListPacked: parseRenderFramePacketRenderList(packet.renderListPacked),
         runtimeRenderUpdates: packet.runtimeRenderUpdates,
     };
+}
+
+export type ResolvedNpcInteractionTarget = Readonly<{
+    npcInstanceId: number;
+    npcTypeId: number;
+}>;
+
+export function resolveRenderFrameNpcInteractionTarget(
+    packet: RenderFramePacket | undefined,
+    mapId: number,
+    interactId: number,
+): ResolvedNpcInteractionTarget | undefined {
+    if (!packet) {
+        return undefined;
+    }
+    const npcIndex = interactId | 0;
+    const ranges = packet.npcRangesByMapIdPacked;
+    for (let off = 0; off < (ranges.length | 0); off += NPC_RANGES_BY_MAP_ID_STRIDE) {
+        if ((ranges[off] | 0) !== (mapId | 0)) {
+            continue;
+        }
+        const start = ranges[off + 1] | 0;
+        const count = ranges[off + 2] | 0;
+        if ((npcIndex | 0) < (start | 0) || (npcIndex | 0) >= ((start + count) | 0)) {
+            return undefined;
+        }
+        const metaOff = (npcIndex | 0) * NPC_INTERACTION_META_STRIDE;
+        const meta = packet.npcInteractionMetaPacked;
+        if ((metaOff + NPC_INTERACTION_META_STRIDE) > (meta.length | 0)) {
+            return undefined;
+        }
+        return {
+            npcInstanceId: meta[metaOff] | 0,
+            npcTypeId: meta[metaOff + 1] | 0,
+        };
+    }
+    return undefined;
 }

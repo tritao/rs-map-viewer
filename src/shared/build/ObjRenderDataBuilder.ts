@@ -14,6 +14,7 @@ function createObjSceneModel(
     objTypeLoader: ObjTypeLoader,
     objModelLoader: ObjModelLoader,
     sceneModels: SceneModel[],
+    objTypeIds: number[],
     scene: Scene,
     baseX: number,
     baseY: number,
@@ -75,8 +76,14 @@ function createObjSceneModel(
         contourGround,
         priority: 10,
         interactType: InteractType.OBJ,
-        interactId: spawn.id,
+        interactId: objTypeIds.length | 0,
     });
+    if ((objTypeIds.length | 0) >= 0x20000) {
+        throw new Error(
+            `[map-render][obj] object interaction index overflow: count=${objTypeIds.length | 0}`,
+        );
+    }
+    objTypeIds.push(spawn.id | 0);
 }
 
 export type BuildObjRenderDataInput = Readonly<{
@@ -97,11 +104,13 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
         return undefined;
     }
     const sceneModels: SceneModel[] = [];
+    const objTypeIds: number[] = [];
     for (const spawn of input.objSpawns) {
         createObjSceneModel(
             input.objTypeLoader,
             input.objModelLoader,
             sceneModels,
+            objTypeIds,
             input.scene,
             input.baseX,
             input.baseY,
@@ -132,5 +141,6 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
         modelInfoTextures: buildModelInfoTexturesFromBuckets(runtimeDrawCommandBuckets),
         drawRanges: buildDrawRangesFromBuckets(runtimeDrawCommandBuckets),
         usedTextureIds: Int32Array.from(sceneBuf.usedTextureIds),
+        objTypeIds: Int32Array.from(objTypeIds),
     };
 }

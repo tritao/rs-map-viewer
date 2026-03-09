@@ -26,6 +26,7 @@ export type ObjRenderData = Readonly<{
     modelInfoTextures: SdRenderableModelInfoTextures;
     drawRanges: SdRenderableDrawRanges;
     usedTextureIds: Int32Array;
+    objTypeIds: Int32Array;
 }>;
 
 export type SdRenderableData = {
@@ -91,6 +92,7 @@ export type MapObjState = Readonly<{
     modelInfoTextures: MapObjStateModelInfoTextures;
     drawRanges: MapObjStateDrawRanges;
     usedTextureIds: Int32Array;
+    objTypeIds: Int32Array;
 }>;
 
 export type MapRuntimeBootstrap = Readonly<{
@@ -275,6 +277,7 @@ export function mapObjStateFromRenderData(
         modelInfoTextures: objRenderData.modelInfoTextures,
         drawRanges: objRenderData.drawRanges,
         usedTextureIds: objRenderData.usedTextureIds,
+        objTypeIds: objRenderData.objTypeIds,
     };
 }
 
@@ -290,6 +293,7 @@ export function mapObjStateToRenderData(
         modelInfoTextures: mapObjState.modelInfoTextures,
         drawRanges: mapObjState.drawRanges,
         usedTextureIds: mapObjState.usedTextureIds,
+        objTypeIds: mapObjState.objTypeIds,
     };
 }
 
@@ -454,6 +458,7 @@ function collectMapObjStateWireTransferables(
     pushTransferableUnique(out, seen, mapObjState.vertices.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.indices.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.usedTextureIds.buffer as Transferable);
+    pushTransferableUnique(out, seen, mapObjState.objTypeIds.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangeBucketLengths.buffer as Transferable);
     pushTransferableUnique(out, seen, mapObjState.drawRangesPacked.buffer as Transferable);
     for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {

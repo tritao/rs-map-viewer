@@ -6,12 +6,14 @@ export type NpcGpuFrameSource = Readonly<{
     y: number;
     level: number;
     rotation: number;
+    npcInstanceId: number;
     npcTypeId: number;
 }>;
 
 export class NpcGpuFrameBuilder {
     private count = 0;
     private data: Uint16Array = new Uint16Array(16 * 4);
+    private interactionMetaPacked: Int32Array = new Int32Array(16 * 2);
 
     beginFrame(): void {
         this.count = 0;
@@ -41,7 +43,13 @@ export class NpcGpuFrameBuilder {
                 renderPlane++;
             }
 
-            this.pushNpc(npc.x, npc.y, (npc.rotation << 2) | renderPlane, npc.npcTypeId);
+            this.pushNpc(
+                npc.x,
+                npc.y,
+                (npc.rotation << 2) | renderPlane,
+                npc.npcInstanceId,
+                npc.npcTypeId,
+            );
         }
         return { start, count };
     }
@@ -61,19 +69,42 @@ export class NpcGpuFrameBuilder {
         };
     }
 
-    private pushNpc(x: number, y: number, rotationAndPlane: number, npcTypeId: number): void {
+    flushInteractionMetaPacked(): Int32Array {
+        return this.interactionMetaPacked.slice(0, (this.count | 0) * 2);
+    }
+
+    private pushNpc(
+        x: number,
+        y: number,
+        rotationAndPlane: number,
+        npcInstanceId: number,
+        npcTypeId: number,
+    ): void {
         const nextCount = (this.count + 1) | 0;
         if ((((this.data.length / 4) | 0) as number) < nextCount) {
             const newData = new Uint16Array(Math.ceil((nextCount * 2) / 16) * 16 * 4);
             newData.set(this.data);
             this.data = newData;
         }
+        if ((((this.interactionMetaPacked.length / 2) | 0) as number) < nextCount) {
+            const newMeta = new Int32Array(Math.ceil((nextCount * 2) / 16) * 16 * 2);
+            newMeta.set(this.interactionMetaPacked);
+            this.interactionMetaPacked = newMeta;
+        }
+        if ((nextCount | 0) > 0xffff) {
+            throw new Error(
+                `[map-render][npc-frame] npc interaction index overflow: count=${nextCount | 0}`,
+            );
+        }
 
         let offset = (this.count * 4) | 0;
         this.data[offset++] = x;
         this.data[offset++] = y;
         this.data[offset++] = rotationAndPlane;
-        this.data[offset++] = npcTypeId;
+        this.data[offset++] = this.count | 0;
+        let metaOffset = (this.count * 2) | 0;
+        this.interactionMetaPacked[metaOffset++] = npcInstanceId | 0;
+        this.interactionMetaPacked[metaOffset++] = npcTypeId | 0;
         this.count = nextCount;
     }
 }
