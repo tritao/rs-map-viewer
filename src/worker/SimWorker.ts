@@ -141,6 +141,10 @@ const worldApi = {
                 update.npcSnapshotMapIds !== undefined
                     ? normalizeWorkerInt32Array(update.npcSnapshotMapIds)
                     : undefined,
+            dynamicObjSnapshotMapIds:
+                update.dynamicObjSnapshotMapIds !== undefined
+                    ? normalizeWorkerInt32Array(update.dynamicObjSnapshotMapIds)
+                    : undefined,
         });
     },
     async step(

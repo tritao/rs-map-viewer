@@ -148,6 +148,7 @@ export class WorkerFramePacketRuntime {
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
     private readonly runtimeHiddenObjIndicesByMapId = new Map<number, Set<number>>();
     private readonly runtimeDynamicObjStateByMapId = new Map<number, RuntimeDynamicObjMapState>();
+    private readonly pendingDynamicObjSnapshotMapIds = new Set<number>();
     private readonly pendingRuntimeMapObjUpdatesByMapId = new Map<number, PendingRuntimeMapObjUpdate>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
@@ -175,6 +176,7 @@ export class WorkerFramePacketRuntime {
         this.hoveredMapIdsPacked = new Int32Array(0);
         this.runtimeHiddenObjIndicesByMapId.clear();
         this.runtimeDynamicObjStateByMapId.clear();
+        this.pendingDynamicObjSnapshotMapIds.clear();
         this.pendingRuntimeMapObjUpdatesByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
@@ -394,6 +396,7 @@ export class WorkerFramePacketRuntime {
             const mapState = this.runtimeDynamicObjStateByMapId.get(mapId);
             const slot = mapState?.slotByRuntimeObjId.get(despawn.runtimeObjId | 0);
             if (slot === undefined || !mapState) {
+                this.pendingDynamicObjSnapshotMapIds.add(mapId);
                 continue;
             }
             const nextSlots = new Map(mapState.slotByRuntimeObjId);
@@ -429,6 +432,7 @@ export class WorkerFramePacketRuntime {
             const mapState = this.runtimeDynamicObjStateByMapId.get(mapId);
             const slot = mapState?.slotByRuntimeObjId.get(update.runtimeObjId | 0);
             if (slot === undefined || !mapState) {
+                this.pendingDynamicObjSnapshotMapIds.add(mapId);
                 continue;
             }
             const interactId = ((mapState.staticObjCount | 0) + (slot | 0)) | 0;
@@ -586,6 +590,15 @@ export class WorkerFramePacketRuntime {
         return this.inputStateVersion | 0;
     }
 
+    private consumePendingDynamicObjSnapshotMapIdsPacked(): Int32Array | undefined {
+        if ((this.pendingDynamicObjSnapshotMapIds.size | 0) <= 0) {
+            return undefined;
+        }
+        const packed = Int32Array.from(this.pendingDynamicObjSnapshotMapIds);
+        this.pendingDynamicObjSnapshotMapIds.clear();
+        return packed;
+    }
+
     hasCompatibleInputStateVersion(inputStateVersion: number): boolean {
         return (this.getInputStateVersion() | 0) === (inputStateVersion | 0);
     }
@@ -732,6 +745,7 @@ export class WorkerFramePacketRuntime {
         return {
             applied: applied | 0,
             npcSnapshotMapIds: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
+            dynamicObjSnapshotMapIds: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
         };
     }
 

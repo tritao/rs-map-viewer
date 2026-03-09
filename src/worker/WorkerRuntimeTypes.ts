@@ -11,6 +11,7 @@ export type WorkerViewState = Readonly<{
 export type WorldInputUpdate = Readonly<{
     mapIds?: Int32Array;
     npcSnapshotMapIds?: Int32Array;
+    dynamicObjSnapshotMapIds?: Int32Array;
 }>;
 
 export type RenderFrameInputUpdate = Readonly<{
@@ -24,6 +25,7 @@ export type WorkerInputStateVersion = number;
 export type ApplyWorldDeltaResult = Readonly<{
     applied: number;
     npcSnapshotMapIds?: Int32Array;
+    dynamicObjSnapshotMapIds?: Int32Array;
 }>;
 
 export type SimMapRuntimeRegistrationInput = Readonly<{

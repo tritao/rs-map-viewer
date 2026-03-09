@@ -189,6 +189,7 @@ export class RenderFrameCoordinator {
             worldInputUpdate = {
                 ...worldInputUpdate,
                 mapIds: input.mapIds,
+                dynamicObjSnapshotMapIds: input.mapIds,
             };
             renderFrameUpdate = {
                 ...renderFrameUpdate,
@@ -255,6 +256,15 @@ export class RenderFrameCoordinator {
                 if (applyResult.npcSnapshotMapIds && (applyResult.npcSnapshotMapIds.length | 0) > 0) {
                     await this.deps.worldRuntime.syncState({
                         npcSnapshotMapIds: applyResult.npcSnapshotMapIds,
+                    });
+                    this.needsPacketRefresh = true;
+                }
+                if (
+                    applyResult.dynamicObjSnapshotMapIds &&
+                    (applyResult.dynamicObjSnapshotMapIds.length | 0) > 0
+                ) {
+                    await this.deps.worldRuntime.syncState({
+                        dynamicObjSnapshotMapIds: applyResult.dynamicObjSnapshotMapIds,
                     });
                     this.needsPacketRefresh = true;
                 }

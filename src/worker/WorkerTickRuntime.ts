@@ -111,6 +111,7 @@ export class WorkerTickRuntime {
     private readonly npcSnapshotByMapId = new Map<number, Map<number, NpcSnapshot>>();
     private readonly npcSeqByInstanceId = new Map<number, number>();
     private readonly pendingNpcSnapshotMapIds = new Set<number>();
+    private readonly pendingDynamicObjSnapshotMapIds = new Set<number>();
     private activeMapIds: Int32Array = new Int32Array(0);
     private readonly pendingMapObjStateReplacementsByMapId = new Map<number, WorldMapObjStateReplacement>();
     private readonly pendingMapObjAdditionsByMapId = new Map<number, Set<number>>();
@@ -157,6 +158,7 @@ export class WorkerTickRuntime {
         this.npcSnapshotByMapId.clear();
         this.npcSeqByInstanceId.clear();
         this.pendingNpcSnapshotMapIds.clear();
+        this.pendingDynamicObjSnapshotMapIds.clear();
         this.activeMapIds = new Int32Array(0);
         this.pendingMapObjStateReplacementsByMapId.clear();
         this.pendingMapObjAdditionsByMapId.clear();
@@ -177,11 +179,20 @@ export class WorkerTickRuntime {
         if (update.npcSnapshotMapIds !== undefined) {
             this.requestNpcSnapshots(update.npcSnapshotMapIds);
         }
+        if (update.dynamicObjSnapshotMapIds !== undefined) {
+            this.requestDynamicObjSnapshots(update.dynamicObjSnapshotMapIds);
+        }
     }
 
     private requestNpcSnapshots(mapIds: Int32Array): void {
         for (let index = 0; index < mapIds.length; index++) {
             this.pendingNpcSnapshotMapIds.add(mapIds[index] | 0);
+        }
+    }
+
+    private requestDynamicObjSnapshots(mapIds: Int32Array): void {
+        for (let index = 0; index < mapIds.length; index++) {
+            this.pendingDynamicObjSnapshotMapIds.add(mapIds[index] | 0);
         }
     }
 
@@ -971,6 +982,24 @@ export class WorkerTickRuntime {
                     dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
                 });
             }
+            for (const mapId of this.pendingDynamicObjSnapshotMapIds.values()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                clearDynamicMapIds.push(mapId | 0);
+                for (const [runtimeObjId, spawn] of runtime.dynamicObjSpawnsByRuntimeId.entries()) {
+                    dynamicObjSpawns.push({
+                        mapId: mapId | 0,
+                        runtimeObjId: runtimeObjId | 0,
+                        objTypeId: spawn.id | 0,
+                        count: Math.max(1, spawn.count | 0),
+                        x: spawn.x | 0,
+                        y: spawn.y | 0,
+                        plane: spawn.plane | 0,
+                    });
+                }
+            }
         }
         if (hasPendingObjAdditions) {
             for (const [mapId, addedObjIndices] of this.pendingMapObjAdditionsByMapId.entries()) {
@@ -1005,6 +1034,7 @@ export class WorkerTickRuntime {
         this.pendingDynamicMapObjDespawnsByMapId.clear();
         this.pendingDynamicMapObjUpdatesByMapId.clear();
         this.pendingClearDynamicMapIds.clear();
+        this.pendingDynamicObjSnapshotMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
         const locDeltaPacket = locAnimationResets
