@@ -192,7 +192,7 @@ function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transfer
         if (!mapObjState) {
             continue;
         }
-        const states = [mapObjState.staticState, mapObjState.dynamicState];
+        const states = [mapObjState.staticState];
         for (let stateIndex = 0; stateIndex < states.length; stateIndex++) {
             const state = states[stateIndex];
             if (!state) {

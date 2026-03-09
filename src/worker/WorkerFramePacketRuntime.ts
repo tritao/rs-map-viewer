@@ -46,7 +46,6 @@ import {
 } from "./WorkerRuntimeTypes";
 import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import {
-    dynamicMapObjStateToRenderData,
     staticMapObjStateToRenderData,
 } from "../shared/StaticMapPacket";
 import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
@@ -87,10 +86,7 @@ type WasmTickEmitResult = Readonly<{
 type PendingRuntimeMapObjUpdate = {
     staticObjRenderData: ObjRenderData | undefined;
     replaceStaticObjRenderData: boolean;
-    resetDynamicObjRenderState: ObjRenderData | undefined;
-    resetDynamicObjRenderData: boolean;
     hiddenStaticObjIndices: Set<number>;
-    resetDynamicRuntimeObjIds: Int32Array | undefined;
     appendDynamicObjRenders: Array<Readonly<{
         runtimeObjId: number;
         interactId: number;
@@ -191,10 +187,7 @@ export class WorkerFramePacketRuntime {
             pending = {
                 staticObjRenderData: undefined,
                 replaceStaticObjRenderData: false,
-                resetDynamicObjRenderState: undefined,
-                resetDynamicObjRenderData: false,
                 hiddenStaticObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
-                resetDynamicRuntimeObjIds: undefined,
                 appendDynamicObjRenders: [],
                 removeDynamicRuntimeObjIds: new Set<number>(),
                 clearDynamicObjRenderData: false,
@@ -231,13 +224,6 @@ export class WorkerFramePacketRuntime {
                     freeSlots: currentDynamic?.freeSlots ?? [],
                     nextSlot: currentDynamic?.nextSlot ?? 0,
                 });
-            }
-            if (mapObjState && "dynamicState" in mapObjState) {
-                pending.resetDynamicObjRenderState = dynamicMapObjStateToRenderData(
-                    mapObjState.dynamicState,
-                );
-                pending.resetDynamicRuntimeObjIds = mapObjState.dynamicState?.runtimeObjIds;
-                pending.resetDynamicObjRenderData = true;
             }
             applied = (applied + 1) | 0;
         }
@@ -498,8 +484,6 @@ export class WorkerFramePacketRuntime {
             });
             const pending = this.getPendingRuntimeMapObjUpdate(mapId | 0);
             pending.clearDynamicObjRenderData = true;
-            pending.resetDynamicObjRenderState = undefined;
-            pending.resetDynamicRuntimeObjIds = undefined;
             pending.appendDynamicObjRenders = [];
             pending.removeDynamicRuntimeObjIds.clear();
             applied = (applied + 1) | 0;
@@ -565,9 +549,6 @@ export class WorkerFramePacketRuntime {
             replaceStaticObjRenderData: boolean;
             staticObjRenderData?: ObjRenderData;
             hiddenStaticObjIndicesPacked?: Int32Array;
-            resetDynamicObjRenderData: boolean;
-            resetDynamicObjRenderState?: ObjRenderData;
-            resetDynamicRuntimeObjIds?: Int32Array;
             appendDynamicObjRenders?: ReadonlyArray<{
                 runtimeObjId: number;
                 interactId: number;
@@ -586,9 +567,6 @@ export class WorkerFramePacketRuntime {
                     (pending.hiddenStaticObjIndices.size | 0) > 0
                         ? Int32Array.from(pending.hiddenStaticObjIndices)
                         : undefined,
-                resetDynamicObjRenderData: pending.resetDynamicObjRenderData,
-                resetDynamicObjRenderState: pending.resetDynamicObjRenderState,
-                resetDynamicRuntimeObjIds: pending.resetDynamicRuntimeObjIds,
                 appendDynamicObjRenders:
                     (pending.appendDynamicObjRenders.length | 0) > 0
                         ? pending.appendDynamicObjRenders

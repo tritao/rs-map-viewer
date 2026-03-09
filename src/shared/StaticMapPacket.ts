@@ -103,14 +103,8 @@ export type StaticMapObjState = Readonly<{
     objTypeIds: Int32Array;
 }>;
 
-export type DynamicMapObjState = StaticMapObjState &
-    Readonly<{
-        runtimeObjIds: Int32Array;
-    }>;
-
 export type MapObjState = Readonly<{
     staticState?: StaticMapObjState;
-    dynamicState?: DynamicMapObjState;
 }>;
 
 export type MapRuntimeBootstrap = Readonly<{
@@ -188,14 +182,8 @@ type StaticMapObjRenderStateWire = Omit<StaticMapObjState, "renderState"> &
         modelInfoIndicesPacked: Int32Array;
     }>;
 
-type DynamicMapObjStateWire = StaticMapObjRenderStateWire &
-    Readonly<{
-        runtimeObjIds: Int32Array;
-    }>;
-
 type StaticMapObjStateWire = Readonly<{
     staticState?: StaticMapObjRenderStateWire;
-    dynamicState?: DynamicMapObjStateWire;
 }>;
 
 export type StaticMapWirePacket = Readonly<{
@@ -334,20 +322,6 @@ export function staticMapObjStateFromRenderData(
     };
 }
 
-export function dynamicMapObjStateFromRenderData(
-    objRenderData: ObjRenderData | undefined,
-    runtimeObjIds: Int32Array,
-): DynamicMapObjState | undefined {
-    const staticState = staticMapObjStateFromRenderData(objRenderData);
-    if (!staticState) {
-        return undefined;
-    }
-    return {
-        ...staticState,
-        runtimeObjIds,
-    };
-}
-
 export function mapObjStateFromRenderData(
     objRenderData: ObjRenderData | undefined,
 ): MapObjState | undefined {
@@ -372,12 +346,6 @@ export function staticMapObjStateToRenderData(
     };
 }
 
-export function dynamicMapObjStateToRenderData(
-    mapObjState: DynamicMapObjState | undefined,
-): ObjRenderData | undefined {
-    return staticMapObjStateToRenderData(mapObjState);
-}
-
 export function mapObjStateToRenderData(
     mapObjState: MapObjState | undefined,
 ): ObjRenderData | undefined {
@@ -385,7 +353,7 @@ export function mapObjStateToRenderData(
 }
 
 function encodeMapObjRenderStateWire(
-    mapObjState: StaticMapObjState | DynamicMapObjState | undefined,
+    mapObjState: StaticMapObjState | undefined,
 ): StaticMapObjRenderStateWire | undefined {
     if (!mapObjState) {
         return undefined;
@@ -432,17 +400,8 @@ function encodeMapObjStateWire(mapObjState: MapObjState | undefined): StaticMapO
     if (!mapObjState) {
         return undefined;
     }
-    const staticState = encodeMapObjRenderStateWire(mapObjState.staticState);
-    const dynamicStateBase = encodeMapObjRenderStateWire(mapObjState.dynamicState);
     return {
-        staticState,
-        dynamicState:
-            dynamicStateBase && mapObjState.dynamicState
-                ? {
-                      ...dynamicStateBase,
-                      runtimeObjIds: mapObjState.dynamicState.runtimeObjIds,
-                  }
-                : undefined,
+        staticState: encodeMapObjRenderStateWire(mapObjState.staticState),
     };
 }
 
@@ -452,17 +411,8 @@ function decodeMapObjStateWire(
     if (!mapObjState) {
         return undefined;
     }
-    const staticState = decodeMapObjRenderStateWire(mapObjState.staticState);
-    const dynamicStateBase = decodeMapObjRenderStateWire(mapObjState.dynamicState);
     return {
-        staticState,
-        dynamicState:
-            dynamicStateBase && mapObjState.dynamicState
-                ? {
-                      ...dynamicStateBase,
-                      runtimeObjIds: mapObjState.dynamicState.runtimeObjIds,
-                  }
-                : undefined,
+        staticState: decodeMapObjRenderStateWire(mapObjState.staticState),
     };
 }
 
@@ -599,10 +549,7 @@ function collectMapObjStateWireTransferables(
     if (!mapObjState) {
         return;
     }
-    const states: Array<StaticMapObjRenderStateWire | DynamicMapObjStateWire | undefined> = [
-        mapObjState.staticState,
-        mapObjState.dynamicState,
-    ];
+    const states: Array<StaticMapObjRenderStateWire | undefined> = [mapObjState.staticState];
     for (let index = 0; index < states.length; index++) {
         const state = states[index];
         if (!state) {
@@ -616,9 +563,6 @@ function collectMapObjStateWireTransferables(
         pushTransferableUnique(out, seen, state.modelInfoIndicesPacked.buffer as Transferable);
         pushTransferableUnique(out, seen, state.drawRangeBucketLengths.buffer as Transferable);
         pushTransferableUnique(out, seen, state.drawRangesPacked.buffer as Transferable);
-        if ("runtimeObjIds" in state && state.runtimeObjIds instanceof Int32Array) {
-            pushTransferableUnique(out, seen, state.runtimeObjIds.buffer as Transferable);
-        }
         for (const key of MAP_RENDER_DRAW_BUCKET_KEYS) {
             pushTransferableUnique(out, seen, state.modelInfoTextures[key].buffer as Transferable);
         }

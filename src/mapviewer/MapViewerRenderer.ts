@@ -370,9 +370,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
         this.setMapObjInteractionState(mapData.mapId | 0, {
             staticObjTypeIds: packet.runtimeBootstrap.mapObjState?.staticState?.objTypeIds,
-            dynamicObjTypeIds: packet.runtimeBootstrap.mapObjState?.dynamicState?.objTypeIds,
-            dynamicRuntimeObjIds:
-                packet.runtimeBootstrap.mapObjState?.dynamicState?.runtimeObjIds,
+            dynamicObjTypeIds: undefined,
+            dynamicRuntimeObjIds: undefined,
         });
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
@@ -716,14 +715,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                     mapObjState && "staticState" in mapObjState
                         ? mapObjState.staticState?.objTypeIds
                         : current?.staticObjTypeIds,
-                dynamicObjTypeIds:
-                    mapObjState && "dynamicState" in mapObjState
-                        ? mapObjState.dynamicState?.objTypeIds
-                        : current?.dynamicObjTypeIds,
-                dynamicRuntimeObjIds:
-                    mapObjState && "dynamicState" in mapObjState
-                        ? mapObjState.dynamicState?.runtimeObjIds
-                        : current?.dynamicRuntimeObjIds,
+                dynamicObjTypeIds: current?.dynamicObjTypeIds,
+                dynamicRuntimeObjIds: current?.dynamicRuntimeObjIds,
             });
         }
     }
@@ -797,12 +790,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         let staticObjTypeIds = update.replaceStaticObjRenderData
             ? update.staticObjRenderData?.objTypeIds
             : current?.staticObjTypeIds;
-        let dynamicObjTypeIds = update.resetDynamicObjRenderData
-            ? update.resetDynamicObjRenderState?.objTypeIds
-            : current?.dynamicObjTypeIds;
-        let dynamicRuntimeObjIds = update.resetDynamicObjRenderData
-            ? update.resetDynamicRuntimeObjIds
-            : current?.dynamicRuntimeObjIds;
+        let dynamicObjTypeIds = current?.dynamicObjTypeIds;
+        let dynamicRuntimeObjIds = current?.dynamicRuntimeObjIds;
 
         if (update.clearDynamicObjRenderData) {
             dynamicObjTypeIds = undefined;

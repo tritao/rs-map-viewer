@@ -371,8 +371,6 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             replaceStaticObjRenderData: boolean;
             staticObjRenderData?: ObjRenderData;
             hiddenStaticObjIndicesPacked?: Int32Array;
-            resetDynamicObjRenderData: boolean;
-            resetDynamicObjRenderState?: ObjRenderData;
             appendDynamicObjRenders?: ReadonlyArray<{
                 runtimeObjId: number;
                 interactId: number;
@@ -384,9 +382,6 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
     ): void {
         if (update.replaceStaticObjRenderData) {
             this.currentStaticObjRenderData = update.staticObjRenderData;
-        }
-        if (update.resetDynamicObjRenderData) {
-            this.currentDynamicObjRenderData = update.resetDynamicObjRenderState;
         }
         if (update.clearDynamicObjRenderData) {
             for (const chunk of this.dynamicObjChunksByRuntimeObjId.values()) {
@@ -451,18 +446,11 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             this.objModelInfoTexturesByKey = [];
             this.objDrawCallsByKey = [];
         }
-        if (update.resetDynamicObjRenderData) {
-            this.dynamicObjVertexArray?.delete();
-            this.dynamicObjInterleavedBuffer?.delete();
-            this.dynamicObjIndexBuffer?.delete();
-            this.createDynamicObjGeometryBuffers(app, dynamicObjRenderData);
-        } else {
-            for (const texture of this.dynamicObjModelInfoTexturesByKey ?? []) {
-                texture.delete();
-            }
-            this.dynamicObjModelInfoTexturesByKey = [];
-            this.dynamicObjDrawCallsByKey = [];
+        for (const texture of this.dynamicObjModelInfoTexturesByKey ?? []) {
+            texture.delete();
         }
+        this.dynamicObjModelInfoTexturesByKey = [];
+        this.dynamicObjDrawCallsByKey = [];
         this.createObjModelInfoTextures(app, visibleStaticObjRenderData);
         this.createObjDrawCalls(
             visibleStaticObjRenderData,
