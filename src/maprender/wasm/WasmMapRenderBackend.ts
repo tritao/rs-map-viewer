@@ -383,6 +383,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 Scene.MAP_SQUARE_SIZE + borderSize * 2,
                 input.smoothTerrain === true,
                 input.loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+                input.locPlacementOverrides,
             );
             objRenderData = buildObjRenderData({
                 loadObjs: true,

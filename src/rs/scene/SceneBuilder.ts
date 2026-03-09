@@ -19,6 +19,7 @@ import { SceneRuntimeServices } from "./SceneRuntimeServices";
 import { OverlayCornerSet, OverlayEdgeSet } from "./SceneTileModel";
 import { computeSceneTileModelForTile } from "./computeSceneTileModel";
 import { decodeLocPlacementsFromBytes } from "./decodeLocPlacements";
+import type { SceneLocPlacementOverride } from "./SceneBuildStages";
 import {
     TerrainSquareDecodeScratch,
     applyDecodedTerrainSquareToScene,
@@ -225,9 +226,18 @@ export class SceneBuilder {
         offsetX: number,
         offsetY: number,
         locLoadType: LocLoadType,
+        sourceMapId: number,
+        placementOverrides?: ReadonlyMap<number, SceneLocPlacementOverride>,
     ): void {
         const placements = decodeLocPlacementsFromBytes(data);
         for (const placement of placements) {
+            const override = placementOverrides?.get(placement.placementIndex | 0);
+            if (override?.remove === true) {
+                continue;
+            }
+            const placementId = override?.locTypeId ?? placement.id;
+            const placementType = override?.locModelType ?? placement.type;
+            const placementRotation = override?.rotation ?? placement.rotation;
             const sceneX = placement.localX + offsetX;
             const sceneY = placement.localY + offsetY;
 
@@ -247,11 +257,14 @@ export class SceneBuilder {
                     placement.level,
                     sceneX,
                     sceneY,
-                    placement.id,
-                    placement.type,
-                    placement.rotation,
+                    placementId | 0,
+                    placementType,
+                    placementRotation | 0,
                     collisionMap,
                     locLoadType,
+                    false,
+                    sourceMapId | 0,
+                    placement.placementIndex | 0,
                 );
             }
         }
@@ -268,6 +281,8 @@ export class SceneBuilder {
         collisionMap: CollisionMap | undefined,
         locLoadType: LocLoadType,
         idIsResolved: boolean = false,
+        sourceMapId: number = -1,
+        placementIndex: number = -1,
     ): void {
         let locType: LocType | undefined;
         if (idIsResolved) {
@@ -353,25 +368,32 @@ export class SceneBuilder {
             seqId = locType.randomSeqIds[0];
             // seqId = locType.randomSeqIds[(Math.random() * locType.randomSeqIds.length) | 0];
         }
+        const seqRandomStart = locType.seqRandomStart;
 
         const isEntity =
             seqId !== -1 ||
             locType.transforms !== undefined ||
             locLoadType === LocLoadType.NO_MODELS;
+        const createLocEntity = (entityType: LocModelType, entityRotation: number): LocEntity =>
+            new LocEntity(
+                id,
+                entityType,
+                entityRotation,
+                level,
+                tileX,
+                tileY,
+                seqId,
+                seqRandomStart,
+                type,
+                rotation,
+                sourceMapId,
+                placementIndex,
+            );
 
         if (type === LocModelType.FLOOR_DECORATION) {
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    type,
-                    rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(type, rotation);
             } else {
                 entity = this.locModelLoader.getModel(locType, type, rotation, contourGroundInfo);
             }
@@ -384,16 +406,7 @@ export class SceneBuilder {
             const [normalVariant] = expandLocPlacementModelVariants(type, rotation);
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    normalVariant.type,
-                    normalVariant.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(normalVariant.type, normalVariant.rotation);
             } else {
                 entity = this.locModelLoader.getModel(
                     locType,
@@ -443,16 +456,7 @@ export class SceneBuilder {
         } else if (type >= LocModelType.ROOF_SLOPED) {
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    type,
-                    rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(type, rotation);
             } else {
                 entity = this.locModelLoader.getModel(locType, type, rotation, contourGroundInfo);
             }
@@ -461,16 +465,7 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL) {
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    type,
-                    rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(type, rotation);
             } else {
                 entity = this.locModelLoader.getModel(locType, type, rotation, contourGroundInfo);
             }
@@ -514,16 +509,7 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL_TRI_CORNER) {
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    type,
-                    rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(type, rotation);
             } else {
                 entity = this.locModelLoader.getModel(locType, type, rotation, contourGroundInfo);
             }
@@ -553,26 +539,8 @@ export class SceneBuilder {
             let entity0: Entity | undefined;
             let entity1: Entity | undefined;
             if (isEntity) {
-                entity0 = new LocEntity(
-                    id,
-                    cornerPrimary.type,
-                    cornerPrimary.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
-                entity1 = new LocEntity(
-                    id,
-                    cornerSecondary.type,
-                    cornerSecondary.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity0 = createLocEntity(cornerPrimary.type, cornerPrimary.rotation);
+                entity1 = createLocEntity(cornerSecondary.type, cornerSecondary.rotation);
             } else {
                 entity0 = this.locModelLoader.getModel(
                     locType,
@@ -605,16 +573,7 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL_RECT_CORNER) {
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    type,
-                    rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(type, rotation);
             } else {
                 entity = this.locModelLoader.getModel(locType, type, rotation, contourGroundInfo);
             }
@@ -639,16 +598,7 @@ export class SceneBuilder {
         } else if (type === LocModelType.WALL_DIAGONAL) {
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    type,
-                    rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(type, rotation);
             } else {
                 entity = this.locModelLoader.getModel(locType, type, rotation, contourGroundInfo);
             }
@@ -671,16 +621,7 @@ export class SceneBuilder {
             const [insideVariant] = expandLocPlacementModelVariants(type, rotation);
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    insideVariant.type,
-                    insideVariant.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(insideVariant.type, insideVariant.rotation);
             } else {
                 entity = this.locModelLoader.getModel(
                     locType,
@@ -724,16 +665,7 @@ export class SceneBuilder {
             const [outsideVariant] = expandLocPlacementModelVariants(type, rotation);
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
-                    outsideVariant.type,
-                    outsideVariant.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
+                entity = createLocEntity(outsideVariant.type, outsideVariant.rotation);
             } else {
                 entity = this.locModelLoader.getModel(
                     locType,
@@ -771,15 +703,9 @@ export class SceneBuilder {
             const [diagonalOutsideVariant] = expandLocPlacementModelVariants(type, rotation);
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
+                entity = createLocEntity(
                     diagonalOutsideVariant.type,
                     diagonalOutsideVariant.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
                 );
             } else {
                 entity = this.locModelLoader.getModel(
@@ -810,15 +736,9 @@ export class SceneBuilder {
 
             let entity: Entity | undefined;
             if (isEntity) {
-                entity = new LocEntity(
-                    id,
+                entity = createLocEntity(
                     diagonalInsideVariant.type,
                     diagonalInsideVariant.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
                 );
             } else {
                 entity = this.locModelLoader.getModel(
@@ -857,25 +777,10 @@ export class SceneBuilder {
             let entity0: Entity | undefined;
             let entity1: Entity | undefined;
             if (isEntity) {
-                entity0 = new LocEntity(
-                    id,
-                    diagonalDoublePrimary.type,
-                    diagonalDoublePrimary.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
-                );
-                entity1 = new LocEntity(
-                    id,
+                entity0 = createLocEntity(diagonalDoublePrimary.type, diagonalDoublePrimary.rotation);
+                entity1 = createLocEntity(
                     diagonalDoubleSecondary.type,
                     diagonalDoubleSecondary.rotation,
-                    level,
-                    tileX,
-                    tileY,
-                    seqId,
-                    locType.seqRandomStart,
                 );
             } else {
                 entity0 = this.locModelLoader.getModel(

@@ -1,6 +1,7 @@
 import { MapBytesProvider } from "../map/MapBytesProvider";
 import { Scene } from "./Scene";
 import {
+    type SceneLocPlacementOverride,
     createSceneBuildContext,
     decodeLocsStage,
     decodeTerrainStage,
@@ -18,6 +19,7 @@ export function buildSceneFromMapBytesProvider(
     sizeY: number,
     smoothUnderlays: boolean = false,
     locLoadType: LocLoadType = LocLoadType.MODELS,
+    locPlacementOverrides?: ReadonlyArray<SceneLocPlacementOverride>,
 ): Scene {
     const context = createSceneBuildContext(
         baseX,
@@ -26,6 +28,7 @@ export function buildSceneFromMapBytesProvider(
         sizeY,
         smoothUnderlays,
         locLoadType,
+        locPlacementOverrides,
     );
     const scene = new Scene(Scene.MAX_LEVELS, context.sizeX, context.sizeY);
 
@@ -36,3 +39,5 @@ export function buildSceneFromMapBytesProvider(
 
     return scene;
 }
+
+export type { SceneLocPlacementOverride } from "./SceneBuildStages";

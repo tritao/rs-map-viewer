@@ -5,6 +5,7 @@ import {
     type MapData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
+import type { SceneLocPlacementOverride } from "../rs/scene/buildSceneFromMapBytesProvider";
 import type { LocType } from "../rs/config/loctype/LocType";
 import type { NpcType } from "../rs/config/npctype/NpcType";
 import type { ObjType } from "../rs/config/objtype/ObjType";
@@ -187,6 +188,10 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly worldSession: WorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
+    private readonly locPlacementOverridesByMapId = new Map<
+        number,
+        Map<number, SceneLocPlacementOverride>
+    >();
     private readonly objInteractionStateByMapId = new Map<
         number,
         Readonly<{
@@ -269,6 +274,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         mapY: number,
     ): Promise<StaticMapPacket | undefined> {
         const r = this.renderer;
+        const mapId = getMapSquareId(mapX, mapY);
         const input: SdMapLoaderInput = {
             mapX,
             mapY,
@@ -279,8 +285,18 @@ export class MapViewerRenderer extends RendererMainLoop {
             smoothTerrain: r.smoothTerrain,
             minimizeDrawCalls: !r.hasMultiDraw,
             loadedTextureIds: Int32Array.from(r.loadedTextureIds),
+            locPlacementOverrides: Array.from(
+                this.locPlacementOverridesByMapId.get(mapId | 0)?.values() ?? [],
+            ),
         };
         return await this.renderWorkerPool.build.loadStaticMapPacket(input);
+    }
+
+    private static decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
+        return {
+            mapX: (mapId >> 8) & 0xff,
+            mapY: mapId & 0xff,
+        };
     }
 
     private recordRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
@@ -626,6 +642,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initializeCacheState(): void {
         this.animatedLocsByMapId.clear();
+        this.locPlacementOverridesByMapId.clear();
         this.objInteractionStateByMapId.clear();
         this.latestRenderFramePacket = undefined;
         this.renderer.initCache();
@@ -696,6 +713,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.animatedLocsByMapId.clear();
+        this.locPlacementOverridesByMapId.clear();
         this.objInteractionStateByMapId.clear();
         this.latestRenderFramePacket = undefined;
         this.worldSession.reset();
@@ -707,6 +725,63 @@ export class MapViewerRenderer extends RendererMainLoop {
     private getAnimatedLocTypeId(mapId: number, locIndex: number): number | undefined {
         const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
         return animatedLocs?.[locIndex | 0]?.locTypeId;
+    }
+
+    private getAnimatedLocData(mapId: number, locIndex: number): LocAnimatedData | undefined {
+        const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
+        return animatedLocs?.[locIndex | 0];
+    }
+
+    private setLocPlacementOverride(override: SceneLocPlacementOverride): void {
+        const sourceMapId = override.sourceMapId | 0;
+        let overrides = this.locPlacementOverridesByMapId.get(sourceMapId);
+        if (!overrides) {
+            overrides = new Map<number, SceneLocPlacementOverride>();
+            this.locPlacementOverridesByMapId.set(sourceMapId, overrides);
+        }
+        overrides.set(override.placementIndex | 0, override);
+    }
+
+    private clearLocPlacementOverride(sourceMapId: number, placementIndex: number): void {
+        const overrides = this.locPlacementOverridesByMapId.get(sourceMapId | 0);
+        if (!overrides) {
+            return;
+        }
+        overrides.delete(placementIndex | 0);
+        if ((overrides.size | 0) <= 0) {
+            this.locPlacementOverridesByMapId.delete(sourceMapId | 0);
+        }
+    }
+
+    private async reloadLoadedMap(mapId: number): Promise<boolean> {
+        const normalizedMapId = mapId | 0;
+        const { mapX, mapY } = MapViewerRenderer.decodeMapSquareFromId(normalizedMapId);
+        const staticMapPacket = await this.loadStaticMapPacket(mapX, mapY);
+        if (!staticMapPacket || !this.renderer.isValidMapData(staticMapPacket.mapData)) {
+            return false;
+        }
+
+        this.animatedLocsByMapId.delete(normalizedMapId);
+        this.objInteractionStateByMapId.delete(normalizedMapId);
+        this.renderer.removeMap({ mapId: normalizedMapId });
+        this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
+
+        try {
+            const ok = await this.worldSession.activateLoadedMap({
+                staticMap: staticMapPacket,
+                activationVersion: this.worldSession.captureActivationVersion(),
+            });
+            if (!ok) {
+                return false;
+            }
+        } catch (error: unknown) {
+            console.warn(`[map-render] failed to reload worker state for ${mapX},${mapY}`, error);
+            return false;
+        }
+
+        await this.finalizeLoadedMap(staticMapPacket);
+        this.renderFrameCoordinator.invalidateLatestPacket();
+        return true;
     }
 
     private setMapObjInteractionState(
@@ -942,6 +1017,40 @@ export class MapViewerRenderer extends RendererMainLoop {
             });
         };
     }
+
+    private onRotateLoc = (entry: OsrsMenuEntry) => {
+        const locInstance = this.getLocInstanceFromMenuEntry(entry);
+        this.mapViewer.closeMenu();
+        if (!locInstance) {
+            return;
+        }
+        const locData = this.getAnimatedLocData(locInstance.mapId | 0, locInstance.locIndex | 0);
+        if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
+            return;
+        }
+        this.setLocPlacementOverride({
+            sourceMapId: locData.sourceMapId | 0,
+            placementIndex: locData.placementIndex | 0,
+            locTypeId: locData.locTypeId | 0,
+            locModelType: locData.locModelType,
+            rotation: ((locData.rotation | 0) + 1) & 0x3,
+        });
+        void this.reloadLoadedMap(locData.sourceMapId | 0);
+    };
+
+    private onResetLocOverride = (entry: OsrsMenuEntry) => {
+        const locInstance = this.getLocInstanceFromMenuEntry(entry);
+        this.mapViewer.closeMenu();
+        if (!locInstance) {
+            return;
+        }
+        const locData = this.getAnimatedLocData(locInstance.mapId | 0, locInstance.locIndex | 0);
+        if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
+            return;
+        }
+        this.clearLocPlacementOverride(locData.sourceMapId | 0, locData.placementIndex | 0);
+        void this.reloadLoadedMap(locData.sourceMapId | 0);
+    };
 
     private onSetLocAnimationPaused(paused: boolean): (entry: OsrsMenuEntry) => void {
         return (entry) => {
@@ -1383,6 +1492,24 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 if (picked && target.locInstance) {
+                    menuEntries.push({
+                        option: "Rotate loc",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        actionTarget,
+                        onClick: this.onRotateLoc,
+                    });
+                    menuEntries.push({
+                        option: "Reset loc override",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        actionTarget,
+                        onClick: this.onResetLocOverride,
+                    });
                     menuEntries.push({
                         option: "Hide loc",
                         targetId: target.locType.id,

@@ -5,6 +5,8 @@ export type LocAnimatedData = {
     locTypeId: number;
     locModelType: LocModelType;
     rotation: number;
+    sourceMapId: number;
+    placementIndex: number;
     level: number;
     tileX: number;
     tileY: number;

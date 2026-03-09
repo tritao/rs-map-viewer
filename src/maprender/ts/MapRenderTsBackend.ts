@@ -352,6 +352,7 @@ export class MapRenderTsBackend {
                 mapSize,
                 smoothTerrain,
                 loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+                input.locPlacementOverrides,
             ),
         );
 

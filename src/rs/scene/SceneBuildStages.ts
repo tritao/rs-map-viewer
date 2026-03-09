@@ -1,5 +1,6 @@
 import { MapBytesProvider } from "../map/MapBytesProvider";
 import { getMapSquareId } from "../map/MapFileIndex";
+import { LocModelType } from "../config/loctype/LocModelType";
 import { Scene } from "./Scene";
 import { LocLoadType, SceneBuilder } from "./SceneBuilder";
 
@@ -17,8 +18,41 @@ export type SceneBuildContext = Readonly<{
     sizeY: number;
     smoothUnderlays: boolean;
     locLoadType: LocLoadType;
+    locPlacementOverridesByMapId?: ReadonlyMap<number, ReadonlyMap<number, SceneLocPlacementOverride>>;
     bounds: SceneBuildMapBounds;
 }>;
+
+export type SceneLocPlacementOverride = Readonly<{
+    sourceMapId: number;
+    placementIndex: number;
+    remove?: boolean;
+    locTypeId?: number;
+    locModelType?: LocModelType;
+    rotation?: number;
+}>;
+
+function createLocPlacementOverridesByMapId(
+    overrides?: ReadonlyArray<SceneLocPlacementOverride>,
+): ReadonlyMap<number, ReadonlyMap<number, SceneLocPlacementOverride>> | undefined {
+    if (!overrides || (overrides.length | 0) <= 0) {
+        return undefined;
+    }
+    const byMapId = new Map<number, Map<number, SceneLocPlacementOverride>>();
+    for (let index = 0; index < overrides.length; index++) {
+        const override = overrides[index];
+        if (!override) {
+            continue;
+        }
+        const sourceMapId = override.sourceMapId | 0;
+        let byPlacementIndex = byMapId.get(sourceMapId);
+        if (!byPlacementIndex) {
+            byPlacementIndex = new Map<number, SceneLocPlacementOverride>();
+            byMapId.set(sourceMapId, byPlacementIndex);
+        }
+        byPlacementIndex.set(override.placementIndex | 0, override);
+    }
+    return byMapId;
+}
 
 export function computeSceneBuildMapBounds(
     baseX: number,
@@ -41,6 +75,7 @@ export function createSceneBuildContext(
     sizeY: number,
     smoothUnderlays: boolean,
     locLoadType: LocLoadType,
+    locPlacementOverrides?: ReadonlyArray<SceneLocPlacementOverride>,
 ): SceneBuildContext {
     return {
         baseX,
@@ -49,6 +84,7 @@ export function createSceneBuildContext(
         sizeY,
         smoothUnderlays,
         locLoadType,
+        locPlacementOverridesByMapId: createLocPlacementOverridesByMapId(locPlacementOverrides),
         bounds: computeSceneBuildMapBounds(baseX, baseY, sizeX, sizeY),
     };
 }
@@ -112,7 +148,7 @@ export function decodeLocsStage(
     scene: Scene,
     context: SceneBuildContext,
 ): void {
-    const { bounds, baseX, baseY, locLoadType } = context;
+    const { bounds, baseX, baseY, locLoadType, locPlacementOverridesByMapId } = context;
     for (let mx = bounds.mapStartX; mx < bounds.mapEndX; mx++) {
         for (let my = bounds.mapStartY; my < bounds.mapEndY; my++) {
             const locData = mapBytesProvider.getLocBytes(mx, my);
@@ -121,7 +157,16 @@ export function decodeLocsStage(
             }
             const offsetX = mx * Scene.MAP_SQUARE_SIZE - baseX;
             const offsetY = my * Scene.MAP_SQUARE_SIZE - baseY;
-            sceneBuilder.decodeLocs(scene, locData, offsetX, offsetY, locLoadType);
+            const sourceMapId = getMapSquareId(mx, my);
+            sceneBuilder.decodeLocs(
+                scene,
+                locData,
+                offsetX,
+                offsetY,
+                locLoadType,
+                sourceMapId,
+                locPlacementOverridesByMapId?.get(sourceMapId),
+            );
         }
     }
 }

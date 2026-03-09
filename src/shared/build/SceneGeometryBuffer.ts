@@ -605,8 +605,10 @@ export class SceneGeometryBuffer {
         }
         return {
             locTypeId: locTypeId | 0,
-            locModelType: loc.entity.type,
-            rotation: loc.entity.rotation | 0,
+            locModelType: loc.entity.sourceType,
+            rotation: loc.entity.sourceRotation | 0,
+            sourceMapId: loc.entity.sourceMapId | 0,
+            placementIndex: loc.entity.placementIndex | 0,
             level: loc.entity.level | 0,
             tileX: loc.entity.tileX | 0,
             tileY: loc.entity.tileY | 0,

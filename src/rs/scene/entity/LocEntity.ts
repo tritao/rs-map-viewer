@@ -11,6 +11,10 @@ export class LocEntity extends Entity {
         readonly tileY: number,
         readonly seqId: number,
         readonly seqRandomStart: boolean,
+        readonly sourceType: LocModelType = type,
+        readonly sourceRotation: number = rotation,
+        readonly sourceMapId: number = -1,
+        readonly placementIndex: number = -1,
     ) {
         super();
     }

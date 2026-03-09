@@ -2,6 +2,7 @@ import { LocModelType } from "../config/loctype/LocModelType";
 import { ByteBuffer } from "../io/ByteBuffer";
 
 export type LocPlacement = {
+    placementIndex: number;
     id: number;
     level: number;
     localX: number;
@@ -14,6 +15,7 @@ export function decodeLocPlacementsFromBytes(data: Uint8Array): LocPlacement[] {
     const buffer = new ByteBuffer(data);
 
     const placements: LocPlacement[] = [];
+    let placementIndex = 0;
 
     let id = -1;
     let idDelta: number;
@@ -35,6 +37,7 @@ export function decodeLocPlacementsFromBytes(data: Uint8Array): LocPlacement[] {
             const rotation = attributes & 0x3;
 
             placements.push({
+                placementIndex: placementIndex++,
                 id,
                 level,
                 localX,

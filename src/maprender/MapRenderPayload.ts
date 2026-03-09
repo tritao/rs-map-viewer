@@ -1,3 +1,5 @@
+import type { SceneLocPlacementOverride } from "../rs/scene/buildSceneFromMapBytesProvider";
+
 export {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type MapData,
@@ -23,4 +25,5 @@ export type SdMapLoaderInput = Readonly<{
     minimizeDrawCalls: boolean;
 
     loadedTextureIds: Int32Array;
+    locPlacementOverrides?: ReadonlyArray<SceneLocPlacementOverride>;
 }>;
