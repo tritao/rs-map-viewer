@@ -15,10 +15,17 @@ export type WorldNpcLifecycleInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
 }>;
 
-export type WorldObjStateInput = Readonly<{
+export type WorldNpcInput = Readonly<{
+    lifecycle?: WorldNpcLifecycleInput;
+}>;
+
+export type WorldObjStaticInput = Readonly<{
     stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
     additions?: ReadonlyArray<WorldMapObjAddition>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
+}>;
+
+export type WorldObjDynamicInput = Readonly<{
     dynamicSpawns?: ReadonlyArray<
         Readonly<{
             mapId: number;
@@ -39,15 +46,24 @@ export type WorldObjStateInput = Readonly<{
     clearDynamicMaps?: ReadonlyArray<number>;
 }>;
 
+export type WorldObjInput = Readonly<{
+    static?: WorldObjStaticInput;
+    dynamic?: WorldObjDynamicInput;
+}>;
+
 export type WorldLocAnimationInput = Readonly<{
     animationResets?: ReadonlyArray<WorldLocAnimationReset>;
     animationPauseStates?: ReadonlyArray<WorldLocAnimationPauseState>;
 }>;
 
+export type WorldLocInput = Readonly<{
+    animation?: WorldLocAnimationInput;
+}>;
+
 export type WorldInput = Readonly<{
-    npc?: WorldNpcLifecycleInput;
-    obj?: WorldObjStateInput;
-    loc?: WorldLocAnimationInput;
+    npc?: WorldNpcInput;
+    obj?: WorldObjInput;
+    loc?: WorldLocInput;
 }>;
 
 export type WorldMapActivationInput = Readonly<{

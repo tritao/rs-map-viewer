@@ -462,16 +462,25 @@ export class MapViewerRenderer extends RendererMainLoop {
         if ((applied | 0) > 0) {
             this.applyMapObjTypeIdsFromWorldInput(input);
         }
+        const objStaticInput = input.obj?.static;
+        const objDynamicInput = input.obj?.dynamic;
+        const locAnimationInput = input.loc?.animation;
         const hasRenderAffectingWorldInput =
-            (!!input.obj?.stateReplacements &&
-                (input.obj.stateReplacements.length | 0) > 0) ||
-            (!!input.obj?.additions && (input.obj.additions.length | 0) > 0) ||
-            (!!input.obj?.removals && (input.obj.removals.length | 0) > 0) ||
-            (!!input.obj?.dynamicSpawns && (input.obj.dynamicSpawns.length | 0) > 0) ||
-            (!!input.obj?.dynamicDespawns && (input.obj.dynamicDespawns.length | 0) > 0) ||
-            (!!input.obj?.clearDynamicMaps && (input.obj.clearDynamicMaps.length | 0) > 0) ||
-            (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
-            (!!input.loc?.animationPauseStates && (input.loc.animationPauseStates.length | 0) > 0);
+            (!!objStaticInput?.stateReplacements &&
+                (objStaticInput.stateReplacements.length | 0) > 0) ||
+            (!!objStaticInput?.additions && (objStaticInput.additions.length | 0) > 0) ||
+            (!!objStaticInput?.removals && (objStaticInput.removals.length | 0) > 0) ||
+            (!!objDynamicInput?.dynamicSpawns && (objDynamicInput.dynamicSpawns.length | 0) > 0) ||
+            (!!objDynamicInput?.dynamicDespawns &&
+                (objDynamicInput.dynamicDespawns.length | 0) > 0) ||
+            (!!objDynamicInput?.dynamicUpdates &&
+                (objDynamicInput.dynamicUpdates.length | 0) > 0) ||
+            (!!objDynamicInput?.clearDynamicMaps &&
+                (objDynamicInput.clearDynamicMaps.length | 0) > 0) ||
+            (!!locAnimationInput?.animationResets &&
+                (locAnimationInput.animationResets.length | 0) > 0) ||
+            (!!locAnimationInput?.animationPauseStates &&
+                (locAnimationInput.animationPauseStates.length | 0) > 0);
         if ((applied | 0) > 0 && hasRenderAffectingWorldInput) {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
@@ -483,13 +492,15 @@ export class MapViewerRenderer extends RendererMainLoop {
     ): Promise<void> {
         await this.applyWorldInput({
             obj: {
-                stateReplacements: [
-                    {
-                        kind: "replaceState",
-                        mapId: packet.mapData.mapId | 0,
-                        mapObjState: packet.runtimeBootstrap.mapObjState,
-                    },
-                ],
+                static: {
+                    stateReplacements: [
+                        {
+                            kind: "replaceState",
+                            mapId: packet.mapData.mapId | 0,
+                            mapObjState: packet.runtimeBootstrap.mapObjState,
+                        },
+                    ],
+                },
             },
         });
     }
@@ -516,7 +527,9 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         return await this.applyWorldInput({
             loc: {
-                animationResets,
+                animation: {
+                    animationResets,
+                },
             },
         });
     }
@@ -548,7 +561,9 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         return await this.applyWorldInput({
             obj: {
-                additions,
+                static: {
+                    additions,
+                },
             },
         });
     }
@@ -556,16 +571,21 @@ export class MapViewerRenderer extends RendererMainLoop {
     async spawnGroundItemAtCamera(objTypeId: number, count: number): Promise<number> {
         return await this.applyWorldInput({
             obj: {
-                dynamicSpawns: [
-                    {
-                        mapId: getMapSquareId(this.camera.getMapX() >> 6, this.camera.getMapY() >> 6),
-                        objTypeId: objTypeId | 0,
-                        count: Math.max(1, count | 0),
-                        x: this.camera.getMapX() | 0,
-                        y: this.camera.getMapY() | 0,
-                        plane: 0,
-                    },
-                ],
+                dynamic: {
+                    dynamicSpawns: [
+                        {
+                            mapId: getMapSquareId(
+                                this.camera.getMapX() >> 6,
+                                this.camera.getMapY() >> 6,
+                            ),
+                            objTypeId: objTypeId | 0,
+                            count: Math.max(1, count | 0),
+                            x: this.camera.getMapX() | 0,
+                            y: this.camera.getMapY() | 0,
+                            plane: 0,
+                        },
+                    ],
+                },
             },
         });
     }
@@ -585,7 +605,9 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         return await this.applyWorldInput({
             obj: {
-                clearDynamicMaps,
+                dynamic: {
+                    clearDynamicMaps,
+                },
             },
         });
     }
@@ -699,7 +721,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private applyMapObjTypeIdsFromWorldInput(input: WorldInput): void {
-        const stateReplacements = input.obj?.stateReplacements;
+        const stateReplacements = input.obj?.static?.stateReplacements;
         if (!stateReplacements) {
             return;
         }
@@ -884,7 +906,9 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         void this.applyWorldInput({
             loc: {
-                animationResets: [locInstance],
+                animation: {
+                    animationResets: [locInstance],
+                },
             },
         });
     };
@@ -898,13 +922,15 @@ export class MapViewerRenderer extends RendererMainLoop {
             }
             void this.applyWorldInput({
                 loc: {
-                    animationPauseStates: [
-                        {
-                            mapId: locInstance.mapId | 0,
-                            locIndex: locInstance.locIndex | 0,
-                            paused,
-                        },
-                    ],
+                    animation: {
+                        animationPauseStates: [
+                            {
+                                mapId: locInstance.mapId | 0,
+                                locIndex: locInstance.locIndex | 0,
+                                paused,
+                            },
+                        ],
+                    },
                 },
             });
         };
@@ -918,14 +944,16 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         void this.applyWorldInput({
             npc: {
-                lifecycleEvents: [
-                    {
-                        kind: "despawn",
-                        mapId: npcInstance.mapId | 0,
-                        npcInstanceId: npcInstance.npcInstanceId | 0,
-                        seq: 0x7fffffff,
-                    },
-                ],
+                lifecycle: {
+                    lifecycleEvents: [
+                        {
+                            kind: "despawn",
+                            mapId: npcInstance.mapId | 0,
+                            npcInstanceId: npcInstance.npcInstanceId | 0,
+                            seq: 0x7fffffff,
+                        },
+                    ],
+                },
             },
         });
     };
@@ -939,24 +967,28 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (actionTarget.objInstance.kind === "dynamic") {
             void this.applyWorldInput({
                 obj: {
-                    dynamicDespawns: [
-                        {
-                            mapId: actionTarget.objInstance.mapId | 0,
-                            runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
-                        },
-                    ],
+                    dynamic: {
+                        dynamicDespawns: [
+                            {
+                                mapId: actionTarget.objInstance.mapId | 0,
+                                runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
+                            },
+                        ],
+                    },
                 },
             });
             return;
         }
         void this.applyWorldInput({
             obj: {
-                removals: [
-                    {
-                        mapId: actionTarget.objInstance.mapId | 0,
-                        objIndex: actionTarget.objInstance.objIndex | 0,
-                    },
-                ],
+                static: {
+                    removals: [
+                        {
+                            mapId: actionTarget.objInstance.mapId | 0,
+                            objIndex: actionTarget.objInstance.objIndex | 0,
+                        },
+                    ],
+                },
             },
         });
     };
@@ -972,20 +1004,22 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         void this.applyWorldInput({
             obj: {
-                dynamicUpdates: [
-                    {
-                        mapId: getMapSquareId(
-                            this.camera.getMapX() >> 6,
-                            this.camera.getMapY() >> 6,
-                        ),
-                        runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
-                        objTypeId: actionTarget.objTypeId | 0,
-                        count: 1,
-                        x: this.camera.getMapX() | 0,
-                        y: this.camera.getMapY() | 0,
-                        plane: 0,
-                    },
-                ],
+                dynamic: {
+                    dynamicUpdates: [
+                        {
+                            mapId: getMapSquareId(
+                                this.camera.getMapX() >> 6,
+                                this.camera.getMapY() >> 6,
+                            ),
+                            runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
+                            objTypeId: actionTarget.objTypeId | 0,
+                            count: 1,
+                            x: this.camera.getMapX() | 0,
+                            y: this.camera.getMapY() | 0,
+                            plane: 0,
+                        },
+                    ],
+                },
             },
         });
     };

@@ -136,7 +136,7 @@ export class WorkerWorldRuntime implements WorldRuntime {
     }
 
     private async applyNpcInput(input: WorldInput): Promise<number> {
-        const npcLifecycleEvents = input.npc?.lifecycleEvents;
+        const npcLifecycleEvents = input.npc?.lifecycle?.lifecycleEvents;
         if (!npcLifecycleEvents || (npcLifecycleEvents.length | 0) <= 0) {
             return 0;
         }
@@ -145,7 +145,7 @@ export class WorkerWorldRuntime implements WorldRuntime {
 
     private async applyObjInput(input: WorldInput): Promise<number> {
         let applied = 0;
-        const objStateReplacements = input.obj?.stateReplacements;
+        const objStateReplacements = input.obj?.static?.stateReplacements;
         if (objStateReplacements && (objStateReplacements.length | 0) > 0) {
             applied =
                 (applied +
@@ -154,35 +154,35 @@ export class WorkerWorldRuntime implements WorldRuntime {
                     ))) |
                 0;
         }
-        const objAdditions = input.obj?.additions;
+        const objAdditions = input.obj?.static?.additions;
         if (objAdditions && (objAdditions.length | 0) > 0) {
             applied =
                 (applied + (await this.deps.simRuntime.applyMapObjAdditions(objAdditions))) | 0;
         }
-        const objRemovals = input.obj?.removals;
+        const objRemovals = input.obj?.static?.removals;
         if (objRemovals && (objRemovals.length | 0) > 0) {
             applied = (applied + (await this.deps.simRuntime.applyMapObjRemovals(objRemovals))) | 0;
         }
-        const dynamicSpawns = input.obj?.dynamicSpawns;
+        const dynamicSpawns = input.obj?.dynamic?.dynamicSpawns;
         if (dynamicSpawns && (dynamicSpawns.length | 0) > 0) {
             applied =
                 (applied + (await this.deps.simRuntime.applyDynamicMapObjSpawns(dynamicSpawns))) |
                 0;
         }
-        const dynamicDespawns = input.obj?.dynamicDespawns;
+        const dynamicDespawns = input.obj?.dynamic?.dynamicDespawns;
         if (dynamicDespawns && (dynamicDespawns.length | 0) > 0) {
             applied =
                 (applied +
                     (await this.deps.simRuntime.applyDynamicMapObjDespawns(dynamicDespawns))) |
                 0;
         }
-        const dynamicUpdates = input.obj?.dynamicUpdates;
+        const dynamicUpdates = input.obj?.dynamic?.dynamicUpdates;
         if (dynamicUpdates && (dynamicUpdates.length | 0) > 0) {
             applied =
                 (applied + (await this.deps.simRuntime.applyDynamicMapObjUpdates(dynamicUpdates))) |
                 0;
         }
-        const clearDynamicMaps = input.obj?.clearDynamicMaps;
+        const clearDynamicMaps = input.obj?.dynamic?.clearDynamicMaps;
         if (clearDynamicMaps && (clearDynamicMaps.length | 0) > 0) {
             applied =
                 (applied + (await this.deps.simRuntime.clearDynamicMapObjs(clearDynamicMaps))) | 0;
@@ -192,14 +192,14 @@ export class WorkerWorldRuntime implements WorldRuntime {
 
     private async applyLocInput(input: WorldInput): Promise<number> {
         let applied = 0;
-        const animationResets = input.loc?.animationResets;
+        const animationResets = input.loc?.animation?.animationResets;
         if (animationResets && (animationResets.length | 0) > 0) {
             applied =
                 (applied +
                     (await this.deps.simRuntime.applyLocAnimationResets(animationResets))) |
                 0;
         }
-        const animationPauseStates = input.loc?.animationPauseStates;
+        const animationPauseStates = input.loc?.animation?.animationPauseStates;
         if (animationPauseStates && (animationPauseStates.length | 0) > 0) {
             applied =
                 (applied +
