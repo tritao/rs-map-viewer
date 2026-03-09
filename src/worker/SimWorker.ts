@@ -151,7 +151,7 @@ const worker = {
     },
     async setVars(values: Int32Array): Promise<void> {
         const { buildService } = await getWorkerServices();
-        await buildService.setVars(values);
+        await buildService.state.setVars(values);
     },
 };
 

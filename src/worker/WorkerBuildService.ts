@@ -251,6 +251,28 @@ async function exportDatSpritesToZip(session: CacheSession, zip: JSZip): Promise
 export class WorkerBuildService {
     private workerStatePromise: Promise<WorkerStateInit> | undefined;
 
+    readonly maps = {
+        loadStaticMapPacket: (input: SdMapLoaderInput) => this.loadStaticMapPacket(input),
+        loadTexture: (id: number, size: number, flipH: boolean, brightness: number) =>
+            this.loadTexture(id, size, flipH, brightness),
+        loadMapImage: (
+            mapX: number,
+            mapY: number,
+            level: number,
+            drawMapFunctions: boolean,
+        ) => this.loadMapImage(mapX, mapY, level, drawMapFunctions),
+        loadCachedMapImages: () => this.loadCachedMapImages(),
+    };
+
+    readonly assets = {
+        exportSpritesToZip: () => this.exportSpritesToZip(),
+        exportTexturesToZip: () => this.exportTexturesToZip(),
+    };
+
+    readonly state = {
+        setVars: (values: Int32Array) => this.setVars(values),
+    };
+
     async requireWorkerState(): Promise<WorkerState> {
         const init = await this.workerStatePromise;
         if (!init) {

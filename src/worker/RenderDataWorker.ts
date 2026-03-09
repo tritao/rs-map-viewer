@@ -68,7 +68,7 @@ const worker = {
         input: SdMapLoaderInput,
     ): Promise<TransferDescriptor<StaticMapWirePacket | undefined>> {
         const { buildService } = await getWorkerServices();
-        return buildService.loadStaticMapPacket(input);
+        return buildService.maps.loadStaticMapPacket(input);
     },
     async loadTexture(
         id: number,
@@ -77,11 +77,11 @@ const worker = {
         brightness: number,
     ): Promise<TransferDescriptor<Int32Array>> {
         const { buildService } = await getWorkerServices();
-        return buildService.loadTexture(id, size, flipH, brightness);
+        return buildService.maps.loadTexture(id, size, flipH, brightness);
     },
     async loadMapImage(mapX: number, mapY: number, level: number, drawMapFunctions: boolean) {
         const { buildService } = await getWorkerServices();
-        return buildService.loadMapImage(mapX, mapY, level, drawMapFunctions);
+        return buildService.maps.loadMapImage(mapX, mapY, level, drawMapFunctions);
     },
     async registerRenderMapRuntime(input: RenderMapRuntimeRegistrationInput): Promise<void> {
         const { frameRuntime } = await getWorkerServices();
@@ -137,19 +137,19 @@ const worker = {
     },
     async setVars(values: Int32Array): Promise<void> {
         const { buildService } = await getWorkerServices();
-        await buildService.setVars(values);
+        await buildService.state.setVars(values);
     },
     async loadCachedMapImages(): Promise<Map<number, string>> {
         const { buildService } = await getWorkerServices();
-        return buildService.loadCachedMapImages();
+        return buildService.maps.loadCachedMapImages();
     },
     async exportSpritesToZip(): Promise<Blob> {
         const { buildService } = await getWorkerServices();
-        return buildService.exportSpritesToZip();
+        return buildService.assets.exportSpritesToZip();
     },
     async exportTexturesToZip(): Promise<Blob> {
         const { buildService } = await getWorkerServices();
-        return buildService.exportTexturesToZip();
+        return buildService.assets.exportTexturesToZip();
     },
 };
 
