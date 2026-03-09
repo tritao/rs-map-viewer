@@ -98,19 +98,30 @@ export class WorkerWorldRuntime implements WorldRuntime {
 
     async applyWorldInput(input: WorldInput): Promise<number> {
         let applied = 0;
+        applied = (applied + (await this.applyNpcInput(input))) | 0;
+        applied = (applied + (await this.applyObjInput(input))) | 0;
+        applied = (applied + (await this.applyLocInput(input))) | 0;
+        return applied | 0;
+    }
+
+    private async applyNpcInput(input: WorldInput): Promise<number> {
         const npcLifecycleEvents = input.npc?.lifecycleEvents;
-        if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
-            applied =
-                (applied +
-                    (await this.deps.simRuntime.applyNpcLifecycleEvents(npcLifecycleEvents))) |
-                0;
+        if (!npcLifecycleEvents || (npcLifecycleEvents.length | 0) <= 0) {
+            return 0;
         }
+        return await this.deps.simRuntime.applyNpcLifecycleEvents(npcLifecycleEvents);
+    }
+
+    private async applyObjInput(input: WorldInput): Promise<number> {
         const objUpdates = input.obj?.updates;
-        if (objUpdates && (objUpdates.length | 0) > 0) {
-            applied =
-                (applied + (await this.deps.simRuntime.applyMapObjStateUpdates(objUpdates))) |
-                0;
+        if (!objUpdates || (objUpdates.length | 0) <= 0) {
+            return 0;
         }
+        return await this.deps.simRuntime.applyMapObjStateUpdates(objUpdates);
+    }
+
+    private async applyLocInput(input: WorldInput): Promise<number> {
+        let applied = 0;
         const animationResets = input.loc?.animationResets;
         if (animationResets && (animationResets.length | 0) > 0) {
             applied =

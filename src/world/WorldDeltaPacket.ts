@@ -120,6 +120,15 @@ export function getWorldDeltaPacketCounts(
     return getNpcWorldStateCounts(npcState);
 }
 
+export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
+    return (
+        (packet.npcState?.changeCount ?? 0) +
+        (packet.objDelta?.updates.length ?? 0) +
+        Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
+        Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3)
+    );
+}
+
 export function validateWorldDeltaPacket(
     packet: WorldDeltaPacket,
 ): WorldDeltaPacketCounts {

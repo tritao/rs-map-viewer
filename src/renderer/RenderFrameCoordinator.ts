@@ -1,5 +1,8 @@
 import type { RenderFramePacket } from "./RenderFramePacket";
-import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
+import {
+    getWorldDeltaChangeCount,
+    type WorldDeltaPacket,
+} from "../world/WorldDeltaPacket";
 import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerRuntimeTypes";
 import type { WorkerInputStateVersion } from "../worker/WorkerRuntimeTypes";
 
@@ -256,16 +259,7 @@ export class RenderFrameCoordinator {
                 applyWorldMs: afterApply - afterSim,
                 renderMs: seamEnd - afterApply,
                 totalMs: seamEnd - seamStart,
-                worldChangeCount:
-                    (worldDeltaPacket?.npcState?.changeCount ?? 0) +
-                    (worldDeltaPacket?.objDelta?.updates.length ?? 0) +
-                    Math.floor(
-                        ((worldDeltaPacket?.locDelta?.animationResetPacked.length ?? 0) | 0) / 2,
-                    ) +
-                    Math.floor(
-                        ((worldDeltaPacket?.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) /
-                            3,
-                    ),
+                worldChangeCount: worldDeltaPacket ? getWorldDeltaChangeCount(worldDeltaPacket) : 0,
             });
             return packet;
         };
