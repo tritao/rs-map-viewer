@@ -39,9 +39,23 @@ export type RenderFrameInputUpdate = Readonly<{
 
 export type WorkerInputStateVersion = number;
 
+export type ApplyWorldNpcDeltaResult = Readonly<{
+    snapshotRequests?: WorldNpcSnapshotRequests;
+}>;
+
+export type ApplyWorldObjDeltaResult = Readonly<{
+    snapshotRequests?: WorldObjSnapshotRequests;
+}>;
+
+export type ApplyWorldLocDeltaResult = Readonly<{
+    snapshotRequests?: WorldLocSnapshotRequests;
+}>;
+
 export type ApplyWorldDeltaResult = Readonly<{
     applied: number;
-    snapshotRequests?: WorldSnapshotRequests;
+    npc?: ApplyWorldNpcDeltaResult;
+    obj?: ApplyWorldObjDeltaResult;
+    loc?: ApplyWorldLocDeltaResult;
 }>;
 
 export type SimMapRuntimeRegistrationInput = Readonly<{

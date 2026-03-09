@@ -264,39 +264,39 @@ export class RenderFrameCoordinator {
             if (worldDeltaPacket) {
                 applyResult = await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
                 if (
-                    applyResult.snapshotRequests?.npc?.state &&
-                    (applyResult.snapshotRequests.npc.state.length | 0) > 0
+                    applyResult.npc?.snapshotRequests?.state &&
+                    (applyResult.npc.snapshotRequests.state.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
                         snapshotRequests: {
                             npc: {
-                                state: applyResult.snapshotRequests.npc.state,
+                                state: applyResult.npc.snapshotRequests.state,
                             },
                         },
                     });
                     this.needsPacketRefresh = true;
                 }
                 if (
-                    applyResult.snapshotRequests?.obj?.dynamic &&
-                    (applyResult.snapshotRequests.obj.dynamic.length | 0) > 0
+                    applyResult.obj?.snapshotRequests?.dynamic &&
+                    (applyResult.obj.snapshotRequests.dynamic.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
                         snapshotRequests: {
                             obj: {
-                                dynamic: applyResult.snapshotRequests.obj.dynamic,
+                                dynamic: applyResult.obj.snapshotRequests.dynamic,
                             },
                         },
                     });
                     this.needsPacketRefresh = true;
                 }
                 if (
-                    applyResult.snapshotRequests?.loc?.animation &&
-                    (applyResult.snapshotRequests.loc.animation.length | 0) > 0
+                    applyResult.loc?.snapshotRequests?.animation &&
+                    (applyResult.loc.snapshotRequests.animation.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
                         snapshotRequests: {
                             loc: {
-                                animation: applyResult.snapshotRequests.loc.animation,
+                                animation: applyResult.loc.snapshotRequests.animation,
                             },
                         },
                     });
