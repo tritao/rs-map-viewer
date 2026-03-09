@@ -8,9 +8,9 @@ export type MapObjRenderUpdate = Readonly<{
     replaceStaticObjRenderData: boolean;
     staticObjRenderData?: ObjRenderData;
     hiddenStaticObjIndicesPacked?: Int32Array;
-    replaceDynamicObjRenderData: boolean;
-    dynamicObjRenderData?: ObjRenderData;
-    dynamicRuntimeObjIds?: Int32Array;
+    resetDynamicObjRenderData: boolean;
+    resetDynamicObjRenderState?: ObjRenderData;
+    resetDynamicRuntimeObjIds?: Int32Array;
     appendDynamicObjRenders?: ReadonlyArray<{
         runtimeObjId: number;
         interactId: number;
@@ -59,8 +59,12 @@ export function mapObjRenderPacketTransferables(packet: MapObjRenderPacket): Tra
                 update.hiddenStaticObjIndicesPacked.buffer as Transferable,
             );
         }
-        if (update.dynamicRuntimeObjIds) {
-            pushTransferableUnique(out, seen, update.dynamicRuntimeObjIds.buffer as Transferable);
+        if (update.resetDynamicRuntimeObjIds) {
+            pushTransferableUnique(
+                out,
+                seen,
+                update.resetDynamicRuntimeObjIds.buffer as Transferable,
+            );
         }
         if (update.removeDynamicRuntimeObjIdsPacked) {
             pushTransferableUnique(
@@ -69,7 +73,7 @@ export function mapObjRenderPacketTransferables(packet: MapObjRenderPacket): Tra
                 update.removeDynamicRuntimeObjIdsPacked.buffer as Transferable,
             );
         }
-        const renderStates = [update.staticObjRenderData, update.dynamicObjRenderData];
+        const renderStates = [update.staticObjRenderData, update.resetDynamicObjRenderState];
         for (let renderStateIndex = 0; renderStateIndex < renderStates.length; renderStateIndex++) {
             const objRenderData = renderStates[renderStateIndex];
             if (!objRenderData) {

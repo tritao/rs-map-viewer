@@ -371,8 +371,8 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             replaceStaticObjRenderData: boolean;
             staticObjRenderData?: ObjRenderData;
             hiddenStaticObjIndicesPacked?: Int32Array;
-            replaceDynamicObjRenderData: boolean;
-            dynamicObjRenderData?: ObjRenderData;
+            resetDynamicObjRenderData: boolean;
+            resetDynamicObjRenderState?: ObjRenderData;
             appendDynamicObjRenders?: ReadonlyArray<{
                 runtimeObjId: number;
                 interactId: number;
@@ -385,8 +385,8 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         if (update.replaceStaticObjRenderData) {
             this.currentStaticObjRenderData = update.staticObjRenderData;
         }
-        if (update.replaceDynamicObjRenderData) {
-            this.currentDynamicObjRenderData = update.dynamicObjRenderData;
+        if (update.resetDynamicObjRenderData) {
+            this.currentDynamicObjRenderData = update.resetDynamicObjRenderState;
         }
         if (update.clearDynamicObjRenderData) {
             for (const chunk of this.dynamicObjChunksByRuntimeObjId.values()) {
@@ -451,7 +451,7 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             this.objModelInfoTexturesByKey = [];
             this.objDrawCallsByKey = [];
         }
-        if (update.replaceDynamicObjRenderData) {
+        if (update.resetDynamicObjRenderData) {
             this.dynamicObjVertexArray?.delete();
             this.dynamicObjInterleavedBuffer?.delete();
             this.dynamicObjIndexBuffer?.delete();

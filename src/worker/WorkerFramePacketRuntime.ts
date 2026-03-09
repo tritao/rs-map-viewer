@@ -87,10 +87,10 @@ type WasmTickEmitResult = Readonly<{
 type PendingRuntimeMapObjUpdate = {
     staticObjRenderData: ObjRenderData | undefined;
     replaceStaticObjRenderData: boolean;
-    dynamicObjRenderData: ObjRenderData | undefined;
-    replaceDynamicObjRenderData: boolean;
+    resetDynamicObjRenderState: ObjRenderData | undefined;
+    resetDynamicObjRenderData: boolean;
     hiddenStaticObjIndices: Set<number>;
-    dynamicRuntimeObjIds: Int32Array | undefined;
+    resetDynamicRuntimeObjIds: Int32Array | undefined;
     appendDynamicObjRenders: Array<Readonly<{
         runtimeObjId: number;
         interactId: number;
@@ -191,10 +191,10 @@ export class WorkerFramePacketRuntime {
             pending = {
                 staticObjRenderData: undefined,
                 replaceStaticObjRenderData: false,
-                dynamicObjRenderData: undefined,
-                replaceDynamicObjRenderData: false,
+                resetDynamicObjRenderState: undefined,
+                resetDynamicObjRenderData: false,
                 hiddenStaticObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
-                dynamicRuntimeObjIds: undefined,
+                resetDynamicRuntimeObjIds: undefined,
                 appendDynamicObjRenders: [],
                 removeDynamicRuntimeObjIds: new Set<number>(),
                 clearDynamicObjRenderData: false,
@@ -233,11 +233,11 @@ export class WorkerFramePacketRuntime {
                 });
             }
             if (mapObjState && "dynamicState" in mapObjState) {
-                pending.dynamicObjRenderData = dynamicMapObjStateToRenderData(
+                pending.resetDynamicObjRenderState = dynamicMapObjStateToRenderData(
                     mapObjState.dynamicState,
                 );
-                pending.dynamicRuntimeObjIds = mapObjState.dynamicState?.runtimeObjIds;
-                pending.replaceDynamicObjRenderData = true;
+                pending.resetDynamicRuntimeObjIds = mapObjState.dynamicState?.runtimeObjIds;
+                pending.resetDynamicObjRenderData = true;
             }
             applied = (applied + 1) | 0;
         }
@@ -498,8 +498,8 @@ export class WorkerFramePacketRuntime {
             });
             const pending = this.getPendingRuntimeMapObjUpdate(mapId | 0);
             pending.clearDynamicObjRenderData = true;
-            pending.dynamicObjRenderData = undefined;
-            pending.dynamicRuntimeObjIds = undefined;
+            pending.resetDynamicObjRenderState = undefined;
+            pending.resetDynamicRuntimeObjIds = undefined;
             pending.appendDynamicObjRenders = [];
             pending.removeDynamicRuntimeObjIds.clear();
             applied = (applied + 1) | 0;
@@ -565,9 +565,9 @@ export class WorkerFramePacketRuntime {
             replaceStaticObjRenderData: boolean;
             staticObjRenderData?: ObjRenderData;
             hiddenStaticObjIndicesPacked?: Int32Array;
-            replaceDynamicObjRenderData: boolean;
-            dynamicObjRenderData?: ObjRenderData;
-            dynamicRuntimeObjIds?: Int32Array;
+            resetDynamicObjRenderData: boolean;
+            resetDynamicObjRenderState?: ObjRenderData;
+            resetDynamicRuntimeObjIds?: Int32Array;
             appendDynamicObjRenders?: ReadonlyArray<{
                 runtimeObjId: number;
                 interactId: number;
@@ -586,9 +586,9 @@ export class WorkerFramePacketRuntime {
                     (pending.hiddenStaticObjIndices.size | 0) > 0
                         ? Int32Array.from(pending.hiddenStaticObjIndices)
                         : undefined,
-                replaceDynamicObjRenderData: pending.replaceDynamicObjRenderData,
-                dynamicObjRenderData: pending.dynamicObjRenderData,
-                dynamicRuntimeObjIds: pending.dynamicRuntimeObjIds,
+                resetDynamicObjRenderData: pending.resetDynamicObjRenderData,
+                resetDynamicObjRenderState: pending.resetDynamicObjRenderState,
+                resetDynamicRuntimeObjIds: pending.resetDynamicRuntimeObjIds,
                 appendDynamicObjRenders:
                     (pending.appendDynamicObjRenders.length | 0) > 0
                         ? pending.appendDynamicObjRenders

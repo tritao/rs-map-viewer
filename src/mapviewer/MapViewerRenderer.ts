@@ -797,11 +797,11 @@ export class MapViewerRenderer extends RendererMainLoop {
         let staticObjTypeIds = update.replaceStaticObjRenderData
             ? update.staticObjRenderData?.objTypeIds
             : current?.staticObjTypeIds;
-        let dynamicObjTypeIds = update.replaceDynamicObjRenderData
-            ? update.dynamicObjRenderData?.objTypeIds
+        let dynamicObjTypeIds = update.resetDynamicObjRenderData
+            ? update.resetDynamicObjRenderState?.objTypeIds
             : current?.dynamicObjTypeIds;
-        let dynamicRuntimeObjIds = update.replaceDynamicObjRenderData
-            ? update.dynamicRuntimeObjIds
+        let dynamicRuntimeObjIds = update.resetDynamicObjRenderData
+            ? update.resetDynamicRuntimeObjIds
             : current?.dynamicRuntimeObjIds;
 
         if (update.clearDynamicObjRenderData) {

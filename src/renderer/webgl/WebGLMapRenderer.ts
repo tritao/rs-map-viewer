@@ -300,7 +300,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 this.sceneUniformBuffer,
                 mapData,
                 objUpdate?.staticObjRenderData,
-                objUpdate?.dynamicObjRenderData,
+                objUpdate?.resetDynamicObjRenderState,
                 objUpdate?.hiddenStaticObjIndicesPacked,
                 time,
                 this.stats.frameCount,
