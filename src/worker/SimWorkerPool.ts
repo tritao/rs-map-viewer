@@ -6,6 +6,7 @@ import type {
     WorldDeltaPacket,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
+    WorldMapObjRemoval,
     WorldMapObjUpdate,
 } from "../world/WorldDeltaPacket";
 import {
@@ -50,6 +51,8 @@ export class SimWorkerPool {
             this.applyNpcLifecycleEvents(events),
         applyMapObjStateUpdates: (updates: ReadonlyArray<WorldMapObjUpdate>) =>
             this.applyMapObjStateUpdates(updates),
+        applyMapObjRemovals: (removals: ReadonlyArray<WorldMapObjRemoval>) =>
+            this.applyMapObjRemovals(removals),
         applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
             this.applyLocAnimationResets(resets),
         applyLocAnimationPauseStates: (
@@ -130,6 +133,7 @@ export class SimWorkerPool {
                 mapId: packet.mapData.mapId | 0,
                 maxLevel: packet.mapData.maxLevel | 0,
                 npcOrderKeys: getValidatedStaticMapNpcOrderKeys(packet),
+                mapObjState: packet.runtimeBootstrap.mapObjState,
                 mapSimToken,
             }),
         );
@@ -158,6 +162,10 @@ export class SimWorkerPool {
 
     private applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
         return this.withWorker((w) => w.applyMapObjStateUpdates(updates));
+    }
+
+    private applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
+        return this.withWorker((w) => w.applyMapObjRemovals(removals));
     }
 
     private applyLocAnimationResets(

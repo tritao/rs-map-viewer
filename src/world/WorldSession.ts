@@ -5,6 +5,7 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import {
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
+    type WorldMapObjRemoval,
     type WorldMapObjUpdate,
 } from "./WorldDeltaPacket";
 
@@ -13,7 +14,8 @@ export type WorldNpcInput = Readonly<{
 }>;
 
 export type WorldObjInput = Readonly<{
-    updates: ReadonlyArray<WorldMapObjUpdate>;
+    updates?: ReadonlyArray<WorldMapObjUpdate>;
+    removals?: ReadonlyArray<WorldMapObjRemoval>;
 }>;
 
 export type WorldLocInput = Readonly<{

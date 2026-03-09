@@ -20,6 +20,7 @@ function createObjSceneModel(
     baseY: number,
     borderSize: number,
     spawn: ObjSpawn,
+    interactId = objTypeIds.length | 0,
 ): void {
     const objResult = objTypeLoader.tryLoad(spawn.id);
     if (!objResult.ok) {
@@ -76,14 +77,18 @@ function createObjSceneModel(
         contourGround,
         priority: 10,
         interactType: InteractType.OBJ,
-        interactId: objTypeIds.length | 0,
+        interactId: interactId | 0,
     });
-    if ((objTypeIds.length | 0) >= 0x20000) {
+    if ((interactId | 0) >= 0x20000) {
         throw new Error(
-            `[map-render][obj] object interaction index overflow: count=${objTypeIds.length | 0}`,
+            `[map-render][obj] object interaction index overflow: interactId=${interactId | 0}`,
         );
     }
-    objTypeIds.push(spawn.id | 0);
+    const nextLength = ((interactId | 0) + 1) | 0;
+    if ((objTypeIds.length | 0) < (nextLength | 0)) {
+        objTypeIds.length = nextLength | 0;
+    }
+    objTypeIds[interactId | 0] = spawn.id | 0;
 }
 
 export type BuildObjRenderDataInput = Readonly<{
@@ -96,6 +101,7 @@ export type BuildObjRenderDataInput = Readonly<{
     baseY: number;
     borderSize: number;
     objSpawns: ReadonlyArray<ObjSpawn>;
+    interactIds?: ArrayLike<number>;
     minimizeDrawCalls: boolean;
 }>;
 
@@ -105,7 +111,8 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
     }
     const sceneModels: SceneModel[] = [];
     const objTypeIds: number[] = [];
-    for (const spawn of input.objSpawns) {
+    for (let spawnIndex = 0; spawnIndex < input.objSpawns.length; spawnIndex++) {
+        const spawn = input.objSpawns[spawnIndex]!;
         createObjSceneModel(
             input.objTypeLoader,
             input.objModelLoader,
@@ -116,10 +123,19 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
             input.baseY,
             input.borderSize,
             spawn,
+            input.interactIds?.[spawnIndex | 0],
         );
     }
     if (sceneModels.length <= 0) {
         return undefined;
+    }
+    const objTypeIdsPacked = new Int32Array(objTypeIds.length | 0);
+    objTypeIdsPacked.fill(-1);
+    for (let index = 0; index < objTypeIds.length; index++) {
+        const objTypeId = objTypeIds[index];
+        if (objTypeId !== undefined) {
+            objTypeIdsPacked[index] = objTypeId | 0;
+        }
     }
 
     const sceneBuf = new SceneGeometryBuffer(input.textureLoader, 20000);
@@ -141,6 +157,6 @@ export function buildObjRenderData(input: BuildObjRenderDataInput): ObjRenderDat
         modelInfoTextures: buildModelInfoTexturesFromBuckets(runtimeDrawCommandBuckets),
         drawRanges: buildDrawRangesFromBuckets(runtimeDrawCommandBuckets),
         usedTextureIds: Int32Array.from(sceneBuf.usedTextureIds),
-        objTypeIds: Int32Array.from(objTypeIds),
+        objTypeIds: objTypeIdsPacked,
     };
 }

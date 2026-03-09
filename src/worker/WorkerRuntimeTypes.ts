@@ -1,5 +1,6 @@
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
+import type { MapObjState } from "../shared/StaticMapPacket";
 
 export type WorkerViewState = Readonly<{
     cameraMapX: number;
@@ -36,5 +37,6 @@ export type MapRuntimeBootstrapInput = Readonly<{
     mapId: number;
     maxLevel: number;
     npcOrderKeys: Int32Array;
+    mapObjState?: MapObjState;
     mapSimToken?: number;
 }>;

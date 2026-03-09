@@ -129,6 +129,7 @@ async function initWorker(
         session,
         varProvider,
         mapBytesProvider,
+        objSpawns: spawnBootstrap.objSpawns,
         fallbackNpcSpawns: spawnBootstrap.fallbackNpcSpawns,
         locModelLoader,
         objModelLoader,

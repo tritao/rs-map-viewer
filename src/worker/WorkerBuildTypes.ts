@@ -14,6 +14,7 @@ export type WorkerState = {
     session: CacheSession;
     varProvider: VarManagerProvider;
     mapBytesProvider: MapBytesProvider;
+    objSpawns: ReadonlyArray<ObjSpawn>;
     fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
     locModelLoader: LocModelLoader;
     objModelLoader: ObjModelLoader;

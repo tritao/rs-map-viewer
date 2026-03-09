@@ -456,6 +456,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         const hasRenderAffectingWorldInput =
             (!!input.obj?.updates && (input.obj.updates.length | 0) > 0) ||
+            (!!input.obj?.removals && (input.obj.removals.length | 0) > 0) ||
             (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
             (!!input.loc?.animationPauseStates && (input.loc.animationPauseStates.length | 0) > 0);
         if ((applied | 0) > 0 && hasRenderAffectingWorldInput) {
@@ -622,7 +623,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private getMapObjTypeId(mapId: number, objIndex: number): number | undefined {
         const objTypeIds = this.objTypeIdsByMapId.get(mapId | 0);
-        return objTypeIds?.[objIndex | 0];
+        const objTypeId = objTypeIds?.[objIndex | 0];
+        return objTypeId !== undefined && (objTypeId | 0) >= 0 ? objTypeId | 0 : undefined;
     }
 
     private getNpcInteractionTargetInfo(
@@ -706,6 +708,19 @@ export class MapViewerRenderer extends RendererMainLoop {
                         seq: 0x7fffffff,
                     },
                 ],
+            },
+        });
+    };
+
+    private onRemoveGroundItem = (entry: OsrsMenuEntry) => {
+        const actionTarget = entry.actionTarget;
+        this.mapViewer.closeMenu();
+        if (!actionTarget || actionTarget.kind !== MenuTargetType.OBJ) {
+            return;
+        }
+        void this.applyWorldInput({
+            obj: {
+                removals: [actionTarget.objInstance],
             },
         });
     };
@@ -1083,6 +1098,17 @@ export class MapViewerRenderer extends RendererMainLoop {
                         targetLevel: -1,
                         actionTarget,
                         onClick: this.mapViewer.closeMenu,
+                    });
+                }
+                if (picked) {
+                    menuEntries.push({
+                        option: "Remove item",
+                        targetId: target.objType.id,
+                        targetType: MenuTargetType.OBJ,
+                        targetName: target.objType.name,
+                        targetLevel: -1,
+                        actionTarget,
+                        onClick: this.onRemoveGroundItem,
                     });
                 }
                 examineEntries.push({

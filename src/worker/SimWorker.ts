@@ -5,6 +5,7 @@ import type {
     WorldDeltaPacket,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
+    WorldMapObjRemoval,
     WorldMapObjUpdate,
 } from "../world/WorldDeltaPacket";
 import { worldDeltaPacketTransferables } from "../world/WorldDeltaPacket";
@@ -71,6 +72,10 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyMapObjStateUpdates(updates);
     },
+    async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyMapObjRemovals(removals);
+    },
     async applyLocAnimationResets(
         resets: ReadonlyArray<WorldLocAnimationReset>,
     ): Promise<number> {
@@ -128,6 +133,9 @@ const worker = {
     },
     async applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number> {
         return worldApi.applyMapObjStateUpdates(updates);
+    },
+    async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
+        return worldApi.applyMapObjRemovals(removals);
     },
     async applyLocAnimationResets(
         resets: ReadonlyArray<WorldLocAnimationReset>,

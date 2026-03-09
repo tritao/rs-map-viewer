@@ -33,6 +33,11 @@ export type WorldMapObjUpdate = Readonly<{
     mapObjState?: MapObjState;
 }>;
 
+export type WorldMapObjRemoval = Readonly<{
+    mapId: number;
+    objIndex: number;
+}>;
+
 export type WorldObjDelta = Readonly<{
     updates: ReadonlyArray<WorldMapObjUpdate>;
 }>;
