@@ -174,70 +174,17 @@ function getMenuActionTarget(target: MenuInteractionTarget): MenuActionTarget {
     };
 }
 
-type MapViewerStaticMapRuntimeDeps = Readonly<{
-    worldSession: WorldSession;
-    renderFrameCoordinator: RenderFrameCoordinator;
-    loadStaticMapPacket(mapX: number, mapY: number): Promise<StaticMapPacket | undefined>;
-    isValidMapPacket(packet: StaticMapPacket): boolean;
-    detachLoadedMapRuntime(mapId: number): void;
-    finalizeLoadedMap(packet: StaticMapPacket): Promise<void>;
-}>;
-
-export class MapViewerStaticMapRuntime {
-    constructor(private readonly deps: MapViewerStaticMapRuntimeDeps) {}
-
-    async applyPacket(
+export type MapViewerStaticMapRuntime = Readonly<{
+    applyPacket(
         packet: StaticMapPacket,
         input: Readonly<{
             activationVersion: number;
             replaceMapId?: number;
             invalidateLatestPacket?: boolean;
         }>,
-    ): Promise<boolean> {
-        const replaceMapId = input.replaceMapId;
-        if (replaceMapId !== undefined) {
-            this.deps.detachLoadedMapRuntime(replaceMapId);
-        }
-        try {
-            const ok = await this.deps.worldSession.activateLoadedMap({
-                staticMap: packet,
-                activationVersion: input.activationVersion,
-            });
-            if (!ok) {
-                return false;
-            }
-        } catch (error: unknown) {
-            const { mapX, mapY } = packet.mapData;
-            const action = replaceMapId !== undefined ? "reload" : "register";
-            console.warn(
-                `[map-render] failed to ${action} worker sim state for ${mapX},${mapY}`,
-                error,
-            );
-            return false;
-        }
-
-        await this.deps.finalizeLoadedMap(packet);
-        if (input.invalidateLatestPacket === true) {
-            this.deps.renderFrameCoordinator.invalidateLatestPacket();
-        }
-        return true;
-    }
-
-    async reloadMap(mapId: number): Promise<boolean> {
-        const normalizedMapId = mapId | 0;
-        const mapX = (normalizedMapId >> 8) & 0xff;
-        const mapY = normalizedMapId & 0xff;
-        const staticMapPacket = await this.deps.loadStaticMapPacket(mapX, mapY);
-        if (!staticMapPacket || !this.deps.isValidMapPacket(staticMapPacket)) {
-            return false;
-        }
-        return await this.applyPacket(staticMapPacket, {
-            activationVersion: this.deps.worldSession.captureActivationVersion(),
-            replaceMapId: normalizedMapId,
-            invalidateLatestPacket: true,
-        });
-    }
-}
+    ): Promise<boolean>;
+    reloadMap(mapId: number): Promise<boolean>;
+}>;
 
 export class MapViewerRenderer extends RendererMainLoop {
     private static readonly EMPTY_INT32 = new Int32Array(0);

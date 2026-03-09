@@ -11,6 +11,7 @@ import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession"
 import { initErrorToString } from "../rs/loaders/InitError";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
+import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import { type WorldInput } from "../world/WorldSession";
 import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
@@ -23,7 +24,7 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { MapManager } from "./MapManager";
-import { MapViewerRenderer, MapViewerStaticMapRuntime } from "./MapViewerRenderer";
+import { MapViewerRenderer, type MapViewerStaticMapRuntime } from "./MapViewerRenderer";
 import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import { WorldSession } from "../world/WorldSession";
 
@@ -60,6 +61,71 @@ type MapViewerRuntimeShell = Readonly<{
     worldSession: WorldSession;
     renderFrameCoordinator: RenderFrameCoordinator;
 }>;
+
+type MapViewerStaticMapRuntimeDeps = Readonly<{
+    worldSession: WorldSession;
+    renderFrameCoordinator: RenderFrameCoordinator;
+    loadStaticMapPacket(mapX: number, mapY: number): Promise<StaticMapPacket | undefined>;
+    isValidMapPacket(packet: StaticMapPacket): boolean;
+    detachLoadedMapRuntime(mapId: number): void;
+    finalizeLoadedMap(packet: StaticMapPacket): Promise<void>;
+}>;
+
+class MapViewerStaticMapRuntimeImpl implements MapViewerStaticMapRuntime {
+    constructor(private readonly deps: MapViewerStaticMapRuntimeDeps) {}
+
+    async applyPacket(
+        packet: StaticMapPacket,
+        input: Readonly<{
+            activationVersion: number;
+            replaceMapId?: number;
+            invalidateLatestPacket?: boolean;
+        }>,
+    ): Promise<boolean> {
+        const replaceMapId = input.replaceMapId;
+        if (replaceMapId !== undefined) {
+            this.deps.detachLoadedMapRuntime(replaceMapId);
+        }
+        try {
+            const ok = await this.deps.worldSession.activateLoadedMap({
+                staticMap: packet,
+                activationVersion: input.activationVersion,
+            });
+            if (!ok) {
+                return false;
+            }
+        } catch (error: unknown) {
+            const { mapX, mapY } = packet.mapData;
+            const action = replaceMapId !== undefined ? "reload" : "register";
+            console.warn(
+                `[map-render] failed to ${action} worker sim state for ${mapX},${mapY}`,
+                error,
+            );
+            return false;
+        }
+
+        await this.deps.finalizeLoadedMap(packet);
+        if (input.invalidateLatestPacket === true) {
+            this.deps.renderFrameCoordinator.invalidateLatestPacket();
+        }
+        return true;
+    }
+
+    async reloadMap(mapId: number): Promise<boolean> {
+        const normalizedMapId = mapId | 0;
+        const mapX = (normalizedMapId >> 8) & 0xff;
+        const mapY = normalizedMapId & 0xff;
+        const staticMapPacket = await this.deps.loadStaticMapPacket(mapX, mapY);
+        if (!staticMapPacket || !this.deps.isValidMapPacket(staticMapPacket)) {
+            return false;
+        }
+        return await this.applyPacket(staticMapPacket, {
+            activationVersion: this.deps.worldSession.captureActivationVersion(),
+            replaceMapId: normalizedMapId,
+            invalidateLatestPacket: true,
+        });
+    }
+}
 
 function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
     return {
@@ -490,7 +556,7 @@ export class MapViewer {
             runtimeShell.renderFrameCoordinator,
         );
         this.renderer.setStaticMapRuntime(
-            new MapViewerStaticMapRuntime({
+            new MapViewerStaticMapRuntimeImpl({
                 worldSession: runtimeShell.worldSession,
                 renderFrameCoordinator: runtimeShell.renderFrameCoordinator,
                 loadStaticMapPacket: this.renderer.loadStaticMapPacket.bind(this.renderer),
