@@ -206,6 +206,7 @@ export const MapViewerControls = memo(
         const [varType, setVarType] = useState<VarType>(VarType.VARBIT);
         const [varId, setVarId] = useState(0);
         const [varValue, setVarValue] = useState(0);
+        const [locReplaceId, setLocReplaceId] = useState(mapViewer.getDevLocReplacementTypeId());
         const [spawnItemId, setSpawnItemId] = useState(995);
         const [spawnItemCount, setSpawnItemCount] = useState(1);
         const initialRuntimeOptions = mapViewer.getWorkerRuntimeOptions();
@@ -518,6 +519,14 @@ export const MapViewerControls = memo(
                         "Restore Visible Ground Items": button(async () => {
                             await mapViewer.restoreVisibleGroundItems();
                         }),
+                        "Loc Replace Id": {
+                            value: locReplaceId,
+                            step: 1,
+                            onChange: (value: number) => {
+                                setLocReplaceId(value);
+                                mapViewer.setDevLocReplacementTypeId(value);
+                            },
+                        },
                         "Spawn Item Id": {
                             value: spawnItemId,
                             step: 1,

@@ -387,6 +387,8 @@ function parseMapViewerSearchParams(
 }
 
 export class MapViewer {
+    devLocReplacementTypeId: number = 0;
+
     inputManager: InputManager = new InputManager();
     camera: Camera = new Camera(3242, -26, 3202, -245, 1862);
     pathfinder: Pathfinder = new Pathfinder();
@@ -558,6 +560,14 @@ export class MapViewer {
 
     applyWorldInput(input: WorldInput): Promise<number> {
         return this.renderer.applyWorldInput(input);
+    }
+
+    getDevLocReplacementTypeId(): number {
+        return this.devLocReplacementTypeId | 0;
+    }
+
+    setDevLocReplacementTypeId(locTypeId: number): void {
+        this.devLocReplacementTypeId = Math.max(0, locTypeId | 0);
     }
 
     resetVisibleLocAnimations(): Promise<number> {

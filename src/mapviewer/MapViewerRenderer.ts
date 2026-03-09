@@ -1038,6 +1038,30 @@ export class MapViewerRenderer extends RendererMainLoop {
         void this.reloadLoadedMap(locData.sourceMapId | 0);
     };
 
+    private onReplaceLoc = (entry: OsrsMenuEntry) => {
+        const locInstance = this.getLocInstanceFromMenuEntry(entry);
+        this.mapViewer.closeMenu();
+        if (!locInstance) {
+            return;
+        }
+        const replacementLocTypeId = this.mapViewer.getDevLocReplacementTypeId() | 0;
+        if ((replacementLocTypeId | 0) <= 0) {
+            return;
+        }
+        const locData = this.getAnimatedLocData(locInstance.mapId | 0, locInstance.locIndex | 0);
+        if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
+            return;
+        }
+        this.setLocPlacementOverride({
+            sourceMapId: locData.sourceMapId | 0,
+            placementIndex: locData.placementIndex | 0,
+            locTypeId: replacementLocTypeId,
+            locModelType: locData.locModelType,
+            rotation: locData.rotation | 0,
+        });
+        void this.reloadLoadedMap(locData.sourceMapId | 0);
+    };
+
     private onResetLocOverride = (entry: OsrsMenuEntry) => {
         const locInstance = this.getLocInstanceFromMenuEntry(entry);
         this.mapViewer.closeMenu();
@@ -1492,6 +1516,15 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 if (picked && target.locInstance) {
+                    menuEntries.push({
+                        option: "Replace loc",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        actionTarget,
+                        onClick: this.onReplaceLoc,
+                    });
                     menuEntries.push({
                         option: "Rotate loc",
                         targetId: target.locType.id,
