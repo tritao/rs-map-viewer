@@ -65,9 +65,12 @@ type FrameRenderMap = {
 };
 
 type PendingMapObjRenderUpdate = Readonly<{
-    replaceObjRenderData: boolean;
-    objRenderData?: ObjRenderData;
-    hiddenObjIndicesPacked?: Int32Array;
+    replaceStaticObjRenderData: boolean;
+    staticObjRenderData?: ObjRenderData;
+    hiddenStaticObjIndicesPacked?: Int32Array;
+    replaceDynamicObjRenderData: boolean;
+    dynamicObjRenderData?: ObjRenderData;
+    dynamicRuntimeObjIds?: Int32Array;
 }>;
 
 type WebGLMapRendererDeps = Readonly<{
@@ -294,7 +297,7 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
 
         this.loadedMaps.set(
             mapId,
-            this.loadMapSquareRenderable(
+                this.loadMapSquareRenderable(
                 this.app,
                 this.programs,
                 textureArray,
@@ -302,8 +305,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
                 textureSlotLut,
                 this.sceneUniformBuffer,
                 mapData,
-                objUpdate?.objRenderData,
-                objUpdate?.hiddenObjIndicesPacked,
+                objUpdate?.staticObjRenderData,
+                objUpdate?.dynamicObjRenderData,
+                objUpdate?.hiddenStaticObjIndicesPacked,
                 time,
                 this.stats.frameCount,
             ),
@@ -549,10 +553,12 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         isLod: boolean,
     ): void {
         const drawData = map.getObjDrawCall(isAlpha, isInteract, isLod);
-        if (!drawData) {
+        if (!drawData || drawData.length <= 0) {
             return;
         }
-        this.draw(drawData.drawCall, drawData.drawRangesPacked);
+        for (let index = 0; index < drawData.length; index++) {
+            this.draw(drawData[index]!.drawCall, drawData[index]!.drawRangesPacked);
+        }
     }
 
     private renderNpcMapPass(
@@ -777,8 +783,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         mapData: SdMapData,
-        objRenderData: ObjRenderData | undefined,
-        hiddenObjIndicesPacked: Int32Array | undefined,
+        staticObjRenderData: ObjRenderData | undefined,
+        dynamicObjRenderData: ObjRenderData | undefined,
+        hiddenStaticObjIndicesPacked: Int32Array | undefined,
         timeSec: number,
         frameCount: number,
     ): WebGLMapSquare {
@@ -792,8 +799,9 @@ export class WebGLMapRenderer extends MapRenderer<WebGLMapSquare, SdMapData> {
             textureSlotLut,
             sceneUniformBuffer,
             mapData,
-            objRenderData,
-            hiddenObjIndicesPacked,
+            staticObjRenderData,
+            dynamicObjRenderData,
+            hiddenStaticObjIndicesPacked,
             timeSec,
             frameCount,
         );

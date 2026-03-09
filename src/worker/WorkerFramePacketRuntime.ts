@@ -24,7 +24,7 @@ import type {
 } from "../world/WorldDeltaPacket";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
-import type { ObjRenderData } from "../maprender/MapRenderPayload";
+import type { ObjRenderData } from "../shared/StaticMapPacket";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "../renderer/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
@@ -42,7 +42,10 @@ import {
     type WorkerViewState,
 } from "./WorkerRuntimeTypes";
 import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
-import { mapObjStateToRenderData } from "../shared/StaticMapPacket";
+import {
+    dynamicMapObjStateToRenderData,
+    staticMapObjStateToRenderData,
+} from "../shared/StaticMapPacket";
 import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
 
 type FrameWorkerState = Readonly<{
@@ -71,9 +74,12 @@ type WasmTickEmitResult = Readonly<{
 }>;
 
 type PendingRuntimeMapObjUpdate = {
-    objRenderData: ObjRenderData | undefined;
-    replaceObjRenderData: boolean;
-    hiddenObjIndices: Set<number>;
+    staticObjRenderData: ObjRenderData | undefined;
+    replaceStaticObjRenderData: boolean;
+    dynamicObjRenderData: ObjRenderData | undefined;
+    replaceDynamicObjRenderData: boolean;
+    hiddenStaticObjIndices: Set<number>;
+    dynamicRuntimeObjIds: Int32Array | undefined;
 };
 
 const tickWasmBridge = mapRenderRuntimeBridge;
@@ -156,9 +162,12 @@ export class WorkerFramePacketRuntime {
         let pending = this.pendingRuntimeMapObjUpdatesByMapId.get(id);
         if (!pending) {
             pending = {
-                objRenderData: undefined,
-                replaceObjRenderData: false,
-                hiddenObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
+                staticObjRenderData: undefined,
+                replaceStaticObjRenderData: false,
+                dynamicObjRenderData: undefined,
+                replaceDynamicObjRenderData: false,
+                hiddenStaticObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
+                dynamicRuntimeObjIds: undefined,
             };
             this.pendingRuntimeMapObjUpdatesByMapId.set(id, pending);
         }
@@ -181,8 +190,18 @@ export class WorkerFramePacketRuntime {
                 continue;
             }
             const pending = this.getPendingRuntimeMapObjUpdate(update.mapId | 0);
-            pending.objRenderData = mapObjStateToRenderData(update.mapObjState);
-            pending.replaceObjRenderData = true;
+            const mapObjState = update.mapObjState;
+            if (mapObjState && "staticState" in mapObjState) {
+                pending.staticObjRenderData = staticMapObjStateToRenderData(mapObjState.staticState);
+                pending.replaceStaticObjRenderData = true;
+            }
+            if (mapObjState && "dynamicState" in mapObjState) {
+                pending.dynamicObjRenderData = dynamicMapObjStateToRenderData(
+                    mapObjState.dynamicState,
+                );
+                pending.dynamicRuntimeObjIds = mapObjState.dynamicState?.runtimeObjIds;
+                pending.replaceDynamicObjRenderData = true;
+            }
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -207,7 +226,7 @@ export class WorkerFramePacketRuntime {
                 this.runtimeHiddenObjIndicesByMapId.set(mapId, hiddenObjIndices);
             }
             hiddenObjIndices.add(removal.objIndex | 0);
-            this.getPendingRuntimeMapObjUpdate(mapId).hiddenObjIndices = new Set(hiddenObjIndices);
+            this.getPendingRuntimeMapObjUpdate(mapId).hiddenStaticObjIndices = new Set(hiddenObjIndices);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -231,7 +250,7 @@ export class WorkerFramePacketRuntime {
                 continue;
             }
             hiddenObjIndices.delete(addition.objIndex | 0);
-            this.getPendingRuntimeMapObjUpdate(mapId).hiddenObjIndices = new Set(hiddenObjIndices);
+            this.getPendingRuntimeMapObjUpdate(mapId).hiddenStaticObjIndices = new Set(hiddenObjIndices);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -243,20 +262,26 @@ export class WorkerFramePacketRuntime {
         }
         const updates = new Array<{
             mapId: number;
-            replaceObjRenderData: boolean;
-            objRenderData?: ObjRenderData;
-            hiddenObjIndicesPacked?: Int32Array;
+            replaceStaticObjRenderData: boolean;
+            staticObjRenderData?: ObjRenderData;
+            hiddenStaticObjIndicesPacked?: Int32Array;
+            replaceDynamicObjRenderData: boolean;
+            dynamicObjRenderData?: ObjRenderData;
+            dynamicRuntimeObjIds?: Int32Array;
         }>(this.pendingRuntimeMapObjUpdatesByMapId.size | 0);
         let write = 0;
         for (const [mapId, pending] of this.pendingRuntimeMapObjUpdatesByMapId.entries()) {
             updates[write++] = {
                 mapId: mapId | 0,
-                replaceObjRenderData: pending.replaceObjRenderData,
-                objRenderData: pending.objRenderData,
-                hiddenObjIndicesPacked:
-                    (pending.hiddenObjIndices.size | 0) > 0
-                        ? Int32Array.from(pending.hiddenObjIndices)
+                replaceStaticObjRenderData: pending.replaceStaticObjRenderData,
+                staticObjRenderData: pending.staticObjRenderData,
+                hiddenStaticObjIndicesPacked:
+                    (pending.hiddenStaticObjIndices.size | 0) > 0
+                        ? Int32Array.from(pending.hiddenStaticObjIndices)
                         : undefined,
+                replaceDynamicObjRenderData: pending.replaceDynamicObjRenderData,
+                dynamicObjRenderData: pending.dynamicObjRenderData,
+                dynamicRuntimeObjIds: pending.dynamicRuntimeObjIds,
             };
         }
         this.pendingRuntimeMapObjUpdatesByMapId.clear();

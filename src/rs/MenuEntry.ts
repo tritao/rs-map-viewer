@@ -6,6 +6,18 @@ export enum MenuTargetType {
     OBJ,
 }
 
+export type ObjActionTargetInstance =
+    | Readonly<{
+          kind: "static";
+          mapId: number;
+          objIndex: number;
+      }>
+    | Readonly<{
+          kind: "dynamic";
+          mapId: number;
+          runtimeObjId: number;
+      }>;
+
 export type MenuActionTarget =
     | Readonly<{
           kind: MenuTargetType.LOC;
@@ -18,10 +30,7 @@ export type MenuActionTarget =
     | Readonly<{
           kind: MenuTargetType.OBJ;
           objTypeId: number;
-          objInstance: Readonly<{
-              mapId: number;
-              objIndex: number;
-          }>;
+          objInstance: ObjActionTargetInstance;
       }>
     | Readonly<{
           kind: MenuTargetType.NPC;

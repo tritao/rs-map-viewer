@@ -53,8 +53,10 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
     drawCallNpc!: DrawCallRange;
     private baseUsedTextureIds: Int32Array = new Int32Array(0);
     private objUsedTextureIds: Int32Array | undefined;
-    private currentObjRenderData: ObjRenderData | undefined;
-    private hiddenObjIndicesPacked: Int32Array | undefined;
+    private dynamicObjUsedTextureIds: Int32Array | undefined;
+    private currentStaticObjRenderData: ObjRenderData | undefined;
+    private currentDynamicObjRenderData: ObjRenderData | undefined;
+    private hiddenStaticObjIndicesPacked: Int32Array | undefined;
 
     static unionUsedTextureIds(
         base: Int32Array,
@@ -83,8 +85,9 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         data: SdMapData,
-        objRenderData: ObjRenderData | undefined,
-        hiddenObjIndicesPacked: Int32Array | undefined,
+        staticObjRenderData: ObjRenderData | undefined,
+        dynamicObjRenderData: ObjRenderData | undefined,
+        hiddenStaticObjIndicesPacked: Int32Array | undefined,
         time: number,
         frame: number,
     ): WebGLMapSquare {
@@ -99,11 +102,14 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             drawRangesPacked: Int32Array,
             useNpcGeometry?: boolean,
             useObjGeometry?: boolean,
+            useDynamicObjGeometry?: boolean,
         ): DrawCallRange => {
             const drawCall = createSceneDrawCall(app, {
                 program,
                 vertexArray:
-                    useObjGeometry && renderable.objVertexArray
+                    useDynamicObjGeometry && renderable.dynamicObjVertexArray
+                        ? renderable.dynamicObjVertexArray
+                        : useObjGeometry && renderable.objVertexArray
                         ? renderable.objVertexArray
                         : useNpcGeometry && renderable.npcVertexArray
                         ? renderable.npcVertexArray
@@ -132,21 +138,30 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             time,
             frame,
         );
-        const visibleObjRenderData = cloneObjRenderDataWithHiddenState(
-            objRenderData,
-            hiddenObjIndicesPacked,
+        const visibleStaticObjRenderData = cloneObjRenderDataWithHiddenState(
+            staticObjRenderData,
+            hiddenStaticObjIndicesPacked,
         );
-        renderable.currentObjRenderData = objRenderData;
-        renderable.hiddenObjIndicesPacked = hiddenObjIndicesPacked;
+        renderable.currentStaticObjRenderData = staticObjRenderData;
+        renderable.currentDynamicObjRenderData = dynamicObjRenderData;
+        renderable.hiddenStaticObjIndicesPacked = hiddenStaticObjIndicesPacked;
         renderable.createBuffers(app, data);
         renderable.createNpcGeometryBuffers(app, data);
-        renderable.createObjGeometryBuffers(app, objRenderData);
+        renderable.createObjGeometryBuffers(app, staticObjRenderData);
+        renderable.createDynamicObjGeometryBuffers(app, dynamicObjRenderData);
         renderable.createHeightMapTexture(app, data.heightMapTextureData, heightMapSize);
         renderable.createModelInfoTextures(app, data);
-        renderable.createObjModelInfoTextures(app, visibleObjRenderData);
+        renderable.createObjModelInfoTextures(app, visibleStaticObjRenderData);
+        renderable.createDynamicObjModelInfoTextures(app, dynamicObjRenderData);
         renderable.createDrawCalls(data, createDrawCall, mainProgram, mainAlphaProgram);
         renderable.createObjDrawCalls(
-            visibleObjRenderData,
+            visibleStaticObjRenderData,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+        );
+        renderable.createDynamicObjDrawCalls(
+            dynamicObjRenderData,
             createDrawCall,
             mainProgram,
             mainAlphaProgram,
@@ -164,10 +179,14 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             renderable.npcVertexArray !== undefined,
         );
         renderable.baseUsedTextureIds = data.usedTextureIds;
-        renderable.objUsedTextureIds = objRenderData?.usedTextureIds;
+        renderable.objUsedTextureIds = staticObjRenderData?.usedTextureIds;
+        renderable.dynamicObjUsedTextureIds = dynamicObjRenderData?.usedTextureIds;
         renderable.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
-            renderable.baseUsedTextureIds,
-            renderable.objUsedTextureIds,
+            WebGLMapSquare.unionUsedTextureIds(
+                renderable.baseUsedTextureIds,
+                renderable.objUsedTextureIds,
+            ),
+            renderable.dynamicObjUsedTextureIds,
         );
 
         return renderable;
@@ -200,21 +219,27 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         textureSlotLut: Texture,
         sceneUniformBuffer: UniformBuffer,
         update: Readonly<{
-            replaceObjRenderData: boolean;
-            objRenderData?: ObjRenderData;
-            hiddenObjIndicesPacked?: Int32Array;
+            replaceStaticObjRenderData: boolean;
+            staticObjRenderData?: ObjRenderData;
+            hiddenStaticObjIndicesPacked?: Int32Array;
+            replaceDynamicObjRenderData: boolean;
+            dynamicObjRenderData?: ObjRenderData;
         }>,
     ): void {
-        if (update.replaceObjRenderData) {
-            this.currentObjRenderData = update.objRenderData;
+        if (update.replaceStaticObjRenderData) {
+            this.currentStaticObjRenderData = update.staticObjRenderData;
         }
-        if (update.hiddenObjIndicesPacked !== undefined) {
-            this.hiddenObjIndicesPacked = update.hiddenObjIndicesPacked;
+        if (update.replaceDynamicObjRenderData) {
+            this.currentDynamicObjRenderData = update.dynamicObjRenderData;
         }
-        const objRenderData = this.currentObjRenderData;
-        const visibleObjRenderData = cloneObjRenderDataWithHiddenState(
-            objRenderData,
-            this.hiddenObjIndicesPacked,
+        if (update.hiddenStaticObjIndicesPacked !== undefined) {
+            this.hiddenStaticObjIndicesPacked = update.hiddenStaticObjIndicesPacked;
+        }
+        const staticObjRenderData = this.currentStaticObjRenderData;
+        const dynamicObjRenderData = this.currentDynamicObjRenderData;
+        const visibleStaticObjRenderData = cloneObjRenderDataWithHiddenState(
+            staticObjRenderData,
+            this.hiddenStaticObjIndicesPacked,
         );
         const createDrawCall: CreateDrawCallFunction = (
             program: Program,
@@ -222,11 +247,16 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             drawRangesPacked: Int32Array,
             _useNpcGeometry?: boolean,
             useObjGeometry?: boolean,
+            useDynamicObjGeometry?: boolean,
         ): DrawCallRange => {
             const drawCall = createSceneDrawCall(app, {
                 program,
                 vertexArray:
-                    useObjGeometry && this.objVertexArray ? this.objVertexArray : this.vertexArray,
+                    useDynamicObjGeometry && this.dynamicObjVertexArray
+                        ? this.dynamicObjVertexArray
+                        : useObjGeometry && this.objVertexArray
+                        ? this.objVertexArray
+                        : this.vertexArray,
                 sceneUniformBuffer,
                 timeLoaded: this.timeLoaded,
                 mapPos: vec2.fromValues(this.mapX, this.mapY),
@@ -239,9 +269,11 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             });
             return { drawCall, drawRangesPacked };
         };
-        if (update.replaceObjRenderData) {
-            this.resetObjRenderData();
-            this.createObjGeometryBuffers(app, objRenderData);
+        if (update.replaceStaticObjRenderData) {
+            this.objVertexArray?.delete();
+            this.objInterleavedBuffer?.delete();
+            this.objIndexBuffer?.delete();
+            this.createObjGeometryBuffers(app, staticObjRenderData);
         } else {
             for (const texture of this.objModelInfoTexturesByKey ?? []) {
                 texture.delete();
@@ -249,12 +281,37 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             this.objModelInfoTexturesByKey = [];
             this.objDrawCallsByKey = [];
         }
-        this.createObjModelInfoTextures(app, visibleObjRenderData);
-        this.createObjDrawCalls(visibleObjRenderData, createDrawCall, mainProgram, mainAlphaProgram);
-        this.objUsedTextureIds = objRenderData?.usedTextureIds;
+        if (update.replaceDynamicObjRenderData) {
+            this.dynamicObjVertexArray?.delete();
+            this.dynamicObjInterleavedBuffer?.delete();
+            this.dynamicObjIndexBuffer?.delete();
+            this.createDynamicObjGeometryBuffers(app, dynamicObjRenderData);
+        } else {
+            for (const texture of this.dynamicObjModelInfoTexturesByKey ?? []) {
+                texture.delete();
+            }
+            this.dynamicObjModelInfoTexturesByKey = [];
+            this.dynamicObjDrawCallsByKey = [];
+        }
+        this.createObjModelInfoTextures(app, visibleStaticObjRenderData);
+        this.createObjDrawCalls(
+            visibleStaticObjRenderData,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+        );
+        this.createDynamicObjModelInfoTextures(app, dynamicObjRenderData);
+        this.createDynamicObjDrawCalls(
+            dynamicObjRenderData,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+        );
+        this.objUsedTextureIds = staticObjRenderData?.usedTextureIds;
+        this.dynamicObjUsedTextureIds = dynamicObjRenderData?.usedTextureIds;
         this.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
-            this.baseUsedTextureIds,
-            this.objUsedTextureIds,
+            WebGLMapSquare.unionUsedTextureIds(this.baseUsedTextureIds, this.objUsedTextureIds),
+            this.dynamicObjUsedTextureIds,
         );
     }
 }

@@ -11,7 +11,12 @@ import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
-import { mapObjStateFromRenderData } from "../shared/StaticMapPacket";
+import {
+    dynamicMapObjStateFromRenderData,
+    mapObjStateFromRenderData,
+    type MapObjState,
+    type StaticMapObjState,
+} from "../shared/StaticMapPacket";
 import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
@@ -32,7 +37,6 @@ import {
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
-import type { MapObjState } from "../shared/StaticMapPacket";
 import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import type {
     MapRuntimeBootstrapInput,
@@ -76,7 +80,7 @@ type NpcSnapshot = Readonly<{
 type MapObjRuntimeState = Readonly<{
     borderSize: number;
     maxLevel: number;
-    mapObjState?: MapObjState;
+    staticMapObjState?: StaticMapObjState;
     removedObjIndices: ReadonlySet<number>;
     dynamicObjSpawnsByRuntimeId: ReadonlyMap<number, ObjSpawn>;
     nextDynamicRuntimeObjId: number;
@@ -408,7 +412,8 @@ export class WorkerTickRuntime {
         this.mapObjRuntimeByMapId.set(mapId | 0, {
             borderSize: input.borderSize ?? current?.borderSize ?? 0,
             maxLevel: input.maxLevel ?? current?.maxLevel ?? 0,
-            mapObjState: input.mapObjState ?? current?.mapObjState,
+            staticMapObjState:
+                input.mapObjState?.staticState ?? current?.staticMapObjState,
             removedObjIndices: input.resetRemovedObjIndices
                 ? new Set<number>()
                 : new Set(current?.removedObjIndices ?? []),
@@ -421,28 +426,33 @@ export class WorkerTickRuntime {
         });
     }
 
-    private rebuildMapObjState(
+    private rebuildDynamicMapObjState(
         workerState: TickWorkerState,
         mapId: number,
         runtime: MapObjRuntimeState,
     ): MapObjState | undefined {
+        const staticObjCount = runtime.staticMapObjState?.objTypeIds.length ?? 0;
         const { mapX, mapY } = decodeMapSquareFromId(mapId | 0);
-        const staticSpawns = getMapObjSpawns(
-            workerState.objSpawns as ObjSpawn[],
-            runtime.maxLevel | 0,
-            mapX | 0,
-            mapY | 0,
-        );
-        const visibleStaticSpawns: ObjSpawn[] = [];
-        for (let index = 0; index < staticSpawns.length; index++) {
-            if (runtime.removedObjIndices.has(index | 0)) {
-                continue;
-            }
-            visibleStaticSpawns.push(staticSpawns[index]!);
-        }
         const dynamicSpawns = Array.from(runtime.dynamicObjSpawnsByRuntimeId.entries())
             .sort((a, b) => (a[0] | 0) - (b[0] | 0))
             .map((entry) => entry[1]);
+        const dynamicRuntimeObjIds = Array.from(runtime.dynamicObjSpawnsByRuntimeId.keys()).sort(
+            (a, b) => (a | 0) - (b | 0),
+        );
+        if ((dynamicSpawns.length | 0) <= 0) {
+            return {
+                dynamicState: undefined,
+            };
+        }
+        const interactIds = new Int32Array(dynamicSpawns.length | 0);
+        for (let index = 0; index < dynamicSpawns.length; index++) {
+            interactIds[index] = ((staticObjCount | 0) + (index | 0)) | 0;
+        }
+        const runtimeObjIdsPacked = new Int32Array(((staticObjCount | 0) + (dynamicSpawns.length | 0)) | 0);
+        runtimeObjIdsPacked.fill(-1);
+        for (let index = 0; index < dynamicRuntimeObjIds.length; index++) {
+            runtimeObjIdsPacked[(staticObjCount | 0) + (index | 0)] = dynamicRuntimeObjIds[index] | 0;
+        }
         const objRenderData = buildObjRenderData({
             loadObjs: true,
             objTypeLoader: workerState.session.loaders.objTypeLoader,
@@ -452,10 +462,16 @@ export class WorkerTickRuntime {
             baseX: ((mapX | 0) * Scene.MAP_SQUARE_SIZE - (runtime.borderSize | 0)) | 0,
             baseY: ((mapY | 0) * Scene.MAP_SQUARE_SIZE - (runtime.borderSize | 0)) | 0,
             borderSize: runtime.borderSize | 0,
-            objSpawns: [...visibleStaticSpawns, ...dynamicSpawns],
+            objSpawns: dynamicSpawns,
+            interactIds,
             minimizeDrawCalls: true,
         });
-        return mapObjStateFromRenderData(objRenderData);
+        return {
+            dynamicState: dynamicMapObjStateFromRenderData(
+                objRenderData,
+                runtimeObjIdsPacked,
+            ),
+        };
     }
 
     private emitNpcBootstrapWarnings(
@@ -847,7 +863,8 @@ export class WorkerTickRuntime {
                     this.upsertMapObjRuntimeState(update.mapId | 0, {
                         mapObjState: update.mapObjState,
                         resetRemovedObjIndices: true,
-                        resetDynamicObjSpawns: true,
+                        resetDynamicObjSpawns:
+                            update.mapObjState?.staticState !== undefined,
                     });
                 }
             }
@@ -938,7 +955,7 @@ export class WorkerTickRuntime {
                 objStateReplacements.push({
                     kind: "replaceState",
                     mapId: mapId | 0,
-                    mapObjState: this.rebuildMapObjState(workerState, mapId | 0, runtime),
+                    mapObjState: this.rebuildDynamicMapObjState(workerState, mapId | 0, runtime),
                 });
             }
         }

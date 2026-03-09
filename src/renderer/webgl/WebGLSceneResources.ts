@@ -62,6 +62,7 @@ export type CreateDrawCallFunction = (
     drawRangesPacked: Int32Array,
     useNpcGeometry?: boolean,
     useObjGeometry?: boolean,
+    useDynamicObjGeometry?: boolean,
 ) => DrawCallRange;
 
 type BaseRenderableGeometryData = Readonly<{
@@ -100,14 +101,19 @@ export class WebGLSceneResources {
     objInterleavedBuffer?: VertexBuffer;
     objIndexBuffer?: VertexBuffer;
     objVertexArray?: VertexArray;
+    dynamicObjInterleavedBuffer?: VertexBuffer;
+    dynamicObjIndexBuffer?: VertexBuffer;
+    dynamicObjVertexArray?: VertexArray;
 
     protected modelInfoTexturesByKey!: Texture[];
     protected objModelInfoTexturesByKey: Texture[] = [];
+    protected dynamicObjModelInfoTexturesByKey: Texture[] = [];
 
     heightMapTexture!: Texture;
 
     protected drawCallsByKey!: DrawCallRange[];
     protected objDrawCallsByKey: DrawCallRange[] = [];
+    protected dynamicObjDrawCallsByKey: DrawCallRange[] = [];
 
     private disposed = false;
 
@@ -214,6 +220,31 @@ export class WebGLSceneResources {
             .indexBuffer(this.objIndexBuffer);
     }
 
+    createDynamicObjGeometryBuffers(app: PicoApp, data: ObjRenderData | undefined) {
+        if (
+            !data ||
+            !(data.vertices instanceof Uint8Array) ||
+            !(data.indices instanceof Int32Array) ||
+            data.vertices.length === 0 ||
+            data.indices.length === 0
+        ) {
+            this.dynamicObjInterleavedBuffer = undefined;
+            this.dynamicObjIndexBuffer = undefined;
+            this.dynamicObjVertexArray = undefined;
+            return;
+        }
+        this.dynamicObjInterleavedBuffer = app.createInterleavedBuffer(16, data.vertices);
+        this.dynamicObjIndexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, data.indices);
+        this.dynamicObjVertexArray = app
+            .createVertexArray()
+            .vertexAttributeBuffer(
+                0,
+                this.dynamicObjInterleavedBuffer,
+                createIntegerVertexAttributeOptions(PicoGL.UNSIGNED_INT, 4, 16),
+            )
+            .indexBuffer(this.dynamicObjIndexBuffer);
+    }
+
     private static isAlphaKey(key: DrawCallKey): boolean {
         return (
             key === DrawCallKey.Alpha ||
@@ -275,6 +306,19 @@ export class WebGLSceneResources {
         this.objModelInfoTexturesByKey = textures;
     }
 
+    createDynamicObjModelInfoTextures(app: PicoApp, data: ObjRenderData | undefined) {
+        if (!data) {
+            this.dynamicObjModelInfoTexturesByKey = [];
+            return;
+        }
+        const modelInfoBuckets = WebGLSceneResources.getModelInfoBuckets(data.modelInfoTextures);
+        const textures = new Array<Texture>(DRAW_CALL_KEY_COUNT);
+        for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
+            textures[i] = createModelInfoTexture(app, modelInfoBuckets[i]!);
+        }
+        this.dynamicObjModelInfoTexturesByKey = textures;
+    }
+
     createDrawCalls(
         data: BaseRenderableDrawData,
         createDrawCall: CreateDrawCallFunction,
@@ -310,6 +354,27 @@ export class WebGLSceneResources {
         );
     }
 
+    createDynamicObjDrawCalls(
+        data: ObjRenderData | undefined,
+        createDrawCall: CreateDrawCallFunction,
+        mainProgram: Program,
+        mainAlphaProgram: Program,
+    ) {
+        if (!data || !this.dynamicObjVertexArray) {
+            this.dynamicObjDrawCallsByKey = [];
+            return;
+        }
+        this.dynamicObjDrawCallsByKey = this.createBucketedDrawCalls(
+            WebGLSceneResources.getDrawRangeBuckets(data.drawRanges),
+            this.dynamicObjModelInfoTexturesByKey,
+            createDrawCall,
+            mainProgram,
+            mainAlphaProgram,
+            false,
+            true,
+        );
+    }
+
     canRender(frameCount: number): boolean {
         return frameCount - this.frameLoaded > FRAME_RENDER_DELAY;
     }
@@ -319,9 +384,22 @@ export class WebGLSceneResources {
         return this.drawCallsByKey[key as number] ?? this.drawCallsByKey[DrawCallKey.Base];
     }
 
-    getObjDrawCall(isAlpha: boolean, isInteract: boolean, isLod: boolean): DrawCallRange | undefined {
+    getObjDrawCall(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): ReadonlyArray<DrawCallRange> {
         const key = resolveDrawCallKey(isAlpha, isInteract, isLod);
-        return this.objDrawCallsByKey[key as number];
+        const out: DrawCallRange[] = [];
+        const staticDrawCall = this.objDrawCallsByKey[key as number];
+        if (staticDrawCall) {
+            out.push(staticDrawCall);
+        }
+        const dynamicDrawCall = this.dynamicObjDrawCallsByKey[key as number];
+        if (dynamicDrawCall) {
+            out.push(dynamicDrawCall);
+        }
+        return out;
     }
 
     private createBucketedDrawCalls(
@@ -331,6 +409,7 @@ export class WebGLSceneResources {
         mainProgram: Program,
         mainAlphaProgram: Program,
         useObjGeometry: boolean = false,
+        useDynamicObjGeometry: boolean = false,
     ): DrawCallRange[] {
         const drawCalls = new Array<DrawCallRange>(DRAW_CALL_KEY_COUNT);
         for (let i = 0; i < DRAW_CALL_KEY_COUNT; i++) {
@@ -340,7 +419,8 @@ export class WebGLSceneResources {
                 modelInfoTextures[i],
                 drawRangeBuckets[i]!,
                 false,
-                useObjGeometry,
+                useDynamicObjGeometry ? false : useObjGeometry,
+                useDynamicObjGeometry,
             );
         }
         return drawCalls;
@@ -358,6 +438,17 @@ export class WebGLSceneResources {
         this.objIndexBuffer = undefined;
         this.objModelInfoTexturesByKey = [];
         this.objDrawCallsByKey = [];
+        this.dynamicObjVertexArray?.delete();
+        this.dynamicObjInterleavedBuffer?.delete();
+        this.dynamicObjIndexBuffer?.delete();
+        for (const texture of this.dynamicObjModelInfoTexturesByKey ?? []) {
+            texture.delete();
+        }
+        this.dynamicObjVertexArray = undefined;
+        this.dynamicObjInterleavedBuffer = undefined;
+        this.dynamicObjIndexBuffer = undefined;
+        this.dynamicObjModelInfoTexturesByKey = [];
+        this.dynamicObjDrawCallsByKey = [];
     }
 
     delete() {

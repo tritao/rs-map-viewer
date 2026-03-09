@@ -25,10 +25,17 @@ export type WorldInteractionTarget =
           kind: InteractType.OBJ;
           hit: InteractionHit & { kind: InteractType.OBJ };
           objTypeId: number;
-          objInstance: Readonly<{
-              mapId: number;
-              objIndex: number;
-          }>;
+          objInstance:
+              | Readonly<{
+                    kind: "static";
+                    mapId: number;
+                    objIndex: number;
+                }>
+              | Readonly<{
+                    kind: "dynamic";
+                    mapId: number;
+                    runtimeObjId: number;
+                }>;
       }>
     | Readonly<{
           kind: InteractType.NPC;
@@ -94,7 +101,23 @@ export function collectInteractionHits(input: Readonly<{
 export function resolveWorldInteractionTargets(input: Readonly<{
     hits: ReadonlyArray<InteractionHit>;
     getAnimatedLocTypeId?: (mapId: number, locIndex: number) => number | undefined;
-    getMapObjTypeId?: (mapId: number, objIndex: number) => number | undefined;
+    getMapObjTargetInfo?: (
+        mapId: number,
+        interactId: number,
+    ) =>
+        | Readonly<
+              | {
+                    kind: "static";
+                    objTypeId: number;
+                    objIndex: number;
+                }
+              | {
+                    kind: "dynamic";
+                    objTypeId: number;
+                    runtimeObjId: number;
+                }
+          >
+        | undefined;
     getNpcTargetInfo?: (
         mapId: number,
         npcInteractId: number,
@@ -141,19 +164,26 @@ export function resolveWorldInteractionTargets(input: Readonly<{
         }
 
         if (hit.kind === InteractType.OBJ) {
-            const objIndex = hit.id | 0;
-            const objTypeId = input.getMapObjTypeId?.(hit.mapId | 0, objIndex | 0);
-            if (objTypeId === undefined) {
+            const objTarget = input.getMapObjTargetInfo?.(hit.mapId | 0, hit.id | 0);
+            if (!objTarget) {
                 continue;
             }
             targets.push({
                 kind: InteractType.OBJ,
                 hit: hit as InteractionHit & { kind: InteractType.OBJ },
-                objTypeId,
-                objInstance: {
-                    mapId: hit.mapId | 0,
-                    objIndex,
-                },
+                objTypeId: objTarget.objTypeId | 0,
+                objInstance:
+                    objTarget.kind === "dynamic"
+                        ? {
+                              kind: "dynamic",
+                              mapId: hit.mapId | 0,
+                              runtimeObjId: objTarget.runtimeObjId | 0,
+                          }
+                        : {
+                              kind: "static",
+                              mapId: hit.mapId | 0,
+                              objIndex: objTarget.objIndex | 0,
+                          },
             });
             continue;
         }

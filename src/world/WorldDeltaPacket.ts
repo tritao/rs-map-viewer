@@ -163,20 +163,30 @@ function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transfer
         if (!mapObjState) {
             continue;
         }
-        transferables.push(
-            mapObjState.vertices.buffer as Transferable,
-            mapObjState.indices.buffer as Transferable,
-            mapObjState.usedTextureIds.buffer as Transferable,
-            mapObjState.objTypeIds.buffer as Transferable,
-        );
-        for (const key of Object.keys(mapObjState.renderState.modelInfoTextures) as Array<
-            keyof typeof mapObjState.renderState.modelInfoTextures
-        >) {
+        const states = [mapObjState.staticState, mapObjState.dynamicState];
+        for (let stateIndex = 0; stateIndex < states.length; stateIndex++) {
+            const state = states[stateIndex];
+            if (!state) {
+                continue;
+            }
             transferables.push(
-                mapObjState.renderState.modelInfoTextures[key].buffer as Transferable,
-                mapObjState.renderState.modelInfoIndices[key].buffer as Transferable,
-                mapObjState.renderState.drawRanges[key].buffer as Transferable,
+                state.vertices.buffer as Transferable,
+                state.indices.buffer as Transferable,
+                state.usedTextureIds.buffer as Transferable,
+                state.objTypeIds.buffer as Transferable,
             );
+            if ("runtimeObjIds" in state && state.runtimeObjIds instanceof Int32Array) {
+                transferables.push(state.runtimeObjIds.buffer as Transferable);
+            }
+            for (const key of Object.keys(state.renderState.modelInfoTextures) as Array<
+                keyof typeof state.renderState.modelInfoTextures
+            >) {
+                transferables.push(
+                    state.renderState.modelInfoTextures[key].buffer as Transferable,
+                    state.renderState.modelInfoIndices[key].buffer as Transferable,
+                    state.renderState.drawRanges[key].buffer as Transferable,
+                );
+            }
         }
     }
     return transferables;

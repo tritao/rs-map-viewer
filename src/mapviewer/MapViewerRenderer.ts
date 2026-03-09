@@ -1,6 +1,6 @@
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import type { MenuActionTarget } from "../rs/MenuEntry";
+import type { MenuActionTarget, ObjActionTargetInstance } from "../rs/MenuEntry";
 import {
     type MapData,
     type SdMapLoaderInput,
@@ -59,10 +59,7 @@ type MenuInteractionTarget =
           kind: InteractType.OBJ;
           hit: InteractionHit & { kind: InteractType.OBJ };
           objType: ObjType;
-          objInstance: Readonly<{
-              mapId: number;
-              objIndex: number;
-          }>;
+          objInstance: ObjActionTargetInstance;
       }>
     | Readonly<{
           kind: InteractType.NPC;
@@ -187,7 +184,14 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly worldSession: WorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
-    private readonly objTypeIdsByMapId = new Map<number, Int32Array>();
+    private readonly objInteractionStateByMapId = new Map<
+        number,
+        Readonly<{
+            staticObjTypeIds?: Int32Array;
+            dynamicObjTypeIds?: Int32Array;
+            dynamicRuntimeObjIds?: Int32Array;
+        }>
+    >();
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
     private seamApplyWorldMsTotal: number = 0;
@@ -364,7 +368,12 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
-        this.setMapObjTypeIds(mapData.mapId | 0, packet.runtimeBootstrap.mapObjState?.objTypeIds);
+        this.setMapObjInteractionState(mapData.mapId | 0, {
+            staticObjTypeIds: packet.runtimeBootstrap.mapObjState?.staticState?.objTypeIds,
+            dynamicObjTypeIds: packet.runtimeBootstrap.mapObjState?.dynamicState?.objTypeIds,
+            dynamicRuntimeObjIds:
+                packet.runtimeBootstrap.mapObjState?.dynamicState?.runtimeObjIds,
+        });
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         await this.attachLoadedRuntimeMapObjRenderData(packet);
@@ -444,7 +453,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async removeLoadedMap(mapInfo: MapSquareInfo): Promise<void> {
         this.animatedLocsByMapId.delete(mapInfo.mapId);
-        this.objTypeIdsByMapId.delete(mapInfo.mapId);
+        this.objInteractionStateByMapId.delete(mapInfo.mapId);
         this.renderer.removeMap(mapInfo);
         this.worldSession.deactivateLoadedMap({ mapId: mapInfo.mapId });
     }
@@ -521,7 +530,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             if (!mapInfo) {
                 continue;
             }
-            const objTypeIds = this.objTypeIdsByMapId.get(mapInfo.mapId | 0);
+            const objTypeIds = this.objInteractionStateByMapId.get(mapInfo.mapId | 0)?.staticObjTypeIds;
             if (!(objTypeIds instanceof Int32Array) || (objTypeIds.length | 0) <= 0) {
                 continue;
             }
@@ -590,7 +599,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initializeCacheState(): void {
         this.animatedLocsByMapId.clear();
-        this.objTypeIdsByMapId.clear();
+        this.objInteractionStateByMapId.clear();
         this.latestRenderFramePacket = undefined;
         this.renderer.initCache();
         this.mapManager.init(
@@ -660,7 +669,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.animatedLocsByMapId.clear();
-        this.objTypeIdsByMapId.clear();
+        this.objInteractionStateByMapId.clear();
         this.latestRenderFramePacket = undefined;
         this.worldSession.reset();
         this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
@@ -673,12 +682,21 @@ export class MapViewerRenderer extends RendererMainLoop {
         return animatedLocs?.[locIndex | 0]?.locTypeId;
     }
 
-    private setMapObjTypeIds(mapId: number, objTypeIds: Int32Array | undefined): void {
-        if (!(objTypeIds instanceof Int32Array)) {
-            this.objTypeIdsByMapId.delete(mapId | 0);
+    private setMapObjInteractionState(
+        mapId: number,
+        state:
+            | Readonly<{
+                  staticObjTypeIds?: Int32Array;
+                  dynamicObjTypeIds?: Int32Array;
+                  dynamicRuntimeObjIds?: Int32Array;
+              }>
+            | undefined,
+    ): void {
+        if (!state || (!state.staticObjTypeIds && !state.dynamicObjTypeIds)) {
+            this.objInteractionStateByMapId.delete(mapId | 0);
             return;
         }
-        this.objTypeIdsByMapId.set(mapId | 0, objTypeIds);
+        this.objInteractionStateByMapId.set(mapId | 0, state);
     }
 
     private applyMapObjTypeIdsFromWorldInput(input: WorldInput): void {
@@ -691,14 +709,66 @@ export class MapViewerRenderer extends RendererMainLoop {
             if (!update || update.kind !== "replaceState") {
                 continue;
             }
-            this.setMapObjTypeIds(update.mapId | 0, update.mapObjState?.objTypeIds);
+            const mapObjState = update.mapObjState;
+            const current = this.objInteractionStateByMapId.get(update.mapId | 0);
+            this.setMapObjInteractionState(update.mapId | 0, {
+                staticObjTypeIds:
+                    mapObjState && "staticState" in mapObjState
+                        ? mapObjState.staticState?.objTypeIds
+                        : current?.staticObjTypeIds,
+                dynamicObjTypeIds:
+                    mapObjState && "dynamicState" in mapObjState
+                        ? mapObjState.dynamicState?.objTypeIds
+                        : current?.dynamicObjTypeIds,
+                dynamicRuntimeObjIds:
+                    mapObjState && "dynamicState" in mapObjState
+                        ? mapObjState.dynamicState?.runtimeObjIds
+                        : current?.dynamicRuntimeObjIds,
+            });
         }
     }
 
-    private getMapObjTypeId(mapId: number, objIndex: number): number | undefined {
-        const objTypeIds = this.objTypeIdsByMapId.get(mapId | 0);
-        const objTypeId = objTypeIds?.[objIndex | 0];
-        return objTypeId !== undefined && (objTypeId | 0) >= 0 ? objTypeId | 0 : undefined;
+    private getMapObjTargetInfo(
+        mapId: number,
+        interactId: number,
+    ):
+        | Readonly<
+              | {
+                    kind: "static";
+                    objTypeId: number;
+                    objIndex: number;
+                }
+              | {
+                    kind: "dynamic";
+                    objTypeId: number;
+                    runtimeObjId: number;
+                }
+          >
+        | undefined {
+        const state = this.objInteractionStateByMapId.get(mapId | 0);
+        const staticObjTypeId = state?.staticObjTypeIds?.[interactId | 0];
+        if (staticObjTypeId !== undefined && (staticObjTypeId | 0) >= 0) {
+            return {
+                kind: "static",
+                objTypeId: staticObjTypeId | 0,
+                objIndex: interactId | 0,
+            };
+        }
+        const dynamicObjTypeId = state?.dynamicObjTypeIds?.[interactId | 0];
+        const runtimeObjId = state?.dynamicRuntimeObjIds?.[interactId | 0];
+        if (
+            dynamicObjTypeId !== undefined &&
+            runtimeObjId !== undefined &&
+            (dynamicObjTypeId | 0) >= 0 &&
+            (runtimeObjId | 0) >= 0
+        ) {
+            return {
+                kind: "dynamic",
+                objTypeId: dynamicObjTypeId | 0,
+                runtimeObjId: runtimeObjId | 0,
+            };
+        }
+        return undefined;
     }
 
     private getNpcInteractionTargetInfo(
@@ -792,9 +862,27 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (!actionTarget || actionTarget.kind !== MenuTargetType.OBJ) {
             return;
         }
+        if (actionTarget.objInstance.kind === "dynamic") {
+            void this.applyWorldInput({
+                obj: {
+                    dynamicDespawns: [
+                        {
+                            mapId: actionTarget.objInstance.mapId | 0,
+                            runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
+                        },
+                    ],
+                },
+            });
+            return;
+        }
         void this.applyWorldInput({
             obj: {
-                removals: [actionTarget.objInstance],
+                removals: [
+                    {
+                        mapId: actionTarget.objInstance.mapId | 0,
+                        objIndex: actionTarget.objInstance.objIndex | 0,
+                    },
+                ],
             },
         });
     };
@@ -853,12 +941,18 @@ export class MapViewerRenderer extends RendererMainLoop {
                         if (!update) {
                             continue;
                         }
-                        if (update.replaceObjRenderData) {
-                            this.setMapObjTypeIds(
-                                update.mapId | 0,
-                                update.objRenderData?.objTypeIds,
-                            );
-                        }
+                        const current = this.objInteractionStateByMapId.get(update.mapId | 0);
+                        this.setMapObjInteractionState(update.mapId | 0, {
+                            staticObjTypeIds: update.replaceStaticObjRenderData
+                                ? update.staticObjRenderData?.objTypeIds
+                                : current?.staticObjTypeIds,
+                            dynamicObjTypeIds: update.replaceDynamicObjRenderData
+                                ? update.dynamicObjRenderData?.objTypeIds
+                                : current?.dynamicObjTypeIds,
+                            dynamicRuntimeObjIds: update.replaceDynamicObjRenderData
+                                ? update.dynamicRuntimeObjIds
+                                : current?.dynamicRuntimeObjIds,
+                        });
                     }
                 }
                 this.renderer.applyFramePacket(packet);
@@ -1109,7 +1203,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const worldInteractionTargets = resolveWorldInteractionTargets({
             hits: interactionHits,
             getAnimatedLocTypeId: this.getAnimatedLocTypeId.bind(this),
-            getMapObjTypeId: this.getMapObjTypeId.bind(this),
+            getMapObjTargetInfo: this.getMapObjTargetInfo.bind(this),
             getNpcTargetInfo: this.getNpcInteractionTargetInfo.bind(this),
         });
         const interactionTargets = resolveMenuInteractionTargets({
