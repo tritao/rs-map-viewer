@@ -118,8 +118,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
         this.worldSession = new WorldSession({
             worldRuntimePool: new WorldRuntimePool({
-                renderWorkerPool: this.renderWorkerPool,
-                simWorkerPool: this.simWorkerPool,
+                renderRuntime: this.renderWorkerPool.frame,
+                simRuntime: this.simWorkerPool.world,
             }),
         });
         this.mapManager = this.createMapManager();

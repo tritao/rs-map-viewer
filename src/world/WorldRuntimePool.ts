@@ -1,15 +1,27 @@
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
-import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { SimWorkerPool } from "../worker/SimWorkerPool";
+import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type {
     WorldInput,
     WorldMapActivationInput,
     WorldMapDeactivationInput,
 } from "./WorldSession";
 
+type WorldRenderRuntime = Readonly<{
+    activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void>;
+    deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void>;
+}>;
+
+type WorldSimRuntime = Readonly<{
+    activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void>;
+    deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void>;
+    applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number>;
+    applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number>;
+}>;
+
 type WorldRuntimePoolDeps = Readonly<{
-    renderWorkerPool: RenderDataWorkerPool;
-    simWorkerPool: SimWorkerPool;
+    renderRuntime: WorldRenderRuntime;
+    simRuntime: WorldSimRuntime;
 }>;
 
 export class WorldRuntimePool {
@@ -58,12 +70,12 @@ export class WorldRuntimePool {
     private async activateLoadedMapRuntime(packet: StaticMapPacket): Promise<number> {
         const mapSimToken = this.reserveToken(packet.mapData.mapId | 0);
         const mapId = packet.mapData.mapId | 0;
-        await this.deps.renderWorkerPool.frame.activateLoadedMap(packet, mapSimToken);
+        await this.deps.renderRuntime.activateLoadedMap(packet, mapSimToken);
         try {
-            await this.deps.simWorkerPool.world.activateLoadedMap(packet, mapSimToken);
+            await this.deps.simRuntime.activateLoadedMap(packet, mapSimToken);
         } catch (error: unknown) {
-            void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
-            void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
+            void this.deps.renderRuntime.deactivateLoadedMap(mapId, mapSimToken);
+            void this.deps.simRuntime.deactivateLoadedMap(mapId, mapSimToken);
             throw error;
         }
         return mapSimToken | 0;
@@ -71,8 +83,8 @@ export class WorldRuntimePool {
 
     private deactivateLoadedMapRuntime(mapId: number): void {
         const mapSimToken = this.invalidateToken(mapId | 0);
-        void this.deps.simWorkerPool.world.deactivateLoadedMap(mapId, mapSimToken);
-        void this.deps.renderWorkerPool.frame.deactivateLoadedMap(mapId, mapSimToken);
+        void this.deps.simRuntime.deactivateLoadedMap(mapId, mapSimToken);
+        void this.deps.renderRuntime.deactivateLoadedMap(mapId, mapSimToken);
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
@@ -81,13 +93,13 @@ export class WorldRuntimePool {
         if (npcLifecycleEvents && (npcLifecycleEvents.length | 0) > 0) {
             applied =
                 (applied +
-                    (await this.deps.simWorkerPool.world.applyNpcLifecycleEvents(npcLifecycleEvents))) |
+                    (await this.deps.simRuntime.applyNpcLifecycleEvents(npcLifecycleEvents))) |
                 0;
         }
         const objUpdates = input.obj?.updates;
         if (objUpdates && (objUpdates.length | 0) > 0) {
             applied =
-                (applied + (await this.deps.simWorkerPool.world.applyMapObjStateUpdates(objUpdates))) |
+                (applied + (await this.deps.simRuntime.applyMapObjStateUpdates(objUpdates))) |
                 0;
         }
         return applied | 0;
