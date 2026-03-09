@@ -23,9 +23,9 @@ const UPDATE_FLAG_HAS_MOVEMENT_LOOP = 1 << 8;
 
 type WorldDeltaPacketInput = Readonly<{
     frameCount: number;
-    npcState?: NpcWorldState;
-    objDelta?: WorldObjDelta;
-    locDelta?: WorldLocDelta;
+    npc?: WorldNpcDelta;
+    obj?: WorldObjDelta;
+    loc?: WorldLocDelta;
 }>;
 
 export type WorldMapObjStateReplacement = Readonly<{
@@ -69,14 +69,22 @@ export type WorldDynamicMapObjUpdate = Readonly<{
     plane: number;
 }>;
 
-export type WorldObjDelta = Readonly<{
+export type WorldObjStaticDelta = Readonly<{
     stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
     additions?: ReadonlyArray<WorldMapObjAddition>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
+}>;
+
+export type WorldObjDynamicDelta = Readonly<{
     dynamicSpawns?: ReadonlyArray<WorldDynamicMapObjSpawn>;
     dynamicDespawns?: ReadonlyArray<WorldDynamicMapObjDespawn>;
     dynamicUpdates?: ReadonlyArray<WorldDynamicMapObjUpdate>;
     clearDynamicMapIds?: ReadonlyArray<number>;
+}>;
+
+export type WorldObjDelta = Readonly<{
+    static?: WorldObjStaticDelta;
+    dynamic?: WorldObjDynamicDelta;
 }>;
 
 export type WorldLocAnimationReset = Readonly<{
@@ -98,10 +106,14 @@ export type WorldLocAnimationSnapshot = Readonly<{
     paused: boolean;
 }>;
 
-export type WorldLocDelta = Readonly<{
+export type WorldLocAnimationDelta = Readonly<{
     animationResetPacked: Int32Array;
     animationPauseStatePacked?: Int32Array;
     animationSnapshotPacked?: Int32Array;
+}>;
+
+export type WorldLocDelta = Readonly<{
+    animation?: WorldLocAnimationDelta;
 }>;
 
 export type NpcWorldState = Readonly<{
@@ -109,6 +121,10 @@ export type NpcWorldState = Readonly<{
     spawnStatePacked: Int32Array;
     updateStatePacked: Int32Array;
     despawnStatePacked: Int32Array;
+}>;
+
+export type WorldNpcDelta = Readonly<{
+    state?: NpcWorldState;
 }>;
 
 export type WorldDeltaPacketCounts = Readonly<{
@@ -156,9 +172,9 @@ function getNpcWorldStateCounts(npcState: NpcWorldState): WorldDeltaPacketCounts
 
 export type WorldDeltaPacket = Readonly<{
     frameCount: number;
-    npcState?: NpcWorldState;
-    objDelta?: WorldObjDelta;
-    locDelta?: WorldLocDelta;
+    npc?: WorldNpcDelta;
+    obj?: WorldObjDelta;
+    loc?: WorldLocDelta;
 }>;
 
 function collectUniqueTransferables(
@@ -192,7 +208,7 @@ function getNpcStateTransferables(npcState: NpcWorldState | undefined): Transfer
 }
 
 function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transferable[] {
-    const stateReplacements = objDelta?.stateReplacements;
+    const stateReplacements = objDelta?.static?.stateReplacements;
     if (!stateReplacements || (stateReplacements.length | 0) <= 0) {
         return [];
     }
@@ -232,17 +248,18 @@ function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transfer
 }
 
 function getLocDeltaTransferables(locDelta: WorldLocDelta | undefined): Transferable[] {
-    if (!locDelta) {
+    const animation = locDelta?.animation;
+    if (!animation) {
         return [];
     }
     const transferables: Transferable[] = [
-        locDelta.animationResetPacked.buffer as Transferable,
+        animation.animationResetPacked.buffer as Transferable,
     ];
-    if (locDelta.animationPauseStatePacked) {
-        transferables.push(locDelta.animationPauseStatePacked.buffer as Transferable);
+    if (animation.animationPauseStatePacked) {
+        transferables.push(animation.animationPauseStatePacked.buffer as Transferable);
     }
-    if (locDelta.animationSnapshotPacked) {
-        transferables.push(locDelta.animationSnapshotPacked.buffer as Transferable);
+    if (animation.animationSnapshotPacked) {
+        transferables.push(animation.animationSnapshotPacked.buffer as Transferable);
     }
     return transferables;
 }
@@ -250,7 +267,7 @@ function getLocDeltaTransferables(locDelta: WorldLocDelta | undefined): Transfer
 export function getWorldDeltaPacketCounts(
     packet: WorldDeltaPacket,
 ): WorldDeltaPacketCounts {
-    const npcState = packet.npcState;
+    const npcState = packet.npc?.state;
     if (!npcState) {
         return EMPTY_WORLD_DELTA_PACKET_COUNTS;
     }
@@ -258,19 +275,22 @@ export function getWorldDeltaPacketCounts(
 }
 
 export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
+    const objStaticDelta = packet.obj?.static;
+    const objDynamicDelta = packet.obj?.dynamic;
+    const locAnimationDelta = packet.loc?.animation;
     return (
-        (packet.npcState?.changeCount ?? 0) +
-        (packet.objDelta?.stateReplacements?.length ?? 0) +
-        (packet.objDelta?.additions?.length ?? 0) +
-        (packet.objDelta?.removals?.length ?? 0) +
-        (packet.objDelta?.dynamicSpawns?.length ?? 0) +
-        (packet.objDelta?.dynamicDespawns?.length ?? 0) +
-        (packet.objDelta?.dynamicUpdates?.length ?? 0) +
-        (packet.objDelta?.clearDynamicMapIds?.length ?? 0) +
-        Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
-        Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3) +
+        (packet.npc?.state?.changeCount ?? 0) +
+        (objStaticDelta?.stateReplacements?.length ?? 0) +
+        (objStaticDelta?.additions?.length ?? 0) +
+        (objStaticDelta?.removals?.length ?? 0) +
+        (objDynamicDelta?.dynamicSpawns?.length ?? 0) +
+        (objDynamicDelta?.dynamicDespawns?.length ?? 0) +
+        (objDynamicDelta?.dynamicUpdates?.length ?? 0) +
+        (objDynamicDelta?.clearDynamicMapIds?.length ?? 0) +
+        Math.floor(((locAnimationDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
+        Math.floor(((locAnimationDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3) +
         Math.floor(
-            ((packet.locDelta?.animationSnapshotPacked?.length ?? 0) | 0) /
+            ((locAnimationDelta?.animationSnapshotPacked?.length ?? 0) | 0) /
                 LOC_ANIMATION_SNAPSHOT_STRIDE,
         )
     );
@@ -279,29 +299,29 @@ export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
 export function validateWorldDeltaPacket(
     packet: WorldDeltaPacket,
 ): WorldDeltaPacketCounts {
-    const locDelta = packet.locDelta;
-    if (locDelta) {
+    const locAnimationDelta = packet.loc?.animation;
+    if (locAnimationDelta) {
         assertPackedStride(
             "animationResetPacked",
-            locDelta.animationResetPacked,
+            locAnimationDelta.animationResetPacked,
             LOC_ANIMATION_RESET_STRIDE,
         );
-        if (locDelta.animationPauseStatePacked) {
+        if (locAnimationDelta.animationPauseStatePacked) {
             assertPackedStride(
                 "animationPauseStatePacked",
-                locDelta.animationPauseStatePacked,
+                locAnimationDelta.animationPauseStatePacked,
                 LOC_ANIMATION_PAUSE_STATE_STRIDE,
             );
         }
-        if (locDelta.animationSnapshotPacked) {
+        if (locAnimationDelta.animationSnapshotPacked) {
             assertPackedStride(
                 "animationSnapshotPacked",
-                locDelta.animationSnapshotPacked,
+                locAnimationDelta.animationSnapshotPacked,
                 LOC_ANIMATION_SNAPSHOT_STRIDE,
             );
         }
     }
-    const npcState = packet.npcState;
+    const npcState = packet.npc?.state;
     if (!npcState) {
         return EMPTY_WORLD_DELTA_PACKET_COUNTS;
     }
@@ -333,49 +353,49 @@ export function validateWorldDeltaPacket(
 }
 
 export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaPacket {
-    if (input.npcState) {
+    if (input.npc?.state) {
         assertPackedStride(
             "spawnStatePacked",
-            input.npcState.spawnStatePacked,
+            input.npc.state.spawnStatePacked,
             NPC_STATE_DELTA_SPAWN_STRIDE,
         );
         assertPackedStride(
             "updateStatePacked",
-            input.npcState.updateStatePacked,
+            input.npc.state.updateStatePacked,
             NPC_STATE_DELTA_UPDATE_STRIDE,
         );
         assertPackedStride(
             "despawnStatePacked",
-            input.npcState.despawnStatePacked,
+            input.npc.state.despawnStatePacked,
             NPC_STATE_DELTA_DESPAWN_STRIDE,
         );
     }
-    if (input.locDelta) {
+    if (input.loc?.animation) {
         assertPackedStride(
             "animationResetPacked",
-            input.locDelta.animationResetPacked,
+            input.loc.animation.animationResetPacked,
             LOC_ANIMATION_RESET_STRIDE,
         );
-        if (input.locDelta.animationPauseStatePacked) {
+        if (input.loc.animation.animationPauseStatePacked) {
             assertPackedStride(
                 "animationPauseStatePacked",
-                input.locDelta.animationPauseStatePacked,
+                input.loc.animation.animationPauseStatePacked,
                 LOC_ANIMATION_PAUSE_STATE_STRIDE,
             );
         }
-        if (input.locDelta.animationSnapshotPacked) {
+        if (input.loc.animation.animationSnapshotPacked) {
             assertPackedStride(
                 "animationSnapshotPacked",
-                input.locDelta.animationSnapshotPacked,
+                input.loc.animation.animationSnapshotPacked,
                 LOC_ANIMATION_SNAPSHOT_STRIDE,
             );
         }
     }
     return {
         frameCount: input.frameCount | 0,
-        npcState: input.npcState,
-        objDelta: input.objDelta,
-        locDelta: input.locDelta,
+        npc: input.npc,
+        obj: input.obj,
+        loc: input.loc,
     };
 }
 
@@ -477,11 +497,13 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
 
     return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
-        npcState: {
-            changeCount: (spawnCount + updateCount + despawnCount) | 0,
-            spawnStatePacked,
-            updateStatePacked,
-            despawnStatePacked,
+        npc: {
+            state: {
+                changeCount: (spawnCount + updateCount + despawnCount) | 0,
+                spawnStatePacked,
+                updateStatePacked,
+                despawnStatePacked,
+            },
         },
     });
 }
@@ -494,8 +516,10 @@ export function buildWorldDeltaPacketFromObjStateReplacements(
 ): WorldDeltaPacket {
     return buildWorldDeltaPacket({
         frameCount: input.frameCount ?? 0,
-        objDelta: {
-            stateReplacements: input.stateReplacements,
+        obj: {
+            static: {
+                stateReplacements: input.stateReplacements,
+            },
         },
     });
 }
@@ -517,8 +541,10 @@ export function buildWorldDeltaPacketFromLocAnimationResets(
     }
     return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
-        locDelta: {
-            animationResetPacked,
+        loc: {
+            animation: {
+                animationResetPacked,
+            },
         },
     });
 }
@@ -541,9 +567,11 @@ export function buildWorldDeltaPacketFromLocAnimationPauseStates(
     }
     return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
-        locDelta: {
-            animationResetPacked: new Int32Array(0),
-            animationPauseStatePacked,
+        loc: {
+            animation: {
+                animationResetPacked: new Int32Array(0),
+                animationPauseStatePacked,
+            },
         },
     });
 }
@@ -568,9 +596,11 @@ export function buildWorldDeltaPacketFromLocAnimationSnapshots(
     }
     return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
-        locDelta: {
-            animationResetPacked: new Int32Array(0),
-            animationSnapshotPacked,
+        loc: {
+            animation: {
+                animationResetPacked: new Int32Array(0),
+                animationSnapshotPacked,
+            },
         },
     });
 }
@@ -627,8 +657,8 @@ export function decodeNpcWorldStateUpdate(
 
 export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transferable[] {
     return collectUniqueTransferables(
-        getNpcStateTransferables(packet.npcState),
-        getObjDeltaTransferables(packet.objDelta),
-        getLocDeltaTransferables(packet.locDelta),
+        getNpcStateTransferables(packet.npc?.state),
+        getObjDeltaTransferables(packet.obj),
+        getLocDeltaTransferables(packet.loc),
     );
 }

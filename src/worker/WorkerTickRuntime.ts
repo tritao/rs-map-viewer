@@ -1091,20 +1091,20 @@ export class WorkerTickRuntime {
                   })
                 : undefined;
         if (
-            !npcStatePacket.npcState &&
+            !npcStatePacket.npc?.state &&
             (objStateReplacements.length | 0) <= 0 &&
             (objAdditions.length | 0) <= 0 &&
             (objRemovals.length | 0) <= 0 &&
-            !locDeltaPacket?.locDelta &&
-            !locPausePacket?.locDelta &&
-            !locSnapshotPacket?.locDelta
+            !locDeltaPacket?.loc?.animation &&
+            !locPausePacket?.loc?.animation &&
+            !locSnapshotPacket?.loc?.animation
         ) {
             return undefined;
         }
         return buildWorldDeltaPacket({
             frameCount: frameCount | 0,
-            npcState: npcStatePacket.npcState,
-            objDelta:
+            npc: npcStatePacket.npc,
+            obj:
                 (objStateReplacements.length | 0) > 0 ||
                 (objAdditions.length | 0) > 0 ||
                 (objRemovals.length | 0) > 0 ||
@@ -1113,31 +1113,61 @@ export class WorkerTickRuntime {
                 (dynamicObjUpdates.length | 0) > 0 ||
                 (clearDynamicMapIds.length | 0) > 0
                     ? {
-                          stateReplacements:
-                              (objStateReplacements.length | 0) > 0
-                                  ? objStateReplacements
+                          static:
+                              (objStateReplacements.length | 0) > 0 ||
+                              (objAdditions.length | 0) > 0 ||
+                              (objRemovals.length | 0) > 0
+                                  ? {
+                                        stateReplacements:
+                                            (objStateReplacements.length | 0) > 0
+                                                ? objStateReplacements
+                                                : undefined,
+                                        additions:
+                                            (objAdditions.length | 0) > 0 ? objAdditions : undefined,
+                                        removals:
+                                            (objRemovals.length | 0) > 0 ? objRemovals : undefined,
+                                    }
                                   : undefined,
-                          additions: (objAdditions.length | 0) > 0 ? objAdditions : undefined,
-                          removals: (objRemovals.length | 0) > 0 ? objRemovals : undefined,
-                          dynamicSpawns:
-                              (dynamicObjSpawns.length | 0) > 0 ? dynamicObjSpawns : undefined,
-                          dynamicDespawns:
-                              (dynamicObjDespawns.length | 0) > 0 ? dynamicObjDespawns : undefined,
-                          dynamicUpdates:
-                              (dynamicObjUpdates.length | 0) > 0 ? dynamicObjUpdates : undefined,
-                          clearDynamicMapIds:
-                              (clearDynamicMapIds.length | 0) > 0 ? clearDynamicMapIds : undefined,
+                          dynamic:
+                              (dynamicObjSpawns.length | 0) > 0 ||
+                              (dynamicObjDespawns.length | 0) > 0 ||
+                              (dynamicObjUpdates.length | 0) > 0 ||
+                              (clearDynamicMapIds.length | 0) > 0
+                                  ? {
+                                        dynamicSpawns:
+                                            (dynamicObjSpawns.length | 0) > 0
+                                                ? dynamicObjSpawns
+                                                : undefined,
+                                        dynamicDespawns:
+                                            (dynamicObjDespawns.length | 0) > 0
+                                                ? dynamicObjDespawns
+                                                : undefined,
+                                        dynamicUpdates:
+                                            (dynamicObjUpdates.length | 0) > 0
+                                                ? dynamicObjUpdates
+                                                : undefined,
+                                        clearDynamicMapIds:
+                                            (clearDynamicMapIds.length | 0) > 0
+                                                ? clearDynamicMapIds
+                                                : undefined,
+                                    }
+                                  : undefined,
                       }
                     : undefined,
-            locDelta:
-                locDeltaPacket?.locDelta || locPausePacket?.locDelta
+            loc:
+                locDeltaPacket?.loc?.animation ||
+                locPausePacket?.loc?.animation ||
+                locSnapshotPacket?.loc?.animation
                     ? {
-                          animationResetPacked:
-                              locDeltaPacket?.locDelta?.animationResetPacked ?? new Int32Array(0),
-                          animationPauseStatePacked:
-                              locPausePacket?.locDelta?.animationPauseStatePacked,
-                          animationSnapshotPacked:
-                              locSnapshotPacket?.locDelta?.animationSnapshotPacked,
+                          animation: {
+                              animationResetPacked:
+                                  locDeltaPacket?.loc?.animation?.animationResetPacked ??
+                                  new Int32Array(0),
+                              animationPauseStatePacked:
+                                  locPausePacket?.loc?.animation?.animationPauseStatePacked,
+                              animationSnapshotPacked:
+                                  locSnapshotPacket?.loc?.animation?.animationSnapshotPacked,
+                          },
                       }
                     : undefined,
         });

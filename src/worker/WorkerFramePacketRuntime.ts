@@ -684,26 +684,28 @@ export class WorkerFramePacketRuntime {
     }
 
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
+        const objStaticDelta = packet.obj?.static;
+        const objDynamicDelta = packet.obj?.dynamic;
         let applied = this.applyRuntimeMapObjStateReplacements(
-            packet.objDelta?.stateReplacements,
+            objStaticDelta?.stateReplacements,
         );
-        applied = (applied + this.applyRuntimeMapObjRemovals(packet.objDelta?.removals)) | 0;
-        applied = (applied + this.applyRuntimeMapObjAdditions(packet.objDelta?.additions)) | 0;
+        applied = (applied + this.applyRuntimeMapObjRemovals(objStaticDelta?.removals)) | 0;
+        applied = (applied + this.applyRuntimeMapObjAdditions(objStaticDelta?.additions)) | 0;
         applied =
             (applied +
-                this.applyRuntimeClearDynamicMapObjRenderData(packet.objDelta?.clearDynamicMapIds)) |
+                this.applyRuntimeClearDynamicMapObjRenderData(objDynamicDelta?.clearDynamicMapIds)) |
             0;
         applied =
-            (applied + this.applyRuntimeDynamicMapObjDespawns(packet.objDelta?.dynamicDespawns)) | 0;
+            (applied + this.applyRuntimeDynamicMapObjDespawns(objDynamicDelta?.dynamicDespawns)) | 0;
         applied =
-            (applied + (await this.applyRuntimeDynamicMapObjUpdates(packet.objDelta?.dynamicUpdates))) |
+            (applied + (await this.applyRuntimeDynamicMapObjUpdates(objDynamicDelta?.dynamicUpdates))) |
             0;
         applied =
-            (applied + (await this.applyRuntimeDynamicMapObjSpawns(packet.objDelta?.dynamicSpawns))) |
+            (applied + (await this.applyRuntimeDynamicMapObjSpawns(objDynamicDelta?.dynamicSpawns))) |
             0;
-        const locDelta = packet.locDelta;
-        if (locDelta) {
-            const packed = locDelta.animationResetPacked;
+        const locAnimationDelta = packet.loc?.animation;
+        if (locAnimationDelta) {
+            const packed = locAnimationDelta.animationResetPacked;
             let locResetCount = 0;
             for (let offset = 0; offset + 2 <= (packed.length | 0); offset += 2) {
                 const mapId = packed[offset + 0] | 0;
@@ -715,7 +717,7 @@ export class WorkerFramePacketRuntime {
                 locResetCount = (locResetCount + 1) | 0;
                 applied = (applied + 1) | 0;
             }
-            const pausePacked = locDelta.animationPauseStatePacked;
+            const pausePacked = locAnimationDelta.animationPauseStatePacked;
             if (pausePacked instanceof Int32Array) {
                 let locPauseCount = 0;
                 for (
@@ -735,12 +737,12 @@ export class WorkerFramePacketRuntime {
                     applied = (applied + 1) | 0;
                 }
             }
-            const snapshotPacked = locDelta.animationSnapshotPacked;
+            const snapshotPacked = locAnimationDelta.animationSnapshotPacked;
             if (snapshotPacked instanceof Int32Array) {
                 applied = (applied + this.npcSimStateStore.applyLocAnimationSnapshots(packet)) | 0;
             }
         }
-        if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
+        if (((packet.npc?.state?.changeCount ?? 0) | 0) <= 0) {
             return {
                 applied: applied | 0,
                 snapshotMapIds: {
@@ -779,8 +781,10 @@ export class WorkerFramePacketRuntime {
         const applied = this.npcSimStateStore.applyLocAnimationResets(
             {
                 frameCount: 0,
-                locDelta: {
-                    animationResetPacked,
+                loc: {
+                    animation: {
+                        animationResetPacked,
+                    },
                 },
             },
             cycleNow | 0,
@@ -804,9 +808,11 @@ export class WorkerFramePacketRuntime {
         this.pendingLocAnimationPauseStateByLocKey.clear();
         const applied = this.npcSimStateStore.applyLocAnimationPauseStates({
             frameCount: 0,
-            locDelta: {
-                animationResetPacked: new Int32Array(0),
-                animationPauseStatePacked,
+            loc: {
+                animation: {
+                    animationResetPacked: new Int32Array(0),
+                    animationPauseStatePacked,
+                },
             },
         });
     }

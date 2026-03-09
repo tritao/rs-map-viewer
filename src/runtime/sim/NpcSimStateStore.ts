@@ -399,7 +399,7 @@ export class NpcSimStateStore {
         if ((counts.changeCount | 0) <= 0) {
             return 0;
         }
-        const npcState = packet.npcState;
+        const npcState = packet.npc?.state;
         if (!npcState) {
             return 0;
         }
@@ -545,7 +545,7 @@ export class NpcSimStateStore {
     }
 
     applyLocAnimationResets(packet: WorldDeltaPacket, cycleNow: number): number {
-        const animationResetPacked = packet.locDelta?.animationResetPacked;
+        const animationResetPacked = packet.loc?.animation?.animationResetPacked;
         if (!(animationResetPacked instanceof Int32Array) || (animationResetPacked.length | 0) <= 0) {
             return 0;
         }
@@ -579,7 +579,7 @@ export class NpcSimStateStore {
     }
 
     applyLocAnimationPauseStates(packet: WorldDeltaPacket): number {
-        const animationPauseStatePacked = packet.locDelta?.animationPauseStatePacked;
+        const animationPauseStatePacked = packet.loc?.animation?.animationPauseStatePacked;
         if (
             !(animationPauseStatePacked instanceof Int32Array) ||
             (animationPauseStatePacked.length | 0) <= 0
@@ -608,7 +608,7 @@ export class NpcSimStateStore {
     }
 
     applyLocAnimationSnapshots(packet: WorldDeltaPacket): number {
-        const animationSnapshotPacked = packet.locDelta?.animationSnapshotPacked;
+        const animationSnapshotPacked = packet.loc?.animation?.animationSnapshotPacked;
         if (
             !(animationSnapshotPacked instanceof Int32Array) ||
             (animationSnapshotPacked.length | 0) <= 0
