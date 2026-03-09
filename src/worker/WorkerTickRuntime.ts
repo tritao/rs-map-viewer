@@ -180,14 +180,14 @@ export class WorkerTickRuntime {
         if (update.mapIds !== undefined) {
             this.setActiveMapIds(update.mapIds);
         }
-        if (update.npcSnapshotMapIds !== undefined) {
-            this.requestNpcSnapshots(update.npcSnapshotMapIds);
+        if (update.snapshotMapIds?.npc !== undefined) {
+            this.requestNpcSnapshots(update.snapshotMapIds.npc);
         }
-        if (update.dynamicObjSnapshotMapIds !== undefined) {
-            this.requestDynamicObjSnapshots(update.dynamicObjSnapshotMapIds);
+        if (update.snapshotMapIds?.dynamicObj !== undefined) {
+            this.requestDynamicObjSnapshots(update.snapshotMapIds.dynamicObj);
         }
-        if (update.locSnapshotMapIds !== undefined) {
-            this.requestLocSnapshots(update.locSnapshotMapIds);
+        if (update.snapshotMapIds?.loc !== undefined) {
+            this.requestLocSnapshots(update.snapshotMapIds.loc);
         }
     }
 

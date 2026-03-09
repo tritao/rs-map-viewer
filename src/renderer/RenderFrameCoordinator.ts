@@ -189,8 +189,11 @@ export class RenderFrameCoordinator {
             worldInputUpdate = {
                 ...worldInputUpdate,
                 mapIds: input.mapIds,
-                dynamicObjSnapshotMapIds: input.mapIds,
-                locSnapshotMapIds: input.mapIds,
+                snapshotMapIds: {
+                    ...(worldInputUpdate?.snapshotMapIds ?? {}),
+                    dynamicObj: input.mapIds,
+                    loc: input.mapIds,
+                },
             };
             renderFrameUpdate = {
                 ...renderFrameUpdate,
@@ -254,24 +257,36 @@ export class RenderFrameCoordinator {
             let applyResult: ApplyWorldDeltaResult | undefined;
             if (worldDeltaPacket) {
                 applyResult = await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
-                if (applyResult.npcSnapshotMapIds && (applyResult.npcSnapshotMapIds.length | 0) > 0) {
+                if (
+                    applyResult.snapshotMapIds?.npc &&
+                    (applyResult.snapshotMapIds.npc.length | 0) > 0
+                ) {
                     await this.deps.worldRuntime.syncState({
-                        npcSnapshotMapIds: applyResult.npcSnapshotMapIds,
+                        snapshotMapIds: {
+                            npc: applyResult.snapshotMapIds.npc,
+                        },
                     });
                     this.needsPacketRefresh = true;
                 }
                 if (
-                    applyResult.dynamicObjSnapshotMapIds &&
-                    (applyResult.dynamicObjSnapshotMapIds.length | 0) > 0
+                    applyResult.snapshotMapIds?.dynamicObj &&
+                    (applyResult.snapshotMapIds.dynamicObj.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
-                        dynamicObjSnapshotMapIds: applyResult.dynamicObjSnapshotMapIds,
+                        snapshotMapIds: {
+                            dynamicObj: applyResult.snapshotMapIds.dynamicObj,
+                        },
                     });
                     this.needsPacketRefresh = true;
                 }
-                if (applyResult.locSnapshotMapIds && (applyResult.locSnapshotMapIds.length | 0) > 0) {
+                if (
+                    applyResult.snapshotMapIds?.loc &&
+                    (applyResult.snapshotMapIds.loc.length | 0) > 0
+                ) {
                     await this.deps.worldRuntime.syncState({
-                        locSnapshotMapIds: applyResult.locSnapshotMapIds,
+                        snapshotMapIds: {
+                            loc: applyResult.snapshotMapIds.loc,
+                        },
                     });
                     this.needsPacketRefresh = true;
                 }

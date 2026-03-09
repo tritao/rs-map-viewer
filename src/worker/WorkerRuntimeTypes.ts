@@ -8,11 +8,15 @@ export type WorkerViewState = Readonly<{
     lodDistance: number;
 }>;
 
+export type WorldSnapshotMapIds = Readonly<{
+    npc?: Int32Array;
+    dynamicObj?: Int32Array;
+    loc?: Int32Array;
+}>;
+
 export type WorldInputUpdate = Readonly<{
     mapIds?: Int32Array;
-    npcSnapshotMapIds?: Int32Array;
-    dynamicObjSnapshotMapIds?: Int32Array;
-    locSnapshotMapIds?: Int32Array;
+    snapshotMapIds?: WorldSnapshotMapIds;
 }>;
 
 export type RenderFrameInputUpdate = Readonly<{
@@ -25,9 +29,7 @@ export type WorkerInputStateVersion = number;
 
 export type ApplyWorldDeltaResult = Readonly<{
     applied: number;
-    npcSnapshotMapIds?: Int32Array;
-    dynamicObjSnapshotMapIds?: Int32Array;
-    locSnapshotMapIds?: Int32Array;
+    snapshotMapIds?: WorldSnapshotMapIds;
 }>;
 
 export type SimMapRuntimeRegistrationInput = Readonly<{

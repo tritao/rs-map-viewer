@@ -137,18 +137,22 @@ const worldApi = {
         tickRuntime.applyWorldInputUpdate({
             mapIds:
                 update.mapIds !== undefined ? normalizeWorkerInt32Array(update.mapIds) : undefined,
-            npcSnapshotMapIds:
-                update.npcSnapshotMapIds !== undefined
-                    ? normalizeWorkerInt32Array(update.npcSnapshotMapIds)
-                    : undefined,
-            dynamicObjSnapshotMapIds:
-                update.dynamicObjSnapshotMapIds !== undefined
-                    ? normalizeWorkerInt32Array(update.dynamicObjSnapshotMapIds)
-                    : undefined,
-            locSnapshotMapIds:
-                update.locSnapshotMapIds !== undefined
-                    ? normalizeWorkerInt32Array(update.locSnapshotMapIds)
-                    : undefined,
+            snapshotMapIds: update.snapshotMapIds
+                ? {
+                      npc:
+                          update.snapshotMapIds.npc !== undefined
+                              ? normalizeWorkerInt32Array(update.snapshotMapIds.npc)
+                              : undefined,
+                      dynamicObj:
+                          update.snapshotMapIds.dynamicObj !== undefined
+                              ? normalizeWorkerInt32Array(update.snapshotMapIds.dynamicObj)
+                              : undefined,
+                      loc:
+                          update.snapshotMapIds.loc !== undefined
+                              ? normalizeWorkerInt32Array(update.snapshotMapIds.loc)
+                              : undefined,
+                  }
+                : undefined,
         });
     },
     async step(

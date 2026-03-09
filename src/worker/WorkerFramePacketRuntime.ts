@@ -743,8 +743,10 @@ export class WorkerFramePacketRuntime {
         if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
             return {
                 applied: applied | 0,
-                locSnapshotMapIds: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
-                dynamicObjSnapshotMapIds: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+                snapshotMapIds: {
+                    dynamicObj: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+                    loc: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+                },
             };
         }
         const workerState = await this.getWorkerState();
@@ -752,9 +754,11 @@ export class WorkerFramePacketRuntime {
         applied = (applied + (this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0)) | 0;
         return {
             applied: applied | 0,
-            npcSnapshotMapIds: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
-            dynamicObjSnapshotMapIds: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
-            locSnapshotMapIds: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+            snapshotMapIds: {
+                npc: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
+                dynamicObj: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+                loc: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+            },
         };
     }
 
