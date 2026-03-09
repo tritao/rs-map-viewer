@@ -16,6 +16,8 @@ import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
 import type {
     WorldMapObjAddition,
+    WorldDynamicMapObjDespawn,
+    WorldDynamicMapObjSpawn,
     WorldLocAnimationPauseState,
     WorldDeltaPacket,
     WorldLocAnimationReset,
@@ -47,9 +49,17 @@ import {
     staticMapObjStateToRenderData,
 } from "../shared/StaticMapPacket";
 import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
+import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import { LocLoadType } from "../rs/scene/SceneBuilder";
+import { Scene } from "../rs/scene/Scene";
+import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
+    mapBytesProvider: import("../rs/map/MapBytesProvider").MapBytesProvider;
+    sceneBuilder: import("../rs/scene/SceneBuilder").SceneBuilder;
+    objModelLoader: import("./WorkerBuildTypes").WorkerState["objModelLoader"];
     mapRenderBackend: Readonly<{
         kind: MapRenderBackend["kind"];
         getCppWasmRuntimeHandle?: () => MapRenderRuntimeHandle | undefined;
@@ -80,7 +90,21 @@ type PendingRuntimeMapObjUpdate = {
     replaceDynamicObjRenderData: boolean;
     hiddenStaticObjIndices: Set<number>;
     dynamicRuntimeObjIds: Int32Array | undefined;
+    appendDynamicObjRenders: Array<Readonly<{
+        runtimeObjId: number;
+        interactId: number;
+        objRenderData: ObjRenderData;
+    }>>;
+    removeDynamicRuntimeObjIds: Set<number>;
+    clearDynamicObjRenderData: boolean;
 };
+
+type RuntimeDynamicObjMapState = Readonly<{
+    staticObjCount: number;
+    slotByRuntimeObjId: ReadonlyMap<number, number>;
+    freeSlots: ReadonlyArray<number>;
+    nextSlot: number;
+}>;
 
 const tickWasmBridge = mapRenderRuntimeBridge;
 const EMPTY_TICK_PATCH_COUNTS = new Int32Array(TICK_PATCH_STREAM_COUNT);
@@ -126,6 +150,7 @@ export class WorkerFramePacketRuntime {
     };
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
     private readonly runtimeHiddenObjIndicesByMapId = new Map<number, Set<number>>();
+    private readonly runtimeDynamicObjStateByMapId = new Map<number, RuntimeDynamicObjMapState>();
     private readonly pendingRuntimeMapObjUpdatesByMapId = new Map<number, PendingRuntimeMapObjUpdate>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
@@ -152,6 +177,7 @@ export class WorkerFramePacketRuntime {
         this.viewState = { cameraMapX: 0, cameraMapY: 0, lodDistance: 0 };
         this.hoveredMapIdsPacked = new Int32Array(0);
         this.runtimeHiddenObjIndicesByMapId.clear();
+        this.runtimeDynamicObjStateByMapId.clear();
         this.pendingRuntimeMapObjUpdatesByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
@@ -168,6 +194,9 @@ export class WorkerFramePacketRuntime {
                 replaceDynamicObjRenderData: false,
                 hiddenStaticObjIndices: new Set(this.runtimeHiddenObjIndicesByMapId.get(id) ?? []),
                 dynamicRuntimeObjIds: undefined,
+                appendDynamicObjRenders: [],
+                removeDynamicRuntimeObjIds: new Set<number>(),
+                clearDynamicObjRenderData: false,
             };
             this.pendingRuntimeMapObjUpdatesByMapId.set(id, pending);
         }
@@ -194,6 +223,13 @@ export class WorkerFramePacketRuntime {
             if (mapObjState && "staticState" in mapObjState) {
                 pending.staticObjRenderData = staticMapObjStateToRenderData(mapObjState.staticState);
                 pending.replaceStaticObjRenderData = true;
+                const currentDynamic = this.runtimeDynamicObjStateByMapId.get(update.mapId | 0);
+                this.runtimeDynamicObjStateByMapId.set(update.mapId | 0, {
+                    staticObjCount: mapObjState.staticState?.objTypeIds.length ?? 0,
+                    slotByRuntimeObjId: currentDynamic?.slotByRuntimeObjId ?? new Map<number, number>(),
+                    freeSlots: currentDynamic?.freeSlots ?? [],
+                    nextSlot: currentDynamic?.nextSlot ?? 0,
+                });
             }
             if (mapObjState && "dynamicState" in mapObjState) {
                 pending.dynamicObjRenderData = dynamicMapObjStateToRenderData(
@@ -202,6 +238,217 @@ export class WorkerFramePacketRuntime {
                 pending.dynamicRuntimeObjIds = mapObjState.dynamicState?.runtimeObjIds;
                 pending.replaceDynamicObjRenderData = true;
             }
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    private buildMapObjScene(
+        workerState: FrameWorkerState,
+        mapId: number,
+        borderSize: number,
+    ) {
+        const { mapX, mapY } = decodeMapSquareFromId(mapId | 0);
+        const border = borderSize | 0;
+        const mapSize = Scene.MAP_SQUARE_SIZE + border * 2;
+        const baseX = mapX * Scene.MAP_SQUARE_SIZE - border;
+        const baseY = mapY * Scene.MAP_SQUARE_SIZE - border;
+        return {
+            scene: buildSceneFromMapBytesProvider(
+                workerState.sceneBuilder,
+                workerState.mapBytesProvider,
+                baseX,
+                baseY,
+                mapSize,
+                mapSize,
+                false,
+                LocLoadType.NO_MODELS,
+            ),
+            baseX,
+            baseY,
+        };
+    }
+
+    private ensureDynamicObjMapState(mapId: number): RuntimeDynamicObjMapState {
+        const id = mapId | 0;
+        const existing = this.runtimeDynamicObjStateByMapId.get(id);
+        if (existing) {
+            return existing;
+        }
+        const created: RuntimeDynamicObjMapState = {
+            staticObjCount: 0,
+            slotByRuntimeObjId: new Map<number, number>(),
+            freeSlots: [],
+            nextSlot: 0,
+        };
+        this.runtimeDynamicObjStateByMapId.set(id, created);
+        return created;
+    }
+
+    private allocateDynamicObjSlot(mapState: RuntimeDynamicObjMapState): Readonly<{
+        slot: number;
+        nextState: RuntimeDynamicObjMapState;
+    }> {
+        if ((mapState.freeSlots.length | 0) > 0) {
+            const nextFreeSlots = mapState.freeSlots.slice();
+            const slot = nextFreeSlots.pop()! | 0;
+            return {
+                slot,
+                nextState: {
+                    ...mapState,
+                    freeSlots: nextFreeSlots,
+                },
+            };
+        }
+        const slot = mapState.nextSlot | 0;
+        return {
+            slot,
+            nextState: {
+                ...mapState,
+                nextSlot: ((mapState.nextSlot | 0) + 1) | 0,
+            },
+        };
+    }
+
+    private buildDynamicObjRenderData(
+        workerState: FrameWorkerState,
+        mapId: number,
+        borderSize: number,
+        spawn: ObjSpawn,
+        interactId: number,
+    ): ObjRenderData | undefined {
+        const { scene, baseX, baseY } = this.buildMapObjScene(workerState, mapId | 0, borderSize | 0);
+        return buildObjRenderData({
+            loadObjs: true,
+            objTypeLoader: workerState.session.loaders.objTypeLoader,
+            objModelLoader: workerState.objModelLoader,
+            scene,
+            textureLoader: workerState.session.loaders.textureLoader,
+            baseX: baseX | 0,
+            baseY: baseY | 0,
+            borderSize: borderSize | 0,
+            objSpawns: [spawn],
+            interactIds: Int32Array.of(interactId | 0),
+            minimizeDrawCalls: true,
+        });
+    }
+
+    private async applyRuntimeDynamicMapObjSpawns(
+        spawns: ReadonlyArray<WorldDynamicMapObjSpawn> | undefined,
+    ): Promise<number> {
+        if (!spawns || (spawns.length | 0) <= 0) {
+            return 0;
+        }
+        const workerState = await this.getWorkerState();
+        let applied = 0;
+        const borderSizeByMapId = new Map<number, number>();
+        for (let index = 0; index < spawns.length; index++) {
+            const spawn = spawns[index];
+            if (!spawn) {
+                continue;
+            }
+            const mapId = spawn.mapId | 0;
+            let mapState = this.ensureDynamicObjMapState(mapId);
+            const allocated = this.allocateDynamicObjSlot(mapState);
+            const slot = allocated.slot | 0;
+            mapState = {
+                ...allocated.nextState,
+                slotByRuntimeObjId: new Map(allocated.nextState.slotByRuntimeObjId).set(
+                    spawn.runtimeObjId | 0,
+                    slot | 0,
+                ),
+            };
+            this.runtimeDynamicObjStateByMapId.set(mapId, mapState);
+            const interactId = ((mapState.staticObjCount | 0) + (slot | 0)) | 0;
+            let borderSize = borderSizeByMapId.get(mapId);
+            if (borderSize === undefined) {
+                borderSize = this.npcSimStateStore.getMap(mapId)?.borderSize ?? 0;
+                borderSizeByMapId.set(mapId, borderSize | 0);
+            }
+            const objRenderData = this.buildDynamicObjRenderData(
+                workerState,
+                mapId,
+                borderSize | 0,
+                {
+                    id: spawn.objTypeId | 0,
+                    count: Math.max(1, spawn.count | 0),
+                    x: spawn.x | 0,
+                    y: spawn.y | 0,
+                    plane: spawn.plane | 0,
+                },
+                interactId | 0,
+            );
+            if (!objRenderData) {
+                continue;
+            }
+            this.getPendingRuntimeMapObjUpdate(mapId).appendDynamicObjRenders.push({
+                runtimeObjId: spawn.runtimeObjId | 0,
+                interactId: interactId | 0,
+                objRenderData,
+            });
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    private applyRuntimeDynamicMapObjDespawns(
+        despawns: ReadonlyArray<WorldDynamicMapObjDespawn> | undefined,
+    ): number {
+        if (!despawns || (despawns.length | 0) <= 0) {
+            return 0;
+        }
+        let applied = 0;
+        for (let index = 0; index < despawns.length; index++) {
+            const despawn = despawns[index];
+            if (!despawn) {
+                continue;
+            }
+            const mapId = despawn.mapId | 0;
+            const mapState = this.runtimeDynamicObjStateByMapId.get(mapId);
+            const slot = mapState?.slotByRuntimeObjId.get(despawn.runtimeObjId | 0);
+            if (slot === undefined || !mapState) {
+                continue;
+            }
+            const nextSlots = new Map(mapState.slotByRuntimeObjId);
+            nextSlots.delete(despawn.runtimeObjId | 0);
+            this.runtimeDynamicObjStateByMapId.set(mapId, {
+                ...mapState,
+                slotByRuntimeObjId: nextSlots,
+                freeSlots: [...mapState.freeSlots, slot | 0],
+            });
+            this.getPendingRuntimeMapObjUpdate(mapId).removeDynamicRuntimeObjIds.add(
+                despawn.runtimeObjId | 0,
+            );
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    private applyRuntimeClearDynamicMapObjRenderData(
+        mapIds: ReadonlyArray<number> | undefined,
+    ): number {
+        if (!mapIds || (mapIds.length | 0) <= 0) {
+            return 0;
+        }
+        let applied = 0;
+        for (let index = 0; index < mapIds.length; index++) {
+            const mapId = mapIds[index];
+            if (mapId === undefined) {
+                continue;
+            }
+            const current = this.ensureDynamicObjMapState(mapId | 0);
+            this.runtimeDynamicObjStateByMapId.set(mapId | 0, {
+                ...current,
+                slotByRuntimeObjId: new Map<number, number>(),
+                freeSlots: [],
+                nextSlot: 0,
+            });
+            const pending = this.getPendingRuntimeMapObjUpdate(mapId | 0);
+            pending.clearDynamicObjRenderData = true;
+            pending.dynamicObjRenderData = undefined;
+            pending.dynamicRuntimeObjIds = undefined;
+            pending.appendDynamicObjRenders = [];
+            pending.removeDynamicRuntimeObjIds.clear();
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -268,6 +515,13 @@ export class WorkerFramePacketRuntime {
             replaceDynamicObjRenderData: boolean;
             dynamicObjRenderData?: ObjRenderData;
             dynamicRuntimeObjIds?: Int32Array;
+            appendDynamicObjRenders?: ReadonlyArray<{
+                runtimeObjId: number;
+                interactId: number;
+                objRenderData: ObjRenderData;
+            }>;
+            removeDynamicRuntimeObjIdsPacked?: Int32Array;
+            clearDynamicObjRenderData: boolean;
         }>(this.pendingRuntimeMapObjUpdatesByMapId.size | 0);
         let write = 0;
         for (const [mapId, pending] of this.pendingRuntimeMapObjUpdatesByMapId.entries()) {
@@ -282,6 +536,15 @@ export class WorkerFramePacketRuntime {
                 replaceDynamicObjRenderData: pending.replaceDynamicObjRenderData,
                 dynamicObjRenderData: pending.dynamicObjRenderData,
                 dynamicRuntimeObjIds: pending.dynamicRuntimeObjIds,
+                appendDynamicObjRenders:
+                    (pending.appendDynamicObjRenders.length | 0) > 0
+                        ? pending.appendDynamicObjRenders
+                        : undefined,
+                removeDynamicRuntimeObjIdsPacked:
+                    (pending.removeDynamicRuntimeObjIds.size | 0) > 0
+                        ? Int32Array.from(pending.removeDynamicRuntimeObjIds)
+                        : undefined,
+                clearDynamicObjRenderData: pending.clearDynamicObjRenderData,
             };
         }
         this.pendingRuntimeMapObjUpdatesByMapId.clear();
@@ -371,6 +634,7 @@ export class WorkerFramePacketRuntime {
         }
         this.npcSimStateStore.unregisterMap(mapId);
         this.runtimeHiddenObjIndicesByMapId.delete(mapId | 0);
+        this.runtimeDynamicObjStateByMapId.delete(mapId | 0);
         this.pendingRuntimeMapObjUpdatesByMapId.delete(mapId | 0);
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
@@ -381,6 +645,15 @@ export class WorkerFramePacketRuntime {
         );
         applied = (applied + this.applyRuntimeMapObjRemovals(packet.objDelta?.removals)) | 0;
         applied = (applied + this.applyRuntimeMapObjAdditions(packet.objDelta?.additions)) | 0;
+        applied =
+            (applied +
+                this.applyRuntimeClearDynamicMapObjRenderData(packet.objDelta?.clearDynamicMapIds)) |
+            0;
+        applied =
+            (applied + this.applyRuntimeDynamicMapObjDespawns(packet.objDelta?.dynamicDespawns)) | 0;
+        applied =
+            (applied + (await this.applyRuntimeDynamicMapObjSpawns(packet.objDelta?.dynamicSpawns))) |
+            0;
         const locDelta = packet.locDelta;
         if (locDelta) {
             const packed = locDelta.animationResetPacked;

@@ -43,10 +43,28 @@ export type WorldMapObjAddition = Readonly<{
     objIndex: number;
 }>;
 
+export type WorldDynamicMapObjSpawn = Readonly<{
+    mapId: number;
+    runtimeObjId: number;
+    objTypeId: number;
+    count: number;
+    x: number;
+    y: number;
+    plane: number;
+}>;
+
+export type WorldDynamicMapObjDespawn = Readonly<{
+    mapId: number;
+    runtimeObjId: number;
+}>;
+
 export type WorldObjDelta = Readonly<{
     stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
     additions?: ReadonlyArray<WorldMapObjAddition>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
+    dynamicSpawns?: ReadonlyArray<WorldDynamicMapObjSpawn>;
+    dynamicDespawns?: ReadonlyArray<WorldDynamicMapObjDespawn>;
+    clearDynamicMapIds?: ReadonlyArray<number>;
 }>;
 
 export type WorldLocAnimationReset = Readonly<{
@@ -221,6 +239,9 @@ export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
         (packet.objDelta?.stateReplacements?.length ?? 0) +
         (packet.objDelta?.additions?.length ?? 0) +
         (packet.objDelta?.removals?.length ?? 0) +
+        (packet.objDelta?.dynamicSpawns?.length ?? 0) +
+        (packet.objDelta?.dynamicDespawns?.length ?? 0) +
+        (packet.objDelta?.clearDynamicMapIds?.length ?? 0) +
         Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
         Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3)
     );

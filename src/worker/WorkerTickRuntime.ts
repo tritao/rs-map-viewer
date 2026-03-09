@@ -1,5 +1,5 @@
 import type { NpcSpawn } from "../data/npc/NpcSpawn";
-import { getMapObjSpawns, type ObjSpawn } from "../data/obj/ObjSpawn";
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import { NpcSpawnResolver } from "../data/npc/NpcSpawnResolver";
 import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
@@ -10,10 +10,7 @@ import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
 import {
-    dynamicMapObjStateFromRenderData,
-    mapObjStateFromRenderData,
     type MapObjState,
     type StaticMapObjState,
 } from "../shared/StaticMapPacket";
@@ -21,6 +18,8 @@ import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
     type WorldMapObjAddition,
+    type WorldDynamicMapObjDespawn,
+    type WorldDynamicMapObjSpawn,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
@@ -426,54 +425,6 @@ export class WorkerTickRuntime {
         });
     }
 
-    private rebuildDynamicMapObjState(
-        workerState: TickWorkerState,
-        mapId: number,
-        runtime: MapObjRuntimeState,
-    ): MapObjState | undefined {
-        const staticObjCount = runtime.staticMapObjState?.objTypeIds.length ?? 0;
-        const { mapX, mapY } = decodeMapSquareFromId(mapId | 0);
-        const dynamicSpawns = Array.from(runtime.dynamicObjSpawnsByRuntimeId.entries())
-            .sort((a, b) => (a[0] | 0) - (b[0] | 0))
-            .map((entry) => entry[1]);
-        const dynamicRuntimeObjIds = Array.from(runtime.dynamicObjSpawnsByRuntimeId.keys()).sort(
-            (a, b) => (a | 0) - (b | 0),
-        );
-        if ((dynamicSpawns.length | 0) <= 0) {
-            return {
-                dynamicState: undefined,
-            };
-        }
-        const interactIds = new Int32Array(dynamicSpawns.length | 0);
-        for (let index = 0; index < dynamicSpawns.length; index++) {
-            interactIds[index] = ((staticObjCount | 0) + (index | 0)) | 0;
-        }
-        const runtimeObjIdsPacked = new Int32Array(((staticObjCount | 0) + (dynamicSpawns.length | 0)) | 0);
-        runtimeObjIdsPacked.fill(-1);
-        for (let index = 0; index < dynamicRuntimeObjIds.length; index++) {
-            runtimeObjIdsPacked[(staticObjCount | 0) + (index | 0)] = dynamicRuntimeObjIds[index] | 0;
-        }
-        const objRenderData = buildObjRenderData({
-            loadObjs: true,
-            objTypeLoader: workerState.session.loaders.objTypeLoader,
-            objModelLoader: workerState.objModelLoader,
-            scene: this.buildMapSimScene(workerState, mapId | 0, runtime.borderSize | 0),
-            textureLoader: workerState.session.loaders.textureLoader,
-            baseX: ((mapX | 0) * Scene.MAP_SQUARE_SIZE - (runtime.borderSize | 0)) | 0,
-            baseY: ((mapY | 0) * Scene.MAP_SQUARE_SIZE - (runtime.borderSize | 0)) | 0,
-            borderSize: runtime.borderSize | 0,
-            objSpawns: dynamicSpawns,
-            interactIds,
-            minimizeDrawCalls: true,
-        });
-        return {
-            dynamicState: dynamicMapObjStateFromRenderData(
-                objRenderData,
-                runtimeObjIdsPacked,
-            ),
-        };
-    }
-
     private emitNpcBootstrapWarnings(
         mapId: number,
         maxLevel: number,
@@ -856,6 +807,9 @@ export class WorkerTickRuntime {
         const objStateReplacements: WorldMapObjStateReplacement[] = [];
         const objAdditions: WorldMapObjAddition[] = [];
         const objRemovals: WorldMapObjRemoval[] = [];
+        const dynamicObjSpawns: WorldDynamicMapObjSpawn[] = [];
+        const dynamicObjDespawns: WorldDynamicMapObjDespawn[] = [];
+        const clearDynamicMapIds: number[] = [];
         if (hasPendingObjStateReplacements) {
             for (const update of this.pendingMapObjStateReplacementsByMapId.values()) {
                 objStateReplacements.push(update);
@@ -905,7 +859,7 @@ export class WorkerTickRuntime {
                     dynamicObjSpawnsByRuntimeId: new Map<number, ObjSpawn>(),
                     nextDynamicRuntimeObjId: runtime.nextDynamicRuntimeObjId | 0,
                 });
-                dirtyDynamicMapIds.add(mapId | 0);
+                clearDynamicMapIds.push(mapId | 0);
             }
             for (const [mapId, spawns] of this.pendingDynamicMapObjSpawnsByMapId.entries()) {
                 const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
@@ -916,8 +870,18 @@ export class WorkerTickRuntime {
                 let nextDynamicRuntimeObjId = runtime.nextDynamicRuntimeObjId | 0;
                 for (let index = 0; index < spawns.length; index++) {
                     const spawn = spawns[index]!;
+                    const runtimeObjId = nextDynamicRuntimeObjId | 0;
                     nextDynamicObjSpawnsByRuntimeId.set(nextDynamicRuntimeObjId, {
                         id: spawn.objTypeId | 0,
+                        count: Math.max(1, spawn.count | 0),
+                        x: spawn.x | 0,
+                        y: spawn.y | 0,
+                        plane: spawn.plane | 0,
+                    });
+                    dynamicObjSpawns.push({
+                        mapId: mapId | 0,
+                        runtimeObjId,
+                        objTypeId: spawn.objTypeId | 0,
                         count: Math.max(1, spawn.count | 0),
                         x: spawn.x | 0,
                         y: spawn.y | 0,
@@ -930,7 +894,6 @@ export class WorkerTickRuntime {
                     dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
                     nextDynamicRuntimeObjId,
                 });
-                dirtyDynamicMapIds.add(mapId | 0);
             }
             for (const [mapId, runtimeObjIds] of this.pendingDynamicMapObjDespawnsByMapId.entries()) {
                 const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
@@ -940,22 +903,14 @@ export class WorkerTickRuntime {
                 const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
                 for (const runtimeObjId of runtimeObjIds.values()) {
                     nextDynamicObjSpawnsByRuntimeId.delete(runtimeObjId | 0);
+                    dynamicObjDespawns.push({
+                        mapId: mapId | 0,
+                        runtimeObjId: runtimeObjId | 0,
+                    });
                 }
                 this.mapObjRuntimeByMapId.set(mapId | 0, {
                     ...runtime,
                     dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
-                });
-                dirtyDynamicMapIds.add(mapId | 0);
-            }
-            for (const mapId of dirtyDynamicMapIds.values()) {
-                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
-                if (!runtime) {
-                    continue;
-                }
-                objStateReplacements.push({
-                    kind: "replaceState",
-                    mapId: mapId | 0,
-                    mapObjState: this.rebuildDynamicMapObjState(workerState, mapId | 0, runtime),
                 });
             }
         }
@@ -1021,7 +976,10 @@ export class WorkerTickRuntime {
             objDelta:
                 (objStateReplacements.length | 0) > 0 ||
                 (objAdditions.length | 0) > 0 ||
-                (objRemovals.length | 0) > 0
+                (objRemovals.length | 0) > 0 ||
+                (dynamicObjSpawns.length | 0) > 0 ||
+                (dynamicObjDespawns.length | 0) > 0 ||
+                (clearDynamicMapIds.length | 0) > 0
                     ? {
                           stateReplacements:
                               (objStateReplacements.length | 0) > 0
@@ -1029,6 +987,12 @@ export class WorkerTickRuntime {
                                   : undefined,
                           additions: (objAdditions.length | 0) > 0 ? objAdditions : undefined,
                           removals: (objRemovals.length | 0) > 0 ? objRemovals : undefined,
+                          dynamicSpawns:
+                              (dynamicObjSpawns.length | 0) > 0 ? dynamicObjSpawns : undefined,
+                          dynamicDespawns:
+                              (dynamicObjDespawns.length | 0) > 0 ? dynamicObjDespawns : undefined,
+                          clearDynamicMapIds:
+                              (clearDynamicMapIds.length | 0) > 0 ? clearDynamicMapIds : undefined,
                       }
                     : undefined,
             locDelta:

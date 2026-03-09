@@ -1,5 +1,12 @@
 import { vec2 } from "gl-matrix";
-import { App as PicoApp, Program, Texture, UniformBuffer } from "picogl";
+import PicoGL, {
+    App as PicoApp,
+    Program,
+    Texture,
+    UniformBuffer,
+    VertexArray,
+    VertexBuffer,
+} from "picogl";
 
 import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
@@ -10,6 +17,24 @@ import { CreateDrawCallFunction, DrawCallRange, WebGLSceneResources } from "./We
 
 const HIDDEN_MODEL_INFO_WORD2 = 0xffc0;
 const HIDDEN_MODEL_INFO_WORD3 = 0xffff;
+
+type DynamicObjChunk = Readonly<{
+    runtimeObjId: number;
+    vertexArray: VertexArray;
+    interleavedBuffer: VertexBuffer;
+    indexBuffer: VertexBuffer;
+    modelInfoTexturesByKey: Texture[];
+    drawCallsByKey: DrawCallRange[];
+    usedTextureIds?: Int32Array;
+}>;
+
+function createDynamicModelInfoTexture(app: PicoApp, data: Uint16Array): Texture {
+    return app.createTexture2D(data, 16, Math.max(Math.ceil(data.length / 16 / 4), 1), {
+        internalFormat: PicoGL.RGBA16UI,
+        minFilter: PicoGL.NEAREST,
+        magFilter: PicoGL.NEAREST,
+    });
+}
 
 function cloneObjRenderDataWithHiddenState(
     objRenderData: ObjRenderData | undefined,
@@ -57,6 +82,7 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
     private currentStaticObjRenderData: ObjRenderData | undefined;
     private currentDynamicObjRenderData: ObjRenderData | undefined;
     private hiddenStaticObjIndicesPacked: Int32Array | undefined;
+    private readonly dynamicObjChunksByRuntimeObjId = new Map<number, DynamicObjChunk>();
 
     static unionUsedTextureIds(
         base: Int32Array,
@@ -210,6 +236,129 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         return Math.max(Math.abs(mapX - this.mapX), Math.abs(mapY - this.mapY));
     }
 
+    private createDynamicChunk(
+        app: PicoApp,
+        mainProgram: Program,
+        mainAlphaProgram: Program,
+        textureArray: Texture,
+        textureMaterials: Texture,
+        textureSlotLut: Texture,
+        sceneUniformBuffer: UniformBuffer,
+        runtimeObjId: number,
+        objRenderData: ObjRenderData,
+    ): DynamicObjChunk {
+        const interleavedBuffer = app.createInterleavedBuffer(16, objRenderData.vertices);
+        const indexBuffer = app.createIndexBuffer(PicoGL.UNSIGNED_INT, objRenderData.indices);
+        const vertexArray = app
+            .createVertexArray()
+            .vertexAttributeBuffer(
+                0,
+                interleavedBuffer,
+                { type: PicoGL.UNSIGNED_INT, size: 4, stride: 16, integer: true } as never,
+            )
+            .indexBuffer(indexBuffer);
+        const textureKeys = Object.keys(objRenderData.modelInfoTextures) as Array<
+            keyof typeof objRenderData.modelInfoTextures
+        >;
+        const modelInfoTexturesByKey = textureKeys.map((key) =>
+            createDynamicModelInfoTexture(app, objRenderData.modelInfoTextures[key]),
+        );
+        const drawRangeBuckets = [
+            objRenderData.drawRanges.base,
+            objRenderData.drawRanges.alpha,
+            objRenderData.drawRanges.lod,
+            objRenderData.drawRanges.lodAlpha,
+            objRenderData.drawRanges.interact,
+            objRenderData.drawRanges.interactAlpha,
+            objRenderData.drawRanges.interactLod,
+            objRenderData.drawRanges.interactLodAlpha,
+        ];
+        const drawCallsByKey = drawRangeBuckets.map((drawRangesPacked, index) =>
+            createSceneDrawCall(app, {
+                program:
+                    index === 1 || index === 3 || index === 5 || index === 7
+                        ? mainAlphaProgram
+                        : mainProgram,
+                vertexArray,
+                sceneUniformBuffer,
+                timeLoaded: this.timeLoaded,
+                mapPos: vec2.fromValues(this.mapX, this.mapY),
+                textureArray,
+                textureMaterials,
+                textureSlotLut,
+                drawRangesPacked,
+                modelInfoTexture: modelInfoTexturesByKey[index],
+                heightMapTexture: this.heightMapTexture,
+            })
+        ).map((drawCall, index) => ({
+            drawCall,
+            drawRangesPacked: drawRangeBuckets[index]!,
+        }));
+        return {
+            runtimeObjId: runtimeObjId | 0,
+            vertexArray,
+            interleavedBuffer,
+            indexBuffer,
+            modelInfoTexturesByKey,
+            drawCallsByKey,
+            usedTextureIds: objRenderData.usedTextureIds,
+        };
+    }
+
+    private deleteDynamicChunk(chunk: DynamicObjChunk | undefined): void {
+        if (!chunk) {
+            return;
+        }
+        chunk.vertexArray.delete();
+        chunk.interleavedBuffer.delete();
+        chunk.indexBuffer.delete();
+        for (let index = 0; index < chunk.modelInfoTexturesByKey.length; index++) {
+            chunk.modelInfoTexturesByKey[index]!.delete();
+        }
+    }
+
+    private refreshUsedTextureIds(): void {
+        let usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
+            WebGLMapSquare.unionUsedTextureIds(this.baseUsedTextureIds, this.objUsedTextureIds),
+            this.dynamicObjUsedTextureIds,
+        );
+        for (const chunk of this.dynamicObjChunksByRuntimeObjId.values()) {
+            usedTextureIds = WebGLMapSquare.unionUsedTextureIds(usedTextureIds, chunk.usedTextureIds);
+        }
+        this.usedTextureIds = usedTextureIds;
+    }
+
+    override getObjDrawCall(
+        isAlpha: boolean,
+        isInteract: boolean,
+        isLod: boolean,
+    ): ReadonlyArray<DrawCallRange> {
+        const drawCalls = [...super.getObjDrawCall(isAlpha, isInteract, isLod)];
+        const keyIndex =
+            isInteract
+                ? isLod
+                    ? isAlpha
+                        ? 7
+                        : 6
+                    : isAlpha
+                    ? 5
+                    : 4
+                : isLod
+                ? isAlpha
+                    ? 3
+                    : 2
+                : isAlpha
+                ? 1
+                : 0;
+        for (const chunk of this.dynamicObjChunksByRuntimeObjId.values()) {
+            const drawCall = chunk.drawCallsByKey[keyIndex];
+            if (drawCall) {
+                drawCalls.push(drawCall);
+            }
+        }
+        return drawCalls;
+    }
+
     replaceObjRenderData(
         app: PicoApp,
         mainProgram: Program,
@@ -224,6 +373,13 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
             hiddenStaticObjIndicesPacked?: Int32Array;
             replaceDynamicObjRenderData: boolean;
             dynamicObjRenderData?: ObjRenderData;
+            appendDynamicObjRenders?: ReadonlyArray<{
+                runtimeObjId: number;
+                interactId: number;
+                objRenderData: ObjRenderData;
+            }>;
+            removeDynamicRuntimeObjIdsPacked?: Int32Array;
+            clearDynamicObjRenderData: boolean;
         }>,
     ): void {
         if (update.replaceStaticObjRenderData) {
@@ -231,6 +387,20 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         }
         if (update.replaceDynamicObjRenderData) {
             this.currentDynamicObjRenderData = update.dynamicObjRenderData;
+        }
+        if (update.clearDynamicObjRenderData) {
+            for (const chunk of this.dynamicObjChunksByRuntimeObjId.values()) {
+                this.deleteDynamicChunk(chunk);
+            }
+            this.dynamicObjChunksByRuntimeObjId.clear();
+        }
+        if (update.removeDynamicRuntimeObjIdsPacked) {
+            for (let index = 0; index < update.removeDynamicRuntimeObjIdsPacked.length; index++) {
+                const runtimeObjId = update.removeDynamicRuntimeObjIdsPacked[index] | 0;
+                const chunk = this.dynamicObjChunksByRuntimeObjId.get(runtimeObjId);
+                this.deleteDynamicChunk(chunk);
+                this.dynamicObjChunksByRuntimeObjId.delete(runtimeObjId);
+            }
         }
         if (update.hiddenStaticObjIndicesPacked !== undefined) {
             this.hiddenStaticObjIndicesPacked = update.hiddenStaticObjIndicesPacked;
@@ -309,9 +479,39 @@ export class WebGLMapSquare extends WebGLSceneResources implements MapSquareRend
         );
         this.objUsedTextureIds = staticObjRenderData?.usedTextureIds;
         this.dynamicObjUsedTextureIds = dynamicObjRenderData?.usedTextureIds;
-        this.usedTextureIds = WebGLMapSquare.unionUsedTextureIds(
-            WebGLMapSquare.unionUsedTextureIds(this.baseUsedTextureIds, this.objUsedTextureIds),
-            this.dynamicObjUsedTextureIds,
-        );
+        const appendDynamicObjRenders = update.appendDynamicObjRenders;
+        if (appendDynamicObjRenders) {
+            for (let index = 0; index < appendDynamicObjRenders.length; index++) {
+                const append = appendDynamicObjRenders[index];
+                if (!append) {
+                    continue;
+                }
+                const previous = this.dynamicObjChunksByRuntimeObjId.get(append.runtimeObjId | 0);
+                this.deleteDynamicChunk(previous);
+                this.dynamicObjChunksByRuntimeObjId.set(
+                    append.runtimeObjId | 0,
+                    this.createDynamicChunk(
+                        app,
+                        mainProgram,
+                        mainAlphaProgram,
+                        textureArray,
+                        textureMaterials,
+                        textureSlotLut,
+                        sceneUniformBuffer,
+                        append.runtimeObjId | 0,
+                        append.objRenderData,
+                    ),
+                );
+            }
+        }
+        this.refreshUsedTextureIds();
+    }
+
+    override delete(): void {
+        for (const chunk of this.dynamicObjChunksByRuntimeObjId.values()) {
+            this.deleteDynamicChunk(chunk);
+        }
+        this.dynamicObjChunksByRuntimeObjId.clear();
+        super.delete();
     }
 }

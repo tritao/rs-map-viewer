@@ -49,6 +49,7 @@ import type {
     InteractionSnapshotRenderer,
     InteractionInput,
 } from "../MapRenderer";
+import type { MapObjRenderUpdate } from "../MapObjRenderPacket";
 
 const DRAW_RANGE_STRIDE = 3;
 const DRAW_RANGE_OFFSET_INDEX = 0;
@@ -64,14 +65,7 @@ type FrameRenderMap = {
     isLod: boolean;
 };
 
-type PendingMapObjRenderUpdate = Readonly<{
-    replaceStaticObjRenderData: boolean;
-    staticObjRenderData?: ObjRenderData;
-    hiddenStaticObjIndicesPacked?: Int32Array;
-    replaceDynamicObjRenderData: boolean;
-    dynamicObjRenderData?: ObjRenderData;
-    dynamicRuntimeObjIds?: Int32Array;
-}>;
+type PendingMapObjRenderUpdate = MapObjRenderUpdate;
 
 type WebGLMapRendererDeps = Readonly<{
     cacheName: string;

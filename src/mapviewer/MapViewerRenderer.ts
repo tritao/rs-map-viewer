@@ -771,6 +771,91 @@ export class MapViewerRenderer extends RendererMainLoop {
         return undefined;
     }
 
+    private ensureInt32Length(values: Int32Array | undefined, minLength: number): Int32Array {
+        if ((minLength | 0) <= 0) {
+            return values ?? MapViewerRenderer.EMPTY_INT32;
+        }
+        if (values instanceof Int32Array && (values.length | 0) >= (minLength | 0)) {
+            return values;
+        }
+        const next = new Int32Array(minLength | 0);
+        next.fill(-1);
+        if (values instanceof Int32Array) {
+            next.set(values.subarray(0, Math.min(values.length | 0, minLength | 0)));
+        }
+        return next;
+    }
+
+    private applyMapObjInteractionStateUpdate(
+        mapId: number,
+        update: NonNullable<RenderFramePacket["runtimeRenderUpdates"]>["updates"][number],
+    ): void {
+        if (!update) {
+            return;
+        }
+        const current = this.objInteractionStateByMapId.get(mapId | 0);
+        let staticObjTypeIds = update.replaceStaticObjRenderData
+            ? update.staticObjRenderData?.objTypeIds
+            : current?.staticObjTypeIds;
+        let dynamicObjTypeIds = update.replaceDynamicObjRenderData
+            ? update.dynamicObjRenderData?.objTypeIds
+            : current?.dynamicObjTypeIds;
+        let dynamicRuntimeObjIds = update.replaceDynamicObjRenderData
+            ? update.dynamicRuntimeObjIds
+            : current?.dynamicRuntimeObjIds;
+
+        if (update.clearDynamicObjRenderData) {
+            dynamicObjTypeIds = undefined;
+            dynamicRuntimeObjIds = undefined;
+        }
+        if (update.removeDynamicRuntimeObjIdsPacked && dynamicRuntimeObjIds && dynamicObjTypeIds) {
+            const nextDynamicObjTypeIds = dynamicObjTypeIds.slice();
+            const nextDynamicRuntimeObjIds = dynamicRuntimeObjIds.slice();
+            for (let removeIndex = 0; removeIndex < update.removeDynamicRuntimeObjIdsPacked.length; removeIndex++) {
+                const runtimeObjId = update.removeDynamicRuntimeObjIdsPacked[removeIndex] | 0;
+                for (let index = 0; index < nextDynamicRuntimeObjIds.length; index++) {
+                    if ((nextDynamicRuntimeObjIds[index] | 0) !== (runtimeObjId | 0)) {
+                        continue;
+                    }
+                    nextDynamicRuntimeObjIds[index] = -1;
+                    nextDynamicObjTypeIds[index] = -1;
+                }
+            }
+            dynamicObjTypeIds = nextDynamicObjTypeIds;
+            dynamicRuntimeObjIds = nextDynamicRuntimeObjIds;
+        }
+        if (update.appendDynamicObjRenders && (update.appendDynamicObjRenders.length | 0) > 0) {
+            let nextDynamicObjTypeIds = dynamicObjTypeIds;
+            let nextDynamicRuntimeObjIds = dynamicRuntimeObjIds;
+            for (let appendIndex = 0; appendIndex < update.appendDynamicObjRenders.length; appendIndex++) {
+                const append: (typeof update.appendDynamicObjRenders)[number] =
+                    update.appendDynamicObjRenders[appendIndex];
+                if (!append) {
+                    continue;
+                }
+                const interactId = append.interactId | 0;
+                nextDynamicObjTypeIds = this.ensureInt32Length(
+                    nextDynamicObjTypeIds,
+                    (interactId + 1) | 0,
+                );
+                nextDynamicRuntimeObjIds = this.ensureInt32Length(
+                    nextDynamicRuntimeObjIds,
+                    (interactId + 1) | 0,
+                );
+                nextDynamicObjTypeIds[interactId] =
+                    append.objRenderData.objTypeIds[interactId] | 0;
+                nextDynamicRuntimeObjIds[interactId] = append.runtimeObjId | 0;
+            }
+            dynamicObjTypeIds = nextDynamicObjTypeIds;
+            dynamicRuntimeObjIds = nextDynamicRuntimeObjIds;
+        }
+        this.setMapObjInteractionState(mapId | 0, {
+            staticObjTypeIds,
+            dynamicObjTypeIds,
+            dynamicRuntimeObjIds,
+        });
+    }
+
     private getNpcInteractionTargetInfo(
         mapId: number,
         npcInteractId: number,
@@ -941,18 +1026,7 @@ export class MapViewerRenderer extends RendererMainLoop {
                         if (!update) {
                             continue;
                         }
-                        const current = this.objInteractionStateByMapId.get(update.mapId | 0);
-                        this.setMapObjInteractionState(update.mapId | 0, {
-                            staticObjTypeIds: update.replaceStaticObjRenderData
-                                ? update.staticObjRenderData?.objTypeIds
-                                : current?.staticObjTypeIds,
-                            dynamicObjTypeIds: update.replaceDynamicObjRenderData
-                                ? update.dynamicObjRenderData?.objTypeIds
-                                : current?.dynamicObjTypeIds,
-                            dynamicRuntimeObjIds: update.replaceDynamicObjRenderData
-                                ? update.dynamicRuntimeObjIds
-                                : current?.dynamicRuntimeObjIds,
-                        });
+                        this.applyMapObjInteractionStateUpdate(update.mapId | 0, update);
                     }
                 }
                 this.renderer.applyFramePacket(packet);

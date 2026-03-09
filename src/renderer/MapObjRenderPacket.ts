@@ -11,6 +11,13 @@ export type MapObjRenderUpdate = Readonly<{
     replaceDynamicObjRenderData: boolean;
     dynamicObjRenderData?: ObjRenderData;
     dynamicRuntimeObjIds?: Int32Array;
+    appendDynamicObjRenders?: ReadonlyArray<{
+        runtimeObjId: number;
+        interactId: number;
+        objRenderData: ObjRenderData;
+    }>;
+    removeDynamicRuntimeObjIdsPacked?: Int32Array;
+    clearDynamicObjRenderData: boolean;
 }>;
 
 export type MapObjRenderPacket = Readonly<{
@@ -55,12 +62,52 @@ export function mapObjRenderPacketTransferables(packet: MapObjRenderPacket): Tra
         if (update.dynamicRuntimeObjIds) {
             pushTransferableUnique(out, seen, update.dynamicRuntimeObjIds.buffer as Transferable);
         }
+        if (update.removeDynamicRuntimeObjIdsPacked) {
+            pushTransferableUnique(
+                out,
+                seen,
+                update.removeDynamicRuntimeObjIdsPacked.buffer as Transferable,
+            );
+        }
         const renderStates = [update.staticObjRenderData, update.dynamicObjRenderData];
         for (let renderStateIndex = 0; renderStateIndex < renderStates.length; renderStateIndex++) {
             const objRenderData = renderStates[renderStateIndex];
             if (!objRenderData) {
                 continue;
             }
+            pushTransferableUnique(out, seen, objRenderData.vertices.buffer as Transferable);
+            pushTransferableUnique(out, seen, objRenderData.indices.buffer as Transferable);
+            pushTransferableUnique(out, seen, objRenderData.usedTextureIds.buffer as Transferable);
+            pushTransferableUnique(out, seen, objRenderData.objTypeIds.buffer as Transferable);
+            for (let bucketIndex = 0; bucketIndex < MAP_RENDER_DRAW_BUCKET_KEYS.length; bucketIndex++) {
+                const key = MAP_RENDER_DRAW_BUCKET_KEYS[bucketIndex]!;
+                pushTransferableUnique(
+                    out,
+                    seen,
+                    objRenderData.modelInfoTextures[key].buffer as Transferable,
+                );
+                pushTransferableUnique(
+                    out,
+                    seen,
+                    objRenderData.modelInfoIndices[key].buffer as Transferable,
+                );
+                pushTransferableUnique(
+                    out,
+                    seen,
+                    objRenderData.drawRanges[key].buffer as Transferable,
+                );
+            }
+        }
+        const appendDynamicObjRenders = update.appendDynamicObjRenders;
+        if (!appendDynamicObjRenders) {
+            continue;
+        }
+        for (let appendIndex = 0; appendIndex < appendDynamicObjRenders.length; appendIndex++) {
+            const append = appendDynamicObjRenders[appendIndex];
+            if (!append) {
+                continue;
+            }
+            const objRenderData = append.objRenderData;
             pushTransferableUnique(out, seen, objRenderData.vertices.buffer as Transferable);
             pushTransferableUnique(out, seen, objRenderData.indices.buffer as Transferable);
             pushTransferableUnique(out, seen, objRenderData.usedTextureIds.buffer as Transferable);
