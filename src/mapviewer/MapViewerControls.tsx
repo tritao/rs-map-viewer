@@ -206,6 +206,8 @@ export const MapViewerControls = memo(
         const [varType, setVarType] = useState<VarType>(VarType.VARBIT);
         const [varId, setVarId] = useState(0);
         const [varValue, setVarValue] = useState(0);
+        const [spawnItemId, setSpawnItemId] = useState(995);
+        const [spawnItemCount, setSpawnItemCount] = useState(1);
         const initialRuntimeOptions = mapViewer.getWorkerRuntimeOptions();
         const [mapRenderBackend, setMapRenderBackend] = useState<BackendKind>(
             initialRuntimeOptions.mapRenderBackend,
@@ -515,6 +517,26 @@ export const MapViewerControls = memo(
                         }),
                         "Restore Visible Ground Items": button(async () => {
                             await mapViewer.restoreVisibleGroundItems();
+                        }),
+                        "Spawn Item Id": {
+                            value: spawnItemId,
+                            step: 1,
+                            onChange: setSpawnItemId,
+                        },
+                        "Spawn Item Count": {
+                            value: spawnItemCount,
+                            min: 1,
+                            step: 1,
+                            onChange: setSpawnItemCount,
+                        },
+                        "Spawn Ground Item At Camera": button(async () => {
+                            await mapViewer.spawnGroundItemAtCamera(
+                                spawnItemId | 0,
+                                spawnItemCount | 0,
+                            );
+                        }),
+                        "Clear Visible Dynamic Ground Items": button(async () => {
+                            await mapViewer.clearVisibleDynamicGroundItems();
                         }),
                     },
                     { collapsed: true },

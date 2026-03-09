@@ -56,6 +56,27 @@ export class SimWorkerPool {
             this.applyMapObjAdditions(additions),
         applyMapObjRemovals: (removals: ReadonlyArray<WorldMapObjRemoval>) =>
             this.applyMapObjRemovals(removals),
+        applyDynamicMapObjSpawns: (
+            spawns: ReadonlyArray<
+                Readonly<{
+                    mapId: number;
+                    objTypeId: number;
+                    count: number;
+                    x: number;
+                    y: number;
+                    plane: number;
+                }>
+            >,
+        ) => this.applyDynamicMapObjSpawns(spawns),
+        applyDynamicMapObjDespawns: (
+            despawns: ReadonlyArray<
+                Readonly<{
+                    mapId: number;
+                    runtimeObjId: number;
+                }>
+            >,
+        ) => this.applyDynamicMapObjDespawns(despawns),
+        clearDynamicMapObjs: (mapIds: ReadonlyArray<number>) => this.clearDynamicMapObjs(mapIds),
         applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
             this.applyLocAnimationResets(resets),
         applyLocAnimationPauseStates: (
@@ -175,6 +196,36 @@ export class SimWorkerPool {
 
     private applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
         return this.withWorker((w) => w.applyMapObjRemovals(removals));
+    }
+
+    private applyDynamicMapObjSpawns(
+        spawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                objTypeId: number;
+                count: number;
+                x: number;
+                y: number;
+                plane: number;
+            }>
+        >,
+    ): Promise<number> {
+        return this.withWorker((w) => w.applyDynamicMapObjSpawns(spawns));
+    }
+
+    private applyDynamicMapObjDespawns(
+        despawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                runtimeObjId: number;
+            }>
+        >,
+    ): Promise<number> {
+        return this.withWorker((w) => w.applyDynamicMapObjDespawns(despawns));
+    }
+
+    private clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
+        return this.withWorker((w) => w.clearDynamicMapObjs(mapIds));
     }
 
     private applyLocAnimationResets(

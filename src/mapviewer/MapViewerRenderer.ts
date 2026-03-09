@@ -459,6 +459,9 @@ export class MapViewerRenderer extends RendererMainLoop {
                 (input.obj.stateReplacements.length | 0) > 0) ||
             (!!input.obj?.additions && (input.obj.additions.length | 0) > 0) ||
             (!!input.obj?.removals && (input.obj.removals.length | 0) > 0) ||
+            (!!input.obj?.dynamicSpawns && (input.obj.dynamicSpawns.length | 0) > 0) ||
+            (!!input.obj?.dynamicDespawns && (input.obj.dynamicDespawns.length | 0) > 0) ||
+            (!!input.obj?.clearDynamicMaps && (input.obj.clearDynamicMaps.length | 0) > 0) ||
             (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
             (!!input.loc?.animationPauseStates && (input.loc.animationPauseStates.length | 0) > 0);
         if ((applied | 0) > 0 && hasRenderAffectingWorldInput) {
@@ -538,6 +541,43 @@ export class MapViewerRenderer extends RendererMainLoop {
         return await this.applyWorldInput({
             obj: {
                 additions,
+            },
+        });
+    }
+
+    async spawnGroundItemAtCamera(objTypeId: number, count: number): Promise<number> {
+        return await this.applyWorldInput({
+            obj: {
+                dynamicSpawns: [
+                    {
+                        mapId: getMapSquareId(this.camera.getMapX() >> 6, this.camera.getMapY() >> 6),
+                        objTypeId: objTypeId | 0,
+                        count: Math.max(1, count | 0),
+                        x: this.camera.getMapX() | 0,
+                        y: this.camera.getMapY() | 0,
+                        plane: 0,
+                    },
+                ],
+            },
+        });
+    }
+
+    async clearVisibleDynamicGroundItems(): Promise<number> {
+        const clearDynamicMaps: number[] = [];
+        const visibleMapCount = this.mapManager.visibleMapCount | 0;
+        for (let i = 0; i < visibleMapCount; i++) {
+            const mapInfo = this.mapManager.visibleMaps[i];
+            if (!mapInfo) {
+                continue;
+            }
+            clearDynamicMaps.push(mapInfo.mapId | 0);
+        }
+        if ((clearDynamicMaps.length | 0) <= 0) {
+            return 0;
+        }
+        return await this.applyWorldInput({
+            obj: {
+                clearDynamicMaps,
             },
         });
     }
@@ -806,6 +846,21 @@ export class MapViewerRenderer extends RendererMainLoop {
             renderFrameCoordinator: this.renderFrameCoordinator,
             applyFramePacket: (packet) => {
                 this.latestRenderFramePacket = packet;
+                const objUpdates = packet?.runtimeRenderUpdates?.updates;
+                if (objUpdates) {
+                    for (let index = 0; index < objUpdates.length; index++) {
+                        const update = objUpdates[index];
+                        if (!update) {
+                            continue;
+                        }
+                        if (update.replaceObjRenderData) {
+                            this.setMapObjTypeIds(
+                                update.mapId | 0,
+                                update.objRenderData?.objTypeIds,
+                            );
+                        }
+                    }
+                }
                 this.renderer.applyFramePacket(packet);
             },
         });

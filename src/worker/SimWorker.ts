@@ -83,6 +83,36 @@ const worldApi = {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.applyMapObjRemovals(removals);
     },
+    async applyDynamicMapObjSpawns(
+        spawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                objTypeId: number;
+                count: number;
+                x: number;
+                y: number;
+                plane: number;
+            }>
+        >,
+    ): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyDynamicMapObjSpawns(spawns);
+    },
+    async applyDynamicMapObjDespawns(
+        despawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                runtimeObjId: number;
+            }>
+        >,
+    ): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyDynamicMapObjDespawns(despawns);
+    },
+    async clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.clearDynamicMapObjs(mapIds);
+    },
     async applyLocAnimationResets(
         resets: ReadonlyArray<WorldLocAnimationReset>,
     ): Promise<number> {
@@ -152,6 +182,33 @@ const worker = {
     },
     async applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number> {
         return worldApi.applyMapObjRemovals(removals);
+    },
+    async applyDynamicMapObjSpawns(
+        spawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                objTypeId: number;
+                count: number;
+                x: number;
+                y: number;
+                plane: number;
+            }>
+        >,
+    ): Promise<number> {
+        return worldApi.applyDynamicMapObjSpawns(spawns);
+    },
+    async applyDynamicMapObjDespawns(
+        despawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                runtimeObjId: number;
+            }>
+        >,
+    ): Promise<number> {
+        return worldApi.applyDynamicMapObjDespawns(despawns);
+    },
+    async clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
+        return worldApi.clearDynamicMapObjs(mapIds);
     },
     async applyLocAnimationResets(
         resets: ReadonlyArray<WorldLocAnimationReset>,

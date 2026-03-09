@@ -568,6 +568,14 @@ export class MapViewer {
         return this.renderer.restoreVisibleGroundItems();
     }
 
+    spawnGroundItemAtCamera(objTypeId: number, count: number): Promise<number> {
+        return this.renderer.spawnGroundItemAtCamera(objTypeId, count);
+    }
+
+    clearVisibleDynamicGroundItems(): Promise<number> {
+        return this.renderer.clearVisibleDynamicGroundItems();
+    }
+
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
         const normalized = normalizeRuntimeOptions(options);
         if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {

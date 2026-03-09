@@ -28,6 +28,27 @@ type WorldSimRuntime = Readonly<{
     ): Promise<number>;
     applyMapObjAdditions(additions: ReadonlyArray<WorldMapObjAddition>): Promise<number>;
     applyMapObjRemovals(removals: ReadonlyArray<WorldMapObjRemoval>): Promise<number>;
+    applyDynamicMapObjSpawns(
+        spawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                objTypeId: number;
+                count: number;
+                x: number;
+                y: number;
+                plane: number;
+            }>
+        >,
+    ): Promise<number>;
+    applyDynamicMapObjDespawns(
+        despawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                runtimeObjId: number;
+            }>
+        >,
+    ): Promise<number>;
+    clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number>;
     applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): Promise<number>;
     applyLocAnimationPauseStates(
         pauseStates: ReadonlyArray<WorldLocAnimationPauseState>,
@@ -137,6 +158,24 @@ export class WorkerWorldRuntime implements WorldRuntime {
         const objRemovals = input.obj?.removals;
         if (objRemovals && (objRemovals.length | 0) > 0) {
             applied = (applied + (await this.deps.simRuntime.applyMapObjRemovals(objRemovals))) | 0;
+        }
+        const dynamicSpawns = input.obj?.dynamicSpawns;
+        if (dynamicSpawns && (dynamicSpawns.length | 0) > 0) {
+            applied =
+                (applied + (await this.deps.simRuntime.applyDynamicMapObjSpawns(dynamicSpawns))) |
+                0;
+        }
+        const dynamicDespawns = input.obj?.dynamicDespawns;
+        if (dynamicDespawns && (dynamicDespawns.length | 0) > 0) {
+            applied =
+                (applied +
+                    (await this.deps.simRuntime.applyDynamicMapObjDespawns(dynamicDespawns))) |
+                0;
+        }
+        const clearDynamicMaps = input.obj?.clearDynamicMaps;
+        if (clearDynamicMaps && (clearDynamicMaps.length | 0) > 0) {
+            applied =
+                (applied + (await this.deps.simRuntime.clearDynamicMapObjs(clearDynamicMaps))) | 0;
         }
         return applied | 0;
     }

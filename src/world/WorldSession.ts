@@ -18,6 +18,23 @@ export type WorldObjStateInput = Readonly<{
     stateReplacements?: ReadonlyArray<WorldMapObjStateReplacement>;
     additions?: ReadonlyArray<WorldMapObjAddition>;
     removals?: ReadonlyArray<WorldMapObjRemoval>;
+    dynamicSpawns?: ReadonlyArray<
+        Readonly<{
+            mapId: number;
+            objTypeId: number;
+            count: number;
+            x: number;
+            y: number;
+            plane: number;
+        }>
+    >;
+    dynamicDespawns?: ReadonlyArray<
+        Readonly<{
+            mapId: number;
+            runtimeObjId: number;
+        }>
+    >;
+    clearDynamicMaps?: ReadonlyArray<number>;
 }>;
 
 export type WorldLocAnimationInput = Readonly<{

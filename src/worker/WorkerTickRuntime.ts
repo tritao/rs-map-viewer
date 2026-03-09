@@ -1,5 +1,5 @@
 import type { NpcSpawn } from "../data/npc/NpcSpawn";
-import type { ObjSpawn } from "../data/obj/ObjSpawn";
+import { getMapObjSpawns, type ObjSpawn } from "../data/obj/ObjSpawn";
 import { NpcSpawnResolver } from "../data/npc/NpcSpawnResolver";
 import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
 import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
@@ -10,6 +10,8 @@ import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
+import { mapObjStateFromRenderData } from "../shared/StaticMapPacket";
 import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
@@ -37,12 +39,14 @@ import type {
     SimMapRuntimeRegistrationInput,
     WorldInputUpdate,
 } from "./WorkerRuntimeTypes";
+import type { WorkerState } from "./WorkerBuildTypes";
 
 type TickWorkerState = Readonly<{
     session: CacheSession;
     mapBytesProvider: MapBytesProvider;
     objSpawns: ReadonlyArray<ObjSpawn>;
     fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
+    objModelLoader: WorkerState["objModelLoader"];
     sceneBuilder: SceneBuilder;
 }>;
 
@@ -74,6 +78,8 @@ type MapObjRuntimeState = Readonly<{
     maxLevel: number;
     mapObjState?: MapObjState;
     removedObjIndices: ReadonlySet<number>;
+    dynamicObjSpawnsByRuntimeId: ReadonlyMap<number, ObjSpawn>;
+    nextDynamicRuntimeObjId: number;
 }>;
 
 function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
@@ -105,6 +111,20 @@ export class WorkerTickRuntime {
     private readonly pendingMapObjStateReplacementsByMapId = new Map<number, WorldMapObjStateReplacement>();
     private readonly pendingMapObjAdditionsByMapId = new Map<number, Set<number>>();
     private readonly pendingMapObjRemovalsByMapId = new Map<number, Set<number>>();
+    private readonly pendingDynamicMapObjSpawnsByMapId = new Map<
+        number,
+        Array<
+            Readonly<{
+                objTypeId: number;
+                count: number;
+                x: number;
+                y: number;
+                plane: number;
+            }>
+        >
+    >();
+    private readonly pendingDynamicMapObjDespawnsByMapId = new Map<number, Set<number>>();
+    private readonly pendingClearDynamicMapIds = new Set<number>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
         string,
@@ -133,6 +153,9 @@ export class WorkerTickRuntime {
         this.pendingMapObjStateReplacementsByMapId.clear();
         this.pendingMapObjAdditionsByMapId.clear();
         this.pendingMapObjRemovalsByMapId.clear();
+        this.pendingDynamicMapObjSpawnsByMapId.clear();
+        this.pendingDynamicMapObjDespawnsByMapId.clear();
+        this.pendingClearDynamicMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
         this.mapObjRuntimeByMapId.clear();
@@ -201,6 +224,81 @@ export class WorkerTickRuntime {
                 this.pendingMapObjRemovalsByMapId.set(mapId, removedIndices);
             }
             removedIndices.add(removal.objIndex | 0);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyDynamicMapObjSpawns(
+        spawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                objTypeId: number;
+                count: number;
+                x: number;
+                y: number;
+                plane: number;
+            }>
+        >,
+    ): number {
+        let applied = 0;
+        for (let index = 0; index < spawns.length; index++) {
+            const spawn = spawns[index];
+            if (!spawn) {
+                continue;
+            }
+            const mapId = spawn.mapId | 0;
+            let pending = this.pendingDynamicMapObjSpawnsByMapId.get(mapId);
+            if (!pending) {
+                pending = [];
+                this.pendingDynamicMapObjSpawnsByMapId.set(mapId, pending);
+            }
+            pending.push({
+                objTypeId: spawn.objTypeId | 0,
+                count: Math.max(1, spawn.count | 0),
+                x: spawn.x | 0,
+                y: spawn.y | 0,
+                plane: spawn.plane | 0,
+            });
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyDynamicMapObjDespawns(
+        despawns: ReadonlyArray<
+            Readonly<{
+                mapId: number;
+                runtimeObjId: number;
+            }>
+        >,
+    ): number {
+        let applied = 0;
+        for (let index = 0; index < despawns.length; index++) {
+            const despawn = despawns[index];
+            if (!despawn) {
+                continue;
+            }
+            const mapId = despawn.mapId | 0;
+            let pending = this.pendingDynamicMapObjDespawnsByMapId.get(mapId);
+            if (!pending) {
+                pending = new Set<number>();
+                this.pendingDynamicMapObjDespawnsByMapId.set(mapId, pending);
+            }
+            pending.add(despawn.runtimeObjId | 0);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    clearDynamicMapObjs(mapIds: ReadonlyArray<number>): number {
+        let applied = 0;
+        for (let index = 0; index < mapIds.length; index++) {
+            const mapId = mapIds[index];
+            if (mapId === undefined) {
+                continue;
+            }
+            this.pendingClearDynamicMapIds.add(mapId | 0);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -303,6 +401,7 @@ export class WorkerTickRuntime {
             maxLevel?: number;
             mapObjState?: MapObjState;
             resetRemovedObjIndices?: boolean;
+            resetDynamicObjSpawns?: boolean;
         }>,
     ): void {
         const current = this.mapObjRuntimeByMapId.get(mapId | 0);
@@ -313,7 +412,50 @@ export class WorkerTickRuntime {
             removedObjIndices: input.resetRemovedObjIndices
                 ? new Set<number>()
                 : new Set(current?.removedObjIndices ?? []),
+            dynamicObjSpawnsByRuntimeId: input.resetDynamicObjSpawns
+                ? new Map<number, ObjSpawn>()
+                : new Map(current?.dynamicObjSpawnsByRuntimeId ?? []),
+            nextDynamicRuntimeObjId: input.resetDynamicObjSpawns
+                ? 1
+                : current?.nextDynamicRuntimeObjId ?? 1,
         });
+    }
+
+    private rebuildMapObjState(
+        workerState: TickWorkerState,
+        mapId: number,
+        runtime: MapObjRuntimeState,
+    ): MapObjState | undefined {
+        const { mapX, mapY } = decodeMapSquareFromId(mapId | 0);
+        const staticSpawns = getMapObjSpawns(
+            workerState.objSpawns as ObjSpawn[],
+            runtime.maxLevel | 0,
+            mapX | 0,
+            mapY | 0,
+        );
+        const visibleStaticSpawns: ObjSpawn[] = [];
+        for (let index = 0; index < staticSpawns.length; index++) {
+            if (runtime.removedObjIndices.has(index | 0)) {
+                continue;
+            }
+            visibleStaticSpawns.push(staticSpawns[index]!);
+        }
+        const dynamicSpawns = Array.from(runtime.dynamicObjSpawnsByRuntimeId.entries())
+            .sort((a, b) => (a[0] | 0) - (b[0] | 0))
+            .map((entry) => entry[1]);
+        const objRenderData = buildObjRenderData({
+            loadObjs: true,
+            objTypeLoader: workerState.session.loaders.objTypeLoader,
+            objModelLoader: workerState.objModelLoader,
+            scene: this.buildMapSimScene(workerState, mapId | 0, runtime.borderSize | 0),
+            textureLoader: workerState.session.loaders.textureLoader,
+            baseX: ((mapX | 0) * Scene.MAP_SQUARE_SIZE - (runtime.borderSize | 0)) | 0,
+            baseY: ((mapY | 0) * Scene.MAP_SQUARE_SIZE - (runtime.borderSize | 0)) | 0,
+            borderSize: runtime.borderSize | 0,
+            objSpawns: [...visibleStaticSpawns, ...dynamicSpawns],
+            minimizeDrawCalls: true,
+        });
+        return mapObjStateFromRenderData(objRenderData);
     }
 
     private emitNpcBootstrapWarnings(
@@ -385,6 +527,7 @@ export class WorkerTickRuntime {
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
         this.upsertMapObjRuntimeState(mapId, {
             borderSize: input.borderSize | 0,
+            resetDynamicObjSpawns: true,
         });
     }
 
@@ -426,6 +569,7 @@ export class WorkerTickRuntime {
             maxLevel: input.maxLevel | 0,
             mapObjState: input.mapObjState,
             resetRemovedObjIndices: true,
+            resetDynamicObjSpawns: true,
         });
     }
 
@@ -446,6 +590,9 @@ export class WorkerTickRuntime {
         this.pendingMapObjStateReplacementsByMapId.delete(mapId | 0);
         this.pendingMapObjAdditionsByMapId.delete(mapId | 0);
         this.pendingMapObjRemovalsByMapId.delete(mapId | 0);
+        this.pendingDynamicMapObjSpawnsByMapId.delete(mapId | 0);
+        this.pendingDynamicMapObjDespawnsByMapId.delete(mapId | 0);
+        this.pendingClearDynamicMapIds.delete(mapId | 0);
         this.mapObjRuntimeByMapId.delete(mapId | 0);
         this.workerMapRuntimeTracker.clearMissingRuntimeStateWarning(mapId);
     }
@@ -635,6 +782,10 @@ export class WorkerTickRuntime {
             (this.pendingMapObjStateReplacementsByMapId.size | 0) > 0;
         const hasPendingObjAdditions = (this.pendingMapObjAdditionsByMapId.size | 0) > 0;
         const hasPendingObjRemovals = (this.pendingMapObjRemovalsByMapId.size | 0) > 0;
+        const hasPendingDynamicObjSpawns = (this.pendingDynamicMapObjSpawnsByMapId.size | 0) > 0;
+        const hasPendingDynamicObjDespawns =
+            (this.pendingDynamicMapObjDespawnsByMapId.size | 0) > 0;
+        const hasPendingClearDynamicMaps = (this.pendingClearDynamicMapIds.size | 0) > 0;
         const hasPendingLocAnimationResets =
             (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
         const hasPendingLocAnimationPauseStates =
@@ -645,6 +796,9 @@ export class WorkerTickRuntime {
             !hasPendingObjStateReplacements &&
             !hasPendingObjAdditions &&
             !hasPendingObjRemovals &&
+            !hasPendingDynamicObjSpawns &&
+            !hasPendingDynamicObjDespawns &&
+            !hasPendingClearDynamicMaps &&
             !hasPendingLocAnimationResets &&
             !hasPendingLocAnimationPauseStates
         ) {
@@ -693,6 +847,7 @@ export class WorkerTickRuntime {
                     this.upsertMapObjRuntimeState(update.mapId | 0, {
                         mapObjState: update.mapObjState,
                         resetRemovedObjIndices: true,
+                        resetDynamicObjSpawns: true,
                     });
                 }
             }
@@ -714,6 +869,76 @@ export class WorkerTickRuntime {
                 this.mapObjRuntimeByMapId.set(mapId | 0, {
                     ...runtime,
                     removedObjIndices: nextRemovedObjIndices,
+                });
+            }
+        }
+        if (
+            hasPendingClearDynamicMaps ||
+            hasPendingDynamicObjSpawns ||
+            hasPendingDynamicObjDespawns
+        ) {
+            const dirtyDynamicMapIds = new Set<number>();
+            for (const mapId of this.pendingClearDynamicMapIds.values()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                this.mapObjRuntimeByMapId.set(mapId | 0, {
+                    ...runtime,
+                    dynamicObjSpawnsByRuntimeId: new Map<number, ObjSpawn>(),
+                    nextDynamicRuntimeObjId: runtime.nextDynamicRuntimeObjId | 0,
+                });
+                dirtyDynamicMapIds.add(mapId | 0);
+            }
+            for (const [mapId, spawns] of this.pendingDynamicMapObjSpawnsByMapId.entries()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
+                let nextDynamicRuntimeObjId = runtime.nextDynamicRuntimeObjId | 0;
+                for (let index = 0; index < spawns.length; index++) {
+                    const spawn = spawns[index]!;
+                    nextDynamicObjSpawnsByRuntimeId.set(nextDynamicRuntimeObjId, {
+                        id: spawn.objTypeId | 0,
+                        count: Math.max(1, spawn.count | 0),
+                        x: spawn.x | 0,
+                        y: spawn.y | 0,
+                        plane: spawn.plane | 0,
+                    });
+                    nextDynamicRuntimeObjId = (nextDynamicRuntimeObjId + 1) | 0;
+                }
+                this.mapObjRuntimeByMapId.set(mapId | 0, {
+                    ...runtime,
+                    dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
+                    nextDynamicRuntimeObjId,
+                });
+                dirtyDynamicMapIds.add(mapId | 0);
+            }
+            for (const [mapId, runtimeObjIds] of this.pendingDynamicMapObjDespawnsByMapId.entries()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
+                for (const runtimeObjId of runtimeObjIds.values()) {
+                    nextDynamicObjSpawnsByRuntimeId.delete(runtimeObjId | 0);
+                }
+                this.mapObjRuntimeByMapId.set(mapId | 0, {
+                    ...runtime,
+                    dynamicObjSpawnsByRuntimeId: nextDynamicObjSpawnsByRuntimeId,
+                });
+                dirtyDynamicMapIds.add(mapId | 0);
+            }
+            for (const mapId of dirtyDynamicMapIds.values()) {
+                const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
+                if (!runtime) {
+                    continue;
+                }
+                objStateReplacements.push({
+                    kind: "replaceState",
+                    mapId: mapId | 0,
+                    mapObjState: this.rebuildMapObjState(workerState, mapId | 0, runtime),
                 });
             }
         }
@@ -746,6 +971,9 @@ export class WorkerTickRuntime {
         this.pendingMapObjStateReplacementsByMapId.clear();
         this.pendingMapObjAdditionsByMapId.clear();
         this.pendingMapObjRemovalsByMapId.clear();
+        this.pendingDynamicMapObjSpawnsByMapId.clear();
+        this.pendingDynamicMapObjDespawnsByMapId.clear();
+        this.pendingClearDynamicMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
         const locDeltaPacket = locAnimationResets
