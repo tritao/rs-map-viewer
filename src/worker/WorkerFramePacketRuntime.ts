@@ -745,9 +745,13 @@ export class WorkerFramePacketRuntime {
         if (((packet.npc?.state?.changeCount ?? 0) | 0) <= 0) {
             return {
                 applied: applied | 0,
-                snapshotMapIds: {
-                    dynamicObj: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
-                    loc: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+                snapshotRequests: {
+                    obj: {
+                        dynamic: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+                    },
+                    loc: {
+                        animation: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+                    },
                 },
             };
         }
@@ -756,10 +760,16 @@ export class WorkerFramePacketRuntime {
         applied = (applied + (this.npcSimStateStore.applyWorldDeltaPacket(packet, deps) | 0)) | 0;
         return {
             applied: applied | 0,
-            snapshotMapIds: {
-                npc: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
-                dynamicObj: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
-                loc: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+            snapshotRequests: {
+                npc: {
+                    state: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
+                },
+                obj: {
+                    dynamic: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+                },
+                loc: {
+                    animation: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+                },
             },
         };
     }

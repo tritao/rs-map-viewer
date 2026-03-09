@@ -8,15 +8,27 @@ export type WorkerViewState = Readonly<{
     lodDistance: number;
 }>;
 
-export type WorldSnapshotMapIds = Readonly<{
-    npc?: Int32Array;
-    dynamicObj?: Int32Array;
-    loc?: Int32Array;
+export type WorldNpcSnapshotRequests = Readonly<{
+    state?: Int32Array;
+}>;
+
+export type WorldObjSnapshotRequests = Readonly<{
+    dynamic?: Int32Array;
+}>;
+
+export type WorldLocSnapshotRequests = Readonly<{
+    animation?: Int32Array;
+}>;
+
+export type WorldSnapshotRequests = Readonly<{
+    npc?: WorldNpcSnapshotRequests;
+    obj?: WorldObjSnapshotRequests;
+    loc?: WorldLocSnapshotRequests;
 }>;
 
 export type WorldInputUpdate = Readonly<{
     mapIds?: Int32Array;
-    snapshotMapIds?: WorldSnapshotMapIds;
+    snapshotRequests?: WorldSnapshotRequests;
 }>;
 
 export type RenderFrameInputUpdate = Readonly<{
@@ -29,7 +41,7 @@ export type WorkerInputStateVersion = number;
 
 export type ApplyWorldDeltaResult = Readonly<{
     applied: number;
-    snapshotMapIds?: WorldSnapshotMapIds;
+    snapshotRequests?: WorldSnapshotRequests;
 }>;
 
 export type SimMapRuntimeRegistrationInput = Readonly<{

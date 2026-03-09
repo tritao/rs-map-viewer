@@ -137,20 +137,38 @@ const worldApi = {
         tickRuntime.applyWorldInputUpdate({
             mapIds:
                 update.mapIds !== undefined ? normalizeWorkerInt32Array(update.mapIds) : undefined,
-            snapshotMapIds: update.snapshotMapIds
+            snapshotRequests: update.snapshotRequests
                 ? {
-                      npc:
-                          update.snapshotMapIds.npc !== undefined
-                              ? normalizeWorkerInt32Array(update.snapshotMapIds.npc)
-                              : undefined,
-                      dynamicObj:
-                          update.snapshotMapIds.dynamicObj !== undefined
-                              ? normalizeWorkerInt32Array(update.snapshotMapIds.dynamicObj)
-                              : undefined,
-                      loc:
-                          update.snapshotMapIds.loc !== undefined
-                              ? normalizeWorkerInt32Array(update.snapshotMapIds.loc)
-                              : undefined,
+                      npc: update.snapshotRequests.npc
+                          ? {
+                                state:
+                                    update.snapshotRequests.npc.state !== undefined
+                                        ? normalizeWorkerInt32Array(
+                                              update.snapshotRequests.npc.state,
+                                          )
+                                        : undefined,
+                            }
+                          : undefined,
+                      obj: update.snapshotRequests.obj
+                          ? {
+                                dynamic:
+                                    update.snapshotRequests.obj.dynamic !== undefined
+                                        ? normalizeWorkerInt32Array(
+                                              update.snapshotRequests.obj.dynamic,
+                                          )
+                                        : undefined,
+                            }
+                          : undefined,
+                      loc: update.snapshotRequests.loc
+                          ? {
+                                animation:
+                                    update.snapshotRequests.loc.animation !== undefined
+                                        ? normalizeWorkerInt32Array(
+                                              update.snapshotRequests.loc.animation,
+                                          )
+                                        : undefined,
+                            }
+                          : undefined,
                   }
                 : undefined,
         });

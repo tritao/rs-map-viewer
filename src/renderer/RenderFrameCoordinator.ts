@@ -189,10 +189,16 @@ export class RenderFrameCoordinator {
             worldInputUpdate = {
                 ...worldInputUpdate,
                 mapIds: input.mapIds,
-                snapshotMapIds: {
-                    ...(worldInputUpdate?.snapshotMapIds ?? {}),
-                    dynamicObj: input.mapIds,
-                    loc: input.mapIds,
+                snapshotRequests: {
+                    ...(worldInputUpdate?.snapshotRequests ?? {}),
+                    obj: {
+                        ...(worldInputUpdate?.snapshotRequests?.obj ?? {}),
+                        dynamic: input.mapIds,
+                    },
+                    loc: {
+                        ...(worldInputUpdate?.snapshotRequests?.loc ?? {}),
+                        animation: input.mapIds,
+                    },
                 },
             };
             renderFrameUpdate = {
@@ -258,34 +264,40 @@ export class RenderFrameCoordinator {
             if (worldDeltaPacket) {
                 applyResult = await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
                 if (
-                    applyResult.snapshotMapIds?.npc &&
-                    (applyResult.snapshotMapIds.npc.length | 0) > 0
+                    applyResult.snapshotRequests?.npc?.state &&
+                    (applyResult.snapshotRequests.npc.state.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
-                        snapshotMapIds: {
-                            npc: applyResult.snapshotMapIds.npc,
+                        snapshotRequests: {
+                            npc: {
+                                state: applyResult.snapshotRequests.npc.state,
+                            },
                         },
                     });
                     this.needsPacketRefresh = true;
                 }
                 if (
-                    applyResult.snapshotMapIds?.dynamicObj &&
-                    (applyResult.snapshotMapIds.dynamicObj.length | 0) > 0
+                    applyResult.snapshotRequests?.obj?.dynamic &&
+                    (applyResult.snapshotRequests.obj.dynamic.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
-                        snapshotMapIds: {
-                            dynamicObj: applyResult.snapshotMapIds.dynamicObj,
+                        snapshotRequests: {
+                            obj: {
+                                dynamic: applyResult.snapshotRequests.obj.dynamic,
+                            },
                         },
                     });
                     this.needsPacketRefresh = true;
                 }
                 if (
-                    applyResult.snapshotMapIds?.loc &&
-                    (applyResult.snapshotMapIds.loc.length | 0) > 0
+                    applyResult.snapshotRequests?.loc?.animation &&
+                    (applyResult.snapshotRequests.loc.animation.length | 0) > 0
                 ) {
                     await this.deps.worldRuntime.syncState({
-                        snapshotMapIds: {
-                            loc: applyResult.snapshotMapIds.loc,
+                        snapshotRequests: {
+                            loc: {
+                                animation: applyResult.snapshotRequests.loc.animation,
+                            },
                         },
                     });
                     this.needsPacketRefresh = true;
