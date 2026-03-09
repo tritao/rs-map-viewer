@@ -5,7 +5,6 @@ import {
     type MapData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
-import type { SceneLocPlacementOverride } from "../rs/scene/buildSceneFromMapBytesProvider";
 import type { LocType } from "../rs/config/loctype/LocType";
 import type { NpcType } from "../rs/config/npctype/NpcType";
 import type { ObjType } from "../rs/config/objtype/ObjType";
@@ -36,7 +35,12 @@ import {
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { type WorldInput, type WorldSession } from "../world/WorldSession";
+import {
+    type WorldInput,
+    type WorldLocReplacement,
+    type WorldLocReplacementClear,
+    type WorldSession,
+} from "../world/WorldSession";
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
@@ -188,10 +192,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly worldSession: WorldSession;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
-    private readonly locPlacementOverridesByMapId = new Map<
-        number,
-        Map<number, SceneLocPlacementOverride>
-    >();
     private readonly objInteractionStateByMapId = new Map<
         number,
         Readonly<{
@@ -285,9 +285,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             smoothTerrain: r.smoothTerrain,
             minimizeDrawCalls: !r.hasMultiDraw,
             loadedTextureIds: Int32Array.from(r.loadedTextureIds),
-            locPlacementOverrides: Array.from(
-                this.locPlacementOverridesByMapId.get(mapId | 0)?.values() ?? [],
-            ),
+            locPlacementOverrides: this.worldSession.getLocPlacementOverrides(mapId | 0),
         };
         return await this.renderWorkerPool.build.loadStaticMapPacket(input);
     }
@@ -485,6 +483,35 @@ export class MapViewerRenderer extends RendererMainLoop {
         const objDynamicInput = input.obj?.dynamic;
         const locAnimationInput = input.loc?.animation;
         const locStateInput = input.loc?.state;
+        const locReplacementMapIds = new Set<number>();
+        const locReplacements = locStateInput?.replacements;
+        if (locReplacements) {
+            for (let index = 0; index < locReplacements.length; index++) {
+                const replacement = locReplacements[index];
+                if (!replacement) {
+                    continue;
+                }
+                locReplacementMapIds.add(replacement.sourceMapId | 0);
+            }
+        }
+        const locReplacementClears = locStateInput?.replacementClears;
+        if (locReplacementClears) {
+            for (let index = 0; index < locReplacementClears.length; index++) {
+                const replacementClear = locReplacementClears[index];
+                if (!replacementClear) {
+                    continue;
+                }
+                locReplacementMapIds.add(replacementClear.sourceMapId | 0);
+            }
+        }
+        if ((applied | 0) > 0 && (locReplacementMapIds.size | 0) > 0) {
+            for (const sourceMapId of locReplacementMapIds) {
+                if (!this.mapManager.mapSquares.has(sourceMapId | 0)) {
+                    continue;
+                }
+                await this.reloadLoadedMap(sourceMapId | 0);
+            }
+        }
         const hasRenderAffectingWorldInput =
             (!!objStaticInput?.stateReplacements &&
                 (objStaticInput.stateReplacements.length | 0) > 0) ||
@@ -499,6 +526,9 @@ export class MapViewerRenderer extends RendererMainLoop {
                 (objDynamicInput.clearDynamicMaps.length | 0) > 0) ||
             (!!locStateInput?.visibilityChanges &&
                 (locStateInput.visibilityChanges.length | 0) > 0) ||
+            (!!locStateInput?.replacements && (locStateInput.replacements.length | 0) > 0) ||
+            (!!locStateInput?.replacementClears &&
+                (locStateInput.replacementClears.length | 0) > 0) ||
             (!!locAnimationInput?.animationResets &&
                 (locAnimationInput.animationResets.length | 0) > 0) ||
             (!!locAnimationInput?.animationPauseStates &&
@@ -642,7 +672,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initializeCacheState(): void {
         this.animatedLocsByMapId.clear();
-        this.locPlacementOverridesByMapId.clear();
         this.objInteractionStateByMapId.clear();
         this.latestRenderFramePacket = undefined;
         this.renderer.initCache();
@@ -713,7 +742,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.animatedLocsByMapId.clear();
-        this.locPlacementOverridesByMapId.clear();
         this.objInteractionStateByMapId.clear();
         this.latestRenderFramePacket = undefined;
         this.worldSession.reset();
@@ -730,27 +758,6 @@ export class MapViewerRenderer extends RendererMainLoop {
     private getAnimatedLocData(mapId: number, locIndex: number): LocAnimatedData | undefined {
         const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
         return animatedLocs?.[locIndex | 0];
-    }
-
-    private setLocPlacementOverride(override: SceneLocPlacementOverride): void {
-        const sourceMapId = override.sourceMapId | 0;
-        let overrides = this.locPlacementOverridesByMapId.get(sourceMapId);
-        if (!overrides) {
-            overrides = new Map<number, SceneLocPlacementOverride>();
-            this.locPlacementOverridesByMapId.set(sourceMapId, overrides);
-        }
-        overrides.set(override.placementIndex | 0, override);
-    }
-
-    private clearLocPlacementOverride(sourceMapId: number, placementIndex: number): void {
-        const overrides = this.locPlacementOverridesByMapId.get(sourceMapId | 0);
-        if (!overrides) {
-            return;
-        }
-        overrides.delete(placementIndex | 0);
-        if ((overrides.size | 0) <= 0) {
-            this.locPlacementOverridesByMapId.delete(sourceMapId | 0);
-        }
     }
 
     private async reloadLoadedMap(mapId: number): Promise<boolean> {
@@ -1028,14 +1035,22 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
             return;
         }
-        this.setLocPlacementOverride({
-            sourceMapId: locData.sourceMapId | 0,
-            placementIndex: locData.placementIndex | 0,
-            locTypeId: locData.locTypeId | 0,
-            locModelType: locData.locModelType,
-            rotation: ((locData.rotation | 0) + 1) & 0x3,
+        const replacements: WorldLocReplacement[] = [
+            {
+                sourceMapId: locData.sourceMapId | 0,
+                placementIndex: locData.placementIndex | 0,
+                locTypeId: locData.locTypeId | 0,
+                locModelType: locData.locModelType,
+                rotation: ((locData.rotation | 0) + 1) & 0x3,
+            },
+        ];
+        void this.applyWorldInput({
+            loc: {
+                state: {
+                    replacements,
+                },
+            },
         });
-        void this.reloadLoadedMap(locData.sourceMapId | 0);
     };
 
     private onReplaceLoc = (entry: OsrsMenuEntry) => {
@@ -1052,14 +1067,22 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
             return;
         }
-        this.setLocPlacementOverride({
-            sourceMapId: locData.sourceMapId | 0,
-            placementIndex: locData.placementIndex | 0,
-            locTypeId: replacementLocTypeId,
-            locModelType: locData.locModelType,
-            rotation: locData.rotation | 0,
+        const replacements: WorldLocReplacement[] = [
+            {
+                sourceMapId: locData.sourceMapId | 0,
+                placementIndex: locData.placementIndex | 0,
+                locTypeId: replacementLocTypeId,
+                locModelType: locData.locModelType,
+                rotation: locData.rotation | 0,
+            },
+        ];
+        void this.applyWorldInput({
+            loc: {
+                state: {
+                    replacements,
+                },
+            },
         });
-        void this.reloadLoadedMap(locData.sourceMapId | 0);
     };
 
     private onResetLocOverride = (entry: OsrsMenuEntry) => {
@@ -1072,8 +1095,19 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
             return;
         }
-        this.clearLocPlacementOverride(locData.sourceMapId | 0, locData.placementIndex | 0);
-        void this.reloadLoadedMap(locData.sourceMapId | 0);
+        const replacementClears: WorldLocReplacementClear[] = [
+            {
+                sourceMapId: locData.sourceMapId | 0,
+                placementIndex: locData.placementIndex | 0,
+            },
+        ];
+        void this.applyWorldInput({
+            loc: {
+                state: {
+                    replacementClears,
+                },
+            },
+        });
     };
 
     private onSetLocAnimationPaused(paused: boolean): (entry: OsrsMenuEntry) => void {
