@@ -57,9 +57,10 @@ const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
 
 type SearchParamsListener = (params: URLSearchParamsInit) => void;
 
-type MapViewerRuntimeShell = Readonly<{
+type MapViewerRendererShell = Readonly<{
     worldSession: WorldSession;
     renderFrameCoordinator: RenderFrameCoordinator;
+    createStaticMapRuntime(renderer: MapViewerRenderer): MapViewerStaticMapRuntime;
 }>;
 
 type MapViewerStaticMapRuntimeDeps = Readonly<{
@@ -164,11 +165,11 @@ function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined 
     return { mapX, mapY };
 }
 
-function createMapViewerRuntimeShell(
+function createMapViewerRendererShell(
     viewer: MapViewer,
     renderWorkerPool: RenderDataWorkerPool,
     simWorkerPool: SimWorkerPool,
-): MapViewerRuntimeShell {
+): MapViewerRendererShell {
     const worldSession = new WorldSession({
         worldRuntime: new WorkerWorldRuntime({
             renderRuntime: renderWorkerPool.frame,
@@ -189,6 +190,15 @@ function createMapViewerRuntimeShell(
     return {
         worldSession,
         renderFrameCoordinator,
+        createStaticMapRuntime: (renderer) =>
+            new MapViewerStaticMapRuntimeImpl({
+                worldSession,
+                renderFrameCoordinator,
+                loadStaticMapPacket: renderer.loadStaticMapPacket.bind(renderer),
+                isValidMapPacket: (packet) => renderer.renderer.isValidMapData(packet.mapData),
+                detachLoadedMapRuntime: renderer.detachLoadedMapRuntime.bind(renderer),
+                finalizeLoadedMap: renderer.finalizeLoadedMap.bind(renderer),
+            }),
     };
 }
 
@@ -549,22 +559,13 @@ export class MapViewer {
     ) {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
-        const runtimeShell = createMapViewerRuntimeShell(this, renderWorkerPool, simWorkerPool);
+        const rendererShell = createMapViewerRendererShell(this, renderWorkerPool, simWorkerPool);
         this.renderer = new MapViewerRenderer(
             this,
-            runtimeShell.worldSession,
-            runtimeShell.renderFrameCoordinator,
+            rendererShell.worldSession,
+            rendererShell.renderFrameCoordinator,
         );
-        this.renderer.setStaticMapRuntime(
-            new MapViewerStaticMapRuntimeImpl({
-                worldSession: runtimeShell.worldSession,
-                renderFrameCoordinator: runtimeShell.renderFrameCoordinator,
-                loadStaticMapPacket: this.renderer.loadStaticMapPacket.bind(this.renderer),
-                isValidMapPacket: (packet) => this.renderer.renderer.isValidMapData(packet.mapData),
-                detachLoadedMapRuntime: this.renderer.detachLoadedMapRuntime.bind(this.renderer),
-                finalizeLoadedMap: this.renderer.finalizeLoadedMap.bind(this.renderer),
-            }),
-        );
+        this.renderer.setStaticMapRuntime(rendererShell.createStaticMapRuntime(this.renderer));
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
             mapImageCache,
