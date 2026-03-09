@@ -20,9 +20,11 @@ import { Result, err, ok } from "../util/Result";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { WorkerRuntimeOptions } from "../worker/WorkerContext";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
+import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { MapManager } from "./MapManager";
 import { MapViewerRenderer } from "./MapViewerRenderer";
+import { WorldSession } from "../world/WorldSession";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
 
@@ -445,7 +447,15 @@ export class MapViewer {
     ) {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
-        this.renderer = new MapViewerRenderer(this);
+        this.renderer = new MapViewerRenderer(
+            this,
+            new WorldSession({
+                worldRuntime: new WorkerWorldRuntime({
+                    renderRuntime: renderWorkerPool.frame,
+                    simRuntime: simWorkerPool.world,
+                }),
+            }),
+        );
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
             mapImageCache,

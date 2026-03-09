@@ -24,11 +24,10 @@ import {
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import { WorldSession, type WorldInput } from "../world/WorldSession";
+import { type WorldInput, type WorldSession } from "../world/WorldSession";
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
-import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
@@ -98,7 +97,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         return this.visibleMapIdsScratch;
     }
 
-    constructor(public mapViewer: MapViewer) {
+    constructor(
+        public mapViewer: MapViewer,
+        worldSession: WorldSession,
+    ) {
         super();
         this.inputManager = mapViewer.inputManager;
         this.renderWorkerPool = mapViewer.renderWorkerPool;
@@ -116,12 +118,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             getCameraMapY: () => this.camera.getMapY(),
             reportSeamSample: (sample) => this.recordRenderFrameSeamSample(sample),
         });
-        this.worldSession = new WorldSession({
-            worldRuntime: new WorkerWorldRuntime({
-                renderRuntime: this.renderWorkerPool.frame,
-                simRuntime: this.simWorkerPool.world,
-            }),
-        });
+        this.worldSession = worldSession;
         this.mapManager = this.createMapManager();
     }
 
