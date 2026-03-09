@@ -23,7 +23,7 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { MapManager } from "./MapManager";
-import { MapViewerRenderer } from "./MapViewerRenderer";
+import { MapViewerRenderer, MapViewerStaticMapRuntime } from "./MapViewerRenderer";
 import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import { WorldSession } from "../world/WorldSession";
 
@@ -488,6 +488,16 @@ export class MapViewer {
             this,
             runtimeShell.worldSession,
             runtimeShell.renderFrameCoordinator,
+        );
+        this.renderer.setStaticMapRuntime(
+            new MapViewerStaticMapRuntime({
+                worldSession: runtimeShell.worldSession,
+                renderFrameCoordinator: runtimeShell.renderFrameCoordinator,
+                loadStaticMapPacket: this.renderer.loadStaticMapPacket.bind(this.renderer),
+                isValidMapPacket: (packet) => this.renderer.renderer.isValidMapData(packet.mapData),
+                detachLoadedMapRuntime: this.renderer.detachLoadedMapRuntime.bind(this.renderer),
+                finalizeLoadedMap: this.renderer.finalizeLoadedMap.bind(this.renderer),
+            }),
         );
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,

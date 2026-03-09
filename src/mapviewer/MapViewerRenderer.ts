@@ -183,7 +183,7 @@ type MapViewerStaticMapRuntimeDeps = Readonly<{
     finalizeLoadedMap(packet: StaticMapPacket): Promise<void>;
 }>;
 
-class MapViewerStaticMapRuntime {
+export class MapViewerStaticMapRuntime {
     constructor(private readonly deps: MapViewerStaticMapRuntimeDeps) {}
 
     async applyPacket(
@@ -255,7 +255,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly renderTickCoordinator = new RenderTickCoordinator();
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
     private readonly worldSession: WorldSession;
-    private readonly staticMapRuntime: MapViewerStaticMapRuntime;
+    private staticMapRuntime!: MapViewerStaticMapRuntime;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
     private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
     private readonly objInteractionStateByMapId = new Map<
@@ -333,17 +333,13 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderFrameCoordinator = renderFrameCoordinator;
         this.worldSession = worldSession;
         this.mapManager = this.createMapManager();
-        this.staticMapRuntime = new MapViewerStaticMapRuntime({
-            worldSession: this.worldSession,
-            renderFrameCoordinator: this.renderFrameCoordinator,
-            loadStaticMapPacket: this.loadStaticMapPacket.bind(this),
-            isValidMapPacket: (packet) => this.renderer.isValidMapData(packet.mapData),
-            detachLoadedMapRuntime: this.detachLoadedMapRuntime.bind(this),
-            finalizeLoadedMap: this.finalizeLoadedMap.bind(this),
-        });
     }
 
-    private async loadStaticMapPacket(
+    setStaticMapRuntime(staticMapRuntime: MapViewerStaticMapRuntime): void {
+        this.staticMapRuntime = staticMapRuntime;
+    }
+
+    async loadStaticMapPacket(
         mapX: number,
         mapY: number,
     ): Promise<StaticMapPacket | undefined> {
@@ -449,7 +445,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
-    private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
+    async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
         this.setMapObjInteractionState(mapData.mapId | 0, {
@@ -489,7 +485,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             });
     }
 
-    private detachLoadedMapRuntime(mapId: number): void {
+    detachLoadedMapRuntime(mapId: number): void {
         const normalizedMapId = mapId | 0;
         this.animatedLocsByMapId.delete(normalizedMapId);
         this.objInteractionStateByMapId.delete(normalizedMapId);
