@@ -646,6 +646,16 @@ export class MapViewerRenderer extends RendererMainLoop {
         return actionTarget.locInstance;
     }
 
+    private getNpcInstanceFromMenuEntry(
+        entry: Pick<OsrsMenuEntry, "actionTarget">,
+    ): Readonly<{ mapId: number; npcInstanceId: number }> | undefined {
+        const actionTarget = entry.actionTarget;
+        if (!actionTarget || actionTarget.kind !== MenuTargetType.NPC) {
+            return undefined;
+        }
+        return actionTarget.npcInstance;
+    }
+
     private onResetLocAnimation = (entry: OsrsMenuEntry) => {
         const locInstance = this.getLocInstanceFromMenuEntry(entry);
         this.mapViewer.closeMenu();
@@ -679,6 +689,26 @@ export class MapViewerRenderer extends RendererMainLoop {
             });
         };
     }
+
+    private onDespawnNpc = (entry: OsrsMenuEntry) => {
+        const npcInstance = this.getNpcInstanceFromMenuEntry(entry);
+        this.mapViewer.closeMenu();
+        if (!npcInstance) {
+            return;
+        }
+        void this.applyWorldInput({
+            npc: {
+                lifecycleEvents: [
+                    {
+                        kind: "despawn",
+                        mapId: npcInstance.mapId | 0,
+                        npcInstanceId: npcInstance.npcInstanceId | 0,
+                        seq: 0x7fffffff,
+                    },
+                ],
+            },
+        });
+    };
 
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
@@ -1078,6 +1108,17 @@ export class MapViewerRenderer extends RendererMainLoop {
                     targetLevel: target.npcType.combatLevel,
                     actionTarget,
                     onClick: this.mapViewer.closeMenu,
+                });
+            }
+            if (picked) {
+                menuEntries.push({
+                    option: "Despawn npc",
+                    targetId: target.npcType.id,
+                    targetType: MenuTargetType.NPC,
+                    targetName: target.npcType.name,
+                    targetLevel: target.npcType.combatLevel,
+                    actionTarget,
+                    onClick: this.onDespawnNpc,
                 });
             }
             examineEntries.push({
