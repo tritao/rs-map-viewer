@@ -108,8 +108,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.camera = mapViewer.camera;
         this.renderer = this.createRenderer();
         this.renderFrameCoordinator = new RenderFrameCoordinator({
-            simWorkerPool: this.simWorkerPool,
-            renderWorkerPool: this.renderWorkerPool,
+            worldRuntime: this.simWorkerPool.world,
+            renderFrameRuntime: this.renderWorkerPool.frame,
             getLodDistance: () => this.renderer.lodDistance,
             getHoveredMapIdsPacked: () =>
                 this.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),

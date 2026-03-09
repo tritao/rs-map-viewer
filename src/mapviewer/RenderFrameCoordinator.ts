@@ -1,8 +1,7 @@
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
+import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
 import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerContext";
 import type { WorkerInputStateVersion } from "../worker/WorkerContext";
-import type { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { SimWorkerPool } from "../worker/SimWorkerPool";
 
 const EMPTY_INT32 = new Int32Array(0);
 
@@ -21,9 +20,25 @@ export type RenderFrameSeamSample = Readonly<{
     worldChangeCount: number;
 }>;
 
+type RenderFrameWorldRuntime = Readonly<{
+    syncState(update: WorldInputUpdate): Promise<void>;
+    step(
+        frameCount: number,
+        ticksElapsed: number,
+        clientTicksElapsed: number,
+        cycleNow: number,
+    ): Promise<WorldDeltaPacket | undefined>;
+}>;
+
+type RenderFrameRuntime = Readonly<{
+    syncState(update: RenderFrameInputUpdate): Promise<WorkerInputStateVersion>;
+    applyWorldDelta(deltaPacket: WorldDeltaPacket): Promise<number>;
+    buildPacket(frameCount: number, cycleNow: number): Promise<RenderFramePacket | undefined>;
+}>;
+
 type RenderFrameCoordinatorDeps = Readonly<{
-    simWorkerPool: SimWorkerPool;
-    renderWorkerPool: RenderDataWorkerPool;
+    worldRuntime: RenderFrameWorldRuntime;
+    renderFrameRuntime: RenderFrameRuntime;
     getLodDistance(): number;
     getHoveredMapIdsPacked(): Int32Array | undefined;
     getVisibleMapIds(): Int32Array;
@@ -104,10 +119,10 @@ export class RenderFrameCoordinator {
         this.lastFrameHoveredMapIds = EMPTY_INT32;
         this.lastFrameViewState = undefined;
         void Promise.all([
-            this.deps.simWorkerPool.world.syncState({
+            this.deps.worldRuntime.syncState({
                 mapIds: EMPTY_INT32,
             }),
-            this.deps.renderWorkerPool.frame.syncState({
+            this.deps.renderFrameRuntime.syncState({
                 mapIds: EMPTY_INT32,
                 viewState: {
                     cameraMapX: 0,
@@ -199,11 +214,11 @@ export class RenderFrameCoordinator {
             };
         }
         if (worldInputUpdate) {
-            updatePromises.push(this.deps.simWorkerPool.world.syncState(worldInputUpdate));
+            updatePromises.push(this.deps.worldRuntime.syncState(worldInputUpdate));
         }
         if (renderFrameUpdate) {
             updatePromises.push(
-                this.deps.renderWorkerPool.frame.syncState(renderFrameUpdate).then((versions) => {
+                this.deps.renderFrameRuntime.syncState(renderFrameUpdate).then((versions) => {
                     if ((this.packetEpoch | 0) === (epoch | 0)) {
                         this.expectedInputStateVersion = versions;
                     }
@@ -220,7 +235,7 @@ export class RenderFrameCoordinator {
     }>): Promise<RenderFramePacket | undefined> {
         const runWorldStepAndBuildFrame = async () => {
             const seamStart = performance.now();
-            const worldDeltaPacket = await this.deps.simWorkerPool.world.step(
+            const worldDeltaPacket = await this.deps.worldRuntime.step(
                 input.input.frameCount,
                 input.input.ticksElapsed,
                 input.input.clientTicksElapsed,
@@ -228,10 +243,10 @@ export class RenderFrameCoordinator {
             );
             const afterSim = performance.now();
             if (worldDeltaPacket) {
-                await this.deps.renderWorkerPool.frame.applyWorldDelta(worldDeltaPacket);
+                await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
             }
             const afterApply = performance.now();
-            const packet = await this.deps.renderWorkerPool.frame.buildPacket(
+            const packet = await this.deps.renderFrameRuntime.buildPacket(
                 input.input.frameCount,
                 input.input.cycle,
             );
