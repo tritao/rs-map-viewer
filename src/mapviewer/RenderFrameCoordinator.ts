@@ -261,6 +261,10 @@ export class RenderFrameCoordinator {
                     (worldDeltaPacket?.objDelta?.updates.length ?? 0) +
                     Math.floor(
                         ((worldDeltaPacket?.locDelta?.animationResetPacked.length ?? 0) | 0) / 2,
+                    ) +
+                    Math.floor(
+                        ((worldDeltaPacket?.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) /
+                            3,
                     ),
             });
             return packet;

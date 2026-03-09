@@ -12,9 +12,11 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import { decodeNpcLifecyclePacket } from "../runtime/packets/NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,
+    type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjUpdate,
     buildWorldDeltaPacket,
+    buildWorldDeltaPacketFromLocAnimationPauseStates,
     buildWorldDeltaPacketFromLocAnimationResets,
     buildWorldDeltaPacketFromNpcLifecycleEvents,
 } from "../runtime/packets/WorldDeltaPacket";
@@ -89,6 +91,10 @@ export class WorkerTickRuntime {
     private activeMapIds: Int32Array = new Int32Array(0);
     private readonly pendingMapObjStateUpdatesByMapId = new Map<number, WorldMapObjUpdate>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
+    private readonly pendingLocAnimationPauseStateByLocKey = new Map<
+        string,
+        WorldLocAnimationPauseState
+    >();
     constructor(private readonly getWorkerState: () => Promise<TickWorkerState>) {}
 
     resetForCache(): void {
@@ -109,6 +115,7 @@ export class WorkerTickRuntime {
         this.activeMapIds = new Int32Array(0);
         this.pendingMapObjStateUpdatesByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
+        this.pendingLocAnimationPauseStateByLocKey.clear();
     }
 
     applyWorldInputUpdate(update: WorldInputUpdate): void {
@@ -140,6 +147,24 @@ export class WorkerTickRuntime {
             this.pendingLocAnimationResetByLocKey.set(
                 `${reset.mapId | 0}:${reset.locIndex | 0}`,
                 reset,
+            );
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyLocAnimationPauseStates(
+        pauseStates: ReadonlyArray<WorldLocAnimationPauseState>,
+    ): number {
+        let applied = 0;
+        for (let index = 0; index < pauseStates.length; index++) {
+            const pauseState = pauseStates[index];
+            if (!pauseState) {
+                continue;
+            }
+            this.pendingLocAnimationPauseStateByLocKey.set(
+                `${pauseState.mapId | 0}:${pauseState.locIndex | 0}`,
+                pauseState,
             );
             applied = (applied + 1) | 0;
         }
@@ -507,7 +532,14 @@ export class WorkerTickRuntime {
         const hasPendingObjUpdates = (this.pendingMapObjStateUpdatesByMapId.size | 0) > 0;
         const hasPendingLocAnimationResets =
             (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
-        if ((mapIds.length | 0) === 0 && !hasPendingObjUpdates && !hasPendingLocAnimationResets) {
+        const hasPendingLocAnimationPauseStates =
+            (this.pendingLocAnimationPauseStateByLocKey.size | 0) > 0;
+        if (
+            (mapIds.length | 0) === 0 &&
+            !hasPendingObjUpdates &&
+            !hasPendingLocAnimationResets &&
+            !hasPendingLocAnimationPauseStates
+        ) {
             return undefined;
         }
         const workerState = await this.getWorkerState();
@@ -544,22 +576,45 @@ export class WorkerTickRuntime {
         const locAnimationResets = hasPendingLocAnimationResets
             ? Array.from(this.pendingLocAnimationResetByLocKey.values())
             : undefined;
+        const locAnimationPauseStates = hasPendingLocAnimationPauseStates
+            ? Array.from(this.pendingLocAnimationPauseStateByLocKey.values())
+            : undefined;
         this.pendingMapObjStateUpdatesByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
+        this.pendingLocAnimationPauseStateByLocKey.clear();
         const locDeltaPacket = locAnimationResets
             ? buildWorldDeltaPacketFromLocAnimationResets({
                   frameCount: frameCount | 0,
                   animationResets: locAnimationResets,
               })
             : undefined;
-        if (!npcStatePacket.npcState && !objUpdates && !locDeltaPacket?.locDelta) {
+        const locPausePacket = locAnimationPauseStates
+            ? buildWorldDeltaPacketFromLocAnimationPauseStates({
+                  frameCount: frameCount | 0,
+                  animationPauseStates: locAnimationPauseStates,
+              })
+            : undefined;
+        if (
+            !npcStatePacket.npcState &&
+            !objUpdates &&
+            !locDeltaPacket?.locDelta &&
+            !locPausePacket?.locDelta
+        ) {
             return undefined;
         }
         return buildWorldDeltaPacket({
             frameCount: frameCount | 0,
             npcState: npcStatePacket.npcState,
             objDelta: objUpdates ? { updates: objUpdates } : undefined,
-            locDelta: locDeltaPacket?.locDelta,
+            locDelta:
+                locDeltaPacket?.locDelta || locPausePacket?.locDelta
+                    ? {
+                          animationResetPacked:
+                              locDeltaPacket?.locDelta?.animationResetPacked ?? new Int32Array(0),
+                          animationPauseStatePacked:
+                              locPausePacket?.locDelta?.animationPauseStatePacked,
+                      }
+                    : undefined,
         });
     }
 

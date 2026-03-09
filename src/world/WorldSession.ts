@@ -3,6 +3,7 @@ import {
 } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import {
+    type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjUpdate,
 } from "../runtime/packets/WorldDeltaPacket";
@@ -16,7 +17,8 @@ export type WorldObjInput = Readonly<{
 }>;
 
 export type WorldLocInput = Readonly<{
-    animationResets: ReadonlyArray<WorldLocAnimationReset>;
+    animationResets?: ReadonlyArray<WorldLocAnimationReset>;
+    animationPauseStates?: ReadonlyArray<WorldLocAnimationPauseState>;
 }>;
 
 export type WorldInput = Readonly<{

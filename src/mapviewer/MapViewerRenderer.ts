@@ -314,7 +314,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         const applied = await this.worldSession.applyWorldInput(input);
         const hasRenderAffectingWorldInput =
             (!!input.obj?.updates && (input.obj.updates.length | 0) > 0) ||
-            (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0);
+            (!!input.loc?.animationResets && (input.loc.animationResets.length | 0) > 0) ||
+            (!!input.loc?.animationPauseStates && (input.loc.animationPauseStates.length | 0) > 0);
         if ((applied | 0) > 0 && hasRenderAffectingWorldInput) {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
@@ -762,6 +763,20 @@ export class MapViewerRenderer extends RendererMainLoop {
                 }
                 if (picked && target.locInstance) {
                     const locInstance = target.locInstance;
+                    const applyLocPauseState = (paused: boolean) => {
+                        this.mapViewer.closeMenu();
+                        void this.applyWorldInput({
+                            loc: {
+                                animationPauseStates: [
+                                    {
+                                        mapId: locInstance.mapId | 0,
+                                        locIndex: locInstance.locIndex | 0,
+                                        paused,
+                                    },
+                                ],
+                            },
+                        });
+                    };
                     menuEntries.push({
                         option: "Reset anim",
                         targetId: target.locType.id,
@@ -776,6 +791,22 @@ export class MapViewerRenderer extends RendererMainLoop {
                                 },
                             });
                         },
+                    });
+                    menuEntries.push({
+                        option: "Pause anim",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        onClick: () => applyLocPauseState(true),
+                    });
+                    menuEntries.push({
+                        option: "Resume anim",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        onClick: () => applyLocPauseState(false),
                     });
                 }
                 examineEntries.push({

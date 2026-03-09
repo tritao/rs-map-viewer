@@ -7,6 +7,7 @@ export class LocAnimated {
 
     frame = 0;
     cycleStart: number;
+    paused = false;
 
     constructor(
         readonly drawRangeIndex: number,
@@ -62,9 +63,16 @@ export class LocAnimated {
         this.cycleStart = (cycle | 0) - 1;
     }
 
+    setPaused(paused: boolean): void {
+        this.paused = !!paused;
+    }
+
     update(seqFrameLoader: SeqFrameLoader, cycle: number): number {
         if (!this.seqType) {
             return 0;
+        }
+        if (this.paused) {
+            return this.frame | 0;
         }
 
         let elapsed = cycle - this.cycleStart;

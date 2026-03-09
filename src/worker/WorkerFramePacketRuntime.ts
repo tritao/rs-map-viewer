@@ -15,6 +15,7 @@ import {
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
 import type {
+    WorldLocAnimationPauseState,
     WorldDeltaPacket,
     WorldLocAnimationReset,
     WorldMapObjUpdate,
@@ -39,6 +40,7 @@ import {
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
 import { mapObjStateToRenderData } from "../shared/StaticMapPacket";
+import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../runtime/packets/WorldDeltaPacket";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;
@@ -110,6 +112,10 @@ export class WorkerFramePacketRuntime {
     private hoveredMapIdsPacked: Int32Array = new Int32Array(0);
     private readonly pendingRuntimeObjRenderDataByMapId = new Map<number, ObjRenderData | undefined>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
+    private readonly pendingLocAnimationPauseStateByLocKey = new Map<
+        string,
+        WorldLocAnimationPauseState
+    >();
     private readonly npcGpuFrameSourceScratch: NpcGpuFrameSource[] = [];
 
     constructor(private readonly getWorkerState: () => Promise<FrameWorkerState>) {}
@@ -131,6 +137,7 @@ export class WorkerFramePacketRuntime {
         this.hoveredMapIdsPacked = new Int32Array(0);
         this.pendingRuntimeObjRenderDataByMapId.clear();
         this.pendingLocAnimationResetByLocKey.clear();
+        this.pendingLocAnimationPauseStateByLocKey.clear();
     }
 
     private applyRuntimeMapObjUpdates(updates: ReadonlyArray<WorldMapObjUpdate> | undefined): number {
@@ -264,6 +271,7 @@ export class WorkerFramePacketRuntime {
         const locDelta = packet.locDelta;
         if (locDelta) {
             const packed = locDelta.animationResetPacked;
+            let locResetCount = 0;
             for (let offset = 0; offset + 2 <= (packed.length | 0); offset += 2) {
                 const mapId = packed[offset + 0] | 0;
                 const locIndex = packed[offset + 1] | 0;
@@ -271,7 +279,28 @@ export class WorkerFramePacketRuntime {
                     mapId,
                     locIndex,
                 });
+                locResetCount = (locResetCount + 1) | 0;
                 applied = (applied + 1) | 0;
+            }
+            const pausePacked = locDelta.animationPauseStatePacked;
+            if (pausePacked instanceof Int32Array) {
+                let locPauseCount = 0;
+                for (
+                    let offset = 0;
+                    offset + LOC_ANIMATION_PAUSE_STATE_STRIDE <= (pausePacked.length | 0);
+                    offset += LOC_ANIMATION_PAUSE_STATE_STRIDE
+                ) {
+                    const mapId = pausePacked[offset + 0] | 0;
+                    const locIndex = pausePacked[offset + 1] | 0;
+                    const paused = (pausePacked[offset + 2] | 0) !== 0;
+                    this.pendingLocAnimationPauseStateByLocKey.set(`${mapId}:${locIndex}`, {
+                        mapId,
+                        locIndex,
+                        paused,
+                    });
+                    locPauseCount = (locPauseCount + 1) | 0;
+                    applied = (applied + 1) | 0;
+                }
             }
         }
         if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
@@ -287,8 +316,9 @@ export class WorkerFramePacketRuntime {
         if ((this.pendingLocAnimationResetByLocKey.size | 0) <= 0) {
             return;
         }
+        const resetCount = this.pendingLocAnimationResetByLocKey.size | 0;
         const animationResetPacked = new Int32Array(
-            (this.pendingLocAnimationResetByLocKey.size | 0) * 2,
+            (resetCount | 0) * 2,
         );
         let write = 0;
         for (const reset of this.pendingLocAnimationResetByLocKey.values()) {
@@ -296,7 +326,7 @@ export class WorkerFramePacketRuntime {
             animationResetPacked[write++] = reset.locIndex | 0;
         }
         this.pendingLocAnimationResetByLocKey.clear();
-        this.npcSimStateStore.applyLocAnimationResets(
+        const applied = this.npcSimStateStore.applyLocAnimationResets(
             {
                 frameCount: 0,
                 locDelta: {
@@ -305,6 +335,30 @@ export class WorkerFramePacketRuntime {
             },
             cycleNow | 0,
         );
+    }
+
+    private applyPendingLocAnimationPauseStates(): void {
+        if ((this.pendingLocAnimationPauseStateByLocKey.size | 0) <= 0) {
+            return;
+        }
+        const pauseCount = this.pendingLocAnimationPauseStateByLocKey.size | 0;
+        const animationPauseStatePacked = new Int32Array(
+            (pauseCount | 0) * LOC_ANIMATION_PAUSE_STATE_STRIDE,
+        );
+        let write = 0;
+        for (const pauseState of this.pendingLocAnimationPauseStateByLocKey.values()) {
+            animationPauseStatePacked[write++] = pauseState.mapId | 0;
+            animationPauseStatePacked[write++] = pauseState.locIndex | 0;
+            animationPauseStatePacked[write++] = pauseState.paused ? 1 : 0;
+        }
+        this.pendingLocAnimationPauseStateByLocKey.clear();
+        const applied = this.npcSimStateStore.applyLocAnimationPauseStates({
+            frameCount: 0,
+            locDelta: {
+                animationResetPacked: new Int32Array(0),
+                animationPauseStatePacked,
+            },
+        });
     }
 
     private normalizeFrameBuildInputs(
@@ -442,6 +496,7 @@ export class WorkerFramePacketRuntime {
             return undefined;
         }
         const workerState = await this.getWorkerState();
+        this.applyPendingLocAnimationPauseStates();
         this.applyPendingLocAnimationResets(cycleNow | 0);
         const backendKind = workerState.mapRenderBackend.kind ?? "unknown";
         const inputs = this.normalizeFrameBuildInputs(frameCount, 0, this.hoveredMapIdsPacked);

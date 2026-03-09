@@ -8,6 +8,7 @@ export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
 export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;
 export const NPC_STATE_DELTA_DESPAWN_STRIDE = 3;
 export const LOC_ANIMATION_RESET_STRIDE = 2;
+export const LOC_ANIMATION_PAUSE_STATE_STRIDE = 3;
 
 const UPDATE_FLAG_CLEAR_SERVER_PATH = 1 << 0;
 const UPDATE_FLAG_HAS_SNAP_TILE = 1 << 1;
@@ -41,8 +42,15 @@ export type WorldLocAnimationReset = Readonly<{
     locIndex: number;
 }>;
 
+export type WorldLocAnimationPauseState = Readonly<{
+    mapId: number;
+    locIndex: number;
+    paused: boolean;
+}>;
+
 export type WorldLocDelta = Readonly<{
     animationResetPacked: Int32Array;
+    animationPauseStatePacked?: Int32Array;
 }>;
 
 export type NpcWorldState = Readonly<{
@@ -122,6 +130,13 @@ export function validateWorldDeltaPacket(
             locDelta.animationResetPacked,
             LOC_ANIMATION_RESET_STRIDE,
         );
+        if (locDelta.animationPauseStatePacked) {
+            assertPackedStride(
+                "animationPauseStatePacked",
+                locDelta.animationPauseStatePacked,
+                LOC_ANIMATION_PAUSE_STATE_STRIDE,
+            );
+        }
     }
     const npcState = packet.npcState;
     if (!npcState) {
@@ -178,6 +193,13 @@ export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaP
             input.locDelta.animationResetPacked,
             LOC_ANIMATION_RESET_STRIDE,
         );
+        if (input.locDelta.animationPauseStatePacked) {
+            assertPackedStride(
+                "animationPauseStatePacked",
+                input.locDelta.animationPauseStatePacked,
+                LOC_ANIMATION_PAUSE_STATE_STRIDE,
+            );
+        }
     }
     return {
         frameCount: input.frameCount | 0,
@@ -331,6 +353,31 @@ export function buildWorldDeltaPacketFromLocAnimationResets(
     });
 }
 
+export function buildWorldDeltaPacketFromLocAnimationPauseStates(
+    input: Readonly<{
+        frameCount: number;
+        animationPauseStates: ReadonlyArray<WorldLocAnimationPauseState>;
+    }>,
+): WorldDeltaPacket {
+    const animationPauseStatePacked = new Int32Array(
+        (input.animationPauseStates.length | 0) * LOC_ANIMATION_PAUSE_STATE_STRIDE,
+    );
+    let write = 0;
+    for (let index = 0; index < input.animationPauseStates.length; index++) {
+        const pauseState = input.animationPauseStates[index]!;
+        animationPauseStatePacked[write++] = pauseState.mapId | 0;
+        animationPauseStatePacked[write++] = pauseState.locIndex | 0;
+        animationPauseStatePacked[write++] = pauseState.paused ? 1 : 0;
+    }
+    return buildWorldDeltaPacket({
+        frameCount: input.frameCount | 0,
+        locDelta: {
+            animationResetPacked: new Int32Array(0),
+            animationPauseStatePacked,
+        },
+    });
+}
+
 export function decodeNpcWorldStateUpdate(
     flags: number,
     packed: Int32Array,
@@ -416,6 +463,9 @@ export function worldDeltaPacketTransferables(packet: WorldDeltaPacket): Transfe
     const locDelta = packet.locDelta;
     if (locDelta) {
         transferables.push(locDelta.animationResetPacked.buffer as Transferable);
+        if (locDelta.animationPauseStatePacked) {
+            transferables.push(locDelta.animationPauseStatePacked.buffer as Transferable);
+        }
     }
     return transferables;
 }

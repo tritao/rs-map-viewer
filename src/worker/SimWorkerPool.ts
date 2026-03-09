@@ -4,6 +4,7 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { encodeNpcLifecyclePacketFromLifecycleEvents } from "../runtime/packets/NpcLifecyclePacket";
 import type {
     WorldDeltaPacket,
+    WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjUpdate,
 } from "../runtime/packets/WorldDeltaPacket";
@@ -52,6 +53,9 @@ export class SimWorkerPool {
             this.applyMapObjStateUpdates(updates),
         applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
             this.applyLocAnimationResets(resets),
+        applyLocAnimationPauseStates: (
+            pauseStates: ReadonlyArray<WorldLocAnimationPauseState>,
+        ) => this.applyLocAnimationPauseStates(pauseStates),
         syncState: (update: WorldInputUpdate) => this.syncWorldState(update),
         step: (
             frameCount: number,
@@ -161,6 +165,12 @@ export class SimWorkerPool {
         resets: ReadonlyArray<WorldLocAnimationReset>,
     ): Promise<number> {
         return this.withWorker((w) => w.applyLocAnimationResets(resets));
+    }
+
+    private applyLocAnimationPauseStates(
+        pauseStates: ReadonlyArray<WorldLocAnimationPauseState>,
+    ): Promise<number> {
+        return this.withWorker((w) => w.applyLocAnimationPauseStates(pauseStates));
     }
 
     private syncWorldState(update: WorldInputUpdate): Promise<void> {

@@ -3,6 +3,7 @@ import type { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
 import type { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
 import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import {
+    LOC_ANIMATION_PAUSE_STATE_STRIDE,
     LOC_ANIMATION_RESET_STRIDE,
     NPC_STATE_DELTA_DESPAWN_STRIDE,
     NPC_STATE_DELTA_SPAWN_STRIDE,
@@ -507,6 +508,8 @@ export class NpcSimStateStore {
             return 0;
         }
         let applied = 0;
+        let missingMaps = 0;
+        let missingLocs = 0;
         const safeCycleNow = cycleNow | 0;
         for (
             let offset = 0;
@@ -517,13 +520,43 @@ export class NpcSimStateStore {
             const locIndex = animationResetPacked[offset + 1] | 0;
             const state = this.maps.get(mapId);
             if (!state) {
+                missingMaps = (missingMaps + 1) | 0;
                 continue;
             }
             const loc = state.locsAnimated[locIndex];
             if (!loc) {
+                missingLocs = (missingLocs + 1) | 0;
                 continue;
             }
             loc.restart(safeCycleNow);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyLocAnimationPauseStates(packet: WorldDeltaPacket): number {
+        const animationPauseStatePacked = packet.locDelta?.animationPauseStatePacked;
+        if (
+            !(animationPauseStatePacked instanceof Int32Array) ||
+            (animationPauseStatePacked.length | 0) <= 0
+        ) {
+            return 0;
+        }
+        let applied = 0;
+        for (
+            let offset = 0;
+            offset + LOC_ANIMATION_PAUSE_STATE_STRIDE <= (animationPauseStatePacked.length | 0);
+            offset += LOC_ANIMATION_PAUSE_STATE_STRIDE
+        ) {
+            const mapId = animationPauseStatePacked[offset + 0] | 0;
+            const locIndex = animationPauseStatePacked[offset + 1] | 0;
+            const paused = (animationPauseStatePacked[offset + 2] | 0) !== 0;
+            const state = this.maps.get(mapId);
+            const loc = state?.locsAnimated[locIndex];
+            if (!loc) {
+                continue;
+            }
+            loc.setPaused(paused);
             applied = (applied + 1) | 0;
         }
         return applied | 0;
