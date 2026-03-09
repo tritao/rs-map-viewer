@@ -10,6 +10,7 @@ import { Pathfinder } from "../rs/pathfinder/Pathfinder";
 import { Scene } from "../rs/scene/Scene";
 import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
+import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
 import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
@@ -43,7 +44,7 @@ type TickWorkerState = Readonly<{
     mapBytesProvider: MapBytesProvider;
     objSpawns: ReadonlyArray<ObjSpawn>;
     fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
-    objModelLoader: import("../rs/scene/model/ObjModelLoader").ObjModelLoader;
+    objModelLoader: ObjModelLoader;
     sceneBuilder: SceneBuilder;
 }>;
 
