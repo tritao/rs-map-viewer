@@ -3,7 +3,7 @@ import { ModuleThread, Pool, Thread, spawn } from "threads";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MinimapData } from "../maprender/ts/MinimapData";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
-import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
 import {
     decodeStaticMapWirePacket,
     type StaticMapPacket,

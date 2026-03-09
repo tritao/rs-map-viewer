@@ -6,8 +6,8 @@ import type {
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjUpdate,
-} from "../runtime/packets/WorldDeltaPacket";
-import { worldDeltaPacketTransferables } from "../runtime/packets/WorldDeltaPacket";
+} from "../world/WorldDeltaPacket";
+import { worldDeltaPacketTransferables } from "../world/WorldDeltaPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,

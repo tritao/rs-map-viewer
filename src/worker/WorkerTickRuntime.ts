@@ -19,7 +19,7 @@ import {
     buildWorldDeltaPacketFromLocAnimationPauseStates,
     buildWorldDeltaPacketFromLocAnimationResets,
     buildWorldDeltaPacketFromNpcLifecycleEvents,
-} from "../runtime/packets/WorldDeltaPacket";
+} from "../world/WorldDeltaPacket";
 import {
     type ResolvedBootstrapData,
     resolveBootstrapData,

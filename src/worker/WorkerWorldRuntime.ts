@@ -3,7 +3,7 @@ import type {
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjUpdate,
-} from "../runtime/packets/WorldDeltaPacket";
+} from "../world/WorldDeltaPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type {
     WorldRuntime,

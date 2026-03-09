@@ -11,7 +11,7 @@ import {
     type WorldDeltaPacket,
     decodeNpcWorldStateUpdate,
     validateWorldDeltaPacket,
-} from "../packets/WorldDeltaPacket";
+} from "../../world/WorldDeltaPacket";
 import type { NpcTypeAnimationEntry } from "../NpcTypeAnimationTable";
 import { LocAnimated } from "./LocAnimated";
 import type { LocAnimatedData } from "../LocAnimatedData";

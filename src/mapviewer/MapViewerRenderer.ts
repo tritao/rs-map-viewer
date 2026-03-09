@@ -15,12 +15,13 @@ import { INTERACTION_RADIUS } from "../renderer/InteractionState";
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import {
     collectInteractionHits,
+    resolveWorldInteractionTargets,
     resolveInteractionTargets,
 } from "../runtime/InteractionTargets";
 import {
     type RenderFrameSeamSample,
     type RenderFrameCoordinator,
-} from "./RenderFrameCoordinator";
+} from "../renderer/RenderFrameCoordinator";
 import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
@@ -31,7 +32,7 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
-import type { WorldLocAnimationReset } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldLocAnimationReset } from "../world/WorldDeltaPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 
 export class MapViewerRenderer extends RendererMainLoop {
@@ -740,11 +741,14 @@ export class MapViewerRenderer extends RendererMainLoop {
             closestInteractIndices,
             maxDistance: INTERACTION_RADIUS,
         });
+        const worldInteractionTargets = resolveWorldInteractionTargets({
+            hits: interactionHits,
+            getAnimatedLocTypeId: this.getAnimatedLocTypeId.bind(this),
+        });
         const interactionTargets = resolveInteractionTargets({
             session: this.mapViewer.session,
-            hits: interactionHits,
+            targets: worldInteractionTargets,
             includeUnnamed: this.mapViewer.debugId,
-            getAnimatedLocTypeId: this.getAnimatedLocTypeId.bind(this),
         });
         for (const target of interactionTargets) {
             if (target.kind === InteractType.LOC) {

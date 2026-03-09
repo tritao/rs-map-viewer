@@ -1,5 +1,5 @@
-import type { RenderFramePacket } from "../renderer/RenderFramePacket";
-import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import type { RenderFramePacket } from "./RenderFramePacket";
+import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
 import type { RenderFrameInputUpdate, WorldInputUpdate } from "../worker/WorkerContext";
 import type { WorkerInputStateVersion } from "../worker/WorkerContext";
 

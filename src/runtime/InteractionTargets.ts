@@ -15,6 +15,27 @@ export type InteractionHit = Readonly<{
     distance: number;
 }>;
 
+export type WorldInteractionTarget =
+    | Readonly<{
+          kind: InteractType.LOC;
+          hit: InteractionHit & { kind: InteractType.LOC };
+          locTypeId: number;
+          locInstance?: Readonly<{
+              mapId: number;
+              locIndex: number;
+          }>;
+      }>
+    | Readonly<{
+          kind: InteractType.OBJ;
+          hit: InteractionHit & { kind: InteractType.OBJ };
+          objTypeId: number;
+      }>
+    | Readonly<{
+          kind: InteractType.NPC;
+          hit: InteractionHit & { kind: InteractType.NPC };
+          npcTypeId: number;
+      }>;
+
 export type ResolvedInteractionTarget =
     | Readonly<{
           kind: InteractType.LOC;
@@ -85,13 +106,11 @@ export function collectInteractionHits(input: Readonly<{
     return hits;
 }
 
-export function resolveInteractionTargets(input: Readonly<{
-    session: CacheSession;
+export function resolveWorldInteractionTargets(input: Readonly<{
     hits: ReadonlyArray<InteractionHit>;
-    includeUnnamed: boolean;
     getAnimatedLocTypeId?: (mapId: number, locIndex: number) => number | undefined;
-}>): ResolvedInteractionTarget[] {
-    const targets: ResolvedInteractionTarget[] = [];
+}>): WorldInteractionTarget[] {
+    const targets: WorldInteractionTarget[] = [];
 
     for (const hit of input.hits) {
         if (hit.kind === InteractType.LOC) {
@@ -117,7 +136,46 @@ export function resolveInteractionTargets(input: Readonly<{
                     locIndex: locIndex | 0,
                 };
             }
-            const locResult = input.session.tryLoadLocType(locTypeId);
+            targets.push({
+                kind: InteractType.LOC,
+                hit: hit as InteractionHit & { kind: InteractType.LOC },
+                locTypeId,
+                locInstance,
+            });
+            continue;
+        }
+
+        if (hit.kind === InteractType.OBJ) {
+            targets.push({
+                kind: InteractType.OBJ,
+                hit: hit as InteractionHit & { kind: InteractType.OBJ },
+                objTypeId: hit.id | 0,
+            });
+            continue;
+        }
+
+        if (hit.kind === InteractType.NPC) {
+            targets.push({
+                kind: InteractType.NPC,
+                hit: hit as InteractionHit & { kind: InteractType.NPC },
+                npcTypeId: hit.id | 0,
+            });
+        }
+    }
+
+    return targets;
+}
+
+export function resolveInteractionTargets(input: Readonly<{
+    session: CacheSession;
+    targets: ReadonlyArray<WorldInteractionTarget>;
+    includeUnnamed: boolean;
+}>): ResolvedInteractionTarget[] {
+    const resolvedTargets: ResolvedInteractionTarget[] = [];
+
+    for (const target of input.targets) {
+        if (target.kind === InteractType.LOC) {
+            const locResult = input.session.tryLoadLocType(target.locTypeId);
             if (!locResult.ok) {
                 continue;
             }
@@ -125,17 +183,17 @@ export function resolveInteractionTargets(input: Readonly<{
             if (locType.name === "null" && !input.includeUnnamed) {
                 continue;
             }
-            targets.push({
+            resolvedTargets.push({
                 kind: InteractType.LOC,
-                hit: hit as InteractionHit & { kind: InteractType.LOC },
+                hit: target.hit,
                 locType,
-                locInstance,
+                locInstance: target.locInstance,
             });
             continue;
         }
 
-        if (hit.kind === InteractType.OBJ) {
-            const objResult = input.session.tryLoadObjType(hit.id);
+        if (target.kind === InteractType.OBJ) {
+            const objResult = input.session.tryLoadObjType(target.objTypeId);
             if (!objResult.ok) {
                 continue;
             }
@@ -143,40 +201,38 @@ export function resolveInteractionTargets(input: Readonly<{
             if (objType.name === "null" && !input.includeUnnamed) {
                 continue;
             }
-            targets.push({
+            resolvedTargets.push({
                 kind: InteractType.OBJ,
-                hit: hit as InteractionHit & { kind: InteractType.OBJ },
+                hit: target.hit,
                 objType,
             });
             continue;
         }
 
-        if (hit.kind === InteractType.NPC) {
-            const npcResult = input.session.tryLoadNpcType(hit.id);
-            if (!npcResult.ok) {
-                continue;
-            }
-            let npcType = npcResult.value;
-            if (npcType.transforms) {
-                const transformed = npcType.transform(
-                    input.session.varManager,
-                    input.session.getNpcTypeLoader(),
-                );
-                if (!transformed) {
-                    continue;
-                }
-                npcType = transformed;
-            }
-            if (npcType.name === "null" && !input.includeUnnamed) {
-                continue;
-            }
-            targets.push({
-                kind: InteractType.NPC,
-                hit: hit as InteractionHit & { kind: InteractType.NPC },
-                npcType,
-            });
+        const npcResult = input.session.tryLoadNpcType(target.npcTypeId);
+        if (!npcResult.ok) {
+            continue;
         }
+        let npcType = npcResult.value;
+        if (npcType.transforms) {
+            const transformed = npcType.transform(
+                input.session.varManager,
+                input.session.getNpcTypeLoader(),
+            );
+            if (!transformed) {
+                continue;
+            }
+            npcType = transformed;
+        }
+        if (npcType.name === "null" && !input.includeUnnamed) {
+            continue;
+        }
+        resolvedTargets.push({
+            kind: InteractType.NPC,
+            hit: target.hit,
+            npcType,
+        });
     }
 
-    return targets;
+    return resolvedTargets;
 }

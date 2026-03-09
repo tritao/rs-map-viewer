@@ -4,7 +4,7 @@ import { Transfer, expose } from "threads/worker";
 import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import { renderFramePacketTransferables } from "../renderer/RenderFramePacket";
-import type { WorldDeltaPacket } from "../runtime/packets/WorldDeltaPacket";
+import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
 import type { StaticMapWirePacket } from "../shared/StaticMapPacket";
 import type { LoadedCache } from "../util/Caches";
 import type {

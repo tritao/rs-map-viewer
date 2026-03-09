@@ -19,7 +19,7 @@ import type {
     WorldDeltaPacket,
     WorldLocAnimationReset,
     WorldMapObjUpdate,
-} from "../runtime/packets/WorldDeltaPacket";
+} from "../world/WorldDeltaPacket";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import type { ObjRenderData } from "../maprender/MapRenderPayload";
@@ -40,7 +40,7 @@ import {
     WorkerMapRuntimeTracker,
 } from "./WorkerContext";
 import { mapObjStateToRenderData } from "../shared/StaticMapPacket";
-import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../runtime/packets/WorldDeltaPacket";
+import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
 
 type FrameWorkerState = Readonly<{
     session: CacheSession;

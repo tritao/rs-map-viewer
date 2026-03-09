@@ -7,7 +7,7 @@ import type {
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjUpdate,
-} from "../runtime/packets/WorldDeltaPacket";
+} from "../world/WorldDeltaPacket";
 import {
     getValidatedStaticMapNpcOrderKeys,
     type StaticMapPacket,

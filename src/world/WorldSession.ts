@@ -6,7 +6,7 @@ import {
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjUpdate,
-} from "../runtime/packets/WorldDeltaPacket";
+} from "./WorldDeltaPacket";
 
 export type WorldNpcInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;

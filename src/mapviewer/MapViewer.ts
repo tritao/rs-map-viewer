@@ -24,7 +24,7 @@ import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
 import { MapManager } from "./MapManager";
 import { MapViewerRenderer } from "./MapViewerRenderer";
-import { RenderFrameCoordinator } from "./RenderFrameCoordinator";
+import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import { WorldSession } from "../world/WorldSession";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
