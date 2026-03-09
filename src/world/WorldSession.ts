@@ -103,6 +103,11 @@ export type WorldRuntime = Readonly<{
     applyWorldInput(input: WorldInput): Promise<number>;
 }>;
 
+export type WorldInputApplyResult = Readonly<{
+    applied: number;
+    reloadMapIds?: ReadonlyArray<number>;
+}>;
+
 type WorldSessionDeps = Readonly<{
     worldRuntime: WorldRuntime;
 }>;
@@ -136,13 +141,17 @@ export class WorldSession {
         this.deps.worldRuntime.deactivateLoadedMap(input);
     }
 
-    async applyWorldInput(input: WorldInput): Promise<number> {
-        let applied = this.applyLocPlacementOverrides(input);
+    async applyWorldInput(input: WorldInput): Promise<WorldInputApplyResult> {
+        const locReplacementResult = this.applyLocPlacementOverrides(input);
+        let applied = locReplacementResult.applied | 0;
         const runtimeInput = this.getRuntimeWorldInput(input);
         if (runtimeInput) {
             applied = (applied + (await this.deps.worldRuntime.applyWorldInput(runtimeInput))) | 0;
         }
-        return applied | 0;
+        return {
+            applied: applied | 0,
+            reloadMapIds: locReplacementResult.reloadMapIds,
+        };
     }
 
     getLocPlacementOverrides(mapId: number): ReadonlyArray<SceneLocPlacementOverride> {
@@ -153,8 +162,9 @@ export class WorldSession {
         return Array.from(overrides.values());
     }
 
-    private applyLocPlacementOverrides(input: WorldInput): number {
+    private applyLocPlacementOverrides(input: WorldInput): WorldInputApplyResult {
         let applied = 0;
+        const reloadMapIds = new Set<number>();
         const replacements = input.loc?.state?.replacements;
         if (replacements && (replacements.length | 0) > 0) {
             for (let index = 0; index < replacements.length; index++) {
@@ -175,6 +185,7 @@ export class WorldSession {
                     locModelType: replacement.locModelType,
                     rotation: replacement.rotation | 0,
                 });
+                reloadMapIds.add(sourceMapId);
                 applied = (applied + 1) | 0;
             }
         }
@@ -192,6 +203,7 @@ export class WorldSession {
                     continue;
                 }
                 if (byPlacementIndex.delete(replacementClear.placementIndex | 0)) {
+                    reloadMapIds.add(sourceMapId);
                     applied = (applied + 1) | 0;
                 }
                 if ((byPlacementIndex.size | 0) <= 0) {
@@ -199,7 +211,11 @@ export class WorldSession {
                 }
             }
         }
-        return applied | 0;
+        return {
+            applied: applied | 0,
+            reloadMapIds:
+                (reloadMapIds.size | 0) > 0 ? Array.from(reloadMapIds.values()) : undefined,
+        };
     }
 
     private getRuntimeWorldInput(input: WorldInput): WorldInput | undefined {

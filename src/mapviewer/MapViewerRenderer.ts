@@ -475,7 +475,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
-        const applied = await this.worldSession.applyWorldInput(input);
+        const result = await this.worldSession.applyWorldInput(input);
+        const applied = result.applied | 0;
         if ((applied | 0) > 0) {
             this.applyMapObjTypeIdsFromWorldInput(input);
         }
@@ -483,29 +484,13 @@ export class MapViewerRenderer extends RendererMainLoop {
         const objDynamicInput = input.obj?.dynamic;
         const locAnimationInput = input.loc?.animation;
         const locStateInput = input.loc?.state;
-        const locReplacementMapIds = new Set<number>();
-        const locReplacements = locStateInput?.replacements;
-        if (locReplacements) {
-            for (let index = 0; index < locReplacements.length; index++) {
-                const replacement = locReplacements[index];
-                if (!replacement) {
+        const reloadMapIds = result.reloadMapIds;
+        if ((applied | 0) > 0 && reloadMapIds && (reloadMapIds.length | 0) > 0) {
+            for (let index = 0; index < reloadMapIds.length; index++) {
+                const sourceMapId = reloadMapIds[index];
+                if (sourceMapId === undefined) {
                     continue;
                 }
-                locReplacementMapIds.add(replacement.sourceMapId | 0);
-            }
-        }
-        const locReplacementClears = locStateInput?.replacementClears;
-        if (locReplacementClears) {
-            for (let index = 0; index < locReplacementClears.length; index++) {
-                const replacementClear = locReplacementClears[index];
-                if (!replacementClear) {
-                    continue;
-                }
-                locReplacementMapIds.add(replacementClear.sourceMapId | 0);
-            }
-        }
-        if ((applied | 0) > 0 && (locReplacementMapIds.size | 0) > 0) {
-            for (const sourceMapId of locReplacementMapIds) {
                 if (!this.mapManager.mapSquares.has(sourceMapId | 0)) {
                     continue;
                 }
