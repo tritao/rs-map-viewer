@@ -56,6 +56,11 @@ const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
 
 type SearchParamsListener = (params: URLSearchParamsInit) => void;
 
+type MapViewerRuntimeShell = Readonly<{
+    worldSession: WorldSession;
+    renderFrameCoordinator: RenderFrameCoordinator;
+}>;
+
 function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
     return {
         mapRenderBackend: options?.mapRenderBackend ?? DEFAULT_RUNTIME_OPTIONS.mapRenderBackend,
@@ -91,6 +96,34 @@ function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined 
         return undefined;
     }
     return { mapX, mapY };
+}
+
+function createMapViewerRuntimeShell(
+    viewer: MapViewer,
+    renderWorkerPool: RenderDataWorkerPool,
+    simWorkerPool: SimWorkerPool,
+): MapViewerRuntimeShell {
+    const worldSession = new WorldSession({
+        worldRuntime: new WorkerWorldRuntime({
+            renderRuntime: renderWorkerPool.frame,
+            simRuntime: simWorkerPool.world,
+        }),
+    });
+    const renderFrameCoordinator = new RenderFrameCoordinator({
+        worldRuntime: simWorkerPool.world,
+        renderFrameRuntime: renderWorkerPool.frame,
+        getLodDistance: () => viewer.renderer.renderer.lodDistance,
+        getHoveredMapIdsPacked: () =>
+            viewer.renderer.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
+        getVisibleMapIds: () => viewer.renderer.getVisibleMapIdsPackedForFrameCoordinator(),
+        getCameraMapX: () => viewer.camera.getMapX(),
+        getCameraMapY: () => viewer.camera.getMapY(),
+        reportSeamSample: (sample) => viewer.renderer.reportRenderFrameSeamSample(sample),
+    });
+    return {
+        worldSession,
+        renderFrameCoordinator,
+    };
 }
 
 type MapViewerCacheSwitcherDeps<TContext> = Readonly<{
@@ -448,27 +481,11 @@ export class MapViewer {
     ) {
         this.cacheContext = context;
         this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
-        const worldSession = new WorldSession({
-            worldRuntime: new WorkerWorldRuntime({
-                renderRuntime: renderWorkerPool.frame,
-                simRuntime: simWorkerPool.world,
-            }),
-        });
-        const renderFrameCoordinator = new RenderFrameCoordinator({
-            worldRuntime: simWorkerPool.world,
-            renderFrameRuntime: renderWorkerPool.frame,
-            getLodDistance: () => this.renderer.renderer.lodDistance,
-            getHoveredMapIdsPacked: () =>
-                this.renderer.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
-            getVisibleMapIds: () => this.renderer.getVisibleMapIdsPackedForFrameCoordinator(),
-            getCameraMapX: () => this.camera.getMapX(),
-            getCameraMapY: () => this.camera.getMapY(),
-            reportSeamSample: (sample) => this.renderer.reportRenderFrameSeamSample(sample),
-        });
+        const runtimeShell = createMapViewerRuntimeShell(this, renderWorkerPool, simWorkerPool);
         this.renderer = new MapViewerRenderer(
             this,
-            worldSession,
-            renderFrameCoordinator,
+            runtimeShell.worldSession,
+            runtimeShell.renderFrameCoordinator,
         );
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
