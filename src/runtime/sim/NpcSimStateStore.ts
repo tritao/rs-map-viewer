@@ -5,6 +5,7 @@ import { type CollisionData, CollisionMap } from "../../rs/scene/CollisionMap";
 import {
     LOC_ANIMATION_PAUSE_STATE_STRIDE,
     LOC_ANIMATION_RESET_STRIDE,
+    LOC_ANIMATION_SNAPSHOT_STRIDE,
     NPC_STATE_DELTA_DESPAWN_STRIDE,
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
@@ -59,6 +60,7 @@ export type NpcSimStateStoreDeps = Readonly<{
 export class NpcSimStateStore {
     private readonly maps = new Map<number, NpcSimMapState>();
     private readonly pendingNpcSnapshotMapIds = new Set<number>();
+    private readonly pendingLocSnapshotMapIds = new Set<number>();
 
     private createCollisionMaps(collisionDatas: ReadonlyArray<CollisionData>): CollisionMap[] {
         return collisionDatas.map(CollisionMap.fromData);
@@ -529,6 +531,19 @@ export class NpcSimStateStore {
         return packed;
     }
 
+    consumePendingLocSnapshotMapIdsPacked(): Int32Array | undefined {
+        if ((this.pendingLocSnapshotMapIds.size | 0) <= 0) {
+            return undefined;
+        }
+        const packed = new Int32Array(this.pendingLocSnapshotMapIds.size | 0);
+        let write = 0;
+        for (const mapId of this.pendingLocSnapshotMapIds.values()) {
+            packed[write++] = mapId | 0;
+        }
+        this.pendingLocSnapshotMapIds.clear();
+        return packed;
+    }
+
     applyLocAnimationResets(packet: WorldDeltaPacket, cycleNow: number): number {
         const animationResetPacked = packet.locDelta?.animationResetPacked;
         if (!(animationResetPacked instanceof Int32Array) || (animationResetPacked.length | 0) <= 0) {
@@ -548,11 +563,13 @@ export class NpcSimStateStore {
             const state = this.maps.get(mapId);
             if (!state) {
                 missingMaps = (missingMaps + 1) | 0;
+                this.pendingLocSnapshotMapIds.add(mapId);
                 continue;
             }
             const loc = state.locsAnimated[locIndex];
             if (!loc) {
                 missingLocs = (missingLocs + 1) | 0;
+                this.pendingLocSnapshotMapIds.add(mapId);
                 continue;
             }
             loc.restart(safeCycleNow);
@@ -581,6 +598,7 @@ export class NpcSimStateStore {
             const state = this.maps.get(mapId);
             const loc = state?.locsAnimated[locIndex];
             if (!loc) {
+                this.pendingLocSnapshotMapIds.add(mapId);
                 continue;
             }
             loc.setPaused(paused);
@@ -589,19 +607,53 @@ export class NpcSimStateStore {
         return applied | 0;
     }
 
+    applyLocAnimationSnapshots(packet: WorldDeltaPacket): number {
+        const animationSnapshotPacked = packet.locDelta?.animationSnapshotPacked;
+        if (
+            !(animationSnapshotPacked instanceof Int32Array) ||
+            (animationSnapshotPacked.length | 0) <= 0
+        ) {
+            return 0;
+        }
+        let applied = 0;
+        for (
+            let offset = 0;
+            offset + LOC_ANIMATION_SNAPSHOT_STRIDE <= (animationSnapshotPacked.length | 0);
+            offset += LOC_ANIMATION_SNAPSHOT_STRIDE
+        ) {
+            const mapId = animationSnapshotPacked[offset + 0] | 0;
+            const locIndex = animationSnapshotPacked[offset + 1] | 0;
+            const frame = animationSnapshotPacked[offset + 2] | 0;
+            const cycleStart = animationSnapshotPacked[offset + 3] | 0;
+            const paused = (animationSnapshotPacked[offset + 4] | 0) !== 0;
+            const state = this.maps.get(mapId);
+            const loc = state?.locsAnimated[locIndex];
+            if (!loc) {
+                this.pendingLocSnapshotMapIds.add(mapId);
+                continue;
+            }
+            loc.setSnapshot(frame, cycleStart, paused);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
     resetForCache(): void {
         this.maps.clear();
         this.pendingNpcSnapshotMapIds.clear();
+        this.pendingLocSnapshotMapIds.clear();
     }
 
     resetForLoaderReset(): void {
         this.maps.clear();
         this.pendingNpcSnapshotMapIds.clear();
+        this.pendingLocSnapshotMapIds.clear();
     }
 
     unregisterMap(mapId: number): void {
         this.maps.delete(mapId | 0);
         this.pendingNpcSnapshotMapIds.delete(mapId | 0);
+        this.pendingLocSnapshotMapIds.delete(mapId | 0);
     }
 
     getMap(mapId: number): NpcSimMapState | undefined {

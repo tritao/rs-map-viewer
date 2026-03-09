@@ -735,9 +735,17 @@ export class WorkerFramePacketRuntime {
                     applied = (applied + 1) | 0;
                 }
             }
+            const snapshotPacked = locDelta.animationSnapshotPacked;
+            if (snapshotPacked instanceof Int32Array) {
+                applied = (applied + this.npcSimStateStore.applyLocAnimationSnapshots(packet)) | 0;
+            }
         }
         if (((packet.npcState?.changeCount ?? 0) | 0) <= 0) {
-            return { applied: applied | 0 };
+            return {
+                applied: applied | 0,
+                locSnapshotMapIds: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
+                dynamicObjSnapshotMapIds: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+            };
         }
         const workerState = await this.getWorkerState();
         const deps = createNpcSimStateStoreDeps(workerState);
@@ -746,6 +754,7 @@ export class WorkerFramePacketRuntime {
             applied: applied | 0,
             npcSnapshotMapIds: this.npcSimStateStore.consumePendingNpcSnapshotMapIdsPacked(),
             dynamicObjSnapshotMapIds: this.consumePendingDynamicObjSnapshotMapIdsPacked(),
+            locSnapshotMapIds: this.npcSimStateStore.consumePendingLocSnapshotMapIdsPacked(),
         };
     }
 

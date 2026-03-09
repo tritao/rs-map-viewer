@@ -67,6 +67,12 @@ export class LocAnimated {
         this.paused = !!paused;
     }
 
+    setSnapshot(frame: number, cycleStart: number, paused: boolean): void {
+        this.frame = Math.max(0, frame | 0);
+        this.cycleStart = cycleStart | 0;
+        this.paused = !!paused;
+    }
+
     update(seqFrameLoader: SeqFrameLoader, cycle: number): number {
         if (!this.seqType) {
             return 0;

@@ -9,6 +9,7 @@ export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;
 export const NPC_STATE_DELTA_DESPAWN_STRIDE = 3;
 export const LOC_ANIMATION_RESET_STRIDE = 2;
 export const LOC_ANIMATION_PAUSE_STATE_STRIDE = 3;
+export const LOC_ANIMATION_SNAPSHOT_STRIDE = 5;
 
 const UPDATE_FLAG_CLEAR_SERVER_PATH = 1 << 0;
 const UPDATE_FLAG_HAS_SNAP_TILE = 1 << 1;
@@ -89,9 +90,18 @@ export type WorldLocAnimationPauseState = Readonly<{
     paused: boolean;
 }>;
 
+export type WorldLocAnimationSnapshot = Readonly<{
+    mapId: number;
+    locIndex: number;
+    frame: number;
+    cycleStart: number;
+    paused: boolean;
+}>;
+
 export type WorldLocDelta = Readonly<{
     animationResetPacked: Int32Array;
     animationPauseStatePacked?: Int32Array;
+    animationSnapshotPacked?: Int32Array;
 }>;
 
 export type NpcWorldState = Readonly<{
@@ -231,6 +241,9 @@ function getLocDeltaTransferables(locDelta: WorldLocDelta | undefined): Transfer
     if (locDelta.animationPauseStatePacked) {
         transferables.push(locDelta.animationPauseStatePacked.buffer as Transferable);
     }
+    if (locDelta.animationSnapshotPacked) {
+        transferables.push(locDelta.animationSnapshotPacked.buffer as Transferable);
+    }
     return transferables;
 }
 
@@ -255,7 +268,11 @@ export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
         (packet.objDelta?.dynamicUpdates?.length ?? 0) +
         (packet.objDelta?.clearDynamicMapIds?.length ?? 0) +
         Math.floor(((packet.locDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
-        Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3)
+        Math.floor(((packet.locDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3) +
+        Math.floor(
+            ((packet.locDelta?.animationSnapshotPacked?.length ?? 0) | 0) /
+                LOC_ANIMATION_SNAPSHOT_STRIDE,
+        )
     );
 }
 
@@ -274,6 +291,13 @@ export function validateWorldDeltaPacket(
                 "animationPauseStatePacked",
                 locDelta.animationPauseStatePacked,
                 LOC_ANIMATION_PAUSE_STATE_STRIDE,
+            );
+        }
+        if (locDelta.animationSnapshotPacked) {
+            assertPackedStride(
+                "animationSnapshotPacked",
+                locDelta.animationSnapshotPacked,
+                LOC_ANIMATION_SNAPSHOT_STRIDE,
             );
         }
     }
@@ -337,6 +361,13 @@ export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaP
                 "animationPauseStatePacked",
                 input.locDelta.animationPauseStatePacked,
                 LOC_ANIMATION_PAUSE_STATE_STRIDE,
+            );
+        }
+        if (input.locDelta.animationSnapshotPacked) {
+            assertPackedStride(
+                "animationSnapshotPacked",
+                input.locDelta.animationSnapshotPacked,
+                LOC_ANIMATION_SNAPSHOT_STRIDE,
             );
         }
     }
@@ -513,6 +544,33 @@ export function buildWorldDeltaPacketFromLocAnimationPauseStates(
         locDelta: {
             animationResetPacked: new Int32Array(0),
             animationPauseStatePacked,
+        },
+    });
+}
+
+export function buildWorldDeltaPacketFromLocAnimationSnapshots(
+    input: Readonly<{
+        frameCount: number;
+        animationSnapshots: ReadonlyArray<WorldLocAnimationSnapshot>;
+    }>,
+): WorldDeltaPacket {
+    const animationSnapshotPacked = new Int32Array(
+        (input.animationSnapshots.length | 0) * LOC_ANIMATION_SNAPSHOT_STRIDE,
+    );
+    let write = 0;
+    for (let index = 0; index < input.animationSnapshots.length; index++) {
+        const snapshot = input.animationSnapshots[index]!;
+        animationSnapshotPacked[write++] = snapshot.mapId | 0;
+        animationSnapshotPacked[write++] = snapshot.locIndex | 0;
+        animationSnapshotPacked[write++] = snapshot.frame | 0;
+        animationSnapshotPacked[write++] = snapshot.cycleStart | 0;
+        animationSnapshotPacked[write++] = snapshot.paused ? 1 : 0;
+    }
+    return buildWorldDeltaPacket({
+        frameCount: input.frameCount | 0,
+        locDelta: {
+            animationResetPacked: new Int32Array(0),
+            animationSnapshotPacked,
         },
     });
 }

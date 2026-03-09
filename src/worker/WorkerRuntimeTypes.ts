@@ -12,6 +12,7 @@ export type WorldInputUpdate = Readonly<{
     mapIds?: Int32Array;
     npcSnapshotMapIds?: Int32Array;
     dynamicObjSnapshotMapIds?: Int32Array;
+    locSnapshotMapIds?: Int32Array;
 }>;
 
 export type RenderFrameInputUpdate = Readonly<{
@@ -26,6 +27,7 @@ export type ApplyWorldDeltaResult = Readonly<{
     applied: number;
     npcSnapshotMapIds?: Int32Array;
     dynamicObjSnapshotMapIds?: Int32Array;
+    locSnapshotMapIds?: Int32Array;
 }>;
 
 export type SimMapRuntimeRegistrationInput = Readonly<{
