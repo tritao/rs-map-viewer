@@ -2,10 +2,11 @@ import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import type { WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import type {
+    WorldRuntime,
     WorldInput,
     WorldMapActivationInput,
     WorldMapDeactivationInput,
-} from "./WorldSession";
+} from "../world/WorldSession";
 
 type WorldRenderRuntime = Readonly<{
     activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void>;
@@ -19,17 +20,17 @@ type WorldSimRuntime = Readonly<{
     applyMapObjStateUpdates(updates: ReadonlyArray<WorldMapObjUpdate>): Promise<number>;
 }>;
 
-type WorldRuntimePoolDeps = Readonly<{
+type WorkerWorldRuntimeDeps = Readonly<{
     renderRuntime: WorldRenderRuntime;
     simRuntime: WorldSimRuntime;
 }>;
 
-export class WorldRuntimePool {
+export class WorkerWorldRuntime implements WorldRuntime {
     private activationVersion: number = 1;
     private readonly mapRuntimeTokenByMapId = new Map<number, number>();
     private nextMapRuntimeToken: number = 1;
 
-    constructor(private readonly deps: WorldRuntimePoolDeps) {}
+    constructor(private readonly deps: WorkerWorldRuntimeDeps) {}
 
     reset(): void {
         this.activationVersion = (this.activationVersion + 1) | 0;

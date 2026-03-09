@@ -3,11 +3,6 @@ import {
 } from "../shared/StaticMapPacket";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import { type WorldMapObjUpdate } from "../runtime/packets/WorldDeltaPacket";
-import type { WorldRuntimePool } from "./WorldRuntimePool";
-
-type WorldSessionDeps = Readonly<{
-    worldRuntimePool: WorldRuntimePool;
-}>;
 
 export type NpcLifecycleEventsInput = Readonly<{
     lifecycleEvents: ReadonlyArray<NpcEvent>;
@@ -31,30 +26,43 @@ export type WorldMapDeactivationInput = Readonly<{
     mapId: number;
 }>;
 
+export type WorldRuntime = Readonly<{
+    reset(): void;
+    captureActivationVersion(): number;
+    isActivationVersionCurrent(version: number): boolean;
+    activateLoadedMap(input: WorldMapActivationInput): Promise<boolean>;
+    deactivateLoadedMap(input: WorldMapDeactivationInput): void;
+    applyWorldInput(input: WorldInput): Promise<number>;
+}>;
+
+type WorldSessionDeps = Readonly<{
+    worldRuntime: WorldRuntime;
+}>;
+
 export class WorldSession {
     constructor(private readonly deps: WorldSessionDeps) {}
 
     reset(): void {
-        this.deps.worldRuntimePool.reset();
+        this.deps.worldRuntime.reset();
     }
 
     captureActivationVersion(): number {
-        return this.deps.worldRuntimePool.captureActivationVersion();
+        return this.deps.worldRuntime.captureActivationVersion();
     }
 
     isActivationVersionCurrent(version: number): boolean {
-        return this.deps.worldRuntimePool.isActivationVersionCurrent(version);
+        return this.deps.worldRuntime.isActivationVersionCurrent(version);
     }
 
     async activateLoadedMap(input: WorldMapActivationInput): Promise<boolean> {
-        return await this.deps.worldRuntimePool.activateLoadedMap(input);
+        return await this.deps.worldRuntime.activateLoadedMap(input);
     }
 
     deactivateLoadedMap(input: WorldMapDeactivationInput): void {
-        this.deps.worldRuntimePool.deactivateLoadedMap(input);
+        this.deps.worldRuntime.deactivateLoadedMap(input);
     }
 
     async applyWorldInput(input: WorldInput): Promise<number> {
-        return await this.deps.worldRuntimePool.applyWorldInput(input);
+        return await this.deps.worldRuntime.applyWorldInput(input);
     }
 }
