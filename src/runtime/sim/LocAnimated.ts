@@ -8,6 +8,7 @@ export class LocAnimated {
     frame = 0;
     cycleStart: number;
     paused = false;
+    visible = true;
 
     constructor(
         readonly drawRangeIndex: number,
@@ -67,10 +68,15 @@ export class LocAnimated {
         this.paused = !!paused;
     }
 
-    setSnapshot(frame: number, cycleStart: number, paused: boolean): void {
+    setVisible(visible: boolean): void {
+        this.visible = !!visible;
+    }
+
+    setSnapshot(frame: number, cycleStart: number, paused: boolean, visible: boolean): void {
         this.frame = Math.max(0, frame | 0);
         this.cycleStart = cycleStart | 0;
         this.paused = !!paused;
+        this.visible = !!visible;
     }
 
     update(seqFrameLoader: SeqFrameLoader, cycle: number): number {

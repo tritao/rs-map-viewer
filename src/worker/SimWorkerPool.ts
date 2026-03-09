@@ -6,6 +6,7 @@ import type {
     WorldDeltaPacket,
     WorldMapObjAddition,
     WorldDynamicMapObjUpdate,
+    WorldLocVisibilityChange,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -49,8 +50,8 @@ export class SimWorkerPool {
         bootstrapMapRuntime: (input: MapRuntimeBootstrapInput) => this.bootstrapMapRuntime(input),
         unregisterMapRuntime: (mapId: number, mapSimToken?: number) =>
             this.unregisterMapRuntime(mapId, mapSimToken),
-        applyNpcLifecycleEvents: (events: ReadonlyArray<NpcEvent>) =>
-            this.applyNpcLifecycleEvents(events),
+        applyNpcEvents: (events: ReadonlyArray<NpcEvent>) =>
+            this.applyNpcEvents(events),
         applyMapObjStateReplacements: (stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>) =>
             this.applyMapObjStateReplacements(stateReplacements),
         applyMapObjAdditions: (additions: ReadonlyArray<WorldMapObjAddition>) =>
@@ -80,6 +81,8 @@ export class SimWorkerPool {
         applyDynamicMapObjUpdates: (updates: ReadonlyArray<WorldDynamicMapObjUpdate>) =>
             this.applyDynamicMapObjUpdates(updates),
         clearDynamicMapObjs: (mapIds: ReadonlyArray<number>) => this.clearDynamicMapObjs(mapIds),
+        applyLocVisibilityChanges: (changes: ReadonlyArray<WorldLocVisibilityChange>) =>
+            this.applyLocVisibilityChanges(changes),
         applyLocAnimationResets: (resets: ReadonlyArray<WorldLocAnimationReset>) =>
             this.applyLocAnimationResets(resets),
         applyLocAnimationPauseStates: (
@@ -178,7 +181,7 @@ export class SimWorkerPool {
         return this.withWorker((w) => w.applyNpcLifecyclePacketBytes(packet));
     }
 
-    private applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
+    private applyNpcEvents(events: ReadonlyArray<NpcEvent>): Promise<number> {
         if ((events.length | 0) <= 0) {
             return Promise.resolve(0);
         }
@@ -235,6 +238,12 @@ export class SimWorkerPool {
 
     private clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
         return this.withWorker((w) => w.clearDynamicMapObjs(mapIds));
+    }
+
+    private applyLocVisibilityChanges(
+        changes: ReadonlyArray<WorldLocVisibilityChange>,
+    ): Promise<number> {
+        return this.withWorker((w) => w.applyLocVisibilityChanges(changes));
     }
 
     private applyLocAnimationResets(

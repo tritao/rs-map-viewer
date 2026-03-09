@@ -9,7 +9,8 @@ export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;
 export const NPC_STATE_DELTA_DESPAWN_STRIDE = 3;
 export const LOC_ANIMATION_RESET_STRIDE = 2;
 export const LOC_ANIMATION_PAUSE_STATE_STRIDE = 3;
-export const LOC_ANIMATION_SNAPSHOT_STRIDE = 5;
+export const LOC_ANIMATION_SNAPSHOT_STRIDE = 6;
+export const LOC_VISIBILITY_STATE_STRIDE = 3;
 
 const UPDATE_FLAG_CLEAR_SERVER_PATH = 1 << 0;
 const UPDATE_FLAG_HAS_SNAP_TILE = 1 << 1;
@@ -104,6 +105,13 @@ export type WorldLocAnimationSnapshot = Readonly<{
     frame: number;
     cycleStart: number;
     paused: boolean;
+    visible: boolean;
+}>;
+
+export type WorldLocVisibilityChange = Readonly<{
+    mapId: number;
+    locIndex: number;
+    visible: boolean;
 }>;
 
 export type WorldLocAnimationDelta = Readonly<{
@@ -112,7 +120,12 @@ export type WorldLocAnimationDelta = Readonly<{
     animationSnapshotPacked?: Int32Array;
 }>;
 
+export type WorldLocStateDelta = Readonly<{
+    visibilityPacked?: Int32Array;
+}>;
+
 export type WorldLocDelta = Readonly<{
+    state?: WorldLocStateDelta;
     animation?: WorldLocAnimationDelta;
 }>;
 
@@ -249,17 +262,22 @@ function getObjDeltaTransferables(objDelta: WorldObjDelta | undefined): Transfer
 
 function getLocDeltaTransferables(locDelta: WorldLocDelta | undefined): Transferable[] {
     const animation = locDelta?.animation;
-    if (!animation) {
+    const state = locDelta?.state;
+    if (!animation && !state) {
         return [];
     }
-    const transferables: Transferable[] = [
-        animation.animationResetPacked.buffer as Transferable,
-    ];
-    if (animation.animationPauseStatePacked) {
+    const transferables: Transferable[] = [];
+    if (animation) {
+        transferables.push(animation.animationResetPacked.buffer as Transferable);
+    }
+    if (animation?.animationPauseStatePacked) {
         transferables.push(animation.animationPauseStatePacked.buffer as Transferable);
     }
-    if (animation.animationSnapshotPacked) {
+    if (animation?.animationSnapshotPacked) {
         transferables.push(animation.animationSnapshotPacked.buffer as Transferable);
+    }
+    if (state?.visibilityPacked) {
+        transferables.push(state.visibilityPacked.buffer as Transferable);
     }
     return transferables;
 }
@@ -278,6 +296,7 @@ export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
     const objStaticDelta = packet.obj?.static;
     const objDynamicDelta = packet.obj?.dynamic;
     const locAnimationDelta = packet.loc?.animation;
+    const locStateDelta = packet.loc?.state;
     return (
         (packet.npc?.state?.changeCount ?? 0) +
         (objStaticDelta?.stateReplacements?.length ?? 0) +
@@ -287,6 +306,7 @@ export function getWorldDeltaChangeCount(packet: WorldDeltaPacket): number {
         (objDynamicDelta?.dynamicDespawns?.length ?? 0) +
         (objDynamicDelta?.dynamicUpdates?.length ?? 0) +
         (objDynamicDelta?.clearDynamicMapIds?.length ?? 0) +
+        Math.floor(((locStateDelta?.visibilityPacked?.length ?? 0) | 0) / 3) +
         Math.floor(((locAnimationDelta?.animationResetPacked.length ?? 0) | 0) / 2) +
         Math.floor(((locAnimationDelta?.animationPauseStatePacked?.length ?? 0) | 0) / 3) +
         Math.floor(
@@ -300,6 +320,14 @@ export function validateWorldDeltaPacket(
     packet: WorldDeltaPacket,
 ): WorldDeltaPacketCounts {
     const locAnimationDelta = packet.loc?.animation;
+    const locStateDelta = packet.loc?.state;
+    if (locStateDelta?.visibilityPacked) {
+        assertPackedStride(
+            "visibilityPacked",
+            locStateDelta.visibilityPacked,
+            LOC_VISIBILITY_STATE_STRIDE,
+        );
+    }
     if (locAnimationDelta) {
         assertPackedStride(
             "animationResetPacked",
@@ -390,6 +418,13 @@ export function buildWorldDeltaPacket(input: WorldDeltaPacketInput): WorldDeltaP
                 LOC_ANIMATION_SNAPSHOT_STRIDE,
             );
         }
+    }
+    if (input.loc?.state?.visibilityPacked) {
+        assertPackedStride(
+            "visibilityPacked",
+            input.loc.state.visibilityPacked,
+            LOC_VISIBILITY_STATE_STRIDE,
+        );
     }
     return {
         frameCount: input.frameCount | 0,
@@ -508,6 +543,18 @@ export function buildWorldDeltaPacketFromNpcLifecycleEvents(
     });
 }
 
+export function buildWorldDeltaPacketFromNpcEvents(
+    input: Readonly<{
+        frameCount: number;
+        events: ReadonlyArray<NpcEvent>;
+    }>,
+): WorldDeltaPacket {
+    return buildWorldDeltaPacketFromNpcLifecycleEvents({
+        frameCount: input.frameCount,
+        lifecycleEvents: input.events,
+    });
+}
+
 export function buildWorldDeltaPacketFromObjStateReplacements(
     input: Readonly<{
         frameCount?: number;
@@ -593,6 +640,7 @@ export function buildWorldDeltaPacketFromLocAnimationSnapshots(
         animationSnapshotPacked[write++] = snapshot.frame | 0;
         animationSnapshotPacked[write++] = snapshot.cycleStart | 0;
         animationSnapshotPacked[write++] = snapshot.paused ? 1 : 0;
+        animationSnapshotPacked[write++] = snapshot.visible ? 1 : 0;
     }
     return buildWorldDeltaPacket({
         frameCount: input.frameCount | 0,
@@ -600,6 +648,32 @@ export function buildWorldDeltaPacketFromLocAnimationSnapshots(
             animation: {
                 animationResetPacked: new Int32Array(0),
                 animationSnapshotPacked,
+            },
+        },
+    });
+}
+
+export function buildWorldDeltaPacketFromLocVisibilityChanges(
+    input: Readonly<{
+        frameCount: number;
+        visibilityChanges: ReadonlyArray<WorldLocVisibilityChange>;
+    }>,
+): WorldDeltaPacket {
+    const visibilityPacked = new Int32Array(
+        (input.visibilityChanges.length | 0) * LOC_VISIBILITY_STATE_STRIDE,
+    );
+    let write = 0;
+    for (let index = 0; index < input.visibilityChanges.length; index++) {
+        const change = input.visibilityChanges[index]!;
+        visibilityPacked[write++] = change.mapId | 0;
+        visibilityPacked[write++] = change.locIndex | 0;
+        visibilityPacked[write++] = change.visible ? 1 : 0;
+    }
+    return buildWorldDeltaPacket({
+        frameCount: input.frameCount | 0,
+        loc: {
+            state: {
+                visibilityPacked,
             },
         },
     });

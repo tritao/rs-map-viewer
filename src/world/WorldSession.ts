@@ -5,18 +5,15 @@ import type { NpcEvent } from "../runtime/entities/NpcEvents";
 import {
     type WorldMapObjAddition,
     type WorldDynamicMapObjUpdate,
+    type WorldLocVisibilityChange,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
     type WorldMapObjRemoval,
     type WorldMapObjStateReplacement,
 } from "./WorldDeltaPacket";
 
-export type WorldNpcLifecycleInput = Readonly<{
-    lifecycleEvents: ReadonlyArray<NpcEvent>;
-}>;
-
 export type WorldNpcInput = Readonly<{
-    lifecycle?: WorldNpcLifecycleInput;
+    events?: ReadonlyArray<NpcEvent>;
 }>;
 
 export type WorldObjStaticInput = Readonly<{
@@ -56,7 +53,12 @@ export type WorldLocAnimationInput = Readonly<{
     animationPauseStates?: ReadonlyArray<WorldLocAnimationPauseState>;
 }>;
 
+export type WorldLocStateInput = Readonly<{
+    visibilityChanges?: ReadonlyArray<WorldLocVisibilityChange>;
+}>;
+
 export type WorldLocInput = Readonly<{
+    state?: WorldLocStateInput;
     animation?: WorldLocAnimationInput;
 }>;
 

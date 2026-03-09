@@ -6,6 +6,7 @@ import {
     LOC_ANIMATION_PAUSE_STATE_STRIDE,
     LOC_ANIMATION_RESET_STRIDE,
     LOC_ANIMATION_SNAPSHOT_STRIDE,
+    LOC_VISIBILITY_STATE_STRIDE,
     NPC_STATE_DELTA_DESPAWN_STRIDE,
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
@@ -578,6 +579,32 @@ export class NpcSimStateStore {
         return applied | 0;
     }
 
+    applyLocVisibilityChanges(packet: WorldDeltaPacket): number {
+        const visibilityPacked = packet.loc?.state?.visibilityPacked;
+        if (!(visibilityPacked instanceof Int32Array) || (visibilityPacked.length | 0) <= 0) {
+            return 0;
+        }
+        let applied = 0;
+        for (
+            let offset = 0;
+            offset + LOC_VISIBILITY_STATE_STRIDE <= (visibilityPacked.length | 0);
+            offset += LOC_VISIBILITY_STATE_STRIDE
+        ) {
+            const mapId = visibilityPacked[offset + 0] | 0;
+            const locIndex = visibilityPacked[offset + 1] | 0;
+            const visible = (visibilityPacked[offset + 2] | 0) !== 0;
+            const state = this.maps.get(mapId);
+            const loc = state?.locsAnimated[locIndex];
+            if (!loc) {
+                this.pendingLocSnapshotMapIds.add(mapId);
+                continue;
+            }
+            loc.setVisible(visible);
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
     applyLocAnimationPauseStates(packet: WorldDeltaPacket): number {
         const animationPauseStatePacked = packet.loc?.animation?.animationPauseStatePacked;
         if (
@@ -626,13 +653,14 @@ export class NpcSimStateStore {
             const frame = animationSnapshotPacked[offset + 2] | 0;
             const cycleStart = animationSnapshotPacked[offset + 3] | 0;
             const paused = (animationSnapshotPacked[offset + 4] | 0) !== 0;
+            const visible = (animationSnapshotPacked[offset + 5] | 0) !== 0;
             const state = this.maps.get(mapId);
             const loc = state?.locsAnimated[locIndex];
             if (!loc) {
                 this.pendingLocSnapshotMapIds.add(mapId);
                 continue;
             }
-            loc.setSnapshot(frame, cycleStart, paused);
+            loc.setSnapshot(frame, cycleStart, paused, visible);
             applied = (applied + 1) | 0;
         }
         return applied | 0;

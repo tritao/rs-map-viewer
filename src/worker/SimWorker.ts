@@ -5,6 +5,7 @@ import type {
     WorldDeltaPacket,
     WorldMapObjAddition,
     WorldDynamicMapObjUpdate,
+    WorldLocVisibilityChange,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -119,6 +120,12 @@ const worldApi = {
     async clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
         const { tickRuntime } = await getWorkerServices();
         return tickRuntime.clearDynamicMapObjs(mapIds);
+    },
+    async applyLocVisibilityChanges(
+        changes: ReadonlyArray<WorldLocVisibilityChange>,
+    ): Promise<number> {
+        const { tickRuntime } = await getWorkerServices();
+        return tickRuntime.applyLocVisibilityChanges(changes);
     },
     async applyLocAnimationResets(
         resets: ReadonlyArray<WorldLocAnimationReset>,
@@ -251,6 +258,11 @@ const worker = {
     },
     async clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number> {
         return worldApi.clearDynamicMapObjs(mapIds);
+    },
+    async applyLocVisibilityChanges(
+        changes: ReadonlyArray<WorldLocVisibilityChange>,
+    ): Promise<number> {
+        return worldApi.applyLocVisibilityChanges(changes);
     },
     async applyLocAnimationResets(
         resets: ReadonlyArray<WorldLocAnimationReset>,

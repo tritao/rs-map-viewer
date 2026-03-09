@@ -42,7 +42,10 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
-import type { WorldLocAnimationReset } from "../world/WorldDeltaPacket";
+import type {
+    WorldLocAnimationReset,
+    WorldLocVisibilityChange,
+} from "../world/WorldDeltaPacket";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 
 type MenuInteractionTarget =
@@ -465,6 +468,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const objStaticInput = input.obj?.static;
         const objDynamicInput = input.obj?.dynamic;
         const locAnimationInput = input.loc?.animation;
+        const locStateInput = input.loc?.state;
         const hasRenderAffectingWorldInput =
             (!!objStaticInput?.stateReplacements &&
                 (objStaticInput.stateReplacements.length | 0) > 0) ||
@@ -477,6 +481,8 @@ export class MapViewerRenderer extends RendererMainLoop {
                 (objDynamicInput.dynamicUpdates.length | 0) > 0) ||
             (!!objDynamicInput?.clearDynamicMaps &&
                 (objDynamicInput.clearDynamicMaps.length | 0) > 0) ||
+            (!!locStateInput?.visibilityChanges &&
+                (locStateInput.visibilityChanges.length | 0) > 0) ||
             (!!locAnimationInput?.animationResets &&
                 (locAnimationInput.animationResets.length | 0) > 0) ||
             (!!locAnimationInput?.animationPauseStates &&
@@ -913,6 +919,30 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     };
 
+    private onSetLocVisible(visible: boolean): (entry: OsrsMenuEntry) => void {
+        return (entry) => {
+            const locInstance = this.getLocInstanceFromMenuEntry(entry);
+            this.mapViewer.closeMenu();
+            if (!locInstance) {
+                return;
+            }
+            const visibilityChanges: WorldLocVisibilityChange[] = [
+                {
+                    mapId: locInstance.mapId | 0,
+                    locIndex: locInstance.locIndex | 0,
+                    visible,
+                },
+            ];
+            void this.applyWorldInput({
+                loc: {
+                    state: {
+                        visibilityChanges,
+                    },
+                },
+            });
+        };
+    }
+
     private onSetLocAnimationPaused(paused: boolean): (entry: OsrsMenuEntry) => void {
         return (entry) => {
             const locInstance = this.getLocInstanceFromMenuEntry(entry);
@@ -944,16 +974,14 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
         void this.applyWorldInput({
             npc: {
-                lifecycle: {
-                    lifecycleEvents: [
-                        {
-                            kind: "despawn",
-                            mapId: npcInstance.mapId | 0,
-                            npcInstanceId: npcInstance.npcInstanceId | 0,
-                            seq: 0x7fffffff,
-                        },
-                    ],
-                },
+                events: [
+                    {
+                        kind: "despawn",
+                        mapId: npcInstance.mapId | 0,
+                        npcInstanceId: npcInstance.npcInstanceId | 0,
+                        seq: 0x7fffffff,
+                    },
+                ],
             },
         });
     };
@@ -1355,6 +1383,24 @@ export class MapViewerRenderer extends RendererMainLoop {
                     });
                 }
                 if (picked && target.locInstance) {
+                    menuEntries.push({
+                        option: "Hide loc",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        actionTarget,
+                        onClick: this.onSetLocVisible(false),
+                    });
+                    menuEntries.push({
+                        option: "Show loc",
+                        targetId: target.locType.id,
+                        targetType: MenuTargetType.LOC,
+                        targetName: target.locType.name,
+                        targetLevel: -1,
+                        actionTarget,
+                        onClick: this.onSetLocVisible(true),
+                    });
                     menuEntries.push({
                         option: "Reset anim",
                         targetId: target.locType.id,

@@ -2,6 +2,7 @@ import type { StaticMapPacket } from "../shared/StaticMapPacket";
 import type {
     WorldMapObjAddition,
     WorldDynamicMapObjUpdate,
+    WorldLocVisibilityChange,
     WorldLocAnimationPauseState,
     WorldLocAnimationReset,
     WorldMapObjRemoval,
@@ -23,7 +24,7 @@ type WorldRenderRuntime = Readonly<{
 type WorldSimRuntime = Readonly<{
     activateLoadedMap(packet: StaticMapPacket, mapSimToken: number): Promise<void>;
     deactivateLoadedMap(mapId: number, mapSimToken?: number): Promise<void>;
-    applyNpcLifecycleEvents(events: ReadonlyArray<NpcEvent>): Promise<number>;
+    applyNpcEvents(events: ReadonlyArray<NpcEvent>): Promise<number>;
     applyMapObjStateReplacements(
         stateReplacements: ReadonlyArray<WorldMapObjStateReplacement>,
     ): Promise<number>;
@@ -53,6 +54,7 @@ type WorldSimRuntime = Readonly<{
         updates: ReadonlyArray<WorldDynamicMapObjUpdate>,
     ): Promise<number>;
     clearDynamicMapObjs(mapIds: ReadonlyArray<number>): Promise<number>;
+    applyLocVisibilityChanges(changes: ReadonlyArray<WorldLocVisibilityChange>): Promise<number>;
     applyLocAnimationResets(resets: ReadonlyArray<WorldLocAnimationReset>): Promise<number>;
     applyLocAnimationPauseStates(
         pauseStates: ReadonlyArray<WorldLocAnimationPauseState>,
@@ -136,11 +138,11 @@ export class WorkerWorldRuntime implements WorldRuntime {
     }
 
     private async applyNpcInput(input: WorldInput): Promise<number> {
-        const npcLifecycleEvents = input.npc?.lifecycle?.lifecycleEvents;
-        if (!npcLifecycleEvents || (npcLifecycleEvents.length | 0) <= 0) {
+        const npcEvents = input.npc?.events;
+        if (!npcEvents || (npcEvents.length | 0) <= 0) {
             return 0;
         }
-        return await this.deps.simRuntime.applyNpcLifecycleEvents(npcLifecycleEvents);
+        return await this.deps.simRuntime.applyNpcEvents(npcEvents);
     }
 
     private async applyObjInput(input: WorldInput): Promise<number> {
@@ -192,6 +194,13 @@ export class WorkerWorldRuntime implements WorldRuntime {
 
     private async applyLocInput(input: WorldInput): Promise<number> {
         let applied = 0;
+        const visibilityChanges = input.loc?.state?.visibilityChanges;
+        if (visibilityChanges && (visibilityChanges.length | 0) > 0) {
+            applied =
+                (applied +
+                    (await this.deps.simRuntime.applyLocVisibilityChanges(visibilityChanges))) |
+                0;
+        }
         const animationResets = input.loc?.animation?.animationResets;
         if (animationResets && (animationResets.length | 0) > 0) {
             applied =

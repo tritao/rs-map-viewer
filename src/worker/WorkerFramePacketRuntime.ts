@@ -704,6 +704,10 @@ export class WorkerFramePacketRuntime {
             (applied + (await this.applyRuntimeDynamicMapObjSpawns(objDynamicDelta?.dynamicSpawns))) |
             0;
         const locAnimationDelta = packet.loc?.animation;
+        const locStateDelta = packet.loc?.state;
+        if (locStateDelta?.visibilityPacked instanceof Int32Array) {
+            applied = (applied + this.npcSimStateStore.applyLocVisibilityChanges(packet)) | 0;
+        }
         if (locAnimationDelta) {
             const packed = locAnimationDelta.animationResetPacked;
             let locResetCount = 0;

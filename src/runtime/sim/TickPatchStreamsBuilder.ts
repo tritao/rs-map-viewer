@@ -95,6 +95,58 @@ function emitLocPatchesForChangedFrame(
     );
 }
 
+function emitLocHiddenPatches(state: NpcSimMapState, locIndex: number) {
+    const loc = state.locsAnimated[locIndex];
+    state.locTickPatchCountsByVariant[0] = emitTickPatch(
+        state.locTickPatchesByVariant[0]!,
+        state.locTickPatchCountsByVariant[0] | 0,
+        loc.drawRangeIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[1] = emitTickPatch(
+        state.locTickPatchesByVariant[1]!,
+        state.locTickPatchCountsByVariant[1] | 0,
+        loc.drawRangeAlphaIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[2] = emitTickPatch(
+        state.locTickPatchesByVariant[2]!,
+        state.locTickPatchCountsByVariant[2] | 0,
+        loc.drawRangeLodIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[3] = emitTickPatch(
+        state.locTickPatchesByVariant[3]!,
+        state.locTickPatchCountsByVariant[3] | 0,
+        loc.drawRangeLodAlphaIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[4] = emitTickPatch(
+        state.locTickPatchesByVariant[4]!,
+        state.locTickPatchCountsByVariant[4] | 0,
+        loc.drawRangeInteractIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[5] = emitTickPatch(
+        state.locTickPatchesByVariant[5]!,
+        state.locTickPatchCountsByVariant[5] | 0,
+        loc.drawRangeInteractAlphaIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[6] = emitTickPatch(
+        state.locTickPatchesByVariant[6]!,
+        state.locTickPatchCountsByVariant[6] | 0,
+        loc.drawRangeInteractLodIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+    state.locTickPatchCountsByVariant[7] = emitTickPatch(
+        state.locTickPatchesByVariant[7]!,
+        state.locTickPatchCountsByVariant[7] | 0,
+        loc.drawRangeInteractLodAlphaIndex | 0,
+        NULL_DRAW_RANGE,
+    );
+}
+
 export type WasmMapPatchStreamReadResult = Readonly<{
     hasWasmCountsForMap: boolean;
     useWasmLocStreams: boolean;
@@ -186,6 +238,10 @@ export function buildTickPatchStreamsForMap(
     if (input.includeTsLocTickPatches) {
         for (let li = 0; li < state.locsAnimated.length; li++) {
             const loc = state.locsAnimated[li];
+            if (!loc.visible) {
+                emitLocHiddenPatches(state, li);
+                continue;
+            }
             loc.update(input.seqFrameLoader, input.cycleNow);
             const newFrameId = loc.frame | 0;
             emitLocPatchesForChangedFrame(state, li, newFrameId);

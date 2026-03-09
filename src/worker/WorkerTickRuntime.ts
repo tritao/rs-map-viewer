@@ -24,13 +24,15 @@ import {
     type WorldLocAnimationSnapshot,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
+    type WorldLocVisibilityChange,
     type WorldMapObjRemoval,
     type WorldMapObjStateReplacement,
     buildWorldDeltaPacket,
     buildWorldDeltaPacketFromLocAnimationSnapshots,
     buildWorldDeltaPacketFromLocAnimationPauseStates,
     buildWorldDeltaPacketFromLocAnimationResets,
-    buildWorldDeltaPacketFromNpcLifecycleEvents,
+    buildWorldDeltaPacketFromLocVisibilityChanges,
+    buildWorldDeltaPacketFromNpcEvents,
 } from "../world/WorldDeltaPacket";
 import {
     type ResolvedBootstrapData,
@@ -138,6 +140,7 @@ export class WorkerTickRuntime {
     >();
     private readonly pendingClearDynamicMapIds = new Set<number>();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
+    private readonly pendingLocVisibilityByLocKey = new Map<string, WorldLocVisibilityChange>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
         string,
         WorldLocAnimationPauseState
@@ -172,6 +175,7 @@ export class WorkerTickRuntime {
         this.pendingDynamicMapObjUpdatesByMapId.clear();
         this.pendingClearDynamicMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
+        this.pendingLocVisibilityByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
         this.mapObjRuntimeByMapId.clear();
     }
@@ -374,6 +378,22 @@ export class WorkerTickRuntime {
             this.pendingLocAnimationResetByLocKey.set(
                 `${reset.mapId | 0}:${reset.locIndex | 0}`,
                 reset,
+            );
+            applied = (applied + 1) | 0;
+        }
+        return applied | 0;
+    }
+
+    applyLocVisibilityChanges(changes: ReadonlyArray<WorldLocVisibilityChange>): number {
+        let applied = 0;
+        for (let index = 0; index < changes.length; index++) {
+            const change = changes[index];
+            if (!change) {
+                continue;
+            }
+            this.pendingLocVisibilityByLocKey.set(
+                `${change.mapId | 0}:${change.locIndex | 0}`,
+                change,
             );
             applied = (applied + 1) | 0;
         }
@@ -812,6 +832,7 @@ export class WorkerTickRuntime {
         const hasPendingClearDynamicMaps = (this.pendingClearDynamicMapIds.size | 0) > 0;
         const hasPendingLocAnimationResets =
             (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
+        const hasPendingLocVisibilityChanges = (this.pendingLocVisibilityByLocKey.size | 0) > 0;
         const hasPendingLocAnimationPauseStates =
             (this.pendingLocAnimationPauseStateByLocKey.size | 0) > 0;
         if (
@@ -824,6 +845,7 @@ export class WorkerTickRuntime {
             !hasPendingDynamicObjDespawns &&
             !hasPendingClearDynamicMaps &&
             !hasPendingLocAnimationResets &&
+            !hasPendingLocVisibilityChanges &&
             !hasPendingLocAnimationPauseStates
         ) {
             return undefined;
@@ -857,9 +879,9 @@ export class WorkerTickRuntime {
             this.collectNpcLifecycleEventsForMap(mapId, state.npcs, events);
         }
 
-        const npcStatePacket = buildWorldDeltaPacketFromNpcLifecycleEvents({
+        const npcStatePacket = buildWorldDeltaPacketFromNpcEvents({
             frameCount: frameCount | 0,
-            lifecycleEvents: events,
+            events,
         });
         const objStateReplacements: WorldMapObjStateReplacement[] = [];
         const objAdditions: WorldMapObjAddition[] = [];
@@ -1037,6 +1059,9 @@ export class WorkerTickRuntime {
         const locAnimationResets = hasPendingLocAnimationResets
             ? Array.from(this.pendingLocAnimationResetByLocKey.values())
             : undefined;
+        const locVisibilityChanges = hasPendingLocVisibilityChanges
+            ? Array.from(this.pendingLocVisibilityByLocKey.values())
+            : undefined;
         const locAnimationPauseStates = hasPendingLocAnimationPauseStates
             ? Array.from(this.pendingLocAnimationPauseStateByLocKey.values())
             : undefined;
@@ -1057,6 +1082,7 @@ export class WorkerTickRuntime {
                     frame: loc.frame | 0,
                     cycleStart: loc.cycleStart | 0,
                     paused: !!loc.paused,
+                    visible: !!loc.visible,
                 });
             }
         }
@@ -1070,7 +1096,14 @@ export class WorkerTickRuntime {
         this.pendingDynamicObjSnapshotMapIds.clear();
         this.pendingLocSnapshotMapIds.clear();
         this.pendingLocAnimationResetByLocKey.clear();
+        this.pendingLocVisibilityByLocKey.clear();
         this.pendingLocAnimationPauseStateByLocKey.clear();
+        const locVisibilityPacket = locVisibilityChanges
+            ? buildWorldDeltaPacketFromLocVisibilityChanges({
+                  frameCount: frameCount | 0,
+                  visibilityChanges: locVisibilityChanges,
+              })
+            : undefined;
         const locDeltaPacket = locAnimationResets
             ? buildWorldDeltaPacketFromLocAnimationResets({
                   frameCount: frameCount | 0,
@@ -1095,6 +1128,7 @@ export class WorkerTickRuntime {
             (objStateReplacements.length | 0) <= 0 &&
             (objAdditions.length | 0) <= 0 &&
             (objRemovals.length | 0) <= 0 &&
+            !locVisibilityPacket?.loc?.state &&
             !locDeltaPacket?.loc?.animation &&
             !locPausePacket?.loc?.animation &&
             !locSnapshotPacket?.loc?.animation
@@ -1155,10 +1189,12 @@ export class WorkerTickRuntime {
                       }
                     : undefined,
             loc:
+                locVisibilityPacket?.loc?.state ||
                 locDeltaPacket?.loc?.animation ||
                 locPausePacket?.loc?.animation ||
                 locSnapshotPacket?.loc?.animation
                     ? {
+                          state: locVisibilityPacket?.loc?.state,
                           animation: {
                               animationResetPacked:
                                   locDeltaPacket?.loc?.animation?.animationResetPacked ??
