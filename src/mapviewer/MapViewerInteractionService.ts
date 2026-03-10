@@ -148,6 +148,8 @@ type MapViewerInteractionServiceDeps = Readonly<{
 export class MapViewerInteractionService {
     constructor(private readonly deps: MapViewerInteractionServiceDeps) {}
 
+    // Public entrypoints
+
     handlePointerLockState(): void {
         if (this.deps.mapViewer.inputManager.isPointerLock()) {
             this.deps.mapViewer.closeMenu();
@@ -232,6 +234,8 @@ export class MapViewerInteractionService {
             entries: menuEntries,
         });
     }
+
+    // Menu building
 
     private appendTargetEntries(
         menuEntries: OsrsMenuEntry[],
@@ -542,25 +546,7 @@ export class MapViewerInteractionService {
         });
     }
 
-    private getLocInstanceFromMenuEntry(
-        entry: Pick<OsrsMenuEntry, "actionTarget">,
-    ): Readonly<{ mapId: number; locIndex: number }> | undefined {
-        const actionTarget = entry.actionTarget;
-        if (!actionTarget || actionTarget.kind !== MenuTargetType.LOC) {
-            return undefined;
-        }
-        return actionTarget.locInstance;
-    }
-
-    private getNpcInstanceFromMenuEntry(
-        entry: Pick<OsrsMenuEntry, "actionTarget">,
-    ): Readonly<{ mapId: number; npcInstanceId: number }> | undefined {
-        const actionTarget = entry.actionTarget;
-        if (!actionTarget || actionTarget.kind !== MenuTargetType.NPC) {
-            return undefined;
-        }
-        return actionTarget.npcInstance;
-    }
+    // Action handlers
 
     private onResetLocAnimation = (entry: OsrsMenuEntry) => {
         const locInstance = this.getLocInstanceFromMenuEntry(entry);
@@ -676,6 +662,28 @@ export class MapViewerInteractionService {
             });
         });
     };
+
+    // Entry extraction helpers
+
+    private getLocInstanceFromMenuEntry(
+        entry: Pick<OsrsMenuEntry, "actionTarget">,
+    ): Readonly<{ mapId: number; locIndex: number }> | undefined {
+        const actionTarget = entry.actionTarget;
+        if (!actionTarget || actionTarget.kind !== MenuTargetType.LOC) {
+            return undefined;
+        }
+        return actionTarget.locInstance;
+    }
+
+    private getNpcInstanceFromMenuEntry(
+        entry: Pick<OsrsMenuEntry, "actionTarget">,
+    ): Readonly<{ mapId: number; npcInstanceId: number }> | undefined {
+        const actionTarget = entry.actionTarget;
+        if (!actionTarget || actionTarget.kind !== MenuTargetType.NPC) {
+            return undefined;
+        }
+        return actionTarget.npcInstance;
+    }
 
     private withLocInstance(
         entry: OsrsMenuEntry,
