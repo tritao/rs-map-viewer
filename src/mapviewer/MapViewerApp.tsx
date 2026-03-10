@@ -41,6 +41,7 @@ function MapViewerApp() {
     useEffect(() => {
         const abortController = new AbortController();
         const { signal } = abortController;
+        let createdMapViewer: MapViewer | undefined;
 
         const load = async () => {
             const cacheList = await cachesPromise;
@@ -84,6 +85,7 @@ function MapViewerApp() {
                 return;
             }
             const mapViewer = mapViewerResult.value;
+            createdMapViewer = mapViewer;
             mapViewer.init();
             throwIfAborted(signal);
 
@@ -105,6 +107,7 @@ function MapViewerApp() {
 
         return () => {
             abortController.abort();
+            createdMapViewer?.dispose();
         };
     }, []);
 

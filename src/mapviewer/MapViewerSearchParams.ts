@@ -14,6 +14,52 @@ export type MapViewerSearchRuntimeOptions = Readonly<{
 
 export type SearchParamsListener = (params: URLSearchParamsInit) => void;
 
+export class MapViewerSearchParamsState {
+    private readonly listeners = new Set<SearchParamsListener>();
+    private debounceTimer?: number;
+
+    constructor(private readonly getSearchParams: () => URLSearchParamsInit) {}
+
+    subscribe(listener: SearchParamsListener): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    }
+
+    update(): void {
+        this.emit(200);
+    }
+
+    emit(debounceMs: number = 0): void {
+        if (this.debounceTimer !== undefined) {
+            window.clearTimeout(this.debounceTimer);
+        }
+        if ((debounceMs | 0) <= 0) {
+            this.debounceTimer = undefined;
+            this.notifyListeners();
+            return;
+        }
+        this.debounceTimer = window.setTimeout(() => {
+            this.debounceTimer = undefined;
+            this.notifyListeners();
+        }, debounceMs);
+    }
+
+    dispose(): void {
+        if (this.debounceTimer !== undefined) {
+            window.clearTimeout(this.debounceTimer);
+            this.debounceTimer = undefined;
+        }
+        this.listeners.clear();
+    }
+
+    private notifyListeners(): void {
+        const params = this.getSearchParams();
+        for (const listener of this.listeners) {
+            listener(params);
+        }
+    }
+}
+
 export type ParsedMapViewerSearchParams = Readonly<{
     position?: vec3;
     projectionType?: ProjectionType;

@@ -18,7 +18,6 @@ import {
     type ClientRuntimeOptions,
 } from "../client/runtime/ClientRuntime";
 import { ClientWorldState } from "../client/world/ClientWorldState";
-import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import { DebugActionService, getCameraMapPosition } from "../debug/DebugActionService";
 import { Camera, CameraView } from "../renderer/Camera";
 import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
@@ -42,6 +41,10 @@ import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
 import { WorldRenderInteractionIndex } from "../world/WorldRenderInteractionIndex";
 import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
 import { type WorldMutationInput, WorldSession } from "../world/WorldSession";
+import {
+    MapViewerMenuState,
+    type ViewerMenuState,
+} from "./MapViewerMenuState";
 import { MapViewerMapImages } from "./MapViewerMapImages";
 import { advanceWalkNavigation, resolveWalkDestination } from "./MapViewerNavigation";
 import {
@@ -51,6 +54,7 @@ import {
 } from "./MapViewerRenderer";
 import {
     type DevFixedMapSquare,
+    MapViewerSearchParamsState,
     type SearchParamsListener,
     applyMapViewerSearchParams,
     buildMapViewerSearchParams,
@@ -59,23 +63,8 @@ import {
 export type { CacheSwitchStatus } from "../client/runtime/ClientRuntime";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
-const EMPTY_MENU_ENTRIES: ReadonlyArray<OsrsMenuEntry> = [];
-const EMPTY_MENU_STATE: ViewerMenuState = {
-    open: false,
-    openedFrame: 0,
-    x: -1,
-    y: -1,
-    entries: EMPTY_MENU_ENTRIES,
-};
 
 type CacheContext = LoadedCacheContext;
-type ViewerMenuState = Readonly<{
-    open: boolean;
-    openedFrame: number;
-    x: number;
-    y: number;
-    entries: ReadonlyArray<OsrsMenuEntry>;
-}>;
 
 export type MapViewerRuntimeOptions = ClientRuntimeOptions;
 
@@ -122,13 +111,11 @@ export class MapViewer {
     debugId: boolean = false;
 
     // Events/state
-    private readonly searchParamListeners = new Set<SearchParamsListener>();
-    private searchParamsDebounceTimer?: number;
-    private menuState: ViewerMenuState = EMPTY_MENU_STATE;
-
     debugText?: string;
 
     private readonly mapImages: MapViewerMapImages;
+    private readonly menuState: MapViewerMenuState;
+    private readonly searchParamsState: MapViewerSearchParamsState;
 
     cameraSpeed: number = 1;
     private walkDestination?: WalkDestination;
@@ -231,6 +218,8 @@ export class MapViewer {
         this.renderer.setStaticMapRuntime(
             this.createStaticMapRuntime(this.renderer.getStaticMapRuntimeCallbacks()),
         );
+        this.menuState = new MapViewerMenuState(() => this.renderer.canvas.focus());
+        this.searchParamsState = new MapViewerSearchParamsState(() => this.getSearchParams());
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
             mapImageCache,
@@ -344,12 +333,11 @@ export class MapViewer {
     }
 
     subscribeSearchParams(listener: SearchParamsListener): () => void {
-        this.searchParamListeners.add(listener);
-        return () => this.searchParamListeners.delete(listener);
+        return this.searchParamsState.subscribe(listener);
     }
 
     updateSearchParams(): void {
-        this.emitSearchParams(200);
+        this.searchParamsState.update();
     }
 
     getDevFixedMapSquare(): DevFixedMapSquare | undefined {
@@ -647,22 +635,15 @@ export class MapViewer {
     }
 
     getMenuState(): ViewerMenuState {
-        return this.menuState;
+        return this.menuState.getState();
     }
 
     closeMenu = () => {
-        this.menuState = {
-            ...this.menuState,
-            open: false,
-            x: -1,
-            y: -1,
-        };
-        this.renderer.canvas.focus();
+        this.menuState.close();
     };
 
     resetMenu = () => {
-        this.menuState = EMPTY_MENU_STATE;
-        this.renderer.canvas.focus();
+        this.menuState.reset();
     };
 
     setMenuState(
@@ -671,16 +652,10 @@ export class MapViewer {
             openedFrame: number;
             x: number;
             y: number;
-            entries: ReadonlyArray<OsrsMenuEntry>;
+            entries: ViewerMenuState["entries"];
         }>,
     ): void {
-        this.menuState = {
-            open: input.open,
-            openedFrame: input.openedFrame | 0,
-            x: input.x | 0,
-            y: input.y | 0,
-            entries: input.entries,
-        };
+        this.menuState.set(input);
     }
 
     getDevLocReplacementTypeId(): number {
@@ -692,18 +667,7 @@ export class MapViewer {
     }
 
     private emitSearchParams(debounceMs: number = 0): void {
-        if (this.searchParamsDebounceTimer !== undefined) {
-            window.clearTimeout(this.searchParamsDebounceTimer);
-        }
-        if ((debounceMs | 0) <= 0) {
-            this.searchParamsDebounceTimer = undefined;
-            this.notifySearchParamListeners();
-            return;
-        }
-        this.searchParamsDebounceTimer = window.setTimeout(() => {
-            this.searchParamsDebounceTimer = undefined;
-            this.notifySearchParamListeners();
-        }, debounceMs);
+        this.searchParamsState.emit(debounceMs);
     }
 
     updateVars(): void {
@@ -732,6 +696,13 @@ export class MapViewer {
         this.mapImages.clear();
     }
 
+    dispose(): void {
+        this.searchParamsState.dispose();
+        this.menuState.dispose();
+        this.walkDestination = undefined;
+        this.clearMapImageUrls();
+    }
+
     private openExamineLookup(lookupType: string, targetId: number): void {
         window.open(
             `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${
@@ -739,13 +710,6 @@ export class MapViewer {
             }`,
             "_blank",
         );
-    }
-
-    private notifySearchParamListeners(): void {
-        const params = this.getSearchParams();
-        for (const listener of this.searchParamListeners) {
-            listener(params);
-        }
     }
 
     private getVisibleMapIds(): number[] {
