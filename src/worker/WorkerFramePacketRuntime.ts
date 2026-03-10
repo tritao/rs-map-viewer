@@ -62,7 +62,7 @@ type FrameWorkerState = Readonly<{
     objModelLoader: import("./WorkerBuildTypes").WorkerState["objModelLoader"];
     mapRenderBackend: Readonly<{
         kind: MapRenderBackend["kind"];
-        getCppWasmRuntimeHandle?: () => MapRenderRuntimeHandle | undefined;
+        getWasmRuntimeHandle?: () => MapRenderRuntimeHandle | undefined;
     }>;
 }>;
 
@@ -870,7 +870,7 @@ export class WorkerFramePacketRuntime {
             };
         }
 
-        const handle = workerState.mapRenderBackend.getCppWasmRuntimeHandle?.();
+        const handle = workerState.mapRenderBackend.getWasmRuntimeHandle?.();
         if (handle === undefined) {
             throw new Error("[map-render][tick][wasm] map-render runtime handle missing");
         }

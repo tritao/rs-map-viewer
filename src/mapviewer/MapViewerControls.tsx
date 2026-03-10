@@ -492,7 +492,7 @@ export const MapViewerControls = memo(
                             value: mapRenderBackend,
                             options: {
                                 TS: "ts",
-                                "C++ WASM": "wasm",
+                                WASM: "wasm",
                             },
                             onChange: (v: BackendKind) => {
                                 runtimeOptionsRef.current.mapRenderBackend = v;

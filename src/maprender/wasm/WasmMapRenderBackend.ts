@@ -446,9 +446,9 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         }
     }
 
-    // Exposes the underlying C++ wasm runtime handle when this backend is "wasm".
+    // Exposes the underlying wasm runtime handle when this backend is "wasm".
     // This allows the worker tick path to use the same runtime instance that built the map packets.
-    getCppWasmRuntimeHandle(): MapRenderRuntimeHandle | undefined {
+    getWasmRuntimeHandle(): MapRenderRuntimeHandle | undefined {
         return this.runtimeHandle;
     }
 

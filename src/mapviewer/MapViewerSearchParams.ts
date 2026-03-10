@@ -56,7 +56,7 @@ function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined 
 }
 
 function parseBackendKindSearchParam(value: string | null): BackendKind {
-    if (value === "wasm" || value === "cpp" || value === "cpp-wasm") {
+    if (value === "wasm") {
         return "wasm";
     }
     return "ts";
