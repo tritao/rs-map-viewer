@@ -85,7 +85,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.mapViewer.unloadDistance,
             this.mapViewer.lodDistance,
             this.camera,
-            this.checkInteractions.bind(this),
+            this.interactionService.checkInteractions.bind(this.interactionService),
         );
     }
 
@@ -216,24 +216,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.recordRenderFrameSeamSample(sample);
     }
 
-    private shouldDropStaticMapPacketForDevSquare(
-        staticMapPacket: StaticMapPacket | undefined,
-    ): boolean {
-        const devsq = this.mapViewer.getDevFixedMapSquare();
-        if (
-            !devsq ||
-            !staticMapPacket ||
-            (staticMapPacket.mapData.mapX === devsq.mapX &&
-                staticMapPacket.mapData.mapY === devsq.mapY)
-        ) {
-            return false;
-        }
-        this.mapManager.loadingMapIds.delete(
-            getMapSquareId(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY),
-        );
-        return true;
-    }
-
     private logMapPacketTelemetry(packet: StaticMapPacket): void {
         const mapData = packet.mapData;
         const runtimeRegistration = packet.runtimeRegistration;
@@ -274,33 +256,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         await this.attachLoadedRuntimeMapObjRenderData(packet);
-        if (mapData.minimapBlob.size > 0) {
-            this.mapViewer.setMapImageUrl(
-                mapData.mapX,
-                mapData.mapY,
-                URL.createObjectURL(mapData.minimapBlob),
-                true,
-                false,
-            );
-            return;
-        }
-        void this.renderWorkerPool.build
-            .loadMapImage(mapData.mapX, mapData.mapY, 0, false)
-            .then((minimapData) => {
-                if (!minimapData || minimapData.minimapBlob.size <= 0) {
-                    return;
-                }
-                this.mapViewer.setMapImageUrl(
-                    mapData.mapX,
-                    mapData.mapY,
-                    URL.createObjectURL(minimapData.minimapBlob),
-                    true,
-                    false,
-                );
-            })
-            .catch(() => {
-                // Ignore minimap warmup failures; map render path is still valid.
-            });
+        this.mapViewer.warmLoadedMapMinimap(mapData.mapX, mapData.mapY, mapData.minimapBlob);
     }
 
     private detachLoadedMapRuntime(mapId: number): void {
@@ -322,7 +278,13 @@ export class MapViewerRenderer extends RendererMainLoop {
         if (!this.worldSession.isActivationVersionCurrent(queuedActivationVersion)) {
             return;
         }
-        if (this.shouldDropStaticMapPacketForDevSquare(staticMapPacket)) {
+        if (
+            staticMapPacket &&
+            this.mapManager.shouldDropLoadedMapPacket(
+                staticMapPacket.mapData.mapX,
+                staticMapPacket.mapData.mapY,
+            )
+        ) {
             return;
         }
         if (!staticMapPacket) {
@@ -377,22 +339,15 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.worldToClientWorldAdapter.reset();
         this.worldInteractionIndex.reset();
         this.renderer.initCache();
-        this.mapManager.init(
-            this.mapViewer.session.mapFileIndex,
-            SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
-        );
-        const devsq = this.mapViewer.getDevFixedMapSquare();
-        if (devsq) {
-            this.mapManager.setFixedMapSquare(devsq.mapX, devsq.mapY);
-        } else {
-            this.mapManager.clearFixedMapSquare();
-        }
-        this.mapManager.update(
-            this.camera,
-            this.renderer.stats.frameCount,
-            this.renderer.renderDistance,
-            this.renderer.unloadDistance,
-        );
+        this.mapManager.initializeForCache({
+            mapFileIndex: this.mapViewer.session.mapFileIndex,
+            fillEmptyTerrain: SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
+            fixedMapSquare: this.mapViewer.getDevFixedMapSquare(),
+            camera: this.camera,
+            frameCount: this.renderer.stats.frameCount,
+            renderDistance: this.renderer.renderDistance,
+            unloadDistance: this.renderer.unloadDistance,
+        });
     }
 
     private pauseLoop(): boolean {
@@ -605,9 +560,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     handleMouseInput() {
         const camera = this.mapViewer.camera;
 
-        if (this.inputManager.isPointerLock()) {
-            this.mapViewer.closeMenu();
-        }
+        this.interactionService.handlePointerLockState();
 
         // mouse/touch controls
         const deltaMouseX = this.inputManager.getDeltaMouseX();
@@ -710,17 +663,5 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapViewer.camera.onFrameEnd();
 
         // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
-    }
-
-    checkInteractions(
-        interactReady: boolean,
-        interactBuffer: Float32Array,
-        closestInteractIndices: Map<number, number[]>,
-    ): void {
-        this.interactionService.checkInteractions(
-            interactReady,
-            interactBuffer,
-            closestInteractIndices,
-        );
     }
 }

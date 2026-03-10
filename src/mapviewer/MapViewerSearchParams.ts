@@ -1,7 +1,7 @@
 import { vec3 } from "gl-matrix";
 import type { URLSearchParamsInit } from "react-router-dom";
 
-import { ProjectionType, type Camera } from "../renderer/Camera";
+import { type Camera, ProjectionType } from "../renderer/Camera";
 import type { BackendKind } from "../util/BackendKind";
 import { MapManager } from "./MapManager";
 
@@ -91,6 +91,12 @@ export function buildMapViewerSearchParams(
     return params;
 }
 
+type ApplyMapViewerSearchParamsInput = Readonly<{
+    searchParams: URLSearchParams;
+    camera: Camera;
+    setDevFixedMapSquare(square: DevFixedMapSquare | undefined): void;
+}>;
+
 export function parseMapViewerSearchParams(
     searchParams: URLSearchParams,
 ): ParsedMapViewerSearchParams {
@@ -113,4 +119,24 @@ export function parseMapViewerSearchParams(
         yaw: yaw ? (version ? parseInt(yaw) : 2048 - parseInt(yaw)) : undefined,
         devFixedMapSquare: parseDevMapSquare(searchParams.get("devsq")),
     };
+}
+
+export function applyMapViewerSearchParams(input: ApplyMapViewerSearchParamsInput): void {
+    const parsed = parseMapViewerSearchParams(input.searchParams);
+    if (parsed.projectionType !== undefined) {
+        input.camera.projectionType = parsed.projectionType;
+    }
+    if (parsed.orthoZoom !== undefined) {
+        input.camera.orthoZoom = parsed.orthoZoom;
+    }
+    if (parsed.position) {
+        input.camera.pos = parsed.position;
+    }
+    if (parsed.pitch !== undefined) {
+        input.camera.pitch = parsed.pitch;
+    }
+    if (parsed.yaw !== undefined) {
+        input.camera.yaw = parsed.yaw;
+    }
+    input.setDevFixedMapSquare(parsed.devFixedMapSquare);
 }

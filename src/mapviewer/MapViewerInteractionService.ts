@@ -1,4 +1,7 @@
+import type { ClientWorldState } from "../client/world/ClientWorldState";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
+import type { DebugActionService } from "../debug/DebugActionService";
+import { INTERACTION_RADIUS } from "../renderer/InteractionState";
 import type { MenuActionTarget, ObjActionTargetInstance } from "../rs/MenuEntry";
 import { MenuTargetType } from "../rs/MenuEntry";
 import type { LocType } from "../rs/config/loctype/LocType";
@@ -6,14 +9,11 @@ import type { NpcType } from "../rs/config/npctype/NpcType";
 import type { ObjType } from "../rs/config/objtype/ObjType";
 import { InteractType } from "../runtime/InteractType";
 import {
-    collectInteractionHits,
     type InteractionHit,
     type WorldInteractionTarget,
+    collectInteractionHits,
 } from "../runtime/InteractionTargets";
-import { INTERACTION_RADIUS } from "../renderer/InteractionState";
 import { isTouchDevice } from "../util/DeviceUtil";
-import type { DebugActionService } from "../debug/DebugActionService";
-import type { ClientWorldState } from "../client/world/ClientWorldState";
 import type { MapViewer } from "./MapViewer";
 
 type MenuInteractionTarget =
@@ -42,11 +42,13 @@ type MenuInteractionTarget =
           }>;
       }>;
 
-function resolveMenuInteractionTargets(input: Readonly<{
-    session: MapViewer["session"];
-    targets: ReadonlyArray<WorldInteractionTarget>;
-    includeUnnamed: boolean;
-}>): MenuInteractionTarget[] {
+function resolveMenuInteractionTargets(
+    input: Readonly<{
+        session: MapViewer["session"];
+        targets: ReadonlyArray<WorldInteractionTarget>;
+        includeUnnamed: boolean;
+    }>,
+): MenuInteractionTarget[] {
     const resolvedTargets: MenuInteractionTarget[] = [];
 
     for (const target of input.targets) {
@@ -146,6 +148,12 @@ type MapViewerInteractionServiceDeps = Readonly<{
 export class MapViewerInteractionService {
     constructor(private readonly deps: MapViewerInteractionServiceDeps) {}
 
+    handlePointerLockState(): void {
+        if (this.deps.mapViewer.inputManager.isPointerLock()) {
+            this.deps.mapViewer.closeMenu();
+        }
+    }
+
     checkInteractions(
         interactReady: boolean,
         interactBuffer: Float32Array,
@@ -186,9 +194,8 @@ export class MapViewerInteractionService {
             closestInteractIndices,
             maxDistance: INTERACTION_RADIUS,
         });
-        const worldInteractionTargets = this.deps.clientWorldState.resolveInteractionTargets(
-            interactionHits,
-        );
+        const worldInteractionTargets =
+            this.deps.clientWorldState.resolveInteractionTargets(interactionHits);
         const interactionTargets = resolveMenuInteractionTargets({
             session: mapViewer.session,
             targets: worldInteractionTargets,
@@ -263,14 +270,86 @@ export class MapViewerInteractionService {
             this.onWorldObjectAction.bind(this),
         );
         if (picked && target.locInstance) {
-            this.pushMenuEntry(menuEntries, "Replace loc", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onReplaceLoc);
-            this.pushMenuEntry(menuEntries, "Rotate loc", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onRotateLoc);
-            this.pushMenuEntry(menuEntries, "Reset loc override", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onResetLocOverride);
-            this.pushMenuEntry(menuEntries, "Hide loc", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onSetLocVisible(false));
-            this.pushMenuEntry(menuEntries, "Show loc", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onSetLocVisible(true));
-            this.pushMenuEntry(menuEntries, "Reset anim", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onResetLocAnimation);
-            this.pushMenuEntry(menuEntries, "Pause anim", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onSetLocAnimationPaused(true));
-            this.pushMenuEntry(menuEntries, "Resume anim", target.locType.id, MenuTargetType.LOC, target.locType.name, -1, actionTarget, this.onSetLocAnimationPaused(false));
+            this.pushMenuEntry(
+                menuEntries,
+                "Replace loc",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onReplaceLoc,
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Rotate loc",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onRotateLoc,
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Reset loc override",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onResetLocOverride,
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Hide loc",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onSetLocVisible(false),
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Show loc",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onSetLocVisible(true),
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Reset anim",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onResetLocAnimation,
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Pause anim",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onSetLocAnimationPaused(true),
+            );
+            this.pushMenuEntry(
+                menuEntries,
+                "Resume anim",
+                target.locType.id,
+                MenuTargetType.LOC,
+                target.locType.name,
+                -1,
+                actionTarget,
+                this.onSetLocAnimationPaused(false),
+            );
         }
         this.pushExamineEntry(
             examineEntries,
@@ -306,9 +385,30 @@ export class MapViewerInteractionService {
             this.onGroundItemAction.bind(this),
         );
         if (picked) {
-            this.pushMenuEntry(menuEntries, "Remove item", target.objType.id, MenuTargetType.OBJ, target.objType.name, -1, actionTarget, this.onRemoveGroundItem);
-            if (actionTarget.kind === MenuTargetType.OBJ && actionTarget.objInstance.kind === "dynamic") {
-                this.pushMenuEntry(menuEntries, "Move item here", target.objType.id, MenuTargetType.OBJ, target.objType.name, -1, actionTarget, this.onMoveDynamicGroundItemToCamera);
+            this.pushMenuEntry(
+                menuEntries,
+                "Remove item",
+                target.objType.id,
+                MenuTargetType.OBJ,
+                target.objType.name,
+                -1,
+                actionTarget,
+                this.onRemoveGroundItem,
+            );
+            if (
+                actionTarget.kind === MenuTargetType.OBJ &&
+                actionTarget.objInstance.kind === "dynamic"
+            ) {
+                this.pushMenuEntry(
+                    menuEntries,
+                    "Move item here",
+                    target.objType.id,
+                    MenuTargetType.OBJ,
+                    target.objType.name,
+                    -1,
+                    actionTarget,
+                    this.onMoveDynamicGroundItemToCamera,
+                );
             }
         }
         this.pushExamineEntry(
@@ -344,7 +444,16 @@ export class MapViewerInteractionService {
             this.onActorAction.bind(this),
         );
         if (picked) {
-            this.pushMenuEntry(menuEntries, "Despawn npc", target.npcType.id, MenuTargetType.NPC, target.npcType.name, target.npcType.combatLevel, actionTarget, this.onDespawnNpc);
+            this.pushMenuEntry(
+                menuEntries,
+                "Despawn npc",
+                target.npcType.id,
+                MenuTargetType.NPC,
+                target.npcType.name,
+                target.npcType.combatLevel,
+                actionTarget,
+                this.onDespawnNpc,
+            );
         }
         this.pushExamineEntry(
             examineEntries,

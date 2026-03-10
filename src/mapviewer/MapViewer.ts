@@ -47,8 +47,8 @@ import {
 import {
     type DevFixedMapSquare,
     type SearchParamsListener,
+    applyMapViewerSearchParams,
     buildMapViewerSearchParams,
-    parseMapViewerSearchParams,
 } from "./MapViewerSearchParams";
 
 export type { CacheSwitchStatus } from "../client/runtime/ClientRuntime";
@@ -376,14 +376,18 @@ export class MapViewer {
 
     // Dev feature: pin map loading to a single square (speeds iteration; reduces memory).
     setDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
+        this.applyDevFixedMapSquare(square);
+        // Update URL immediately; no heavy work should run here.
+        this.emitSearchParams();
+    }
+
+    private applyDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
         this.devFixedMapSquare = square;
         if (square) {
             this.renderer.mapManager.setFixedMapSquare(square.mapX, square.mapY);
         } else {
             this.renderer.mapManager.clearFixedMapSquare();
         }
-        // Update URL immediately; no heavy work should run here.
-        this.emitSearchParams();
     }
 
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
@@ -539,32 +543,11 @@ export class MapViewer {
     }
 
     applySearchParams(searchParams: URLSearchParams) {
-        const parsed = parseMapViewerSearchParams(searchParams);
-        if (parsed.projectionType !== undefined) {
-            this.camera.projectionType = parsed.projectionType;
-        }
-        if (parsed.orthoZoom !== undefined) {
-            this.camera.orthoZoom = parsed.orthoZoom;
-        }
-        if (parsed.position) {
-            this.camera.pos = parsed.position;
-        }
-        if (parsed.pitch !== undefined) {
-            this.camera.pitch = parsed.pitch;
-        }
-        if (parsed.yaw !== undefined) {
-            this.camera.yaw = parsed.yaw;
-        }
-
-        this.devFixedMapSquare = parsed.devFixedMapSquare;
-        if (parsed.devFixedMapSquare) {
-            this.renderer.mapManager.setFixedMapSquare(
-                parsed.devFixedMapSquare.mapX,
-                parsed.devFixedMapSquare.mapY,
-            );
-        } else {
-            this.renderer.mapManager.clearFixedMapSquare();
-        }
+        applyMapViewerSearchParams({
+            searchParams,
+            camera: this.camera,
+            setDevFixedMapSquare: (square) => this.applyDevFixedMapSquare(square),
+        });
     }
 
     init(): void {
@@ -652,6 +635,10 @@ export class MapViewer {
         cache: boolean = true,
     ): void {
         this.mapImages.setMapImageUrl(mapX, mapY, url, minimap, cache);
+    }
+
+    warmLoadedMapMinimap(mapX: number, mapY: number, minimapBlob: Blob): void {
+        this.mapImages.warmLoadedMapMinimap(mapX, mapY, minimapBlob);
     }
 
     clearMapImageUrls(): void {

@@ -58,6 +58,31 @@ export class MapViewerMapImages {
         this.loadingMapImageIds.delete(mapId);
     }
 
+    warmLoadedMapMinimap(mapX: number, mapY: number, minimapBlob: Blob): void {
+        if (minimapBlob.size > 0) {
+            this.setMapImageUrl(mapX, mapY, URL.createObjectURL(minimapBlob), true, false);
+            return;
+        }
+
+        void this.deps.renderWorkerPool.build
+            .loadMapImage(mapX, mapY, 0, false)
+            .then((minimapData) => {
+                if (!minimapData || minimapData.minimapBlob.size <= 0) {
+                    return;
+                }
+                this.setMapImageUrl(
+                    mapX,
+                    mapY,
+                    URL.createObjectURL(minimapData.minimapBlob),
+                    true,
+                    false,
+                );
+            })
+            .catch(() => {
+                // Ignore minimap warmup failures; map render path is still valid.
+            });
+    }
+
     getMapImageUrl(mapX: number, mapY: number, minimap: boolean): string | undefined {
         if (mapX < 0 || mapY < 0 || mapX >= MapManager.MAX_MAP_X || mapY >= MapManager.MAX_MAP_Y) {
             return undefined;
@@ -90,9 +115,9 @@ export class MapViewerMapImages {
                     const request = new Request(
                         MapViewerMapImages.getCachedMapImageUrl(mapX, mapY),
                         {
-                        headers: {
-                            "RS-Cache-Name": this.deps.getLoadedCacheName(),
-                        },
+                            headers: {
+                                "RS-Cache-Name": this.deps.getLoadedCacheName(),
+                            },
                         },
                     );
                     this.deps.mapImageCache.put(request, resp);

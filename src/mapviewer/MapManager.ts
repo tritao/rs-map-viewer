@@ -1,8 +1,8 @@
 import { vec4 } from "gl-matrix";
 
+import { Camera } from "../renderer/Camera";
 import { MapFileIndex, getMapSquareId } from "../rs/map/MapFileIndex";
 import { Scene } from "../rs/scene/Scene";
-import { Camera } from "../renderer/Camera";
 
 function getMapDistance(x: number, z: number, mapX: number, mapY: number): number {
     const centerX = mapX * Scene.MAP_SQUARE_SIZE + 32;
@@ -23,6 +23,11 @@ export interface MapSquare {
 
     delete(): void;
 }
+
+export type MapManagerFixedMapSquare = Readonly<{
+    mapX: number;
+    mapY: number;
+}>;
 
 export class MapSquareInfo {
     mapId: number;
@@ -94,6 +99,14 @@ export class MapManager {
         this.renderBounds.fill(-1);
     }
 
+    applyFixedMapSquare(square: MapManagerFixedMapSquare | undefined): void {
+        if (square) {
+            this.setFixedMapSquare(square.mapX, square.mapY);
+            return;
+        }
+        this.clearFixedMapSquare();
+    }
+
     init(mapFileIndex: MapFileIndex, fillEmptyTerrain: boolean): void {
         this.cleanUp();
         for (let x = 0; x < MapManager.MAX_MAP_X; x++) {
@@ -122,6 +135,22 @@ export class MapManager {
             }
         }
         console.log("Invalid map count", this.invalidMapIds.size);
+    }
+
+    initializeForCache(
+        input: Readonly<{
+            mapFileIndex: MapFileIndex;
+            fillEmptyTerrain: boolean;
+            fixedMapSquare?: MapManagerFixedMapSquare;
+            camera: Camera;
+            frameCount: number;
+            renderDistance: number;
+            unloadDistance: number;
+        }>,
+    ): void {
+        this.init(input.mapFileIndex, input.fillEmptyTerrain);
+        this.applyFixedMapSquare(input.fixedMapSquare);
+        this.update(input.camera, input.frameCount, input.renderDistance, input.unloadDistance);
     }
 
     isMapVisible(camera: Camera, mapX: number, mapY: number): boolean {
@@ -160,6 +189,15 @@ export class MapManager {
             return;
         }
         this.mapSquares.set(mapId, new MapSquareInfo(mapX, mapY));
+    }
+
+    shouldDropLoadedMapPacket(mapX: number, mapY: number): boolean {
+        const mapId = getMapSquareId(mapX, mapY);
+        if (this.fixedMapId === undefined || mapId === this.fixedMapId) {
+            return false;
+        }
+        this.loadingMapIds.delete(mapId);
+        return true;
     }
 
     removeMap(mapX: number, mapY: number): void {
