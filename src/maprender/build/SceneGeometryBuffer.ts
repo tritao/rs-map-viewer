@@ -5,7 +5,7 @@ import { Model, computeTextureCoords } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
-import type { DrawRange } from "../../maprender/MapRenderData";
+import type { DrawRange } from "../MapRenderData";
 import { clamp } from "../../util/MathUtil";
 import { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import { LocAnimatedGroup } from "./LocAnimatedGroup";

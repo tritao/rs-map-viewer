@@ -1,7 +1,7 @@
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
-} from "../../maprender/MapRenderPayload";
+} from "../MapRenderPayload";
 import {
     DRAW_BUCKET_KEYS,
     type DrawBucketKey,

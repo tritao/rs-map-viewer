@@ -32,8 +32,8 @@ import {
     buildMapRuntimePayloads,
 } from "../../runtime/MapRuntimePayload";
 import { mapObjStateFromRenderData } from "../MapObjState";
-import { buildNpcGeometry } from "../../shared/build/NpcGeometryBuilder";
-import { buildObjRenderData } from "../../shared/build/ObjRenderDataBuilder";
+import { buildNpcGeometry } from "../build/NpcGeometryBuilder";
+import { buildObjRenderData } from "../build/ObjRenderDataBuilder";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
 import {
     MapRenderByteDrivenSceneBuildInput,

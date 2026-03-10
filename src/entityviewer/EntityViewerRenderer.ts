@@ -1,4 +1,4 @@
-import type { StandaloneRenderData } from "../shared/build/StandaloneRenderDataBuilder";
+import type { ModelRenderData } from "../maprender/build/ModelRenderDataBuilder";
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
 import type { CacheSession } from "../rs/loaders/CacheSession";
 import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
@@ -21,7 +21,7 @@ export class EntityViewerRenderer extends RendererMainLoop {
     }
 
     setRenderData(
-        renderData: StandaloneRenderData | undefined,
+        renderData: ModelRenderData | undefined,
         options?: SetEntityRenderDataOptions,
     ): void {
         this.renderer.setRenderData(renderData, options);

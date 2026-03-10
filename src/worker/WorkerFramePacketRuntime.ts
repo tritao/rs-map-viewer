@@ -52,7 +52,7 @@ import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { LocLoadType } from "../rs/scene/SceneBuilder";
 import { Scene } from "../rs/scene/Scene";
-import { buildObjRenderData } from "../shared/build/ObjRenderDataBuilder";
+import { buildObjRenderData } from "../maprender/build/ObjRenderDataBuilder";
 import type { ObjSpawn } from "../data/obj/ObjSpawn";
 
 type FrameWorkerState = Readonly<{

@@ -11,9 +11,9 @@ import { LocModelLoader } from "../rs/scene/model/LocModelLoader";
 import { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
 import { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
 import {
-    buildStandaloneRenderData,
-    type StandaloneRenderData,
-} from "../shared/build/StandaloneRenderDataBuilder";
+    buildModelRenderData,
+    type ModelRenderData,
+} from "../maprender/build/ModelRenderDataBuilder";
 import {
     renderObjIconSprite,
     type ObjIconSprite,
@@ -42,7 +42,7 @@ export type EntityViewerNpcAnimationOption = Readonly<{
 
 export type EntityViewerResolvedData = Readonly<{
     label: string;
-    renderData?: StandaloneRenderData;
+    renderData?: ModelRenderData;
     iconSprite?: ObjIconSprite;
     npcAnimationOptions?: readonly EntityViewerNpcAnimationOption[];
 }>;
@@ -139,7 +139,7 @@ function buildObjData(
     const renderData =
         request.objMode === "icon"
             ? undefined
-            : buildStandaloneRenderData({
+            : buildModelRenderData({
                   textureLoader: services.session.loaders.textureLoader,
                   model,
                   interactType: InteractType.OBJ,
@@ -313,7 +313,7 @@ function buildNpcData(
     const model = Model.copy(baseModel);
     applyStandalonePreviewBasis(model);
     model.calculateBoundsCylinder();
-    const renderData = buildStandaloneRenderData({
+    const renderData = buildModelRenderData({
         textureLoader: services.session.loaders.textureLoader,
         model,
         interactType: InteractType.NPC,
@@ -409,7 +409,7 @@ function buildLocData(
         : rawModel;
     applyStandalonePreviewBasis(model);
     model.calculateBoundsCylinder();
-    const renderData = buildStandaloneRenderData({
+    const renderData = buildModelRenderData({
         textureLoader: services.session.loaders.textureLoader,
         model,
         interactType: InteractType.LOC,
@@ -442,7 +442,7 @@ function buildModelData(
     );
     applyStandalonePreviewBasis(model);
     model.calculateBoundsCylinder();
-    const renderData = buildStandaloneRenderData({
+    const renderData = buildModelRenderData({
         textureLoader: services.session.loaders.textureLoader,
         model,
         interactType: InteractType.NONE,

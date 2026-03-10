@@ -1,7 +1,7 @@
 import type {
     SdRenderableDrawRanges,
     SdRenderableModelInfoTextures,
-} from "../../maprender/MapRenderData";
+} from "../MapRenderData";
 import { InteractType } from "../../runtime/InteractType";
 import { Model } from "../../rs/model/Model";
 import type { TextureLoader } from "../../rs/texture/TextureLoader";
@@ -16,7 +16,7 @@ import { emitSceneModelsToSceneGeometryBuffer } from "./SceneDrawPlan";
 
 const DEFAULT_SCENE_BUFFER_VERTEX_CAPACITY = 4096;
 
-export type StandaloneRenderData = Readonly<{
+export type ModelRenderData = Readonly<{
     vertices: Uint8Array;
     indices: Int32Array;
     modelInfoTextures: SdRenderableModelInfoTextures;
@@ -25,7 +25,7 @@ export type StandaloneRenderData = Readonly<{
     fitRadius: number;
 }>;
 
-export type BuildStandaloneRenderDataInput = Readonly<{
+export type BuildModelRenderDataInput = Readonly<{
     textureLoader: TextureLoader;
     model: Model;
     interactType: InteractType;
@@ -33,7 +33,7 @@ export type BuildStandaloneRenderDataInput = Readonly<{
     minimizeDrawCalls?: boolean;
 }>;
 
-function createSceneModel(input: BuildStandaloneRenderDataInput): SceneModel {
+function createSceneModel(input: BuildModelRenderDataInput): SceneModel {
     return {
         model: input.model,
         lowDetail: false,
@@ -50,9 +50,9 @@ function createSceneModel(input: BuildStandaloneRenderDataInput): SceneModel {
     };
 }
 
-export function buildStandaloneRenderData(
-    input: BuildStandaloneRenderDataInput,
-): StandaloneRenderData | undefined {
+export function buildModelRenderData(
+    input: BuildModelRenderDataInput,
+): ModelRenderData | undefined {
     input.model.calculateBoundsCylinder();
 
     const sceneBuf = new SceneGeometryBuffer(

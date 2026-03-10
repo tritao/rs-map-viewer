@@ -8,8 +8,8 @@ import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type MapRenderDrawBucketKey,
     type ObjRenderData,
-} from "../../maprender/MapRenderPayload";
-import type { MapObjStateModelInfoIndices } from "../../maprender/MapRenderData";
+} from "../MapRenderPayload";
+import type { MapObjStateModelInfoIndices } from "../MapRenderData";
 import { buildDrawRangesFromBuckets, buildModelInfoTexturesFromBuckets, collectRuntimeDrawCommandBuckets } from "./SceneDrawCommandBuilder";
 import { emitSceneModelsToSceneGeometryBuffer } from "./SceneDrawPlan";
 import { ModelHashBuffer } from "./ModelHashBuffer";

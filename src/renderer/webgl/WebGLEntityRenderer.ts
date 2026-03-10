@@ -4,7 +4,7 @@ import { App as PicoApp, PicoGL, Program, UniformBuffer } from "picogl";
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import type { DrawRange } from "../../maprender/MapRenderData";
-import type { StandaloneRenderData } from "../../shared/build/StandaloneRenderDataBuilder";
+import type { ModelRenderData } from "../../maprender/build/ModelRenderDataBuilder";
 import { createWebGLDevice } from "./WebGLDevice";
 import { createSceneDrawCall } from "./WebGLDrawCallUtil";
 import { WebGLSceneResources } from "./WebGLSceneResources";
@@ -50,7 +50,7 @@ export class WebGLEntityRenderer implements Renderer {
     private readonly up = vec3.fromValues(0, 1, 0);
 
     private renderable: WebGLSceneResources | undefined;
-    private renderData: StandaloneRenderData | undefined;
+    private renderData: ModelRenderData | undefined;
     private fitRadius = 256;
     private orbitDistance = 8;
     private pitch = -180;
@@ -67,7 +67,7 @@ export class WebGLEntityRenderer implements Renderer {
     constructor(private readonly cacheResources: WebGLEntityRendererDeps) {}
 
     setRenderData(
-        renderData: StandaloneRenderData | undefined,
+        renderData: ModelRenderData | undefined,
         options: SetEntityRenderDataOptions = {},
     ): void {
         this.renderData = renderData;
