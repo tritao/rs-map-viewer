@@ -273,6 +273,10 @@ export class MapViewer {
         return this.clientRuntime.clientCommandRuntime;
     }
 
+    getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
+        return this.clientRuntime.getRuntimeOptions();
+    }
+
     getLatestPlayerIntent(): ClientPlayerIntent | undefined {
         return this.clientCommandRuntime.getLatestPlayerIntent();
     }
@@ -287,6 +291,101 @@ export class MapViewer {
 
     applyWorldMutation(input: WorldMutationInput): Promise<number> {
         return this.clientRuntime.applyWorldMutation(input);
+    }
+
+    subscribeCacheSwitchStatus(listener: (status: CacheSwitchStatus) => void): () => void {
+        return this.clientRuntime.subscribeCacheSwitchStatus(listener);
+    }
+
+    getCacheSwitchStatus(): CacheSwitchStatus {
+        return this.clientRuntime.getCacheSwitchStatus();
+    }
+
+    init(): void {
+        this.mapImages.loadCachedUrls();
+    }
+
+    async switchCache(cacheInfo: CacheInfo): Promise<void> {
+        await this.clientRuntime.switchCache(cacheInfo);
+        this.updateSearchParams();
+    }
+
+    async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
+        const normalized = normalizeRuntimeOptions(options);
+        if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {
+            return;
+        }
+        this.runtimeOptions = normalized;
+        // Update URL immediately so the user sees the new mode even if rebuilding takes time.
+        this.emitSearchParams();
+
+        // Yield so the URL update is observable before we do potentially heavy work
+        // (threads RPC / structured clone of cache inputs).
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+
+        await this.clientRuntime.setRuntimeOptions(normalized);
+    }
+
+    applySearchParams(searchParams: URLSearchParams) {
+        applyMapViewerSearchParams({
+            searchParams,
+            camera: this.camera,
+            setDevFixedMapSquare: (square) => this.applyDevFixedMapSquare(square),
+        });
+    }
+
+    getSearchParams(): URLSearchParamsInit {
+        return buildMapViewerSearchParams({
+            camera: this.camera,
+            loadedCacheName: this.loadedCache.info.name,
+            latestCacheName: this.cacheList.latest.name,
+            runtimeOptions: this.runtimeOptions,
+            defaultRuntimeOptions: DEFAULT_RUNTIME_OPTIONS,
+            devFixedMapSquare: this.devFixedMapSquare,
+        });
+    }
+
+    subscribeSearchParams(listener: SearchParamsListener): () => void {
+        this.searchParamListeners.add(listener);
+        return () => this.searchParamListeners.delete(listener);
+    }
+
+    updateSearchParams(): void {
+        this.emitSearchParams(200);
+    }
+
+    getDevFixedMapSquare(): DevFixedMapSquare | undefined {
+        return this.devFixedMapSquare;
+    }
+
+    // Dev feature: pin map loading to a single square (speeds iteration; reduces memory).
+    setDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
+        this.applyDevFixedMapSquare(square);
+        // Update URL immediately; no heavy work should run here.
+        this.emitSearchParams();
+    }
+
+    /**
+     * Sets the camera position to a new arbitrary position
+     * @param newView Any of the items you want to move: Position, pitch, yaw
+     */
+    setCamera(newView: Partial<CameraView>): void {
+        if (newView.position) {
+            vec3.copy(this.camera.pos, newView.position);
+        }
+        if (newView.pitch !== undefined) {
+            this.camera.pitch = newView.pitch;
+        }
+        if (newView.yaw !== undefined) {
+            this.camera.yaw = newView.yaw;
+        }
+        if (newView.fov !== undefined) {
+            this.camera.fov = newView.fov;
+        }
+        if (newView.orthoZoom !== undefined) {
+            this.camera.orthoZoom = newView.orthoZoom;
+        }
+        this.camera.updated = true;
     }
 
     walkToScreenPoint(
@@ -348,62 +447,6 @@ export class MapViewer {
     ): void {
         this.clientCommands.examineActor(target);
         this.openExamineLookup("npc", target.npcTypeId | 0);
-    }
-
-    private openExamineLookup(lookupType: string, targetId: number): void {
-        window.open(
-            `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${
-                targetId | 0
-            }`,
-            "_blank",
-        );
-    }
-
-    getSearchParams(): URLSearchParamsInit {
-        return buildMapViewerSearchParams({
-            camera: this.camera,
-            loadedCacheName: this.loadedCache.info.name,
-            latestCacheName: this.cacheList.latest.name,
-            runtimeOptions: this.runtimeOptions,
-            defaultRuntimeOptions: DEFAULT_RUNTIME_OPTIONS,
-            devFixedMapSquare: this.devFixedMapSquare,
-        });
-    }
-
-    getDevFixedMapSquare(): DevFixedMapSquare | undefined {
-        return this.devFixedMapSquare;
-    }
-
-    // Dev feature: pin map loading to a single square (speeds iteration; reduces memory).
-    setDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
-        this.applyDevFixedMapSquare(square);
-        // Update URL immediately; no heavy work should run here.
-        this.emitSearchParams();
-    }
-
-    private applyDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
-        this.devFixedMapSquare = square;
-        if (square) {
-            this.renderer.mapManager.setFixedMapSquare(square.mapX, square.mapY);
-        } else {
-            this.renderer.mapManager.clearFixedMapSquare();
-        }
-    }
-
-    getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
-        return this.clientRuntime.getRuntimeOptions();
-    }
-
-    getMenuState(): ViewerMenuState {
-        return this.menuState;
-    }
-
-    getDevLocReplacementTypeId(): number {
-        return this.devLocReplacementTypeId | 0;
-    }
-
-    setDevLocReplacementTypeId(locTypeId: number): void {
-        this.devLocReplacementTypeId = Math.max(0, locTypeId | 0);
     }
 
     restartVisibleWorldObjectAnimations(): Promise<number> {
@@ -498,92 +541,8 @@ export class MapViewer {
         });
     }
 
-    async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
-        const normalized = normalizeRuntimeOptions(options);
-        if (runtimeOptionsEqual(normalized, this.runtimeOptions)) {
-            return;
-        }
-        this.runtimeOptions = normalized;
-        // Update URL immediately so the user sees the new mode even if rebuilding takes time.
-        this.emitSearchParams();
-
-        // Yield so the URL update is observable before we do potentially heavy work
-        // (threads RPC / structured clone of cache inputs).
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-
-        await this.clientRuntime.setRuntimeOptions(normalized);
-    }
-
-    subscribeSearchParams(listener: SearchParamsListener): () => void {
-        this.searchParamListeners.add(listener);
-        return () => this.searchParamListeners.delete(listener);
-    }
-
-    subscribeCacheSwitchStatus(listener: (status: CacheSwitchStatus) => void): () => void {
-        return this.clientRuntime.subscribeCacheSwitchStatus(listener);
-    }
-
-    getCacheSwitchStatus(): CacheSwitchStatus {
-        return this.clientRuntime.getCacheSwitchStatus();
-    }
-
-    private emitSearchParams(debounceMs: number = 0): void {
-        if (this.searchParamsDebounceTimer !== undefined) {
-            window.clearTimeout(this.searchParamsDebounceTimer);
-        }
-        if ((debounceMs | 0) <= 0) {
-            this.searchParamsDebounceTimer = undefined;
-            this.notifySearchParamListeners();
-            return;
-        }
-        this.searchParamsDebounceTimer = window.setTimeout(() => {
-            this.searchParamsDebounceTimer = undefined;
-            this.notifySearchParamListeners();
-        }, debounceMs);
-    }
-
-    applySearchParams(searchParams: URLSearchParams) {
-        applyMapViewerSearchParams({
-            searchParams,
-            camera: this.camera,
-            setDevFixedMapSquare: (square) => this.applyDevFixedMapSquare(square),
-        });
-    }
-
-    init(): void {
-        this.mapImages.loadCachedUrls();
-    }
-
-    async switchCache(cacheInfo: CacheInfo): Promise<void> {
-        await this.clientRuntime.switchCache(cacheInfo);
-        this.updateSearchParams();
-    }
-
-    /**
-     * Sets the camera position to a new arbitrary position
-     * @param newView Any of the items you want to move: Position, pitch, yaw
-     */
-    setCamera(newView: Partial<CameraView>): void {
-        if (newView.position) {
-            vec3.copy(this.camera.pos, newView.position);
-        }
-        if (newView.pitch !== undefined) {
-            this.camera.pitch = newView.pitch;
-        }
-        if (newView.yaw !== undefined) {
-            this.camera.yaw = newView.yaw;
-        }
-        if (newView.fov !== undefined) {
-            this.camera.fov = newView.fov;
-        }
-        if (newView.orthoZoom !== undefined) {
-            this.camera.orthoZoom = newView.orthoZoom;
-        }
-        this.camera.updated = true;
-    }
-
-    updateSearchParams(): void {
-        this.emitSearchParams(200);
+    getMenuState(): ViewerMenuState {
+        return this.menuState;
     }
 
     closeMenu = () => {
@@ -619,6 +578,29 @@ export class MapViewer {
         };
     }
 
+    getDevLocReplacementTypeId(): number {
+        return this.devLocReplacementTypeId | 0;
+    }
+
+    setDevLocReplacementTypeId(locTypeId: number): void {
+        this.devLocReplacementTypeId = Math.max(0, locTypeId | 0);
+    }
+
+    private emitSearchParams(debounceMs: number = 0): void {
+        if (this.searchParamsDebounceTimer !== undefined) {
+            window.clearTimeout(this.searchParamsDebounceTimer);
+        }
+        if ((debounceMs | 0) <= 0) {
+            this.searchParamsDebounceTimer = undefined;
+            this.notifySearchParamListeners();
+            return;
+        }
+        this.searchParamsDebounceTimer = window.setTimeout(() => {
+            this.searchParamsDebounceTimer = undefined;
+            this.notifySearchParamListeners();
+        }, debounceMs);
+    }
+
     updateVars(): void {
         this.clientRuntime.updateVars();
     }
@@ -643,6 +625,24 @@ export class MapViewer {
 
     clearMapImageUrls(): void {
         this.mapImages.clear();
+    }
+
+    private openExamineLookup(lookupType: string, targetId: number): void {
+        window.open(
+            `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${
+                targetId | 0
+            }`,
+            "_blank",
+        );
+    }
+
+    private applyDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
+        this.devFixedMapSquare = square;
+        if (square) {
+            this.renderer.mapManager.setFixedMapSquare(square.mapX, square.mapY);
+        } else {
+            this.renderer.mapManager.clearFixedMapSquare();
+        }
     }
 
     private notifySearchParamListeners(): void {

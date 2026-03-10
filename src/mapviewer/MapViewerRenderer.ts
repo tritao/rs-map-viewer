@@ -72,6 +72,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private isInitialized: boolean = false;
 
+    // Construction
+
     private createRenderer(): MapRenderer<MapSquareRenderable, MapData> {
         const texturePolicy = createRendererTexturePolicy(this.mapViewer.session.cache.info);
         return new WebGLMapRenderer(
@@ -95,32 +97,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             this.queueLoadMap.bind(this),
             this.removeLoadedMap.bind(this),
         );
-    }
-
-    private getVisibleMapIdsPacked(): Int32Array {
-        const count = this.mapManager.visibleMapCount | 0;
-        if ((count | 0) <= 0) {
-            return MapViewerRenderer.EMPTY_INT32;
-        }
-        if ((this.visibleMapIdsScratch.length | 0) !== (count | 0)) {
-            this.visibleMapIdsScratch = new Int32Array(count);
-        }
-        for (let i = 0; i < count; i++) {
-            this.visibleMapIdsScratch[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
-        }
-        return this.visibleMapIdsScratch;
-    }
-
-    getVisibleMapIdsPackedForFrameCoordinator(): Int32Array {
-        return this.getVisibleMapIdsPacked();
-    }
-
-    hasLoadedMap(mapId: number): boolean {
-        return this.mapManager.mapSquares.has(mapId | 0);
-    }
-
-    reloadLoadedMap(mapId: number): Promise<boolean> {
-        return this.staticMapRuntime.reloadMap(mapId | 0);
     }
 
     constructor(
@@ -148,6 +124,8 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapManager = this.createMapManager();
     }
 
+    // Public runtime hooks
+
     setStaticMapRuntime(staticMapRuntime: MapViewerStaticMapRuntime): void {
         this.staticMapRuntime = staticMapRuntime;
     }
@@ -160,6 +138,40 @@ export class MapViewerRenderer extends RendererMainLoop {
             finalizeLoadedMap: this.finalizeLoadedMap.bind(this),
         };
     }
+
+    getVisibleMapIdsPackedForFrameCoordinator(): Int32Array {
+        return this.getVisibleMapIdsPacked();
+    }
+
+    hasLoadedMap(mapId: number): boolean {
+        return this.mapManager.mapSquares.has(mapId | 0);
+    }
+
+    reloadLoadedMap(mapId: number): Promise<boolean> {
+        return this.staticMapRuntime.reloadMap(mapId | 0);
+    }
+
+    reportRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
+        this.recordRenderFrameSeamSample(sample);
+    }
+
+    override async init() {
+        super.init();
+        this.inputManager.init(this.canvas);
+        this.isInitialized = true;
+    }
+
+    override async cleanUp(): Promise<void> {
+        await super.cleanUp();
+        this.worldToClientWorldAdapter.reset();
+        this.worldInteractionIndex.reset();
+        this.worldSession.reset();
+        this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
+        this.inputManager.cleanUp();
+        this.mapManager.cleanUp();
+    }
+
+    // Map lifecycle
 
     private async loadStaticMapPacket(
         mapX: number,
@@ -180,91 +192,6 @@ export class MapViewerRenderer extends RendererMainLoop {
             locPlacementOverrides: this.worldSession.getLocPlacementOverrides(mapId | 0),
         };
         return await this.renderWorkerPool.build.loadStaticMapPacket(input);
-    }
-
-    private recordRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
-        if (!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry) {
-            return;
-        }
-        this.seamSampleCount = (this.seamSampleCount + 1) | 0;
-        this.seamWorldMsTotal += sample.worldMs;
-        this.seamApplyWorldMsTotal += sample.applyWorldMs;
-        this.seamRenderMsTotal += sample.renderMs;
-        this.seamTotalMsTotal += sample.totalMs;
-        this.seamWorldChangeCountTotal += sample.worldChangeCount | 0;
-        if ((this.seamSampleCount | 0) < 120) {
-            return;
-        }
-        const count = this.seamSampleCount | 0;
-        console.log("[map-render][frame-seam] avg", {
-            samples: count,
-            worldMs: this.seamWorldMsTotal / count,
-            applyWorldMs: this.seamApplyWorldMsTotal / count,
-            renderMs: this.seamRenderMsTotal / count,
-            totalMs: this.seamTotalMsTotal / count,
-            worldChangesPerFrame: this.seamWorldChangeCountTotal / count,
-        });
-        this.seamSampleCount = 0;
-        this.seamWorldMsTotal = 0;
-        this.seamApplyWorldMsTotal = 0;
-        this.seamRenderMsTotal = 0;
-        this.seamTotalMsTotal = 0;
-        this.seamWorldChangeCountTotal = 0;
-    }
-
-    reportRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
-        this.recordRenderFrameSeamSample(sample);
-    }
-
-    private logMapPacketTelemetry(packet: StaticMapPacket): void {
-        const mapData = packet.mapData;
-        const runtimeRegistration = packet.runtimeRegistration;
-        const runtimeBootstrap = packet.runtimeBootstrap;
-        const ranges = mapData.drawRanges.base;
-        const drawCount = Math.floor((ranges?.length ?? 0) / 3);
-        let nonZero = 0;
-        if (ranges instanceof Int32Array) {
-            for (let i = 0; i < drawCount; i++) {
-                const off = i * 3;
-                if ((ranges[off + 1] | 0) > 0) {
-                    nonZero++;
-                }
-            }
-        }
-        console.log("[map-render][telemetry] map packet summary", {
-            square: `${mapData.mapX}:${mapData.mapY}`,
-            verts: mapData.vertices?.length ?? -1,
-            indices: mapData.indices?.length ?? -1,
-            drawRangesBaseCount: drawCount,
-            drawRangesBaseNonZero: nonZero,
-            loadObjs: mapData.loadObjs,
-            loadLocs: mapData.loadLocs,
-            loadNpcs: mapData.loadNpcs,
-            locsAnimated: runtimeRegistration.locsAnimated.length,
-            npcVerts: mapData.npcVertices?.length ?? 0,
-            npcIndices: mapData.npcIndices?.length ?? 0,
-            npcRangesBase: mapData.npcDrawRangesBase?.length ?? 0,
-            npcOrderKeys: runtimeBootstrap.npcOrderKeys.length | 0,
-            npcTypeAnimTable: runtimeRegistration.npcTypeAnimationTable.length,
-        });
-    }
-
-    private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
-        const mapData = packet.mapData;
-        this.worldToClientWorldAdapter.registerLoadedMap(packet);
-        this.worldInteractionIndex.registerLoadedMap(packet);
-        this.mapManager.addMap(mapData.mapX, mapData.mapY);
-        this.renderer.addMap(mapData);
-        await this.attachLoadedRuntimeMapObjRenderData(packet);
-        this.mapViewer.warmLoadedMapMinimap(mapData.mapX, mapData.mapY, mapData.minimapBlob);
-    }
-
-    private detachLoadedMapRuntime(mapId: number): void {
-        const normalizedMapId = mapId | 0;
-        this.worldToClientWorldAdapter.unregisterMap(normalizedMapId);
-        this.worldInteractionIndex.unregisterMap(normalizedMapId);
-        this.renderer.removeMap({ mapId: normalizedMapId });
-        this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
     }
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
@@ -313,6 +240,16 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.detachLoadedMapRuntime(mapInfo.mapId);
     }
 
+    private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
+        const mapData = packet.mapData;
+        this.worldToClientWorldAdapter.registerLoadedMap(packet);
+        this.worldInteractionIndex.registerLoadedMap(packet);
+        this.mapManager.addMap(mapData.mapX, mapData.mapY);
+        this.renderer.addMap(mapData);
+        await this.attachLoadedRuntimeMapObjRenderData(packet);
+        this.mapViewer.warmLoadedMapMinimap(mapData.mapX, mapData.mapY, mapData.minimapBlob);
+    }
+
     private async attachLoadedRuntimeMapObjRenderData(packet: StaticMapPacket): Promise<void> {
         await this.mapViewer.applyWorldMutation({
             obj: {
@@ -329,11 +266,15 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
-    override async init() {
-        super.init();
-        this.inputManager.init(this.canvas);
-        this.isInitialized = true;
+    private detachLoadedMapRuntime(mapId: number): void {
+        const normalizedMapId = mapId | 0;
+        this.worldToClientWorldAdapter.unregisterMap(normalizedMapId);
+        this.worldInteractionIndex.unregisterMap(normalizedMapId);
+        this.renderer.removeMap({ mapId: normalizedMapId });
+        this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
     }
+
+    // Cache/reset lifecycle
 
     initializeCacheState(): void {
         this.worldToClientWorldAdapter.reset();
@@ -397,15 +338,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
     }
 
-    override async cleanUp(): Promise<void> {
-        await super.cleanUp();
-        this.worldToClientWorldAdapter.reset();
-        this.worldInteractionIndex.reset();
-        this.worldSession.reset();
-        this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
-        this.inputManager.cleanUp();
-        this.mapManager.cleanUp();
-    }
+    // Frame loop
 
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
@@ -449,6 +382,72 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderer.rendererStats.tickTime = performance.now() - renderTickStart;
     }
 
+    override render(time: number, deltaTime: number, resized: boolean) {
+        super.render(time, deltaTime, resized);
+    }
+
+    override onFrameEnd(): void {
+        super.onFrameEnd();
+
+        const frameStats = this.renderer.stats;
+        const rendererStats = this.renderer.rendererStats;
+        const frameTime = performance.now() - rendererStats.frameStart;
+
+        if (this.inputManager.isKeyDown("KeyH")) {
+            this.mapViewer.debugText = `MapManager: ${this.mapManagerTime.toFixed(2)}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyJ")) {
+            this.mapViewer.debugText = `Interactions: ${rendererStats.interactionsTime.toFixed(
+                2,
+            )}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyK")) {
+            this.mapViewer.debugText = `Tick: ${rendererStats.tickTime.toFixed(2)}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyL")) {
+            this.mapViewer.debugText = `Opaque Pass: ${rendererStats.opaquePassTime.toFixed(2)}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyB")) {
+            this.mapViewer.debugText = `Opaque Npc Pass: ${rendererStats.opaqueNpcPassTime.toFixed(
+                2,
+            )}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyN")) {
+            this.mapViewer.debugText = `Transparent Pass: ${rendererStats.transparentPassTime.toFixed(
+                2,
+            )}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyM")) {
+            this.mapViewer.debugText = `Transparent Npc Pass: ${rendererStats.transparentNpcPassTime.toFixed(
+                2,
+            )}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyV")) {
+            this.mapViewer.debugText = `Frame Time: ${frameTime.toFixed(2)}ms`;
+        }
+        if (this.inputManager.isKeyDown("KeyG")) {
+            this.mapViewer.debugText =
+                `Draw Calls: ${rendererStats.drawCalls} ` +
+                `(ranges: ${rendererStats.drawRangeCalls}, multi: ${rendererStats.multiDrawCalls})`;
+        }
+        if (this.inputManager.isKeyDown("KeyU")) {
+            this.mapViewer.debugText = `Frame Time Js: ${frameStats.frameTimeJs.toFixed(2)}ms`;
+        }
+
+        if (window.wallpaperFpsLimit !== undefined) {
+            this.fpsLimit = window.wallpaperFpsLimit;
+        }
+
+        if (this.mapViewer.camera.updated) {
+            this.mapViewer.updateSearchParams();
+        }
+
+        this.inputManager.onFrameEnd();
+        this.mapViewer.camera.onFrameEnd();
+
+        // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
+    }
+
     private runRenderTick(cycle: number, ticksElapsed: number, clientTicksElapsed: number): void {
         this.renderTickCoordinator.applyTick({
             frameInput: {
@@ -466,9 +465,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
-    override render(time: number, deltaTime: number, resized: boolean) {
-        super.render(time, deltaTime, resized);
-    }
+    // Input
 
     handleInput(deltaTime: number) {
         this.handleKeyInput(deltaTime);
@@ -603,65 +600,82 @@ export class MapViewerRenderer extends RendererMainLoop {
         }
     }
 
-    override onFrameEnd(): void {
-        super.onFrameEnd();
+    // Private helpers
 
-        const frameStats = this.renderer.stats;
-        const rendererStats = this.renderer.rendererStats;
-        const frameTime = performance.now() - rendererStats.frameStart;
+    private getVisibleMapIdsPacked(): Int32Array {
+        const count = this.mapManager.visibleMapCount | 0;
+        if ((count | 0) <= 0) {
+            return MapViewerRenderer.EMPTY_INT32;
+        }
+        if ((this.visibleMapIdsScratch.length | 0) !== (count | 0)) {
+            this.visibleMapIdsScratch = new Int32Array(count);
+        }
+        for (let i = 0; i < count; i++) {
+            this.visibleMapIdsScratch[i] = this.mapManager.visibleMaps[i]!.mapId | 0;
+        }
+        return this.visibleMapIdsScratch;
+    }
 
-        if (this.inputManager.isKeyDown("KeyH")) {
-            this.mapViewer.debugText = `MapManager: ${this.mapManagerTime.toFixed(2)}ms`;
+    private recordRenderFrameSeamSample(sample: RenderFrameSeamSample): void {
+        if (!this.mapViewer.getWorkerRuntimeOptions().mapRenderTelemetry) {
+            return;
         }
-        if (this.inputManager.isKeyDown("KeyJ")) {
-            this.mapViewer.debugText = `Interactions: ${rendererStats.interactionsTime.toFixed(
-                2,
-            )}ms`;
+        this.seamSampleCount = (this.seamSampleCount + 1) | 0;
+        this.seamWorldMsTotal += sample.worldMs;
+        this.seamApplyWorldMsTotal += sample.applyWorldMs;
+        this.seamRenderMsTotal += sample.renderMs;
+        this.seamTotalMsTotal += sample.totalMs;
+        this.seamWorldChangeCountTotal += sample.worldChangeCount | 0;
+        if ((this.seamSampleCount | 0) < 120) {
+            return;
         }
-        if (this.inputManager.isKeyDown("KeyK")) {
-            this.mapViewer.debugText = `Tick: ${rendererStats.tickTime.toFixed(2)}ms`;
-        }
-        if (this.inputManager.isKeyDown("KeyL")) {
-            this.mapViewer.debugText = `Opaque Pass: ${rendererStats.opaquePassTime.toFixed(2)}ms`;
-        }
-        if (this.inputManager.isKeyDown("KeyB")) {
-            this.mapViewer.debugText = `Opaque Npc Pass: ${rendererStats.opaqueNpcPassTime.toFixed(
-                2,
-            )}ms`;
-        }
-        if (this.inputManager.isKeyDown("KeyN")) {
-            this.mapViewer.debugText = `Transparent Pass: ${rendererStats.transparentPassTime.toFixed(
-                2,
-            )}ms`;
-        }
-        if (this.inputManager.isKeyDown("KeyM")) {
-            this.mapViewer.debugText = `Transparent Npc Pass: ${rendererStats.transparentNpcPassTime.toFixed(
-                2,
-            )}ms`;
-        }
-        if (this.inputManager.isKeyDown("KeyV")) {
-            this.mapViewer.debugText = `Frame Time: ${frameTime.toFixed(2)}ms`;
-        }
-        if (this.inputManager.isKeyDown("KeyG")) {
-            this.mapViewer.debugText =
-                `Draw Calls: ${rendererStats.drawCalls} ` +
-                `(ranges: ${rendererStats.drawRangeCalls}, multi: ${rendererStats.multiDrawCalls})`;
-        }
-        if (this.inputManager.isKeyDown("KeyU")) {
-            this.mapViewer.debugText = `Frame Time Js: ${frameStats.frameTimeJs.toFixed(2)}ms`;
-        }
+        const count = this.seamSampleCount | 0;
+        console.log("[map-render][frame-seam] avg", {
+            samples: count,
+            worldMs: this.seamWorldMsTotal / count,
+            applyWorldMs: this.seamApplyWorldMsTotal / count,
+            renderMs: this.seamRenderMsTotal / count,
+            totalMs: this.seamTotalMsTotal / count,
+            worldChangesPerFrame: this.seamWorldChangeCountTotal / count,
+        });
+        this.seamSampleCount = 0;
+        this.seamWorldMsTotal = 0;
+        this.seamApplyWorldMsTotal = 0;
+        this.seamRenderMsTotal = 0;
+        this.seamTotalMsTotal = 0;
+        this.seamWorldChangeCountTotal = 0;
+    }
 
-        if (window.wallpaperFpsLimit !== undefined) {
-            this.fpsLimit = window.wallpaperFpsLimit;
+    private logMapPacketTelemetry(packet: StaticMapPacket): void {
+        const mapData = packet.mapData;
+        const runtimeRegistration = packet.runtimeRegistration;
+        const runtimeBootstrap = packet.runtimeBootstrap;
+        const ranges = mapData.drawRanges.base;
+        const drawCount = Math.floor((ranges?.length ?? 0) / 3);
+        let nonZero = 0;
+        if (ranges instanceof Int32Array) {
+            for (let i = 0; i < drawCount; i++) {
+                const off = i * 3;
+                if ((ranges[off + 1] | 0) > 0) {
+                    nonZero++;
+                }
+            }
         }
-
-        if (this.mapViewer.camera.updated) {
-            this.mapViewer.updateSearchParams();
-        }
-
-        this.inputManager.onFrameEnd();
-        this.mapViewer.camera.onFrameEnd();
-
-        // this.mapViewer.debugText = `Frame Time Js: ${this.stats.frameTimeJs.toFixed(3)}`;
+        console.log("[map-render][telemetry] map packet summary", {
+            square: `${mapData.mapX}:${mapData.mapY}`,
+            verts: mapData.vertices?.length ?? -1,
+            indices: mapData.indices?.length ?? -1,
+            drawRangesBaseCount: drawCount,
+            drawRangesBaseNonZero: nonZero,
+            loadObjs: mapData.loadObjs,
+            loadLocs: mapData.loadLocs,
+            loadNpcs: mapData.loadNpcs,
+            locsAnimated: runtimeRegistration.locsAnimated.length,
+            npcVerts: mapData.npcVertices?.length ?? 0,
+            npcIndices: mapData.npcIndices?.length ?? 0,
+            npcRangesBase: mapData.npcDrawRangesBase?.length ?? 0,
+            npcOrderKeys: runtimeBootstrap.npcOrderKeys.length | 0,
+            npcTypeAnimTable: runtimeRegistration.npcTypeAnimationTable.length,
+        });
     }
 }
