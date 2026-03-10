@@ -5,7 +5,7 @@ import { Model, computeTextureCoords } from "../../rs/model/Model";
 import { Scene } from "../../rs/scene/Scene";
 import { SceneTile } from "../../rs/scene/SceneTile";
 import { TextureLoader } from "../../rs/texture/TextureLoader";
-import { newDrawRange, type DrawRange } from "../../shared/DrawRange";
+import type { DrawRange } from "../../maprender/MapRenderData";
 import { clamp } from "../../util/MathUtil";
 import { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import { LocAnimatedGroup } from "./LocAnimatedGroup";
@@ -505,7 +505,7 @@ export class SceneGeometryBuffer {
 
         const { offset, elements } = this.writeModelGeometry(model, faces);
 
-        return newDrawRange(offset, elements, 1);
+        return [offset, elements, 1];
     }
 
     addLocAnimatedGroups(groups: Iterable<LocAnimatedGroup>): LocAnimatedData[] {

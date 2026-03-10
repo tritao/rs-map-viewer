@@ -3,17 +3,31 @@ import {
     type MapObjRenderPacket,
     mapObjRenderPacketTransferables,
 } from "./MapObjRenderPacket";
-import {
-    LOC_TICK_PATCH_STREAM_BASE,
-    LOC_TICK_PATCH_STREAM_COUNT,
-    NPC_TICK_PATCH_STREAM_BASE,
-    NPC_TICK_PATCH_STREAM_COUNT,
-    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
-    TICK_PATCH_ENTRY_STRIDE,
-    TICK_PATCH_STREAM_COUNT,
-    getLocTickPatchStreamIndex,
-    getNpcTickPatchStreamIndex,
-} from "../shared/TickPatchLayout";
+
+export const TICK_PATCH_STREAM_COUNT = 10;
+export const LOC_TICK_PATCH_STREAM_BASE = 0;
+export const LOC_TICK_PATCH_STREAM_COUNT = 8;
+export const NPC_TICK_PATCH_STREAM_BASE =
+    LOC_TICK_PATCH_STREAM_BASE + LOC_TICK_PATCH_STREAM_COUNT;
+export const NPC_TICK_PATCH_STREAM_COUNT = 2;
+
+export const TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE = 1 + TICK_PATCH_STREAM_COUNT;
+export const TICK_PATCH_ENTRY_STRIDE = 4;
+
+export function getLocTickPatchStreamIndex(
+    isAlpha: boolean,
+    isInteract: boolean,
+    isLod: boolean,
+): number {
+    const interactBit = isInteract ? 4 : 0;
+    const lodBit = isLod ? 2 : 0;
+    const alphaBit = isAlpha ? 1 : 0;
+    return (LOC_TICK_PATCH_STREAM_BASE + interactBit + lodBit + alphaBit) | 0;
+}
+
+export function getNpcTickPatchStreamIndex(isAlpha: boolean): number {
+    return (NPC_TICK_PATCH_STREAM_BASE + (isAlpha ? 1 : 0)) | 0;
+}
 
 // Meta tuples: [mapId, npcDataStart, npcDataCount]
 export const NPC_RANGES_BY_MAP_ID_STRIDE = 3;
@@ -26,18 +40,6 @@ const FRAME_RENDER_LIST_FLAGS_MASK =
     FRAME_RENDER_LIST_FLAG_HAS_NPCS |
     FRAME_RENDER_LIST_FLAG_IS_LOD |
     FRAME_RENDER_LIST_FLAG_IS_INTERACT;
-
-export {
-    LOC_TICK_PATCH_STREAM_BASE,
-    LOC_TICK_PATCH_STREAM_COUNT,
-    NPC_TICK_PATCH_STREAM_BASE,
-    NPC_TICK_PATCH_STREAM_COUNT,
-    TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
-    TICK_PATCH_ENTRY_STRIDE,
-    TICK_PATCH_STREAM_COUNT,
-    getLocTickPatchStreamIndex,
-    getNpcTickPatchStreamIndex,
-};
 
 export type ParsedRenderFrameTickPatches = Readonly<{
     patchesPacked: Int32Array;

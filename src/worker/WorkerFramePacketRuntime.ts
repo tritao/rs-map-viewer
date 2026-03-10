@@ -6,7 +6,7 @@ import type { CacheSession } from "../rs/loaders/CacheSession";
 import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../shared/TickPatchLayout";
+} from "../renderer/RenderFramePacket";
 import {
     type RenderFramePacketMapEntry,
     buildRenderFramePacketFromMapEntries,

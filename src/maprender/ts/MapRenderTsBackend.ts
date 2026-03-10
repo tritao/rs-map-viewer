@@ -36,7 +36,7 @@ import { resolveLocRenderPlacement } from "../../shared/build/LocPlacementResolv
 import { getSceneLocs } from "../../shared/build/SceneLocs";
 import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
-import type { DrawRange } from "../../shared/DrawRange";
+import type { DrawRange } from "../MapRenderData";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,

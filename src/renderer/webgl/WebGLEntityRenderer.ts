@@ -3,7 +3,7 @@ import { App as PicoApp, PicoGL, Program, UniformBuffer } from "picogl";
 
 import { RS_TO_RADIANS } from "../../rs/MathConstants";
 import type { TextureService } from "../../rs/loaders/Loaders";
-import type { DrawRange } from "../../shared/DrawRange";
+import type { DrawRange } from "../../maprender/MapRenderData";
 import type { StandaloneRenderData } from "../../shared/build/StandaloneRenderDataBuilder";
 import { createWebGLDevice } from "./WebGLDevice";
 import { createSceneDrawCall } from "./WebGLDrawCallUtil";

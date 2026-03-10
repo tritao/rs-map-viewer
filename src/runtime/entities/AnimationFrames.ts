@@ -1,4 +1,4 @@
-import type { DrawRange } from "../../shared/DrawRange";
+import type { DrawRange } from "../../maprender/MapRenderData";
 
 export type AnimationFrames = {
     frames: DrawRange[];

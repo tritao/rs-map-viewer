@@ -10,23 +10,21 @@ import {
 } from "picogl";
 
 import type { ObjRenderData, SdMapData } from "../../maprender/MapRenderPayload";
+import type { DrawRange } from "../../maprender/MapRenderData";
 import { Camera } from "../Camera";
 import type { TextureService } from "../../rs/loaders/Loaders";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
-import type { DrawRange } from "../../shared/DrawRange";
 import {
     FRAME_RENDER_LIST_FLAG_IS_INTERACT,
     FRAME_RENDER_LIST_FLAG_IS_LOD,
     FRAME_RENDER_LIST_STRIDE,
-} from "../RenderFramePacket";
-import type { RenderFramePacket } from "../RenderFramePacket";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../NpcGpuFrame";
-import {
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
     getLocTickPatchStreamIndex,
     getNpcTickPatchStreamIndex,
-} from "../../shared/TickPatchLayout";
+} from "../RenderFramePacket";
+import type { RenderFramePacket } from "../RenderFramePacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../NpcGpuFrame";
 import { isWebGL2Supported } from "../../util/DeviceUtil";
 import {
     ensureDrawRangePatchBackendInit,

@@ -11,6 +11,8 @@ export const MAP_RENDER_DRAW_BUCKET_KEYS = [
 
 export type MapRenderDrawBucketKey = (typeof MAP_RENDER_DRAW_BUCKET_KEYS)[number];
 
+export type DrawRange = [number, number, number];
+
 export type SdRenderableModelInfoTextures = Readonly<
     Record<MapRenderDrawBucketKey, Uint16Array>
 >;

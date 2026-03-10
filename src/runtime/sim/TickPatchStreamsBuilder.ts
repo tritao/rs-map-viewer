@@ -1,13 +1,49 @@
 import type { SeqFrameLoader } from "../../rs/model/seq/SeqFrameLoader";
-import type { DrawRange } from "../../shared/DrawRange";
+import type { DrawRange } from "../../maprender/MapRenderData";
 import {
+    LOC_TICK_PATCH_STREAM_COUNT,
+    NPC_TICK_PATCH_STREAM_COUNT,
     TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE,
     TICK_PATCH_ENTRY_STRIDE,
     TICK_PATCH_STREAM_COUNT,
-} from "../../shared/TickPatchLayout";
+    getLocTickPatchStreamIndex,
+    getNpcTickPatchStreamIndex,
+} from "../../renderer/RenderFramePacket";
 import type { NpcSimMapState } from "./NpcSimStateStore";
 
 const NULL_DRAW_RANGE: DrawRange = [0, 0, 0];
+
+function emitLocTickPatch(
+    state: NpcSimMapState,
+    isAlpha: boolean,
+    isInteract: boolean,
+    isLod: boolean,
+    drawRangeIndex: number,
+    frame: DrawRange,
+): void {
+    const streamIndex = getLocTickPatchStreamIndex(isAlpha, isInteract, isLod);
+    state.locTickPatchCountsByVariant[streamIndex] = emitTickPatch(
+        state.locTickPatchesByVariant[streamIndex]!,
+        state.locTickPatchCountsByVariant[streamIndex] | 0,
+        drawRangeIndex | 0,
+        frame,
+    );
+}
+
+function emitNpcTickPatch(
+    state: NpcSimMapState,
+    isAlpha: boolean,
+    drawRangeIndex: number,
+    frame: DrawRange,
+): void {
+    const streamIndex = getNpcTickPatchStreamIndex(isAlpha) - LOC_TICK_PATCH_STREAM_COUNT;
+    state.npcTickPatchCountsByVariant[streamIndex] = emitTickPatch(
+        state.npcTickPatchesByVariant[streamIndex]!,
+        state.npcTickPatchCountsByVariant[streamIndex] | 0,
+        drawRangeIndex | 0,
+        frame,
+    );
+}
 
 function emitTickPatch(
     outPacked: Int32Array,
@@ -41,110 +77,30 @@ function emitLocPatchesForChangedFrame(
     }
     const alphaFrame = (loc.anim.framesAlpha?.[newFrameId] ?? undefined) as DrawRange | undefined;
 
-    state.locTickPatchCountsByVariant[0] = emitTickPatch(
-        state.locTickPatchesByVariant[0]!,
-        state.locTickPatchCountsByVariant[0] | 0,
-        loc.drawRangeIndex | 0,
-        baseFrame,
-    );
-    state.locTickPatchCountsByVariant[2] = emitTickPatch(
-        state.locTickPatchesByVariant[2]!,
-        state.locTickPatchCountsByVariant[2] | 0,
-        loc.drawRangeLodIndex | 0,
-        baseFrame,
-    );
-    state.locTickPatchCountsByVariant[4] = emitTickPatch(
-        state.locTickPatchesByVariant[4]!,
-        state.locTickPatchCountsByVariant[4] | 0,
-        loc.drawRangeInteractIndex | 0,
-        baseFrame,
-    );
-    state.locTickPatchCountsByVariant[6] = emitTickPatch(
-        state.locTickPatchesByVariant[6]!,
-        state.locTickPatchCountsByVariant[6] | 0,
-        loc.drawRangeInteractLodIndex | 0,
-        baseFrame,
-    );
+    emitLocTickPatch(state, false, false, false, loc.drawRangeIndex, baseFrame);
+    emitLocTickPatch(state, false, false, true, loc.drawRangeLodIndex, baseFrame);
+    emitLocTickPatch(state, false, true, false, loc.drawRangeInteractIndex, baseFrame);
+    emitLocTickPatch(state, false, true, true, loc.drawRangeInteractLodIndex, baseFrame);
 
     if (!alphaFrame) {
         return;
     }
-    state.locTickPatchCountsByVariant[1] = emitTickPatch(
-        state.locTickPatchesByVariant[1]!,
-        state.locTickPatchCountsByVariant[1] | 0,
-        loc.drawRangeAlphaIndex | 0,
-        alphaFrame,
-    );
-    state.locTickPatchCountsByVariant[3] = emitTickPatch(
-        state.locTickPatchesByVariant[3]!,
-        state.locTickPatchCountsByVariant[3] | 0,
-        loc.drawRangeLodAlphaIndex | 0,
-        alphaFrame,
-    );
-    state.locTickPatchCountsByVariant[5] = emitTickPatch(
-        state.locTickPatchesByVariant[5]!,
-        state.locTickPatchCountsByVariant[5] | 0,
-        loc.drawRangeInteractAlphaIndex | 0,
-        alphaFrame,
-    );
-    state.locTickPatchCountsByVariant[7] = emitTickPatch(
-        state.locTickPatchesByVariant[7]!,
-        state.locTickPatchCountsByVariant[7] | 0,
-        loc.drawRangeInteractLodAlphaIndex | 0,
-        alphaFrame,
-    );
+    emitLocTickPatch(state, true, false, false, loc.drawRangeAlphaIndex, alphaFrame);
+    emitLocTickPatch(state, true, false, true, loc.drawRangeLodAlphaIndex, alphaFrame);
+    emitLocTickPatch(state, true, true, false, loc.drawRangeInteractAlphaIndex, alphaFrame);
+    emitLocTickPatch(state, true, true, true, loc.drawRangeInteractLodAlphaIndex, alphaFrame);
 }
 
 function emitLocHiddenPatches(state: NpcSimMapState, locIndex: number) {
     const loc = state.locsAnimated[locIndex];
-    state.locTickPatchCountsByVariant[0] = emitTickPatch(
-        state.locTickPatchesByVariant[0]!,
-        state.locTickPatchCountsByVariant[0] | 0,
-        loc.drawRangeIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[1] = emitTickPatch(
-        state.locTickPatchesByVariant[1]!,
-        state.locTickPatchCountsByVariant[1] | 0,
-        loc.drawRangeAlphaIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[2] = emitTickPatch(
-        state.locTickPatchesByVariant[2]!,
-        state.locTickPatchCountsByVariant[2] | 0,
-        loc.drawRangeLodIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[3] = emitTickPatch(
-        state.locTickPatchesByVariant[3]!,
-        state.locTickPatchCountsByVariant[3] | 0,
-        loc.drawRangeLodAlphaIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[4] = emitTickPatch(
-        state.locTickPatchesByVariant[4]!,
-        state.locTickPatchCountsByVariant[4] | 0,
-        loc.drawRangeInteractIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[5] = emitTickPatch(
-        state.locTickPatchesByVariant[5]!,
-        state.locTickPatchCountsByVariant[5] | 0,
-        loc.drawRangeInteractAlphaIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[6] = emitTickPatch(
-        state.locTickPatchesByVariant[6]!,
-        state.locTickPatchCountsByVariant[6] | 0,
-        loc.drawRangeInteractLodIndex | 0,
-        NULL_DRAW_RANGE,
-    );
-    state.locTickPatchCountsByVariant[7] = emitTickPatch(
-        state.locTickPatchesByVariant[7]!,
-        state.locTickPatchCountsByVariant[7] | 0,
-        loc.drawRangeInteractLodAlphaIndex | 0,
-        NULL_DRAW_RANGE,
-    );
+    emitLocTickPatch(state, false, false, false, loc.drawRangeIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, true, false, false, loc.drawRangeAlphaIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, false, false, true, loc.drawRangeLodIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, true, false, true, loc.drawRangeLodAlphaIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, false, true, false, loc.drawRangeInteractIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, true, true, false, loc.drawRangeInteractAlphaIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, false, true, true, loc.drawRangeInteractLodIndex, NULL_DRAW_RANGE);
+    emitLocTickPatch(state, true, true, true, loc.drawRangeInteractLodAlphaIndex, NULL_DRAW_RANGE);
 }
 
 export type WasmMapPatchStreamReadResult = Readonly<{
@@ -232,8 +188,9 @@ export function buildTickPatchStreamsForMap(
     const state = input.state;
 
     state.locTickPatchCountsByVariant.fill(0);
-    state.npcTickPatchCountsByVariant[0] = 0;
-    state.npcTickPatchCountsByVariant[1] = 0;
+    for (let streamIndex = 0; streamIndex < NPC_TICK_PATCH_STREAM_COUNT; streamIndex++) {
+        state.npcTickPatchCountsByVariant[streamIndex] = 0;
+    }
 
     if (input.includeTsLocTickPatches) {
         for (let li = 0; li < state.locsAnimated.length; li++) {
@@ -254,18 +211,8 @@ export function buildTickPatchStreamsForMap(
         const anim = npc.getAnimationFrames();
         const baseFrame = (anim?.frames?.[newFrameId] ?? NULL_DRAW_RANGE) as DrawRange;
         const alphaFrame = (anim?.framesAlpha?.[newFrameId] ?? NULL_DRAW_RANGE) as DrawRange;
-        state.npcTickPatchCountsByVariant[0] = emitTickPatch(
-            state.npcTickPatchesByVariant[0]!,
-            state.npcTickPatchCountsByVariant[0] | 0,
-            ni | 0,
-            baseFrame,
-        );
-        state.npcTickPatchCountsByVariant[1] = emitTickPatch(
-            state.npcTickPatchesByVariant[1]!,
-            state.npcTickPatchCountsByVariant[1] | 0,
-            ni | 0,
-            alphaFrame,
-        );
+        emitNpcTickPatch(state, false, ni, baseFrame);
+        emitNpcTickPatch(state, true, ni, alphaFrame);
     }
 
     if (input.wasmCountsByMapId instanceof Int32Array) {
@@ -273,35 +220,39 @@ export function buildTickPatchStreamsForMap(
         if (wasmMetaOff + TICK_PATCH_COUNTS_BY_MAP_ID_STRIDE <= input.wasmCountsByMapId.length) {
             const wasmMapId = input.wasmCountsByMapId[wasmMetaOff + 0] | 0;
             if (wasmMapId === (input.mapId | 0)) {
-                for (let v = 0; v < 8; v++) {
+                for (let v = 0; v < LOC_TICK_PATCH_STREAM_COUNT; v++) {
                     streamCounts[v] = input.wasmCountsByMapId[wasmMetaOff + 1 + v] | 0;
                 }
             } else {
-                for (let v = 0; v < 8; v++) {
+                for (let v = 0; v < LOC_TICK_PATCH_STREAM_COUNT; v++) {
                     streamCounts[v] = state.locTickPatchCountsByVariant[v] | 0;
                 }
             }
         } else {
-            for (let v = 0; v < 8; v++) {
+            for (let v = 0; v < LOC_TICK_PATCH_STREAM_COUNT; v++) {
                 streamCounts[v] = state.locTickPatchCountsByVariant[v] | 0;
             }
         }
     } else {
-        for (let v = 0; v < 8; v++) {
+        for (let v = 0; v < LOC_TICK_PATCH_STREAM_COUNT; v++) {
             streamCounts[v] = state.locTickPatchCountsByVariant[v] | 0;
         }
     }
-    streamCounts[8] = state.npcTickPatchCountsByVariant[0] | 0;
-    streamCounts[9] = state.npcTickPatchCountsByVariant[1] | 0;
+    for (let streamIndex = 0; streamIndex < NPC_TICK_PATCH_STREAM_COUNT; streamIndex++) {
+        const globalStreamIndex = getNpcTickPatchStreamIndex(streamIndex === 1);
+        streamCounts[globalStreamIndex] = state.npcTickPatchCountsByVariant[streamIndex] | 0;
+    }
 
-    for (let v = 0; v < 8; v++) {
+    for (let v = 0; v < LOC_TICK_PATCH_STREAM_COUNT; v++) {
         streamsForMap[v] =
             input.useWasmLocStreams && input.hasWasmCountsForMap
                 ? input.wasmLocStreamsForMap[v]
                 : state.locTickPatchesByVariant[v];
     }
-    streamsForMap[8] = state.npcTickPatchesByVariant[0];
-    streamsForMap[9] = state.npcTickPatchesByVariant[1];
+    for (let streamIndex = 0; streamIndex < NPC_TICK_PATCH_STREAM_COUNT; streamIndex++) {
+        const globalStreamIndex = getNpcTickPatchStreamIndex(streamIndex === 1);
+        streamsForMap[globalStreamIndex] = state.npcTickPatchesByVariant[streamIndex];
+    }
 
     return {
         streamCounts,
