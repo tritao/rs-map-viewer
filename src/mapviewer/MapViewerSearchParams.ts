@@ -55,6 +55,13 @@ function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined 
     return { mapX, mapY };
 }
 
+function parseBackendKindSearchParam(value: string | null): BackendKind {
+    if (value === "wasm" || value === "cpp" || value === "cpp-wasm") {
+        return "wasm";
+    }
+    return "ts";
+}
+
 export function buildMapViewerSearchParams(
     input: BuildMapViewerSearchParamsInput,
 ): URLSearchParamsInit {
@@ -79,7 +86,7 @@ export function buildMapViewerSearchParams(
         params.cache = input.loadedCacheName;
     }
     if (input.runtimeOptions.mapRenderBackend !== input.defaultRuntimeOptions.mapRenderBackend) {
-        params.mrb = input.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
+        params.mrb = input.runtimeOptions.mapRenderBackend;
     }
     if (input.runtimeOptions.mapRenderTelemetry) {
         params.mrt = "1";
@@ -139,4 +146,13 @@ export function applyMapViewerSearchParams(input: ApplyMapViewerSearchParamsInpu
         input.camera.yaw = parsed.yaw;
     }
     input.setDevFixedMapSquare(parsed.devFixedMapSquare);
+}
+
+export function parseMapViewerRuntimeOptions(
+    searchParams: URLSearchParams,
+): MapViewerSearchRuntimeOptions {
+    return {
+        mapRenderBackend: parseBackendKindSearchParam(searchParams.get("mrb")),
+        mapRenderTelemetry: searchParams.get("mrt") === "1",
+    };
 }

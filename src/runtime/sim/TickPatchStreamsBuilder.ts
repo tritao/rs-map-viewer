@@ -143,7 +143,7 @@ export function readWasmPatchStreamsForMap(
         const end = (nextReadOff + wasmLen) | 0;
         if (end > (wasmPatchesPacked.length | 0)) {
             throw new Error(
-                `[map-render][tick][cpp-wasm] wasm patch stream OOB ` +
+                `[map-render][tick][wasm] wasm patch stream OOB ` +
                     `mapId=${mapId | 0} stream=${streamIndex | 0} readOff=${nextReadOff | 0} ` +
                     `len=${wasmLen | 0} packedLen=${wasmPatchesPacked.length | 0}`,
             );

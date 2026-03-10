@@ -4,7 +4,6 @@ import WebFont from "webfontloader";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
-import type { BackendKind } from "../util/BackendKind";
 import { formatBytes } from "../util/BytesUtil";
 import { fetchCacheList, loadCacheContext } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
@@ -14,6 +13,7 @@ import { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
+import { parseMapViewerRuntimeOptions } from "./MapViewerSearchParams";
 
 WebFont.load({
     custom: {
@@ -26,21 +26,8 @@ const cachesPromise = fetchCacheList();
 const workerPool = RenderDataWorkerPool.create(isWallpaperEngine ? 1 : 4);
 const simWorkerPool = SimWorkerPool.create();
 
-function parseBackendKind(value: string | null): BackendKind {
-    if (value === "cpp" || value === "cpp-wasm") {
-        return "cpp-wasm";
-    }
-    return "ts";
-}
-
 function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntimeOptions {
-    const mapRenderBackendParam = searchParams.get("mrb");
-    const mapRenderBackend = parseBackendKind(mapRenderBackendParam);
-    const mapRenderTelemetry = searchParams.get("mrt") === "1";
-    return {
-        mapRenderBackend,
-        mapRenderTelemetry,
-    };
+    return parseMapViewerRuntimeOptions(searchParams);
 }
 
 function MapViewerApp() {

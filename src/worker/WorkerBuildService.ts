@@ -97,7 +97,7 @@ async function initWorker(
         locModelLoader,
         varProvider,
     });
-    const mapRenderBackendKind = options?.mapRenderBackend ?? "cpp-wasm";
+    const mapRenderBackendKind = options?.mapRenderBackend ?? "wasm";
     const mapImageRenderer = new MapImageRenderer(
         textureLoader,
         locTypeLoader,

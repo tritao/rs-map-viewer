@@ -120,7 +120,7 @@ export interface MapRenderBackend {
     readonly kind: MapRenderBackendKind;
     buildMapData(input: SdMapLoaderInput): Promise<RenderDataResult<SdMapData | undefined>>;
     reset(): void;
-    // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
+    // Exposes the underlying C++ wasm runtime handle when this backend is "wasm".
     // This allows the worker tick path to use the same runtime instance that built the map packets.
     getCppWasmRuntimeHandle?(): MapRenderRuntimeHandle | undefined;
 }
@@ -154,7 +154,7 @@ export function createMapRenderBackend(
     deps: MapRenderBuildDeps,
     options?: MapRenderBackendOptions,
 ): MapRenderBackend {
-    if (kind === "cpp-wasm") {
+    if (kind === "wasm") {
         return new WasmMapRenderBackend(deps, options);
     }
     return new TsMapRenderBackend({

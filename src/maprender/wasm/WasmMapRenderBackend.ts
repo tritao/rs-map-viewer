@@ -56,7 +56,7 @@ type BuiltNpcFallbackData = Readonly<{
 export class WasmMapRenderBackend implements MapRenderBackend {
     private static readonly MAP_SQUARE_SIZE = 64;
 
-    readonly kind: MapRenderBackendKind = "cpp-wasm";
+    readonly kind: MapRenderBackendKind = "wasm";
     private readonly bridge: WasmMapRenderDataBridge = mapRenderRuntimeBridge;
     private runtimeInitPromise: Promise<boolean> | undefined;
     private runtimeHandlePromise: Promise<MapRenderRuntimeHandle | undefined> | undefined;
@@ -93,7 +93,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         borderSize: number,
         tileRenderFlagsLevel1: Uint8Array[],
     ): Promise<BuiltNpcFallbackData | undefined> {
-        // TODO: move this NPC animation bootstrap data production into the cpp-wasm packet/runtime
+        // TODO: move this NPC animation bootstrap data production into the wasm packet/runtime
         // output so the wasm backend remains the single source of truth for static map runtime payloads.
         if (input.loadNpcs !== true) {
             return undefined;
@@ -275,7 +275,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             staticBuildInput,
         );
         if (!buildResult.ok) {
-            console.warn("[map-render][cpp-wasm] prepareAndBuildMapPacketFromCache failed", {
+            console.warn("[map-render][wasm] prepareAndBuildMapPacketFromCache failed", {
                 square: `${input.mapX}:${input.mapY}`,
                 reason: buildResult.reason,
                 status: buildResult.status,
@@ -441,12 +441,12 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 runtimeBootstrap: result.runtimeBootstrap,
             };
         } catch (e) {
-            console.warn(`[map-render-backend] cpp-wasm buildMapData failed: ${errorToString(e)}`);
+            console.warn(`[map-render-backend] wasm buildMapData failed: ${errorToString(e)}`);
             return { data: undefined, transferables: [] };
         }
     }
 
-    // Exposes the underlying C++ wasm runtime handle when this backend is "cpp-wasm".
+    // Exposes the underlying C++ wasm runtime handle when this backend is "wasm".
     // This allows the worker tick path to use the same runtime instance that built the map packets.
     getCppWasmRuntimeHandle(): MapRenderRuntimeHandle | undefined {
         return this.runtimeHandle;

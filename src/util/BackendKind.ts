@@ -1,1 +1,1 @@
-export type BackendKind = "ts" | "cpp-wasm";
+export type BackendKind = "ts" | "wasm";

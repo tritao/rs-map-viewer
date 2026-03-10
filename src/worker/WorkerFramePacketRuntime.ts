@@ -860,7 +860,7 @@ export class WorkerFramePacketRuntime {
         safeClientTicks: number,
     ): Promise<WasmTickStreams> {
         const isEnabled =
-            workerState.mapRenderBackend.kind === "cpp-wasm" &&
+            workerState.mapRenderBackend.kind === "wasm" &&
             typeof tickWasmBridge.tickMapsEmitPatchStreams === "function";
         if (!isEnabled) {
             return {
@@ -872,7 +872,7 @@ export class WorkerFramePacketRuntime {
 
         const handle = workerState.mapRenderBackend.getCppWasmRuntimeHandle?.();
         if (handle === undefined) {
-            throw new Error("[map-render][tick][cpp-wasm] map-render runtime handle missing");
+            throw new Error("[map-render][tick][wasm] map-render runtime handle missing");
         }
         const cycleNowFixed = Math.round(cycleNow * LOC_CYCLE_SCALE) | 0;
         const wasmTickValue = tickWasmBridge.tickMapsEmitPatchStreams?.(
@@ -882,9 +882,7 @@ export class WorkerFramePacketRuntime {
             safeClientTicks,
         );
         if (!isWasmTickEmitResult(wasmTickValue)) {
-            throw new Error(
-                "[map-render][tick][cpp-wasm] tickMapsEmitPatchStreams returned invalid data",
-            );
+            throw new Error("[map-render][tick][wasm] tickMapsEmitPatchStreams returned invalid data");
         }
         return {
             isEnabled: true,
@@ -933,7 +931,7 @@ export class WorkerFramePacketRuntime {
             wasmReadOff !== (tickPatchPacked.length | 0)
         ) {
             throw new Error(
-                `[map-render][tick][cpp-wasm] wasm patch read mismatch ` +
+                `[map-render][tick][wasm] wasm patch read mismatch ` +
                     `readOff=${wasmReadOff | 0} packedLen=${tickPatchPacked.length | 0}`,
             );
         }
