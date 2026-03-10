@@ -697,6 +697,7 @@ export class MapViewer {
     }
 
     dispose(): void {
+        this.clientRuntime.dispose();
         this.searchParamsState.dispose();
         this.menuState.dispose();
         this.walkDestination = undefined;

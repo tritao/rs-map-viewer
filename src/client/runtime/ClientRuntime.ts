@@ -32,6 +32,128 @@ export type CacheSwitchStatus =
 
 type CacheSwitchStatusListener = (status: CacheSwitchStatus) => void;
 
+type RuntimeState = Readonly<{
+    cacheContext: LoadedCacheContext;
+    runtimeOptions: ClientRuntimeOptions;
+}>;
+
+type RuntimeTransitionRequest = Readonly<{
+    cacheContext: LoadedCacheContext;
+    runtimeOptions: ClientRuntimeOptions;
+    waitForWorkers: boolean;
+}>;
+
+type ActiveCacheSwitch = Readonly<{
+    cacheName: string;
+    nonce: number;
+    signal: AbortSignal;
+}>;
+
+class CacheSwitchLifecycle {
+    private readonly listeners = new Set<CacheSwitchStatusListener>();
+    private status: CacheSwitchStatus = { state: "idle" };
+    private nonce: number = 0;
+    private activeAbortController?: AbortController;
+    private disposed: boolean = false;
+
+    subscribe(listener: CacheSwitchStatusListener): () => void {
+        if (this.disposed) {
+            listener({ state: "idle" });
+            return () => {};
+        }
+        this.listeners.add(listener);
+        listener(this.status);
+        return () => this.listeners.delete(listener);
+    }
+
+    getStatus(): CacheSwitchStatus {
+        return this.status;
+    }
+
+    begin(cacheName: string): ActiveCacheSwitch {
+        this.abortActive();
+        const abortController = new AbortController();
+        this.activeAbortController = abortController;
+        const activeSwitch: ActiveCacheSwitch = {
+            cacheName,
+            nonce: (++this.nonce) | 0,
+            signal: abortController.signal,
+        };
+        this.publish({ state: "switching", cacheName });
+        return activeSwitch;
+    }
+
+    isActive(activeSwitch: ActiveCacheSwitch): boolean {
+        return (
+            !this.disposed &&
+            (activeSwitch.nonce | 0) === (this.nonce | 0) &&
+            this.activeAbortController?.signal === activeSwitch.signal
+        );
+    }
+
+    reportProgress(activeSwitch: ActiveCacheSwitch, progress: DownloadProgress): void {
+        if (!this.isActive(activeSwitch)) {
+            return;
+        }
+        this.publish({
+            state: "switching",
+            cacheName: activeSwitch.cacheName,
+            progress,
+        });
+    }
+
+    finish(activeSwitch: ActiveCacheSwitch): void {
+        if (!this.isActive(activeSwitch)) {
+            return;
+        }
+        this.clearActive();
+        this.publish({ state: "idle" });
+    }
+
+    fail(activeSwitch: ActiveCacheSwitch, error: unknown): void {
+        if (!this.isActive(activeSwitch)) {
+            return;
+        }
+        this.clearActive();
+        if (isAbortError(error)) {
+            this.publish({ state: "idle" });
+            return;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        this.publish({
+            state: "error",
+            cacheName: activeSwitch.cacheName,
+            message,
+        });
+    }
+
+    dispose(): void {
+        this.disposed = true;
+        this.abortActive();
+        this.listeners.clear();
+        this.status = { state: "idle" };
+    }
+
+    private abortActive(): void {
+        this.activeAbortController?.abort();
+        this.clearActive();
+    }
+
+    private clearActive(): void {
+        this.activeAbortController = undefined;
+    }
+
+    private publish(status: CacheSwitchStatus): void {
+        if (this.disposed) {
+            return;
+        }
+        this.status = status;
+        for (const listener of this.listeners) {
+            listener(status);
+        }
+    }
+}
+
 type ClientRuntimeDeps = Readonly<{
     clientCommands: ClientCommandService;
     clientIntentState: ClientIntentState;
@@ -65,12 +187,8 @@ export class ClientRuntime {
 
     private cacheContext: LoadedCacheContext;
     private runtimeOptions: ClientRuntimeOptions;
-    private stagedCacheContext?: LoadedCacheContext;
-    private stagedRuntimeOptions?: ClientRuntimeOptions;
-    private readonly cacheSwitchListeners = new Set<CacheSwitchStatusListener>();
-    private cacheSwitchStatus: CacheSwitchStatus = { state: "idle" };
-    private cacheSwitchNonce: number = 0;
-    private cacheSwitchAbortController?: AbortController;
+    private activeRuntimeState?: RuntimeState;
+    private readonly cacheSwitchLifecycle = new CacheSwitchLifecycle();
 
     constructor(private readonly deps: ClientRuntimeDeps) {
         this.cacheContext = deps.cacheContext;
@@ -102,13 +220,11 @@ export class ClientRuntime {
     }
 
     subscribeCacheSwitchStatus(listener: (status: CacheSwitchStatus) => void): () => void {
-        this.cacheSwitchListeners.add(listener);
-        listener(this.cacheSwitchStatus);
-        return () => this.cacheSwitchListeners.delete(listener);
+        return this.cacheSwitchLifecycle.subscribe(listener);
     }
 
     getCacheSwitchStatus(): CacheSwitchStatus {
-        return this.cacheSwitchStatus;
+        return this.cacheSwitchLifecycle.getStatus();
     }
 
     async switchCache(cacheInfo: CacheInfo): Promise<void> {
@@ -116,52 +232,40 @@ export class ClientRuntime {
             return;
         }
 
-        this.cacheSwitchAbortController?.abort();
-        this.cacheSwitchAbortController = new AbortController();
-        const activeAbortController = this.cacheSwitchAbortController;
-        const nonce = ++this.cacheSwitchNonce | 0;
-
-        this.setCacheSwitchStatus({ state: "switching", cacheName: cacheInfo.name });
+        const activeSwitch = this.cacheSwitchLifecycle.begin(cacheInfo.name);
 
         try {
             const nextContext = await this.deps.loadCacheContext(
                 cacheInfo,
-                activeAbortController.signal,
-                (progress) => {
-                    this.setCacheSwitchStatus({
-                        state: "switching",
-                        cacheName: cacheInfo.name,
-                        progress,
-                    });
-                },
+                activeSwitch.signal,
+                (progress) => this.cacheSwitchLifecycle.reportProgress(activeSwitch, progress),
             );
-            if ((nonce | 0) !== (this.cacheSwitchNonce | 0)) {
-                this.setCacheSwitchStatus({ state: "idle" });
+            if (!this.cacheSwitchLifecycle.isActive(activeSwitch)) {
                 return;
             }
 
             await this.transitionRuntime({
-                nextCacheContext: nextContext,
-                nextRuntimeOptions: this.runtimeOptions,
+                cacheContext: nextContext,
+                runtimeOptions: this.runtimeOptions,
                 waitForWorkers: true,
             });
-            this.setCacheSwitchStatus({ state: "idle" });
+            this.cacheSwitchLifecycle.finish(activeSwitch);
         } catch (error: unknown) {
-            if ((nonce | 0) !== (this.cacheSwitchNonce | 0) || isAbortError(error)) {
-                this.setCacheSwitchStatus({ state: "idle" });
-                return;
-            }
-            const message = error instanceof Error ? error.message : String(error);
-            this.setCacheSwitchStatus({ state: "error", cacheName: cacheInfo.name, message });
+            this.cacheSwitchLifecycle.fail(activeSwitch, error);
         }
     }
 
     async setRuntimeOptions(options: ClientRuntimeOptions): Promise<void> {
         await this.transitionRuntime({
-            nextCacheContext: this.cacheContext,
-            nextRuntimeOptions: options,
+            cacheContext: this.cacheContext,
+            runtimeOptions: options,
             waitForWorkers: true,
         });
+    }
+
+    dispose(): void {
+        this.activeRuntimeState = undefined;
+        this.cacheSwitchLifecycle.dispose();
     }
 
     updateVars(): void {
@@ -216,23 +320,12 @@ export class ClientRuntime {
     async applyWorldMutation(input: WorldMutationInput): Promise<number> {
         const result = await this.worldSession.applyMutation(input);
         const applied = result.applied | 0;
-        if ((applied | 0) > 0) {
-            this.worldToClientWorldAdapter.applyMutation(input);
-            this.worldRenderInteractionIndex.applyMutation(input);
+        if ((applied | 0) <= 0) {
+            return 0;
         }
-        const reloadMapIds = result.reloadMapIds;
-        if ((applied | 0) > 0 && reloadMapIds && (reloadMapIds.length | 0) > 0) {
-            for (let index = 0; index < reloadMapIds.length; index++) {
-                const mapId = reloadMapIds[index];
-                if (mapId === undefined || !this.deps.hasLoadedMap(mapId | 0)) {
-                    continue;
-                }
-                await this.deps.reloadLoadedMap(mapId | 0);
-            }
-        }
-        if ((applied | 0) > 0 && this.isRenderAffectingMutation(input)) {
-            this.renderFrameCoordinator.invalidateLatestPacket();
-        }
+        this.applyMutationToClientState(input);
+        await this.reloadLoadedMapsForMutation(result.reloadMapIds);
+        this.invalidateRenderFrameForMutation(input);
         return applied | 0;
     }
 
@@ -249,87 +342,125 @@ export class ClientRuntime {
     }
 
     private getEffectiveCacheContext(): LoadedCacheContext {
-        return this.stagedCacheContext ?? this.cacheContext;
+        return this.activeRuntimeState?.cacheContext ?? this.cacheContext;
     }
 
     private getEffectiveRuntimeOptions(): ClientRuntimeOptions {
-        return this.stagedRuntimeOptions ?? this.runtimeOptions;
+        return this.activeRuntimeState?.runtimeOptions ?? this.runtimeOptions;
     }
 
-    private async transitionRuntime(
-        input: Readonly<{
-            nextCacheContext: LoadedCacheContext;
-            nextRuntimeOptions: ClientRuntimeOptions;
-            waitForWorkers: boolean;
-        }>,
-    ): Promise<void> {
-        const previousCacheContext = this.cacheContext;
-        const previousRuntimeOptions = this.runtimeOptions;
+    private async transitionRuntime(input: RuntimeTransitionRequest): Promise<void> {
+        const previousRuntime = this.captureCommittedRuntimeState();
+        const nextRuntime: RuntimeState = {
+            cacheContext: input.cacheContext,
+            runtimeOptions: input.runtimeOptions,
+        };
         try {
-            await this.applyStagedRuntime(input);
-            this.cacheContext = input.nextCacheContext;
-            this.runtimeOptions = input.nextRuntimeOptions;
+            await this.prepareRuntimeTransition(nextRuntime, input.waitForWorkers);
+            this.commitRuntimeTransition(nextRuntime);
         } catch (error: unknown) {
-            try {
-                await this.applyStagedRuntime({
-                    nextCacheContext: previousCacheContext,
-                    nextRuntimeOptions: previousRuntimeOptions,
-                    waitForWorkers: true,
-                });
-            } catch (rollbackError: unknown) {
-                const transitionMessage = error instanceof Error ? error.message : String(error);
-                const rollbackMessage =
-                    rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
-                throw new Error(
-                    `Client runtime transition failed and rollback failed: ` +
-                        `${transitionMessage}; rollback: ${rollbackMessage}`,
-                );
-            }
+            await this.rollbackRuntimeTransition(previousRuntime, error);
             throw error;
         } finally {
-            this.stagedCacheContext = undefined;
-            this.stagedRuntimeOptions = undefined;
+            this.activeRuntimeState = undefined;
         }
     }
 
-    private async applyStagedRuntime(
-        input: Readonly<{
-            nextCacheContext: LoadedCacheContext;
-            nextRuntimeOptions: ClientRuntimeOptions;
-            waitForWorkers: boolean;
-        }>,
-    ): Promise<void> {
-        this.stagedCacheContext = input.nextCacheContext;
-        this.stagedRuntimeOptions = input.nextRuntimeOptions;
-        await this.reinitialize(input.waitForWorkers);
+    private captureCommittedRuntimeState(): RuntimeState {
+        return {
+            cacheContext: this.cacheContext,
+            runtimeOptions: this.runtimeOptions,
+        };
     }
 
-    private async reinitialize(waitForWorkers: boolean): Promise<void> {
-        const effectiveCache = this.getEffectiveCacheContext();
-        const effectiveRuntimeOptions = this.getEffectiveRuntimeOptions();
+    private async prepareRuntimeTransition(
+        nextRuntime: RuntimeState,
+        waitForWorkers: boolean,
+    ): Promise<void> {
+        this.activeRuntimeState = nextRuntime;
+        await this.reinitializeRuntime(nextRuntime, waitForWorkers);
+    }
+
+    private commitRuntimeTransition(nextRuntime: RuntimeState): void {
+        this.cacheContext = nextRuntime.cacheContext;
+        this.runtimeOptions = nextRuntime.runtimeOptions;
+    }
+
+    private async rollbackRuntimeTransition(
+        previousRuntime: RuntimeState,
+        transitionError: unknown,
+    ): Promise<void> {
+        try {
+            await this.prepareRuntimeTransition(previousRuntime, true);
+        } catch (rollbackError: unknown) {
+            const transitionMessage =
+                transitionError instanceof Error ? transitionError.message : String(transitionError);
+            const rollbackMessage =
+                rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+            throw new Error(
+                `Client runtime transition failed and rollback failed: ` +
+                    `${transitionMessage}; rollback: ${rollbackMessage}`,
+            );
+        }
+    }
+
+    private async reinitializeRuntime(
+        runtimeState: RuntimeState,
+        waitForWorkers: boolean,
+    ): Promise<void> {
         if (waitForWorkers) {
             await Promise.all([
                 this.deps.renderWorkerPool.initCacheAndWait(
-                    effectiveCache.loadedCache,
-                    effectiveRuntimeOptions,
+                    runtimeState.cacheContext.loadedCache,
+                    runtimeState.runtimeOptions,
                 ),
                 this.deps.simWorkerPool.initCacheAndWait(
-                    effectiveCache.loadedCache,
-                    effectiveRuntimeOptions,
+                    runtimeState.cacheContext.loadedCache,
+                    runtimeState.runtimeOptions,
                 ),
             ]);
         } else {
             this.deps.renderWorkerPool.initCache(
-                effectiveCache.loadedCache,
-                effectiveRuntimeOptions,
+                runtimeState.cacheContext.loadedCache,
+                runtimeState.runtimeOptions,
             );
-            this.deps.simWorkerPool.initCache(effectiveCache.loadedCache, effectiveRuntimeOptions);
+            this.deps.simWorkerPool.initCache(
+                runtimeState.cacheContext.loadedCache,
+                runtimeState.runtimeOptions,
+            );
         }
 
         await this.deps.onClientReset();
     }
 
-    private isRenderAffectingMutation(input: WorldMutationInput): boolean {
+    private applyMutationToClientState(input: WorldMutationInput): void {
+        this.worldToClientWorldAdapter.applyMutation(input);
+        this.worldRenderInteractionIndex.applyMutation(input);
+    }
+
+    private async reloadLoadedMapsForMutation(
+        reloadMapIds: ReadonlyArray<number> | undefined,
+    ): Promise<void> {
+        if (!reloadMapIds || (reloadMapIds.length | 0) <= 0) {
+            return;
+        }
+        for (let index = 0; index < reloadMapIds.length; index++) {
+            const mapId = reloadMapIds[index];
+            if (mapId === undefined || !this.deps.hasLoadedMap(mapId | 0)) {
+                continue;
+            }
+            await this.deps.reloadLoadedMap(mapId | 0);
+        }
+    }
+
+    private invalidateRenderFrameForMutation(input: WorldMutationInput): void {
+        if (!this.shouldInvalidateRenderFrameForMutation(input)) {
+            return;
+        }
+        this.renderFrameCoordinator.invalidateLatestPacket();
+    }
+
+    private shouldInvalidateRenderFrameForMutation(input: WorldMutationInput): boolean {
         const objStaticInput = input.obj?.static;
         const objDynamicInput = input.obj?.dynamic;
         const locAnimationInput = input.loc?.animation;
@@ -356,12 +487,5 @@ export class ClientRuntime {
             (!!locAnimationInput?.animationPauseStates &&
                 (locAnimationInput.animationPauseStates.length | 0) > 0)
         );
-    }
-
-    private setCacheSwitchStatus(status: CacheSwitchStatus): void {
-        this.cacheSwitchStatus = status;
-        for (const listener of this.cacheSwitchListeners) {
-            listener(status);
-        }
     }
 }
