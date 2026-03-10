@@ -196,11 +196,6 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     async queueLoadMap(mapX: number, mapY: number): Promise<void> {
         const queuedActivationVersion = this.worldSession.captureActivationVersion();
-        const devsq = this.mapViewer.getDevFixedMapSquare();
-        if (devsq && (mapX !== devsq.mapX || mapY !== devsq.mapY)) {
-            // Fixed-square dev mode: never queue builds for other squares.
-            return;
-        }
         const staticMapPacket = await this.loadStaticMapPacket(mapX, mapY);
         if (!this.worldSession.isActivationVersionCurrent(queuedActivationVersion)) {
             return;
@@ -283,7 +278,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.mapManager.initializeForCache({
             mapFileIndex: this.mapViewer.session.mapFileIndex,
             fillEmptyTerrain: SceneBuilder.fillEmptyTerrain(this.mapViewer.session.cache.info),
-            fixedMapSquare: this.mapViewer.getDevFixedMapSquare(),
             camera: this.camera,
             frameCount: this.renderer.stats.frameCount,
             renderDistance: this.renderer.renderDistance,
@@ -311,8 +305,10 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     private async recreateRendererAndMapManager(): Promise<void> {
+        const fixedMapSquare = this.mapManager.getFixedMapSquare();
         this.renderer = this.createRenderer();
         this.mapManager = this.createMapManager();
+        this.mapManager.applyFixedMapSquare(fixedMapSquare);
 
         if (this.isInitialized) {
             await this.renderer.init(this.canvas);

@@ -3,9 +3,9 @@ import type { URLSearchParamsInit } from "react-router-dom";
 
 import { type Camera, ProjectionType } from "../renderer/Camera";
 import type { BackendKind } from "../util/BackendKind";
-import { MapManager } from "./MapManager";
+import { MapManager, type MapManagerFixedMapSquare } from "./MapManager";
 
-export type DevFixedMapSquare = Readonly<{ mapX: number; mapY: number }>;
+export type DevFixedMapSquare = MapManagerFixedMapSquare;
 
 export type MapViewerSearchRuntimeOptions = Readonly<{
     mapRenderBackend: BackendKind;

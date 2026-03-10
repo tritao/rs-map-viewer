@@ -126,7 +126,6 @@ export class MapViewer {
     private readonly mapImages: MapViewerMapImages;
 
     cameraSpeed: number = 1;
-    private devFixedMapSquare: DevFixedMapSquare | undefined;
     private walkDestination?: WalkDestination;
 
     static tryCreate(
@@ -330,7 +329,7 @@ export class MapViewer {
         applyMapViewerSearchParams({
             searchParams,
             camera: this.camera,
-            setDevFixedMapSquare: (square) => this.applyDevFixedMapSquare(square),
+            setDevFixedMapSquare: (square) => this.setDevFixedMapSquare(square),
         });
     }
 
@@ -341,7 +340,7 @@ export class MapViewer {
             latestCacheName: this.cacheList.latest.name,
             runtimeOptions: this.runtimeOptions,
             defaultRuntimeOptions: DEFAULT_RUNTIME_OPTIONS,
-            devFixedMapSquare: this.devFixedMapSquare,
+            devFixedMapSquare: this.getDevFixedMapSquare(),
         });
     }
 
@@ -355,12 +354,12 @@ export class MapViewer {
     }
 
     getDevFixedMapSquare(): DevFixedMapSquare | undefined {
-        return this.devFixedMapSquare;
+        return this.renderer.mapManager.getFixedMapSquare();
     }
 
     // Dev feature: pin map loading to a single square (speeds iteration; reduces memory).
     setDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
-        this.applyDevFixedMapSquare(square);
+        this.renderer.mapManager.applyFixedMapSquare(square);
         // Update URL immediately; no heavy work should run here.
         this.emitSearchParams();
     }
@@ -634,15 +633,6 @@ export class MapViewer {
             }`,
             "_blank",
         );
-    }
-
-    private applyDevFixedMapSquare(square: DevFixedMapSquare | undefined): void {
-        this.devFixedMapSquare = square;
-        if (square) {
-            this.renderer.mapManager.setFixedMapSquare(square.mapX, square.mapY);
-        } else {
-            this.renderer.mapManager.clearFixedMapSquare();
-        }
     }
 
     private notifySearchParamListeners(): void {

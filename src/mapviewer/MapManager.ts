@@ -76,6 +76,16 @@ export class MapManager {
         readonly removeMapFunction: RemoveMapFunction,
     ) {}
 
+    getFixedMapSquare(): MapManagerFixedMapSquare | undefined {
+        if (this.fixedMapId === undefined) {
+            return undefined;
+        }
+        return {
+            mapX: this.fixedMapId >> 8,
+            mapY: this.fixedMapId & 0xff,
+        };
+    }
+
     setFixedMapSquare(mapX: number, mapY: number): void {
         this.fixedMapId = getMapSquareId(mapX, mapY);
         // Drop any queued/loaded state outside the fixed square immediately.
@@ -141,7 +151,6 @@ export class MapManager {
         input: Readonly<{
             mapFileIndex: MapFileIndex;
             fillEmptyTerrain: boolean;
-            fixedMapSquare?: MapManagerFixedMapSquare;
             camera: Camera;
             frameCount: number;
             renderDistance: number;
@@ -149,7 +158,6 @@ export class MapManager {
         }>,
     ): void {
         this.init(input.mapFileIndex, input.fillEmptyTerrain);
-        this.applyFixedMapSquare(input.fixedMapSquare);
         this.update(input.camera, input.frameCount, input.renderDistance, input.unloadDistance);
     }
 
