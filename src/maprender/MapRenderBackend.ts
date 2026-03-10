@@ -18,7 +18,7 @@ import { MAP_RENDER_DRAW_BUCKET_KEYS } from "./MapRenderPayload";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
-} from "../shared/StaticMapPacket";
+} from "../runtime/MapRuntimePayload";
 import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
 

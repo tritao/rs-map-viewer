@@ -27,7 +27,7 @@ import type {
 } from "../world/WorldDeltaPacket";
 import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
 import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
-import type { ObjRenderData } from "../shared/StaticMapPacket";
+import type { ObjRenderData } from "../maprender/MapRenderData";
 import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "../renderer/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
@@ -47,7 +47,7 @@ import {
 import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import {
     staticMapObjStateToRenderData,
-} from "../shared/StaticMapPacket";
+} from "../maprender/MapObjState";
 import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
 import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
 import { LocLoadType } from "../rs/scene/SceneBuilder";

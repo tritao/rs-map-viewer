@@ -2,7 +2,7 @@ import type {
     NpcEvent,
 } from "../runtime/entities/NpcEvents";
 import type { NpcUpdateDelta } from "../runtime/entities/NpcUpdateDelta";
-import type { MapObjState } from "../shared/StaticMapPacket";
+import type { MapObjState } from "../maprender/MapObjState";
 
 export const NPC_STATE_DELTA_SPAWN_STRIDE = 8;
 export const NPC_STATE_DELTA_UPDATE_STRIDE = 14;

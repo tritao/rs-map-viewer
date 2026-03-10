@@ -4,12 +4,10 @@ import type { SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { MinimapData } from "../maprender/ts/MinimapData";
 import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import type { WorldDeltaPacket } from "../world/WorldDeltaPacket";
-import {
-    decodeStaticMapWirePacket,
-    type StaticMapPacket,
-} from "../shared/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
 import { LoadedCache } from "../util/Caches";
 import type { RenderDataWorker } from "./RenderDataWorker";
+import { decodeStaticMapWirePacket } from "./StaticMapWirePacket";
 import type {
     ApplyWorldDeltaResult,
     RenderFrameInputUpdate,

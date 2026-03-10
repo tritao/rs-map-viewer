@@ -1,7 +1,7 @@
 import {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type ObjRenderData,
-} from "../shared/StaticMapPacket";
+} from "../maprender/MapRenderData";
 
 export type MapObjRenderUpdate = Readonly<{
     mapId: number;

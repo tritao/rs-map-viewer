@@ -8,7 +8,7 @@ import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
-import type { StaticMapPacket } from "../shared/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
 import {
     type RenderFrameSeamSample,
     type RenderFrameCoordinator,

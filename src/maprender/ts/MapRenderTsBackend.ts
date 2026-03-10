@@ -40,11 +40,11 @@ import type { DrawRange } from "../../shared/DrawRange";
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
-} from "../../shared/StaticMapPacket";
+} from "../../runtime/MapRuntimePayload";
 import {
     buildMapRuntimePayloads,
-    mapObjStateFromRenderData,
-} from "../../shared/StaticMapPacket";
+} from "../../runtime/MapRuntimePayload";
+import { mapObjStateFromRenderData } from "../MapObjState";
 import type { MapRenderBuildDeps } from "../MapRenderBackend";
 import type { SdMapData } from "../MapRenderPayload";
 import { SdMapLoaderInput } from "../MapRenderPayload";
@@ -561,7 +561,6 @@ export class MapRenderTsBackend {
             modelInfoTextures,
             heightMapTextureData,
             drawRanges,
-            locsAnimated: sceneStage.locsAnimated,
             usedTextureIds,
             loadedTextures,
             npcDrawRangesBase,

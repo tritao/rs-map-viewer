@@ -9,7 +9,7 @@ import {
     type InteractionHit,
     type WorldInteractionTarget,
 } from "../../runtime/InteractionTargets";
-import type { StaticMapPacket } from "../../shared/StaticMapPacket";
+import type { StaticMapPacket } from "../../runtime/MapRuntimePayload";
 import type { WorldMutationInput } from "../../world/WorldSession";
 
 type MapObjInteractionState = Readonly<{

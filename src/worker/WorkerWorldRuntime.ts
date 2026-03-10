@@ -1,4 +1,4 @@
-import type { StaticMapPacket } from "../shared/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
 import type {
     WorldMapObjAddition,
     WorldDynamicMapObjUpdate,

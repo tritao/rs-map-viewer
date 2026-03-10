@@ -1,6 +1,6 @@
 import {
     type StaticMapPacket,
-} from "../shared/StaticMapPacket";
+} from "../runtime/MapRuntimePayload";
 import type { SceneLocPlacementOverride } from "../rs/scene/buildSceneFromMapBytesProvider";
 import type { LocModelType } from "../rs/config/loctype/LocModelType";
 import type { NpcEvent } from "../runtime/entities/NpcEvents";

@@ -13,7 +13,7 @@ import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapByt
 import {
     type MapObjState,
     type StaticMapObjState,
-} from "../shared/StaticMapPacket";
+} from "../maprender/MapObjState";
 import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
 import {
     type WorldDeltaPacket,

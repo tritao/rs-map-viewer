@@ -26,7 +26,7 @@ import {
     type StaticMapWirePacket,
     collectStaticMapWirePacketTransferables,
     encodeStaticMapWirePacket,
-} from "../shared/StaticMapPacket";
+} from "./StaticMapWirePacket";
 import { LoadedCache } from "../util/Caches";
 import { errorToString } from "../util/ErrorUtil";
 import { Hasher } from "../util/Hasher";

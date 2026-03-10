@@ -3,13 +3,16 @@ import type { SceneLocPlacementOverride } from "../rs/scene/buildSceneFromMapByt
 export {
     MAP_RENDER_DRAW_BUCKET_KEYS,
     type MapData,
+    type MapObjStateDrawRanges,
+    type MapObjStateModelInfoIndices,
+    type MapObjStateModelInfoTextures,
     type MapRenderDrawBucketKey,
     type ObjRenderData,
     type SdMapData,
     type SdRenderableData,
     type SdRenderableDrawRanges,
     type SdRenderableModelInfoTextures,
-} from "../shared/StaticMapPacket";
+} from "./MapRenderData";
 
 export type SdMapLoaderInput = Readonly<{
     mapX: number;

@@ -1,171 +1,20 @@
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
-import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
-
-export const MAP_RENDER_DRAW_BUCKET_KEYS = [
-    "base",
-    "alpha",
-    "lod",
-    "lodAlpha",
-    "interact",
-    "interactAlpha",
-    "interactLod",
-    "interactLodAlpha",
-] as const;
-
-export type MapRenderDrawBucketKey = (typeof MAP_RENDER_DRAW_BUCKET_KEYS)[number];
-
-export type SdRenderableModelInfoTextures = Readonly<
-    Record<MapRenderDrawBucketKey, Uint16Array>
->;
-
-export type SdRenderableDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
-
-export type ObjRenderData = Readonly<{
-    vertices: Uint8Array;
-    indices: Int32Array;
-    modelInfoTextures: SdRenderableModelInfoTextures;
-    modelInfoIndices: MapObjStateModelInfoIndices;
-    drawRanges: SdRenderableDrawRanges;
-    usedTextureIds: Int32Array;
-    objTypeIds: Int32Array;
-}>;
-
-export type SdRenderableData = {
-    readonly cacheName: string;
-
-    readonly borderSize: number;
-    readonly tileRenderFlags: Uint8Array[][];
-
-    readonly vertices: Uint8Array;
-    readonly indices: Int32Array;
-
-    readonly modelInfoTextures: SdRenderableModelInfoTextures;
-    readonly drawRanges: SdRenderableDrawRanges;
-
-    readonly locsAnimated: LocAnimatedData[];
-
-    readonly loadedTextures: Map<number, Int32Array>;
-    readonly npcDrawRangesBase?: Int32Array;
-    readonly npcDrawRangesAlpha?: Int32Array;
-    readonly npcVertices?: Uint8Array;
-    readonly npcIndices?: Int32Array;
-};
-
-export interface MapData {
-    mapX: number;
-    mapY: number;
-
-    cacheName: string;
-
-    maxLevel: number;
-    loadObjs: boolean;
-    loadNpcs: boolean;
-    loadLocs: boolean;
-
-    smoothTerrain: boolean;
-
-    minimapBlob: Blob;
-}
-
-export type SdMapData = MapData &
-    SdRenderableData & {
-        readonly mapId: number;
-        readonly heightMapTextureData: Int16Array;
-        readonly usedTextureIds: Int32Array;
-    };
-
-export type MapRuntimeRegistration = Readonly<{
-    borderSize: number;
-    tileRenderFlagsLevel1: Uint8Array[];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
-}>;
-
-export type MapObjStateModelInfoTextures = Readonly<
-    Record<MapRenderDrawBucketKey, Uint16Array>
->;
-
-export type MapObjStateDrawRanges = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
-
-export type MapObjStateModelInfoIndices = Readonly<Record<MapRenderDrawBucketKey, Int32Array>>;
-
-export type MapObjRenderState = Readonly<{
-    modelInfoTextures: MapObjStateModelInfoTextures;
-    modelInfoIndices: MapObjStateModelInfoIndices;
-    drawRanges: MapObjStateDrawRanges;
-}>;
-
-export type StaticMapObjState = Readonly<{
-    vertices: Uint8Array;
-    indices: Int32Array;
-    renderState: MapObjRenderState;
-    usedTextureIds: Int32Array;
-    objTypeIds: Int32Array;
-}>;
-
-export type MapObjState = Readonly<{
-    staticState?: StaticMapObjState;
-}>;
-
-export type MapRuntimeBootstrap = Readonly<{
-    npcOrderKeys: Int32Array;
-    mapObjState?: MapObjState;
-}>;
-
-export function buildMapRuntimeRegistration(input: {
-    borderSize: number;
-    tileRenderFlags: Uint8Array[][];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
-}): MapRuntimeRegistration {
-    return {
-        borderSize: input.borderSize | 0,
-        tileRenderFlagsLevel1: input.tileRenderFlags[1] ?? [],
-        locsAnimated: input.locsAnimated,
-        npcTypeAnimationTable: input.npcTypeAnimationTable ?? [],
-    };
-}
-
-export function buildMapRuntimeBootstrap(input: {
-    npcOrderKeys?: Int32Array;
-    mapObjState?: MapObjState;
-}): MapRuntimeBootstrap {
-    return {
-        npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        mapObjState: input.mapObjState,
-    };
-}
-
-export function buildMapRuntimePayloads(input: {
-    borderSize: number;
-    tileRenderFlags: Uint8Array[][];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
-    npcOrderKeys?: Int32Array;
-    mapObjState?: MapObjState;
-}): Readonly<{
-    runtimeRegistration: MapRuntimeRegistration;
-    runtimeBootstrap: MapRuntimeBootstrap;
-}> {
-    return {
-        runtimeRegistration: buildMapRuntimeRegistration({
-            borderSize: input.borderSize,
-            tileRenderFlags: input.tileRenderFlags,
-            locsAnimated: input.locsAnimated,
-            npcTypeAnimationTable: input.npcTypeAnimationTable,
-        }),
-        runtimeBootstrap: buildMapRuntimeBootstrap({
-            npcOrderKeys: input.npcOrderKeys,
-            mapObjState: input.mapObjState,
-        }),
-    };
-}
-
-export type StaticMapPacket = Readonly<{
-    mapData: SdMapData;
-    runtimeRegistration: MapRuntimeRegistration;
-    runtimeBootstrap: MapRuntimeBootstrap;
-}>;
+import type {
+    MapObjStateDrawRanges,
+    MapObjStateModelInfoIndices,
+    MapObjStateModelInfoTextures,
+    SdMapData,
+    SdRenderableDrawRanges,
+} from "../maprender/MapRenderData";
+import { MAP_RENDER_DRAW_BUCKET_KEYS } from "../maprender/MapRenderData";
+import type {
+    MapObjState,
+    StaticMapObjState,
+} from "../maprender/MapObjState";
+import type {
+    MapRuntimeBootstrap,
+    MapRuntimeRegistration,
+    StaticMapPacket,
+} from "../runtime/MapRuntimePayload";
 
 type StaticMapWireDrawRanges = Readonly<{
     drawRangeBucketLengths: Int32Array;
@@ -193,8 +42,6 @@ export type StaticMapWirePacket = Readonly<{
         mapObjState?: StaticMapObjStateWire;
     };
 }>;
-
-const NPC_DRAW_RANGE_STRIDE = 3;
 
 function pushTransferableUnique(
     out: Transferable[],
@@ -303,55 +150,6 @@ function unpackDrawRanges(
     ) as SdRenderableDrawRanges;
 }
 
-export function staticMapObjStateFromRenderData(
-    objRenderData: ObjRenderData | undefined,
-): StaticMapObjState | undefined {
-    if (!objRenderData) {
-        return undefined;
-    }
-    return {
-        vertices: objRenderData.vertices,
-        indices: objRenderData.indices,
-        renderState: {
-            modelInfoTextures: objRenderData.modelInfoTextures,
-            modelInfoIndices: objRenderData.modelInfoIndices,
-            drawRanges: objRenderData.drawRanges,
-        },
-        usedTextureIds: objRenderData.usedTextureIds,
-        objTypeIds: objRenderData.objTypeIds,
-    };
-}
-
-export function mapObjStateFromRenderData(
-    objRenderData: ObjRenderData | undefined,
-): MapObjState | undefined {
-    const staticState = staticMapObjStateFromRenderData(objRenderData);
-    return staticState ? { staticState } : undefined;
-}
-
-export function staticMapObjStateToRenderData(
-    mapObjState: StaticMapObjState | undefined,
-): ObjRenderData | undefined {
-    if (!mapObjState) {
-        return undefined;
-    }
-    return {
-        vertices: mapObjState.vertices,
-        indices: mapObjState.indices,
-        modelInfoTextures: mapObjState.renderState.modelInfoTextures,
-        modelInfoIndices: mapObjState.renderState.modelInfoIndices,
-        drawRanges: mapObjState.renderState.drawRanges,
-        usedTextureIds: mapObjState.usedTextureIds,
-        objTypeIds: mapObjState.objTypeIds,
-    };
-}
-
-export function mapObjStateToRenderData(
-    mapObjState: MapObjState | undefined,
-): ObjRenderData | undefined {
-    return staticMapObjStateToRenderData(mapObjState?.staticState);
-}
-
 function encodeMapObjRenderStateWire(
     mapObjState: StaticMapObjState | undefined,
 ): StaticMapObjRenderStateWire | undefined {
@@ -389,7 +187,7 @@ function decodeMapObjRenderStateWire(
             drawRanges: unpackDrawRanges(
                 mapObjState.drawRangeBucketLengths,
                 mapObjState.drawRangesPacked,
-            ),
+            ) as MapObjStateDrawRanges,
         },
         usedTextureIds: mapObjState.usedTextureIds,
         objTypeIds: mapObjState.objTypeIds,
@@ -449,30 +247,6 @@ export function decodeStaticMapWirePacket(packet: StaticMapWirePacket): StaticMa
             mapObjState: decodeMapObjStateWire(packet.runtimeBootstrap.mapObjState),
         },
     };
-}
-
-export function getStaticMapNpcSlotCount(packet: StaticMapPacket): number {
-    const mapData = packet.mapData;
-    const npcDrawRangeInts = mapData.npcDrawRangesBase?.length ?? 0;
-    if (npcDrawRangeInts % NPC_DRAW_RANGE_STRIDE !== 0) {
-        throw new Error(
-            `[map-render][npc] invalid npcDrawRangesBase length for map ${mapData.mapX},${mapData.mapY}: ` +
-                `len=${npcDrawRangeInts} stride=${NPC_DRAW_RANGE_STRIDE}`,
-        );
-    }
-    return (npcDrawRangeInts / NPC_DRAW_RANGE_STRIDE) | 0;
-}
-
-export function getValidatedStaticMapNpcOrderKeys(packet: StaticMapPacket): Int32Array {
-    const npcOrderKeys = packet.runtimeBootstrap.npcOrderKeys;
-    const npcSlotCount = getStaticMapNpcSlotCount(packet);
-    if ((npcOrderKeys.length | 0) !== (npcSlotCount | 0)) {
-        throw new Error(
-            `[map-render][npc] npc slot metadata mismatch for mapId=${packet.mapData.mapId | 0}: ` +
-                `orderKeys=${npcOrderKeys.length | 0} slots=${npcSlotCount | 0}`,
-        );
-    }
-    return npcOrderKeys;
 }
 
 export function collectStaticMapWirePacketTransferables(

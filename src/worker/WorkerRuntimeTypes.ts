@@ -1,6 +1,6 @@
 import type { NpcTypeAnimationEntry } from "../runtime/NpcTypeAnimationTable";
 import type { LocAnimatedData } from "../runtime/LocAnimatedData";
-import type { MapObjState } from "../shared/StaticMapPacket";
+import type { MapObjState } from "../maprender/MapObjState";
 
 export type WorkerViewState = Readonly<{
     cameraMapX: number;

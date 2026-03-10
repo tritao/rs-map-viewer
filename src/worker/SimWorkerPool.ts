@@ -15,7 +15,7 @@ import type {
 import {
     getValidatedStaticMapNpcOrderKeys,
     type StaticMapPacket,
-} from "../shared/StaticMapPacket";
+} from "../runtime/MapRuntimePayload";
 import { LoadedCache } from "../util/Caches";
 import type {
     MapRuntimeBootstrapInput,

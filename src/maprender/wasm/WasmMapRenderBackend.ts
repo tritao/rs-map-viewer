@@ -27,11 +27,11 @@ import type {
 import type {
     MapRuntimeBootstrap,
     MapRuntimeRegistration,
-} from "../../shared/StaticMapPacket";
+} from "../../runtime/MapRuntimePayload";
 import {
     buildMapRuntimePayloads,
-    mapObjStateFromRenderData,
-} from "../../shared/StaticMapPacket";
+} from "../../runtime/MapRuntimePayload";
+import { mapObjStateFromRenderData } from "../MapObjState";
 import { buildNpcGeometry } from "../../shared/build/NpcGeometryBuilder";
 import { buildObjRenderData } from "../../shared/build/ObjRenderDataBuilder";
 import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
@@ -345,7 +345,6 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             modelInfoTextures: overlay.modelInfoTextures,
             heightMapTextureData: overlay.heightMapTextureData,
             drawRanges: overlay.drawRanges,
-            locsAnimated: [],
             usedTextureIds: packet.usedTextureIds,
             loadedTextures: new Map(),
             npcDrawRangesBase: shouldUseFallbackNpcGeometry
@@ -401,7 +400,7 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const runtimePayloads = buildMapRuntimePayloads({
             borderSize,
             tileRenderFlags: data.tileRenderFlags,
-            locsAnimated: data.locsAnimated,
+            locsAnimated: [],
             npcTypeAnimationTable: npcFallbackData?.npcTypeAnimationTable ?? [],
             npcOrderKeys: shouldUseFallbackNpcGeometry
                 ? npcFallbackData?.npcOrderKeys

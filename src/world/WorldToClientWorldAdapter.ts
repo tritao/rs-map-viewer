@@ -4,7 +4,7 @@ import {
     NPC_INTERACTION_META_STRIDE,
     NPC_RANGES_BY_MAP_ID_STRIDE,
 } from "../renderer/RenderFramePacket";
-import type { StaticMapPacket } from "../shared/StaticMapPacket";
+import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
 import type {
     ClientActorSnapshot,
     ClientWorldState,
