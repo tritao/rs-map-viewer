@@ -11,142 +11,122 @@ import { errorToString, isAbortError, throwIfAborted } from "../util/ErrorUtil";
 import { EntityViewerContainer } from "./EntityViewerContainer";
 import {
     type EntityViewerKind,
-    type EntityViewerObjMode,
     type EntityViewerRequest,
     type EntityViewerResolvedData,
     createEntityViewerServices,
     resolveEntityViewerData,
 } from "./EntityViewerData";
 import { EntityViewerRenderer } from "./EntityViewerRenderer";
+import {
+    DEFAULT_ENTITY_VIEWER_IDS_BY_KIND,
+    getEntityViewerRenderTargetKey,
+    parseEntityViewerRequest,
+    updateEntityViewerCacheSearchParams,
+    updateEntityViewerRequestSearchParams,
+} from "./EntityViewerSearchParams";
 
 const cachesPromise = fetchCacheList();
-const DEFAULT_IDS_BY_KIND: Record<EntityViewerKind, number> = {
-    obj: 4151,
-    npc: 1,
-    loc: 10,
-    model: 0,
-};
 
-function parseEntityViewerKind(value: string | null): EntityViewerKind {
-    switch (value) {
-        case "npc":
-        case "loc":
-        case "model":
-            return value;
-        default:
-            return "obj";
-    }
-}
+type EntityViewerBootstrapState = Readonly<{
+    cacheList?: CacheList;
+    cacheInfo?: CacheInfo;
+    renderer?: EntityViewerRenderer;
+    downloadProgress?: DownloadProgress;
+    errorMessage?: string;
+}>;
 
-function parseRequest(searchParams: URLSearchParams): EntityViewerRequest {
-    const kind = parseEntityViewerKind(searchParams.get("kind"));
-    const id = Number.parseInt(searchParams.get("id") ?? "4151", 10);
-    const count = Number.parseInt(searchParams.get("count") ?? "1", 10);
-    const rotation = Number.parseInt(searchParams.get("rotation") ?? "0", 10);
-    const npcSeqId = Number.parseInt(searchParams.get("npcSeqId") ?? "-1", 10);
-    return {
-        kind,
-        id: Number.isFinite(id) ? Math.max(0, id | 0) : DEFAULT_IDS_BY_KIND[kind],
-        count: Number.isFinite(count) ? Math.max(1, count | 0) : 1,
-        rotation: Number.isFinite(rotation) ? rotation & 3 : 0,
-        objMode: parseObjMode(searchParams.get("objMode")),
-        icon36x32: searchParams.get("icon36x32") === "1",
-        iconOutline: searchParams.get("iconOutline") !== "0",
-        iconShadow: searchParams.get("iconShadow") !== "0",
-        npcSeqId: Number.isFinite(npcSeqId) ? npcSeqId | 0 : -1,
-        npcFrame: 0,
-    };
-}
-
-function parseObjMode(value: string | null): EntityViewerObjMode {
-    return value === "world" ? "world" : "icon";
-}
-
-function updateSearchParams(
-    current: URLSearchParams,
-    patch: Record<string, string | undefined>,
-): URLSearchParams {
-    const next = new URLSearchParams(current);
-    for (const [key, value] of Object.entries(patch)) {
-        if (value === undefined || value.length <= 0) {
-            next.delete(key);
-        } else {
-            next.set(key, value);
-        }
-    }
-    return next;
-}
-
-function getRenderTargetKey(request: EntityViewerRequest): string {
-    switch (request.kind) {
-        case "obj":
-            return `obj:${request.id}:${request.count}:${request.objMode}`;
-        case "npc":
-            return `npc:${request.id}`;
-        case "loc":
-            return `loc:${request.id}`;
-        case "model":
-            return `model:${request.id}`;
-    }
-}
-
-export default function EntityViewerApp(): JSX.Element {
-    const [searchParams, setSearchParams] = useSearchParams();
-    const [errorMessage, setErrorMessage] = useState<string>();
-    const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>();
+function useEntityViewerBootstrap(cacheName: string | null): EntityViewerBootstrapState {
     const [cacheList, setCacheList] = useState<CacheList>();
     const [cacheInfo, setCacheInfo] = useState<CacheInfo>();
     const [renderer, setRenderer] = useState<EntityViewerRenderer>();
-    const [entityLabel, setEntityLabel] = useState<string>();
-    const [resolvedEntity, setResolvedEntity] = useState<EntityViewerResolvedData>();
-    const [cameraYaw, setCameraYaw] = useState<number>(1024);
-    const [cameraPitch, setCameraPitch] = useState<number>(-180);
-    const [cameraDistance, setCameraDistance] = useState<number>(8);
-    const [npcPlaying, setNpcPlaying] = useState<boolean>(true);
-    const [npcFrame, setNpcFrame] = useState<number>(0);
-    const [lastIdsByKind, setLastIdsByKind] =
-        useState<Record<EntityViewerKind, number>>(DEFAULT_IDS_BY_KIND);
-    const request = useMemo(() => parseRequest(searchParams), [searchParams]);
-    const resolvedRequest = useMemo(
-        () => (request.kind === "npc" ? { ...request, npcFrame } : request),
-        [npcFrame, request],
-    );
-    const renderTargetKey = useMemo(() => getRenderTargetKey(resolvedRequest), [resolvedRequest]);
-    const npcAnimationKey = useMemo(
-        () => (request.kind === "npc" ? `npc:${request.id}:${request.npcSeqId}` : request.kind),
-        [request.id, request.kind, request.npcSeqId],
-    );
-    const previousNpcAnimationKeyRef = useRef<string>();
-    const npcFrameRef = useRef<number>(0);
+    const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>();
+    const [errorMessage, setErrorMessage] = useState<string>();
 
     useEffect(() => {
-        setLastIdsByKind((current) => {
-            const currentId = current[request.kind];
-            if (currentId === request.id) {
-                return current;
+        const abortController = new AbortController();
+        const { signal } = abortController;
+
+        const load = async () => {
+            const nextCacheList = await cachesPromise;
+            throwIfAborted(signal);
+            if (!nextCacheList) {
+                throw new Error("No caches found");
             }
-            return {
-                ...current,
-                [request.kind]: request.id,
-            };
-        });
-    }, [request.id, request.kind]);
+            setCacheList(nextCacheList);
+            const nextCacheInfo =
+                nextCacheList.caches.find((cache) => cache.name === cacheName) ??
+                nextCacheList.latest;
+            const context = await loadCacheContext(nextCacheInfo, signal, setDownloadProgress);
+            throwIfAborted(signal);
+            const nextRenderer = new EntityViewerRenderer(context.session);
+            throwIfAborted(signal);
+            setCacheInfo(nextCacheInfo);
+            setRenderer(nextRenderer);
+            setDownloadProgress(undefined);
+            setErrorMessage(undefined);
+        };
 
-    useEffect(() => {
-        if (previousNpcAnimationKeyRef.current !== npcAnimationKey) {
-            previousNpcAnimationKeyRef.current = npcAnimationKey;
-            setNpcFrame(0);
+        if (isIos) {
+            setErrorMessage("iOS is not supported.");
+        } else {
+            load().catch((error) => {
+                if (signal.aborted || isAbortError(error)) {
+                    return;
+                }
+                console.error(error);
+                setErrorMessage(errorToString(error));
+            });
         }
-    }, [npcAnimationKey]);
+        return () => {
+            abortController.abort();
+        };
+    }, [cacheName]);
+
+    return {
+        cacheList,
+        cacheInfo,
+        renderer,
+        downloadProgress,
+        errorMessage,
+    };
+}
+
+function useNpcAnimationFrame(
+    input: Readonly<{
+        renderer?: EntityViewerRenderer;
+        request: EntityViewerRequest;
+        playing: boolean;
+    }>,
+): number {
+    const [npcFrame, setNpcFrame] = useState<number>(0);
+    const npcAnimationKey = useMemo(
+        () =>
+            input.request.kind === "npc"
+                ? `npc:${input.request.id}:${input.request.npcSeqId}`
+                : input.request.kind,
+        [input.request.id, input.request.kind, input.request.npcSeqId],
+    );
+    const npcFrameRef = useRef<number>(0);
 
     useEffect(() => {
         npcFrameRef.current = npcFrame;
     }, [npcFrame]);
 
     useEffect(() => {
-        if (request.kind !== "npc" || !npcPlaying || request.npcSeqId < 0 || !renderer) {
+        npcFrameRef.current = 0;
+        setNpcFrame(0);
+    }, [npcAnimationKey]);
+
+    useEffect(() => {
+        if (
+            input.request.kind !== "npc" ||
+            !input.playing ||
+            input.request.npcSeqId < 0 ||
+            !input.renderer
+        ) {
             return;
         }
+        const renderer = input.renderer;
 
         let cancelled = false;
         let frameHandle = 0;
@@ -161,7 +141,7 @@ export default function EntityViewerApp(): JSX.Element {
             lastTimestamp = timestamp;
             accumulatedMs += deltaMs;
 
-            const seqResult = renderer.session.loaders.seqTypeLoader.tryLoad(request.npcSeqId);
+            const seqResult = renderer.session.loaders.seqTypeLoader.tryLoad(input.request.npcSeqId);
             if (seqResult.ok && seqResult.value.frameIds.length > 0) {
                 const seqType = seqResult.value;
                 let currentFrame = Math.max(
@@ -204,50 +184,53 @@ export default function EntityViewerApp(): JSX.Element {
             cancelled = true;
             cancelAnimationFrame(frameHandle);
         };
-    }, [npcPlaying, renderer, request.kind, request.npcSeqId]);
+    }, [input.playing, input.renderer, input.request.kind, input.request.npcSeqId]);
+
+    return npcFrame;
+}
+
+export default function EntityViewerApp(): JSX.Element {
+    const [searchParams, setSearchParams] = useSearchParams();
+    const selectedCacheName = searchParams.get("cache");
+    const { cacheList, cacheInfo, renderer, downloadProgress, errorMessage: bootstrapError } =
+        useEntityViewerBootstrap(selectedCacheName);
+    const [resolveErrorMessage, setResolveErrorMessage] = useState<string>();
+    const [entityLabel, setEntityLabel] = useState<string>();
+    const [resolvedEntity, setResolvedEntity] = useState<EntityViewerResolvedData>();
+    const [cameraYaw, setCameraYaw] = useState<number>(1024);
+    const [cameraPitch, setCameraPitch] = useState<number>(-180);
+    const [cameraDistance, setCameraDistance] = useState<number>(8);
+    const [npcPlaying, setNpcPlaying] = useState<boolean>(true);
+    const [lastIdsByKind, setLastIdsByKind] =
+        useState<Record<EntityViewerKind, number>>(DEFAULT_ENTITY_VIEWER_IDS_BY_KIND);
+    const request = useMemo(() => parseEntityViewerRequest(searchParams), [searchParams]);
+    const npcFrame = useNpcAnimationFrame({
+        renderer,
+        request,
+        playing: npcPlaying,
+    });
+    const resolvedRequest = useMemo(
+        () => (request.kind === "npc" ? { ...request, npcFrame } : request),
+        [npcFrame, request],
+    );
+    const renderTargetKey = useMemo(
+        () => getEntityViewerRenderTargetKey(resolvedRequest),
+        [resolvedRequest],
+    );
+    const errorMessage = bootstrapError ?? resolveErrorMessage;
 
     useEffect(() => {
-        const abortController = new AbortController();
-        const { signal } = abortController;
-        const load = async () => {
-            const cacheList = await cachesPromise;
-            throwIfAborted(signal);
-            if (!cacheList) {
-                throw new Error("No caches found");
+        setLastIdsByKind((current) => {
+            const currentId = current[request.kind];
+            if (currentId === request.id) {
+                return current;
             }
-            setCacheList(cacheList);
-            const cacheNameParam = searchParams.get("cache");
-            const nextCacheInfo =
-                cacheList.caches.find((cache) => cache.name === cacheNameParam) ?? cacheList.latest;
-            const context = await loadCacheContext(
-                nextCacheInfo,
-                signal,
-                setDownloadProgress,
-            );
-            throwIfAborted(signal);
-            const nextRenderer = new EntityViewerRenderer(context.session);
-            throwIfAborted(signal);
-            setCacheInfo(nextCacheInfo);
-            setRenderer(nextRenderer);
-            setDownloadProgress(undefined);
-            setErrorMessage(undefined);
-        };
-
-        if (isIos) {
-            setErrorMessage("iOS is not supported.");
-        } else {
-            load().catch((error) => {
-                if (signal.aborted || isAbortError(error)) {
-                    return;
-                }
-                console.error(error);
-                setErrorMessage(errorToString(error));
-            });
-        }
-        return () => {
-            abortController.abort();
-        };
-    }, [searchParams.get("cache")]);
+            return {
+                ...current,
+                [request.kind]: request.id,
+            };
+        });
+    }, [request.id, request.kind]);
 
     useEffect(() => {
         if (!renderer) {
@@ -266,12 +249,12 @@ export default function EntityViewerApp(): JSX.Element {
             setCameraDistance(renderer.getOrbitDistance());
             setEntityLabel(resolved.label);
             setResolvedEntity(resolved);
-            setErrorMessage(undefined);
+            setResolveErrorMessage(undefined);
         } catch (error) {
             renderer.setRenderData(undefined);
             setEntityLabel(undefined);
             setResolvedEntity(undefined);
-            setErrorMessage(errorToString(error));
+            setResolveErrorMessage(errorToString(error));
         }
     }, [renderTargetKey, renderer, resolvedRequest]);
 
@@ -300,44 +283,17 @@ export default function EntityViewerApp(): JSX.Element {
                 cameraPitch={cameraPitch}
                 cameraDistance={cameraDistance}
                 onRequestChange={(nextRequest) => {
-                    const effectiveId =
-                        nextRequest.kind === request.kind
-                            ? nextRequest.id
-                            : lastIdsByKind[nextRequest.kind] ??
-                              DEFAULT_IDS_BY_KIND[nextRequest.kind];
-                    const resetNpcAnimation =
-                        nextRequest.kind === "npc" &&
-                        (request.kind !== "npc" || effectiveId !== request.id);
                     setSearchParams(
-                        updateSearchParams(searchParams, {
-                            kind: nextRequest.kind,
-                            id: effectiveId.toString(),
-                            count: nextRequest.count.toString(),
-                            rotation: nextRequest.rotation.toString(),
-                            objMode: nextRequest.kind === "obj" ? nextRequest.objMode : undefined,
-                            icon36x32:
-                                nextRequest.kind === "obj" && nextRequest.icon36x32
-                                    ? "1"
-                                    : undefined,
-                            iconOutline:
-                                nextRequest.kind === "obj" && !nextRequest.iconOutline
-                                    ? "0"
-                                    : undefined,
-                            iconShadow:
-                                nextRequest.kind === "obj" && !nextRequest.iconShadow
-                                    ? "0"
-                                    : undefined,
-                            npcSeqId:
-                                nextRequest.kind === "npc" &&
-                                !resetNpcAnimation &&
-                                nextRequest.npcSeqId >= 0
-                                    ? nextRequest.npcSeqId.toString()
-                                    : undefined,
+                        updateEntityViewerRequestSearchParams({
+                            currentSearchParams: searchParams,
+                            currentRequest: request,
+                            nextRequest,
+                            lastIdsByKind,
                         }),
                     );
                 }}
                 onCacheChange={(cacheName) =>
-                    setSearchParams(updateSearchParams(searchParams, { cache: cacheName }))
+                    setSearchParams(updateEntityViewerCacheSearchParams(searchParams, cacheName))
                 }
                 onNpcPlayingChange={setNpcPlaying}
                 onCameraChange={(field, value) => {
