@@ -513,8 +513,8 @@ export const MapViewerControls = memo(
                                 mapRenderTelemetry: opts.mapRenderTelemetry,
                             });
                         }),
-                        "Reset Visible Loc Animations": button(async () => {
-                            await mapViewer.resetVisibleLocAnimations();
+                        "Restart Visible Object Animations": button(async () => {
+                            await mapViewer.restartVisibleWorldObjectAnimations();
                         }),
                         "Restore Visible Ground Items": button(async () => {
                             await mapViewer.restoreVisibleGroundItems();
@@ -538,14 +538,14 @@ export const MapViewerControls = memo(
                             step: 1,
                             onChange: setSpawnItemCount,
                         },
-                        "Spawn Ground Item At Camera": button(async () => {
-                            await mapViewer.spawnGroundItemAtCamera(
+                        "Drop Ground Item At Camera": button(async () => {
+                            await mapViewer.dropGroundItemAtCamera(
                                 spawnItemId | 0,
                                 spawnItemCount | 0,
                             );
                         }),
-                        "Clear Visible Dynamic Ground Items": button(async () => {
-                            await mapViewer.clearVisibleDynamicGroundItems();
+                        "Clear Visible Dropped Items": button(async () => {
+                            await mapViewer.clearVisibleDroppedItems();
                         }),
                     },
                     { collapsed: true },

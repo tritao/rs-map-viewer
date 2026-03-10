@@ -39,12 +39,17 @@ export function MapViewerContainer({ mapViewer }: MapViewerContainerProps): JSX.
             setCameraYaw(mapViewer.camera.getYaw());
         }
 
-        if (mapViewer.menuEntries.length > 0 && mapViewer.menuX !== -1 && mapViewer.menuY !== -1) {
+        const menuState = mapViewer.getMenuState();
+        if (
+            menuState.entries.length > 0 &&
+            menuState.x !== -1 &&
+            menuState.y !== -1
+        ) {
             setMenuProps({
-                x: mapViewer.menuX,
-                y: mapViewer.menuY,
-                tooltip: !mapViewer.menuOpen,
-                entries: mapViewer.menuEntries,
+                x: menuState.x,
+                y: menuState.y,
+                tooltip: !menuState.open,
+                entries: [...menuState.entries],
                 debugId: mapViewer.debugId,
             });
         } else {

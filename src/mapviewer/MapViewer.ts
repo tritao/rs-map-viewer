@@ -1,135 +1,92 @@
 import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
+import { ClientCommandService } from "../client/actions/ClientCommandService";
+import {
+    DebugActionService,
+    getCameraMapPosition,
+} from "../debug/DebugActionService";
+import {
+    ClientRuntime,
+    type ClientRuntimeCacheContext,
+    type ClientRuntimeOptions,
+    type CacheSwitchStatus,
+} from "../client/runtime/ClientRuntime";
+import {
+    ClientCommandRuntime,
+    type ClientPlayerIntent,
+} from "../client/runtime/ClientCommandRuntime";
+import { MapViewerMapImages } from "./MapViewerMapImages";
+import {
+    buildMapViewerSearchParams,
+    parseMapViewerSearchParams,
+    type DevFixedMapSquare,
+    type SearchParamsListener,
+} from "./MapViewerSearchParams";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { MenuTargetType } from "../rs/MenuEntry";
 import { CacheInfo } from "../rs/cache/CacheInfo";
-import { DownloadProgress, ProgressListener } from "../rs/cache/platform/CacheLoader";
+import { ProgressListener } from "../rs/cache/platform/CacheLoader";
 import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
 import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
+import type { ObjActionTargetInstance } from "../rs/MenuEntry";
 import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
 import { initErrorToString } from "../rs/loaders/InitError";
-import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import type { StaticMapPacket } from "../shared/StaticMapPacket";
-import { type WorldInput } from "../world/WorldSession";
-import type { BackendKind } from "../util/BackendKind";
 import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
-import { Result, err, ok } from "../util/Result";
+import { Result, ok } from "../util/Result";
+import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
-import { Camera, CameraView, ProjectionType } from "../renderer/Camera";
-import { MapManager } from "./MapManager";
+import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
+import {
+    type WorldMutationInput,
+    WorldSession,
+} from "../world/WorldSession";
+import { Camera, CameraView } from "../renderer/Camera";
+import { ClientWorldState } from "../client/world/ClientWorldState";
+import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
 import {
     MapViewerRenderer,
     type MapViewerStaticMapRuntime,
     type MapViewerStaticMapRuntimeCallbacks,
 } from "./MapViewerRenderer";
-import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
-import { WorldSession } from "../world/WorldSession";
+import {
+    advanceWalkNavigation,
+    resolveWalkDestination,
+    type WalkDestination,
+} from "./MapViewerNavigation";
+
+export type { CacheSwitchStatus } from "../client/runtime/ClientRuntime";
 
 const DEFAULT_RENDER_DISTANCE = isWallpaperEngine ? 512 : 128;
-
-const CACHED_MAP_IMAGE_PREFIX = "/map-images/";
-
-type CacheContext = {
-    readonly loadedCache: LoadedCache;
-    readonly session: CacheSession;
+const EMPTY_MENU_ENTRIES: ReadonlyArray<OsrsMenuEntry> = [];
+const EMPTY_MENU_STATE: ViewerMenuState = {
+    open: false,
+    openedFrame: 0,
+    x: -1,
+    y: -1,
+    entries: EMPTY_MENU_ENTRIES,
 };
 
-export type CacheSwitchStatus =
-    | { state: "idle" }
-    | { state: "switching"; cacheName: string; progress?: DownloadProgress }
-    | { state: "error"; cacheName: string; message: string };
-
-type CacheSwitchStatusListener = (status: CacheSwitchStatus) => void;
-type DevFixedMapSquare = Readonly<{ mapX: number; mapY: number }>;
-
-export type MapViewerRuntimeOptions = Readonly<{
-    mapRenderBackend: BackendKind;
-    mapRenderTelemetry: boolean;
+type CacheContext = ClientRuntimeCacheContext;
+type ViewerMenuState = Readonly<{
+    open: boolean;
+    openedFrame: number;
+    x: number;
+    y: number;
+    entries: ReadonlyArray<OsrsMenuEntry>;
 }>;
+
+export type MapViewerRuntimeOptions = ClientRuntimeOptions;
 
 const DEFAULT_RUNTIME_OPTIONS: MapViewerRuntimeOptions = {
     mapRenderBackend: "ts",
     mapRenderTelemetry: false,
 };
-
-type SearchParamsListener = (params: URLSearchParamsInit) => void;
-
-type MapViewerShell = Readonly<{
-    worldSession: WorldSession;
-    renderFrameCoordinator: RenderFrameCoordinator;
-    createStaticMapRuntime(
-        callbacks: MapViewerStaticMapRuntimeCallbacks,
-    ): MapViewerStaticMapRuntime;
-}>;
-
-type MapViewerStaticMapRuntimeDeps = Readonly<{
-    worldSession: WorldSession;
-    renderFrameCoordinator: RenderFrameCoordinator;
-}> &
-    MapViewerStaticMapRuntimeCallbacks;
-
-class MapViewerStaticMapRuntimeImpl implements MapViewerStaticMapRuntime {
-    constructor(private readonly deps: MapViewerStaticMapRuntimeDeps) {}
-
-    async applyPacket(
-        packet: StaticMapPacket,
-        input: Readonly<{
-            activationVersion: number;
-            replaceMapId?: number;
-            invalidateLatestPacket?: boolean;
-        }>,
-    ): Promise<boolean> {
-        const replaceMapId = input.replaceMapId;
-        if (replaceMapId !== undefined) {
-            this.deps.detachLoadedMapRuntime(replaceMapId);
-        }
-        try {
-            const ok = await this.deps.worldSession.activateLoadedMap({
-                staticMap: packet,
-                activationVersion: input.activationVersion,
-            });
-            if (!ok) {
-                return false;
-            }
-        } catch (error: unknown) {
-            const { mapX, mapY } = packet.mapData;
-            const action = replaceMapId !== undefined ? "reload" : "register";
-            console.warn(
-                `[map-render] failed to ${action} worker sim state for ${mapX},${mapY}`,
-                error,
-            );
-            return false;
-        }
-
-        await this.deps.finalizeLoadedMap(packet);
-        if (input.invalidateLatestPacket === true) {
-            this.deps.renderFrameCoordinator.invalidateLatestPacket();
-        }
-        return true;
-    }
-
-    async reloadMap(mapId: number): Promise<boolean> {
-        const normalizedMapId = mapId | 0;
-        const mapX = (normalizedMapId >> 8) & 0xff;
-        const mapY = normalizedMapId & 0xff;
-        const staticMapPacket = await this.deps.loadStaticMapPacket(mapX, mapY);
-        if (!staticMapPacket || !this.deps.isValidMapPacket(staticMapPacket)) {
-            return false;
-        }
-        return await this.applyPacket(staticMapPacket, {
-            activationVersion: this.deps.worldSession.captureActivationVersion(),
-            replaceMapId: normalizedMapId,
-            invalidateLatestPacket: true,
-        });
-    }
-}
 
 function normalizeRuntimeOptions(options?: WorkerRuntimeOptions): MapViewerRuntimeOptions {
     return {
@@ -145,323 +102,6 @@ function runtimeOptionsEqual(a: MapViewerRuntimeOptions, b: MapViewerRuntimeOpti
     );
 }
 
-function parseDevMapSquare(value: string | null): DevFixedMapSquare | undefined {
-    if (!value) {
-        return undefined;
-    }
-    const m = /^(\d+):(\d+)$/.exec(value.trim());
-    if (!m) {
-        return undefined;
-    }
-    const mapX = Number(m[1]);
-    const mapY = Number(m[2]);
-    if (
-        !Number.isFinite(mapX) ||
-        !Number.isFinite(mapY) ||
-        mapX < 0 ||
-        mapY < 0 ||
-        mapX >= MapManager.MAX_MAP_X ||
-        mapY >= MapManager.MAX_MAP_Y
-    ) {
-        return undefined;
-    }
-    return { mapX, mapY };
-}
-
-function createMapViewerShell(
-    viewer: MapViewer,
-    renderWorkerPool: RenderDataWorkerPool,
-    simWorkerPool: SimWorkerPool,
-): MapViewerShell {
-    const worldSession = new WorldSession({
-        worldRuntime: new WorkerWorldRuntime({
-            renderRuntime: renderWorkerPool.frame,
-            simRuntime: simWorkerPool.world,
-        }),
-    });
-    const renderFrameCoordinator = new RenderFrameCoordinator({
-        worldRuntime: simWorkerPool.world,
-        renderFrameRuntime: renderWorkerPool.frame,
-        getLodDistance: () => viewer.renderer.renderer.lodDistance,
-        getHoveredMapIdsPacked: () =>
-            viewer.renderer.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
-        getVisibleMapIds: () => viewer.renderer.getVisibleMapIdsPackedForFrameCoordinator(),
-        getCameraMapX: () => viewer.camera.getMapX(),
-        getCameraMapY: () => viewer.camera.getMapY(),
-        reportSeamSample: (sample) => viewer.renderer.reportRenderFrameSeamSample(sample),
-    });
-    return {
-        worldSession,
-        renderFrameCoordinator,
-        createStaticMapRuntime: (callbacks) =>
-            new MapViewerStaticMapRuntimeImpl({
-                worldSession,
-                renderFrameCoordinator,
-                ...callbacks,
-            }),
-    };
-}
-
-type MapViewerCacheSwitcherDeps<TContext> = Readonly<{
-    getCurrentCacheName(): string;
-    loadCacheContext(
-        cacheInfo: CacheInfo,
-        signal?: AbortSignal,
-        progressListener?: ProgressListener,
-    ): Promise<TContext>;
-    applySwitchedCacheContext(context: TContext): Promise<void>;
-}>;
-
-class MapViewerCacheSwitcher<TContext> {
-    private readonly listeners = new Set<CacheSwitchStatusListener>();
-    private status: CacheSwitchStatus = { state: "idle" };
-    private nonce = 0;
-    private abortController?: AbortController;
-
-    constructor(private readonly deps: MapViewerCacheSwitcherDeps<TContext>) {}
-
-    subscribeStatus(listener: CacheSwitchStatusListener): () => void {
-        this.listeners.add(listener);
-        listener(this.status);
-        return () => this.listeners.delete(listener);
-    }
-
-    getStatus(): CacheSwitchStatus {
-        return this.status;
-    }
-
-    async switchCache(cacheInfo: CacheInfo): Promise<void> {
-        if (cacheInfo.name === this.deps.getCurrentCacheName()) {
-            return;
-        }
-
-        this.abortController?.abort();
-        this.abortController = new AbortController();
-        const activeAbort = this.abortController;
-        const nonce = (++this.nonce) | 0;
-
-        this.setStatus({ state: "switching", cacheName: cacheInfo.name });
-
-        try {
-            const context = await this.deps.loadCacheContext(
-                cacheInfo,
-                activeAbort.signal,
-                (progress) => {
-                    this.setStatus({
-                        state: "switching",
-                        cacheName: cacheInfo.name,
-                        progress,
-                    });
-                },
-            );
-
-            if ((nonce | 0) !== (this.nonce | 0)) {
-                this.setStatus({ state: "idle" });
-                return;
-            }
-
-            await this.deps.applySwitchedCacheContext(context);
-            this.setStatus({ state: "idle" });
-        } catch (error: unknown) {
-            if ((nonce | 0) !== (this.nonce | 0)) {
-                this.setStatus({ state: "idle" });
-                return;
-            }
-            const message = error instanceof Error ? error.message : String(error);
-            this.setStatus({ state: "error", cacheName: cacheInfo.name, message });
-        }
-    }
-
-    private setStatus(status: CacheSwitchStatus): void {
-        this.status = status;
-        for (const listener of this.listeners) {
-            listener(status);
-        }
-    }
-}
-
-type MapViewerMapImagesDeps = Readonly<{
-    renderWorkerPool: RenderDataWorkerPool;
-    mapImageCache: Cache;
-    getLoadedCacheName(): string;
-    getMapManager(): MapManager;
-}>;
-
-class MapViewerMapImages {
-    private readonly mapImageUrls = new Map<number, string>();
-    private readonly minimapImageUrls = new Map<number, string>();
-    private readonly loadingMapImageIds = new Set<number>();
-
-    constructor(private readonly deps: MapViewerMapImagesDeps) {}
-
-    static getCachedMapImageUrl(mapX: number, mapY: number): string {
-        return CACHED_MAP_IMAGE_PREFIX + `${mapX}_${mapY}.png`;
-    }
-
-    loadCachedUrls(): void {
-        this.deps.renderWorkerPool.build.loadCachedMapImages().then((mapImageUrls) => {
-            mapImageUrls.forEach((value, key) => this.mapImageUrls.set(key, value));
-        });
-    }
-
-    async queueLoadMapImage(mapX: number, mapY: number): Promise<void> {
-        const mapManager = this.deps.getMapManager();
-        const mapId = getMapSquareId(mapX, mapY);
-        if (
-            this.loadingMapImageIds.size > this.deps.renderWorkerPool.size * 4 ||
-            this.mapImageUrls.has(mapId) ||
-            this.loadingMapImageIds.has(mapId) ||
-            mapManager.invalidMapIds.has(mapId) ||
-            mapManager.loadingMapIds.has(mapId)
-        ) {
-            return;
-        }
-        this.loadingMapImageIds.add(mapId);
-
-        const minimapData = await this.deps.renderWorkerPool.build.loadMapImage(
-            mapX,
-            mapY,
-            0,
-            true,
-        );
-        if (minimapData) {
-            const url = URL.createObjectURL(minimapData.minimapBlob);
-            this.setMapImageUrl(mapX, mapY, url, false);
-        } else {
-            mapManager.invalidMapIds.add(mapId);
-        }
-
-        this.loadingMapImageIds.delete(mapId);
-    }
-
-    getMapImageUrl(mapX: number, mapY: number, minimap: boolean): string | undefined {
-        if (mapX < 0 || mapY < 0 || mapX >= MapManager.MAX_MAP_X || mapY >= MapManager.MAX_MAP_Y) {
-            return undefined;
-        }
-        const urls = minimap ? this.minimapImageUrls : this.mapImageUrls;
-        if (minimap) {
-            this.deps.getMapManager().loadMap(mapX, mapY);
-        } else {
-            void this.queueLoadMapImage(mapX, mapY);
-        }
-        return urls.get(getMapSquareId(mapX, mapY));
-    }
-
-    setMapImageUrl(
-        mapX: number,
-        mapY: number,
-        url: string,
-        minimap: boolean,
-        cache: boolean = true,
-    ): void {
-        const mapId = getMapSquareId(mapX, mapY);
-        const urls = minimap ? this.minimapImageUrls : this.mapImageUrls;
-        const old = urls.get(mapId);
-        if (old) {
-            URL.revokeObjectURL(old);
-        }
-        if (cache) {
-            fetch(url).then((resp) => {
-                if (resp.ok) {
-                    const request = new Request(MapViewerMapImages.getCachedMapImageUrl(mapX, mapY), {
-                        headers: {
-                            "RS-Cache-Name": this.deps.getLoadedCacheName(),
-                        },
-                    });
-                    this.deps.mapImageCache.put(request, resp);
-                }
-            });
-        }
-        urls.set(mapId, url);
-    }
-
-    clear(): void {
-        for (const url of this.mapImageUrls.values()) {
-            URL.revokeObjectURL(url);
-        }
-        for (const url of this.minimapImageUrls.values()) {
-            URL.revokeObjectURL(url);
-        }
-        this.mapImageUrls.clear();
-        this.minimapImageUrls.clear();
-        this.loadingMapImageIds.clear();
-    }
-}
-
-function buildMapViewerSearchParams(input: Readonly<{
-    camera: Camera;
-    loadedCacheName: string;
-    latestCacheName: string;
-    runtimeOptions: MapViewerRuntimeOptions;
-    devFixedMapSquare?: DevFixedMapSquare;
-}>): URLSearchParamsInit {
-    const cx = input.camera.getPosX().toFixed(2).toString();
-    const cy = (-input.camera.getPosY()).toFixed(2);
-    const cz = input.camera.getPosZ().toFixed(2).toString();
-    const yaw = input.camera.yaw & 2047;
-    const params: Record<string, string> = {
-        cx,
-        cy,
-        cz,
-        p: (input.camera.pitch | 0).toString(),
-        y: yaw.toString(),
-        v: "1",
-    };
-
-    if (input.camera.projectionType === ProjectionType.ORTHO) {
-        params.pt = "o";
-        params.z = input.camera.orthoZoom.toString();
-    }
-    if (input.loadedCacheName !== input.latestCacheName) {
-        params.cache = input.loadedCacheName;
-    }
-    if (input.runtimeOptions.mapRenderBackend !== DEFAULT_RUNTIME_OPTIONS.mapRenderBackend) {
-        params.mrb = input.runtimeOptions.mapRenderBackend === "cpp-wasm" ? "cpp" : "ts";
-    }
-    if (input.runtimeOptions.mapRenderTelemetry) {
-        params.mrt = "1";
-    }
-    if (input.devFixedMapSquare) {
-        params.devsq = `${input.devFixedMapSquare.mapX}:${input.devFixedMapSquare.mapY}`;
-    }
-
-    return params;
-}
-
-type ParsedMapViewerSearchParams = Readonly<{
-    position?: vec3;
-    projectionType?: ProjectionType;
-    orthoZoom?: number;
-    pitch?: number;
-    yaw?: number;
-    devFixedMapSquare?: DevFixedMapSquare;
-}>;
-
-function parseMapViewerSearchParams(
-    searchParams: URLSearchParams,
-): ParsedMapViewerSearchParams {
-    const cx = searchParams.get("cx");
-    const cy = searchParams.get("cy");
-    const cz = searchParams.get("cz");
-    const pitch = searchParams.get("p");
-    const yaw = searchParams.get("y");
-    const version = searchParams.get("v");
-    const zoom = searchParams.get("z");
-
-    return {
-        position:
-            cx && cy && cz
-                ? vec3.fromValues(parseFloat(cx), -parseFloat(cy), parseFloat(cz))
-                : undefined,
-        projectionType:
-            searchParams.get("pt") === "o" ? ProjectionType.ORTHO : undefined,
-        orthoZoom: zoom ? parseInt(zoom) : undefined,
-        pitch: pitch ? (version ? parseInt(pitch) : -parseInt(pitch)) : undefined,
-        yaw: yaw ? (version ? parseInt(yaw) : 2048 - parseInt(yaw)) : undefined,
-        devFixedMapSquare: parseDevMapSquare(searchParams.get("devsq")),
-    };
-}
-
 export class MapViewer {
     devLocReplacementTypeId: number = 0;
 
@@ -470,7 +110,8 @@ export class MapViewer {
     pathfinder: Pathfinder = new Pathfinder();
 
     renderer!: MapViewerRenderer;
-    private cacheContext: CacheContext;
+    readonly debugActions: DebugActionService;
+    private readonly clientRuntime: ClientRuntime;
 
     // Settings
 
@@ -485,16 +126,9 @@ export class MapViewer {
     debugId: boolean = false;
 
     // Events/state
-    private readonly searchParamsListeners = new Set<SearchParamsListener>();
+    private readonly searchParamListeners = new Set<SearchParamsListener>();
     private searchParamsDebounceTimer?: number;
-
-    private readonly cacheSwitcher: MapViewerCacheSwitcher<CacheContext>;
-
-    menuOpen: boolean = false;
-    menuOpenedFrame: number = 0;
-    menuX: number = -1;
-    menuY: number = -1;
-    menuEntries: OsrsMenuEntry[] = [];
+    private menuState: ViewerMenuState = EMPTY_MENU_STATE;
 
     debugText?: string;
 
@@ -502,6 +136,7 @@ export class MapViewer {
 
     cameraSpeed: number = 1;
     private devFixedMapSquare: DevFixedMapSquare | undefined;
+    private walkDestination?: WalkDestination;
 
     static tryCreate(
         renderWorkerPool: RenderDataWorkerPool,
@@ -557,16 +192,74 @@ export class MapViewer {
         runtimeOptions?: WorkerRuntimeOptions,
         initialSearchParams?: URLSearchParams,
     ) {
-        this.cacheContext = context;
-        this.runtimeOptions = normalizeRuntimeOptions(runtimeOptions);
-        const viewerShell = createMapViewerShell(this, renderWorkerPool, simWorkerPool);
+        const normalizedRuntimeOptions = normalizeRuntimeOptions(runtimeOptions);
+        this.runtimeOptions = normalizedRuntimeOptions;
+        const clientWorldState = new ClientWorldState();
+        const clientCommands = new ClientCommandService({
+            clientWorldState,
+        });
+        const clientCommandRuntime = new ClientCommandRuntime();
+        const worldToClientWorldAdapter = new WorldToClientWorldAdapter({
+            clientWorldState,
+        });
+        const worldInteractionIndex = new WorldInteractionIndex();
+        const worldSession = new WorldSession({
+            worldRuntime: new WorkerWorldRuntime({
+                renderRuntime: renderWorkerPool.frame,
+                simRuntime: simWorkerPool.world,
+            }),
+        });
+        const renderFrameCoordinator = new RenderFrameCoordinator({
+            worldRuntime: simWorkerPool.world,
+            renderFrameRuntime: renderWorkerPool.frame,
+            getLodDistance: () => this.renderer.renderer.lodDistance,
+            getHoveredMapIdsPacked: () =>
+                this.renderer.renderer.getInteractionSnapshotRenderer?.()?.getHoveredMapIdsPacked(),
+            getVisibleMapIds: () => this.renderer.getVisibleMapIdsPackedForFrameCoordinator(),
+            getCameraMapX: () => this.camera.getMapX(),
+            getCameraMapY: () => this.camera.getMapY(),
+            applyWorldDelta: (packet) => worldToClientWorldAdapter.applyWorldDelta(packet),
+            reportSeamSample: (sample) => this.renderer.reportRenderFrameSeamSample(sample),
+        });
+        this.clientRuntime = new ClientRuntime({
+            clientCommands,
+            clientCommandRuntime,
+            clientWorldState,
+            worldToClientWorldAdapter,
+            worldInteractionIndex,
+            worldSession,
+            renderFrameCoordinator,
+            renderWorkerPool,
+            simWorkerPool,
+            cacheContext: context,
+            runtimeOptions: normalizedRuntimeOptions,
+            loadCacheContext: MapViewer.loadCacheContext,
+            hasLoadedMap: (mapId) => this.renderer.hasLoadedMap(mapId | 0),
+            reloadLoadedMap: (mapId) => this.renderer.reloadLoadedMap(mapId | 0),
+            onClientReset: async () => {
+                this.clearMapImageUrls();
+                clientCommands.reset();
+                clientCommandRuntime.reset();
+                this.walkDestination = undefined;
+                await this.renderer.resetForCacheContext();
+                this.resetMenu();
+            },
+        });
+        this.debugActions = new DebugActionService({
+            clientWorldState,
+            getDevLocReplacementTypeId: () => this.getDevLocReplacementTypeId(),
+            getCameraMapPosition: () => getCameraMapPosition(this.camera),
+            applyWorldMutation: (input) => this.clientRuntime.applyWorldMutation(input),
+        });
         this.renderer = new MapViewerRenderer(
             this,
-            viewerShell.worldSession,
-            viewerShell.renderFrameCoordinator,
+            worldToClientWorldAdapter,
+            worldInteractionIndex,
+            worldSession,
+            renderFrameCoordinator,
         );
         this.renderer.setStaticMapRuntime(
-            viewerShell.createStaticMapRuntime(this.renderer.getStaticMapRuntimeCallbacks()),
+            this.createStaticMapRuntime(this.renderer.getStaticMapRuntimeCallbacks()),
         );
         this.mapImages = new MapViewerMapImages({
             renderWorkerPool,
@@ -574,19 +267,12 @@ export class MapViewer {
             getLoadedCacheName: () => this.loadedCache.info.name,
             getMapManager: () => this.renderer.mapManager,
         });
-        this.cacheSwitcher = new MapViewerCacheSwitcher({
-            getCurrentCacheName: () => this.loadedCache.info.name,
-            loadCacheContext: MapViewer.loadCacheContext,
-            applySwitchedCacheContext: (nextContext) =>
-                this.applySwitchedCacheContext(nextContext),
-        });
 
         if (initialSearchParams) {
             this.applySearchParams(initialSearchParams);
         }
 
-        this.renderWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
-        this.simWorkerPool.initCache(context.loadedCache, this.runtimeOptions);
+        this.clientRuntime.initWorkers();
         this.clearMapImageUrls();
         this.renderer.initializeCacheState();
         this.resetMenu();
@@ -600,11 +286,99 @@ export class MapViewer {
     private runtimeOptions: MapViewerRuntimeOptions;
 
     get loadedCache(): LoadedCache {
-        return this.cacheContext.loadedCache;
+        return this.clientRuntime.loadedCache;
     }
 
     get session(): CacheSession {
-        return this.cacheContext.session;
+        return this.clientRuntime.session;
+    }
+
+    get clientWorldState(): ClientWorldState {
+        return this.clientRuntime.clientWorldState;
+    }
+
+    get clientCommands(): ClientCommandService {
+        return this.clientRuntime.clientCommands;
+    }
+
+    get clientCommandRuntime(): ClientCommandRuntime {
+        return this.clientRuntime.clientCommandRuntime;
+    }
+
+    getLatestPlayerIntent(): ClientPlayerIntent | undefined {
+        return this.clientCommandRuntime.getLatestPlayerIntent();
+    }
+
+    getPendingPlayerIntent(): ClientPlayerIntent | undefined {
+        return this.clientCommandRuntime.getPendingPlayerIntent();
+    }
+
+    clearPendingPlayerIntent(): void {
+        this.clientCommandRuntime.clearPendingPlayerIntent();
+    }
+
+    applyWorldMutation(input: WorldMutationInput): Promise<number> {
+        return this.clientRuntime.applyWorldMutation(input);
+    }
+
+    walkToScreenPoint(input: Readonly<{
+        screenX: number;
+        screenY: number;
+        viewportWidth: number;
+        viewportHeight: number;
+    }>): boolean {
+        const destination = resolveWalkDestination({
+            ...input,
+            viewProjMatrix: this.camera.viewProjMatrix,
+        });
+        if (!destination) {
+            return false;
+        }
+        this.walkDestination = destination;
+        this.clientCommands.walkToPosition(destination);
+        return true;
+    }
+
+    updateWalkNavigation(deltaTime: number): boolean {
+        const destination = this.walkDestination;
+        if (!destination) {
+            return false;
+        }
+        const reachedDestination = advanceWalkNavigation({
+            destination,
+            cameraPosition: this.camera.pos,
+            cameraSpeed: this.cameraSpeed,
+            deltaTime,
+        });
+        if (reachedDestination) {
+            this.walkDestination = undefined;
+        }
+        return true;
+    }
+
+    examineWorldObject(target: Readonly<{ locTypeId: number; mapId?: number; locIndex?: number }>): void {
+        this.clientCommands.examineWorldObject(target);
+        this.openExamineLookup("object", target.locTypeId | 0);
+    }
+
+    examineGroundItem(target: Readonly<{ objTypeId: number; objInstance: ObjActionTargetInstance }>): void {
+        this.clientCommands.examineGroundItem(target);
+        this.openExamineLookup("item", target.objTypeId | 0);
+    }
+
+    examineActor(target: Readonly<{
+        npcTypeId: number;
+        npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
+    }>): void {
+        this.clientCommands.examineActor(target);
+        this.openExamineLookup("npc", target.npcTypeId | 0);
+    }
+
+    private openExamineLookup(lookupType: string, targetId: number): void {
+        window.open(
+            `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${targetId | 0}`,
+            "_blank",
+        );
     }
 
     getSearchParams(): URLSearchParamsInit {
@@ -613,6 +387,7 @@ export class MapViewer {
             loadedCacheName: this.loadedCache.info.name,
             latestCacheName: this.cacheList.latest.name,
             runtimeOptions: this.runtimeOptions,
+            defaultRuntimeOptions: DEFAULT_RUNTIME_OPTIONS,
             devFixedMapSquare: this.devFixedMapSquare,
         });
     }
@@ -634,11 +409,11 @@ export class MapViewer {
     }
 
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
-        return this.runtimeOptions;
+        return this.clientRuntime.getRuntimeOptions();
     }
 
-    applyWorldInput(input: WorldInput): Promise<number> {
-        return this.renderer.applyWorldInput(input);
+    getMenuState(): ViewerMenuState {
+        return this.menuState;
     }
 
     getDevLocReplacementTypeId(): number {
@@ -649,20 +424,96 @@ export class MapViewer {
         this.devLocReplacementTypeId = Math.max(0, locTypeId | 0);
     }
 
-    resetVisibleLocAnimations(): Promise<number> {
-        return this.renderer.resetVisibleLocAnimations();
+    restartVisibleWorldObjectAnimations(): Promise<number> {
+        const animationResets: Array<Readonly<{ mapId: number; locIndex: number }>> = [];
+        for (const mapId of this.getVisibleMapIds()) {
+            const worldObjects = this.clientWorldState.getWorldObjectEntitiesForMap(mapId);
+            for (let index = 0; index < (worldObjects.length | 0); index++) {
+                const worldObject = worldObjects[index];
+                if (!worldObject || !worldObject.visible) {
+                    continue;
+                }
+                animationResets.push({
+                    mapId,
+                    locIndex: worldObject.rsBacking.locIndex | 0,
+                });
+            }
+        }
+        if ((animationResets.length | 0) <= 0) {
+            return Promise.resolve(0);
+        }
+        return this.applyWorldMutation({
+            loc: {
+                animation: {
+                    animationResets,
+                },
+            },
+        });
     }
 
     restoreVisibleGroundItems(): Promise<number> {
-        return this.renderer.restoreVisibleGroundItems();
+        const additions: Array<Readonly<{ mapId: number; objIndex: number }>> = [];
+        for (const mapId of this.getVisibleMapIds()) {
+            const groundItems = this.clientWorldState.getStaticGroundItemEntitiesForMap(mapId);
+            for (let index = 0; index < (groundItems.length | 0); index++) {
+                const groundItem = groundItems[index];
+                if (
+                    !groundItem ||
+                    !groundItem.visible ||
+                    groundItem.rsBacking.kind !== "obj-static"
+                ) {
+                    continue;
+                }
+                additions.push({
+                    mapId,
+                    objIndex: groundItem.rsBacking.objIndex | 0,
+                });
+            }
+        }
+        if ((additions.length | 0) <= 0) {
+            return Promise.resolve(0);
+        }
+        return this.applyWorldMutation({
+            obj: {
+                static: {
+                    additions,
+                },
+            },
+        });
     }
 
-    spawnGroundItemAtCamera(objTypeId: number, count: number): Promise<number> {
-        return this.renderer.spawnGroundItemAtCamera(objTypeId, count);
+    dropGroundItemAtCamera(objTypeId: number, count: number): Promise<number> {
+        const cameraPosition = getCameraMapPosition(this.camera);
+        return this.applyWorldMutation({
+            obj: {
+                dynamic: {
+                    dynamicSpawns: [
+                        {
+                            mapId: cameraPosition.mapId | 0,
+                            objTypeId: objTypeId | 0,
+                            count: Math.max(1, count | 0),
+                            x: cameraPosition.x | 0,
+                            y: cameraPosition.y | 0,
+                            plane: cameraPosition.plane | 0,
+                        },
+                    ],
+                },
+            },
+        });
     }
 
-    clearVisibleDynamicGroundItems(): Promise<number> {
-        return this.renderer.clearVisibleDynamicGroundItems();
+    clearVisibleDroppedItems(): Promise<number> {
+        const visibleMapIds = this.getVisibleMapIds();
+        if ((visibleMapIds.length | 0) <= 0) {
+            return Promise.resolve(0);
+        }
+        return this.applyWorldMutation({
+            obj: {
+                dynamic: {
+                    clearDynamicMaps: visibleMapIds,
+                },
+            },
+        });
     }
 
     async setWorkerRuntimeOptions(options: WorkerRuntimeOptions): Promise<void> {
@@ -678,27 +529,20 @@ export class MapViewer {
         // (threads RPC / structured clone of cache inputs).
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 
-        await this.reinitWorkersAndResetViewer(true);
+        await this.clientRuntime.setRuntimeOptions(normalized);
     }
 
     subscribeSearchParams(listener: SearchParamsListener): () => void {
-        this.searchParamsListeners.add(listener);
-        return () => this.searchParamsListeners.delete(listener);
+        this.searchParamListeners.add(listener);
+        return () => this.searchParamListeners.delete(listener);
     }
 
     subscribeCacheSwitchStatus(listener: (status: CacheSwitchStatus) => void): () => void {
-        return this.cacheSwitcher.subscribeStatus(listener);
+        return this.clientRuntime.subscribeCacheSwitchStatus(listener);
     }
 
     getCacheSwitchStatus(): CacheSwitchStatus {
-        return this.cacheSwitcher.getStatus();
-    }
-
-    private notifySearchParamsListeners(): void {
-        const params = this.getSearchParams();
-        for (const listener of this.searchParamsListeners) {
-            listener(params);
-        }
+        return this.clientRuntime.getCacheSwitchStatus();
     }
 
     private emitSearchParams(debounceMs: number = 0): void {
@@ -707,12 +551,12 @@ export class MapViewer {
         }
         if ((debounceMs | 0) <= 0) {
             this.searchParamsDebounceTimer = undefined;
-            this.notifySearchParamsListeners();
+            this.notifySearchParamListeners();
             return;
         }
         this.searchParamsDebounceTimer = window.setTimeout(() => {
             this.searchParamsDebounceTimer = undefined;
-            this.notifySearchParamsListeners();
+            this.notifySearchParamListeners();
         }, debounceMs);
     }
 
@@ -750,36 +594,8 @@ export class MapViewer {
     }
 
     async switchCache(cacheInfo: CacheInfo): Promise<void> {
-        await this.cacheSwitcher.switchCache(cacheInfo);
-    }
-
-    private async applySwitchedCacheContext(context: CacheContext): Promise<void> {
-        this.cacheContext = context;
-        await this.reinitWorkersAndResetViewer(false);
-
+        await this.clientRuntime.switchCache(cacheInfo);
         this.updateSearchParams();
-    }
-
-    private async reinitWorkersAndResetViewer(waitForWorkers: boolean): Promise<void> {
-        if (waitForWorkers) {
-            await Promise.all([
-                this.renderWorkerPool.initCacheAndWait(
-                    this.cacheContext.loadedCache,
-                    this.runtimeOptions,
-                ),
-                this.simWorkerPool.initCacheAndWait(
-                    this.cacheContext.loadedCache,
-                    this.runtimeOptions,
-                ),
-            ]);
-        } else {
-            this.renderWorkerPool.initCache(this.cacheContext.loadedCache, this.runtimeOptions);
-            this.simWorkerPool.initCache(this.cacheContext.loadedCache, this.runtimeOptions);
-        }
-
-        this.clearMapImageUrls();
-        await this.renderer.resetForCacheContext();
-        this.resetMenu();
     }
 
     /**
@@ -810,42 +626,38 @@ export class MapViewer {
     }
 
     closeMenu = () => {
-        this.menuOpen = false;
-        this.menuX = -1;
-        this.menuY = -1;
+        this.menuState = {
+            ...this.menuState,
+            open: false,
+            x: -1,
+            y: -1,
+        };
         this.renderer.canvas.focus();
     };
 
     resetMenu = () => {
-        this.closeMenu();
-        this.menuOpenedFrame = 0;
+        this.menuState = EMPTY_MENU_STATE;
+        this.renderer.canvas.focus();
     };
 
-    onExamine = (entry: OsrsMenuEntry) => {
-        let lookupType: string | undefined;
-        switch (entry.targetType) {
-            case MenuTargetType.NPC:
-                lookupType = "npc";
-                break;
-            case MenuTargetType.LOC:
-                lookupType = "object";
-                break;
-            case MenuTargetType.OBJ:
-                lookupType = "item";
-                break;
-        }
-        if (lookupType) {
-            window.open(
-                `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${entry.targetId}`,
-                "_blank",
-            );
-        }
-        this.closeMenu();
-    };
+    setMenuState(input: Readonly<{
+        open: boolean;
+        openedFrame: number;
+        x: number;
+        y: number;
+        entries: ReadonlyArray<OsrsMenuEntry>;
+    }>): void {
+        this.menuState = {
+            open: input.open,
+            openedFrame: input.openedFrame | 0,
+            x: input.x | 0,
+            y: input.y | 0,
+            entries: input.entries,
+        };
+    }
 
     updateVars(): void {
-        this.renderWorkerPool.setVars(this.session.varManager.values);
-        this.simWorkerPool.setVars(this.session.varManager.values);
+        this.clientRuntime.updateVars();
     }
 
     getMapImageUrl(mapX: number, mapY: number, minimap: boolean): string | undefined {
@@ -865,4 +677,72 @@ export class MapViewer {
     clearMapImageUrls(): void {
         this.mapImages.clear();
     }
+
+    private notifySearchParamListeners(): void {
+        const params = this.getSearchParams();
+        for (const listener of this.searchParamListeners) {
+            listener(params);
+        }
+    }
+
+    private getVisibleMapIds(): number[] {
+        return this.renderer.mapManager.visibleMaps
+            .slice(0, this.renderer.mapManager.visibleMapCount)
+            .map((mapInfo) => mapInfo.mapId | 0);
+    }
+
+    private createStaticMapRuntime(
+        callbacks: MapViewerStaticMapRuntimeCallbacks,
+    ): MapViewerStaticMapRuntime {
+        const applyPacket: MapViewerStaticMapRuntime["applyPacket"] = async (packet, input) => {
+            const replaceMapId = input.replaceMapId;
+            if (replaceMapId !== undefined) {
+                callbacks.detachLoadedMapRuntime(replaceMapId);
+            }
+            try {
+                const ok = await this.clientRuntime.worldSession.activateLoadedMap({
+                    staticMap: packet,
+                    activationVersion: input.activationVersion,
+                });
+                if (!ok) {
+                    return false;
+                }
+            } catch (error: unknown) {
+                const { mapX, mapY } = packet.mapData;
+                const action = replaceMapId !== undefined ? "reload" : "register";
+                console.warn(
+                    `[map-render] failed to ${action} worker sim state for ${mapX},${mapY}`,
+                    error,
+                );
+                return false;
+            }
+
+            await callbacks.finalizeLoadedMap(packet);
+            if (input.invalidateLatestPacket === true) {
+                this.clientRuntime.renderFrameCoordinator.invalidateLatestPacket();
+            }
+            return true;
+        };
+
+        const reloadMap: MapViewerStaticMapRuntime["reloadMap"] = async (mapId) => {
+            const normalizedMapId = mapId | 0;
+            const mapX = (normalizedMapId >> 8) & 0xff;
+            const mapY = normalizedMapId & 0xff;
+            const staticMapPacket = await callbacks.loadStaticMapPacket(mapX, mapY);
+            if (!staticMapPacket || !callbacks.isValidMapPacket(staticMapPacket)) {
+                return false;
+            }
+            return await applyPacket(staticMapPacket, {
+                activationVersion: this.clientRuntime.worldSession.captureActivationVersion(),
+                replaceMapId: normalizedMapId,
+                invalidateLatestPacket: true,
+            });
+        };
+
+        return {
+            applyPacket,
+            reloadMap,
+        };
+    }
+
 }

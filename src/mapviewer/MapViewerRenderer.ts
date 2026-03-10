@@ -1,178 +1,30 @@
 import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
-import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import type { MenuActionTarget, ObjActionTargetInstance } from "../rs/MenuEntry";
 import {
     type MapData,
     type SdMapLoaderInput,
 } from "../maprender/MapRenderPayload";
-import type { LocType } from "../rs/config/loctype/LocType";
-import type { NpcType } from "../rs/config/npctype/NpcType";
-import type { ObjType } from "../rs/config/objtype/ObjType";
-import { InteractType } from "../runtime/InteractType";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
 import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
-import type { CacheSession } from "../rs/loaders/CacheSession";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
-import { MenuTargetType } from "../rs/MenuEntry";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
-import { INTERACTION_RADIUS } from "../renderer/InteractionState";
 import type { StaticMapPacket } from "../shared/StaticMapPacket";
-import {
-    collectInteractionHits,
-    resolveWorldInteractionTargets,
-    type InteractionHit,
-    type WorldInteractionTarget,
-} from "../runtime/InteractionTargets";
 import {
     type RenderFrameSeamSample,
     type RenderFrameCoordinator,
 } from "../renderer/RenderFrameCoordinator";
-import {
-    resolveRenderFrameNpcInteractionTarget,
-    type RenderFramePacket,
-} from "../renderer/RenderFramePacket";
-import { isTouchDevice } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import {
-    type WorldInput,
-    type WorldLocReplacement,
-    type WorldLocReplacementClear,
-    type WorldSession,
-} from "../world/WorldSession";
+import type { WorldSession } from "../world/WorldSession";
+import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
 import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
+import { MapViewerInteractionService } from "./MapViewerInteractionService";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
-import type {
-    WorldLocAnimationReset,
-    WorldLocVisibilityChange,
-} from "../world/WorldDeltaPacket";
-import type { LocAnimatedData } from "../runtime/LocAnimatedData";
-
-type MenuInteractionTarget =
-    | Readonly<{
-          kind: InteractType.LOC;
-          hit: InteractionHit & { kind: InteractType.LOC };
-          locType: LocType;
-          locInstance?: Readonly<{
-              mapId: number;
-              locIndex: number;
-          }>;
-      }>
-    | Readonly<{
-          kind: InteractType.OBJ;
-          hit: InteractionHit & { kind: InteractType.OBJ };
-          objType: ObjType;
-          objInstance: ObjActionTargetInstance;
-      }>
-    | Readonly<{
-          kind: InteractType.NPC;
-          hit: InteractionHit & { kind: InteractType.NPC };
-          npcType: NpcType;
-          npcInstance: Readonly<{
-              mapId: number;
-              npcInstanceId: number;
-          }>;
-      }>;
-
-function resolveMenuInteractionTargets(input: Readonly<{
-    session: CacheSession;
-    targets: ReadonlyArray<WorldInteractionTarget>;
-    includeUnnamed: boolean;
-}>): MenuInteractionTarget[] {
-    const resolvedTargets: MenuInteractionTarget[] = [];
-
-    for (const target of input.targets) {
-        if (target.kind === InteractType.LOC) {
-            const locResult = input.session.tryLoadLocType(target.locTypeId);
-            if (!locResult.ok) {
-                continue;
-            }
-            const locType = locResult.value;
-            if (locType.name === "null" && !input.includeUnnamed) {
-                continue;
-            }
-            resolvedTargets.push({
-                kind: InteractType.LOC,
-                hit: target.hit,
-                locType,
-                locInstance: target.locInstance,
-            });
-            continue;
-        }
-
-        if (target.kind === InteractType.OBJ) {
-            const objResult = input.session.tryLoadObjType(target.objTypeId);
-            if (!objResult.ok) {
-                continue;
-            }
-            const objType = objResult.value;
-            if (objType.name === "null" && !input.includeUnnamed) {
-                continue;
-            }
-            resolvedTargets.push({
-                kind: InteractType.OBJ,
-                hit: target.hit,
-                objType,
-                objInstance: target.objInstance,
-            });
-            continue;
-        }
-
-        const npcResult = input.session.tryLoadNpcType(target.npcTypeId);
-        if (!npcResult.ok) {
-            continue;
-        }
-        let npcType = npcResult.value;
-        if (npcType.transforms) {
-            const transformed = npcType.transform(
-                input.session.varManager,
-                input.session.getNpcTypeLoader(),
-            );
-            if (!transformed) {
-                continue;
-            }
-            npcType = transformed;
-        }
-        if (npcType.name === "null" && !input.includeUnnamed) {
-            continue;
-        }
-        resolvedTargets.push({
-            kind: InteractType.NPC,
-            hit: target.hit,
-            npcType,
-            npcInstance: target.npcInstance,
-        });
-    }
-
-    return resolvedTargets;
-}
-
-function getMenuActionTarget(target: MenuInteractionTarget): MenuActionTarget {
-    if (target.kind === InteractType.LOC) {
-        return {
-            kind: MenuTargetType.LOC,
-            locTypeId: target.locType.id | 0,
-            locInstance: target.locInstance,
-        };
-    }
-    if (target.kind === InteractType.OBJ) {
-        return {
-            kind: MenuTargetType.OBJ,
-            objTypeId: target.objType.id | 0,
-            objInstance: target.objInstance,
-        };
-    }
-    return {
-        kind: MenuTargetType.NPC,
-        npcTypeId: target.npcType.id | 0,
-        npcInstance: target.npcInstance,
-    };
-}
+import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
 
 export type MapViewerStaticMapRuntime = Readonly<{
     applyPacket(
@@ -208,25 +60,18 @@ export class MapViewerRenderer extends RendererMainLoop {
     renderer: MapRenderer<MapSquareRenderable, MapData>;
     private readonly renderTickCoordinator = new RenderTickCoordinator();
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
+    private readonly worldToClientWorldAdapter: WorldToClientWorldAdapter;
+    private readonly worldInteractionIndex: WorldInteractionIndex;
+    private readonly interactionService: MapViewerInteractionService;
     private readonly worldSession: WorldSession;
     private staticMapRuntime!: MapViewerStaticMapRuntime;
     private visibleMapIdsScratch: Int32Array = MapViewerRenderer.EMPTY_INT32;
-    private readonly animatedLocsByMapId: Map<number, ReadonlyArray<LocAnimatedData>> = new Map();
-    private readonly objInteractionStateByMapId = new Map<
-        number,
-        Readonly<{
-            staticObjTypeIds?: Int32Array;
-            dynamicObjTypeIds?: Int32Array;
-            dynamicRuntimeObjIds?: Int32Array;
-        }>
-    >();
     private seamSampleCount: number = 0;
     private seamWorldMsTotal: number = 0;
     private seamApplyWorldMsTotal: number = 0;
     private seamRenderMsTotal: number = 0;
     private seamTotalMsTotal: number = 0;
     private seamWorldChangeCountTotal: number = 0;
-    private latestRenderFramePacket: RenderFramePacket | undefined;
 
     private isInitialized: boolean = false;
 
@@ -273,8 +118,18 @@ export class MapViewerRenderer extends RendererMainLoop {
         return this.getVisibleMapIdsPacked();
     }
 
+    hasLoadedMap(mapId: number): boolean {
+        return this.mapManager.mapSquares.has(mapId | 0);
+    }
+
+    reloadLoadedMap(mapId: number): Promise<boolean> {
+        return this.staticMapRuntime.reloadMap(mapId | 0);
+    }
+
     constructor(
         public mapViewer: MapViewer,
+        worldToClientWorldAdapter: WorldToClientWorldAdapter,
+        worldInteractionIndex: WorldInteractionIndex,
         worldSession: WorldSession,
         renderFrameCoordinator: RenderFrameCoordinator,
     ) {
@@ -283,6 +138,13 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.renderWorkerPool = mapViewer.renderWorkerPool;
         this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
+        this.worldToClientWorldAdapter = worldToClientWorldAdapter;
+        this.worldInteractionIndex = worldInteractionIndex;
+        this.interactionService = new MapViewerInteractionService({
+            mapViewer,
+            debugActions: mapViewer.debugActions,
+            clientWorldState: mapViewer.clientWorldState,
+        });
         this.renderer = this.createRenderer();
         this.renderFrameCoordinator = renderFrameCoordinator;
         this.worldSession = worldSession;
@@ -410,12 +272,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
-        this.animatedLocsByMapId.set(mapData.mapId | 0, packet.runtimeRegistration.locsAnimated);
-        this.setMapObjInteractionState(mapData.mapId | 0, {
-            staticObjTypeIds: packet.runtimeBootstrap.mapObjState?.staticState?.objTypeIds,
-            dynamicObjTypeIds: undefined,
-            dynamicRuntimeObjIds: undefined,
-        });
+        this.worldToClientWorldAdapter.registerLoadedMap(packet);
+        this.worldInteractionIndex.registerLoadedMap(packet);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         await this.attachLoadedRuntimeMapObjRenderData(packet);
@@ -450,8 +308,8 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     private detachLoadedMapRuntime(mapId: number): void {
         const normalizedMapId = mapId | 0;
-        this.animatedLocsByMapId.delete(normalizedMapId);
-        this.objInteractionStateByMapId.delete(normalizedMapId);
+        this.worldToClientWorldAdapter.unregisterMap(normalizedMapId);
+        this.worldInteractionIndex.unregisterMap(normalizedMapId);
         this.renderer.removeMap({ mapId: normalizedMapId });
         this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
     }
@@ -493,60 +351,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.detachLoadedMapRuntime(mapInfo.mapId);
     }
 
-    async applyWorldInput(input: WorldInput): Promise<number> {
-        const result = await this.worldSession.applyWorldInput(input);
-        const applied = result.applied | 0;
-        if ((applied | 0) > 0) {
-            this.applyMapObjTypeIdsFromWorldInput(input);
-        }
-        const objStaticInput = input.obj?.static;
-        const objDynamicInput = input.obj?.dynamic;
-        const locAnimationInput = input.loc?.animation;
-        const locStateInput = input.loc?.state;
-        const reloadMapIds = result.reloadMapIds;
-        if ((applied | 0) > 0 && reloadMapIds && (reloadMapIds.length | 0) > 0) {
-            for (let index = 0; index < reloadMapIds.length; index++) {
-                const sourceMapId = reloadMapIds[index];
-                if (sourceMapId === undefined) {
-                    continue;
-                }
-                if (!this.mapManager.mapSquares.has(sourceMapId | 0)) {
-                    continue;
-                }
-                await this.staticMapRuntime.reloadMap(sourceMapId | 0);
-            }
-        }
-        const hasRenderAffectingWorldInput =
-            (!!objStaticInput?.stateReplacements &&
-                (objStaticInput.stateReplacements.length | 0) > 0) ||
-            (!!objStaticInput?.additions && (objStaticInput.additions.length | 0) > 0) ||
-            (!!objStaticInput?.removals && (objStaticInput.removals.length | 0) > 0) ||
-            (!!objDynamicInput?.dynamicSpawns && (objDynamicInput.dynamicSpawns.length | 0) > 0) ||
-            (!!objDynamicInput?.dynamicDespawns &&
-                (objDynamicInput.dynamicDespawns.length | 0) > 0) ||
-            (!!objDynamicInput?.dynamicUpdates &&
-                (objDynamicInput.dynamicUpdates.length | 0) > 0) ||
-            (!!objDynamicInput?.clearDynamicMaps &&
-                (objDynamicInput.clearDynamicMaps.length | 0) > 0) ||
-            (!!locStateInput?.visibilityChanges &&
-                (locStateInput.visibilityChanges.length | 0) > 0) ||
-            (!!locStateInput?.replacements && (locStateInput.replacements.length | 0) > 0) ||
-            (!!locStateInput?.replacementClears &&
-                (locStateInput.replacementClears.length | 0) > 0) ||
-            (!!locAnimationInput?.animationResets &&
-                (locAnimationInput.animationResets.length | 0) > 0) ||
-            (!!locAnimationInput?.animationPauseStates &&
-                (locAnimationInput.animationPauseStates.length | 0) > 0);
-        if ((applied | 0) > 0 && hasRenderAffectingWorldInput) {
-            this.renderFrameCoordinator.invalidateLatestPacket();
-        }
-        return applied | 0;
-    }
-
     private async attachLoadedRuntimeMapObjRenderData(
         packet: StaticMapPacket,
     ): Promise<void> {
-        await this.applyWorldInput({
+        await this.mapViewer.applyWorldMutation({
             obj: {
                 static: {
                     stateReplacements: [
@@ -561,113 +369,6 @@ export class MapViewerRenderer extends RendererMainLoop {
         });
     }
 
-    async resetVisibleLocAnimations(): Promise<number> {
-        const animationResets: WorldLocAnimationReset[] = [];
-        const visibleMapCount = this.mapManager.visibleMapCount | 0;
-        for (let i = 0; i < visibleMapCount; i++) {
-            const mapInfo = this.mapManager.visibleMaps[i];
-            if (!mapInfo) {
-                continue;
-            }
-            const animatedLocs = this.animatedLocsByMapId.get(mapInfo.mapId);
-            const animatedLocCount = animatedLocs?.length ?? 0;
-            for (let locIndex = 0; locIndex < (animatedLocCount | 0); locIndex++) {
-                animationResets.push({
-                    mapId: mapInfo.mapId | 0,
-                    locIndex: locIndex | 0,
-                });
-            }
-        }
-        if ((animationResets.length | 0) <= 0) {
-            return 0;
-        }
-        return await this.applyWorldInput({
-            loc: {
-                animation: {
-                    animationResets,
-                },
-            },
-        });
-    }
-
-    async restoreVisibleGroundItems(): Promise<number> {
-        const additions: Array<Readonly<{ mapId: number; objIndex: number }>> = [];
-        const visibleMapCount = this.mapManager.visibleMapCount | 0;
-        for (let i = 0; i < visibleMapCount; i++) {
-            const mapInfo = this.mapManager.visibleMaps[i];
-            if (!mapInfo) {
-                continue;
-            }
-            const objTypeIds = this.objInteractionStateByMapId.get(mapInfo.mapId | 0)?.staticObjTypeIds;
-            if (!(objTypeIds instanceof Int32Array) || (objTypeIds.length | 0) <= 0) {
-                continue;
-            }
-            for (let objIndex = 0; objIndex < objTypeIds.length; objIndex++) {
-                if ((objTypeIds[objIndex] | 0) < 0) {
-                    continue;
-                }
-                additions.push({
-                    mapId: mapInfo.mapId | 0,
-                    objIndex: objIndex | 0,
-                });
-            }
-        }
-        if ((additions.length | 0) <= 0) {
-            return 0;
-        }
-        return await this.applyWorldInput({
-            obj: {
-                static: {
-                    additions,
-                },
-            },
-        });
-    }
-
-    async spawnGroundItemAtCamera(objTypeId: number, count: number): Promise<number> {
-        return await this.applyWorldInput({
-            obj: {
-                dynamic: {
-                    dynamicSpawns: [
-                        {
-                            mapId: getMapSquareId(
-                                this.camera.getMapX() >> 6,
-                                this.camera.getMapY() >> 6,
-                            ),
-                            objTypeId: objTypeId | 0,
-                            count: Math.max(1, count | 0),
-                            x: this.camera.getMapX() | 0,
-                            y: this.camera.getMapY() | 0,
-                            plane: 0,
-                        },
-                    ],
-                },
-            },
-        });
-    }
-
-    async clearVisibleDynamicGroundItems(): Promise<number> {
-        const clearDynamicMaps: number[] = [];
-        const visibleMapCount = this.mapManager.visibleMapCount | 0;
-        for (let i = 0; i < visibleMapCount; i++) {
-            const mapInfo = this.mapManager.visibleMaps[i];
-            if (!mapInfo) {
-                continue;
-            }
-            clearDynamicMaps.push(mapInfo.mapId | 0);
-        }
-        if ((clearDynamicMaps.length | 0) <= 0) {
-            return 0;
-        }
-        return await this.applyWorldInput({
-            obj: {
-                dynamic: {
-                    clearDynamicMaps,
-                },
-            },
-        });
-    }
-
     override async init() {
         super.init();
         this.inputManager.init(this.canvas);
@@ -675,9 +376,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     }
 
     initializeCacheState(): void {
-        this.animatedLocsByMapId.clear();
-        this.objInteractionStateByMapId.clear();
-        this.latestRenderFramePacket = undefined;
+        this.worldToClientWorldAdapter.reset();
+        this.worldInteractionIndex.reset();
         this.renderer.initCache();
         this.mapManager.init(
             this.mapViewer.session.mapFileIndex,
@@ -728,7 +428,8 @@ export class MapViewerRenderer extends RendererMainLoop {
     async resetForCacheContext(): Promise<void> {
         const wasRunning = this.pauseLoop();
         this.worldSession.reset();
-        this.latestRenderFramePacket = undefined;
+        this.worldToClientWorldAdapter.reset();
+        this.worldInteractionIndex.reset();
 
         try {
             await this.renderer.cleanUp();
@@ -745,458 +446,25 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
-        this.animatedLocsByMapId.clear();
-        this.objInteractionStateByMapId.clear();
-        this.latestRenderFramePacket = undefined;
+        this.worldToClientWorldAdapter.reset();
+        this.worldInteractionIndex.reset();
         this.worldSession.reset();
         this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
         this.mapManager.cleanUp();
     }
 
-    private getAnimatedLocTypeId(mapId: number, locIndex: number): number | undefined {
-        const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
-        return animatedLocs?.[locIndex | 0]?.locTypeId;
-    }
-
-    private getAnimatedLocData(mapId: number, locIndex: number): LocAnimatedData | undefined {
-        const animatedLocs = this.animatedLocsByMapId.get(mapId | 0);
-        return animatedLocs?.[locIndex | 0];
-    }
-
-    private setMapObjInteractionState(
-        mapId: number,
-        state:
-            | Readonly<{
-                  staticObjTypeIds?: Int32Array;
-                  dynamicObjTypeIds?: Int32Array;
-                  dynamicRuntimeObjIds?: Int32Array;
-              }>
-            | undefined,
-    ): void {
-        if (!state || (!state.staticObjTypeIds && !state.dynamicObjTypeIds)) {
-            this.objInteractionStateByMapId.delete(mapId | 0);
-            return;
-        }
-        this.objInteractionStateByMapId.set(mapId | 0, state);
-    }
-
-    private applyMapObjTypeIdsFromWorldInput(input: WorldInput): void {
-        const stateReplacements = input.obj?.static?.stateReplacements;
-        if (!stateReplacements) {
-            return;
-        }
-        for (let index = 0; index < stateReplacements.length; index++) {
-            const update = stateReplacements[index];
-            if (!update || update.kind !== "replaceState") {
-                continue;
-            }
-            const mapObjState = update.mapObjState;
-            const current = this.objInteractionStateByMapId.get(update.mapId | 0);
-            this.setMapObjInteractionState(update.mapId | 0, {
-                staticObjTypeIds:
-                    mapObjState && "staticState" in mapObjState
-                        ? mapObjState.staticState?.objTypeIds
-                        : current?.staticObjTypeIds,
-                dynamicObjTypeIds: current?.dynamicObjTypeIds,
-                dynamicRuntimeObjIds: current?.dynamicRuntimeObjIds,
-            });
-        }
-    }
-
-    private getMapObjTargetInfo(
-        mapId: number,
-        interactId: number,
-    ):
-        | Readonly<
-              | {
-                    kind: "static";
-                    objTypeId: number;
-                    objIndex: number;
-                }
-              | {
-                    kind: "dynamic";
-                    objTypeId: number;
-                    runtimeObjId: number;
-                }
-          >
-        | undefined {
-        const state = this.objInteractionStateByMapId.get(mapId | 0);
-        const staticObjTypeId = state?.staticObjTypeIds?.[interactId | 0];
-        if (staticObjTypeId !== undefined && (staticObjTypeId | 0) >= 0) {
-            return {
-                kind: "static",
-                objTypeId: staticObjTypeId | 0,
-                objIndex: interactId | 0,
-            };
-        }
-        const dynamicObjTypeId = state?.dynamicObjTypeIds?.[interactId | 0];
-        const runtimeObjId = state?.dynamicRuntimeObjIds?.[interactId | 0];
-        if (
-            dynamicObjTypeId !== undefined &&
-            runtimeObjId !== undefined &&
-            (dynamicObjTypeId | 0) >= 0 &&
-            (runtimeObjId | 0) >= 0
-        ) {
-            return {
-                kind: "dynamic",
-                objTypeId: dynamicObjTypeId | 0,
-                runtimeObjId: runtimeObjId | 0,
-            };
-        }
-        return undefined;
-    }
-
-    private ensureInt32Length(values: Int32Array | undefined, minLength: number): Int32Array {
-        if ((minLength | 0) <= 0) {
-            return values ?? MapViewerRenderer.EMPTY_INT32;
-        }
-        if (values instanceof Int32Array && (values.length | 0) >= (minLength | 0)) {
-            return values;
-        }
-        const next = new Int32Array(minLength | 0);
-        next.fill(-1);
-        if (values instanceof Int32Array) {
-            next.set(values.subarray(0, Math.min(values.length | 0, minLength | 0)));
-        }
-        return next;
-    }
-
-    private applyMapObjInteractionStateUpdate(
-        mapId: number,
-        update: NonNullable<RenderFramePacket["runtimeRenderUpdates"]>["updates"][number],
-    ): void {
-        if (!update) {
-            return;
-        }
-        const current = this.objInteractionStateByMapId.get(mapId | 0);
-        let staticObjTypeIds = update.replaceStaticObjRenderData
-            ? update.staticObjRenderData?.objTypeIds
-            : current?.staticObjTypeIds;
-        let dynamicObjTypeIds = current?.dynamicObjTypeIds;
-        let dynamicRuntimeObjIds = current?.dynamicRuntimeObjIds;
-
-        if (update.clearDynamicObjRenderData) {
-            dynamicObjTypeIds = undefined;
-            dynamicRuntimeObjIds = undefined;
-        }
-        if (update.removeDynamicRuntimeObjIdsPacked && dynamicRuntimeObjIds && dynamicObjTypeIds) {
-            const nextDynamicObjTypeIds = dynamicObjTypeIds.slice();
-            const nextDynamicRuntimeObjIds = dynamicRuntimeObjIds.slice();
-            for (let removeIndex = 0; removeIndex < update.removeDynamicRuntimeObjIdsPacked.length; removeIndex++) {
-                const runtimeObjId = update.removeDynamicRuntimeObjIdsPacked[removeIndex] | 0;
-                for (let index = 0; index < nextDynamicRuntimeObjIds.length; index++) {
-                    if ((nextDynamicRuntimeObjIds[index] | 0) !== (runtimeObjId | 0)) {
-                        continue;
-                    }
-                    nextDynamicRuntimeObjIds[index] = -1;
-                    nextDynamicObjTypeIds[index] = -1;
-                }
-            }
-            dynamicObjTypeIds = nextDynamicObjTypeIds;
-            dynamicRuntimeObjIds = nextDynamicRuntimeObjIds;
-        }
-        if (update.appendDynamicObjRenders && (update.appendDynamicObjRenders.length | 0) > 0) {
-            let nextDynamicObjTypeIds = dynamicObjTypeIds;
-            let nextDynamicRuntimeObjIds = dynamicRuntimeObjIds;
-            for (let appendIndex = 0; appendIndex < update.appendDynamicObjRenders.length; appendIndex++) {
-                const append: (typeof update.appendDynamicObjRenders)[number] =
-                    update.appendDynamicObjRenders[appendIndex];
-                if (!append) {
-                    continue;
-                }
-                const interactId = append.interactId | 0;
-                nextDynamicObjTypeIds = this.ensureInt32Length(
-                    nextDynamicObjTypeIds,
-                    (interactId + 1) | 0,
-                );
-                nextDynamicRuntimeObjIds = this.ensureInt32Length(
-                    nextDynamicRuntimeObjIds,
-                    (interactId + 1) | 0,
-                );
-                nextDynamicObjTypeIds[interactId] =
-                    append.objRenderData.objTypeIds[interactId] | 0;
-                nextDynamicRuntimeObjIds[interactId] = append.runtimeObjId | 0;
-            }
-            dynamicObjTypeIds = nextDynamicObjTypeIds;
-            dynamicRuntimeObjIds = nextDynamicRuntimeObjIds;
-        }
-        this.setMapObjInteractionState(mapId | 0, {
-            staticObjTypeIds,
-            dynamicObjTypeIds,
-            dynamicRuntimeObjIds,
-        });
-    }
-
-    private getNpcInteractionTargetInfo(
-        mapId: number,
-        npcInteractId: number,
-    ): Readonly<{ npcInstanceId: number; npcTypeId: number }> | undefined {
-        return resolveRenderFrameNpcInteractionTarget(
-            this.latestRenderFramePacket,
-            mapId | 0,
-            npcInteractId | 0,
-        );
-    }
-
-    private getLocInstanceFromMenuEntry(
-        entry: Pick<OsrsMenuEntry, "actionTarget">,
-    ): Readonly<{ mapId: number; locIndex: number }> | undefined {
-        const actionTarget = entry.actionTarget;
-        if (!actionTarget || actionTarget.kind !== MenuTargetType.LOC) {
-            return undefined;
-        }
-        return actionTarget.locInstance;
-    }
-
-    private getNpcInstanceFromMenuEntry(
-        entry: Pick<OsrsMenuEntry, "actionTarget">,
-    ): Readonly<{ mapId: number; npcInstanceId: number }> | undefined {
-        const actionTarget = entry.actionTarget;
-        if (!actionTarget || actionTarget.kind !== MenuTargetType.NPC) {
-            return undefined;
-        }
-        return actionTarget.npcInstance;
-    }
-
-    private onResetLocAnimation = (entry: OsrsMenuEntry) => {
-        const locInstance = this.getLocInstanceFromMenuEntry(entry);
-        this.mapViewer.closeMenu();
-        if (!locInstance) {
-            return;
-        }
-        void this.applyWorldInput({
-            loc: {
-                animation: {
-                    animationResets: [locInstance],
-                },
-            },
-        });
-    };
-
-    private onSetLocVisible(visible: boolean): (entry: OsrsMenuEntry) => void {
-        return (entry) => {
-            const locInstance = this.getLocInstanceFromMenuEntry(entry);
-            this.mapViewer.closeMenu();
-            if (!locInstance) {
-                return;
-            }
-            const visibilityChanges: WorldLocVisibilityChange[] = [
-                {
-                    mapId: locInstance.mapId | 0,
-                    locIndex: locInstance.locIndex | 0,
-                    visible,
-                },
-            ];
-            void this.applyWorldInput({
-                loc: {
-                    state: {
-                        visibilityChanges,
-                    },
-                },
-            });
-        };
-    }
-
-    private onRotateLoc = (entry: OsrsMenuEntry) => {
-        const locInstance = this.getLocInstanceFromMenuEntry(entry);
-        this.mapViewer.closeMenu();
-        if (!locInstance) {
-            return;
-        }
-        const locData = this.getAnimatedLocData(locInstance.mapId | 0, locInstance.locIndex | 0);
-        if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
-            return;
-        }
-        const replacements: WorldLocReplacement[] = [
-            {
-                sourceMapId: locData.sourceMapId | 0,
-                placementIndex: locData.placementIndex | 0,
-                locTypeId: locData.locTypeId | 0,
-                locModelType: locData.locModelType,
-                rotation: ((locData.rotation | 0) + 1) & 0x3,
-            },
-        ];
-        void this.applyWorldInput({
-            loc: {
-                state: {
-                    replacements,
-                },
-            },
-        });
-    };
-
-    private onReplaceLoc = (entry: OsrsMenuEntry) => {
-        const locInstance = this.getLocInstanceFromMenuEntry(entry);
-        this.mapViewer.closeMenu();
-        if (!locInstance) {
-            return;
-        }
-        const replacementLocTypeId = this.mapViewer.getDevLocReplacementTypeId() | 0;
-        if ((replacementLocTypeId | 0) <= 0) {
-            return;
-        }
-        const locData = this.getAnimatedLocData(locInstance.mapId | 0, locInstance.locIndex | 0);
-        if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
-            return;
-        }
-        const replacements: WorldLocReplacement[] = [
-            {
-                sourceMapId: locData.sourceMapId | 0,
-                placementIndex: locData.placementIndex | 0,
-                locTypeId: replacementLocTypeId,
-                locModelType: locData.locModelType,
-                rotation: locData.rotation | 0,
-            },
-        ];
-        void this.applyWorldInput({
-            loc: {
-                state: {
-                    replacements,
-                },
-            },
-        });
-    };
-
-    private onResetLocOverride = (entry: OsrsMenuEntry) => {
-        const locInstance = this.getLocInstanceFromMenuEntry(entry);
-        this.mapViewer.closeMenu();
-        if (!locInstance) {
-            return;
-        }
-        const locData = this.getAnimatedLocData(locInstance.mapId | 0, locInstance.locIndex | 0);
-        if (!locData || (locData.placementIndex | 0) < 0 || (locData.sourceMapId | 0) < 0) {
-            return;
-        }
-        const replacementClears: WorldLocReplacementClear[] = [
-            {
-                sourceMapId: locData.sourceMapId | 0,
-                placementIndex: locData.placementIndex | 0,
-            },
-        ];
-        void this.applyWorldInput({
-            loc: {
-                state: {
-                    replacementClears,
-                },
-            },
-        });
-    };
-
-    private onSetLocAnimationPaused(paused: boolean): (entry: OsrsMenuEntry) => void {
-        return (entry) => {
-            const locInstance = this.getLocInstanceFromMenuEntry(entry);
-            this.mapViewer.closeMenu();
-            if (!locInstance) {
-                return;
-            }
-            void this.applyWorldInput({
-                loc: {
-                    animation: {
-                        animationPauseStates: [
-                            {
-                                mapId: locInstance.mapId | 0,
-                                locIndex: locInstance.locIndex | 0,
-                                paused,
-                            },
-                        ],
-                    },
-                },
-            });
-        };
-    }
-
-    private onDespawnNpc = (entry: OsrsMenuEntry) => {
-        const npcInstance = this.getNpcInstanceFromMenuEntry(entry);
-        this.mapViewer.closeMenu();
-        if (!npcInstance) {
-            return;
-        }
-        void this.applyWorldInput({
-            npc: {
-                events: [
-                    {
-                        kind: "despawn",
-                        mapId: npcInstance.mapId | 0,
-                        npcInstanceId: npcInstance.npcInstanceId | 0,
-                        seq: 0x7fffffff,
-                    },
-                ],
-            },
-        });
-    };
-
-    private onRemoveGroundItem = (entry: OsrsMenuEntry) => {
-        const actionTarget = entry.actionTarget;
-        this.mapViewer.closeMenu();
-        if (!actionTarget || actionTarget.kind !== MenuTargetType.OBJ) {
-            return;
-        }
-        if (actionTarget.objInstance.kind === "dynamic") {
-            void this.applyWorldInput({
-                obj: {
-                    dynamic: {
-                        dynamicDespawns: [
-                            {
-                                mapId: actionTarget.objInstance.mapId | 0,
-                                runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
-                            },
-                        ],
-                    },
-                },
-            });
-            return;
-        }
-        void this.applyWorldInput({
-            obj: {
-                static: {
-                    removals: [
-                        {
-                            mapId: actionTarget.objInstance.mapId | 0,
-                            objIndex: actionTarget.objInstance.objIndex | 0,
-                        },
-                    ],
-                },
-            },
-        });
-    };
-
-    private onMoveDynamicGroundItemToCamera = (entry: OsrsMenuEntry) => {
-        const actionTarget = entry.actionTarget;
-        this.mapViewer.closeMenu();
-        if (!actionTarget || actionTarget.kind !== MenuTargetType.OBJ) {
-            return;
-        }
-        if (actionTarget.objInstance.kind !== "dynamic") {
-            return;
-        }
-        void this.applyWorldInput({
-            obj: {
-                dynamic: {
-                    dynamicUpdates: [
-                        {
-                            mapId: getMapSquareId(
-                                this.camera.getMapX() >> 6,
-                                this.camera.getMapY() >> 6,
-                            ),
-                            runtimeObjId: actionTarget.objInstance.runtimeObjId | 0,
-                            objTypeId: actionTarget.objTypeId | 0,
-                            count: 1,
-                            x: this.camera.getMapX() | 0,
-                            y: this.camera.getMapY() | 0,
-                            plane: 0,
-                        },
-                    ],
-                },
-            },
-        });
-    };
-
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
+        this.mapViewer.clientCommandRuntime.update(this.mapViewer.clientCommands);
 
         const { width, height } = this.renderer.getViewportDimensions();
         this.camera.update(width, height);
+        if (this.mapViewer.updateWalkNavigation(deltaTime)) {
+            this.camera.updated = true;
+            this.camera.updatedPosition = true;
+            this.camera.update(width, height);
+        }
 
         const renderDistance = this.renderer.renderDistance;
         const frameCount = this.renderer.stats.frameCount;
@@ -1238,17 +506,8 @@ export class MapViewerRenderer extends RendererMainLoop {
             },
             renderFrameCoordinator: this.renderFrameCoordinator,
             applyFramePacket: (packet) => {
-                this.latestRenderFramePacket = packet;
-                const objUpdates = packet?.runtimeRenderUpdates?.updates;
-                if (objUpdates) {
-                    for (let index = 0; index < objUpdates.length; index++) {
-                        const update = objUpdates[index];
-                        if (!update) {
-                            continue;
-                        }
-                        this.applyMapObjInteractionStateUpdate(update.mapId | 0, update);
-                    }
-                }
+                this.worldToClientWorldAdapter.applyFramePacket(packet);
+                this.worldInteractionIndex.applyFramePacket(packet);
                 this.renderer.applyFramePacket(packet);
             },
         });
@@ -1460,264 +719,10 @@ export class MapViewerRenderer extends RendererMainLoop {
         interactBuffer: Float32Array,
         closestInteractIndices: Map<number, number[]>,
     ): void {
-        const frameCount = this.renderer.stats.frameCount;
-
-        const isMouseDown = this.inputManager.dragX !== -1 || this.inputManager.dragY !== -1;
-        const picked = this.inputManager.pickX !== -1 && this.inputManager.pickY !== -1;
-
-        if (!interactReady && !picked) return;
-
-        const menuCooldown = isTouchDevice ? 50 : 10;
-
-        if (
-            this.inputManager.mouseX === -1 ||
-            this.inputManager.mouseY === -1 ||
-            frameCount - this.mapViewer.menuOpenedFrame < menuCooldown
-        ) {
-            return;
-        }
-
-        // Don't auto close menu on touch devices
-        if (this.mapViewer.menuOpen && !picked && !isMouseDown && isTouchDevice) {
-            return;
-        }
-
-        if (!picked && !this.mapViewer.tooltips) {
-            this.mapViewer.closeMenu();
-            return;
-        }
-
-        const menuEntries: OsrsMenuEntry[] = [];
-        const examineEntries: OsrsMenuEntry[] = [];
-        const interactionHits = collectInteractionHits({
+        this.interactionService.checkInteractions(
+            interactReady,
             interactBuffer,
             closestInteractIndices,
-            maxDistance: INTERACTION_RADIUS,
-        });
-        const worldInteractionTargets = resolveWorldInteractionTargets({
-            hits: interactionHits,
-            getAnimatedLocTypeId: this.getAnimatedLocTypeId.bind(this),
-            getMapObjTargetInfo: this.getMapObjTargetInfo.bind(this),
-            getNpcTargetInfo: this.getNpcInteractionTargetInfo.bind(this),
-        });
-        const interactionTargets = resolveMenuInteractionTargets({
-            session: this.mapViewer.session,
-            targets: worldInteractionTargets,
-            includeUnnamed: this.mapViewer.debugId,
-        });
-        for (const target of interactionTargets) {
-            const actionTarget = getMenuActionTarget(target);
-            if (target.kind === InteractType.LOC) {
-                for (const option of target.locType.actions) {
-                    if (!option) {
-                        continue;
-                    }
-                    menuEntries.push({
-                        option,
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.mapViewer.closeMenu,
-                    });
-                }
-                if (picked && target.locInstance) {
-                    menuEntries.push({
-                        option: "Replace loc",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onReplaceLoc,
-                    });
-                    menuEntries.push({
-                        option: "Rotate loc",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onRotateLoc,
-                    });
-                    menuEntries.push({
-                        option: "Reset loc override",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onResetLocOverride,
-                    });
-                    menuEntries.push({
-                        option: "Hide loc",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onSetLocVisible(false),
-                    });
-                    menuEntries.push({
-                        option: "Show loc",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onSetLocVisible(true),
-                    });
-                    menuEntries.push({
-                        option: "Reset anim",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onResetLocAnimation,
-                    });
-                    menuEntries.push({
-                        option: "Pause anim",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onSetLocAnimationPaused(true),
-                    });
-                    menuEntries.push({
-                        option: "Resume anim",
-                        targetId: target.locType.id,
-                        targetType: MenuTargetType.LOC,
-                        targetName: target.locType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onSetLocAnimationPaused(false),
-                    });
-                }
-                examineEntries.push({
-                    option: "Examine",
-                    targetId: target.locType.id,
-                    targetType: MenuTargetType.LOC,
-                    targetName: target.locType.name,
-                    targetLevel: -1,
-                    actionTarget,
-                    onClick: this.mapViewer.onExamine,
-                });
-                continue;
-            }
-            if (target.kind === InteractType.OBJ) {
-                for (const option of target.objType.groundActions) {
-                    if (!option) {
-                        continue;
-                    }
-                    menuEntries.push({
-                        option,
-                        targetId: target.objType.id,
-                        targetType: MenuTargetType.OBJ,
-                        targetName: target.objType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.mapViewer.closeMenu,
-                    });
-                }
-                if (picked) {
-                    menuEntries.push({
-                        option: "Remove item",
-                        targetId: target.objType.id,
-                        targetType: MenuTargetType.OBJ,
-                        targetName: target.objType.name,
-                        targetLevel: -1,
-                        actionTarget,
-                        onClick: this.onRemoveGroundItem,
-                    });
-                    if (
-                        actionTarget.kind === MenuTargetType.OBJ &&
-                        actionTarget.objInstance.kind === "dynamic"
-                    ) {
-                        menuEntries.push({
-                            option: "Move item here",
-                            targetId: target.objType.id,
-                            targetType: MenuTargetType.OBJ,
-                            targetName: target.objType.name,
-                            targetLevel: -1,
-                            actionTarget,
-                            onClick: this.onMoveDynamicGroundItemToCamera,
-                        });
-                    }
-                }
-                examineEntries.push({
-                    option: "Examine",
-                    targetId: target.objType.id,
-                    targetType: MenuTargetType.OBJ,
-                    targetName: target.objType.name,
-                    targetLevel: -1,
-                    actionTarget,
-                    onClick: this.mapViewer.onExamine,
-                });
-                continue;
-            }
-            for (const option of target.npcType.actions) {
-                if (!option) {
-                    continue;
-                }
-                menuEntries.push({
-                    option,
-                    targetId: target.npcType.id,
-                    targetType: MenuTargetType.NPC,
-                    targetName: target.npcType.name,
-                    targetLevel: target.npcType.combatLevel,
-                    actionTarget,
-                    onClick: this.mapViewer.closeMenu,
-                });
-            }
-            if (picked) {
-                menuEntries.push({
-                    option: "Despawn npc",
-                    targetId: target.npcType.id,
-                    targetType: MenuTargetType.NPC,
-                    targetName: target.npcType.name,
-                    targetLevel: target.npcType.combatLevel,
-                    actionTarget,
-                    onClick: this.onDespawnNpc,
-                });
-            }
-            examineEntries.push({
-                option: "Examine",
-                targetId: target.npcType.id,
-                targetType: MenuTargetType.NPC,
-                targetName: target.npcType.name,
-                targetLevel: target.npcType.combatLevel,
-                actionTarget,
-                onClick: this.mapViewer.onExamine,
-            });
-        }
-
-        menuEntries.push({
-            option: "Walk here",
-            targetId: -1,
-            targetType: MenuTargetType.NONE,
-            targetName: "",
-            targetLevel: -1,
-            onClick: this.mapViewer.closeMenu,
-        });
-        menuEntries.push(...examineEntries);
-        menuEntries.push({
-            option: "Cancel",
-            targetId: -1,
-            targetType: MenuTargetType.NONE,
-            targetName: "",
-            targetLevel: -1,
-            onClick: this.mapViewer.closeMenu,
-        });
-
-        this.mapViewer.menuOpen = picked;
-        if (picked) {
-            this.mapViewer.menuOpenedFrame = frameCount;
-        }
-        this.mapViewer.menuX = this.inputManager.mouseX;
-        this.mapViewer.menuY = this.inputManager.mouseY;
-        this.mapViewer.menuEntries = menuEntries;
+        );
     }
 }

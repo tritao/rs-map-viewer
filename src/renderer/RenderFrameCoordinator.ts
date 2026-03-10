@@ -51,6 +51,7 @@ type RenderFrameCoordinatorDeps = Readonly<{
     getVisibleMapIds(): Int32Array;
     getCameraMapX(): number;
     getCameraMapY(): number;
+    applyWorldDelta?(deltaPacket: WorldDeltaPacket): void;
     reportSeamSample?(sample: RenderFrameSeamSample): void;
 }>;
 
@@ -263,6 +264,7 @@ export class RenderFrameCoordinator {
             let applyResult: ApplyWorldDeltaResult | undefined;
             if (worldDeltaPacket) {
                 applyResult = await this.deps.renderFrameRuntime.applyWorldDelta(worldDeltaPacket);
+                this.deps.applyWorldDelta?.(worldDeltaPacket);
                 if (
                     applyResult.npc?.snapshotRequests?.state &&
                     (applyResult.npc.snapshotRequests.state.length | 0) > 0

@@ -79,11 +79,14 @@ export type WorldLocReplacementClear = Readonly<{
     placementIndex: number;
 }>;
 
-export type WorldInput = Readonly<{
+export type WorldMutationInput = Readonly<{
     npc?: WorldNpcInput;
     obj?: WorldObjInput;
     loc?: WorldLocInput;
 }>;
+
+// Internal runtime mutation protocol. Prefer higher-level client command APIs outside src/world.
+export type WorldInput = WorldMutationInput;
 
 export type WorldMapActivationInput = Readonly<{
     staticMap: StaticMapPacket;
@@ -141,7 +144,7 @@ export class WorldSession {
         this.deps.worldRuntime.deactivateLoadedMap(input);
     }
 
-    async applyWorldInput(input: WorldInput): Promise<WorldInputApplyResult> {
+    async applyMutation(input: WorldMutationInput): Promise<WorldInputApplyResult> {
         const locReplacementResult = this.applyLocPlacementOverrides(input);
         let applied = locReplacementResult.applied | 0;
         const runtimeInput = this.getRuntimeWorldInput(input);
@@ -162,7 +165,7 @@ export class WorldSession {
         return Array.from(overrides.values());
     }
 
-    private applyLocPlacementOverrides(input: WorldInput): WorldInputApplyResult {
+    private applyLocPlacementOverrides(input: WorldMutationInput): WorldInputApplyResult {
         let applied = 0;
         const reloadMapIds = new Set<number>();
         const replacements = input.loc?.state?.replacements;
@@ -218,7 +221,7 @@ export class WorldSession {
         };
     }
 
-    private getRuntimeWorldInput(input: WorldInput): WorldInput | undefined {
+    private getRuntimeWorldInput(input: WorldMutationInput): WorldInput | undefined {
         const locState = input.loc?.state;
         const locStateWithoutReplacements =
             locState &&
