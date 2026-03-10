@@ -7,7 +7,7 @@ import type { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import { formatBytes } from "../util/BytesUtil";
 import { type CacheList, fetchCacheList, loadCacheContext } from "../util/Caches";
 import { isIos } from "../util/DeviceUtil";
-import { errorToString } from "../util/ErrorUtil";
+import { errorToString, isAbortError, throwIfAborted } from "../util/ErrorUtil";
 import { EntityViewerContainer } from "./EntityViewerContainer";
 import {
     type EntityViewerKind,
@@ -208,8 +208,10 @@ export default function EntityViewerApp(): JSX.Element {
 
     useEffect(() => {
         const abortController = new AbortController();
+        const { signal } = abortController;
         const load = async () => {
             const cacheList = await cachesPromise;
+            throwIfAborted(signal);
             if (!cacheList) {
                 throw new Error("No caches found");
             }
@@ -219,10 +221,12 @@ export default function EntityViewerApp(): JSX.Element {
                 cacheList.caches.find((cache) => cache.name === cacheNameParam) ?? cacheList.latest;
             const context = await loadCacheContext(
                 nextCacheInfo,
-                abortController.signal,
+                signal,
                 setDownloadProgress,
             );
+            throwIfAborted(signal);
             const nextRenderer = new EntityViewerRenderer(context.session);
+            throwIfAborted(signal);
             setCacheInfo(nextCacheInfo);
             setRenderer(nextRenderer);
             setDownloadProgress(undefined);
@@ -233,6 +237,9 @@ export default function EntityViewerApp(): JSX.Element {
             setErrorMessage("iOS is not supported.");
         } else {
             load().catch((error) => {
+                if (signal.aborted || isAbortError(error)) {
+                    return;
+                }
                 console.error(error);
                 setErrorMessage(errorToString(error));
             });

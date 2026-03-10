@@ -8,7 +8,7 @@ import type { BackendKind } from "../util/BackendKind";
 import { formatBytes } from "../util/BytesUtil";
 import { fetchCacheList, loadCacheContext } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
-import { errorToString } from "../util/ErrorUtil";
+import { errorToString, isAbortError, throwIfAborted } from "../util/ErrorUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
@@ -44,7 +44,8 @@ function parseWorkerRuntimeOptions(searchParams: URLSearchParams): WorkerRuntime
 }
 
 function MapViewerApp() {
-    const [searchParams, setSearchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
+    const [initialSearchParams] = useState(() => new URLSearchParams(searchParams));
 
     const [errorMessage, setErrorMessage] = useState<string>();
     const [downloadProgress, setDownloadProgress] = useState<DownloadProgress>();
@@ -52,15 +53,17 @@ function MapViewerApp() {
 
     useEffect(() => {
         const abortController = new AbortController();
+        const { signal } = abortController;
 
         const load = async () => {
             const cacheList = await cachesPromise;
+            throwIfAborted(signal);
             if (!cacheList) {
                 setErrorMessage("Failed to load cache list");
-                throw new Error("No caches found");
+                return;
             }
 
-            const cacheNameParam = searchParams.get("cache");
+            const cacheNameParam = initialSearchParams.get("cache");
             let cacheInfo = cacheList.latest;
             if (cacheNameParam) {
                 const foundCache = cacheList.caches.find((cache) => cache.name === cacheNameParam);
@@ -71,12 +74,14 @@ function MapViewerApp() {
 
             const context = await loadCacheContext(
                 cacheInfo,
-                abortController.signal,
+                signal,
                 setDownloadProgress,
             );
-            const runtimeOptions = parseWorkerRuntimeOptions(searchParams);
+            throwIfAborted(signal);
+            const runtimeOptions = parseWorkerRuntimeOptions(initialSearchParams);
 
             const mapImageCache = await caches.open("map-images");
+            throwIfAborted(signal);
 
             const mapViewerResult = MapViewer.tryCreate(
                 workerPool,
@@ -85,7 +90,7 @@ function MapViewerApp() {
                 mapImageCache,
                 context,
                 runtimeOptions,
-                searchParams,
+                initialSearchParams,
             );
             if (!mapViewerResult.ok) {
                 setErrorMessage(mapViewerResult.error);
@@ -93,6 +98,7 @@ function MapViewerApp() {
             }
             const mapViewer = mapViewerResult.value;
             mapViewer.init();
+            throwIfAborted(signal);
 
             setDownloadProgress(undefined);
             setMapViewer(mapViewer);
@@ -102,6 +108,9 @@ function MapViewerApp() {
             setErrorMessage("iOS is not supported.");
         } else {
             load().catch((e) => {
+                if (signal.aborted || isAbortError(e)) {
+                    return;
+                }
                 console.error(e);
                 setErrorMessage(errorToString(e));
             });

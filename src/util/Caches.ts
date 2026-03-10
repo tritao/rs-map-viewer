@@ -68,6 +68,21 @@ export type LoadedCacheContext = Readonly<{
     session: CacheSession;
 }>;
 
+function wrapProgressListener(
+    signal: AbortSignal | undefined,
+    progressListener: ProgressListener | undefined,
+): ProgressListener | undefined {
+    if (!progressListener) {
+        return undefined;
+    }
+    return (progress) => {
+        if (signal?.aborted) {
+            return;
+        }
+        progressListener(progress);
+    };
+}
+
 export async function loadCacheFiles(
     loader: CacheLoader,
     info: CacheInfo,
@@ -86,7 +101,7 @@ export async function loadCacheFiles(
         info.name,
         true,
         signal,
-        progressListener,
+        wrapProgressListener(signal, progressListener),
     );
 
     const xteas = await xteasPromise;

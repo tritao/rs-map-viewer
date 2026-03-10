@@ -4,6 +4,7 @@ import type { DownloadProgress, ProgressListener } from "../../rs/cache/platform
 import type { CacheSession } from "../../rs/loaders/CacheSession";
 import type { BackendKind } from "../../util/BackendKind";
 import type { LoadedCache, LoadedCacheContext } from "../../util/Caches";
+import { isAbortError } from "../../util/ErrorUtil";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../../worker/SimWorkerPool";
 import type { WorldMutationInput, WorldSession } from "../../world/WorldSession";
@@ -140,7 +141,7 @@ export class ClientRuntime {
             });
             this.setCacheSwitchStatus({ state: "idle" });
         } catch (error: unknown) {
-            if ((nonce | 0) !== (this.cacheSwitchNonce | 0)) {
+            if ((nonce | 0) !== (this.cacheSwitchNonce | 0) || isAbortError(error)) {
                 this.setCacheSwitchStatus({ state: "idle" });
                 return;
             }
