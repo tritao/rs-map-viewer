@@ -78,7 +78,7 @@ export type ClientWorldEntity =
     | ClientGroundItemEntity
     | ClientActorEntity;
 
-export type ClientActorSnapshot = Readonly<{
+export type ClientActorInteractionSnapshot = Readonly<{
     interactId: number;
     npcInstanceId: number;
     npcTypeId: number;

@@ -14,7 +14,10 @@ import {
     type WorldDeltaPacket,
 } from "./WorldDeltaPacket";
 import type { WorldMutationInput } from "./WorldSession";
-import type { ClientActorSnapshot, ClientWorldState } from "../client/world/ClientWorldState";
+import type {
+    ClientActorInteractionSnapshot,
+    ClientWorldState,
+} from "../client/world/ClientWorldState";
 
 type WorldToClientWorldAdapterDeps = Readonly<{
     clientWorldState: ClientWorldState;
@@ -435,7 +438,7 @@ export class WorldToClientWorldAdapter {
                 continue;
             }
 
-            const actors: ClientActorSnapshot[] = [];
+            const actors: ClientActorInteractionSnapshot[] = [];
             for (let localIndex = 0; localIndex < count; localIndex++) {
                 const interactId = (start + localIndex) | 0;
                 const metaOff = interactId * NPC_INTERACTION_META_STRIDE;

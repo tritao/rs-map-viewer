@@ -1,7 +1,7 @@
 import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
 import type {
     ClientActorEntity,
-    ClientActorSnapshot,
+    ClientActorInteractionSnapshot,
     ClientEntityId,
     ClientGroundItemEntity,
     ClientWorldEntity,
@@ -10,7 +10,7 @@ import type {
 export type {
     ClientActorBackingRef,
     ClientActorEntity,
-    ClientActorSnapshot,
+    ClientActorInteractionSnapshot,
     ClientEntityId,
     ClientEntityKind,
     ClientGroundItemBackingRef,
@@ -20,7 +20,7 @@ export type {
     ClientWorldObjectEntity,
 } from "./ClientWorldTypes";
 
-type MapWorldState = {
+type MapWorldIndexState = {
     entityIds: Set<ClientEntityId>;
     staticObjTypeIds?: Int32Array;
     worldObjectIdsByLocIndex: Map<number, ClientEntityId>;
@@ -47,7 +47,7 @@ function getActorEntityId(mapId: number, npcInstanceId: number): ClientEntityId 
     return `actor:${mapId | 0}:${npcInstanceId | 0}`;
 }
 
-function createEmptyMapState(): MapWorldState {
+function createEmptyMapState(): MapWorldIndexState {
     return {
         entityIds: new Set<ClientEntityId>(),
         worldObjectIdsByLocIndex: new Map<number, ClientEntityId>(),
@@ -173,7 +173,7 @@ function buildActorEntity(
 
 export class ClientWorldState {
     private readonly entitiesById = new Map<ClientEntityId, ClientWorldEntity>();
-    private readonly mapStateByMapId = new Map<number, MapWorldState>();
+    private readonly mapStateByMapId = new Map<number, MapWorldIndexState>();
 
     reset(): void {
         this.entitiesById.clear();
@@ -331,10 +331,6 @@ export class ClientWorldState {
         mapState.dynamicGroundItemIdsByInteractId.clear();
     }
 
-    replaceActorsForMap(mapId: number, actors: ReadonlyArray<ClientActorSnapshot>): void {
-        this.replaceVisibleActorInteractions(mapId | 0, actors);
-    }
-
     upsertActor(input: {
         mapId: number;
         npcInstanceId: number;
@@ -387,7 +383,10 @@ export class ClientWorldState {
         this.entitiesById.delete(entityId);
     }
 
-    replaceVisibleActorInteractions(mapId: number, actors: ReadonlyArray<ClientActorSnapshot>): void {
+    replaceVisibleActorInteractions(
+        mapId: number,
+        actors: ReadonlyArray<ClientActorInteractionSnapshot>,
+    ): void {
         const normalizedMapId = mapId | 0;
         this.clearActorInteractionIds(normalizedMapId);
         for (let index = 0; index < (actors.length | 0); index++) {
@@ -527,7 +526,7 @@ export class ClientWorldState {
         return entity?.kind === "actor" ? entity : undefined;
     }
 
-    private getOrCreateMapState(mapId: number): MapWorldState {
+    private getOrCreateMapState(mapId: number): MapWorldIndexState {
         const normalizedMapId = mapId | 0;
         let mapState = this.mapStateByMapId.get(normalizedMapId);
         if (!mapState) {
