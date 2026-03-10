@@ -1,15 +1,10 @@
-import type { MapObjRenderUpdate } from "../renderer/MapObjRenderPacket";
-import type { RenderFramePacket } from "../renderer/RenderFramePacket";
+import type { MapObjRenderUpdate } from "../../renderer/MapObjRenderPacket";
+import type { RenderFramePacket } from "../../renderer/RenderFramePacket";
 import {
     NPC_INTERACTION_META_STRIDE,
     NPC_RANGES_BY_MAP_ID_STRIDE,
-} from "../renderer/RenderFramePacket";
-import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
-import type {
-    ClientActorSnapshot,
-    ClientWorldState,
-} from "../client/world/ClientWorldState";
-import type { WorldMutationInput } from "./WorldSession";
+} from "../../renderer/RenderFramePacket";
+import type { StaticMapPacket } from "../../runtime/MapRuntimePayload";
 import {
     LOC_ANIMATION_SNAPSHOT_STRIDE,
     LOC_VISIBILITY_STATE_STRIDE,
@@ -17,7 +12,9 @@ import {
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
     type WorldDeltaPacket,
-} from "./WorldDeltaPacket";
+} from "../../world/WorldDeltaPacket";
+import type { WorldMutationInput } from "../../world/WorldSession";
+import type { ClientActorSnapshot, ClientWorldState } from "./ClientWorldState";
 
 type WorldToClientWorldAdapterDeps = Readonly<{
     clientWorldState: ClientWorldState;
@@ -442,7 +439,7 @@ export class WorldToClientWorldAdapter {
             for (let localIndex = 0; localIndex < count; localIndex++) {
                 const interactId = (start + localIndex) | 0;
                 const metaOff = interactId * NPC_INTERACTION_META_STRIDE;
-                if ((metaOff + NPC_INTERACTION_META_STRIDE) > (meta.length | 0)) {
+                if (metaOff + NPC_INTERACTION_META_STRIDE > (meta.length | 0)) {
                     continue;
                 }
                 actors.push({

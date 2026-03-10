@@ -1,4 +1,5 @@
-import type { ClientCommand, ClientCommandService } from "../actions/ClientCommandService";
+import type { ClientCommand } from "../actions/ClientCommand";
+import type { ClientCommandService } from "../actions/ClientCommandService";
 
 export type ClientPlayerIntent =
     | Readonly<{

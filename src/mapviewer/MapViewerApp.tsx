@@ -6,12 +6,12 @@ import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import { DownloadProgress } from "../rs/cache/platform/CacheLoader";
 import type { BackendKind } from "../util/BackendKind";
 import { formatBytes } from "../util/BytesUtil";
-import { fetchCacheList } from "../util/Caches";
+import { fetchCacheList, loadCacheContext } from "../util/Caches";
 import { isIos, isWallpaperEngine } from "../util/DeviceUtil";
 import { errorToString } from "../util/ErrorUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
+import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { MapViewer } from "./MapViewer";
 import { MapViewerContainer } from "./MapViewerContainer";
 
@@ -69,7 +69,7 @@ function MapViewerApp() {
                 }
             }
 
-            const context = await MapViewer.loadCacheContext(
+            const context = await loadCacheContext(
                 cacheInfo,
                 abortController.signal,
                 setDownloadProgress,

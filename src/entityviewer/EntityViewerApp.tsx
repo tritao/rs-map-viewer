@@ -3,20 +3,19 @@ import { useSearchParams } from "react-router-dom";
 
 import { OsrsLoadingBar } from "../components/rs/loading/OsrsLoadingBar";
 import type { CacheInfo } from "../rs/cache/CacheInfo";
-import { formatBytes } from "../util/BytesUtil";
-import { fetchCacheList, type CacheList } from "../util/Caches";
-import { errorToString } from "../util/ErrorUtil";
-import { isIos } from "../util/DeviceUtil";
-import { MapViewer } from "../mapviewer/MapViewer";
 import type { DownloadProgress } from "../rs/cache/platform/CacheLoader";
+import { formatBytes } from "../util/BytesUtil";
+import { type CacheList, fetchCacheList, loadCacheContext } from "../util/Caches";
+import { isIos } from "../util/DeviceUtil";
+import { errorToString } from "../util/ErrorUtil";
 import { EntityViewerContainer } from "./EntityViewerContainer";
 import {
-    createEntityViewerServices,
-    resolveEntityViewerData,
     type EntityViewerKind,
-    type EntityViewerResolvedData,
     type EntityViewerObjMode,
     type EntityViewerRequest,
+    type EntityViewerResolvedData,
+    createEntityViewerServices,
+    resolveEntityViewerData,
 } from "./EntityViewerData";
 import { EntityViewerRenderer } from "./EntityViewerRenderer";
 
@@ -105,9 +104,8 @@ export default function EntityViewerApp(): JSX.Element {
     const [cameraDistance, setCameraDistance] = useState<number>(8);
     const [npcPlaying, setNpcPlaying] = useState<boolean>(true);
     const [npcFrame, setNpcFrame] = useState<number>(0);
-    const [lastIdsByKind, setLastIdsByKind] = useState<Record<EntityViewerKind, number>>(
-        DEFAULT_IDS_BY_KIND,
-    );
+    const [lastIdsByKind, setLastIdsByKind] =
+        useState<Record<EntityViewerKind, number>>(DEFAULT_IDS_BY_KIND);
     const request = useMemo(() => parseRequest(searchParams), [searchParams]);
     const resolvedRequest = useMemo(
         () => (request.kind === "npc" ? { ...request, npcFrame } : request),
@@ -115,10 +113,7 @@ export default function EntityViewerApp(): JSX.Element {
     );
     const renderTargetKey = useMemo(() => getRenderTargetKey(resolvedRequest), [resolvedRequest]);
     const npcAnimationKey = useMemo(
-        () =>
-            request.kind === "npc"
-                ? `npc:${request.id}:${request.npcSeqId}`
-                : request.kind,
+        () => (request.kind === "npc" ? `npc:${request.id}:${request.npcSeqId}` : request.kind),
         [request.id, request.kind, request.npcSeqId],
     );
     const previousNpcAnimationKeyRef = useRef<string>();
@@ -209,12 +204,7 @@ export default function EntityViewerApp(): JSX.Element {
             cancelled = true;
             cancelAnimationFrame(frameHandle);
         };
-    }, [
-        npcPlaying,
-        renderer,
-        request.kind,
-        request.npcSeqId,
-    ]);
+    }, [npcPlaying, renderer, request.kind, request.npcSeqId]);
 
     useEffect(() => {
         const abortController = new AbortController();
@@ -227,7 +217,7 @@ export default function EntityViewerApp(): JSX.Element {
             const cacheNameParam = searchParams.get("cache");
             const nextCacheInfo =
                 cacheList.caches.find((cache) => cache.name === cacheNameParam) ?? cacheList.latest;
-            const context = await MapViewer.loadCacheContext(
+            const context = await loadCacheContext(
                 nextCacheInfo,
                 abortController.signal,
                 setDownloadProgress,
@@ -306,7 +296,8 @@ export default function EntityViewerApp(): JSX.Element {
                     const effectiveId =
                         nextRequest.kind === request.kind
                             ? nextRequest.id
-                            : (lastIdsByKind[nextRequest.kind] ?? DEFAULT_IDS_BY_KIND[nextRequest.kind]);
+                            : lastIdsByKind[nextRequest.kind] ??
+                              DEFAULT_IDS_BY_KIND[nextRequest.kind];
                     const resetNpcAnimation =
                         nextRequest.kind === "npc" &&
                         (request.kind !== "npc" || effectiveId !== request.id);

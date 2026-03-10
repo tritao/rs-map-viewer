@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { RendererMainLoop } from "./RendererMainLoop";
+import { RendererMainLoop } from "../../renderer/RendererMainLoop";
 
 export interface RendererCanvasProps {
     renderer: RendererMainLoop;

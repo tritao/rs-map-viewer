@@ -1,64 +1,55 @@
 import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
+import type { WalkDestination } from "../client/actions/ClientCommand";
 import { ClientCommandService } from "../client/actions/ClientCommandService";
-import {
-    DebugActionService,
-    getCameraMapPosition,
-} from "../debug/DebugActionService";
-import {
-    ClientRuntime,
-    type ClientRuntimeCacheContext,
-    type ClientRuntimeOptions,
-    type CacheSwitchStatus,
-} from "../client/runtime/ClientRuntime";
 import {
     ClientCommandRuntime,
     type ClientPlayerIntent,
 } from "../client/runtime/ClientCommandRuntime";
-import { MapViewerMapImages } from "./MapViewerMapImages";
 import {
-    buildMapViewerSearchParams,
-    parseMapViewerSearchParams,
-    type DevFixedMapSquare,
-    type SearchParamsListener,
-} from "./MapViewerSearchParams";
+    type CacheSwitchStatus,
+    ClientRuntime,
+    type ClientRuntimeOptions,
+} from "../client/runtime/ClientRuntime";
+import { ClientWorldState } from "../client/world/ClientWorldState";
+import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
+import { WorldToClientWorldAdapter } from "../client/world/WorldToClientWorldAdapter";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
-import { CacheInfo } from "../rs/cache/CacheInfo";
-import { ProgressListener } from "../rs/cache/platform/CacheLoader";
-import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
-import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
+import { DebugActionService, getCameraMapPosition } from "../debug/DebugActionService";
+import { Camera, CameraView } from "../renderer/Camera";
+import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import type { ObjActionTargetInstance } from "../rs/MenuEntry";
-import { CacheSession, tryCreateCacheSession } from "../rs/loaders/CacheSession";
-import { initErrorToString } from "../rs/loaders/InitError";
+import type { CacheInfo } from "../rs/cache/CacheInfo";
+import type { CacheSession } from "../rs/loaders/CacheSession";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { CacheList, LoadedCache, loadCacheFiles } from "../util/Caches";
+import {
+    CacheList,
+    type LoadedCache,
+    type LoadedCacheContext,
+    loadCacheContext,
+} from "../util/Caches";
 import { isTouchDevice, isWallpaperEngine } from "../util/DeviceUtil";
 import { InputManager } from "../util/InputManager";
 import { Result, ok } from "../util/Result";
-import { RenderFrameCoordinator } from "../renderer/RenderFrameCoordinator";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
-import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
+import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
-import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
-import {
-    type WorldMutationInput,
-    WorldSession,
-} from "../world/WorldSession";
-import { Camera, CameraView } from "../renderer/Camera";
-import { ClientWorldState } from "../client/world/ClientWorldState";
-import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
+import { type WorldMutationInput, WorldSession } from "../world/WorldSession";
+import { MapViewerMapImages } from "./MapViewerMapImages";
+import { advanceWalkNavigation, resolveWalkDestination } from "./MapViewerNavigation";
 import {
     MapViewerRenderer,
     type MapViewerStaticMapRuntime,
     type MapViewerStaticMapRuntimeCallbacks,
 } from "./MapViewerRenderer";
 import {
-    advanceWalkNavigation,
-    resolveWalkDestination,
-    type WalkDestination,
-} from "./MapViewerNavigation";
+    type DevFixedMapSquare,
+    type SearchParamsListener,
+    buildMapViewerSearchParams,
+    parseMapViewerSearchParams,
+} from "./MapViewerSearchParams";
 
 export type { CacheSwitchStatus } from "../client/runtime/ClientRuntime";
 
@@ -72,7 +63,7 @@ const EMPTY_MENU_STATE: ViewerMenuState = {
     entries: EMPTY_MENU_ENTRIES,
 };
 
-type CacheContext = ClientRuntimeCacheContext;
+type CacheContext = LoadedCacheContext;
 type ViewerMenuState = Readonly<{
     open: boolean;
     openedFrame: number;
@@ -160,29 +151,6 @@ export class MapViewer {
         );
     }
 
-    static async loadCacheContext(
-        cacheInfo: CacheInfo,
-        signal?: AbortSignal,
-        progressListener?: ProgressListener,
-    ): Promise<CacheContext> {
-        const loadedCache = await loadCacheFiles(
-            new BrowserCacheLoader(),
-            cacheInfo,
-            signal,
-            progressListener,
-        );
-
-        const sessionResult = tryCreateCacheSession(loadedCache, new JSCompressionHandler());
-        if (!sessionResult.ok) {
-            throw new Error(initErrorToString(sessionResult.error));
-        }
-
-        return {
-            loadedCache,
-            session: sessionResult.value,
-        };
-    }
-
     private constructor(
         readonly renderWorkerPool: RenderDataWorkerPool,
         readonly simWorkerPool: SimWorkerPool,
@@ -233,7 +201,7 @@ export class MapViewer {
             simWorkerPool,
             cacheContext: context,
             runtimeOptions: normalizedRuntimeOptions,
-            loadCacheContext: MapViewer.loadCacheContext,
+            loadCacheContext,
             hasLoadedMap: (mapId) => this.renderer.hasLoadedMap(mapId | 0),
             reloadLoadedMap: (mapId) => this.renderer.reloadLoadedMap(mapId | 0),
             onClientReset: async () => {
@@ -321,12 +289,14 @@ export class MapViewer {
         return this.clientRuntime.applyWorldMutation(input);
     }
 
-    walkToScreenPoint(input: Readonly<{
-        screenX: number;
-        screenY: number;
-        viewportWidth: number;
-        viewportHeight: number;
-    }>): boolean {
+    walkToScreenPoint(
+        input: Readonly<{
+            screenX: number;
+            screenY: number;
+            viewportWidth: number;
+            viewportHeight: number;
+        }>,
+    ): boolean {
         const destination = resolveWalkDestination({
             ...input,
             viewProjMatrix: this.camera.viewProjMatrix,
@@ -356,27 +326,35 @@ export class MapViewer {
         return true;
     }
 
-    examineWorldObject(target: Readonly<{ locTypeId: number; mapId?: number; locIndex?: number }>): void {
+    examineWorldObject(
+        target: Readonly<{ locTypeId: number; mapId?: number; locIndex?: number }>,
+    ): void {
         this.clientCommands.examineWorldObject(target);
         this.openExamineLookup("object", target.locTypeId | 0);
     }
 
-    examineGroundItem(target: Readonly<{ objTypeId: number; objInstance: ObjActionTargetInstance }>): void {
+    examineGroundItem(
+        target: Readonly<{ objTypeId: number; objInstance: ObjActionTargetInstance }>,
+    ): void {
         this.clientCommands.examineGroundItem(target);
         this.openExamineLookup("item", target.objTypeId | 0);
     }
 
-    examineActor(target: Readonly<{
-        npcTypeId: number;
-        npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
-    }>): void {
+    examineActor(
+        target: Readonly<{
+            npcTypeId: number;
+            npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
+        }>,
+    ): void {
         this.clientCommands.examineActor(target);
         this.openExamineLookup("npc", target.npcTypeId | 0);
     }
 
     private openExamineLookup(lookupType: string, targetId: number): void {
         window.open(
-            `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${targetId | 0}`,
+            `https://oldschool.runescape.wiki/w/Special:Lookup?type=${lookupType}&id=${
+                targetId | 0
+            }`,
             "_blank",
         );
     }
@@ -640,13 +618,15 @@ export class MapViewer {
         this.renderer.canvas.focus();
     };
 
-    setMenuState(input: Readonly<{
-        open: boolean;
-        openedFrame: number;
-        x: number;
-        y: number;
-        entries: ReadonlyArray<OsrsMenuEntry>;
-    }>): void {
+    setMenuState(
+        input: Readonly<{
+            open: boolean;
+            openedFrame: number;
+            x: number;
+            y: number;
+            entries: ReadonlyArray<OsrsMenuEntry>;
+        }>,
+    ): void {
         this.menuState = {
             open: input.open,
             openedFrame: input.openedFrame | 0,
@@ -744,5 +724,4 @@ export class MapViewer {
             reloadMap,
         };
     }
-
 }

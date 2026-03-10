@@ -1,30 +1,27 @@
-import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
-import {
-    type MapData,
-    type SdMapLoaderInput,
-} from "../maprender/MapRenderPayload";
+import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
+import { WorldToClientWorldAdapter } from "../client/world/WorldToClientWorldAdapter";
+import { type MapData, type SdMapLoaderInput } from "../maprender/MapRenderPayload";
+import { Camera } from "../renderer/Camera";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
-import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
+import {
+    type RenderFrameCoordinator,
+    type RenderFrameSeamSample,
+} from "../renderer/RenderFrameCoordinator";
+import { RendererMainLoop } from "../renderer/RendererMainLoop";
 import { WebGLMapRenderer } from "../renderer/webgl/WebGLMapRenderer";
+import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
 import { getMapSquareId } from "../rs/map/MapFileIndex";
 import { SceneBuilder } from "../rs/scene/SceneBuilder";
 import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
-import {
-    type RenderFrameSeamSample,
-    type RenderFrameCoordinator,
-} from "../renderer/RenderFrameCoordinator";
 import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
-import type { WorldSession } from "../world/WorldSession";
-import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
-import { Camera } from "../renderer/Camera";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
+import type { WorldSession } from "../world/WorldSession";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
 import { MapViewerInteractionService } from "./MapViewerInteractionService";
 import { RenderTickCoordinator } from "./RenderTickCoordinator";
-import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
 
 export type MapViewerStaticMapRuntime = Readonly<{
     applyPacket(
@@ -342,7 +339,10 @@ export class MapViewerRenderer extends RendererMainLoop {
             activationVersion: queuedActivationVersion,
         });
         if (!ok) {
-            this.mapManager.addInvalidMap(staticMapPacket.mapData.mapX, staticMapPacket.mapData.mapY);
+            this.mapManager.addInvalidMap(
+                staticMapPacket.mapData.mapX,
+                staticMapPacket.mapData.mapY,
+            );
             return;
         }
     }
@@ -351,9 +351,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.detachLoadedMapRuntime(mapInfo.mapId);
     }
 
-    private async attachLoadedRuntimeMapObjRenderData(
-        packet: StaticMapPacket,
-    ): Promise<void> {
+    private async attachLoadedRuntimeMapObjRenderData(packet: StaticMapPacket): Promise<void> {
         await this.mapViewer.applyWorldMutation({
             obj: {
                 static: {

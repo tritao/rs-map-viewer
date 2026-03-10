@@ -1,5 +1,5 @@
-import { Renderer } from "../../renderer/Renderer";
-import { pixelRatio } from "../../util/DeviceUtil";
+import { pixelRatio } from "../util/DeviceUtil";
+import { Renderer } from "./Renderer";
 
 function resizeCanvas(canvas: HTMLCanvasElement) {
     const devicePixelRatio = pixelRatio;

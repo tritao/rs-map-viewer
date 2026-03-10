@@ -3,7 +3,12 @@ import { CacheType, detectCacheType } from "../rs/cache/CacheType";
 import { CacheBundleTransfer } from "../rs/cache/platform/CacheFiles";
 import { fetchCacheFiles } from "../rs/cache/platform/CacheFilesFetcher";
 import { CacheLoader, ProgressListener } from "../rs/cache/platform/CacheLoader";
+import { BrowserCacheLoader } from "../rs/cache/platform/browser/BrowserCacheLoader";
+import { JSCompressionHandler } from "../rs/compression/JSCompressionHandler";
 import { XteaKey, asXteaKey } from "../rs/crypto/Xtea";
+import type { CacheSession } from "../rs/loaders/CacheSession";
+import { tryCreateCacheSession } from "../rs/loaders/CacheSession";
+import { initErrorToString } from "../rs/loaders/InitError";
 
 const CACHE_PATH = "/caches/";
 
@@ -58,6 +63,11 @@ export type LoadedCache = {
     xteas: XteaMap;
 };
 
+export type LoadedCacheContext = Readonly<{
+    loadedCache: LoadedCache;
+    session: CacheSession;
+}>;
+
 export async function loadCacheFiles(
     loader: CacheLoader,
     info: CacheInfo,
@@ -86,6 +96,29 @@ export async function loadCacheFiles(
         type: cacheType,
         bundle,
         xteas,
+    };
+}
+
+export async function loadCacheContext(
+    info: CacheInfo,
+    signal?: AbortSignal,
+    progressListener?: ProgressListener,
+): Promise<LoadedCacheContext> {
+    const loadedCache = await loadCacheFiles(
+        new BrowserCacheLoader(),
+        info,
+        signal,
+        progressListener,
+    );
+
+    const sessionResult = tryCreateCacheSession(loadedCache, new JSCompressionHandler());
+    if (!sessionResult.ok) {
+        throw new Error(initErrorToString(sessionResult.error));
+    }
+
+    return {
+        loadedCache,
+        session: sessionResult.value,
     };
 }
 

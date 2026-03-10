@@ -1,8 +1,11 @@
 import type { ModelRenderData } from "../maprender/build/ModelRenderDataBuilder";
-import { RendererMainLoop } from "../components/renderer/RendererMainLoop";
-import type { CacheSession } from "../rs/loaders/CacheSession";
+import { RendererMainLoop } from "../renderer/RendererMainLoop";
+import {
+    type SetEntityRenderDataOptions,
+    WebGLEntityRenderer,
+} from "../renderer/webgl/WebGLEntityRenderer";
 import { createRendererTexturePolicy } from "../rs/cache/CacheInfo";
-import { WebGLEntityRenderer, type SetEntityRenderDataOptions } from "../renderer/webgl/WebGLEntityRenderer";
+import type { CacheSession } from "../rs/loaders/CacheSession";
 
 export class EntityViewerRenderer extends RendererMainLoop {
     declare renderer: WebGLEntityRenderer;
@@ -50,5 +53,4 @@ export class EntityViewerRenderer extends RendererMainLoop {
     getYaw(): number {
         return this.renderer.getYaw();
     }
-
 }

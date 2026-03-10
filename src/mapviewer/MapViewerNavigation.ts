@@ -1,4 +1,6 @@
-import { mat4, vec4, type mat4 as Mat4, type vec3 as Vec3 } from "gl-matrix";
+import { type mat4 as Mat4, type vec3 as Vec3, mat4, vec4 } from "gl-matrix";
+
+import type { WalkDestination } from "../client/actions/ClientCommand";
 
 const walkInverseViewProj = mat4.create();
 const walkNearClip = vec4.create();
@@ -6,15 +8,15 @@ const walkFarClip = vec4.create();
 const walkNearWorld = vec4.create();
 const walkFarWorld = vec4.create();
 
-export type WalkDestination = Readonly<{ x: number; z: number }>;
-
-export function resolveWalkDestination(input: Readonly<{
-    screenX: number;
-    screenY: number;
-    viewportWidth: number;
-    viewportHeight: number;
-    viewProjMatrix: Mat4;
-}>): WalkDestination | undefined {
+export function resolveWalkDestination(
+    input: Readonly<{
+        screenX: number;
+        screenY: number;
+        viewportWidth: number;
+        viewportHeight: number;
+        viewProjMatrix: Mat4;
+    }>,
+): WalkDestination | undefined {
     const width = input.viewportWidth | 0;
     const height = input.viewportHeight | 0;
     if ((width | 0) <= 0 || (height | 0) <= 0) {
@@ -26,8 +28,8 @@ export function resolveWalkDestination(input: Readonly<{
         return undefined;
     }
 
-    const clipX = ((input.screenX / width) * 2) - 1;
-    const clipY = 1 - ((input.screenY / height) * 2);
+    const clipX = (input.screenX / width) * 2 - 1;
+    const clipY = 1 - (input.screenY / height) * 2;
     walkNearClip[0] = clipX;
     walkNearClip[1] = clipY;
     walkNearClip[2] = -1;
@@ -68,12 +70,14 @@ export function resolveWalkDestination(input: Readonly<{
     };
 }
 
-export function advanceWalkNavigation(input: Readonly<{
-    destination: WalkDestination;
-    cameraPosition: Vec3;
-    cameraSpeed: number;
-    deltaTime: number;
-}>): boolean {
+export function advanceWalkNavigation(
+    input: Readonly<{
+        destination: WalkDestination;
+        cameraPosition: Vec3;
+        cameraSpeed: number;
+        deltaTime: number;
+    }>,
+): boolean {
     const currentX = input.cameraPosition[0];
     const currentZ = input.cameraPosition[2];
     const deltaX = input.destination.x - currentX;

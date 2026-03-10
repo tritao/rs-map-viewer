@@ -1,28 +1,17 @@
+import type { RenderFrameCoordinator } from "../../renderer/RenderFrameCoordinator";
 import type { CacheInfo } from "../../rs/cache/CacheInfo";
-import type {
-    DownloadProgress,
-    ProgressListener,
-} from "../../rs/cache/platform/CacheLoader";
+import type { DownloadProgress, ProgressListener } from "../../rs/cache/platform/CacheLoader";
 import type { CacheSession } from "../../rs/loaders/CacheSession";
 import type { BackendKind } from "../../util/BackendKind";
-import type { LoadedCache } from "../../util/Caches";
-import type { RenderFrameCoordinator } from "../../renderer/RenderFrameCoordinator";
+import type { LoadedCache, LoadedCacheContext } from "../../util/Caches";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../../worker/SimWorkerPool";
-import type { WorldToClientWorldAdapter } from "../../world/WorldToClientWorldAdapter";
-import type {
-    WorldMutationInput,
-    WorldSession,
-} from "../../world/WorldSession";
+import type { WorldMutationInput, WorldSession } from "../../world/WorldSession";
 import type { ClientCommandService } from "../actions/ClientCommandService";
-import type { ClientCommandRuntime } from "./ClientCommandRuntime";
 import type { ClientWorldState } from "../world/ClientWorldState";
 import type { WorldInteractionIndex } from "../world/WorldInteractionIndex";
-
-export type ClientRuntimeCacheContext = Readonly<{
-    loadedCache: LoadedCache;
-    session: CacheSession;
-}>;
+import type { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
+import type { ClientCommandRuntime } from "./ClientCommandRuntime";
 
 export type ClientRuntimeOptions = Readonly<{
     mapRenderBackend: BackendKind;
@@ -46,13 +35,13 @@ type ClientRuntimeDeps = Readonly<{
     renderFrameCoordinator: RenderFrameCoordinator;
     renderWorkerPool: RenderDataWorkerPool;
     simWorkerPool: SimWorkerPool;
-    cacheContext: ClientRuntimeCacheContext;
+    cacheContext: LoadedCacheContext;
     runtimeOptions: ClientRuntimeOptions;
     loadCacheContext(
         cacheInfo: CacheInfo,
         signal?: AbortSignal,
         progressListener?: ProgressListener,
-    ): Promise<ClientRuntimeCacheContext>;
+    ): Promise<LoadedCacheContext>;
     hasLoadedMap(mapId: number): boolean;
     reloadLoadedMap(mapId: number): Promise<boolean>;
     onClientReset(): Promise<void>;
@@ -67,9 +56,9 @@ export class ClientRuntime {
     readonly worldSession: WorldSession;
     readonly renderFrameCoordinator: RenderFrameCoordinator;
 
-    private cacheContext: ClientRuntimeCacheContext;
+    private cacheContext: LoadedCacheContext;
     private runtimeOptions: ClientRuntimeOptions;
-    private stagedCacheContext?: ClientRuntimeCacheContext;
+    private stagedCacheContext?: LoadedCacheContext;
     private stagedRuntimeOptions?: ClientRuntimeOptions;
     private readonly cacheSwitchListeners = new Set<CacheSwitchStatusListener>();
     private cacheSwitchStatus: CacheSwitchStatus = { state: "idle" };
@@ -123,7 +112,7 @@ export class ClientRuntime {
         this.cacheSwitchAbortController?.abort();
         this.cacheSwitchAbortController = new AbortController();
         const activeAbortController = this.cacheSwitchAbortController;
-        const nonce = (++this.cacheSwitchNonce) | 0;
+        const nonce = ++this.cacheSwitchNonce | 0;
 
         this.setCacheSwitchStatus({ state: "switching", cacheName: cacheInfo.name });
 
@@ -196,7 +185,7 @@ export class ClientRuntime {
         return applied | 0;
     }
 
-    private getEffectiveCacheContext(): ClientRuntimeCacheContext {
+    private getEffectiveCacheContext(): LoadedCacheContext {
         return this.stagedCacheContext ?? this.cacheContext;
     }
 
@@ -204,11 +193,13 @@ export class ClientRuntime {
         return this.stagedRuntimeOptions ?? this.runtimeOptions;
     }
 
-    private async transitionRuntime(input: Readonly<{
-        nextCacheContext: ClientRuntimeCacheContext;
-        nextRuntimeOptions: ClientRuntimeOptions;
-        waitForWorkers: boolean;
-    }>): Promise<void> {
+    private async transitionRuntime(
+        input: Readonly<{
+            nextCacheContext: LoadedCacheContext;
+            nextRuntimeOptions: ClientRuntimeOptions;
+            waitForWorkers: boolean;
+        }>,
+    ): Promise<void> {
         const previousCacheContext = this.cacheContext;
         const previousRuntimeOptions = this.runtimeOptions;
         try {
@@ -223,12 +214,9 @@ export class ClientRuntime {
                     waitForWorkers: true,
                 });
             } catch (rollbackError: unknown) {
-                const transitionMessage =
-                    error instanceof Error ? error.message : String(error);
+                const transitionMessage = error instanceof Error ? error.message : String(error);
                 const rollbackMessage =
-                    rollbackError instanceof Error
-                        ? rollbackError.message
-                        : String(rollbackError);
+                    rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
                 throw new Error(
                     `Client runtime transition failed and rollback failed: ` +
                         `${transitionMessage}; rollback: ${rollbackMessage}`,
@@ -241,11 +229,13 @@ export class ClientRuntime {
         }
     }
 
-    private async applyStagedRuntime(input: Readonly<{
-        nextCacheContext: ClientRuntimeCacheContext;
-        nextRuntimeOptions: ClientRuntimeOptions;
-        waitForWorkers: boolean;
-    }>): Promise<void> {
+    private async applyStagedRuntime(
+        input: Readonly<{
+            nextCacheContext: LoadedCacheContext;
+            nextRuntimeOptions: ClientRuntimeOptions;
+            waitForWorkers: boolean;
+        }>,
+    ): Promise<void> {
         this.stagedCacheContext = input.nextCacheContext;
         this.stagedRuntimeOptions = input.nextRuntimeOptions;
         await this.reinitialize(input.waitForWorkers);
@@ -270,10 +260,7 @@ export class ClientRuntime {
                 effectiveCache.loadedCache,
                 effectiveRuntimeOptions,
             );
-            this.deps.simWorkerPool.initCache(
-                effectiveCache.loadedCache,
-                effectiveRuntimeOptions,
-            );
+            this.deps.simWorkerPool.initCache(effectiveCache.loadedCache, effectiveRuntimeOptions);
         }
 
         await this.deps.onClientReset();
