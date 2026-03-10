@@ -8,11 +8,17 @@ import { isAbortError } from "../../util/ErrorUtil";
 import { RenderDataWorkerPool } from "../../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../../worker/SimWorkerPool";
 import type { WorldMutationInput, WorldSession } from "../../world/WorldSession";
+import type {
+    ClientActorCommandTarget,
+    ClientGroundItemCommandTarget,
+    ClientWorldObjectCommandTarget,
+    WalkDestination,
+} from "../actions/ClientCommand";
 import type { ClientCommandService } from "../actions/ClientCommandService";
+import type { ClientIntentState, ClientPlayerIntent } from "../actions/ClientIntentState";
 import type { ClientWorldState } from "../world/ClientWorldState";
-import type { WorldInteractionIndex } from "../world/WorldInteractionIndex";
-import type { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
-import type { ClientCommandRuntime } from "./ClientCommandRuntime";
+import type { WorldRenderInteractionIndex } from "../../world/WorldRenderInteractionIndex";
+import type { WorldToClientWorldAdapter } from "../../world/WorldToClientWorldAdapter";
 
 export type ClientRuntimeOptions = Readonly<{
     mapRenderBackend: BackendKind;
@@ -28,10 +34,10 @@ type CacheSwitchStatusListener = (status: CacheSwitchStatus) => void;
 
 type ClientRuntimeDeps = Readonly<{
     clientCommands: ClientCommandService;
-    clientCommandRuntime: ClientCommandRuntime;
+    clientIntentState: ClientIntentState;
     clientWorldState: ClientWorldState;
     worldToClientWorldAdapter: WorldToClientWorldAdapter;
-    worldInteractionIndex: WorldInteractionIndex;
+    worldRenderInteractionIndex: WorldRenderInteractionIndex;
     worldSession: WorldSession;
     renderFrameCoordinator: RenderFrameCoordinator;
     renderWorkerPool: RenderDataWorkerPool;
@@ -49,13 +55,13 @@ type ClientRuntimeDeps = Readonly<{
 }>;
 
 export class ClientRuntime {
-    readonly clientCommands: ClientCommandService;
-    readonly clientCommandRuntime: ClientCommandRuntime;
     readonly clientWorldState: ClientWorldState;
-    readonly worldToClientWorldAdapter: WorldToClientWorldAdapter;
-    readonly worldInteractionIndex: WorldInteractionIndex;
-    readonly worldSession: WorldSession;
-    readonly renderFrameCoordinator: RenderFrameCoordinator;
+    private readonly clientCommands: ClientCommandService;
+    private readonly clientIntentState: ClientIntentState;
+    private readonly worldToClientWorldAdapter: WorldToClientWorldAdapter;
+    private readonly worldRenderInteractionIndex: WorldRenderInteractionIndex;
+    private readonly worldSession: WorldSession;
+    private readonly renderFrameCoordinator: RenderFrameCoordinator;
 
     private cacheContext: LoadedCacheContext;
     private runtimeOptions: ClientRuntimeOptions;
@@ -70,10 +76,10 @@ export class ClientRuntime {
         this.cacheContext = deps.cacheContext;
         this.runtimeOptions = deps.runtimeOptions;
         this.clientCommands = deps.clientCommands;
-        this.clientCommandRuntime = deps.clientCommandRuntime;
+        this.clientIntentState = deps.clientIntentState;
         this.clientWorldState = deps.clientWorldState;
         this.worldToClientWorldAdapter = deps.worldToClientWorldAdapter;
-        this.worldInteractionIndex = deps.worldInteractionIndex;
+        this.worldRenderInteractionIndex = deps.worldRenderInteractionIndex;
         this.worldSession = deps.worldSession;
         this.renderFrameCoordinator = deps.renderFrameCoordinator;
     }
@@ -163,12 +169,56 @@ export class ClientRuntime {
         this.deps.simWorkerPool.setVars(this.session.varManager.values);
     }
 
+    updateClientIntents(): void {
+        this.clientIntentState.update(this.clientCommands);
+    }
+
+    getLatestPlayerIntent(): ClientPlayerIntent | undefined {
+        return this.clientIntentState.getLatestPlayerIntent();
+    }
+
+    getPendingPlayerIntent(): ClientPlayerIntent | undefined {
+        return this.clientIntentState.getPendingPlayerIntent();
+    }
+
+    clearPendingPlayerIntent(): void {
+        this.clientIntentState.clearPendingPlayerIntent();
+    }
+
+    walkToPosition(destination: WalkDestination): void {
+        this.clientCommands.walkToPosition(destination);
+    }
+
+    interactWithWorldObject(option: string, target: ClientWorldObjectCommandTarget): void {
+        this.clientCommands.interactWithWorldObject(option, target);
+    }
+
+    interactWithGroundItem(option: string, target: ClientGroundItemCommandTarget): void {
+        this.clientCommands.interactWithGroundItem(option, target);
+    }
+
+    interactWithActor(option: string, target: ClientActorCommandTarget): void {
+        this.clientCommands.interactWithActor(option, target);
+    }
+
+    examineWorldObject(target: ClientWorldObjectCommandTarget): void {
+        this.clientCommands.examineWorldObject(target);
+    }
+
+    examineGroundItem(target: ClientGroundItemCommandTarget): void {
+        this.clientCommands.examineGroundItem(target);
+    }
+
+    examineActor(target: ClientActorCommandTarget): void {
+        this.clientCommands.examineActor(target);
+    }
+
     async applyWorldMutation(input: WorldMutationInput): Promise<number> {
         const result = await this.worldSession.applyMutation(input);
         const applied = result.applied | 0;
         if ((applied | 0) > 0) {
             this.worldToClientWorldAdapter.applyMutation(input);
-            this.worldInteractionIndex.applyMutation(input);
+            this.worldRenderInteractionIndex.applyMutation(input);
         }
         const reloadMapIds = result.reloadMapIds;
         if ((applied | 0) > 0 && reloadMapIds && (reloadMapIds.length | 0) > 0) {
@@ -184,6 +234,18 @@ export class ClientRuntime {
             this.renderFrameCoordinator.invalidateLatestPacket();
         }
         return applied | 0;
+    }
+
+    activateLoadedMap(input: Parameters<WorldSession["activateLoadedMap"]>[0]): Promise<boolean> {
+        return this.worldSession.activateLoadedMap(input);
+    }
+
+    captureActivationVersion(): number {
+        return this.worldSession.captureActivationVersion();
+    }
+
+    invalidateLatestFramePacket(): void {
+        this.renderFrameCoordinator.invalidateLatestPacket();
     }
 
     private getEffectiveCacheContext(): LoadedCacheContext {

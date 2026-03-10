@@ -1,5 +1,5 @@
-import type { ClientCommand } from "../actions/ClientCommand";
-import type { ClientCommandService } from "../actions/ClientCommandService";
+import type { ClientCommand } from "./ClientCommand";
+import type { ClientCommandService } from "./ClientCommandService";
 
 export type ClientPlayerIntent =
     | Readonly<{
@@ -19,7 +19,7 @@ export type ClientPlayerIntent =
           command: Extract<ClientCommand, { kind: "examineEntity" }>;
       }>;
 
-export class ClientCommandRuntime {
+export class ClientIntentState {
     private lastHandledSequence: number = 0;
     private latestPlayerIntent?: ClientPlayerIntent;
     private pendingPlayerIntent?: ClientPlayerIntent;

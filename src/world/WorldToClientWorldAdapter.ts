@@ -1,10 +1,10 @@
-import type { MapObjRenderUpdate } from "../../renderer/MapObjRenderPacket";
-import type { RenderFramePacket } from "../../renderer/RenderFramePacket";
+import type { MapObjRenderUpdate } from "../renderer/MapObjRenderPacket";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import {
     NPC_INTERACTION_META_STRIDE,
     NPC_RANGES_BY_MAP_ID_STRIDE,
-} from "../../renderer/RenderFramePacket";
-import type { StaticMapPacket } from "../../runtime/MapRuntimePayload";
+} from "../renderer/RenderFramePacket";
+import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
 import {
     LOC_ANIMATION_SNAPSHOT_STRIDE,
     LOC_VISIBILITY_STATE_STRIDE,
@@ -12,9 +12,9 @@ import {
     NPC_STATE_DELTA_SPAWN_STRIDE,
     NPC_STATE_DELTA_UPDATE_STRIDE,
     type WorldDeltaPacket,
-} from "../../world/WorldDeltaPacket";
-import type { WorldMutationInput } from "../../world/WorldSession";
-import type { ClientActorSnapshot, ClientWorldState } from "./ClientWorldState";
+} from "./WorldDeltaPacket";
+import type { WorldMutationInput } from "./WorldSession";
+import type { ClientActorSnapshot, ClientWorldState } from "../client/world/ClientWorldState";
 
 type WorldToClientWorldAdapterDeps = Readonly<{
     clientWorldState: ClientWorldState;

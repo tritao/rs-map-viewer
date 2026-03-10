@@ -1,4 +1,5 @@
 import type { ClientWorldState } from "../client/world/ClientWorldState";
+import { resolveClientWorldInteractionTargets } from "../client/world/ClientWorldInteractionResolver";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import type { DebugActionService } from "../debug/DebugActionService";
 import { INTERACTION_RADIUS } from "../renderer/InteractionState";
@@ -196,8 +197,10 @@ export class MapViewerInteractionService {
             closestInteractIndices,
             maxDistance: INTERACTION_RADIUS,
         });
-        const worldInteractionTargets =
-            this.deps.clientWorldState.resolveInteractionTargets(interactionHits);
+        const worldInteractionTargets = resolveClientWorldInteractionTargets(
+            this.deps.clientWorldState,
+            interactionHits,
+        );
         const interactionTargets = resolveMenuInteractionTargets({
             session: mapViewer.session,
             targets: worldInteractionTargets,
@@ -575,7 +578,7 @@ export class MapViewerInteractionService {
                 this.deps.mapViewer.closeMenu();
                 return;
             }
-            this.deps.mapViewer.clientCommands.interactWithWorldObject(option, actionTarget);
+            this.deps.mapViewer.interactWithWorldObject(option, actionTarget);
             this.deps.mapViewer.closeMenu();
         };
     }
@@ -587,7 +590,7 @@ export class MapViewerInteractionService {
                 this.deps.mapViewer.closeMenu();
                 return;
             }
-            this.deps.mapViewer.clientCommands.interactWithGroundItem(option, actionTarget);
+            this.deps.mapViewer.interactWithGroundItem(option, actionTarget);
             this.deps.mapViewer.closeMenu();
         };
     }
@@ -599,7 +602,7 @@ export class MapViewerInteractionService {
                 this.deps.mapViewer.closeMenu();
                 return;
             }
-            this.deps.mapViewer.clientCommands.interactWithActor(option, actionTarget);
+            this.deps.mapViewer.interactWithActor(option, actionTarget);
             this.deps.mapViewer.closeMenu();
         };
     }

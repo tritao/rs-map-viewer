@@ -1,20 +1,14 @@
-import { MenuTargetType, type ObjActionTargetInstance } from "../../rs/MenuEntry";
 import type {
-    ClientGroundItemEntity,
-    ClientWorldEntity,
-    ClientWorldState,
-} from "../world/ClientWorldState";
-import type { ClientCommand, WalkDestination } from "./ClientCommand";
-
-type ClientCommandServiceDeps = Readonly<{
-    clientWorldState: ClientWorldState;
-}>;
+    ClientActorCommandTarget,
+    ClientCommand,
+    ClientGroundItemCommandTarget,
+    ClientWorldObjectCommandTarget,
+    WalkDestination,
+} from "./ClientCommand";
 
 export class ClientCommandService {
     private latestCommand?: ClientCommand;
     private latestCommandSequence: number = 0;
-
-    constructor(private readonly deps: ClientCommandServiceDeps) {}
 
     reset(): void {
         this.latestCommand = undefined;
@@ -49,133 +43,65 @@ export class ClientCommandService {
 
     interactWithWorldObject(
         option: string,
-        target: Readonly<{
-            locTypeId: number;
-            locInstance?: Readonly<{
-                mapId: number;
-                locIndex: number;
-            }>;
-        }>,
+        target: ClientWorldObjectCommandTarget,
     ): void {
         this.setLatestCommand({
             kind: "interactWithWorldObject",
             option,
-            entityId: target.locInstance
-                ? this.deps.clientWorldState.getWorldObjectEntity(
-                      target.locInstance.mapId | 0,
-                      target.locInstance.locIndex | 0,
-                  )?.id
-                : undefined,
-            locTypeId: target.locTypeId | 0,
-            locInstance: target.locInstance,
+            target,
         });
     }
 
-    interactWithGroundItem(
-        option: string,
-        target: Readonly<{
-            objTypeId: number;
-            objInstance: ObjActionTargetInstance;
-        }>,
-    ): void {
+    interactWithGroundItem(option: string, target: ClientGroundItemCommandTarget): void {
         this.setLatestCommand({
             kind: "interactWithGroundItem",
             option,
-            entityId: this.resolveGroundItemEntity(target.objInstance)?.id,
-            objTypeId: target.objTypeId | 0,
-            objInstance: target.objInstance,
+            target,
         });
     }
 
-    interactWithActor(
-        option: string,
-        target: Readonly<{
-            npcTypeId: number;
-            npcInstance: Readonly<{
-                mapId: number;
-                npcInstanceId: number;
-            }>;
-        }>,
-    ): void {
+    interactWithActor(option: string, target: ClientActorCommandTarget): void {
         this.setLatestCommand({
             kind: "interactWithActor",
             option,
-            entityId: this.deps.clientWorldState.getActorEntityByNpcInstanceId(
-                target.npcInstance.mapId | 0,
-                target.npcInstance.npcInstanceId | 0,
-            )?.id,
-            npcTypeId: target.npcTypeId | 0,
-            npcInstance: target.npcInstance,
+            target,
         });
     }
 
-    examineWorldObject(
-        target: Readonly<{ locTypeId: number; mapId?: number; locIndex?: number }>,
-    ): void {
-        this.examineResolvedTarget(
-            MenuTargetType.LOC,
-            target.locTypeId | 0,
-            target.mapId !== undefined && target.locIndex !== undefined
-                ? this.deps.clientWorldState.getWorldObjectEntity(
-                      target.mapId | 0,
-                      target.locIndex | 0,
-                  )
-                : undefined,
-        );
-    }
-
-    examineGroundItem(
-        target: Readonly<{ objTypeId: number; objInstance: ObjActionTargetInstance }>,
-    ): void {
-        this.examineResolvedTarget(
-            MenuTargetType.OBJ,
-            target.objTypeId | 0,
-            this.resolveGroundItemEntity(target.objInstance),
-        );
-    }
-
-    examineActor(
-        target: Readonly<{
-            npcTypeId: number;
-            npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
-        }>,
-    ): void {
-        this.examineResolvedTarget(
-            MenuTargetType.NPC,
-            target.npcTypeId | 0,
-            this.deps.clientWorldState.getActorEntityByNpcInstanceId(
-                target.npcInstance.mapId | 0,
-                target.npcInstance.npcInstanceId | 0,
-            ),
-        );
-    }
-
-    private examineResolvedTarget(
-        targetType: MenuTargetType.LOC | MenuTargetType.OBJ | MenuTargetType.NPC,
-        targetId: number,
-        entity: ClientWorldEntity | undefined,
-    ): void {
+    examineWorldObject(target: ClientWorldObjectCommandTarget): void {
         this.setLatestCommand({
             kind: "examineEntity",
-            entityId: entity?.id,
-            targetType,
-            targetId: targetId | 0,
+            target: {
+                entityId: target.entityId,
+                targetKind: "worldObject",
+                targetId: target.locTypeId | 0,
+                backing: target.backing,
+            },
         });
     }
 
-    private resolveGroundItemEntity(
-        target: ObjActionTargetInstance,
-    ): ClientGroundItemEntity | undefined {
-        if (target.kind === "dynamic") {
-            return this.deps.clientWorldState.getDynamicGroundItemEntityByRuntimeObjId(
-                target.mapId | 0,
-                target.runtimeObjId | 0,
-            );
-        }
-        return this.deps.clientWorldState.getStaticGroundItemEntity(
-            target.mapId | 0,
-            target.objIndex | 0,
-        );
+    examineGroundItem(target: ClientGroundItemCommandTarget): void {
+        this.setLatestCommand({
+            kind: "examineEntity",
+            target: {
+                entityId: target.entityId,
+                targetKind: "groundItem",
+                targetId: target.objTypeId | 0,
+                backing: target.backing,
+            },
+        });
+    }
+
+    examineActor(target: ClientActorCommandTarget): void {
+        this.setLatestCommand({
+            kind: "examineEntity",
+            target: {
+                entityId: target.entityId,
+                targetKind: "actor",
+                targetId: target.npcTypeId | 0,
+                backing: target.backing,
+            },
+        });
     }
 
     private setLatestCommand(command: ClientCommand): void {

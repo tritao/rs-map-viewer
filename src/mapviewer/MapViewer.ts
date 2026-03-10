@@ -1,20 +1,23 @@
 import { vec3 } from "gl-matrix";
 import { URLSearchParamsInit } from "react-router-dom";
 
-import type { WalkDestination } from "../client/actions/ClientCommand";
+import type {
+    ClientActorCommandTarget,
+    ClientGroundItemCommandTarget,
+    ClientWorldObjectCommandTarget,
+    WalkDestination,
+} from "../client/actions/ClientCommand";
 import { ClientCommandService } from "../client/actions/ClientCommandService";
 import {
-    ClientCommandRuntime,
+    ClientIntentState,
     type ClientPlayerIntent,
-} from "../client/runtime/ClientCommandRuntime";
+} from "../client/actions/ClientIntentState";
 import {
     type CacheSwitchStatus,
     ClientRuntime,
     type ClientRuntimeOptions,
 } from "../client/runtime/ClientRuntime";
 import { ClientWorldState } from "../client/world/ClientWorldState";
-import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
-import { WorldToClientWorldAdapter } from "../client/world/WorldToClientWorldAdapter";
 import { OsrsMenuEntry } from "../components/rs/menu/OsrsMenu";
 import { DebugActionService, getCameraMapPosition } from "../debug/DebugActionService";
 import { Camera, CameraView } from "../renderer/Camera";
@@ -36,6 +39,8 @@ import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
 import type { WorkerRuntimeOptions } from "../worker/WorkerBuildTypes";
 import { WorkerWorldRuntime } from "../worker/WorkerWorldRuntime";
+import { WorldRenderInteractionIndex } from "../world/WorldRenderInteractionIndex";
+import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
 import { type WorldMutationInput, WorldSession } from "../world/WorldSession";
 import { MapViewerMapImages } from "./MapViewerMapImages";
 import { advanceWalkNavigation, resolveWalkDestination } from "./MapViewerNavigation";
@@ -162,14 +167,12 @@ export class MapViewer {
         const normalizedRuntimeOptions = normalizeRuntimeOptions(runtimeOptions);
         this.runtimeOptions = normalizedRuntimeOptions;
         const clientWorldState = new ClientWorldState();
-        const clientCommands = new ClientCommandService({
-            clientWorldState,
-        });
-        const clientCommandRuntime = new ClientCommandRuntime();
+        const clientCommands = new ClientCommandService();
+        const clientIntentState = new ClientIntentState();
         const worldToClientWorldAdapter = new WorldToClientWorldAdapter({
             clientWorldState,
         });
-        const worldInteractionIndex = new WorldInteractionIndex();
+        const worldRenderInteractionIndex = new WorldRenderInteractionIndex();
         const worldSession = new WorldSession({
             worldRuntime: new WorkerWorldRuntime({
                 renderRuntime: renderWorkerPool.frame,
@@ -190,10 +193,10 @@ export class MapViewer {
         });
         this.clientRuntime = new ClientRuntime({
             clientCommands,
-            clientCommandRuntime,
+            clientIntentState,
             clientWorldState,
             worldToClientWorldAdapter,
-            worldInteractionIndex,
+            worldRenderInteractionIndex,
             worldSession,
             renderFrameCoordinator,
             renderWorkerPool,
@@ -206,7 +209,7 @@ export class MapViewer {
             onClientReset: async () => {
                 this.clearMapImageUrls();
                 clientCommands.reset();
-                clientCommandRuntime.reset();
+                clientIntentState.reset();
                 this.walkDestination = undefined;
                 await this.renderer.resetForCacheContext();
                 this.resetMenu();
@@ -221,7 +224,7 @@ export class MapViewer {
         this.renderer = new MapViewerRenderer(
             this,
             worldToClientWorldAdapter,
-            worldInteractionIndex,
+            worldRenderInteractionIndex,
             worldSession,
             renderFrameCoordinator,
         );
@@ -264,28 +267,24 @@ export class MapViewer {
         return this.clientRuntime.clientWorldState;
     }
 
-    get clientCommands(): ClientCommandService {
-        return this.clientRuntime.clientCommands;
-    }
-
-    get clientCommandRuntime(): ClientCommandRuntime {
-        return this.clientRuntime.clientCommandRuntime;
-    }
-
     getWorkerRuntimeOptions(): MapViewerRuntimeOptions {
         return this.clientRuntime.getRuntimeOptions();
     }
 
     getLatestPlayerIntent(): ClientPlayerIntent | undefined {
-        return this.clientCommandRuntime.getLatestPlayerIntent();
+        return this.clientRuntime.getLatestPlayerIntent();
     }
 
     getPendingPlayerIntent(): ClientPlayerIntent | undefined {
-        return this.clientCommandRuntime.getPendingPlayerIntent();
+        return this.clientRuntime.getPendingPlayerIntent();
     }
 
     clearPendingPlayerIntent(): void {
-        this.clientCommandRuntime.clearPendingPlayerIntent();
+        this.clientRuntime.clearPendingPlayerIntent();
+    }
+
+    updateClientIntents(): void {
+        this.clientRuntime.updateClientIntents();
     }
 
     applyWorldMutation(input: WorldMutationInput): Promise<number> {
@@ -403,7 +402,7 @@ export class MapViewer {
             return false;
         }
         this.walkDestination = destination;
-        this.clientCommands.walkToPosition(destination);
+        this.clientRuntime.walkToPosition(destination);
         return true;
     }
 
@@ -424,17 +423,44 @@ export class MapViewer {
         return true;
     }
 
+    interactWithWorldObject(
+        option: string,
+        target: Readonly<{ locTypeId: number; locInstance?: Readonly<{ mapId: number; locIndex: number }> }>,
+    ): void {
+        this.clientRuntime.interactWithWorldObject(
+            option,
+            this.toWorldObjectCommandTarget(target),
+        );
+    }
+
+    interactWithGroundItem(
+        option: string,
+        target: Readonly<{ objTypeId: number; objInstance: ObjActionTargetInstance }>,
+    ): void {
+        this.clientRuntime.interactWithGroundItem(option, this.toGroundItemCommandTarget(target));
+    }
+
+    interactWithActor(
+        option: string,
+        target: Readonly<{
+            npcTypeId: number;
+            npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
+        }>,
+    ): void {
+        this.clientRuntime.interactWithActor(option, this.toActorCommandTarget(target));
+    }
+
     examineWorldObject(
         target: Readonly<{ locTypeId: number; mapId?: number; locIndex?: number }>,
     ): void {
-        this.clientCommands.examineWorldObject(target);
+        this.clientRuntime.examineWorldObject(this.toWorldObjectCommandTarget(target));
         this.openExamineLookup("object", target.locTypeId | 0);
     }
 
     examineGroundItem(
         target: Readonly<{ objTypeId: number; objInstance: ObjActionTargetInstance }>,
     ): void {
-        this.clientCommands.examineGroundItem(target);
+        this.clientRuntime.examineGroundItem(this.toGroundItemCommandTarget(target));
         this.openExamineLookup("item", target.objTypeId | 0);
     }
 
@@ -444,8 +470,88 @@ export class MapViewer {
             npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
         }>,
     ): void {
-        this.clientCommands.examineActor(target);
+        this.clientRuntime.examineActor(this.toActorCommandTarget(target));
         this.openExamineLookup("npc", target.npcTypeId | 0);
+    }
+
+    private toWorldObjectCommandTarget(input: Readonly<{
+        locTypeId: number;
+        mapId?: number;
+        locIndex?: number;
+        locInstance?: Readonly<{ mapId: number; locIndex: number }>;
+    }>): ClientWorldObjectCommandTarget {
+        const locInstance = input.locInstance ??
+            (input.mapId !== undefined && input.locIndex !== undefined
+                ? {
+                      mapId: input.mapId | 0,
+                      locIndex: input.locIndex | 0,
+                  }
+                : undefined);
+        const entity = locInstance
+            ? this.clientWorldState.getWorldObjectEntity(
+                  locInstance.mapId | 0,
+                  locInstance.locIndex | 0,
+              )
+            : undefined;
+        return {
+            entityId: entity?.id,
+            locTypeId: input.locTypeId | 0,
+            backing: entity?.rsBacking,
+        };
+    }
+
+    private toGroundItemCommandTarget(input: Readonly<{
+        objTypeId: number;
+        objInstance: ObjActionTargetInstance;
+    }>): ClientGroundItemCommandTarget {
+        const entity =
+            input.objInstance.kind === "dynamic"
+                ? this.clientWorldState.getDynamicGroundItemEntityByRuntimeObjId(
+                      input.objInstance.mapId | 0,
+                      input.objInstance.runtimeObjId | 0,
+                  )
+                : this.clientWorldState.getStaticGroundItemEntity(
+                      input.objInstance.mapId | 0,
+                      input.objInstance.objIndex | 0,
+                  );
+        return {
+            entityId: entity?.id,
+            objTypeId: input.objTypeId | 0,
+            backing:
+                input.objInstance.kind === "dynamic"
+                    ? {
+                          kind: "obj-dynamic",
+                          mapId: input.objInstance.mapId | 0,
+                          runtimeObjId: input.objInstance.runtimeObjId | 0,
+                          objTypeId: input.objTypeId | 0,
+                      }
+                    : {
+                          kind: "obj-static",
+                          mapId: input.objInstance.mapId | 0,
+                          objIndex: input.objInstance.objIndex | 0,
+                          objTypeId: input.objTypeId | 0,
+                      },
+        };
+    }
+
+    private toActorCommandTarget(input: Readonly<{
+        npcTypeId: number;
+        npcInstance: Readonly<{ mapId: number; npcInstanceId: number }>;
+    }>): ClientActorCommandTarget {
+        const entity = this.clientWorldState.getActorEntityByNpcInstanceId(
+            input.npcInstance.mapId | 0,
+            input.npcInstance.npcInstanceId | 0,
+        );
+        return {
+            entityId: entity?.id,
+            npcTypeId: input.npcTypeId | 0,
+            backing: {
+                kind: "npc",
+                mapId: input.npcInstance.mapId | 0,
+                npcInstanceId: input.npcInstance.npcInstanceId | 0,
+                npcTypeId: input.npcTypeId | 0,
+            },
+        };
     }
 
     restartVisibleWorldObjectAnimations(): Promise<number> {
@@ -657,7 +763,7 @@ export class MapViewer {
                 callbacks.detachLoadedMapRuntime(replaceMapId);
             }
             try {
-                const ok = await this.clientRuntime.worldSession.activateLoadedMap({
+                const ok = await this.clientRuntime.activateLoadedMap({
                     staticMap: packet,
                     activationVersion: input.activationVersion,
                 });
@@ -676,7 +782,7 @@ export class MapViewer {
 
             await callbacks.finalizeLoadedMap(packet);
             if (input.invalidateLatestPacket === true) {
-                this.clientRuntime.renderFrameCoordinator.invalidateLatestPacket();
+                this.clientRuntime.invalidateLatestFramePacket();
             }
             return true;
         };
@@ -690,7 +796,7 @@ export class MapViewer {
                 return false;
             }
             return await applyPacket(staticMapPacket, {
-                activationVersion: this.clientRuntime.worldSession.captureActivationVersion(),
+                activationVersion: this.clientRuntime.captureActivationVersion(),
                 replaceMapId: normalizedMapId,
                 invalidateLatestPacket: true,
             });

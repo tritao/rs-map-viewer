@@ -1,7 +1,39 @@
-import { MenuTargetType, type ObjActionTargetInstance } from "../../rs/MenuEntry";
-import type { ClientEntityId } from "../world/ClientWorldState";
+import type {
+    ClientActorBackingRef,
+    ClientEntityId,
+    ClientGroundItemBackingRef,
+    ClientWorldObjectBackingRef,
+} from "../world/ClientWorldState";
 
 export type WalkDestination = Readonly<{ x: number; z: number }>;
+
+export type ClientWorldObjectCommandTarget = Readonly<{
+    entityId?: ClientEntityId;
+    locTypeId: number;
+    backing?: ClientWorldObjectBackingRef;
+}>;
+
+export type ClientGroundItemCommandTarget = Readonly<{
+    entityId?: ClientEntityId;
+    objTypeId: number;
+    backing: ClientGroundItemBackingRef;
+}>;
+
+export type ClientActorCommandTarget = Readonly<{
+    entityId?: ClientEntityId;
+    npcTypeId: number;
+    backing: ClientActorBackingRef;
+}>;
+
+export type ClientExamineTarget = Readonly<{
+    entityId?: ClientEntityId;
+    targetKind: "worldObject" | "groundItem" | "actor";
+    targetId: number;
+    backing?:
+        | ClientWorldObjectBackingRef
+        | ClientGroundItemBackingRef
+        | ClientActorBackingRef;
+}>;
 
 export type ClientCommand =
     | Readonly<{
@@ -11,33 +43,19 @@ export type ClientCommand =
     | Readonly<{
           kind: "interactWithWorldObject";
           option: string;
-          entityId?: ClientEntityId;
-          locTypeId: number;
-          locInstance?: Readonly<{
-              mapId: number;
-              locIndex: number;
-          }>;
+          target: ClientWorldObjectCommandTarget;
       }>
     | Readonly<{
           kind: "interactWithGroundItem";
           option: string;
-          entityId?: ClientEntityId;
-          objTypeId: number;
-          objInstance: ObjActionTargetInstance;
+          target: ClientGroundItemCommandTarget;
       }>
     | Readonly<{
           kind: "interactWithActor";
           option: string;
-          entityId?: ClientEntityId;
-          npcTypeId: number;
-          npcInstance: Readonly<{
-              mapId: number;
-              npcInstanceId: number;
-          }>;
+          target: ClientActorCommandTarget;
       }>
     | Readonly<{
           kind: "examineEntity";
-          entityId?: ClientEntityId;
-          targetType: MenuTargetType.LOC | MenuTargetType.OBJ | MenuTargetType.NPC;
-          targetId: number;
+          target: ClientExamineTarget;
       }>;

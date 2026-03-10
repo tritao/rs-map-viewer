@@ -1,5 +1,3 @@
-import { WorldInteractionIndex } from "../client/world/WorldInteractionIndex";
-import { WorldToClientWorldAdapter } from "../client/world/WorldToClientWorldAdapter";
 import { type MapData, type SdMapLoaderInput } from "../maprender/MapRenderPayload";
 import { Camera } from "../renderer/Camera";
 import { MapRenderer, MapSquareRenderable } from "../renderer/MapRenderer";
@@ -17,6 +15,8 @@ import { InputManager } from "../util/InputManager";
 import { clamp } from "../util/MathUtil";
 import { RenderDataWorkerPool } from "../worker/RenderDataWorkerPool";
 import { SimWorkerPool } from "../worker/SimWorkerPool";
+import { WorldToClientWorldAdapter } from "../world/WorldToClientWorldAdapter";
+import { WorldRenderInteractionIndex } from "../world/WorldRenderInteractionIndex";
 import type { WorldSession } from "../world/WorldSession";
 import { MapManager, MapSquareInfo } from "./MapManager";
 import { MapViewer } from "./MapViewer";
@@ -58,7 +58,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private readonly renderTickCoordinator = new RenderTickCoordinator();
     private readonly renderFrameCoordinator: RenderFrameCoordinator;
     private readonly worldToClientWorldAdapter: WorldToClientWorldAdapter;
-    private readonly worldInteractionIndex: WorldInteractionIndex;
+    private readonly worldRenderInteractionIndex: WorldRenderInteractionIndex;
     private readonly interactionService: MapViewerInteractionService;
     private readonly worldSession: WorldSession;
     private staticMapRuntime!: MapViewerStaticMapRuntime;
@@ -102,7 +102,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     constructor(
         public mapViewer: MapViewer,
         worldToClientWorldAdapter: WorldToClientWorldAdapter,
-        worldInteractionIndex: WorldInteractionIndex,
+        worldRenderInteractionIndex: WorldRenderInteractionIndex,
         worldSession: WorldSession,
         renderFrameCoordinator: RenderFrameCoordinator,
     ) {
@@ -112,7 +112,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         this.simWorkerPool = mapViewer.simWorkerPool;
         this.camera = mapViewer.camera;
         this.worldToClientWorldAdapter = worldToClientWorldAdapter;
-        this.worldInteractionIndex = worldInteractionIndex;
+        this.worldRenderInteractionIndex = worldRenderInteractionIndex;
         this.interactionService = new MapViewerInteractionService({
             mapViewer,
             debugActions: mapViewer.debugActions,
@@ -164,7 +164,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     override async cleanUp(): Promise<void> {
         await super.cleanUp();
         this.worldToClientWorldAdapter.reset();
-        this.worldInteractionIndex.reset();
+        this.worldRenderInteractionIndex.reset();
         this.worldSession.reset();
         this.renderTickCoordinator.resetForShutdown(this.renderFrameCoordinator);
         this.inputManager.cleanUp();
@@ -238,7 +238,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private async finalizeLoadedMap(packet: StaticMapPacket): Promise<void> {
         const mapData = packet.mapData;
         this.worldToClientWorldAdapter.registerLoadedMap(packet);
-        this.worldInteractionIndex.registerLoadedMap(packet);
+        this.worldRenderInteractionIndex.registerLoadedMap(packet);
         this.mapManager.addMap(mapData.mapX, mapData.mapY);
         this.renderer.addMap(mapData);
         await this.attachLoadedRuntimeMapObjRenderData(packet);
@@ -264,7 +264,7 @@ export class MapViewerRenderer extends RendererMainLoop {
     private detachLoadedMapRuntime(mapId: number): void {
         const normalizedMapId = mapId | 0;
         this.worldToClientWorldAdapter.unregisterMap(normalizedMapId);
-        this.worldInteractionIndex.unregisterMap(normalizedMapId);
+        this.worldRenderInteractionIndex.unregisterMap(normalizedMapId);
         this.renderer.removeMap({ mapId: normalizedMapId });
         this.worldSession.deactivateLoadedMap({ mapId: normalizedMapId });
     }
@@ -273,7 +273,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     initializeCacheState(): void {
         this.worldToClientWorldAdapter.reset();
-        this.worldInteractionIndex.reset();
+        this.worldRenderInteractionIndex.reset();
         this.renderer.initCache();
         this.mapManager.initializeForCache({
             mapFileIndex: this.mapViewer.session.mapFileIndex,
@@ -319,7 +319,7 @@ export class MapViewerRenderer extends RendererMainLoop {
         const wasRunning = this.pauseLoop();
         this.worldSession.reset();
         this.worldToClientWorldAdapter.reset();
-        this.worldInteractionIndex.reset();
+        this.worldRenderInteractionIndex.reset();
 
         try {
             await this.renderer.cleanUp();
@@ -338,7 +338,7 @@ export class MapViewerRenderer extends RendererMainLoop {
 
     override update(time: number, deltaTime: number) {
         this.handleInput(deltaTime);
-        this.mapViewer.clientCommandRuntime.update(this.mapViewer.clientCommands);
+        this.mapViewer.updateClientIntents();
 
         const { width, height } = this.renderer.getViewportDimensions();
         this.camera.update(width, height);
@@ -455,7 +455,7 @@ export class MapViewerRenderer extends RendererMainLoop {
             renderFrameCoordinator: this.renderFrameCoordinator,
             applyFramePacket: (packet) => {
                 this.worldToClientWorldAdapter.applyFramePacket(packet);
-                this.worldInteractionIndex.applyFramePacket(packet);
+                this.worldRenderInteractionIndex.applyFramePacket(packet);
                 this.renderer.applyFramePacket(packet);
             },
         });

@@ -1,94 +1,24 @@
-import type { LocModelType } from "../../rs/config/loctype/LocModelType";
 import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
-import {
-    resolveWorldInteractionTargets,
-    type InteractionHit,
-    type WorldInteractionTarget,
-} from "../../runtime/InteractionTargets";
-
-export type ClientEntityId = string;
-
-export type ClientEntityKind = "worldObject" | "groundItem" | "actor";
-
-export type ClientWorldObjectBackingRef = Readonly<{
-    kind: "loc";
-    mapId: number;
-    locIndex: number;
-    sourceMapId: number;
-    placementIndex: number;
-    locTypeId: number;
-}>;
-
-export type ClientGroundItemBackingRef =
-    | Readonly<{
-          kind: "obj-static";
-          mapId: number;
-          objIndex: number;
-          objTypeId: number;
-      }>
-    | Readonly<{
-          kind: "obj-dynamic";
-          mapId: number;
-          runtimeObjId: number;
-          objTypeId: number;
-      }>;
-
-export type ClientActorBackingRef = Readonly<{
-    kind: "npc";
-    mapId: number;
-    npcInstanceId: number;
-    npcTypeId: number;
-}>;
-
-export type ClientWorldObjectEntity = Readonly<{
-    id: ClientEntityId;
-    kind: "worldObject";
-    mapId: number;
-    plane: number;
-    tileX: number;
-    tileY: number;
-    visible: boolean;
-    locTypeId: number;
-    locModelType: LocModelType;
-    rotation: number;
-    seqId: number;
-    rsBacking: ClientWorldObjectBackingRef;
-}>;
-
-export type ClientGroundItemEntity = Readonly<{
-    id: ClientEntityId;
-    kind: "groundItem";
-    mapId: number;
-    visible: boolean;
-    objTypeId: number;
-    count?: number;
-    x?: number;
-    y?: number;
-    plane?: number;
-    interactId?: number;
-    rsBacking: ClientGroundItemBackingRef;
-}>;
-
-export type ClientActorEntity = Readonly<{
-    id: ClientEntityId;
-    kind: "actor";
-    mapId: number;
-    visible: boolean;
-    npcTypeId: number;
-    interactId?: number;
-    rsBacking: ClientActorBackingRef;
-}>;
-
-export type ClientWorldEntity =
-    | ClientWorldObjectEntity
-    | ClientGroundItemEntity
-    | ClientActorEntity;
-
-export type ClientActorSnapshot = Readonly<{
-    interactId: number;
-    npcInstanceId: number;
-    npcTypeId: number;
-}>;
+import type {
+    ClientActorEntity,
+    ClientActorSnapshot,
+    ClientEntityId,
+    ClientGroundItemEntity,
+    ClientWorldEntity,
+    ClientWorldObjectEntity,
+} from "./ClientWorldTypes";
+export type {
+    ClientActorBackingRef,
+    ClientActorEntity,
+    ClientActorSnapshot,
+    ClientEntityId,
+    ClientEntityKind,
+    ClientGroundItemBackingRef,
+    ClientGroundItemEntity,
+    ClientWorldEntity,
+    ClientWorldObjectBackingRef,
+    ClientWorldObjectEntity,
+} from "./ClientWorldTypes";
 
 type MapWorldState = {
     entityIds: Set<ClientEntityId>;
@@ -595,42 +525,6 @@ export class ClientWorldState {
         }
         const entity = this.entitiesById.get(entityId);
         return entity?.kind === "actor" ? entity : undefined;
-    }
-
-    resolveInteractionTargets(hits: ReadonlyArray<InteractionHit>): WorldInteractionTarget[] {
-        return resolveWorldInteractionTargets({
-            hits,
-            getAnimatedLocTypeId: (mapId, locIndex) =>
-                this.getWorldObjectEntity(mapId | 0, locIndex | 0)?.locTypeId,
-            getMapObjTargetInfo: (mapId, interactId) => {
-                const entity = this.getGroundItemEntity(mapId | 0, interactId | 0);
-                if (!entity || !entity.visible) {
-                    return undefined;
-                }
-                if (entity.rsBacking.kind === "obj-static") {
-                    return {
-                        kind: "static" as const,
-                        objTypeId: entity.objTypeId | 0,
-                        objIndex: entity.rsBacking.objIndex | 0,
-                    };
-                }
-                return {
-                    kind: "dynamic" as const,
-                    objTypeId: entity.objTypeId | 0,
-                    runtimeObjId: entity.rsBacking.runtimeObjId | 0,
-                };
-            },
-            getNpcTargetInfo: (mapId, interactId) => {
-                const entity = this.getActorEntityByInteractId(mapId | 0, interactId | 0);
-                if (!entity || !entity.visible) {
-                    return undefined;
-                }
-                return {
-                    npcInstanceId: entity.rsBacking.npcInstanceId | 0,
-                    npcTypeId: entity.npcTypeId | 0,
-                };
-            },
-        });
     }
 
     private getOrCreateMapState(mapId: number): MapWorldState {

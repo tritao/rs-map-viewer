@@ -1,16 +1,16 @@
-import type { RenderFramePacket } from "../../renderer/RenderFramePacket";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import {
     NPC_INTERACTION_META_STRIDE,
     NPC_RANGES_BY_MAP_ID_STRIDE,
-} from "../../renderer/RenderFramePacket";
-import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
+} from "../renderer/RenderFramePacket";
+import type { LocAnimatedData } from "../runtime/LocAnimatedData";
 import {
     resolveWorldInteractionTargets,
     type InteractionHit,
     type WorldInteractionTarget,
-} from "../../runtime/InteractionTargets";
-import type { StaticMapPacket } from "../../runtime/MapRuntimePayload";
-import type { WorldMutationInput } from "../../world/WorldSession";
+} from "../runtime/InteractionTargets";
+import type { StaticMapPacket } from "../runtime/MapRuntimePayload";
+import type { WorldMutationInput } from "./WorldSession";
 
 type MapObjInteractionState = Readonly<{
     staticObjTypeIds?: Int32Array;
@@ -29,7 +29,7 @@ type MapInteractionState = {
     npcInteractionState?: NpcInteractionState;
 };
 
-export class WorldInteractionIndex {
+export class WorldRenderInteractionIndex {
     private static readonly EMPTY_INT32 = new Int32Array(0);
 
     private readonly mapStateByMapId = new Map<number, MapInteractionState>();
@@ -197,7 +197,7 @@ export class WorldInteractionIndex {
 
     private ensureInt32Length(values: Int32Array | undefined, minLength: number): Int32Array {
         if ((minLength | 0) <= 0) {
-            return values ?? WorldInteractionIndex.EMPTY_INT32;
+            return values ?? WorldRenderInteractionIndex.EMPTY_INT32;
         }
         if (values instanceof Int32Array && (values.length | 0) >= (minLength | 0)) {
             return values;
