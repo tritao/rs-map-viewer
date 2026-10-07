@@ -1,24 +1,12 @@
-import type { BackendKind } from "../util/BackendKind";
-import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
+import type { MapRenderBuildAdapter } from "../core/build/MapRenderBuildAdapter";
+import type { MapRenderContentSession } from "../core/build/MapRenderContentSession";
 import type { NpcSpawn } from "../data/npc/NpcSpawn";
 import type { ObjSpawn } from "../data/obj/ObjSpawn";
-import type { VarProvider } from "../rs/config/vartype/VarProvider";
-import type { CacheSession } from "../rs/loaders/CacheSession";
-import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
-import type { MapImageRenderer } from "../rs/render/minimap/MapImageRenderer";
-import type { SceneBuilder } from "../rs/scene/SceneBuilder";
-import type { LocModelLoader } from "../rs/scene/model/LocModelLoader";
-import type { NpcModelLoader } from "../rs/scene/model/NpcModelLoader";
-import type { ObjModelLoader } from "../rs/scene/model/ObjModelLoader";
-import type {
-    SdMapData,
-    SdMapLoaderInput,
-} from "./MapRenderPayload";
+import type { MapRuntimeBootstrap, MapRuntimeRegistration } from "../runtime/MapRuntimePayload";
+import type { BackendKind } from "../util/BackendKind";
+import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
+import type { SdMapData, SdMapLoaderInput } from "./MapRenderPayload";
 import { MAP_RENDER_DRAW_BUCKET_KEYS } from "./MapRenderPayload";
-import type {
-    MapRuntimeBootstrap,
-    MapRuntimeRegistration,
-} from "../runtime/MapRuntimePayload";
 import { MapRenderTsBackend } from "./ts/MapRenderTsBackend";
 import { WasmMapRenderBackend } from "./wasm/WasmMapRenderBackend";
 
@@ -37,14 +25,8 @@ export type NpcSpawnDecodeBackend = Readonly<{
 }>;
 
 export type MapRenderBuildDeps = Readonly<{
-    session: CacheSession;
-    sceneBuilder: SceneBuilder;
-    mapBytesProvider: MapBytesProvider;
-    locModelLoader: LocModelLoader;
-    objModelLoader: ObjModelLoader;
-    npcModelLoader: NpcModelLoader;
-    mapImageRenderer: MapImageRenderer;
-    varProvider: VarProvider;
+    contentSession: MapRenderContentSession;
+    buildAdapter: MapRenderBuildAdapter;
     objSpawns: ObjSpawn[];
     fallbackNpcSpawns?: ReadonlyArray<NpcSpawn>;
     npcSpawnDecodeBackend?: NpcSpawnDecodeBackend;

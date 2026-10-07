@@ -1,61 +1,43 @@
 import type { NpcSpawn } from "../data/npc/NpcSpawn";
-import type { ObjSpawn } from "../data/obj/ObjSpawn";
 import { NpcSpawnResolver } from "../data/npc/NpcSpawnResolver";
-import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
-import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
-import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
-import type { CacheSession } from "../rs/loaders/CacheSession";
-import type { MapBytesProvider } from "../rs/map/MapBytesProvider";
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
+import { type MapObjState, type StaticMapObjState } from "../maprender/MapObjState";
 import { Pathfinder } from "../rs/pathfinder/Pathfinder";
-import { Scene } from "../rs/scene/Scene";
-import { LocLoadType, type SceneBuilder } from "../rs/scene/SceneBuilder";
-import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import {
-    type MapObjState,
-    type StaticMapObjState,
-} from "../maprender/MapObjState";
-import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
+import type { NpcEvent } from "../runtime/entities/NpcEvents";
+import type { ResolvedBootstrapData } from "../runtime/sim/NpcBootstrap";
+import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
+import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
     type WorldDeltaPacket,
-    type WorldMapObjAddition,
     type WorldDynamicMapObjDespawn,
     type WorldDynamicMapObjSpawn,
     type WorldDynamicMapObjUpdate,
-    type WorldLocAnimationSnapshot,
     type WorldLocAnimationPauseState,
     type WorldLocAnimationReset,
+    type WorldLocAnimationSnapshot,
     type WorldLocVisibilityChange,
+    type WorldMapObjAddition,
     type WorldMapObjRemoval,
     type WorldMapObjStateReplacement,
     buildWorldDeltaPacket,
-    buildWorldDeltaPacketFromLocAnimationSnapshots,
     buildWorldDeltaPacketFromLocAnimationPauseStates,
     buildWorldDeltaPacketFromLocAnimationResets,
+    buildWorldDeltaPacketFromLocAnimationSnapshots,
     buildWorldDeltaPacketFromLocVisibilityChanges,
     buildWorldDeltaPacketFromNpcEvents,
 } from "../world/WorldDeltaPacket";
-import {
-    type ResolvedBootstrapData,
-    resolveBootstrapData,
-} from "../runtime/sim/NpcBootstrap";
-import type { NpcEvent } from "../runtime/entities/NpcEvents";
-import { applyNpcMovementStep } from "../runtime/sim/NpcSimMovement";
-import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
+import { decodeNpcLifecyclePacket } from "./NpcLifecyclePacket";
+import type { WorkerState } from "./WorkerBuildTypes";
 import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import type {
     MapRuntimeBootstrapInput,
     SimMapRuntimeRegistrationInput,
     WorldInputUpdate,
 } from "./WorkerRuntimeTypes";
-import type { WorkerState } from "./WorkerBuildTypes";
 
 type TickWorkerState = Readonly<{
-    session: CacheSession;
-    mapBytesProvider: MapBytesProvider;
-    objSpawns: ReadonlyArray<ObjSpawn>;
     fallbackNpcSpawns: ReadonlyArray<NpcSpawn>;
-    objModelLoader: WorkerState["objModelLoader"];
-    sceneBuilder: SceneBuilder;
+    runtimeAdapter: WorkerState["runtimeAdapter"];
 }>;
 
 type WorldStepInputs = Readonly<{
@@ -90,20 +72,8 @@ type MapObjRuntimeState = Readonly<{
     nextDynamicRuntimeObjId: number;
 }>;
 
-function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: number }> {
-    return {
-        mapX: (mapId >> 8) & 0xff,
-        mapY: mapId & 0xff,
-    };
-}
-
 function createNpcSimStateStoreDeps(workerState: TickWorkerState): NpcSimStateStoreDeps {
-    return {
-        npcTypeLoader: workerState.session.loaders.npcTypeLoader as NpcTypeLoader,
-        basTypeLoader: workerState.session.loaders.basTypeLoader as BasTypeLoader,
-        seqTypeLoader: workerState.session.loaders.seqTypeLoader as SeqTypeLoader,
-        tickPatchEntryStride: 4,
-    };
+    return workerState.runtimeAdapter.createNpcSimStateStoreDeps(4);
 }
 
 export class WorkerTickRuntime {
@@ -118,7 +88,10 @@ export class WorkerTickRuntime {
     private readonly pendingDynamicObjSnapshotMapIds = new Set<number>();
     private readonly pendingLocSnapshotMapIds = new Set<number>();
     private activeMapIds: Int32Array = new Int32Array(0);
-    private readonly pendingMapObjStateReplacementsByMapId = new Map<number, WorldMapObjStateReplacement>();
+    private readonly pendingMapObjStateReplacementsByMapId = new Map<
+        number,
+        WorldMapObjStateReplacement
+    >();
     private readonly pendingMapObjAdditionsByMapId = new Map<number, Set<number>>();
     private readonly pendingMapObjRemovalsByMapId = new Map<number, Set<number>>();
     private readonly pendingDynamicMapObjSpawnsByMapId = new Map<
@@ -400,9 +373,7 @@ export class WorkerTickRuntime {
         return applied | 0;
     }
 
-    applyLocAnimationPauseStates(
-        pauseStates: ReadonlyArray<WorldLocAnimationPauseState>,
-    ): number {
+    applyLocAnimationPauseStates(pauseStates: ReadonlyArray<WorldLocAnimationPauseState>): number {
         let applied = 0;
         for (let index = 0; index < pauseStates.length; index++) {
             const pauseState = pauseStates[index];
@@ -434,44 +405,21 @@ export class WorkerTickRuntime {
         tileRenderFlagsLevel1: Uint8Array[],
         npcOrderKeys: Int32Array,
     ): Promise<ResolvedBootstrapData> {
-        return resolveBootstrapData(
-            this.npcSpawnResolver,
-            {
-                mapBytesProvider: workerState.mapBytesProvider,
-                cacheInfo: workerState.session.cache.info,
-                npcTypeLoader: workerState.session.loaders.npcTypeLoader as NpcTypeLoader,
-                fallbackNpcSpawns: workerState.fallbackNpcSpawns,
-            },
-            {
-                mapId,
-                maxLevel,
-                borderSize,
-                tileRenderFlagsLevel1,
-                npcOrderKeys,
-            },
-        );
+        return workerState.runtimeAdapter.resolveNpcBootstrapData(this.npcSpawnResolver, {
+            mapId,
+            maxLevel,
+            borderSize,
+            tileRenderFlagsLevel1,
+            npcOrderKeys,
+            fallbackNpcSpawns: workerState.fallbackNpcSpawns,
+        });
     }
 
-    private buildMapSimScene(
-        workerState: TickWorkerState,
-        mapId: number,
-        borderSize: number,
-    ): Scene {
-        const { mapX, mapY } = decodeMapSquareFromId(mapId);
-        const border = borderSize | 0;
-        const mapSize = Scene.MAP_SQUARE_SIZE + border * 2;
-        const baseX = mapX * Scene.MAP_SQUARE_SIZE - border;
-        const baseY = mapY * Scene.MAP_SQUARE_SIZE - border;
-        return buildSceneFromMapBytesProvider(
-            workerState.sceneBuilder,
-            workerState.mapBytesProvider,
-            baseX,
-            baseY,
-            mapSize,
-            mapSize,
-            false,
-            LocLoadType.NO_MODELS,
-        );
+    private buildMapSimScene(workerState: TickWorkerState, mapId: number, borderSize: number) {
+        return workerState.runtimeAdapter.buildSceneForMapId({
+            mapId,
+            borderSize: borderSize | 0,
+        });
     }
 
     private upsertMapObjRuntimeState(
@@ -488,8 +436,7 @@ export class WorkerTickRuntime {
         this.mapObjRuntimeByMapId.set(mapId | 0, {
             borderSize: input.borderSize ?? current?.borderSize ?? 0,
             maxLevel: input.maxLevel ?? current?.maxLevel ?? 0,
-            staticMapObjState:
-                input.mapObjState?.staticState ?? current?.staticMapObjState,
+            staticMapObjState: input.mapObjState?.staticState ?? current?.staticMapObjState,
             removedObjIndices: input.resetRemovedObjIndices
                 ? new Set<number>()
                 : new Set(current?.removedObjIndices ?? []),
@@ -830,8 +777,7 @@ export class WorkerTickRuntime {
         const hasPendingDynamicObjDespawns =
             (this.pendingDynamicMapObjDespawnsByMapId.size | 0) > 0;
         const hasPendingClearDynamicMaps = (this.pendingClearDynamicMapIds.size | 0) > 0;
-        const hasPendingLocAnimationResets =
-            (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
+        const hasPendingLocAnimationResets = (this.pendingLocAnimationResetByLocKey.size | 0) > 0;
         const hasPendingLocVisibilityChanges = (this.pendingLocVisibilityByLocKey.size | 0) > 0;
         const hasPendingLocAnimationPauseStates =
             (this.pendingLocAnimationPauseStateByLocKey.size | 0) > 0;
@@ -852,8 +798,7 @@ export class WorkerTickRuntime {
         }
         const workerState = await this.getWorkerState();
         const inputs = this.normalizeWorldStepInputs(ticksElapsed, clientTicksElapsed);
-        const seqTypeLoader = workerState.session.loaders.seqTypeLoader;
-        const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
+        const { seqTypeLoader, seqFrameLoader } = workerState.runtimeAdapter.getNpcAnimationDeps();
         const events: NpcEvent[] = [];
 
         for (let i = 0; i < mapIds.length; i++) {
@@ -897,8 +842,7 @@ export class WorkerTickRuntime {
                     this.upsertMapObjRuntimeState(update.mapId | 0, {
                         mapObjState: update.mapObjState,
                         resetRemovedObjIndices: true,
-                        resetDynamicObjSpawns:
-                            update.mapObjState?.staticState !== undefined,
+                        resetDynamicObjSpawns: update.mapObjState?.staticState !== undefined,
                     });
                 }
             }
@@ -946,7 +890,9 @@ export class WorkerTickRuntime {
                 if (!runtime) {
                     continue;
                 }
-                const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
+                const nextDynamicObjSpawnsByRuntimeId = new Map(
+                    runtime.dynamicObjSpawnsByRuntimeId,
+                );
                 let nextDynamicRuntimeObjId = runtime.nextDynamicRuntimeObjId | 0;
                 for (let index = 0; index < spawns.length; index++) {
                     const spawn = spawns[index]!;
@@ -975,12 +921,17 @@ export class WorkerTickRuntime {
                     nextDynamicRuntimeObjId,
                 });
             }
-            for (const [mapId, runtimeObjIds] of this.pendingDynamicMapObjDespawnsByMapId.entries()) {
+            for (const [
+                mapId,
+                runtimeObjIds,
+            ] of this.pendingDynamicMapObjDespawnsByMapId.entries()) {
                 const runtime = this.mapObjRuntimeByMapId.get(mapId | 0);
                 if (!runtime) {
                     continue;
                 }
-                const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
+                const nextDynamicObjSpawnsByRuntimeId = new Map(
+                    runtime.dynamicObjSpawnsByRuntimeId,
+                );
                 for (const runtimeObjId of runtimeObjIds.values()) {
                     nextDynamicObjSpawnsByRuntimeId.delete(runtimeObjId | 0);
                     dynamicObjDespawns.push({
@@ -998,7 +949,9 @@ export class WorkerTickRuntime {
                 if (!runtime) {
                     continue;
                 }
-                const nextDynamicObjSpawnsByRuntimeId = new Map(runtime.dynamicObjSpawnsByRuntimeId);
+                const nextDynamicObjSpawnsByRuntimeId = new Map(
+                    runtime.dynamicObjSpawnsByRuntimeId,
+                );
                 for (const update of updates.values()) {
                     if (!nextDynamicObjSpawnsByRuntimeId.has(update.runtimeObjId | 0)) {
                         continue;
@@ -1157,7 +1110,9 @@ export class WorkerTickRuntime {
                                                 ? objStateReplacements
                                                 : undefined,
                                         additions:
-                                            (objAdditions.length | 0) > 0 ? objAdditions : undefined,
+                                            (objAdditions.length | 0) > 0
+                                                ? objAdditions
+                                                : undefined,
                                         removals:
                                             (objRemovals.length | 0) > 0 ? objRemovals : undefined,
                                     }
@@ -1218,5 +1173,4 @@ export class WorkerTickRuntime {
             safeClientTicks: Math.max(0, Math.min(clientTicksElapsed | 0, 50)),
         };
     }
-
 }

@@ -1,55 +1,35 @@
 import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
 import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
-import { BasTypeLoader } from "../../rs/config/bastype/BasTypeLoader";
-import { LocType } from "../../rs/config/loctype/LocType";
-import { LocTypeLoader } from "../../rs/config/loctype/LocTypeLoader";
-import { NpcTypeLoader } from "../../rs/config/npctype/NpcTypeLoader";
-import { SeqTypeLoader } from "../../rs/config/seqtype/SeqTypeLoader";
-import { VarProvider } from "../../rs/config/vartype/VarProvider";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
 import { Scene } from "../../rs/scene/Scene";
 import { LocLoadType } from "../../rs/scene/SceneBuilder";
-import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
-import { LocModelLoader } from "../../rs/scene/model/LocModelLoader";
-import { NpcModelLoader } from "../../rs/scene/model/NpcModelLoader";
 import type { LocAnimatedData } from "../../runtime/LocAnimatedData";
-import type { MapRenderCommandStreamRuntimeInput } from "../build/SceneDrawCommandBuilder";
+import type { MapRuntimeBootstrap, MapRuntimeRegistration } from "../../runtime/MapRuntimePayload";
+import { buildMapRuntimePayloads } from "../../runtime/MapRuntimePayload";
+import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
+import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
+import { mapObjStateFromRenderData } from "../MapObjState";
+import type { MapRenderBuildDeps } from "../MapRenderBackend";
+import type { ObjRenderData } from "../MapRenderData";
+import type { SdMapData } from "../MapRenderPayload";
+import { SdMapLoaderInput } from "../MapRenderPayload";
+import type { LocAnimatedGroupBuild } from "../build/LocRenderDataBuilder";
 import { ModelHashBuffer } from "../build/ModelHashBuffer";
-import { createLocAnimatedGroupKey, type LocAnimatedGroup } from "../build/LocAnimatedGroup";
-import { SceneGeometryBuffer, type SceneModel } from "../build/SceneGeometryBuffer";
-import {
-    type SceneDrawPlan,
-    type SceneDrawPlanDigest,
-    emitSceneModelsToSceneGeometryBuffer,
-    summarizeSceneDrawPlan,
-} from "../build/SceneDrawPlan";
-import type { SceneLocEntity } from "../build/SceneLocEntity";
+import type { BuiltNpcGeometry } from "../build/NpcGeometryBuilder";
+import type { MapRenderCommandStreamRuntimeInput } from "../build/SceneDrawCommandBuilder";
 import {
     buildDrawRangesFromBuckets,
     buildModelInfoTexturesFromBuckets,
     buildRuntimeCommandStreamInputFromBuckets,
     collectRuntimeDrawCommandBuckets,
 } from "../build/SceneDrawCommandBuilder";
-import { buildNpcGeometry } from "../build/NpcGeometryBuilder";
-import { buildObjRenderData } from "../build/ObjRenderDataBuilder";
-import { resolveLocRenderPlacement } from "../build/LocPlacementResolver";
-import { getSceneLocs } from "../build/SceneLocs";
-import type { AnimationFrames } from "../../runtime/entities/AnimationFrames";
-import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
-import type { DrawRange } from "../MapRenderData";
-import type {
-    MapRuntimeBootstrap,
-    MapRuntimeRegistration,
-} from "../../runtime/MapRuntimePayload";
 import {
-    buildMapRuntimePayloads,
-} from "../../runtime/MapRuntimePayload";
-import { mapObjStateFromRenderData } from "../MapObjState";
-import type { MapRenderBuildDeps } from "../MapRenderBackend";
-import type { SdMapData } from "../MapRenderPayload";
-import { SdMapLoaderInput } from "../MapRenderPayload";
-import { loadMinimapBlob } from "./MinimapData";
-import type { NpcTypeAnimationEntry } from "../../runtime/NpcTypeAnimationTable";
+    type SceneDrawPlan,
+    type SceneDrawPlanDigest,
+    emitSceneModelsToSceneGeometryBuffer,
+    summarizeSceneDrawPlan,
+} from "../build/SceneDrawPlan";
+import { SceneGeometryBuffer, type SceneModel } from "../build/SceneGeometryBuffer";
 
 export type MapRenderTsBackendDeps = MapRenderBuildDeps;
 
@@ -77,7 +57,6 @@ export type BuildMapDataBridgeInputResult = Readonly<{
 
 type StageTimer = <T>(name: string, fn: () => T) => T;
 type AsyncStageTimer = <T>(name: string, fn: () => Promise<T>) => Promise<T>;
-const NULL_DRAW_RANGE: DrawRange = [0, 0, 0];
 
 type SceneBuildStageResult = Readonly<{
     borderSize: number;
@@ -88,13 +67,13 @@ type SceneBuildStageResult = Readonly<{
     sceneBuf: SceneGeometryBuffer;
     sceneModels: SceneModel[];
     locsAnimated: LocAnimatedData[];
-    objRenderData: ReturnType<typeof buildObjRenderData>;
+    objRenderData: ObjRenderData | undefined;
     debugSceneCommandPlanDigest?: SceneDrawPlanDigest;
     debugSceneCommandPlanOpsPacked?: Int32Array;
 }>;
 
 type NpcRuntimeStageResult = Readonly<{
-    npcGeometry: ReturnType<typeof buildNpcGeometry>;
+    npcGeometry: BuiltNpcGeometry;
     npcOrderKeys?: Int32Array;
     npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
 }>;
@@ -156,165 +135,23 @@ function flattenSceneTileHeights(scene: Scene): Int32Array {
     return sceneTileHeights;
 }
 
-function addLocAnimationFrames(
-    locModelLoader: LocModelLoader,
-    seqTypeLoader: SeqTypeLoader,
-    sceneBuf: SceneGeometryBuffer,
-    locType: LocType,
-    type: number,
-    rotation: number,
-    seqId: number,
-): AnimationFrames | undefined {
-    const seqResult = seqTypeLoader.tryLoad(seqId);
-    if (!seqResult.ok) {
-        return undefined;
-    }
-    const seqType = seqResult.value;
-    let frameCount: number;
-    if (seqType.hasAnimMayaSeq()) {
-        frameCount = seqType.getAnimMayaDuration();
-    } else {
-        if (!seqType.frameIds) {
-            return undefined;
-        }
-        frameCount = seqType.frameIds.length;
-    }
-    if (frameCount === 0) {
-        return undefined;
-    }
-    const frames = new Array<DrawRange>(frameCount);
-    const framesAlpha = new Array<DrawRange>(frameCount);
-    let alphaFrameCount = 0;
-    for (let i = 0; i < frameCount; i++) {
-        const model = locModelLoader.getModelAnimated(locType, type, rotation, seqId, i);
-        if (model) {
-            frames[i] = sceneBuf.addModelAnimFrame(model, false);
-            framesAlpha[i] = sceneBuf.addModelAnimFrame(model, true);
-            if (framesAlpha[i][1] > 0) {
-                alphaFrameCount++;
-            }
-        } else {
-            frames[i] = NULL_DRAW_RANGE;
-            framesAlpha[i] = NULL_DRAW_RANGE;
-        }
-    }
-
-    return {
-        frames,
-        framesAlpha: alphaFrameCount > 0 ? framesAlpha : undefined,
-    };
-}
-
-type LocAnimatedGroupBuild = {
-    seqId: number;
-    type: number;
-    rotation: number;
-    locType: LocType;
-    locs: SceneLocEntity[];
-};
-
-function pushLocEntityRenderData(
-    locAnimatedGroupMap: Map<number, LocAnimatedGroupBuild>,
-    locModelLoader: LocModelLoader,
-    locTypeLoader: LocTypeLoader,
-    varManager: VarProvider,
-    scene: Scene,
-    sceneModels: SceneModel[],
-    sceneLocEntity: SceneLocEntity,
-    idIsResolved: boolean,
-): void {
-    const entity = sceneLocEntity.entity;
-    const resolved = resolveLocRenderPlacement(
-        scene,
-        sceneLocEntity,
-        locTypeLoader,
-        varManager,
-        idIsResolved,
-    );
-    if (!resolved) {
-        return;
-    }
-
-    if (entity.seqId !== -1) {
-        const loc = {
-            ...sceneLocEntity,
-            lowDetail: resolved.lowDetail,
-            interactId: resolved.locType.id,
-        };
-
-        const key = createLocAnimatedGroupKey(
-            resolved.rotation,
-            resolved.type,
-            resolved.locType.id,
-        );
-        const group = locAnimatedGroupMap.get(key);
-        if (group) {
-            group.locs.push(loc);
-        } else {
-            locAnimatedGroupMap.set(key, {
-                seqId: entity.seqId,
-                type: resolved.type,
-                rotation: resolved.rotation,
-                locType: resolved.locType,
-                locs: [loc],
-            });
-        }
-        return;
-    }
-
-    const model = locModelLoader.getModelAnimated(
-        resolved.locType,
-        resolved.type,
-        resolved.rotation,
-        -1,
-        -1,
-        resolved.contourGroundInfo,
-    );
-    if (!model) {
-        return;
-    }
-
-    sceneModels.push({
-        ...sceneLocEntity,
-        model,
-        sceneHeight: resolved.centerHeight,
-        lowDetail: resolved.lowDetail,
-        // Any terrain-contoured model differs per placement; force per-placement merge.
-        forceMerge: resolved.locType.contourGroundType > 0,
-        interactId: resolved.locType.id,
-    });
-}
-function addLocEntities(
-    locModelLoader: LocModelLoader,
-    locTypeLoader: LocTypeLoader,
-    varManager: VarProvider,
-    scene: Scene,
-    sceneModels: SceneModel[],
-    locEntities: SceneLocEntity[],
-): Iterable<LocAnimatedGroupBuild> {
-    const locAnimatedGroupMap = new Map<number, LocAnimatedGroupBuild>();
-
-    for (const sceneLocEntity of locEntities) {
-        pushLocEntityRenderData(
-            locAnimatedGroupMap,
-            locModelLoader,
-            locTypeLoader,
-            varManager,
-            scene,
-            sceneModels,
-            sceneLocEntity,
-            false,
-        );
-    }
-
-    return locAnimatedGroupMap.values();
-}
-
 export class MapRenderTsBackend {
     modelHashBuf?: ModelHashBuffer;
     private readonly npcSpawnResolver = new NpcSpawnResolver();
 
     constructor(private readonly deps: MapRenderBuildDeps) {}
+
+    private get cacheInfo() {
+        return this.deps.contentSession.getMapRenderCacheInfo();
+    }
+
+    private get textureLoader() {
+        return this.deps.contentSession.getMapRenderTextureLoader();
+    }
+
+    private get buildAdapter() {
+        return this.deps.buildAdapter;
+    }
 
     init(): void {
         if (!this.modelHashBuf) {
@@ -327,15 +164,9 @@ export class MapRenderTsBackend {
         options: BuildMapDataOptions | undefined,
         timeStep: StageTimer,
     ): SceneBuildStageResult {
-        const { mapX, mapY, maxLevel, loadObjs, loadLocs, smoothTerrain, minimizeDrawCalls } = input;
-        const loaders = this.deps.session.loaders;
-        const locTypeLoader = loaders.locTypeLoader;
-        const objTypeLoader = loaders.objTypeLoader;
-        const seqTypeLoader = loaders.seqTypeLoader;
-        const textureLoader = loaders.textureLoader;
-        const locModelLoader = this.deps.locModelLoader;
-        const objModelLoader = this.deps.objModelLoader;
-        const varManager = this.deps.varProvider;
+        const { mapX, mapY, maxLevel, loadObjs, loadLocs, smoothTerrain, minimizeDrawCalls } =
+            input;
+        const textureLoader = this.textureLoader;
 
         const borderSize = 6;
         const baseX = mapX * Scene.MAP_SQUARE_SIZE - borderSize;
@@ -343,17 +174,14 @@ export class MapRenderTsBackend {
         const mapSize = Scene.MAP_SQUARE_SIZE + borderSize * 2;
 
         const scene = timeStep("buildScene", () =>
-            buildSceneFromMapBytesProvider(
-                this.deps.sceneBuilder,
-                this.deps.mapBytesProvider,
-                baseX,
-                baseY,
-                mapSize,
-                mapSize,
+            this.buildAdapter.buildScene({
+                mapX,
+                mapY,
+                borderSize,
                 smoothTerrain,
-                loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
-                input.locPlacementOverrides,
-            ),
+                locLoadType: loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+                locPlacementOverrides: input.locPlacementOverrides,
+            }),
         );
 
         const sceneBuf = new SceneGeometryBuffer(textureLoader, 100000);
@@ -363,18 +191,19 @@ export class MapRenderTsBackend {
         let locAnimatedGroupsBuild: Iterable<LocAnimatedGroupBuild> = [];
         if (loadLocs) {
             const sceneLocs = timeStep("getSceneLocs", () =>
-                getSceneLocs(locTypeLoader, scene, borderSize, maxLevel),
+                this.buildAdapter.getSceneLocs({
+                    scene,
+                    borderSize,
+                    maxLevel,
+                }),
             );
             sceneModels.push(...sceneLocs.locs);
             locAnimatedGroupsBuild = timeStep("addLocEntities", () =>
-                addLocEntities(
-                    locModelLoader,
-                    locTypeLoader,
-                    varManager,
+                this.buildAdapter.addSceneLocEntities({
                     scene,
                     sceneModels,
-                    sceneLocs.locEntities,
-                ),
+                    locEntities: sceneLocs.locEntities,
+                }),
             );
         }
 
@@ -384,12 +213,9 @@ export class MapRenderTsBackend {
               )
             : [];
         const objRenderData = timeStep("buildObjRenderData", () =>
-            buildObjRenderData({
+            this.buildAdapter.buildObjRenderData({
                 loadObjs,
-                objTypeLoader,
-                objModelLoader,
                 scene,
-                textureLoader,
                 baseX,
                 baseY,
                 borderSize,
@@ -417,22 +243,10 @@ export class MapRenderTsBackend {
             }
 
             if (loadLocs) {
-                const locAnimatedGroups: LocAnimatedGroup[] = [];
-                for (const group of locAnimatedGroupsBuild) {
-                    const anim = addLocAnimationFrames(
-                        locModelLoader,
-                        seqTypeLoader,
-                        sceneBuf,
-                        group.locType,
-                        group.type,
-                        group.rotation,
-                        group.seqId,
-                    );
-                    if (!anim) {
-                        continue;
-                    }
-                    locAnimatedGroups.push({ anim, locs: group.locs });
-                }
+                const locAnimatedGroups = this.buildAdapter.buildLocAnimatedGroups({
+                    sceneBuf,
+                    buildGroups: locAnimatedGroupsBuild,
+                });
                 locsAnimated = sceneBuf.addLocAnimatedGroups(locAnimatedGroups);
                 if (this.deps.telemetry === true) {
                     console.log(`animated locs: ${locsAnimated.length}`);
@@ -469,44 +283,27 @@ export class MapRenderTsBackend {
             | undefined,
     ): Promise<NpcRuntimeStageResult> {
         const { mapX, mapY, maxLevel, loadNpcs } = input;
-        const loaders = this.deps.session.loaders;
-        const npcTypeLoader = loaders.npcTypeLoader;
-        const basTypeLoader = loaders.basTypeLoader;
-        const seqTypeLoader = loaders.seqTypeLoader;
-        const textureLoader = loaders.textureLoader;
-        const npcModelLoader = this.deps.npcModelLoader;
 
         const npcSpawns = await timeStepAsync("resolveNpcSpawns", () =>
-            this.npcSpawnResolver.resolveSpawns(
-                {
-                    mapBytesProvider: this.deps.mapBytesProvider,
-                    cacheInfo: this.deps.session.cache.info,
-                    npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
-                    fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
-                    telemetry: npcSpawnTelemetry,
-                },
-                {
-                    loadNpcs,
-                    mapX,
-                    mapY,
-                    maxLevel,
-                    borderSize: sceneStage.borderSize,
-                    tileRenderFlagsLevel1: sceneStage.scene.tileRenderFlags[1],
-                    npcTypeLoader,
-                },
-            ),
+            this.buildAdapter.resolveNpcSpawns({
+                npcSpawnResolver: this.npcSpawnResolver,
+                loadNpcs,
+                mapX,
+                mapY,
+                maxLevel,
+                borderSize: sceneStage.borderSize,
+                tileRenderFlagsLevel1: sceneStage.scene.tileRenderFlags[1],
+                npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
+                fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
+                telemetry: npcSpawnTelemetry,
+            }),
         );
 
         const npcGeometry = timeStep("buildNpcGeometry", () =>
-            buildNpcGeometry({
+            this.buildAdapter.buildNpcGeometry({
                 loadNpcs,
                 includeNpcAnimationFrames: options?.includeNpcAnimationFrames !== false,
                 npcSpawns,
-                textureLoader,
-                npcModelLoader,
-                npcTypeLoader,
-                seqTypeLoader,
-                basTypeLoader,
             }),
         );
 
@@ -547,7 +344,7 @@ export class MapRenderTsBackend {
             mapId: getMapSquareId(input.mapX, input.mapY),
             mapX: input.mapX,
             mapY: input.mapY,
-            cacheName: this.deps.session.cache.info.name,
+            cacheName: this.cacheInfo.name,
             maxLevel: input.maxLevel,
             loadObjs: input.loadObjs,
             loadNpcs: input.loadNpcs,
@@ -626,8 +423,7 @@ export class MapRenderTsBackend {
             return result;
         };
 
-        const loaders = this.deps.session.loaders;
-        const textureLoader = loaders.textureLoader;
+        const textureLoader = this.textureLoader;
 
         const sceneStage = this.buildSceneStage(input, options, timeStep);
         const npcStage = await this.buildNpcRuntimeStage(
@@ -666,7 +462,9 @@ export class MapRenderTsBackend {
 
         const runtimeSceneTileHeights =
             includeRuntimeCommandStreamInput && includeRuntimeSceneTileHeights
-                ? timeStep("flattenSceneTileHeights", () => flattenSceneTileHeights(sceneStage.scene))
+                ? timeStep("flattenSceneTileHeights", () =>
+                      flattenSceneTileHeights(sceneStage.scene),
+                  )
                 : undefined;
 
         const runtimeCommandStreamInput = includeRuntimeCommandStreamInput
@@ -688,13 +486,12 @@ export class MapRenderTsBackend {
             options?.includeMinimapBlob === false
                 ? new Blob()
                 : await timeStepAsync("loadMinimapBlob", () =>
-                      loadMinimapBlob(
-                          this.deps.mapImageRenderer,
-                          sceneStage.scene,
-                          0,
-                          sceneStage.borderSize,
-                          false,
-                      ),
+                      this.buildAdapter.loadMinimapBlob({
+                          scene: sceneStage.scene,
+                          level: 0,
+                          borderSize: sceneStage.borderSize,
+                          drawMapFunctions: false,
+                      }),
                   );
 
         const usedTextureIdSet = new Set<number>(sceneStage.sceneBuf.usedTextureIds);
@@ -740,14 +537,12 @@ export class MapRenderTsBackend {
                 .slice(0, 10)
                 .map(([k, v]) => `${k}=${v.toFixed(1)}ms`)
                 .join(" ");
-                console.log(
-                    `load map ${mapX},${mapY}: total=${totalMs.toFixed(
-                        1,
+            console.log(
+                `load map ${mapX},${mapY}: total=${totalMs.toFixed(
+                    1,
                 )}ms vertices=${sceneStage.sceneBuf.vertexCount()} indices=${
                     sceneStage.sceneBuf.indices.length
-                } models=${
-                    sceneStage.sceneModels.length
-                } ${parts}`,
+                } models=${sceneStage.sceneModels.length} ${parts}`,
             );
         }
         const data = this.buildStaticMapData(

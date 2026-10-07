@@ -1,34 +1,18 @@
+import type { ObjSpawn } from "../data/obj/ObjSpawn";
+import { staticMapObjStateToRenderData } from "../maprender/MapObjState";
 import type { MapRenderBackend } from "../maprender/MapRenderBackend";
-import type { BasTypeLoader } from "../rs/config/bastype/BasTypeLoader";
-import type { NpcTypeLoader } from "../rs/config/npctype/NpcTypeLoader";
-import type { SeqTypeLoader } from "../rs/config/seqtype/SeqTypeLoader";
-import type { CacheSession } from "../rs/loaders/CacheSession";
-import {
-    TICK_PATCH_ENTRY_STRIDE,
-    TICK_PATCH_STREAM_COUNT,
-} from "../renderer/RenderFramePacket";
+import type { ObjRenderData } from "../maprender/MapRenderData";
+import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
+import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
+import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
+import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "../renderer/NpcGpuFrameBuilder";
+import { TICK_PATCH_ENTRY_STRIDE, TICK_PATCH_STREAM_COUNT } from "../renderer/RenderFramePacket";
+import type { RenderFramePacket } from "../renderer/RenderFramePacket";
 import {
     type RenderFramePacketMapEntry,
     buildRenderFramePacketFromMapEntries,
     buildRenderFramePacketMapEntry,
 } from "../renderer/RenderFramePacketBuilder";
-import type { RenderFramePacket } from "../renderer/RenderFramePacket";
-import { NPC_DATA_TEXTURE_RING_SIZE } from "../renderer/NpcGpuFrame";
-import type {
-    WorldMapObjAddition,
-    WorldDynamicMapObjDespawn,
-    WorldDynamicMapObjSpawn,
-    WorldDynamicMapObjUpdate,
-    WorldLocAnimationPauseState,
-    WorldDeltaPacket,
-    WorldLocAnimationReset,
-    WorldMapObjRemoval,
-    WorldMapObjStateReplacement,
-} from "../world/WorldDeltaPacket";
-import type { MapObjRenderPacket } from "../renderer/MapObjRenderPacket";
-import { buildMapObjRenderPacket } from "../renderer/MapObjRenderPacket";
-import type { ObjRenderData } from "../maprender/MapRenderData";
-import { NpcGpuFrameBuilder, type NpcGpuFrameSource } from "../renderer/NpcGpuFrameBuilder";
 import { NpcSimStateStore, type NpcSimStateStoreDeps } from "../runtime/sim/NpcSimStateStore";
 import {
     buildTickPatchStreamsForMap,
@@ -37,6 +21,19 @@ import {
 import { LOC_CYCLE_SCALE } from "../wasm/LocCycle";
 import type { MapRenderRuntimeHandle } from "../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../wasm/rs_map_runtime_bridge.mjs";
+import type {
+    WorldDeltaPacket,
+    WorldDynamicMapObjDespawn,
+    WorldDynamicMapObjSpawn,
+    WorldDynamicMapObjUpdate,
+    WorldLocAnimationPauseState,
+    WorldLocAnimationReset,
+    WorldMapObjAddition,
+    WorldMapObjRemoval,
+    WorldMapObjStateReplacement,
+} from "../world/WorldDeltaPacket";
+import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
+import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
 import {
     type ApplyWorldDeltaResult,
     type RenderFrameInputUpdate,
@@ -44,22 +41,9 @@ import {
     type WorkerInputStateVersion,
     type WorkerViewState,
 } from "./WorkerRuntimeTypes";
-import { WorkerMapRuntimeTracker } from "./WorkerMapRuntimeTracker";
-import {
-    staticMapObjStateToRenderData,
-} from "../maprender/MapObjState";
-import { LOC_ANIMATION_PAUSE_STATE_STRIDE } from "../world/WorldDeltaPacket";
-import { buildSceneFromMapBytesProvider } from "../rs/scene/buildSceneFromMapBytesProvider";
-import { LocLoadType } from "../rs/scene/SceneBuilder";
-import { Scene } from "../rs/scene/Scene";
-import { buildObjRenderData } from "../maprender/build/ObjRenderDataBuilder";
-import type { ObjSpawn } from "../data/obj/ObjSpawn";
 
 type FrameWorkerState = Readonly<{
-    session: CacheSession;
-    mapBytesProvider: import("../rs/map/MapBytesProvider").MapBytesProvider;
-    sceneBuilder: import("../rs/scene/SceneBuilder").SceneBuilder;
-    objModelLoader: import("./WorkerBuildTypes").WorkerState["objModelLoader"];
+    runtimeAdapter: import("./WorkerBuildTypes").WorkerState["runtimeAdapter"];
     mapRenderBackend: Readonly<{
         kind: MapRenderBackend["kind"];
         getWasmRuntimeHandle?: () => MapRenderRuntimeHandle | undefined;
@@ -87,11 +71,13 @@ type PendingRuntimeMapObjUpdate = {
     staticObjRenderData: ObjRenderData | undefined;
     replaceStaticObjRenderData: boolean;
     hiddenStaticObjIndices: Set<number>;
-    appendDynamicObjRenders: Array<Readonly<{
-        runtimeObjId: number;
-        interactId: number;
-        objRenderData: ObjRenderData;
-    }>>;
+    appendDynamicObjRenders: Array<
+        Readonly<{
+            runtimeObjId: number;
+            interactId: number;
+            objRenderData: ObjRenderData;
+        }>
+    >;
     removeDynamicRuntimeObjIds: Set<number>;
     clearDynamicObjRenderData: boolean;
 };
@@ -115,12 +101,7 @@ function decodeMapSquareFromId(mapId: number): Readonly<{ mapX: number; mapY: nu
 }
 
 function createNpcSimStateStoreDeps(workerState: FrameWorkerState): NpcSimStateStoreDeps {
-    return {
-        npcTypeLoader: workerState.session.loaders.npcTypeLoader as NpcTypeLoader,
-        basTypeLoader: workerState.session.loaders.basTypeLoader as BasTypeLoader,
-        seqTypeLoader: workerState.session.loaders.seqTypeLoader as SeqTypeLoader,
-        tickPatchEntryStride: TICK_PATCH_ENTRY_STRIDE,
-    };
+    return workerState.runtimeAdapter.createNpcSimStateStoreDeps(TICK_PATCH_ENTRY_STRIDE);
 }
 
 function isWasmTickEmitResult(value: unknown): value is WasmTickEmitResult {
@@ -149,7 +130,10 @@ export class WorkerFramePacketRuntime {
     private readonly runtimeHiddenObjIndicesByMapId = new Map<number, Set<number>>();
     private readonly runtimeDynamicObjStateByMapId = new Map<number, RuntimeDynamicObjMapState>();
     private readonly pendingDynamicObjSnapshotMapIds = new Set<number>();
-    private readonly pendingRuntimeMapObjUpdatesByMapId = new Map<number, PendingRuntimeMapObjUpdate>();
+    private readonly pendingRuntimeMapObjUpdatesByMapId = new Map<
+        number,
+        PendingRuntimeMapObjUpdate
+    >();
     private readonly pendingLocAnimationResetByLocKey = new Map<string, WorldLocAnimationReset>();
     private readonly pendingLocAnimationPauseStateByLocKey = new Map<
         string,
@@ -217,12 +201,15 @@ export class WorkerFramePacketRuntime {
             const pending = this.getPendingRuntimeMapObjUpdate(update.mapId | 0);
             const mapObjState = update.mapObjState;
             if (mapObjState && "staticState" in mapObjState) {
-                pending.staticObjRenderData = staticMapObjStateToRenderData(mapObjState.staticState);
+                pending.staticObjRenderData = staticMapObjStateToRenderData(
+                    mapObjState.staticState,
+                );
                 pending.replaceStaticObjRenderData = true;
                 const currentDynamic = this.runtimeDynamicObjStateByMapId.get(update.mapId | 0);
                 this.runtimeDynamicObjStateByMapId.set(update.mapId | 0, {
                     staticObjCount: mapObjState.staticState?.objTypeIds.length ?? 0,
-                    slotByRuntimeObjId: currentDynamic?.slotByRuntimeObjId ?? new Map<number, number>(),
+                    slotByRuntimeObjId:
+                        currentDynamic?.slotByRuntimeObjId ?? new Map<number, number>(),
                     freeSlots: currentDynamic?.freeSlots ?? [],
                     nextSlot: currentDynamic?.nextSlot ?? 0,
                 });
@@ -230,32 +217,6 @@ export class WorkerFramePacketRuntime {
             applied = (applied + 1) | 0;
         }
         return applied | 0;
-    }
-
-    private buildMapObjScene(
-        workerState: FrameWorkerState,
-        mapId: number,
-        borderSize: number,
-    ) {
-        const { mapX, mapY } = decodeMapSquareFromId(mapId | 0);
-        const border = borderSize | 0;
-        const mapSize = Scene.MAP_SQUARE_SIZE + border * 2;
-        const baseX = mapX * Scene.MAP_SQUARE_SIZE - border;
-        const baseY = mapY * Scene.MAP_SQUARE_SIZE - border;
-        return {
-            scene: buildSceneFromMapBytesProvider(
-                workerState.sceneBuilder,
-                workerState.mapBytesProvider,
-                baseX,
-                baseY,
-                mapSize,
-                mapSize,
-                false,
-                LocLoadType.NO_MODELS,
-            ),
-            baseX,
-            baseY,
-        };
     }
 
     private ensureDynamicObjMapState(mapId: number): RuntimeDynamicObjMapState {
@@ -306,15 +267,8 @@ export class WorkerFramePacketRuntime {
         spawn: ObjSpawn,
         interactId: number,
     ): ObjRenderData | undefined {
-        const { scene, baseX, baseY } = this.buildMapObjScene(workerState, mapId | 0, borderSize | 0);
-        return buildObjRenderData({
-            loadObjs: true,
-            objTypeLoader: workerState.session.loaders.objTypeLoader,
-            objModelLoader: workerState.objModelLoader,
-            scene,
-            textureLoader: workerState.session.loaders.textureLoader,
-            baseX: baseX | 0,
-            baseY: baseY | 0,
+        return workerState.runtimeAdapter.buildMapObjRenderData({
+            mapId: mapId | 0,
             borderSize: borderSize | 0,
             objSpawns: [spawn],
             interactIds: Int32Array.of(interactId | 0),
@@ -514,7 +468,9 @@ export class WorkerFramePacketRuntime {
                 this.runtimeHiddenObjIndicesByMapId.set(mapId, hiddenObjIndices);
             }
             hiddenObjIndices.add(removal.objIndex | 0);
-            this.getPendingRuntimeMapObjUpdate(mapId).hiddenStaticObjIndices = new Set(hiddenObjIndices);
+            this.getPendingRuntimeMapObjUpdate(mapId).hiddenStaticObjIndices = new Set(
+                hiddenObjIndices,
+            );
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -538,7 +494,9 @@ export class WorkerFramePacketRuntime {
                 continue;
             }
             hiddenObjIndices.delete(addition.objIndex | 0);
-            this.getPendingRuntimeMapObjUpdate(mapId).hiddenStaticObjIndices = new Set(hiddenObjIndices);
+            this.getPendingRuntimeMapObjUpdate(mapId).hiddenStaticObjIndices = new Set(
+                hiddenObjIndices,
+            );
             applied = (applied + 1) | 0;
         }
         return applied | 0;
@@ -686,22 +644,25 @@ export class WorkerFramePacketRuntime {
     async applyWorldDeltaPacket(packet: WorldDeltaPacket): Promise<ApplyWorldDeltaResult> {
         const objStaticDelta = packet.obj?.static;
         const objDynamicDelta = packet.obj?.dynamic;
-        let applied = this.applyRuntimeMapObjStateReplacements(
-            objStaticDelta?.stateReplacements,
-        );
+        let applied = this.applyRuntimeMapObjStateReplacements(objStaticDelta?.stateReplacements);
         applied = (applied + this.applyRuntimeMapObjRemovals(objStaticDelta?.removals)) | 0;
         applied = (applied + this.applyRuntimeMapObjAdditions(objStaticDelta?.additions)) | 0;
         applied =
             (applied +
-                this.applyRuntimeClearDynamicMapObjRenderData(objDynamicDelta?.clearDynamicMapIds)) |
+                this.applyRuntimeClearDynamicMapObjRenderData(
+                    objDynamicDelta?.clearDynamicMapIds,
+                )) |
             0;
         applied =
-            (applied + this.applyRuntimeDynamicMapObjDespawns(objDynamicDelta?.dynamicDespawns)) | 0;
-        applied =
-            (applied + (await this.applyRuntimeDynamicMapObjUpdates(objDynamicDelta?.dynamicUpdates))) |
+            (applied + this.applyRuntimeDynamicMapObjDespawns(objDynamicDelta?.dynamicDespawns)) |
             0;
         applied =
-            (applied + (await this.applyRuntimeDynamicMapObjSpawns(objDynamicDelta?.dynamicSpawns))) |
+            (applied +
+                (await this.applyRuntimeDynamicMapObjUpdates(objDynamicDelta?.dynamicUpdates))) |
+            0;
+        applied =
+            (applied +
+                (await this.applyRuntimeDynamicMapObjSpawns(objDynamicDelta?.dynamicSpawns))) |
             0;
         const locAnimationDelta = packet.loc?.animation;
         const locStateDelta = packet.loc?.state;
@@ -789,9 +750,7 @@ export class WorkerFramePacketRuntime {
             return;
         }
         const resetCount = this.pendingLocAnimationResetByLocKey.size | 0;
-        const animationResetPacked = new Int32Array(
-            (resetCount | 0) * 2,
-        );
+        const animationResetPacked = new Int32Array((resetCount | 0) * 2);
         let write = 0;
         for (const reset of this.pendingLocAnimationResetByLocKey.values()) {
             animationResetPacked[write++] = reset.mapId | 0;
@@ -882,7 +841,9 @@ export class WorkerFramePacketRuntime {
             safeClientTicks,
         );
         if (!isWasmTickEmitResult(wasmTickValue)) {
-            throw new Error("[map-render][tick][wasm] tickMapsEmitPatchStreams returned invalid data");
+            throw new Error(
+                "[map-render][tick][wasm] tickMapsEmitPatchStreams returned invalid data",
+            );
         }
         return {
             isEnabled: true,
@@ -983,7 +944,7 @@ export class WorkerFramePacketRuntime {
             cycleNow,
             inputs.safeClientTicks,
         );
-        const seqFrameLoader = workerState.session.loaders.seqFrameLoader;
+        const { seqFrameLoader } = workerState.runtimeAdapter.getNpcAnimationDeps();
         this.npcGpuFrameBuilder.beginFrame();
         const entries = new Array<RenderFramePacketMapEntry>(mapIds.length | 0);
         const wasmCountsByMapId = wasmTick.tickPatchCountsByMapId;

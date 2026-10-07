@@ -1,19 +1,32 @@
+import {
+    type WorldRuntimeBootstrap,
+    type WorldRuntimeRegistration,
+    buildWorldRuntimeBootstrap,
+    buildWorldRuntimePayloads,
+    buildWorldRuntimeRegistration,
+} from "../core/runtime/WorldRuntimePayload";
 import type { MapObjState } from "../maprender/MapObjState";
 import type { SdMapData } from "../maprender/MapRenderData";
 import type { LocAnimatedData } from "./LocAnimatedData";
 import type { NpcTypeAnimationEntry } from "./NpcTypeAnimationTable";
 
-export type MapRuntimeRegistration = Readonly<{
-    borderSize: number;
-    tileRenderFlagsLevel1: Uint8Array[];
-    locsAnimated: ReadonlyArray<LocAnimatedData>;
-    npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
-}>;
+export type {
+    WorldRuntimeBootstrap,
+    WorldRuntimeRegistration,
+} from "../core/runtime/WorldRuntimePayload";
 
-export type MapRuntimeBootstrap = Readonly<{
-    npcOrderKeys: Int32Array;
-    mapObjState?: MapObjState;
-}>;
+export type MapRuntimeRegistration = WorldRuntimeRegistration &
+    Readonly<{
+        tileRenderFlagsLevel1: Uint8Array[];
+        locsAnimated: ReadonlyArray<LocAnimatedData>;
+        npcTypeAnimationTable: ReadonlyArray<NpcTypeAnimationEntry>;
+    }>;
+
+export type MapRuntimeBootstrap = WorldRuntimeBootstrap &
+    Readonly<{
+        npcOrderKeys: Int32Array;
+        mapObjState?: MapObjState;
+    }>;
 
 export function buildMapRuntimeRegistration(input: {
     borderSize: number;
@@ -21,11 +34,17 @@ export function buildMapRuntimeRegistration(input: {
     locsAnimated: ReadonlyArray<LocAnimatedData>;
     npcTypeAnimationTable?: ReadonlyArray<NpcTypeAnimationEntry>;
 }): MapRuntimeRegistration {
+    const runtimeRegistration = buildWorldRuntimeRegistration({
+        borderSize: input.borderSize,
+        collisionMaskPrimary: input.tileRenderFlags[1] ?? [],
+        animatedInstances: input.locsAnimated,
+        actorAnimationTable: input.npcTypeAnimationTable,
+    });
     return {
-        borderSize: input.borderSize | 0,
-        tileRenderFlagsLevel1: input.tileRenderFlags[1] ?? [],
-        locsAnimated: input.locsAnimated,
-        npcTypeAnimationTable: input.npcTypeAnimationTable ?? [],
+        ...runtimeRegistration,
+        tileRenderFlagsLevel1: runtimeRegistration.collisionMaskPrimary,
+        locsAnimated: runtimeRegistration.animatedInstances,
+        npcTypeAnimationTable: runtimeRegistration.actorAnimationTable,
     };
 }
 
@@ -33,9 +52,14 @@ export function buildMapRuntimeBootstrap(input: {
     npcOrderKeys?: Int32Array;
     mapObjState?: MapObjState;
 }): MapRuntimeBootstrap {
+    const runtimeBootstrap = buildWorldRuntimeBootstrap({
+        actorOrderKeys: input.npcOrderKeys,
+        dynamicState: input.mapObjState,
+    });
     return {
-        npcOrderKeys: input.npcOrderKeys ?? new Int32Array(0),
-        mapObjState: input.mapObjState,
+        ...runtimeBootstrap,
+        npcOrderKeys: runtimeBootstrap.actorOrderKeys,
+        mapObjState: runtimeBootstrap.dynamicState,
     };
 }
 
@@ -50,17 +74,26 @@ export function buildMapRuntimePayloads(input: {
     runtimeRegistration: MapRuntimeRegistration;
     runtimeBootstrap: MapRuntimeBootstrap;
 }> {
+    const worldRuntimePayloads = buildWorldRuntimePayloads({
+        borderSize: input.borderSize,
+        collisionMaskPrimary: input.tileRenderFlags[1] ?? [],
+        animatedInstances: input.locsAnimated,
+        actorAnimationTable: input.npcTypeAnimationTable,
+        actorOrderKeys: input.npcOrderKeys,
+        dynamicState: input.mapObjState,
+    });
     return {
-        runtimeRegistration: buildMapRuntimeRegistration({
-            borderSize: input.borderSize,
-            tileRenderFlags: input.tileRenderFlags,
-            locsAnimated: input.locsAnimated,
-            npcTypeAnimationTable: input.npcTypeAnimationTable,
-        }),
-        runtimeBootstrap: buildMapRuntimeBootstrap({
-            npcOrderKeys: input.npcOrderKeys,
-            mapObjState: input.mapObjState,
-        }),
+        runtimeRegistration: {
+            ...worldRuntimePayloads.runtimeRegistration,
+            tileRenderFlagsLevel1: worldRuntimePayloads.runtimeRegistration.collisionMaskPrimary,
+            locsAnimated: worldRuntimePayloads.runtimeRegistration.animatedInstances,
+            npcTypeAnimationTable: worldRuntimePayloads.runtimeRegistration.actorAnimationTable,
+        },
+        runtimeBootstrap: {
+            ...worldRuntimePayloads.runtimeBootstrap,
+            npcOrderKeys: worldRuntimePayloads.runtimeBootstrap.actorOrderKeys,
+            mapObjState: worldRuntimePayloads.runtimeBootstrap.dynamicState,
+        },
     };
 }
 

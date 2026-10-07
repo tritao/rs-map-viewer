@@ -1,16 +1,20 @@
-import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
+import type { MapRenderSceneCacheProvider } from "../../core/build/MapRenderBuildAdapter";
 import { NpcSpawnResolver } from "../../data/npc/NpcSpawnResolver";
-import { errorToString } from "../../util/ErrorUtil";
-import { LocLoadType } from "../../rs/scene/SceneBuilder";
-import { Scene } from "../../rs/scene/Scene";
-import { buildSceneFromMapBytesProvider } from "../../rs/scene/buildSceneFromMapBytesProvider";
+import { getWindowObjSpawns } from "../../data/obj/ObjSpawn";
 import { getMapSquareId } from "../../rs/map/MapFileIndex";
+import { Scene } from "../../rs/scene/Scene";
+import { LocLoadType } from "../../rs/scene/SceneBuilder";
+import type { MapRuntimeBootstrap, MapRuntimeRegistration } from "../../runtime/MapRuntimePayload";
+import { buildMapRuntimePayloads } from "../../runtime/MapRuntimePayload";
+import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
+import { errorToString } from "../../util/ErrorUtil";
 import type {
     MapRenderRuntimeBridgeV2,
     MapRenderRuntimeBuildRequest,
     MapRenderRuntimeHandle,
 } from "../../wasm/MapRenderRuntimeBridgeAbi";
 import { mapRenderRuntimeBridge } from "../../wasm/rs_map_runtime_bridge.mjs";
+import { mapObjStateFromRenderData } from "../MapObjState";
 import type {
     MapRenderBackend,
     MapRenderBackendKind,
@@ -19,27 +23,11 @@ import type {
     RenderDataResult,
 } from "../MapRenderBackend";
 import { collectSdMapDataTransferables } from "../MapRenderBackend";
-import type {
-    ObjRenderData,
-    SdMapData,
-    SdMapLoaderInput,
-} from "../MapRenderPayload";
-import type {
-    MapRuntimeBootstrap,
-    MapRuntimeRegistration,
-} from "../../runtime/MapRuntimePayload";
-import {
-    buildMapRuntimePayloads,
-} from "../../runtime/MapRuntimePayload";
-import { mapObjStateFromRenderData } from "../MapObjState";
-import { buildNpcGeometry } from "../build/NpcGeometryBuilder";
-import { buildObjRenderData } from "../build/ObjRenderDataBuilder";
-import { createBootstrapData } from "../../runtime/sim/NpcBootstrap";
+import type { ObjRenderData, SdMapData, SdMapLoaderInput } from "../MapRenderPayload";
 import {
     MapRenderByteDrivenSceneBuildInput,
     WasmCacheUploader,
     createByteDrivenSceneBuildInput,
-    createSceneBuildCacheProvider,
 } from "./WasmCacheUploader";
 import { runtimePacketToPayloadOverlay } from "./WasmPacketOverlay";
 
@@ -63,30 +51,22 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private runtimeHandle: MapRenderRuntimeHandle | undefined;
     private readonly cacheUploader = new WasmCacheUploader();
     private readonly npcSpawnResolver = new NpcSpawnResolver();
-    private readonly cacheProvider = (() => {
-        const { session } = this.deps;
-        const loaders = session.loaders;
-        return createSceneBuildCacheProvider({
-            mapBytesProvider: this.deps.mapBytesProvider,
-            locTypeLoader: loaders.locTypeLoader,
-            objTypeLoader: loaders.objTypeLoader,
-            modelLoader: loaders.modelLoader,
-            seqTypeLoader: loaders.seqTypeLoader,
-            seqFrameLoader: loaders.seqFrameLoader,
-            skeletalSeqLoader: loaders.skeletalSeqLoader,
-            npcTypeLoader: loaders.npcTypeLoader,
-            basTypeLoader: loaders.basTypeLoader,
-            underlayTypeLoader: loaders.underlayTypeLoader,
-            overlayTypeLoader: loaders.overlayTypeLoader,
-            varbitLoader: session.varManager.varbitLoader,
-            textureLoader: loaders.textureLoader,
-        });
-    })();
+    private readonly cacheProvider: MapRenderSceneCacheProvider;
 
     constructor(
         private readonly deps: MapRenderBuildDeps,
         private readonly options: MapRenderBackendOptions | undefined,
-    ) {}
+    ) {
+        this.cacheProvider = deps.buildAdapter.createSceneCacheProvider();
+    }
+
+    private get cacheInfo() {
+        return this.deps.contentSession.getMapRenderCacheInfo();
+    }
+
+    private get buildAdapter() {
+        return this.deps.buildAdapter;
+    }
 
     private async buildNpcFallbackData(
         input: SdMapLoaderInput,
@@ -99,34 +79,23 @@ export class WasmMapRenderBackend implements MapRenderBackend {
             return undefined;
         }
 
-        const loaders = this.deps.session.loaders;
-        const npcSpawns = await this.npcSpawnResolver.resolveSpawns(
-            {
-                mapBytesProvider: this.deps.mapBytesProvider,
-                cacheInfo: this.deps.session.cache.info,
-                npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
-                fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
-            },
-            {
-                loadNpcs: true,
-                mapX: input.mapX,
-                mapY: input.mapY,
-                maxLevel: input.maxLevel,
-                borderSize: borderSize | 0,
-                tileRenderFlagsLevel1,
-                npcTypeLoader: loaders.npcTypeLoader,
-            },
-        );
+        const npcSpawns = await this.buildAdapter.resolveNpcSpawns({
+            npcSpawnResolver: this.npcSpawnResolver,
+            loadNpcs: true,
+            mapX: input.mapX,
+            mapY: input.mapY,
+            maxLevel: input.maxLevel,
+            borderSize: borderSize | 0,
+            tileRenderFlagsLevel1,
+            npcSpawnDecodeBackend: this.deps.npcSpawnDecodeBackend,
+            fallbackNpcSpawns: this.deps.fallbackNpcSpawns,
+            fallbackOnEmptyCacheDecode: false,
+        });
 
-        const npcGeometry = buildNpcGeometry({
+        const npcGeometry = this.buildAdapter.buildNpcGeometry({
             loadNpcs: true,
             includeNpcAnimationFrames: true,
             npcSpawns,
-            textureLoader: loaders.textureLoader,
-            npcModelLoader: this.deps.npcModelLoader,
-            npcTypeLoader: loaders.npcTypeLoader,
-            seqTypeLoader: loaders.seqTypeLoader,
-            basTypeLoader: loaders.basTypeLoader,
         });
         if ((npcGeometry.npcs.length | 0) <= 0) {
             return undefined;
@@ -216,8 +185,8 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private async ensureRuntimeHandle(): Promise<MapRenderRuntimeHandle | undefined> {
         if (!this.runtimeHandlePromise) {
             this.runtimeHandlePromise = this.bridge.createRuntimeWithConfig({
-                cacheGame: this.deps.session.cache.info.game | 0,
-                cacheRevision: this.deps.session.cache.info.revision | 0,
+                cacheGame: this.cacheInfo.game | 0,
+                cacheRevision: this.cacheInfo.revision | 0,
                 sceneLevels: 4,
                 unitsTileHeightBasis: 8,
             });
@@ -232,18 +201,13 @@ export class WasmMapRenderBackend implements MapRenderBackend {
     private createByteDrivenSceneBuildInput(
         input: SdMapLoaderInput,
     ): MapRenderByteDrivenSceneBuildInput {
-        const { session, objSpawns } = this.deps;
-        const varManager = session.varManager;
-        const varpValues =
-            varManager.values instanceof Int32Array
-                ? new Int32Array(varManager.values)
-                : new Int32Array(0);
+        const { objSpawns } = this.deps;
         return createByteDrivenSceneBuildInput(input, {
             objSpawns,
-            varpValues,
+            varpValues: this.deps.contentSession.getMapRenderVarpValuesSnapshot(),
             cacheProvider: this.cacheProvider,
-            cacheGame: session.cache.info.game,
-            cacheRevision: session.cache.info.revision,
+            cacheGame: this.cacheInfo.game,
+            cacheRevision: this.cacheInfo.revision,
         });
     }
 
@@ -318,20 +282,22 @@ export class WasmMapRenderBackend implements MapRenderBackend {
         const shouldUseFallbackNpcGeometry =
             input.loadNpcs === true &&
             npcFallbackData !== undefined &&
-            (
-                !(packet.npcVertices instanceof Uint8Array) ||
+            (!(packet.npcVertices instanceof Uint8Array) ||
                 packet.npcVertices.length <= 0 ||
                 !(packet.npcIndices instanceof Int32Array) ||
                 packet.npcIndices.length <= 0 ||
                 !(packet.npcDrawRangesBase instanceof Int32Array) ||
-                packet.npcDrawRangesBase.length <= 0
-            );
-        const tileRenderFlags = WasmMapRenderBackend.createEmptyTileRenderFlags(levels, sizeX, sizeY);
+                packet.npcDrawRangesBase.length <= 0);
+        const tileRenderFlags = WasmMapRenderBackend.createEmptyTileRenderFlags(
+            levels,
+            sizeX,
+            sizeY,
+        );
         const data: SdMapData = {
             mapId: ((input.mapX << 8) | input.mapY) & 0xffff,
             mapX: input.mapX | 0,
             mapY: input.mapY | 0,
-            cacheName: this.deps.session.cache.info.name,
+            cacheName: this.cacheInfo.name,
             maxLevel: input.maxLevel | 0,
             loadObjs: input.loadObjs === true,
             loadNpcs: input.loadNpcs === true,
@@ -373,23 +339,17 @@ export class WasmMapRenderBackend implements MapRenderBackend {
                 : [];
         let objRenderData: ObjRenderData | undefined;
         if (objSpawns.length > 0) {
-            const scene = buildSceneFromMapBytesProvider(
-                this.deps.sceneBuilder,
-                this.deps.mapBytesProvider,
-                input.mapX * Scene.MAP_SQUARE_SIZE - borderSize,
-                input.mapY * Scene.MAP_SQUARE_SIZE - borderSize,
-                Scene.MAP_SQUARE_SIZE + borderSize * 2,
-                Scene.MAP_SQUARE_SIZE + borderSize * 2,
-                input.smoothTerrain === true,
-                input.loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
-                input.locPlacementOverrides,
-            );
-            objRenderData = buildObjRenderData({
+            const scene = this.buildAdapter.buildScene({
+                mapX: input.mapX | 0,
+                mapY: input.mapY | 0,
+                borderSize,
+                smoothTerrain: input.smoothTerrain === true,
+                locLoadType: input.loadLocs ? LocLoadType.MODELS : LocLoadType.NO_MODELS,
+                locPlacementOverrides: input.locPlacementOverrides,
+            });
+            objRenderData = this.buildAdapter.buildObjRenderData({
                 loadObjs: true,
-                objTypeLoader: this.deps.session.loaders.objTypeLoader,
-                objModelLoader: this.deps.objModelLoader,
                 scene,
-                textureLoader: this.deps.session.loaders.textureLoader,
                 baseX: input.mapX * Scene.MAP_SQUARE_SIZE - borderSize,
                 baseY: input.mapY * Scene.MAP_SQUARE_SIZE - borderSize,
                 borderSize,
